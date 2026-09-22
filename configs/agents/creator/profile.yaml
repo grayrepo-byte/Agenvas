@@ -1,0 +1,26 @@
+key: creator
+version: 1
+displayName: Creator Agent
+description: 三镜头短片创作助手。当前配置仅用于版本冻结，运行时将在 M3 接入。
+limits:
+  maxModelTurns: 12
+  maxToolExecutions: 40
+  maxImages: 8
+  maxVideos: 6
+  defaultShots: 3
+  maxShots: 6
+allowedTools:
+  - read_project_summary
+  - read_artifacts
+  - read_selection
+  - create_text
+  - create_character
+  - create_scene
+  - create_shots
+  - revise_artifact
+  - place_artifacts
+  - arrange_items
+  - link_artifacts
+  - propose_generation_plan
+  - read_task_status
+  - propose_export

@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+.env
+**/.DS_Store
+**/node_modules
+**/target
+frontend/dist
+frontend/coverage
+docs

@@ -1,0 +1,78 @@
+openapi: 3.1.0
+info:
+  title: Agenvas API
+  version: 0.1.0
+  description: |
+    Agenvas 的权威 HTTP 合约。当前只包含工程基线已实现的只读初始化状态端点；
+    后续接口随纵向切片同步加入，不能仅凭 MVP 目录提前声称已实现。
+servers:
+  - url: /
+paths:
+  /api/v1/auth/setup-status:
+    get:
+      operationId: getSetupStatus
+      summary: 查询是否需要初始化管理员
+      tags: [Identity]
+      security: []
+      responses:
+        "200":
+          description: 初始化状态
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  schemas:
+    SetupStatus:
+      type: object
+      additionalProperties: false
+      required: [setupRequired]
+      properties:
+        setupRequired:
+          type: boolean
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, code, traceId, retryable]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+        detail:
+          type: string
+        traceId:
+          type: string
+        retryable:
+          type: boolean
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+  responses:
+    InternalError:
+      description: 服务端错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"

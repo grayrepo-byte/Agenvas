@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: agenvas-server
+  datasource:
+    url: ${AGENVAS_DB_URL:jdbc:postgresql://localhost:5432/agenvas}
+    username: ${AGENVAS_DB_USER:agenvas}
+    password: ${AGENVAS_DB_PASSWORD:agenvas}
+  flyway:
+    enabled: true
+  session:
+    jdbc:
+      initialize-schema: never
+    timeout: 12h
+  ai:
+    model:
+      chat: none
+
+server:
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${AGENVAS_SECURE_COOKIES:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    enabled: ${AGENVAS_OPENAPI_ENABLED:false}
+  swagger-ui:
+    enabled: ${AGENVAS_OPENAPI_ENABLED:false}
+
+agenvas:
+  provider:
+    mode: ${AGENVAS_PROVIDER_MODE:mock}
