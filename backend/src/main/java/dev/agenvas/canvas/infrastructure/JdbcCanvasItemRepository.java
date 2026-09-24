@@ -12,10 +12,11 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** PostgreSQL CanvasItem repository; every read and write carries the project owner boundary. */
+/** PostgreSQL 画布仓储；读写均核对项目所有者，内容版本不由画布布局更新。 */
 @Repository
 public class JdbcCanvasItemRepository implements CanvasItemRepository {
 
+    /** 将画布行映射为展示项，subject 类型决定对应的产物或 Agent 外键。 */
     private static final RowMapper<CanvasItem> ITEM_MAPPER = (resultSet, rowNumber) ->
             new CanvasItem(
                     resultSet.getObject("id", UUID.class),
@@ -33,12 +34,15 @@ public class JdbcCanvasItemRepository implements CanvasItemRepository {
                     resultSet.getObject("created_at", OffsetDateTime.class).toInstant(),
                     resultSet.getObject("updated_at", OffsetDateTime.class).toInstant());
 
+    /** 执行项目范围内的画布列表、锁定和 CAS 变更。 */
     private final JdbcClient jdbcClient;
 
+    /** 注入画布仓储使用的 JDBC 客户端。 */
     public JdbcCanvasItemRepository(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 
+    /** 按 zIndex 和 ID 稳定排序列出项目画布项。 */
     @Override
     public List<CanvasItem> list(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -56,6 +60,7 @@ public class JdbcCanvasItemRepository implements CanvasItemRepository {
                 .list();
     }
 
+    /** 锁定单个项目画布项，供应用服务读取后校验布局变更。 */
     @Override
     public Optional<CanvasItem> findForUpdate(
             UUID ownerId, UUID projectId, UUID itemId) {
@@ -76,6 +81,7 @@ public class JdbcCanvasItemRepository implements CanvasItemRepository {
                 .optional();
     }
 
+    /** 新建画布项；重复 ID 不覆盖已有空间展示状态。 */
     @Override
     public boolean create(CanvasItem item) {
         return jdbcClient.sql("""
@@ -119,6 +125,7 @@ public class JdbcCanvasItemRepository implements CanvasItemRepository {
                 .update() == 1;
     }
 
+    /** 以预期布局版本更新坐标、尺寸、分组或锁定状态。 */
     @Override
     public boolean update(
             UUID ownerId, CanvasItem item, long expectedVersion, Instant updatedAt) {
@@ -153,6 +160,7 @@ public class JdbcCanvasItemRepository implements CanvasItemRepository {
                 .update() == 1;
     }
 
+    /** 只有项目所有者且布局版本匹配时才删除画布项。 */
     @Override
     public boolean delete(
             UUID ownerId, UUID projectId, UUID itemId, long expectedVersion) {
@@ -170,6 +178,7 @@ public class JdbcCanvasItemRepository implements CanvasItemRepository {
                 .update() == 1;
     }
 
+    /** 将绝对时刻转成 PostgreSQL JDBC 参数使用的 UTC 时间。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

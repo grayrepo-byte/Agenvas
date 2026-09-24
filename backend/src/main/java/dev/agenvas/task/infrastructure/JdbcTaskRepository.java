@@ -21,14 +21,18 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL Task queue using short SKIP LOCKED claims and lease-epoch fencing. */
+/** PostgreSQL 任务队列实现；使用短事务 SKIP LOCKED 认领和 lease_epoch 隔离旧 Worker。 */
 @Repository
 public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation {
 
+    /** 执行参数化 SQL 和条件更新。 */
     private final JdbcClient jdbcClient;
+    /** 将 JSONB 输入、输出映射为受控 JSON 树。 */
     private final ObjectMapper objectMapper;
+    /** 统一读取任务状态、外部请求 ID、租约 epoch 和时间字段。 */
     private final RowMapper<Task> taskMapper;
 
+    /** 预编译任务行映射，所有时间按数据库 UTC 时间戳转为 Instant。 */
     public JdbcTaskRepository(JdbcClient jdbcClient, ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
@@ -64,6 +68,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         .orElse(null));
     }
 
+    /** 所有者和项目联合授权后读取最多 100 条外部提交尝试，不读取文件或凭证。 */
     @Override
     public List<ProviderAttempt> listProviderAttempts(UUID ownerId, UUID projectId, UUID taskId) {
         return jdbcClient.sql("""
@@ -94,6 +99,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .list();
     }
 
+    /** 查询一个 UNKNOWN 原任务已建立的人工替代关系。 */
     @Override
     public Optional<ManualReplacement> findManualReplacement(UUID projectId, UUID originalTaskId) {
         return jdbcClient.sql("""
@@ -107,6 +113,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(this::manualReplacement).optional();
     }
 
+    /** 按用户、项目和幂等键查找人工重试记录，供同命令安全重放。 */
     @Override
     public Optional<ManualReplacement> findManualReplacementByKey(UUID projectId, UUID ownerId,
             String idempotencyKey) {
@@ -123,6 +130,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(this::manualReplacement).optional();
     }
 
+    /** 从审计行恢复原任务、替代任务、批准用户及确认时的原版本。 */
     private ManualReplacement manualReplacement(java.sql.ResultSet rs, int row) throws java.sql.SQLException {
         return new ManualReplacement(rs.getObject("project_id", UUID.class),
                 rs.getObject("original_task_id", UUID.class),
@@ -132,6 +140,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 rs.getObject("created_at", OffsetDateTime.class).toInstant());
     }
 
+    /** 保存用户承担重复费用风险的审计链接；唯一约束限制一项原任务只能替代一次。 */
     @Override
     public void createManualReplacement(ManualReplacement replacement) {
         int changed = jdbcClient.sql("""
@@ -152,6 +161,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         if (changed != 1) throw new IllegalStateException("Manual replacement was not inserted");
     }
 
+    /** 按稳定 UUID 顺序返回任务的全部前置依赖。 */
     @Override
     public List<UUID> dependencyIds(UUID projectId, UUID taskId) {
         return jdbcClient.sql("""
@@ -163,6 +173,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(UUID.class).list();
     }
 
+    /** 查询依赖指定任务的所有消费者，供人工替代前确认其均未启动。 */
     @Override
     public List<Task> dependentTasks(UUID projectId, UUID taskId) {
         return jdbcClient.sql(selectProjection() + """
@@ -175,6 +186,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(taskMapper).list();
     }
 
+    /** 只把仍为 PENDING 的消费者改为依赖替代任务，并递增受影响版本。 */
     @Override
     public List<Task> rewirePendingDependents(UUID projectId, UUID originalTaskId,
             UUID replacementTaskId, Instant now) {
@@ -203,7 +215,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return dependentTasks(projectId, replacementTaskId);
     }
 
-    /** Writes a single runnable model step in the caller's Run creation transaction. */
+    /** 在创建 Run 的同一事务中插入首个 READY 模型回合任务。 */
     @Override
     public UUID createInitialTurn(UUID projectId, UUID runId, Instant now) {
         JsonNode input = objectMapper.createObjectNode().put("schemaVersion", 1)
@@ -223,6 +235,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return taskId;
     }
 
+    /** 插入任务及依赖边；调用方负责先校验项目、Run 和依赖均在同一作用域。 */
     @Override
     public void create(Task task, List<UUID> dependencyIds) {
         jdbcClient.sql("""
@@ -268,6 +281,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         }
     }
 
+    /** 固定任务创建时的既有产物目标或新输出槽位，结果归档时使用该快照做 CAS。 */
     @Override
     public void createArtifactTarget(ArtifactTarget target) {
         int changed = jdbcClient.sql("""
@@ -289,6 +303,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         }
     }
 
+    /** 读取任务输出目标的固定产物版本或输出槽位。 */
     @Override
     public Optional<ArtifactTarget> findArtifactTarget(UUID taskId) {
         return jdbcClient.sql("""
@@ -307,6 +322,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .optional();
     }
 
+    /** 按所有者、项目和任务 ID 读取，避免暴露其他项目资源。 */
     @Override
     public Optional<Task> find(UUID ownerId, UUID projectId, UUID taskId) {
         return jdbcClient.sql(selectProjection() + """
@@ -321,6 +337,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .optional();
     }
 
+    /** 内部状态机按 ID 读取任务；该方法本身不执行 API 权限检查。 */
     @Override
     public Optional<Task> findById(UUID taskId) {
         return jdbcClient.sql(selectProjection() + "where t.id = :taskId")
@@ -329,6 +346,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .optional();
     }
 
+    /** 按项目命令键定位导出任务，用于校验幂等请求载荷。 */
     @Override
     public Optional<Task> findExportByStepKey(UUID ownerId, UUID projectId, String stepKey) {
         return jdbcClient.sql(selectProjection() + """
@@ -340,6 +358,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("stepKey", stepKey).query(taskMapper).optional();
     }
 
+    /** 返回最近 100 条项目导出，即使创建它们的 Run 已结束。 */
     @Override
     public List<Task> listExports(UUID ownerId, UUID projectId) {
         return jdbcClient.sql(selectProjection() + """
@@ -352,6 +371,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(taskMapper).list();
     }
 
+    /** READY 导出立即转 CANCELED；RUNNING 导出只记录取消请求供 Worker 停止。 */
     @Override
     public boolean requestExportCancellation(UUID projectId, UUID taskId, Instant now) {
         return jdbcClient.sql("""
@@ -367,6 +387,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 从数据库反查任务项目的权威所有者，不能使用模型输入中的 ownerId。 */
     @Override
     public Optional<UUID> ownerId(UUID taskId) {
         return jdbcClient.sql("""
@@ -378,6 +399,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .optional();
     }
 
+    /** 按创建时间和 ID 稳定排序读取指定所有者 Run 的任务。 */
     @Override
     public List<Task> listByRun(UUID ownerId, UUID projectId, UUID runId) {
         return jdbcClient.sql(selectProjection() + """
@@ -393,6 +415,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .list();
     }
 
+    /** 返回项目内最近 100 个 UNKNOWN 任务，不依赖活动 Run 槽位。 */
     @Override
     public List<Task> listUnknown(UUID ownerId, UUID projectId) {
         return jdbcClient.sql(selectProjection() + """
@@ -407,6 +430,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .list();
     }
 
+    /** 统计指定 Run 的任务类别数量，调用方须已锁定 Run 以防预算并发超额。 */
     @Override
     public long countByRunAndKind(UUID projectId, UUID runId, Task.Kind kind) {
         return jdbcClient.sql("""
@@ -417,28 +441,33 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("kind", kind.name()).query(Long.class).single();
     }
 
+    /** 认领任意到期非 Agent 任务；Agent 回合留给独立调度器。 */
     @Override
     public List<Task> claimDue(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimDueKind(workerId, limit, now, leaseUntil, null);
     }
 
+    /** 仅认领 Mock 图片适配器可处理的到期图片任务。 */
     @Override
     public List<Task> claimDueImages(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.IMAGE_GENERATION);
     }
 
+    /** 通过数据库单槽门禁认领一个 ComfyUI 图片任务。 */
     @Override
     public List<Task> claimDueComfyImage(String workerId, Instant now, Instant leaseUntil) {
         return claimDueComfy(workerId, now, leaseUntil, Task.Kind.IMAGE_GENERATION);
     }
 
+    /** 通过与图片共用的数据库单槽门禁认领一个 ComfyUI 视频任务。 */
     @Override
     public List<Task> claimDueComfyVideo(String workerId, Instant now, Instant leaseUntil) {
         return claimDueComfy(workerId, now, leaseUntil, Task.Kind.VIDEO_GENERATION);
     }
 
+    /** 锁定全局派发门禁；任一 ComfyUI 请求仍活动或状态未知时不提交新请求。 */
     private List<Task> claimDueComfy(String workerId, Instant now, Instant leaseUntil,
             Task.Kind kind) {
         jdbcClient.sql("select id from provider_dispatch_gate where id = 1 for update")
@@ -460,18 +489,21 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 : List.of();
     }
 
+    /** 只认领到期视频任务，避免 Mock 图片路径误消费视频。 */
     @Override
     public List<Task> claimDueVideos(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.VIDEO_GENERATION);
     }
 
+    /** 认领持有已确认 provider_request_id 的图片或视频查询任务，不会选新提交。 */
     @Override
     public List<Task> claimDueProviderPolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimProviderPolls(workerId, limit, now, leaseUntil, null);
     }
 
+    /** 限定 ComfyUI 图片轮询器只接管图片任务。 */
     @Override
     public List<Task> claimDueComfyImagePolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
@@ -479,6 +511,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 Task.Kind.IMAGE_GENERATION);
     }
 
+    /** 限定 ComfyUI 视频轮询器只接管视频任务。 */
     @Override
     public List<Task> claimDueComfyVideoPolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
@@ -486,6 +519,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 Task.Kind.VIDEO_GENERATION);
     }
 
+    /** 只按既有请求 ID 选取等待或租约过期的任务，并递增 fencing epoch。 */
     private List<Task> claimProviderPolls(String workerId, int limit, Instant now,
             Instant leaseUntil, Task.Kind onlyKind) {
         String kindClause = onlyKind == null
@@ -518,6 +552,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(taskMapper).list();
     }
 
+    /** 只认领未取消、项目仍活动且 Run 为空的项目级导出任务。 */
     @Override
     public List<Task> claimDueExports(
             String workerId, int limit, Instant now, Instant leaseUntil) {
@@ -549,12 +584,14 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(taskMapper).list();
     }
 
+    /** 单独认领 Agent 回合，Run 状态和恢复计划条件在 SQL 中再次限定。 */
     @Override
     public List<Task> claimDueAgentTurns(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.AGENT_TURN);
     }
 
+    /** 在业务事务内锁住任务行，核验项目、Run、Worker、epoch、取消和租约期限。 */
     @Override
     public boolean lockActiveAgentTurnLease(UUID projectId, UUID runId, UUID taskId,
             String workerId, long leaseEpoch, Instant now) {
@@ -575,7 +612,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .query(UUID.class).optional().isPresent();
     }
 
-    /** Keeps model and media workers in disjoint SKIP LOCKED claim domains. */
+    /** 模型与媒体使用互斥认领域；认领时递增 epoch 并返回更新后完整任务行。 */
     private List<Task> claimDueKind(String workerId, int limit, Instant now,
             Instant leaseUntil, Task.Kind onlyKind) {
         boolean agentTurn = onlyKind == Task.Kind.AGENT_TURN;
@@ -631,6 +668,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .list();
     }
 
+    /** 仅未过期的当前 epoch 可续租；取消请求会使心跳失败。 */
     @Override
     public boolean heartbeat(
             UUID taskId,
@@ -653,6 +691,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update() == 1;
     }
 
+    /** 仅当前未过期且未取消的 RUNNING 租约可写终态、输出和错误码。 */
     @Override
     public boolean finish(
             UUID taskId,
@@ -686,6 +725,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update() == 1;
     }
 
+    /** 只阻断尚无外部请求 ID 的过期输入任务，避免把已提交任务当成本地失败。 */
     @Override
     public boolean blockStaleInput(UUID taskId, String workerId, long leaseEpoch,
             String errorCode, Instant now) {
@@ -703,6 +743,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 仅所有前置成功且所需关键帧已选择时，将 PENDING 任务推进 READY。 */
     @Override
     public int promoteReady(UUID projectId, UUID runId, Instant now) {
         return jdbcClient.sql("""
@@ -759,6 +800,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update();
     }
 
+    /** 取消 Run 的未终态任务；PENDING/READY 立即结束，其他任务只打取消标记。 */
     @Override
     public List<Task> requestCancellation(UUID projectId, UUID runId, Instant now) {
         List<UUID> canceledBeforeSubmission = jdbcClient.sql("""
@@ -786,6 +828,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .toList();
     }
 
+    /** 在网络调用前原子写入 SUBMITTING 和 Provider 尝试记录，作为崩溃核对依据。 */
     @Override
     public boolean beginSubmission(UUID taskId, String workerId, long leaseEpoch,
             UUID attemptId, UUID requestKey, String candidateOriginSha256, Instant now) {
@@ -825,6 +868,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
+    /** 保存 Provider 确认的原请求 ID 并释放提交租约；更新尝试账本必须恰好一行。 */
     @Override
     public boolean acknowledgeSubmission(UUID taskId, String workerId, long leaseEpoch,
             String providerRequestId, Instant nextActionAt, Instant now) {
@@ -864,6 +908,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
+    /** 仅当任务版本、UNKNOWN 状态、原候选 ID 和 origin 摘要都匹配时恢复同一请求。 */
     @Override
     public boolean recoverUnknownSubmission(UUID projectId, UUID taskId, long expectedVersion,
             UUID attemptId, UUID candidateRequestId, String candidateOriginSha256, Instant now) {
@@ -912,6 +957,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
+    /** 轮询仍未完成时释放租约并安排再次查询，保留原 provider_request_id。 */
     @Override
     public boolean deferProviderPoll(UUID taskId, String workerId, long leaseEpoch,
             Instant nextActionAt, Instant now) {
@@ -929,6 +975,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 读取原 Provider 请求的连续查询失败次数；尚无账本行时返回零。 */
     @Override
     public int providerPollFailureCount(UUID taskId) {
         return jdbcClient.sql("""
@@ -937,6 +984,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("taskId", taskId).query(Integer.class).optional().orElse(0);
     }
 
+    /** 以任务为唯一键写入连续查询失败计数和最近稳定错误码。 */
     @Override
     public void recordProviderPollFailure(UUID taskId, int count, String errorCode, Instant now) {
         int changed = jdbcClient.sql("""
@@ -953,12 +1001,14 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         if (changed != 1) throw new IllegalStateException("Provider poll retry ledger did not update");
     }
 
+    /** 查询成功或归档完成后清除该请求的连续失败计数。 */
     @Override
     public void clearProviderPollFailures(UUID taskId) {
         jdbcClient.sql("delete from task_provider_poll_retry where task_id = :taskId")
                 .param("taskId", taskId).update();
     }
 
+    /** 原请求保留但配置不再安全时阻断轮询，并释放当前租约。 */
     @Override
     public boolean blockProviderPoll(UUID taskId, String workerId, long leaseEpoch,
             String errorCode, Instant now) {
@@ -976,6 +1026,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 无锁、有界发现已过期的提交检查点；实际转换由后续条件更新完成。 */
     @Override
     public List<ExpiredSubmission> findExpiredSubmissions(Instant now, int limit) {
         return jdbcClient.sql("""
@@ -993,6 +1044,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .list();
     }
 
+    /** 仅当提交租约仍已过期且状态仍为 SUBMITTING 时转成 UNKNOWN。 */
     @Override
     public boolean recoverExpiredSubmission(UUID taskId, Instant now) {
         int changed = jdbcClient.sql("""
@@ -1021,6 +1073,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
+    /** 查找已请求取消且 RUNNING 租约过期的本地任务，不推断 Provider 已取消。 */
     @Override
     public List<ExpiredSubmission> findExpiredCanceledRunning(Instant now, int limit) {
         return jdbcClient.sql("""
@@ -1039,6 +1092,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .list();
     }
 
+    /** 仅关闭取消请求已持久化且租约仍过期的本地任务。 */
     @Override
     public boolean finishExpiredCanceledRunning(UUID taskId, Instant now) {
         return jdbcClient.sql("""
@@ -1053,6 +1107,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update() == 1;
     }
 
+    /** 将晚到输出按 taskId 与 epoch 唯一保存到旁路历史，不覆盖主任务输出。 */
     @Override
     public boolean recordLateResult(Task lease, JsonNode output, Instant now) {
         return jdbcClient.sql("""
@@ -1071,6 +1126,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update() == 1;
     }
 
+    /** 晚到结果归档后终结取消任务；接受仍持有原 epoch 的 Worker 或已释放的 UNKNOWN。 */
     @Override
     public boolean finishCanceled(Task lease, String workerId, Instant now) {
         return jdbcClient.sql("""
@@ -1089,6 +1145,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update() == 1;
     }
 
+    /** 同步生成结果须在提交租约仍有效时完成任务，并把对应 Provider 尝试记为已受理。 */
     @Override
     public boolean finishSubmitting(Task lease, String workerId, JsonNode output, Instant now) {
         int changed = jdbcClient.sql("""
@@ -1123,6 +1180,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
+    /** 只完成与当前任务保存的原 requestId 相同的轮询结果。 */
     @Override
     public boolean finishProviderResult(Task lease, String workerId, JsonNode output, Instant now) {
         return jdbcClient.sql("""
@@ -1139,6 +1197,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("output", output.toString()).param("now", utc(now)).update() == 1;
     }
 
+    /** Provider 明确拒绝时终结任务并标记尝试 REJECTED；超时不得调用此转换。 */
     @Override
     public boolean rejectSubmission(Task lease, String workerId, String errorCode, Instant now) {
         int changed = jdbcClient.sql("""
@@ -1174,6 +1233,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
+    /** 统一限定后续查询可读取的任务字段，并将 JSONB 转成 Jackson 可读文本。 */
     private String selectProjection() {
         return """
                 select t.id, t.project_id, t.run_id, t.plan_id, t.step_key,
@@ -1188,6 +1248,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 """;
     }
 
+    /** 将业务 Instant 显式转换为 PostgreSQL JDBC UTC 偏移时间。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

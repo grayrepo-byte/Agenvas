@@ -22,19 +22,28 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Fenced local export of an immutable video-version snapshot to silent normalized MP4. */
+/** 使用 fencing 租约将固定视频版本快照本地合成为无声、统一画幅的 MP4。 */
 @Component
 public class MediaExportWorker {
 
+    /** 归档前允许的最大 MP4 字节数，编码期间超限即停止。 */
     private static final long MAX_EXPORT_BYTES = 500L * 1024 * 1024;
+    /** 单次 FFmpeg 编码的最长运行时间。 */
     private static final Duration EXPORT_TIMEOUT = Duration.ofMinutes(3);
+    /** 编码期间检查任务取消和输出体积的租约续期间隔。 */
     private static final long HEARTBEAT_NANOS = Duration.ofSeconds(8).toNanos();
+    /** 认领任务、续租、检查取消并以 fencing 条件提交终态。 */
     private final TaskService tasks;
+    /** 读取固定视频素材并按任务身份幂等归档成品。 */
     private final AssetService assets;
+    /** 创建受控 scratch 目录并在流关闭后释放文件锁。 */
     private final LocalAssetStorage storage;
+    /** 通过固定二进制和参数数组执行 FFmpeg 与 ffprobe。 */
     private final MediaToolRunner mediaTools;
+    /** 序列化归档结果 JSON。 */
     private final ObjectMapper mapper;
 
+    /** 注入本地导出所需服务；耗时编码在数据库认领事务结束后运行。 */
     public MediaExportWorker(TaskService tasks, AssetService assets,
             LocalAssetStorage storage, MediaToolRunner mediaTools, ObjectMapper mapper) {
         this.tasks = tasks;
@@ -44,7 +53,7 @@ public class MediaExportWorker {
         this.mapper = mapper;
     }
 
-    /** One bounded claim is executed outside the short claim and completion transactions. */
+    /** 每轮只短事务认领一个导出任务，完成编码后再通过单独事务提交结果。 */
     public int runOnce(String workerId) {
         List<Task> claimed = tasks.claimExportsDue(workerId, 1);
         for (Task lease : claimed) {
@@ -64,7 +73,7 @@ public class MediaExportWorker {
         return claimed.size();
     }
 
-    /** Never accepts paths or filter expressions from Task JSON; all inputs are archived IDs. */
+    /** 不接受任务 JSON 中的路径或滤镜表达式，只解析固定素材 ID 和受限区间。 */
     private ObjectNode render(Task lease, String workerId) {
         UUID ownerId = tasks.ownerForWorker(lease);
         JsonNode snapshot = lease.input();
@@ -90,7 +99,7 @@ public class MediaExportWorker {
         return result;
     }
 
-    /** Creates scratch and encodes only when this Task lacks an archived MP4. */
+    /** 创建临时工作目录；只有幂等归档中不存在该任务成品时才执行编码。 */
     private InputStream encode(Task lease, String workerId, UUID ownerId, JsonNode segments,
             int[] dimensions) {
         var workspace = storage.createExportWorkDirectory(lease.projectId());
@@ -104,7 +113,7 @@ public class MediaExportWorker {
         }
     }
 
-    /** The returned stream holds scratch until the archive has consumed its bytes. */
+    /** 返回流持有 scratch 目录锁，直到归档器读完数据并关闭该流。 */
     private InputStream encodeInWorkspace(Task lease, String workerId, UUID ownerId,
             JsonNode segments, int[] dimensions, Path output,
             LocalAssetStorage.ExportWorkspace workspace) {
@@ -129,7 +138,7 @@ public class MediaExportWorker {
                 throw new IllegalStateException("Pinned export interval is invalid");
             }
             verifyDuration(source.path(), endMs);
-            // Probing several archived inputs can exceed one lease period; keep the claim fenced.
+            // 多个素材的探测可能超过租约时长，因此每段素材校验后续租。
             tasks.heartbeat(lease.id(), workerId, lease.leaseEpoch());
             arguments.add("-i");
             arguments.add(source.path().toString());
@@ -188,7 +197,7 @@ public class MediaExportWorker {
         }
     }
 
-    /** A failed immediate delete remains confined to the janitor's known scratch shape. */
+    /** 即时删除失败时仍由临时目录清理器按受限目录结构回收。 */
     private void cleanupWorkspace(LocalAssetStorage.ExportWorkspace workspace, Path output) {
         try {
             Files.deleteIfExists(output);
@@ -199,6 +208,7 @@ public class MediaExportWorker {
         }
     }
 
+    /** 使用 ffprobe 确认归档输入确为视频，且请求裁剪终点没有超出媒体时长。 */
     private void verifyDuration(Path archivedInput, int requestedEndMs) {
         JsonNode probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
                 "-select_streams", "v:0", "-show_entries",
@@ -212,10 +222,11 @@ public class MediaExportWorker {
         }
     }
 
+    /** 将整数毫秒格式化为 FFmpeg 可解析的十进制秒数。 */
     private String seconds(int milliseconds) {
         return BigDecimal.valueOf(milliseconds, 3).toPlainString();
     }
 
-    /** An intermediate encode exceeding the archive cap is stopped before final ingestion. */
+    /** 标记编码文件超过归档上限；由 Worker 映射为明确的任务失败码。 */
     private static final class ExportTooLargeException extends RuntimeException {}
 }

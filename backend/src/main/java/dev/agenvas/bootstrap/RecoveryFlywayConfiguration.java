@@ -5,12 +5,12 @@ import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Keeps a restored database at its backed-up schema version until migration is approved. */
+/** 恢复备份后保持原数据库结构版本，直到运维批准执行迁移。 */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode", havingValue = "true")
 public class RecoveryFlywayConfiguration {
 
-    /** Flyway remains inspectable but startup must not apply any pending migration. */
+    /** 仍可检查 Flyway 状态，但启动时不执行待应用迁移。 */
     @Bean
     FlywayMigrationStrategy recoveryFlywayMigrationStrategy() {
         return flyway -> {

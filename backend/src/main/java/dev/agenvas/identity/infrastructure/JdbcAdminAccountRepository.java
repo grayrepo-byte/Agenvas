@@ -10,16 +10,19 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** PostgreSQL implementation of administrator persistence. */
+/** PostgreSQL 管理员仓储；首次初始化通过单行锁串行化，密码更新使用版本 CAS。 */
 @Repository
 public class JdbcAdminAccountRepository implements AdminAccountRepository {
 
+    /** 执行初始化锁、管理员读取和密码更新 SQL。 */
     private final JdbcClient jdbcClient;
 
+    /** 注入管理员账户仓储使用的 JDBC 客户端。 */
     public JdbcAdminAccountRepository(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 
+    /** 锁定安装初始化互斥行，保证账户存在性检查与创建串行执行。 */
     @Override
     public void lockSetup() {
         jdbcClient.sql("select id from installation_lock where id = 1 for update")
@@ -27,6 +30,7 @@ public class JdbcAdminAccountRepository implements AdminAccountRepository {
                 .single();
     }
 
+    /** 检查是否已有活动管理员，初始化流程在互斥锁内调用。 */
     @Override
     public boolean hasAdminAccount() {
         return Boolean.TRUE.equals(
@@ -35,6 +39,7 @@ public class JdbcAdminAccountRepository implements AdminAccountRepository {
                         .single());
     }
 
+    /** 按规范化登录名读取活动账户及密码哈希，不返回已禁用账户。 */
     @Override
     public Optional<AdminAccount> findActiveByLoginName(String loginName) {
         return jdbcClient
@@ -56,6 +61,7 @@ public class JdbcAdminAccountRepository implements AdminAccountRepository {
                 .optional();
     }
 
+    /** 插入首个活动管理员账户，密码哈希由应用服务预先生成。 */
     @Override
     public void createAdmin(UUID id, String loginName, String passwordHash, Instant createdAt) {
         jdbcClient
@@ -75,6 +81,7 @@ public class JdbcAdminAccountRepository implements AdminAccountRepository {
                 .update();
     }
 
+    /** 仅在账户仍活动且版本未变化时更新密码并递增版本。 */
     @Override
     public boolean updatePassword(
             UUID id, long expectedVersion, String passwordHash, Instant passwordChangedAt) {

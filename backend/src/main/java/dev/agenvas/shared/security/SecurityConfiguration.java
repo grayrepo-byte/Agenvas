@@ -23,11 +23,11 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
-/** Defines session authentication, CSRF protection, and uniform API security failures. */
+/** 配置会话认证、CSRF 防护及统一的 API 安全错误响应。 */
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfiguration {
 
-    /** Protects every API except the small setup/login bootstrap surface and health probes. */
+    /** 保护所有 API，仅初始化、登录和健康检查入口按规则开放。 */
     @Bean
     SecurityFilterChain applicationSecurity(
             HttpSecurity http,
@@ -70,25 +70,25 @@ public class SecurityConfiguration {
                 .build();
     }
 
-    /** Uses the database administrator provider for explicit JSON login. */
+    /** 使用数据库管理员身份提供器处理显式 JSON 登录。 */
     @Bean
     AuthenticationManager authenticationManager(AdminAuthenticationProvider provider) {
         return new ProviderManager(provider);
     }
 
-    /** Encodes passwords with Spring Security's versioned delegating format. */
+    /** 使用 Spring Security 的带算法版本标记格式保存密码哈希。 */
     @Bean
     PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
 
-    /** Persists authenticated contexts in Spring Session JDBC. */
+    /** 通过 Spring Session JDBC 持久化认证上下文。 */
     @Bean
     SecurityContextRepository securityContextRepository() {
         return new HttpSessionSecurityContextRepository();
     }
 
-    /** Exposes a readable random CSRF cookie that must be echoed through a custom header. */
+    /** 设置可由前端读取的随机 CSRF Cookie，写请求必须通过自定义请求头回传。 */
     @Bean
     CsrfTokenRepository csrfTokenRepository() {
         CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
@@ -96,7 +96,7 @@ public class SecurityConfiguration {
         return repository;
     }
 
-    /** Delegates unauthenticated filter failures to the shared ProblemDetail mapper. */
+    /** 将未认证过滤器错误交给统一 ProblemDetail 映射器。 */
     @Bean
     AuthenticationEntryPoint authenticationEntryPoint(
             @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) {
@@ -112,7 +112,7 @@ public class SecurityConfiguration {
                         false));
     }
 
-    /** Delegates CSRF and authorization failures to the shared ProblemDetail mapper. */
+    /** 将 CSRF 和授权错误交给统一 ProblemDetail 映射器。 */
     @Bean
     AccessDeniedHandler accessDeniedHandler(
             @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) {
@@ -128,7 +128,7 @@ public class SecurityConfiguration {
                         false));
     }
 
-    /** Provides an injectable UTC time source for authentication policy and tests. */
+    /** 提供可注入的 UTC 时间源，供认证策略和测试使用。 */
     @Bean
     Clock systemClock() {
         return Clock.systemUTC();

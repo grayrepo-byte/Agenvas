@@ -28,22 +28,33 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Approved image-v1 Tasks submit one fixed graph, then query only the saved prompt id. */
+/** 执行已审批的固定图片工作流；提交与轮询分开，轮询只使用已保存的 prompt ID。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiImageWorker {
 
+    /** 提供短事务认领、租约与 fencing epoch 的媒体任务状态编排。 */
     private final TaskWorker worker;
+    /** 查询 Worker 身份、固定 Provider 来源并读取任务输入。 */
     private final TaskService tasks;
+    /** 解析任务固定的参考图版本及产物归档内容。 */
     private final ArtifactService artifacts;
+    /** 读取参考图字节并按任务幂等键归档生成结果。 */
     private final AssetService assets;
+    /** 读取项目画幅设置，决定上传前的归一化尺寸。 */
     private final ProjectService projects;
+    /** 当前候选 ComfyUI 端点客户端。 */
     private final ComfyUiClient client;
+    /** 按已接受的端点身份恢复历史任务的客户端。 */
     private final ComfyUiClientRegistry clientRegistry;
+    /** 版本固定的服务端图片图模板。 */
     private final ComfyUiImageWorkflow workflow;
+    /** 当前 Provider 配置版本，用于提交前拒绝配置漂移。 */
     private final PlanProviderProperties provider;
+    /** 构造生成结果所需的 Artifact 内容 JSON。 */
     private final ObjectMapper mapper;
 
+    /** 组装固定图片模板的提交、历史轮询和素材归档依赖。 */
     public ComfyUiImageWorker(TaskService tasks, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ComfyUiClient client,
             ComfyUiClientRegistry clientRegistry, ComfyUiImageWorkflow workflow,
@@ -60,14 +71,16 @@ public class ComfyUiImageWorker {
         this.mapper = mapper;
     }
 
-    /** A bounded scheduled pass enters SUBMITTING before either upload or prompt submission. */
+    /** 每轮限量认领任务，并在上传或提交 prompt 前先持久化进入 SUBMITTING。 */
     public int submitOnce(String workerId) {
         return worker.runComfyImagesOnce(workerId, new TaskWorker.MediaHandler() {
+            /** 返回当前候选端点摘要，任务认领前用于与审批来源比对。 */
             @Override
             public String candidateOriginSha256() {
                 return client.originSha256();
             }
 
+            /** 检查计划固定的 Provider、端点和工作流版本是否仍可提交。 */
             @Override
             public String preflightFailure(Task task) {
                 return task.input().path("providerConfigVersion").asInt(-1)
@@ -78,6 +91,7 @@ public class ComfyUiImageWorker {
                         ? null : "PROVIDER_CONFIG_CHANGED";
             }
 
+            /** 转交实际上传与 prompt 提交；Worker 已先持久化 SUBMITTING 检查点。 */
             @Override
             public TaskWorker.Outcome execute(Task task, UUID requestKey) {
                 return submit(task, requestKey);
@@ -85,7 +99,7 @@ public class ComfyUiImageWorker {
         });
     }
 
-    /** Querying a saved request is a different worker path; it never calls submit or upload. */
+    /** 已受理请求走独立轮询路径；此路径不会再次上传或提交。 */
     public int pollOnce(String workerId) {
         return worker.runComfyImagePollsOnce(workerId, task -> {
             String savedOrigin = tasks.acceptedProviderOrigin(task).orElse(null);
@@ -117,6 +131,7 @@ public class ComfyUiImageWorker {
         });
     }
 
+    /** 生成确定性种子的输入图并以请求键上传、提交固定模板。 */
     private TaskWorker.WaitingProvider submit(Task task, UUID requestKey) {
         UUID ownerId = tasks.ownerForWorker(task);
         boolean reference = task.input().has("referenceImageVersionId");
@@ -130,7 +145,7 @@ public class ComfyUiImageWorker {
         return new TaskWorker.WaitingProvider(promptId.toString(), Instant.now().plusSeconds(5));
     }
 
-    /** Real selected image bytes are normalized and uploaded into LoadImage's latent path. */
+    /** 将选定参考图字节归一化后上传，供固定模板的 LoadImage 节点读取。 */
     private byte[] inputImage(UUID ownerId, Task task, boolean reference) {
         Project.AspectRatio ratio = projects.get(ownerId, task.projectId()).aspectRatio();
         int width = ratio == Project.AspectRatio.PORTRAIT_9_16 ? 576
@@ -182,7 +197,7 @@ public class ComfyUiImageWorker {
         }
     }
 
-    /** Download and archive are repeatable; a failed archive never creates another prompt. */
+    /** 下载和归档可重试；归档失败时不会重新创建 Provider prompt。 */
     private TaskWorker.PollGenerated archive(Task task, UUID promptId, String filename,
             ComfyUiClient original) {
         UUID ownerId = tasks.ownerForWorker(task);

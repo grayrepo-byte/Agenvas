@@ -36,30 +36,49 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Creates and advances persistent Runs under one database-owned active slot per project. */
+/** 在数据库拥有的项目活动槽位下创建和推进 Run；取消与终态转换负责释放该槽位。 */
 @Service
 public class AgentRunService {
 
+    /** 相同创建命令可重放的幂等记录保留时间。 */
     private static final Duration IDEMPOTENCY_RETENTION = Duration.ofHours(24);
+    /** 单次用户指令的最大字符数，避免无界内容进入模型上下文。 */
     private static final int MAX_INSTRUCTION_LENGTH = 20_000;
+    /** 一次运行允许附带的画布选择数量上限。 */
     private static final int MAX_SELECTED_ITEMS = 20;
+    /** 历史列表默认每页条数。 */
     private static final int DEFAULT_PAGE_SIZE = 20;
+    /** 历史列表每页最大条数。 */
     private static final int MAX_PAGE_SIZE = 100;
 
+    /** 校验项目归属并独占项目的活动 Run 槽位。 */
     private final ProjectService projects;
+    /** 读取 Agent 当前配置及其已授权输入绑定。 */
     private final AgentInstanceService agents;
+    /** 重新核验局部重做镜头的当前版本。 */
     private final ArtifactService artifacts;
+    /** 将用户选择的画布项解析为当前项目内的意图快照。 */
     private final CanvasService canvas;
+    /** 持久化 Run、幂等命令和状态版本。 */
     private final AgentRunRepository runs;
+    /** 让 Run 状态变更与项目事件在同一事务提交。 */
     private final ProjectEventService events;
+    /** 取消未提交任务，阻止旧 Run 继续编排。 */
     private final RunTaskCancellation taskCancellation;
+    /** 在 Run 创建事务中建立首个模型回合任务。 */
     private final RunTaskCreation taskCreation;
+    /** 释放取消或终止前尚未提交任务的用量预留。 */
     private final UsageService usage;
+    /** 预检并固定本次 Run 可用的模型配置。 */
     private final ChatGateway chatGateway;
+    /** 构造固定上下文及策略 JSON 快照。 */
     private final ObjectMapper objectMapper;
+    /** 为幂等保留期与状态事件提供一致时间。 */
     private final Clock clock;
+    /** 停机开始后阻止创建新的 Run。 */
     private final ShutdownGate shutdownGate;
 
+    /** 注入 Run 创建所需服务；事务提交由事件服务协调项目槽位、Run、任务与事件。 */
     public AgentRunService(
             ProjectService projects,
             AgentInstanceService agents,
@@ -89,7 +108,7 @@ public class AgentRunService {
         this.shutdownGate = shutdownGate;
     }
 
-    /** Creates one queued Run or returns the original Run for an exact command replay. */
+    /** 基础创建入口；完全相同的项目级命令键与载荷重放时返回原 Run。 */
     @Transactional
     public CreateResult create(
             UUID ownerId,
@@ -101,7 +120,7 @@ public class AgentRunService {
                 requestedIdempotencyKey, null, null);
     }
 
-    /** UI path pins the Agent configuration reviewed by the user before creating a Run. */
+    /** UI 创建入口额外核对用户预览过的 Agent 版本，配置变化时要求重新确认范围。 */
     @Transactional
     public CreateResult create(
             UUID ownerId,
@@ -114,7 +133,7 @@ public class AgentRunService {
                 requestedIdempotencyKey, expectedAgentVersion, null);
     }
 
-    /** Optional scoped redo admits only an explicitly bound current shot version. */
+    /** 局部重做入口仅接受 Agent 已绑定且仍为当前版本的镜头。 */
     @Transactional
     public CreateResult create(
             UUID ownerId,
@@ -128,7 +147,7 @@ public class AgentRunService {
                 requestedIdempotencyKey, expectedAgentVersion, redoShotArtifactId, List.of());
     }
 
-    /** Pins optional UI selection as intent, without expanding the Agent's binding authority. */
+    /** 固定用户选择的画布项作为意图；选择本身不扩展 Agent 对其他产物的访问权。 */
     @Transactional
     public CreateResult create(
             UUID ownerId,
@@ -144,7 +163,7 @@ public class AgentRunService {
                 selectedItemIds, null, null);
     }
 
-    /** Pins the model configuration shown by the Run preflight consent panel. */
+    /** 附加用户预检时看到的模型配置来源和版本，创建时再次核对。 */
     @Transactional
     public CreateResult create(
             UUID ownerId,
@@ -162,7 +181,24 @@ public class AgentRunService {
                 selectedItemIds, expectedModelConfigSource, expectedModelConfigVersion, null);
     }
 
-    /** Rejects creation when the reviewed system prompt changed before consent. */
+    /**
+     * 创建 Run 的完整入口。先按指令、Agent、选择和预检版本计算请求摘要；
+     * 同键异载荷返回冲突，同键同载荷返回原 Run。项目锁内再次确认活动槽位，
+     * 把 Run、首个模型任务和 Run 事件一起提交，随后追加首个任务事件。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId 将占用活动 Run 槽位的项目
+     * @param agentId 用户选择的 Agent 卡片
+     * @param requestedInstruction 用户指令，校验长度后固定到 Run
+     * @param requestedIdempotencyKey 项目内创建 Run 的客户端幂等键
+     * @param expectedAgentVersion 用户预览过的 Agent 版本；为空时不做该版本核对
+     * @param redoShotArtifactId 可选局部重做镜头，必须是已绑定的当前版本
+     * @param selectedItemIds 可选画布选择；只作为意图，不授予额外产物权限
+     * @param expectedModelConfigSource 预检时的配置来源，须与版本同时提供
+     * @param expectedModelConfigVersion 预检时的配置版本，须与来源同时提供
+     * @param expectedSystemPromptVersion 预检时的系统提示词版本，变化则拒绝创建
+     * @return 新建或原命令重放得到的 Run，并标记是否重放
+     */
     @Transactional
     public CreateResult create(
             UUID ownerId,
@@ -295,14 +331,14 @@ public class AgentRunService {
         return new CreateResult(created.run(), false);
     }
 
-    /** Reads one nested Run without exposing another owner's existence. */
+    /** 按项目所有者读取 Run；不存在与越权使用相同的 404 响应。 */
     @Transactional(readOnly = true)
     public AgentRun get(UUID ownerId, UUID projectId, UUID runId) {
         projects.get(ownerId, projectId);
         return require(ownerId, projectId, runId);
     }
 
-    /** Pages an Agent's durable history without returning raw model turns or tool arguments. */
+    /** 按 Agent 作用域分页读取持久化运行历史，不返回模型原始回合或工具参数。 */
     @Transactional(readOnly = true)
     public RunPage list(UUID ownerId, UUID projectId, UUID agentId,
             String encodedCursor, Integer requestedLimit) {
@@ -322,11 +358,19 @@ public class AgentRunService {
                 hasMore ? encodeCursor(items.getLast()) : null);
     }
 
-    /** One history page within the requested Agent boundary. */
+    /** 同一 Agent 范围内的一页运行历史；nextCursor 为空表示没有下一页。
+     * @param items 当前页的 Run 记录
+     * @param nextCursor 下一页位置；没有更多结果时为空
+     */
     public record RunPage(List<AgentRun> items, String nextCursor) {}
 
+    /** 用创建时间与 Run ID 共同确定稳定翻页位置。
+     * @param createdAt 上一页最后一条 Run 的创建时间
+     * @param id 上一页最后一条 Run 的 ID，用于时间相同时继续稳定排序
+     */
     private record RunCursor(Instant createdAt, UUID id) {}
 
+    /** 只接受长度有界、结构完整的 URL 安全 Base64 游标。 */
     private RunCursor decodeCursor(String encoded) {
         if (encoded == null) {
             return null;
@@ -349,6 +393,7 @@ public class AgentRunService {
         }
     }
 
+    /** 将创建时间的秒、纳秒及 Run ID 编码为下一页游标。 */
     private String encodeCursor(AgentRun run) {
         String value = run.createdAt().getEpochSecond() + ":"
                 + run.createdAt().getNano() + ":" + run.id();
@@ -356,7 +401,7 @@ public class AgentRunService {
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Shows the exact current input bindings and policy before any planning-model call. */
+    /** 模型调用前展示当前 Agent 绑定、版本和策略，供用户核对运行范围。 */
     @Transactional(readOnly = true)
     public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId) {
         projects.requireActiveProject(ownerId, projectId);
@@ -374,17 +419,43 @@ public class AgentRunService {
                 model.modelId(), model.toolCalling(), policySnapshot());
     }
 
-    /** The preview never contains keys, endpoints or model-private messages. */
+    /** 运行前预览；不包含凭证、端点或模型私有消息。
+     * @param agentId 即将运行的 Agent ID
+     * @param agentVersion 用户预览过的 Agent 配置版本
+     * @param agentName Agent 展示名称
+     * @param agentInstruction Agent 固定指令
+     * @param bindings 将作为首轮上下文的素材绑定
+     * @param modelAvailable 当前模型配置是否可用
+     * @param providerAdapter 对外展示的 Provider 适配器名
+     * @param modelId 对外展示的模型 ID
+     * @param toolCalling 当前模型是否声明支持工具调用
+     * @param policySnapshot 创建 Run 时将固定的策略快照
+     */
     public record RunPreflight(UUID agentId, long agentVersion, String agentName,
             String agentInstruction, List<PreflightBinding> bindings,
             boolean modelAvailable, String providerAdapter, String modelId,
             boolean toolCalling, ObjectNode policySnapshot) {}
 
-    /** One immutable ArtifactVersion that would be serialized as first-turn JSON text. */
+    /** 预检时将作为首轮文本上下文的产物版本绑定。
+     * @param artifactId 输入产物 ID
+     * @param selectedVersionId Agent 当前选定的不可变产物版本
+     * @param artifactTitle 预检时的产物标题
+     * @param artifactKind 产物类型
+     */
     public record PreflightBinding(UUID artifactId, UUID selectedVersionId,
             String artifactTitle, Artifact.Kind artifactKind) {}
 
-    /** Applies one valid durable state transition and releases the slot on terminal states. */
+    /**
+     * 在项目事务内按预期版本校验 Run 状态机；终态释放项目槽位，取消请求同时取消未提交任务。
+     * 相同目标状态可重放，但版本不匹配仍返回冲突。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId Run 所属项目
+     * @param runId 要变更的 Run
+     * @param expectedVersion 调用方读取到的 Run 版本，防止覆盖并发状态变化
+     * @param target 目标状态，必须属于当前状态允许的转换集合
+     * @return 已持久化的最新 Run
+     */
     @Transactional
     public AgentRun transition(
             UUID ownerId,
@@ -421,7 +492,10 @@ public class AgentRunService {
                 .value();
     }
 
-    /** Advances the persisted model cursor after the next Task is created in one transaction. */
+    /**
+     * 按 Run 版本与当前步骤序号同时比较并前移模型游标；步骤达到上限时拒绝继续。
+     * 调用方应与下一回合任务创建置于同一业务事务。
+     */
     @Transactional
     public AgentRun advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex) {
@@ -444,7 +518,7 @@ public class AgentRunService {
         }).value();
     }
 
-    /** Durably stops future Task work before releasing the Run's project slot. */
+    /** 持久化取消意图、取消未提交任务并转入 CANCELED，最后释放项目活动槽位。 */
     @Transactional
     public AgentRun cancel(UUID ownerId, UUID projectId, UUID runId) {
         return events.recordChange(ownerId, projectId, () -> {
@@ -474,7 +548,7 @@ public class AgentRunService {
                 .value();
     }
 
-    /** Only PENDING/READY media Tasks returned by the cancellation update can be released. */
+    /** 仅释放取消操作实际返回的未提交媒体任务用量；已提交请求仍可能产生外部费用。 */
     private void cancelUnsubmittedTasks(UUID ownerId, UUID projectId, UUID runId) {
         for (Task task : taskCancellation.requestCancellation(projectId, runId,
                 clock.instant())) {
@@ -484,6 +558,7 @@ public class AgentRunService {
         }
     }
 
+    /** 调用前须持有项目锁；CAS 更新状态后仅在终态释放该 Run 占用的槽位。 */
     private AgentRun updateStatusLocked(
             UUID ownerId,
             UUID projectId,
@@ -507,6 +582,7 @@ public class AgentRunService {
         return require(ownerId, projectId, runId);
     }
 
+    /** Run 事件只携带可核实的状态、ID、步骤游标和版本，不包含指令或模型内容。 */
     private ProjectEventService.EventDraft runEvent(AgentRun run) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("status", run.status().name());
@@ -516,6 +592,7 @@ public class AgentRunService {
                 "agent.run.changed", 1, run.id(), run.version(), payload);
     }
 
+    /** 固定 Agent 绑定与用户选择时的版本；局部重做只暴露目标镜头的绑定。 */
     private ObjectNode contextSnapshot(UUID ownerId, AgentInstance agent, Project project,
             UUID redoShotArtifactId, UUID redoShotVersionId, List<UUID> selectedItemIds) {
         ObjectNode snapshot = objectMapper.createObjectNode();
@@ -569,6 +646,7 @@ public class AgentRunService {
         return snapshot;
     }
 
+    /** 把本次 Run 的模型配置版本及回合、工具、媒体预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
         policy.put("schemaVersion", 2);
@@ -584,6 +662,7 @@ public class AgentRunService {
         return policy;
     }
 
+    /** 列出当前状态允许的目标状态，终态不再接受转换。 */
     private Set<AgentRun.Status> allowedTargets(AgentRun.Status current) {
         return switch (current) {
             case QUEUED -> Set.of(
@@ -613,10 +692,12 @@ public class AgentRunService {
         };
     }
 
+    /** 在所有者和项目范围内读取 Run，避免泄露其他项目资源是否存在。 */
     private AgentRun require(UUID ownerId, UUID projectId, UUID runId) {
         return runs.find(ownerId, projectId, runId).orElseThrow(this::notFound);
     }
 
+    /** 去除指令首尾空白并限制为 1 至 20,000 字符。 */
     private String validateInstruction(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > MAX_INSTRUCTION_LENGTH) {
@@ -625,7 +706,7 @@ public class AgentRunService {
         return normalized;
     }
 
-    /** Normalizes the bounded UI selection before hashing the idempotent Run request. */
+    /** 在计算幂等摘要前拒绝空 ID、重复 ID 或超过 20 个的画布选择。 */
     private List<UUID> validateSelection(List<UUID> requested) {
         if (requested == null) return List.of();
         if (requested.size() > MAX_SELECTED_ITEMS
@@ -636,6 +717,7 @@ public class AgentRunService {
         return List.copyOf(requested);
     }
 
+    /** 去除客户端幂等键首尾空白并限制为 1 至 200 字符。 */
     private String validateIdempotencyKey(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 200) {
@@ -644,6 +726,7 @@ public class AgentRunService {
         return normalized;
     }
 
+    /** 用 UTF-8 原文本计算小写十六进制 SHA-256 请求摘要。 */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -654,6 +737,7 @@ public class AgentRunService {
         }
     }
 
+    /** 构造 Run 不存在或不属于当前所有者时的 404 响应。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
@@ -663,6 +747,7 @@ public class AgentRunService {
                 false);
     }
 
+    /** 构造 Run 乐观版本已变化或步骤 CAS 失败时的 409 响应。 */
     private ApiProblemException versionConflict() {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
@@ -672,6 +757,7 @@ public class AgentRunService {
                 false);
     }
 
+    /** 构造同一幂等键仍在处理、客户端可重试的 409 响应。 */
     private ApiProblemException idempotencyInProgress() {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
@@ -681,6 +767,7 @@ public class AgentRunService {
                 true);
     }
 
+    /** 构造 Run 创建输入或状态迁移不符合业务规则时的 400 响应。 */
     private ApiProblemException validation(String detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
@@ -690,9 +777,15 @@ public class AgentRunService {
                 false);
     }
 
-    /** Creation outcome distinguishes a fresh 202 response from an exact replay. */
+    /** 区分新建 Run 与完全相同命令的重放，以决定 HTTP 响应语义。
+     * @param run 新创建或通过幂等键找到的持久化 Run
+     * @param replayed 是否为相同请求的幂等重放
+     */
     public record CreateResult(AgentRun run, boolean replayed) {}
 
-    /** Run and its first Task committed under one project event sequence lock. */
+    /** 在同一个项目事件序号锁下提交的 Run 和首个模型回合任务。
+     * @param run 已创建的 Run
+     * @param firstTaskId 首个模型回合任务 ID
+     */
     private record CreatedRun(AgentRun run, UUID firstTaskId) {}
 }

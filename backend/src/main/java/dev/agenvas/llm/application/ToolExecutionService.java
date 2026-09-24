@@ -27,26 +27,56 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Validates one recorded model call and commits its creative command and ledger atomically. */
+/**
+ * 执行已保存模型响应中的单个工具调用。业务变更、工具账本和项目事件在同一事务内提交。
+ */
 @Service
 public class ToolExecutionService {
 
+    /** 一个 Run 最多允许完成的工具调用数，避免模型循环无限扩大副作用。 */
     private static final int MAX_TOOLS_PER_RUN = 40;
+    /** {@code create_text} 允许模型提供的字段；所有服务端管理字段均不在此集合中。 */
     private static final Set<String> CREATE_TEXT_FIELDS = Set.of("title", "text", "format");
 
+    /** 以项目和所有者范围锁定 Run，并核对其当前执行状态。 */
     private final AgentRunRepository runs;
+    /** 只从已提交的完整模型响应中查找工具调用。 */
     private final LlmTurnRepository turns;
+    /** 按 Run、步骤和 tool_call_id 查询及保存幂等执行结果。 */
     private final ToolExecutionRepository ledger;
+    /** 通过统一业务规则创建不可变文本产物版本。 */
     private final ArtifactService artifacts;
+    /** 执行角色、场景、镜头和画布等受控创作命令。 */
     private final CreativeArtifactToolService creative;
+    /** 执行已授权的只读项目与任务查询工具。 */
     private final ReadToolService reader;
+    /** 校验并持久化待用户审批的媒体执行计划。 */
     private final ExecutionPlanService plans;
+    /** 保存待用户审批的导出提案，不直接启动 FFmpeg。 */
     private final ExportProposalService exportProposals;
+    /** 为工具执行提供项目锁顺序与同事务事件记录。 */
     private final ProjectEventService events;
+    /** 在业务事务内再次核验当前 Worker 的任务租约。 */
     private final AgentTurnLeaseGuard leaseGuard;
+    /** 将工具参数解析为受控 JSON，并构造结构化结果。 */
     private final ObjectMapper mapper;
+    /** 为账本的开始与完成记录提供统一时间源。 */
     private final Clock clock;
 
+    /** 组装工具身份验证、持久化去重、业务应用服务及租约 fencing 边界。
+     * @param runs 校验工具调用所属 Run 和项目权限
+     * @param turns 读取已保存的模型响应，确认调用来自模型原始输出
+     * @param ledger 按 Run 步骤和 toolCallId 去重并保存结果
+     * @param artifacts 读取和修改不可变产物版本
+     * @param creative 执行创作、布局及素材关联工具
+     * @param reader 执行授权范围内的只读工具
+     * @param plans 创建待审批媒体计划
+     * @param exportProposals 创建待审批导出提案
+     * @param events 与工具副作用一并记录项目事件
+     * @param leaseGuard 在副作用事务中核验 Agent 回合租约
+     * @param mapper 解析参数并构造稳定结果 JSON
+     * @param clock 为工具账本记录时间
+     */
     public ToolExecutionService(AgentRunRepository runs, LlmTurnRepository turns,
             ToolExecutionRepository ledger, ArtifactService artifacts,
             CreativeArtifactToolService creative, ReadToolService reader,
@@ -67,13 +97,29 @@ public class ToolExecutionService {
         this.clock = clock;
     }
 
-    /** Replays an existing result or executes the exact call found in a committed model response. */
+    /**
+     * 执行或重放已提交模型响应中标识完全一致的工具调用，适用于不携带 Worker 租约的内部路径。
+     *
+     * @param context 服务端建立的所有者、项目和 Run 作用域
+     * @param stepIndex 保存该响应的模型步骤序号
+     * @param toolCallId 模型响应原样给出的工具调用 ID
+     * @return 首次执行或幂等重放时持久化的同一结果
+     */
     @Transactional
     public JsonNode execute(TrustedToolContext context, int stepIndex, String toolCallId) {
         return executeInternal(context, stepIndex, toolCallId, null, null);
     }
 
-    /** Runtime entry point: checks the fenced Task lease under the same business transaction. */
+    /**
+     * Worker 入口：在产生任何业务副作用的事务中重新锁定并核验当前租约。
+     *
+     * @param context 服务端建立的可信执行作用域
+     * @param stepIndex 已保存模型回合的步骤序号
+     * @param toolCallId 本次要执行的原始工具调用 ID
+     * @param lease 当前模型回合的任务快照，项目和 Run 必须与 {@code context} 一致
+     * @param workerId 当前租约持有者，必须与任务行记录匹配
+     * @return 已提交工具账本中的结构化结果
+     */
     @Transactional
     public JsonNode executeLeased(TrustedToolContext context, int stepIndex,
             String toolCallId, Task lease, String workerId) {
@@ -84,6 +130,16 @@ public class ToolExecutionService {
         return executeInternal(context, stepIndex, toolCallId, lease, workerId);
     }
 
+    /**
+     * 校验调用身份和步骤，再按项目事件服务约定的锁顺序进入业务事务。
+     *
+     * @param context 服务端可信作用域，不接受模型指定的用户或项目
+     * @param stepIndex 目标模型回合序号，必须非负
+     * @param toolCallId 必须在已保存响应中唯一存在的调用 ID
+     * @param lease Worker 路径的可选任务租约
+     * @param workerId 非空租约对应的持有者标识
+     * @return 事务提交后的工具结果
+     */
     private JsonNode executeInternal(TrustedToolContext context, int stepIndex,
             String toolCallId, Task lease, String workerId) {
         if (context == null || stepIndex < 0 || toolCallId == null
@@ -99,7 +155,15 @@ public class ToolExecutionService {
         }).value();
     }
 
-    /** Uses the same project-before-Run lock order as edits, cancellation and approval. */
+    /**
+     * 先锁 Run 并确认模型响应已持久化，再按调用 ID 查账；同 ID 但名称或参数摘要不同必须报冲突。
+     * 新调用先占用账本，再通过白名单分派应用服务，最后返回数据库实际保存的 JSONB 结果。
+     *
+     * @param context 从认证和任务上下文得到的可信作用域
+     * @param stepIndex 模型响应和账本共同使用的步骤序号
+     * @param toolCallId 要在该响应中精确查找的调用 ID
+     * @return 对应账本行中已完成的结果
+     */
     private JsonNode executeLocked(TrustedToolContext context, int stepIndex, String toolCallId) {
         AgentRun run = runs.findForUpdate(context.ownerId(), context.projectId(), context.runId())
                 .orElseThrow(() -> conflict("Run is not accessible"));
@@ -161,8 +225,7 @@ public class ToolExecutionService {
         if (!ledger.complete(operationId, result, clock.instant())) {
             throw new IllegalStateException("Reserved tool result could not be completed");
         }
-        // JSONB normalizes numeric node types and object order. Return that exact durable
-        // representation on the first call so later idempotent replays are identical.
+        // JSONB 可能规范化数值节点和对象顺序；首次执行也读取落库值，使其与之后的幂等重放完全一致。
         return ledger.find(context.projectId(), context.runId(), stepIndex, toolCallId)
                 .filter(saved -> saved.status() == ToolExecution.Status.COMPLETED
                         && saved.result() != null)
@@ -170,6 +233,14 @@ public class ToolExecutionService {
                 .result();
     }
 
+    /**
+     * 将模型给出的 JSON 交由计划服务验证并保存提案；返回等待审批状态，不替用户批准计划。
+     *
+     * @param context 只能覆盖当前所有者、项目和 Run 的可信作用域
+     * @param operationId 此次工具执行的账本操作 ID
+     * @param arguments 模型提供的计划参数 JSON 文本
+     * @return 包含计划 ID 和 {@code WAITING_APPROVAL} 状态的工具结果
+     */
     private JsonNode proposePlan(TrustedToolContext context, UUID operationId, String arguments) {
         JsonNode input;
         try {
@@ -190,7 +261,15 @@ public class ToolExecutionService {
         return result;
     }
 
-    /** Records an export proposal while leaving FFmpeg authorization to the human API. */
+    /**
+     * 仅保存导出提案与摘要；实际 FFmpeg 任务仍需用户在审批接口授权。
+     *
+     * @param context 当前 Run 的可信作用域
+     * @param run 已锁定的当前 Run
+     * @param operationId 此次工具执行的账本操作 ID
+     * @param arguments 模型提供的导出提案 JSON 文本
+     * @return 包含提案 ID 和摘要的工具结果
+     */
     private JsonNode proposeExport(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         JsonNode input;
@@ -213,6 +292,15 @@ public class ToolExecutionService {
         return result;
     }
 
+    /**
+     * 只接受标题、正文与格式三个字段；创建的文本版本必须标记 Agent 来源，并放入该 Agent 的输出区域。
+     *
+     * @param context 当前 Run 的可信作用域
+     * @param run 用于确定输出区域的当前 Run
+     * @param operationId 此次工具执行的账本操作 ID
+     * @param arguments 模型提供的文本产物 JSON 参数
+     * @return 新产物 ID、版本 ID 和用户可见摘要
+     */
     private JsonNode createText(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         JsonNode input;
@@ -259,6 +347,13 @@ public class ToolExecutionService {
         return result;
     }
 
+    /**
+     * 只在被选中 generation 的工具列表中精确匹配一次调用 ID，并拒绝重复 ID 或不完整的调用结构。
+     *
+     * @param response 已持久化的完整模型响应
+     * @param toolCallId 本次执行要查找的原始调用 ID
+     * @return 保存的工具调用 JSON，包含名称和原始参数字符串
+     */
     private JsonNode findCall(JsonNode response, String toolCallId) {
         JsonNode generations = response.path("generations");
         if (!generations.isArray() || generations.isEmpty()) {
@@ -285,6 +380,14 @@ public class ToolExecutionService {
         return matched;
     }
 
+    /**
+     * 读取 {@code create_text} 的必填文本；空值、非文本和超过字段上限的内容均拒绝。
+     *
+     * @param input 模型提供的文本产物参数对象
+     * @param field 要读取的允许字段名
+     * @param maximumLength 此字段允许的最大字符数
+     * @return 通过校验的原文本
+     */
     private String requiredText(JsonNode input, String field, int maximumLength) {
         JsonNode value = input.get(field);
         if (value == null || !value.isTextual() || value.asText().isBlank()
@@ -294,6 +397,12 @@ public class ToolExecutionService {
         return value.asText();
     }
 
+    /**
+     * 对模型保存的原始参数字符串计算摘要，用于核对同一 tool_call_id 的重放载荷。
+     *
+     * @param input 原始参数文本，不在此处改写字段或顺序
+     * @return 小写十六进制 SHA-256 摘要
+     */
     private String sha256(String input) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -303,11 +412,13 @@ public class ToolExecutionService {
         }
     }
 
+    /** 将工具参数或白名单校验失败映射为稳定的 HTTP 400 错误。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                 "工具参数无效", detail, false);
     }
 
+    /** 将回合状态、账本或并发冲突映射为稳定的 HTTP 409 错误。 */
     private ApiProblemException conflict(String detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "TOOL_EXECUTION_CONFLICT",
                 "工具执行冲突", detail, false);

@@ -6,21 +6,21 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Owner-scoped persistence boundary for canvas presentation records. */
+/** 画布空间展示记录的所有者范围持久化边界。 */
 public interface CanvasItemRepository {
 
-    /** Lists the persisted layout in deterministic z-order. */
+    /** 按确定的 z 顺序列出已保存布局。 */
     List<CanvasItem> list(UUID ownerId, UUID projectId);
 
-    /** Locks one nested item for an optimistic command. */
+    /** 锁定单个画布项，以执行带预期版本的命令。 */
     Optional<CanvasItem> findForUpdate(UUID ownerId, UUID projectId, UUID itemId);
 
-    /** Inserts a client-identified presentation item. */
+    /** 插入由客户端指定稳定 ID 的展示项。 */
     boolean create(CanvasItem item);
 
-    /** Replaces mutable layout fields when the expected version matches. */
+    /** 预期版本匹配时替换可变布局字段。 */
     boolean update(UUID ownerId, CanvasItem item, long expectedVersion, Instant updatedAt);
 
-    /** Removes presentation only, leaving the subject untouched. */
+    /** 仅删除画布展示关系，不删除其引用的业务对象。 */
     boolean delete(UUID ownerId, UUID projectId, UUID itemId, long expectedVersion);
 }

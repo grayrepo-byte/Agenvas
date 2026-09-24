@@ -24,19 +24,27 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Strict, bounded HTTP protocol for one configured ComfyUI instance; no arbitrary URL fetches. */
+/** 访问管理员固定的单个 ComfyUI IPv4 origin；所有请求、文件下载和错误响应均受边界约束。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiClient {
 
+    /** ComfyUI JSON 请求与响应的最大字节数。 */
     private static final int MAX_JSON_BYTES = 2 * 1024 * 1024;
+    /** 上传参考图的最大字节数。 */
     private static final int MAX_IMAGE_BYTES = 30 * 1024 * 1024;
+    /** 单个生成输出允许读取的最大字节数。 */
     private static final int MAX_OUTPUT_BYTES = 500 * 1024 * 1024;
+    /** ComfyUI 文件名白名单；禁止路径、目录和控制字符。 */
     private static final Pattern FILE_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,159}");
+    /** 启动时校验并固定的 HTTP(S) origin，请求不得更换主机或端口。 */
     private final URI origin;
+    /** 禁止代理和重定向的客户端，避免请求改道或跨域跟随。 */
     private final HttpClient client;
+    /** 解析有字节上限的 JSON 协议响应。 */
     private final ObjectMapper mapper;
 
+    /** 校验精确 origin 后创建直连客户端，所有请求限时 20 秒。 */
     public ComfyUiClient(ComfyUiProperties properties, ObjectMapper mapper) {
         this.origin = checkedOrigin(properties.endpoint());
         this.mapper = mapper;
@@ -44,20 +52,21 @@ public class ComfyUiClient {
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .proxy(new ProxySelector() {
+                    /** 该客户端固定直连，不从系统代理配置选择代理。 */
                     @Override
                     public List<Proxy> select(URI uri) {
                         return List.of(Proxy.NO_PROXY);
                     }
 
+                    /** 直连失败交由本次请求分类；不尝试代理或其他网络地址。 */
                     @Override
                     public void connectFailed(URI uri, java.net.SocketAddress address,
                             IOException failure) {
-                        // A failed direct connection is handled by the request caller.
                     }
                 }).build();
     }
 
-    /** Stable fingerprint of the administrator-pinned origin, never a browser-supplied URL. */
+    /** 对管理员固定的规范化 origin 计算摘要，供请求核对；不接收浏览器 URL。 */
     public String originSha256() {
         try {
             byte[] bytes = origin.toString().getBytes(StandardCharsets.UTF_8);
@@ -67,7 +76,7 @@ public class ComfyUiClient {
         }
     }
 
-    /** Submits once with the previously committed request key as ComfyUI's prompt id. */
+    /** 只提交一次，并将已落库 requestKey 同时用作 client_id 和 prompt_id。 */
     public UUID submit(JsonNode fixedWorkflow, UUID requestKey) {
         if (fixedWorkflow == null || !fixedWorkflow.isObject() || requestKey == null) {
             throw new IllegalArgumentException("Fixed workflow and request key are required");
@@ -80,8 +89,7 @@ public class ComfyUiClient {
         try {
             UUID acknowledged = UUID.fromString(response.path("prompt_id").asText());
             if (!requestKey.equals(acknowledged)) {
-                // The external request may already be running; never classify a mismatch as
-                // a safe rejection or submit it a second time.
+                // 外部任务可能已经运行；ID 不符属于结果不确定，不能当作安全拒绝再提交。
                 throw new ProtocolFailure("ComfyUI acknowledged a different prompt_id");
             }
             return acknowledged;
@@ -90,13 +98,13 @@ public class ComfyUiClient {
         }
     }
 
-    /** Empty history is pending, not proof of rejection or a reason to resubmit. */
+    /** 读取原 prompt 历史；空历史表示暂无证据，不代表拒绝或允许重提。 */
     public JsonNode history(UUID promptId) {
         if (promptId == null) throw new IllegalArgumentException("promptId is required");
         return json("GET", "/history/" + promptId, null);
     }
 
-    /** Looks only for the precommitted prompt id; absence is never proof that submission failed. */
+    /** 仅在 history 和 queue 中查找预先提交的 prompt ID；查无结果仍不证明提交失败。 */
     public boolean originalPromptExists(UUID promptId) {
         if (promptId == null) throw new IllegalArgumentException("promptId is required");
         JsonNode history = history(promptId);
@@ -119,6 +127,7 @@ public class ComfyUiClient {
                 | queueContainsOriginal(queue.path("queue_pending"), promptId);
     }
 
+    /** 校验队列每条记录结构，并按 prompt_id 与 client_id 双重匹配原请求。 */
     private boolean queueContainsOriginal(JsonNode entries, UUID promptId) {
         boolean found = false;
         for (JsonNode entry : entries) {
@@ -133,6 +142,7 @@ public class ComfyUiClient {
         return found;
     }
 
+    /** 确认队列或历史记录中的 prompt_id、client_id 都等于本地 requestKey。 */
     private void requireOriginalIdentity(JsonNode entry, UUID promptId) {
         if (!entry.isArray() || !promptId.toString().equals(entry.path(1).asText())
                 || !promptId.toString().equals(entry.path(3).path("client_id").asText())) {
@@ -140,17 +150,17 @@ public class ComfyUiClient {
         }
     }
 
-    /** Polls only the saved prompt id and the installed template's fixed image output node. */
+    /** 查询已保存 prompt ID，并只解析固定模板声明的图片输出节点。 */
     public ComfyUiHistory.ImageResult imageStatus(UUID promptId, String outputNodeId) {
         return ComfyUiHistory.image(history(promptId), promptId, outputNodeId);
     }
 
-    /** Video polling has the same saved-id rule but requires the fixed animated MP4 node. */
+    /** 视频查询也只使用原 prompt ID，并要求固定模板中的动画 MP4 输出节点。 */
     public ComfyUiHistory.VideoResult videoStatus(UUID promptId, String outputNodeId) {
         return ComfyUiHistory.video(history(promptId), promptId, outputNodeId);
     }
 
-    /** Uploads only a server-generated basename; ComfyUI may rename it on collision. */
+    /** 仅上传经验证且有界的 PNG/JPEG 字节，文件名由服务端生成并校验返回路径类别。 */
     public String uploadImage(UUID requestId, byte[] verifiedImage, String extension) {
         if (requestId == null || verifiedImage == null || verifiedImage.length == 0
                 || verifiedImage.length > MAX_IMAGE_BYTES
@@ -179,7 +189,7 @@ public class ComfyUiClient {
         return returned;
     }
 
-    /** Retrieves one history-declared output from the same fixed origin, never an external URL. */
+    /** 从相同固定 origin 下载白名单文件名，并在读取时累计限制响应字节。 */
     public InputStream output(String filename) {
         if (!safeFilename(filename)) {
             throw new IllegalArgumentException("Unsafe ComfyUI output filename");
@@ -210,6 +220,7 @@ public class ComfyUiClient {
         };
     }
 
+    /** 发送有限路径上的 JSON GET/POST，并在解析前限制响应长度。 */
     private JsonNode json(String method, String path, String body) {
         HttpRequest.Builder request = request(path).header("Accept", "application/json");
         if ("POST".equals(method)) {
@@ -221,10 +232,12 @@ public class ComfyUiClient {
         return readJson(send(request.build()), MAX_JSON_BYTES);
     }
 
+    /** 只从固定 origin 拼接内部受控路径，并为单个请求设置超时。 */
     private HttpRequest.Builder request(String path) {
         return HttpRequest.newBuilder(origin.resolve(path)).timeout(Duration.ofSeconds(20));
     }
 
+    /** 禁止跟随重定向；4xx 视为协议错误，5xx 和网络异常视为受理状态不明。 */
     private HttpResponse<InputStream> send(HttpRequest request) {
         try {
             HttpResponse<InputStream> response = client.send(request,
@@ -232,7 +245,7 @@ public class ComfyUiClient {
             int status = response.statusCode();
             if (status < 200 || status >= 300) {
                 try (InputStream discarded = response.body()) {
-                    // Never follow redirects or reflect upstream bodies into user/model errors.
+                    // 不跟随重定向，也不把上游正文反射到用户或模型错误信息。
                 }
                 if (status >= 500) {
                     throw new TransportFailure("ComfyUI returned ambiguous HTTP " + status);
@@ -248,6 +261,7 @@ public class ComfyUiClient {
         }
     }
 
+    /** 有界读取 JSON 响应；格式错误映射为不含原始上游正文的协议失败。 */
     private JsonNode readJson(HttpResponse<InputStream> response, int maximum) {
         byte[] bytes = readBounded(response, maximum);
         try {
@@ -257,6 +271,7 @@ public class ComfyUiClient {
         }
     }
 
+    /** 最多读取 maximum+1 字节以检测超限，并始终关闭响应流。 */
     private byte[] readBounded(HttpResponse<InputStream> response, int maximum) {
         try (InputStream input = response.body()) {
             byte[] bytes = input.readNBytes(maximum + 1);
@@ -267,12 +282,13 @@ public class ComfyUiClient {
         }
     }
 
+    /** 文件名必须匹配固定 ASCII 白名单且不包含双点路径片段。 */
     private boolean safeFilename(String filename) {
         return filename != null && FILE_NAME.matcher(filename).matches()
                 && !filename.contains("..");
     }
 
-    /** A literal IPv4 origin prevents DNS rebinding and forbids userinfo, paths and redirects. */
+    /** 拒绝域名、用户信息、非根路径、查询参数和片段，只保留精确字面 IPv4 origin。 */
     static URI checkedOrigin(String endpoint) {
         if (endpoint == null) throw new IllegalArgumentException("ComfyUI endpoint is required");
         URI uri = URI.create(endpoint);
@@ -288,6 +304,7 @@ public class ComfyUiClient {
         return URI.create(uri.getScheme() + "://" + host + ":" + uri.getPort());
     }
 
+    /** 验证规范十进制 IPv4 字面地址，并排除多播、链路本地和 CGNAT 范围。 */
     private static boolean validIpv4(String host) {
         if (host == null || !host.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) return false;
         String[] parts = host.split("\\.");
@@ -302,7 +319,7 @@ public class ComfyUiClient {
                 && !(first == 100 && second >= 64 && second <= 127);
     }
 
-    /** Plain HTTP is only a deliberately configured private ComfyUI exception. */
+    /** 明文 HTTP 仅允许显式配置的私有、回环或 RFC1918 地址。 */
     private static boolean privateIpv4(String host) {
         String[] parts = host.split("\\.");
         int first = Integer.parseInt(parts[0]);
@@ -311,15 +328,29 @@ public class ComfyUiClient {
                 || first == 172 && second >= 16 && second <= 31;
     }
 
-    /** A definite malformed upstream response, not permission to regenerate. */
+    /** 明确的协议或格式错误；不能据此再次提交生成请求。 */
     public static class ProtocolFailure extends RuntimeException {
+        /**
+         * @param message 安全摘要，不包含上游响应正文
+         */
         public ProtocolFailure(String message) { super(message); }
+        /**
+         * @param message 安全错误摘要
+         * @param cause 解析或协议异常
+         */
         public ProtocolFailure(String message, Throwable cause) { super(message, cause); }
     }
 
-    /** A submit-time transport failure whose acceptance status cannot be inferred. */
+    /** 提交时网络结果不确定；任务可能已被 ComfyUI 接受，必须先核对原 prompt。 */
     public static class TransportFailure extends RuntimeException {
+        /**
+         * @param message 不暴露远端正文的错误摘要
+         */
         public TransportFailure(String message) { super(message); }
+        /**
+         * @param message 错误摘要
+         * @param cause 网络或流读取异常
+         */
         public TransportFailure(String message, Throwable cause) { super(message, cause); }
     }
 }

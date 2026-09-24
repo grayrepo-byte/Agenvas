@@ -36,27 +36,43 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Streams image bytes to a private temporary file, validates them, then atomically installs. */
+/** 将媒体流写入私有临时文件，完成字节与解码校验后以原子移动安装不可变对象。 */
 @Component
 public class LocalAssetStorage {
 
+    /** 文件清理只能写入日志，不能掩盖最初的归档错误。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalAssetStorage.class);
+    /** 导出临时目录中用于跨进程保护活动编码器的锁文件名。 */
     private static final String EXPORT_LOCK_NAME = ".active.lock";
+    /** 清理器唯一允许删除的导出结果文件名。 */
     private static final String EXPORT_OUTPUT_NAME = "silent-export.mp4";
+    /** 先在进程内串行化，再用文件锁保护共享卷上的任务归档。 */
     private static final Object[] TASK_LOCK_STRIPES = new Object[64];
     static {
         for (int index = 0; index < TASK_LOCK_STRIPES.length; index++) {
             TASK_LOCK_STRIPES[index] = new Object();
         }
     }
+    /** 原始图片和缩略图的最大归档字节数。 */
     private static final long MAX_IMAGE_BYTES = 20L * 1024 * 1024;
+    /** 原始视频的最大归档字节数。 */
     private static final long MAX_VIDEO_BYTES = 500L * 1024 * 1024;
+    /** 图片与视频允许解码的最大像素面积。 */
     private static final long MAX_IMAGE_PIXELS = 40_000_000L;
+    /** 缩略图最长边，短边按比例缩放。 */
     private static final int THUMBNAIL_EDGE = 480;
+    /** 规范化后的私有归档根目录。 */
     private final Path root;
+    /** 使用固定参数调用媒体探测和转码工具。 */
     private final MediaToolRunner mediaTools;
+    /** 解析 ffprobe 的受限 JSON 输出。 */
     private final ObjectMapper mapper;
 
+    /** 固定私有媒体根目录及受控探测工具；对象键只能解析到此根目录内。
+     * @param properties 本地素材目录配置
+     * @param mediaTools 使用白名单参数运行 ffmpeg 和 ffprobe 的执行器
+     * @param mapper 解析 ffprobe JSON 的 Jackson 映射器
+     */
     public LocalAssetStorage(AssetProperties properties, MediaToolRunner mediaTools,
             ObjectMapper mapper) {
         root = properties.root().toAbsolutePath().normalize();
@@ -64,26 +80,51 @@ public class LocalAssetStorage {
         this.mapper = mapper;
     }
 
-    /** Archive result supplied to the database writer only after the stable file exists. */
+    /**
+     * 原图与缩略图都安装到稳定路径后才能写入数据库的结果。
+     *
+     * @param objectKey 原图在项目目录下的相对键
+     * @param contentType 按实际图像编码判定的 MIME 类型
+     * @param byteSize 原图字节数
+     * @param sha256 原图摘要
+     * @param width 解码宽度
+     * @param height 解码高度
+     * @param thumbnailKey PNG 缩略图相对键
+     * @param thumbnailByteSize 缩略图字节数
+     * @param thumbnailSha256 缩略图摘要
+     */
     public record StoredImage(String objectKey, String contentType, long byteSize,
             String sha256, int width, int height, String thumbnailKey,
             long thumbnailByteSize, String thumbnailSha256) {}
 
-    /** A probed MP4 and its extracted PNG poster installed under immutable object keys. */
+    /**
+     * 已探测的 MP4 和已提取 PNG 海报图，均以不可变键安装。
+     *
+     * @param objectKey MP4 相对键
+     * @param byteSize MP4 字节数
+     * @param sha256 MP4 摘要
+     * @param width 视频像素宽度
+     * @param height 视频像素高度
+     * @param durationMs 探测得到的时长毫秒数
+     * @param thumbnailKey 海报 PNG 相对键
+     * @param thumbnailByteSize 海报字节数
+     * @param thumbnailSha256 海报摘要
+     */
     public record StoredVideo(String objectKey, long byteSize, String sha256,
             int width, int height, int durationMs, String thumbnailKey, long thumbnailByteSize,
             String thumbnailSha256) {}
 
-    /** Serializes one task archive across processes sharing the required local volume. */
+    /** 使用共享卷文件锁保护一个任务的图片恢复或归档临界区。 */
     public <T> T withTaskImageLock(UUID projectId, UUID assetId, Supplier<T> action) {
         return withTaskArchiveLock(projectId, assetId, "image", action);
     }
 
-    /** Video uses the same cross-process archive fence but a distinct lock namespace. */
+    /** 视频使用同一跨进程归档机制，但独立的锁命名空间。 */
     public <T> T withTaskVideoLock(UUID projectId, UUID assetId, Supplier<T> action) {
         return withTaskArchiveLock(projectId, assetId, "video", action);
     }
 
+    /** 以条带监视器避免同 JVM 重叠锁异常，再持有项目卷上的 OS 文件锁执行操作。 */
     private <T> T withTaskArchiveLock(UUID projectId, UUID assetId, String kind,
             Supplier<T> action) {
         Object stripe = TASK_LOCK_STRIPES[Math.floorMod(assetId.hashCode(),
@@ -104,7 +145,7 @@ public class LocalAssetStorage {
         }
     }
 
-    /** Recovers task-keyed MP4 bytes and poster after a file/DB crash window. */
+    /** 从任务派生路径恢复已安装 MP4；原片存在但海报缺失时重建海报并重新验证。 */
     public Optional<StoredVideo> recoverVideo(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;
         Path original = checkedPath(prefix + ".mp4");
@@ -148,6 +189,7 @@ public class LocalAssetStorage {
         }
     }
 
+    /** 通过 ffprobe 核验视频流、MP4 容器、分辨率和 60 秒时长上限。 */
     private VideoDetails inspectVideo(Path path) {
         JsonNode probe;
         try {
@@ -179,9 +221,14 @@ public class LocalAssetStorage {
         return new VideoDetails(width, height, durationMs);
     }
 
+    /** ffprobe 验证后的视频元数据。
+     * @param width 视频流像素宽度
+     * @param height 视频流像素高度
+     * @param durationMs 视频时长，已验证为 1 到 60,000 毫秒
+     */
     private record VideoDetails(int width, int height, int durationMs) {}
 
-    /** Gives a local export one locked private scratch directory on the asset volume. */
+    /** 在素材卷项目目录下创建仅本次导出使用的私有临时目录，并持有 OS 锁。 */
     public ExportWorkspace createExportWorkDirectory(UUID projectId) {
         Path directory = null;
         FileChannel channel = null;
@@ -204,23 +251,32 @@ public class LocalAssetStorage {
         }
     }
 
-    /** An OS lock outlives a stalled lease and prevents cleanup of an active encoder. */
+    /** OS 文件锁在 Worker 租约丢失后仍可保护活动编码进程，防止清理器删文件。 */
     public static final class ExportWorkspace implements AutoCloseable {
+        /** 本次导出专属目录，目录名由系统随机生成。 */
         private final Path directory;
+        /** 保持锁文件描述符存活，以维持跨进程文件锁。 */
         private final FileChannel channel;
+        /** 防止另一个进程误清理仍在编码的工作目录。 */
         private final FileLock lock;
 
+        /** 仅由本地存储创建，调用方不得替换锁、通道或工作目录。
+         * @param directory 本次导出的临时工作目录
+         * @param channel 持有锁文件的打开通道
+         * @param lock 已获得的跨进程目录锁
+         */
         private ExportWorkspace(Path directory, FileChannel channel, FileLock lock) {
             this.directory = directory;
             this.channel = channel;
             this.lock = lock;
         }
 
+        /** 返回本次编码专用的临时目录，调用方只能写入约定输出文件。 */
         public Path directory() {
             return directory;
         }
 
-        /** Best effort: a failed immediate cleanup remains eligible for the janitor. */
+        /** 释放文件锁并尝试清理临时目录；清理失败由定时清理器后续处理。 */
         @Override
         public void close() {
             try {
@@ -238,7 +294,7 @@ public class LocalAssetStorage {
         }
     }
 
-    /** Removes only old, unlocked export scratch with exactly the files this app creates. */
+    /** 最多清理 limit 个过期、未锁定且只含应用约定文件的导出目录。 */
     public int cleanupStaleExportWorkDirectories(Instant cutoff, int limit) {
         if (cutoff == null || limit < 1 || limit > 100) {
             throw new IllegalArgumentException("Invalid export scratch cleanup bounds");
@@ -262,6 +318,7 @@ public class LocalAssetStorage {
         return removed;
     }
 
+    /** 尝试获取目录锁后检查内容白名单，再删除输出、锁和目录。 */
     private boolean cleanupStaleExportDirectory(Path directory, Instant cutoff) {
         Path lockPath = directory.resolve(EXPORT_LOCK_NAME);
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
@@ -298,6 +355,7 @@ public class LocalAssetStorage {
         }
     }
 
+    /** 仅接受规范格式的 UUID 项目目录名。 */
     private boolean uuidDirectory(String name) {
         try {
             return UUID.fromString(name).toString().equals(name);
@@ -306,7 +364,7 @@ public class LocalAssetStorage {
         }
     }
 
-    /** Bounded video ingest uses an actual stream probe and first-frame decode. */
+    /** 限流保存视频字节，实测容器与视频流后解码首帧并原子安装 MP4 和海报。 */
     public StoredVideo storeVideo(UUID projectId, UUID assetId, InputStream source) {
         Path directory = root.resolve(projectId.toString());
         Path temporary = null;
@@ -367,7 +425,7 @@ public class LocalAssetStorage {
         }
     }
 
-    /** Creates one never-reused object key from server-generated identifiers. */
+    /** 仅用服务端生成的项目和素材 ID 构造从不复用的图片文件键。 */
     public StoredImage storeImage(UUID projectId, UUID assetId, InputStream source) {
         Path directory = root.resolve(projectId.toString());
         Path temporary = null;
@@ -424,7 +482,7 @@ public class LocalAssetStorage {
         }
     }
 
-    /** Reconstructs metadata for a task-keyed original installed before a process crash. */
+    /** 从任务固定路径重建崩溃前已安装的图片元数据；冲突文件或孤立缩略图会报错。 */
     public Optional<StoredImage> recoverImage(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;
         Path png = checkedPath(prefix + ".png");
@@ -478,14 +536,14 @@ public class LocalAssetStorage {
         }
     }
 
-    /** Resolves only a validated key under the configured archive root. */
+    /** 将相对对象键解析到归档根目录内，并拒绝路径穿越和已有目录符号链接。 */
     public Path checkedPath(String objectKey) {
         Path path = root.resolve(objectKey).normalize();
         if (!path.startsWith(root) || path.equals(root)
                 || objectKey.startsWith("/") || objectKey.contains("..")) {
             throw new IllegalStateException("Invalid stored asset key");
         }
-        // A lexical path inside the volume must not escape through an existing project symlink.
+        // 即使词法路径位于卷内，也不能沿已有项目目录符号链接逃出归档根目录。
         Path parent = root;
         for (Path component : root.relativize(path.getParent())) {
             parent = parent.resolve(component);
@@ -496,7 +554,7 @@ public class LocalAssetStorage {
         return path;
     }
 
-    /** Creates a project directory only when it is an actual directory under this volume. */
+    /** 创建或复核项目目录确实位于卷内且不是符号链接。 */
     private Path prepareProjectDirectory(UUID projectId) throws IOException {
         String probeKey = projectId + "/.directory-check";
         Path directory = root.resolve(projectId.toString());
@@ -509,7 +567,7 @@ public class LocalAssetStorage {
         return directory;
     }
 
-    /** Removes only the newly created object if its database insertion fails. */
+    /** 数据库登记失败时删除本次新建的未登记对象。 */
     public void discard(String objectKey) {
         try {
             Files.deleteIfExists(checkedPath(objectKey));
@@ -518,6 +576,7 @@ public class LocalAssetStorage {
         }
     }
 
+    /** 尽力删除临时文件；残留孤儿不可拥有 READY 数据库记录。 */
     private void cleanup(Path path) {
         if (path == null) {
             return;
@@ -525,11 +584,11 @@ public class LocalAssetStorage {
         try {
             Files.deleteIfExists(path);
         } catch (IOException ignored) {
-            // A bounded orphan is recoverable; it must never receive a READY database row.
+            // 有界孤儿文件可被后续恢复或清理；不能为其写 READY 数据库行。
         }
     }
 
-    /** Builds a bounded preview once at ingest, never on every canvas GET. */
+    /** 入库时生成最长边不超过 480 像素的 PNG 预览，画布读取时不重复解码原图。 */
     private void writeThumbnail(BufferedImage source, Path target) throws IOException {
         double scale = Math.min(1.0,
                 (double) THUMBNAIL_EDGE / Math.max(source.getWidth(), source.getHeight()));
@@ -551,17 +610,19 @@ public class LocalAssetStorage {
         }
     }
 
+    /** 顺序读取文件计算 SHA-256，不将整份媒体载入内存。 */
     private String sha256(Path file) throws IOException, NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream input = new DigestInputStream(Files.newInputStream(file), digest)) {
             byte[] buffer = new byte[8192];
             while (input.read(buffer) != -1) {
-                // DigestInputStream updates the hash while bounded thumbnail bytes are read.
+                // DigestInputStream 在分块读取时同步更新摘要。
             }
         }
         return HexFormat.of().formatHex(digest.digest());
     }
 
+    /** 分块复制并同步更新摘要，超过字节上限或空输入立即失败。 */
     private long copyBounded(InputStream source, Path target, MessageDigest digest, long maximum)
             throws IOException {
         long count = 0;
@@ -586,11 +647,12 @@ public class LocalAssetStorage {
         return count;
     }
 
-    /** Keeps the bounded archive writer replaceable for deterministic partial-write fault tests. */
+    /** 隔离文件输出创建点，便于注入写入失败并验证临时文件清理。 */
     protected OutputStream openArchiveOutput(Path target) throws IOException {
         return Files.newOutputStream(target);
     }
 
+    /** 依据实际解码器识别 PNG/JPEG/WebP，限制像素数并完整解码首帧。 */
     private ImageDetails inspectImage(Path file) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(file.toFile())) {
             if (input == null) {
@@ -637,11 +699,19 @@ public class LocalAssetStorage {
         }
     }
 
+    /** 将不可解码、超限或不支持的媒体映射为稳定 422 错误。 */
     private ApiProblemException invalid(String detail, String code) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, code,
                 "素材无效", detail, false);
     }
 
+    /** 图像解码得到的媒体类型、尺寸及用于生成缩略图的像素缓冲。
+     * @param contentType 根据实际解码格式确定的 MIME 类型
+     * @param extension 与已验证格式对应的安全文件扩展名
+     * @param width 解码后的图像宽度
+     * @param height 解码后的图像高度
+     * @param decoded 已完整解码的首帧像素数据
+     */
     private record ImageDetails(String contentType, String extension, int width, int height,
             BufferedImage decoded) {}
 }

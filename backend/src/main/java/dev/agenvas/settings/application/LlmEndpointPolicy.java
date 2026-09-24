@@ -11,17 +11,22 @@ import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-/** Validates admin-supplied LLM destinations before a secret can be associated with them. */
+/** 在关联服务端密钥前校验管理员配置的 LLM 目标地址，阻止内网和特殊用途 IP。 */
 @Component
 public class LlmEndpointPolicy {
 
+    /** 提供部署者显式开启本机回环 HTTP 的唯一例外开关。 */
     private final LlmEndpointProperties properties;
 
+    /** 注入部署级端点例外策略。 */
     public LlmEndpointPolicy(LlmEndpointProperties properties) {
         this.properties = properties;
     }
 
-    /** Returns a canonical base URL; this admission check is not a per-request DNS pin. */
+    /** 解析并规范化基础 URL，同时校验解析所得全部地址；调用时仍需再次做 DNS 检查。
+     * @param requested 管理员提交的 Provider 基础地址
+     * @return 去除末尾斜线并规范化大小写的 HTTP(S) 基础地址
+     */
     public String normalize(String requested) {
         if (requested == null || requested.length() > 500) throw invalid();
         URI uri;
@@ -59,7 +64,10 @@ public class LlmEndpointPolicy {
                 + (uri.getPort() < 0 ? "" : ":" + uri.getPort()) + normalizedPath;
     }
 
-    /** Reused by the runtime DNS resolver so rebinding cannot bypass the save-time check. */
+    /** 供运行时 DNS 解析器复用，防止保存后 DNS 重绑定绕过准入校验。
+     * @param host URL 中经过解析的主机名
+     * @param address 本次 DNS 查询得到的一个 IP 地址
+     */
     public void requireAllowedAddress(String host, InetAddress address) {
         if ("127.0.0.1".equals(host)) {
             byte[] bytes = address.getAddress();
@@ -101,6 +109,7 @@ public class LlmEndpointPolicy {
         throw invalid();
     }
 
+    /** 构造不允许的 Provider 地址统一使用的 400 响应。 */
     private ApiProblemException invalid() {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "PROVIDER_ENDPOINT_INVALID",
                 "模型服务地址无效", "只接受明确的 HTTPS 公网端点；本机 HTTP 需部署者显式开启。", false);

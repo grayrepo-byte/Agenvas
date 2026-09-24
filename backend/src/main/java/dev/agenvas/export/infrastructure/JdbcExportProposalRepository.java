@@ -14,23 +14,28 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL-backed proposal body and authenticated decision CAS. */
+/** PostgreSQL 导出提案仓储；待处理状态条件更新保证用户决定只提交一次。 */
 @Repository
 public class JdbcExportProposalRepository implements ExportProposalRepository {
 
+    /** 单次读取映射提案所需的列，避免不同查询遗漏审批凭据字段。 */
     private static final String COLUMNS = """
             id, project_id, run_id, status, input_json, input_pins_json,
             proposal_hash, project_version, approved_task_id, decided_by_user_id,
             created_at, decided_at
             """;
+    /** 执行提案及审批决定的参数化 SQL。 */
     private final JdbcClient jdbc;
+    /** 将提案 JSON 正文和输入固定项还原为 JSON 树。 */
     private final ObjectMapper mapper;
 
+    /** 注入 SQL 执行器和 JSON 映射器。 */
     public JdbcExportProposalRepository(JdbcClient jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
     }
 
+    /** 保存提案正文、素材固定项和项目版本摘要；审批字段初始为空。 */
     @Override
     public void create(ExportProposal proposal) {
         int changed = jdbc.sql("""
@@ -51,6 +56,7 @@ public class JdbcExportProposalRepository implements ExportProposalRepository {
         if (changed != 1) throw new IllegalStateException("Export proposal insert failed");
     }
 
+    /** 按项目边界读取提案，不获取行锁。 */
     @Override
     public Optional<ExportProposal> find(UUID projectId, UUID proposalId) {
         return jdbc.sql("select " + COLUMNS + " from export_proposal "
@@ -59,6 +65,7 @@ public class JdbcExportProposalRepository implements ExportProposalRepository {
                 .query(this::map).optional();
     }
 
+    /** 锁定提案行，串行执行同一提案的审批或拒绝决定。 */
     @Override
     public Optional<ExportProposal> findForUpdate(UUID projectId, UUID proposalId) {
         return jdbc.sql("select " + COLUMNS + " from export_proposal "
@@ -67,6 +74,7 @@ public class JdbcExportProposalRepository implements ExportProposalRepository {
                 .query(this::map).optional();
     }
 
+    /** 返回项目最近 100 条提案，按创建时间和 ID 稳定倒序排列。 */
     @Override
     public List<ExportProposal> list(UUID projectId) {
         return jdbc.sql("select " + COLUMNS + " from export_proposal "
@@ -75,6 +83,7 @@ public class JdbcExportProposalRepository implements ExportProposalRepository {
                 .param("projectId", projectId).query(this::map).list();
     }
 
+    /** 仅把 PENDING 提案变成决定状态；返回 false 表示已有并发决定。 */
     @Override
     public boolean decide(UUID projectId, UUID proposalId, ExportProposal.Status target,
             UUID taskId, UUID userId, Instant now) {
@@ -91,6 +100,7 @@ public class JdbcExportProposalRepository implements ExportProposalRepository {
                 .update() == 1;
     }
 
+    /** 还原提案 JSON、审批身份及可空决定时间。 */
     private ExportProposal map(ResultSet row, int number) throws SQLException {
         OffsetDateTime decided = row.getObject("decided_at", OffsetDateTime.class);
         return new ExportProposal(row.getObject("id", UUID.class),
@@ -106,6 +116,7 @@ public class JdbcExportProposalRepository implements ExportProposalRepository {
                 decided == null ? null : decided.toInstant());
     }
 
+    /** 将绝对时间转换为 PostgreSQL 使用的 UTC 偏移时间。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

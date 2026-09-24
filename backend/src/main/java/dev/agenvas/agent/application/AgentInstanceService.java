@@ -17,21 +17,38 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Manages Creator Agent card configuration and exact-version input bindings. */
+/** 管理 Creator Agent 卡片配置，并将每个输入绑定固定到不可变产物版本。 */
 @Service
 public class AgentInstanceService {
 
+    /** MVP 内置创作 Agent 的稳定档案标识。 */
     private static final String CREATOR_PROFILE_KEY = "creator";
+    /** 新建 Agent 使用的内置档案版本。 */
     private static final int CREATOR_PROFILE_VERSION = 1;
+    /** 单个 Agent 可绑定的输入产物上限。 */
     private static final int MAX_BINDINGS = 40;
 
+    /** 校验项目归属及是否仍可编辑。 */
     private final ProjectService projects;
+    /** 校验每个被绑定的产物版本属于当前项目且可访问。 */
     private final ArtifactService artifacts;
+    /** 保存 Agent 及其显式输入绑定。 */
     private final AgentInstanceRepository agents;
+    /** 与 Agent 更新在同一项目序号事务中记录事件。 */
     private final ProjectEventService events;
+    /** 构造仅含 Agent ID 的项目事件。 */
     private final ObjectMapper objectMapper;
+    /** 为绑定创建时间提供统一时间源。 */
     private final Clock clock;
 
+    /** 组装 Agent 配置的项目授权、输入版本校验、持久化和事件写入边界。
+     * @param projects 校验项目所有者和活动状态
+     * @param artifacts 校验绑定产物及精确版本
+     * @param agents 保存卡片及绑定关系
+     * @param events 与卡片变更事务提交项目事件
+     * @param objectMapper 构造结构化事件负载
+     * @param clock 为创建和更新时间提供统一时钟
+     */
     public AgentInstanceService(
             ProjectService projects,
             ArtifactService artifacts,
@@ -47,7 +64,17 @@ public class AgentInstanceService {
         this.clock = clock;
     }
 
-    /** Creates one idle Creator Agent configuration with only explicitly supplied inputs. */
+    /**
+     * 创建未运行的 Creator Agent；输入必须逐项显式绑定，不会自动读取项目所有产物。
+     * Agent 行、绑定和项目事件在同一事务中写入。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId Agent 卡片所属项目
+     * @param requestedName 展示名称，去除首尾空白后限 120 字符
+     * @param requestedInstruction 卡片指令，去除首尾空白后限 8,000 字符
+     * @param requestedBindings 用户选定的产物 ID 与精确版本 ID；最多 40 项且不可重复
+     * @return 已持久化并回读的 Agent 配置
+     */
     @Transactional
     public AgentInstance create(
             UUID ownerId,
@@ -63,6 +90,7 @@ public class AgentInstanceService {
                 .value();
     }
 
+    /** 调用方须持有项目事件锁；检查项目后创建 Agent 和绑定行。 */
     private AgentInstance createLocked(
             UUID ownerId,
             UUID projectId,
@@ -90,21 +118,33 @@ public class AgentInstanceService {
         return require(ownerId, projectId, instance.id());
     }
 
-    /** Lists all project Agent cards and their explicit inputs. */
+    /** 在项目归属范围内列出 Agent 卡片及其显式输入绑定。 */
     @Transactional(readOnly = true)
     public List<AgentInstance> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
         return agents.list(ownerId, projectId);
     }
 
-    /** Reads one owner-scoped Agent configuration. */
+    /** 在项目归属范围内读取 Agent 配置，不存在与越权统一返回 404。 */
     @Transactional(readOnly = true)
     public AgentInstance get(UUID ownerId, UUID projectId, UUID agentId) {
         projects.get(ownerId, projectId);
         return require(ownerId, projectId, agentId);
     }
 
-    /** Replaces editable configuration and bindings under one optimistic version. */
+    /**
+     * 以调用方读取到的版本替换可编辑字段和全部绑定；旧版本冲突时不覆盖并发修改。
+     * 成功后 Agent 版本、绑定集合和项目事件在同一事务中提交。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId Agent 所属项目
+     * @param agentId 要修改的 Agent
+     * @param expectedVersion 调用方读取到的乐观锁版本
+     * @param requestedName 新展示名称
+     * @param requestedInstruction 新卡片指令
+     * @param requestedBindings 要完整替换成的显式产物版本绑定
+     * @return 更新后从数据库读取的 Agent 配置
+     */
     @Transactional
     public AgentInstance update(
             UUID ownerId,
@@ -128,6 +168,7 @@ public class AgentInstanceService {
                 .value();
     }
 
+    /** 在事件事务内锁定 Agent 行，完成版本比较后替换绑定集合。 */
     private AgentInstance updateLocked(
             UUID ownerId,
             UUID projectId,
@@ -164,6 +205,7 @@ public class AgentInstanceService {
         return require(ownerId, projectId, agentId);
     }
 
+    /** Agent 事件只包含 ID 和版本，不广播卡片指令或绑定的媒体内容。 */
     private ProjectEventService.EventDraft agentEvent(AgentInstance agent) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("agentId", agent.id().toString());
@@ -171,6 +213,7 @@ public class AgentInstanceService {
                 "agent.instance.changed", 1, agent.id(), agent.version(), payload);
     }
 
+    /** 每个绑定都重新鉴权并检查精确版本；拒绝空项、重复产物及超过 40 项的请求。 */
     private List<AgentInstance.Binding> validateBindings(
             UUID ownerId,
             UUID projectId,
@@ -204,10 +247,12 @@ public class AgentInstanceService {
                 .toList();
     }
 
+    /** 在所有者和项目范围内读取，避免暴露其他项目中 Agent 是否存在。 */
     private AgentInstance require(UUID ownerId, UUID projectId, UUID agentId) {
         return agents.find(ownerId, projectId, agentId).orElseThrow(this::notFound);
     }
 
+    /** 去除名称首尾空白并限制为 1 至 120 个字符。 */
     private String validateName(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 120) {
@@ -216,6 +261,7 @@ public class AgentInstanceService {
         return normalized;
     }
 
+    /** 去除卡片指令首尾空白并限制为 1 至 8,000 个字符。 */
     private String validateInstruction(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 8_000) {
@@ -224,6 +270,7 @@ public class AgentInstanceService {
         return normalized;
     }
 
+    /** 将不存在和无权访问映射为相同的 404，避免资源枚举。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
@@ -233,6 +280,7 @@ public class AgentInstanceService {
                 false);
     }
 
+    /** 乐观锁未更新任何行时返回稳定冲突码，调用方需刷新后重试。 */
     private ApiProblemException versionConflict() {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
@@ -242,6 +290,7 @@ public class AgentInstanceService {
                 false);
     }
 
+    /** 将绑定或字段校验失败映射为稳定的 HTTP 400 错误。 */
     private ApiProblemException validation(String detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
@@ -251,6 +300,9 @@ public class AgentInstanceService {
                 false);
     }
 
-    /** Untrusted client request to bind one exact immutable input. */
+    /** 未可信客户端提交的单条绑定请求；服务层仍需重新校验资源权限与版本。
+     * @param artifactId 用户要绑定的产物
+     * @param selectedVersionId 用户选择的不可变版本
+     */
     public record BindingInput(UUID artifactId, UUID selectedVersionId) {}
 }

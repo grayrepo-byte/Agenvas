@@ -29,23 +29,35 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Keeps Agent export suggestions separate from authenticated Task authorization. */
+/** 将 Agent 提出的导出内容保存为待审提案，只有用户审批后才创建导出任务。 */
 @Service
 public class ExportProposalService {
 
+    /** 模型可提交的提案顶层字段；其他属性一律拒绝。 */
     private static final Set<String> FIELDS = Set.of("aspectRatio", "segments");
+    /** 每个片段可声明的素材 ID、版本和裁剪区间字段白名单。 */
     private static final Set<String> SEGMENT_FIELDS = Set.of("shotArtifactId",
             "shotVersionId", "videoArtifactId", "videoVersionId", "startMs", "endMs");
+    /** 检查项目归属、活动状态和当前项目版本。 */
     private final ProjectService projects;
+    /** 验证建议来自仍在运行且作用域匹配的 Agent Run。 */
     private final AgentRunService runs;
+    /** 校验镜头与视频版本权限，并读取用户选定的当前版本。 */
     private final ArtifactService artifacts;
+    /** 预览分段、裁剪范围和项目画幅，且不创建导出任务。 */
     private final MediaExportService exports;
+    /** 持久化提案并以行锁串行处理用户审批决定。 */
     private final ExportProposalRepository proposals;
+    /** 只在审批后创建任务，并检查重复审批对应的既有任务。 */
     private final TaskService tasks;
+    /** 与提案状态和任务变更一起追加项目事件。 */
     private final ProjectEventService events;
+    /** 生成提案输入快照及校验后的事件 JSON。 */
     private final ObjectMapper mapper;
+    /** 生成提案和用户决定时间戳。 */
     private final Clock clock;
 
+    /** 组合权限、产物版本、导出预览与持久任务服务。 */
     public ExportProposalService(ProjectService projects, AgentRunService runs,
             ArtifactService artifacts,
             MediaExportService exports, ExportProposalRepository proposals, TaskService tasks,
@@ -61,7 +73,7 @@ public class ExportProposalService {
         this.clock = clock;
     }
 
-    /** Saves a bounded, Run-scoped suggestion; no media Task or FFmpeg process is created. */
+    /** 保存数量受限且绑定 Run 的导出建议；此阶段不创建媒体任务或启动 FFmpeg。 */
     @Transactional
     public ExportProposal propose(TrustedToolContext context, AgentRun run, JsonNode input) {
         return events.recordChange(context.ownerId(), context.projectId(), () -> {
@@ -71,7 +83,7 @@ public class ExportProposalService {
         }).value();
     }
 
-    /** Resolves every mutable input after the project event lock is held. */
+    /** 获取项目事件锁后重新解析并校验所有可变输入。 */
     private ExportProposal proposeLocked(TrustedToolContext context, AgentRun run,
             JsonNode input) {
         projects.requireActiveProject(context.ownerId(), context.projectId());
@@ -143,21 +155,21 @@ public class ExportProposalService {
         return proposal;
     }
 
-    /** The project owner may inspect persisted proposals even after the Agent Run ends. */
+    /** 项目所有者即使在 Agent Run 结束后仍可查看已保存的提案。 */
     @Transactional(readOnly = true)
     public List<ExportProposal> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
         return proposals.list(projectId);
     }
 
-    /** Returns one exact proposal after project ownership is verified. */
+    /** 验证项目归属后返回指定提案。 */
     @Transactional(readOnly = true)
     public ExportProposal get(UUID ownerId, UUID projectId, UUID proposalId) {
         projects.get(ownerId, projectId);
         return proposals.find(projectId, proposalId).orElseThrow(this::notFound);
     }
 
-    /** Exact-hash human approval creates a single project-level export Task. */
+    /** 用户确认匹配的提案摘要后，创建唯一的项目级导出任务。 */
     @Transactional
     public Approval approve(UUID ownerId, UUID projectId, UUID proposalId,
             String displayedHash) {
@@ -192,7 +204,7 @@ public class ExportProposalService {
         }).value();
     }
 
-    /** Rejection records a human decision without creating a Task. */
+    /** 记录用户拒绝决定，不创建导出任务。 */
     @Transactional
     public ExportProposal reject(UUID ownerId, UUID projectId, UUID proposalId) {
         return events.recordChange(ownerId, projectId, () -> {
@@ -212,6 +224,7 @@ public class ExportProposalService {
         }).value();
     }
 
+    /** 固定提案引用的产物版本，并拒绝跨产物、过期或不符合媒体类型的引用。 */
     private void pin(TrustedToolContext context, AgentRun run, UUID artifactId,
             UUID versionId, Artifact.Kind kind, ArrayNode pins) {
         ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
@@ -229,6 +242,7 @@ public class ExportProposalService {
         pin.put("artifactVersion", current.artifact().version());
     }
 
+    /** 审批时逐项比对项目和素材版本；任一引用失效都使提案不可执行。 */
     private boolean inputsCurrent(UUID ownerId, UUID projectId, ExportProposal proposal) {
         if (projects.requireActiveProject(ownerId, projectId).version()
                 != proposal.projectVersion()) return false;
@@ -247,6 +261,7 @@ public class ExportProposalService {
         return true;
     }
 
+    /** 将提案状态映射为不含素材内容的项目事件。 */
     private ProjectEventService.EventDraft event(ExportProposal proposal) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("proposalId", proposal.id().toString());
@@ -259,12 +274,14 @@ public class ExportProposalService {
                 payload);
     }
 
+    /** 拒绝未纳入当前提案契约的字段，避免模型附带未校验选项。 */
     private void requireOnly(JsonNode value, Set<String> allowed) {
         for (String name : value.propertyNames()) {
             if (!allowed.contains(name)) throw invalid("Unknown export proposal field");
         }
     }
 
+    /** 读取非空字符串字段；缺失、类型错误和纯空白均视为参数错误。 */
     private String text(JsonNode value, String field) {
         JsonNode selected = value.path(field);
         if (!selected.isTextual() || selected.asText().isBlank()) {
@@ -273,6 +290,7 @@ public class ExportProposalService {
         return selected.asText();
     }
 
+    /** 将已校验的文本字段解析为 UUID，并统一转换为稳定的参数错误。 */
     private UUID uuid(JsonNode value, String field) {
         try {
             return UUID.fromString(text(value, field));
@@ -281,6 +299,7 @@ public class ExportProposalService {
         }
     }
 
+    /** 读取可安全转换为 int 的整数毫秒值，范围语义由导出预览继续校验。 */
     private int millisecond(JsonNode value, String field) {
         JsonNode selected = value.path(field);
         if (!selected.isIntegralNumber() || !selected.canConvertToInt()) {
@@ -289,6 +308,7 @@ public class ExportProposalService {
         return selected.intValue();
     }
 
+    /** 对规范化输入、版本固定项和项目版本生成审批展示用摘要。 */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -298,21 +318,28 @@ public class ExportProposalService {
         }
     }
 
+    /** 构造供 Agent 参数校验失败使用的 400 问题响应。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                 "导出提案无效", detail, false);
     }
 
+    /** 构造提案状态或内容已变化时使用的 409 问题响应。 */
     private ApiProblemException conflict(String detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "EXPORT_PROPOSAL_CONFLICT",
                 "导出提案已变化", detail, false);
     }
 
+    /** 构造项目内找不到目标提案时使用的 404 问题响应。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                 "导出提案不存在", "该项目没有此导出提案。", false);
     }
 
-    /** Human decision with the already-existing or newly created persistent Task. */
+    /** 用户审批结果及本次复用或新建的持久化任务。
+     * @param proposal 审批决定后的提案状态
+     * @param task 已有或新建的导出任务
+     * @param replayed 是否为重复审批请求并复用原任务
+     */
     public record Approval(ExportProposal proposal, Task task, boolean replayed) {}
 }

@@ -14,16 +14,21 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Adds an authenticated, durable approval and media-result checkpoint to the next model prompt. */
+/** 将持久化用户审批决定和已完成媒体结果加入后续模型上下文。 */
 @Service
 public class PlanResumeContextService {
 
+    /** 防止已归档媒体结果把续跑提示扩展到无界大小。 */
     private static final int MAX_RESULT_CHARS = 40_000;
 
+    /** 按所有者读取计划并验证已保存的审批状态。 */
     private final ExecutionPlanService plans;
+    /** 读取计划创建的媒体任务及其归档输出。 */
     private final TaskService tasks;
+    /** 对图片阶段读取每个镜头的明确人工关键帧选择。 */
     private final ShotKeyframeSelectionRepository keyframes;
 
+    /** 注入计划、任务和关键帧选择读取能力。 */
     public PlanResumeContextService(ExecutionPlanService plans, TaskService tasks,
             ShotKeyframeSelectionRepository keyframes) {
         this.plans = plans;
@@ -31,7 +36,7 @@ public class PlanResumeContextService {
         this.keyframes = keyframes;
     }
 
-    /** Never infers approval from model text; reads the exact persisted user decision. */
+    /** 只读取任务中持久化的用户决定，不从模型文本推断或伪造审批。 */
     @Transactional(readOnly = true)
     public List<Message> append(UUID ownerId, UUID projectId, UUID runId,
             Task resumeTask, List<Message> history) {

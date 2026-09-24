@@ -26,24 +26,35 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Validates a model proposal as an owner-scoped, acyclic and version-pinned media DAG. */
+/** 将模型提案校验为用户作用域内无环且固定素材版本的媒体执行图。 */
 @Component
 public class PlanDraftValidator {
 
+    /** 计划步骤键和输出槽键的允许字符及长度。 */
     private static final Pattern KEY = Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}");
+    /** 顶层计划输入白名单，Provider 选择和版本由服务端确定。 */
     private static final Set<String> PLAN_FIELDS = Set.of("stage", "objective", "steps");
+    /** 单个步骤允许的模型字段，避免模型注入执行配置或资源路径。 */
     private static final Set<String> STEP_FIELDS = Set.of("stepKey", "outputSlotKey",
             "shotArtifactId", "shotVersionId", "imageArtifactId", "imageVersionId",
             "prompt", "negativePrompt", "dependsOnStepKeys");
 
+    /** 验证输入版本的类型、当前选择和 Run 可见范围。 */
     private final ArtifactService artifacts;
+    /** 读取并核对每个镜头当前选定的关键帧版本。 */
     private final ShotKeyframeSelectionRepository selections;
+    /** 验证关键帧来源任务的 Run 归属和成功状态。 */
     private final TaskService tasks;
+    /** 构造规范化计划与固定输入快照。 */
     private final ObjectMapper mapper;
+    /** 提供各阶段工作流版本及视频时长约束。 */
     private final PlanWorkflowPolicy workflows;
+    /** 提供当前 Provider 模式与配置摘要。 */
     private final PlanProviderProperties provider;
+    /** 仅在 ComfyUI 模式读取端点摘要，Mock 模式不实例化客户端。 */
     private final ObjectProvider<ComfyUiClient> comfyClient;
 
+    /** 注入产物、关键帧和工作流校验能力，不在校验器内发起媒体副作用。 */
     public PlanDraftValidator(ArtifactService artifacts,
             ShotKeyframeSelectionRepository selections, TaskService tasks, ObjectMapper mapper,
             PlanWorkflowPolicy workflows, PlanProviderProperties provider,
@@ -57,7 +68,7 @@ public class PlanDraftValidator {
         this.comfyClient = comfyClient;
     }
 
-    /** Produces only server-validated fields; provider and workflow versions are server-owned. */
+        /** 校验模型计划、固定素材版本并生成确定顺序的服务端任务草稿。 */
     public Draft validate(TrustedToolContext context, AgentRun run, JsonNode proposed,
             int providerConfigVersion) {
         if (!proposed.isObject()) {
@@ -217,7 +228,7 @@ public class PlanDraftValidator {
                 providerConfigVersion, workflowVersion, List.copyOf(steps));
     }
 
-    /** Approval cannot silently authorize a plan against a different ComfyUI origin. */
+        /** 审批时确认计划固定的 ComfyUI 来源仍与当前配置一致。 */
     public boolean providerOriginMatches(ExecutionPlan plan) {
         if (!"comfyui".equalsIgnoreCase(provider.mode())) return true;
         String origin = comfyClient.getObject().originSha256();
@@ -225,7 +236,7 @@ public class PlanDraftValidator {
                 origin.equals(step.input().path("providerOriginSha256").asText()));
     }
 
-    /** Rechecks content selection without considering canvas positions or event sequence. */
+        /** 比较计划快照中的素材版本与关键帧选择版本，布局和事件序号不参与判断。 */
     public boolean currentInputsMatch(UUID ownerId, UUID projectId, JsonNode snapshot) {
         JsonNode inputs = snapshot.path("inputs");
         if (!inputs.isArray()) {
@@ -267,6 +278,7 @@ public class PlanDraftValidator {
         return true;
     }
 
+    /** 验证版本属于声明的产物、对本次 Run 可见且仍是该产物当前版本，并写入快照。 */
     private ArtifactVersion pinnedVersion(TrustedToolContext context, AgentRun run,
             UUID artifactId, UUID versionId, Artifact.Kind expectedKind, ArrayNode snapshot) {
         ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
@@ -288,6 +300,7 @@ public class PlanDraftValidator {
         return version;
     }
 
+    /** 校验依赖键数组的形状、格式和唯一性；目标是否存在由拓扑排序阶段确认。 */
     private List<String> dependencies(JsonNode values) {
         if (!values.isArray() || values.size() > 6) {
             throw invalid("Step dependencies must be an array of at most six keys");
@@ -304,6 +317,7 @@ public class PlanDraftValidator {
         return List.copyOf(result);
     }
 
+    /** 以稳定的键顺序执行 DFS，输出依赖优先的顺序并拒绝环路。 */
     private List<StepDraft> sortAcyclic(Map<String, StepDraft> byKey) {
         Map<String, Integer> state = new HashMap<>();
         List<StepDraft> sorted = new ArrayList<>();
@@ -313,6 +327,7 @@ public class PlanDraftValidator {
         return sorted;
     }
 
+    /** 三色 DFS：灰色节点表示回边，黑色节点表示已加入结果。 */
     private void visit(String key, Map<String, StepDraft> byKey,
             Map<String, Integer> state, List<StepDraft> sorted) {
         StepDraft step = byKey.get(key);
@@ -334,6 +349,7 @@ public class PlanDraftValidator {
         sorted.add(step);
     }
 
+    /** 拒绝计划契约未声明的字段，避免未经校验的数据进入执行快照。 */
     private void allowOnly(JsonNode value, Set<String> names) {
         for (String field : value.propertyNames()) {
             if (!names.contains(field)) {
@@ -342,6 +358,7 @@ public class PlanDraftValidator {
         }
     }
 
+    /** 读取符合执行键字符集的字段名，并限制长度以适配持久化键。 */
     private String requiredKey(JsonNode value, String field) {
         String text = requiredText(value, field, 160);
         if (!KEY.matcher(text).matches()) {
@@ -350,6 +367,7 @@ public class PlanDraftValidator {
         return text;
     }
 
+    /** 读取非空文本并限制字符数；提示词和标识字段共用类型校验但采用不同上限。 */
     private String requiredText(JsonNode value, String field, int maximum) {
         JsonNode text = value.path(field);
         if (!text.isTextual() || text.asText().isBlank() || text.asText().length() > maximum) {
@@ -358,6 +376,7 @@ public class PlanDraftValidator {
         return text.asText();
     }
 
+    /** 将输入字段解析为 UUID，格式错误统一报告为计划参数错误。 */
     private UUID requiredUuid(JsonNode value, String field) {
         try {
             return UUID.fromString(requiredText(value, field, 36));
@@ -366,16 +385,36 @@ public class PlanDraftValidator {
         }
     }
 
+    /** 构造计划结构或引用校验失败时返回的 400 问题响应。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "PLAN_INVALID",
                 "执行计划无效", detail, false);
     }
 
-    /** Validated application-owned plan proposal before hash and persistence. */
+    /** 已通过领域校验、尚待审批和持久化的应用侧计划草稿。
+     * @param stage 计划阶段，决定步骤生成类型
+     * @param objective 用户可审阅的计划目标
+     * @param plan 已去除未知字段并规范化顺序的提案
+     * @param inputSnapshot 审批时重验素材与关键帧所需的版本快照
+     * @param estimate 按步骤数和时长计算的非价格用量估算
+     * @param providerConfigVersion 计划固定的 Provider 配置版本
+     * @param workflowVersion 计划固定的工作流模板版本
+     * @param steps 按依赖拓扑排序的任务步骤
+     */
     public record Draft(ExecutionPlan.Stage stage, String objective, JsonNode plan,
             JsonNode inputSnapshot, JsonNode estimate, int providerConfigVersion,
             String workflowVersion, List<ExecutionPlan.Step> steps) {}
 
+    /** 校验阶段的临时步骤；其依赖仍用 stepKey 表示，直到排序和解析完成。
+     * @param stepKey 步骤的计划内唯一键
+     * @param outputSlotKey 输出写入的镜头内容槽位
+     * @param shotArtifactId 步骤修改的镜头产物
+     * @param shotVersionId 创建计划时固定的镜头版本
+     * @param imageArtifactId 步骤使用的输入图片产物；不使用图片时为空
+     * @param imageVersionId 精确图片版本；不使用图片时为空
+     * @param dependencies 依赖步骤键；仅引用本计划中的前置步骤
+     * @param input 经结构和领域规则规范化的 Provider 输入
+     */
     private record StepDraft(String stepKey, String outputSlotKey,
             UUID shotArtifactId, UUID shotVersionId, UUID imageArtifactId,
             UUID imageVersionId, List<String> dependencies, JsonNode input) {}

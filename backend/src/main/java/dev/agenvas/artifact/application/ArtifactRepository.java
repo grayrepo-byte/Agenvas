@@ -9,36 +9,36 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-/** Persistence boundary for stable artifacts and append-only content revisions. */
+/** 产物身份与只追加内容版本的持久化边界。 */
 public interface ArtifactRepository {
 
-    /** Reserves one owner/project-scoped manual creation key in the current transaction. */
+    /** 在当前事务中预留所有者和项目范围内的手工创建幂等键。 */
     boolean reserveCreateKey(UUID ownerId, String scope, String key, String requestHash,
             Instant expiresAt, Instant now);
 
-    /** Reads a competing committed creation key after PostgreSQL uniqueness arbitration. */
+    /** PostgreSQL 唯一约束完成并发仲裁后，读取先提交的幂等记录。 */
     Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key);
 
-    /** Completes the same key in the artifact/event transaction. */
+    /** 在产物和项目事件事务中将同一幂等键标记为完成。 */
     boolean completeCreateKey(UUID ownerId, String scope, String key,
             String requestHash, UUID artifactId, String responseJson, Instant now);
 
-    /** Inserts the stable identity before its initial version is appended. */
+    /** 先插入稳定产物身份，再追加首个不可变内容版本。 */
     void createArtifact(Artifact artifact);
 
-    /** Locks one owner-scoped artifact so revision numbers can be allocated safely. */
+    /** 锁定所有者范围内的产物行，为其安全分配递增版本号。 */
     Optional<Artifact> findForUpdate(UUID ownerId, UUID projectId, UUID artifactId);
 
-    /** Reads one owner-scoped artifact without exposing foreign resources. */
+    /** 仅在所有者作用域内读取产物，避免暴露其他用户资源。 */
     Optional<Artifact> find(UUID ownerId, UUID projectId, UUID artifactId);
 
-    /** Appends an immutable version and its normalized semantic references. */
+    /** 追加不可变内容版本及规范化后的语义引用。 */
     void appendVersion(ArtifactVersion version);
 
-    /** Sets the first current version without changing the new artifact's optimistic version. */
+    /** 设置新产物的首个当前版本，不递增产物配置版本。 */
     void setInitialCurrentVersion(UUID artifactId, UUID versionId, Instant updatedAt);
 
-    /** Selects a version and optionally updates the title using optimistic concurrency. */
+    /** 以乐观锁选择当前内容版本，并可同时修改产物标题。 */
     boolean selectVersion(
             UUID ownerId,
             UUID projectId,
@@ -48,31 +48,40 @@ public interface ArtifactRepository {
             String title,
             Instant updatedAt);
 
-    /** Gets one version only when it belongs to the specified artifact and project. */
+    /** 仅当版本归属指定产物及项目时返回该版本。 */
     Optional<ArtifactVersion> findVersion(
             UUID projectId, UUID artifactId, UUID versionId);
 
-    /** Gets one version in a project for semantic reference validation. */
+    /** 在项目作用域内读取版本，用于校验语义引用。 */
     Optional<VersionTarget> findVersionTarget(UUID projectId, UUID versionId);
 
-    /** Resolves all requested targets within one project. */
+    /** 在单个项目范围内批量解析引用目标。 */
     Map<UUID, VersionTarget> findVersionTargets(UUID projectId, Set<UUID> versionIds);
 
-    /** Lists immutable history newest first. */
+    /** 按版本号倒序列出不可变历史。 */
     List<ArtifactVersion> listVersions(UUID projectId, UUID artifactId);
 
-    /** Lists every project identity for a consistent, owner-authorized manifest. */
+    /** 列出所有者授权项目的产物身份，供一致性清单构建使用。 */
     List<Artifact> listProjectArtifacts(UUID ownerId, UUID projectId);
 
-    /** Lists all immutable project versions without per-version N+1 reference fetches. */
+    /** 一次读取项目全部不可变版本，避免逐版本查询引用产生 N+1。 */
     List<ArtifactVersion> listProjectVersions(UUID projectId);
 
-    /** Allocates the next monotonic content version while the artifact row is locked. */
+    /** 持有产物行锁时分配下一个递增内容版本号。 */
     int nextVersionNo(UUID projectId, UUID artifactId);
 
-    /** Small projection used to validate the kind and ownership of a reference. */
+    /** 引用校验所需的最小投影，避免加载版本正文。
+     * @param versionId 被引用的不可变版本
+     * @param artifactId 该版本归属的产物
+     * @param kind 产物类型，用于检查调用方允许引用的媒体类别
+     */
     record VersionTarget(UUID versionId, UUID artifactId, Artifact.Kind kind) {}
 
-    /** Minimal durable replay projection for manual Artifact creation. */
+    /** 手工创建产物的幂等重放记录。
+     * @param requestHash 原请求规范化后的摘要
+     * @param state 幂等记录状态，用于区分处理中和已完成
+     * @param artifactId 首次请求创建的产物
+     * @param responseJson 首次创建时持久化的响应，保证重放结果一致
+     */
     record CreateKey(String requestHash, String state, UUID artifactId, String responseJson) {}
 }

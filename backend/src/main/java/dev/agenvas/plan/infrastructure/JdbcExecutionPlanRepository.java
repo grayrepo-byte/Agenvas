@@ -15,18 +15,22 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL implementation of immutable plan bodies and authenticated approvals. */
+/** 持久化不可变计划正文、步骤依赖和独立审批凭据的 PostgreSQL 仓储。 */
 @Repository
 public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
 
+    /** 通过参数化 SQL 保存计划、步骤和审批凭据。 */
     private final JdbcClient jdbc;
+    /** 序列化步骤依赖 JSON，并还原已持久化的计划快照。 */
     private final ObjectMapper mapper;
 
+    /** 配置计划仓储的 SQL 执行器与 JSON 映射器。 */
     public JdbcExecutionPlanRepository(JdbcClient jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
     }
 
+    /** 查询指定 Run 与阶段下一个修订号；调用方须在 Run/项目事务锁内串行化写入。 */
     @Override
     public int nextRevision(UUID projectId, UUID runId, ExecutionPlan.Stage stage) {
         return jdbc.sql("""
@@ -37,6 +41,7 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                 .param("stage", stage.name()).query(Integer.class).single();
     }
 
+    /** 同一事务写入计划和有序步骤；步骤外键与唯一约束保证结构完整。 */
     @Override
     public void create(ExecutionPlan plan) {
         int inserted = jdbc.sql("""
@@ -89,11 +94,13 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
         }
     }
 
+    /** 按项目边界读取计划及其步骤，不加行锁。 */
     @Override
     public Optional<ExecutionPlan> find(UUID projectId, UUID planId) {
         return load(projectId, planId, false);
     }
 
+    /** 返回 Run 的计划 ID，按创建时间和 ID 稳定倒序排列。 */
     @Override
     public List<UUID> findIdsByRun(UUID projectId, UUID runId) {
         return jdbc.sql("""
@@ -105,11 +112,13 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                 .query(UUID.class).list();
     }
 
+    /** 读取计划并锁住计划行，供审批或拒绝状态迁移使用。 */
     @Override
     public Optional<ExecutionPlan> findForUpdate(UUID projectId, UUID planId) {
         return load(projectId, planId, true);
     }
 
+    /** 统一装载计划及步骤；仅锁定主计划行，步骤按 ordinal 恢复原执行顺序。 */
     private Optional<ExecutionPlan> load(UUID projectId, UUID planId, boolean lock) {
         String suffix = lock ? " for update" : "";
         return jdbc.sql("""
@@ -138,6 +147,7 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                 .optional();
     }
 
+    /** 将步骤 JSON 依赖恢复为键列表，并严格按已保存的 ordinal 返回。 */
     private List<ExecutionPlan.Step> loadSteps(UUID planId) {
         return jdbc.sql("""
                         select step_key, ordinal, kind, shot_artifact_id, shot_version_id,
@@ -162,6 +172,7 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                 }).list();
     }
 
+    /** 仅当当前状态等于 expected 时迁移状态，防止并发审批覆盖彼此结果。 */
     @Override
     public boolean updateStatus(UUID projectId, UUID planId, ExecutionPlan.Status expected,
             ExecutionPlan.Status target, Instant now) {
@@ -174,6 +185,7 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 插入审批时冻结的计划摘要、输入摘要和额度预留，重复审批由唯一约束阻止。 */
     @Override
     public void insertApproval(UUID approvalId, UUID projectId, UUID runId, UUID planId,
             UUID approvedBy, String planHash, String inputHash, JsonNode reservation, Instant now) {
@@ -194,6 +206,7 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
         }
     }
 
+    /** 查询计划既有审批凭据，供审批请求幂等重放。 */
     @Override
     public Optional<UUID> findApprovalId(UUID projectId, UUID planId) {
         return jdbc.sql("select id from plan_approval where project_id = :projectId and plan_id = :planId")
@@ -201,6 +214,7 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                 .query(UUID.class).optional();
     }
 
+    /** 将绝对时刻转换为 JDBC 参数所需的 UTC 偏移时间。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

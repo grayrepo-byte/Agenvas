@@ -6,32 +6,32 @@ import java.util.Optional;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
-/** Durable plan/step/approval boundary; callers hold the Run row lock for decisions. */
+/** 计划、步骤和审批的持久化边界；审批调用方需先锁定 Run 行。 */
 public interface ExecutionPlanRepository {
 
-    /** Returns the next plan revision for this Run and approval stage. */
+    /** 返回指定 Run 和计划阶段的下一个修订号。 */
     int nextRevision(UUID projectId, UUID runId, ExecutionPlan.Stage stage);
 
-    /** Inserts a fully validated plan and all its steps in the caller transaction. */
+    /** 在调用方事务中插入完整校验后的计划及全部步骤。 */
     void create(ExecutionPlan plan);
 
-    /** Reads a project-scoped plan and its immutable ordered steps. */
+    /** 在项目范围内读取计划及其不可变有序步骤。 */
     Optional<ExecutionPlan> find(UUID projectId, UUID planId);
 
-    /** Lists immutable plan identities for one owned Run, newest revision first. */
+    /** 按修订号倒序列出当前用户 Run 下的计划身份。 */
     List<UUID> findIdsByRun(UUID projectId, UUID runId);
 
-    /** Locks the plan row before approval or rejection. */
+    /** 审批或拒绝前锁定计划行，串行化用户决定。 */
     Optional<ExecutionPlan> findForUpdate(UUID projectId, UUID planId);
 
-    /** Compare-and-set lifecycle transition without changing the proposal body. */
+    /** 通过条件更新变更生命周期状态，不改写提案正文。 */
     boolean updateStatus(UUID projectId, UUID planId, ExecutionPlan.Status expected,
             ExecutionPlan.Status target, Instant now);
 
-    /** Inserts the authenticated approval and exact reserved counts once. */
+    /** 仅一次写入认证用户的审批记录和精确预留数量。 */
     void insertApproval(UUID approvalId, UUID projectId, UUID runId, UUID planId,
             UUID approvedBy, String planHash, String inputHash, JsonNode reservation, Instant now);
 
-    /** Returns an existing approval ID for safe exact retries. */
+    /** 安全重试时返回已存在的审批 ID。 */
     Optional<UUID> findApprovalId(UUID projectId, UUID planId);
 }

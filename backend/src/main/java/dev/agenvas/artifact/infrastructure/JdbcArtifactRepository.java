@@ -18,10 +18,11 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL implementation that appends content and never mutates version rows. */
+/** PostgreSQL 产物仓储；版本行只追加，当前版本选择通过条件更新指针完成。 */
 @Repository
 public class JdbcArtifactRepository implements ArtifactRepository {
 
+    /** 映射稳定产物身份及当前版本指针，不读取版本正文。 */
     private static final RowMapper<Artifact> ARTIFACT_MAPPER = (resultSet, rowNumber) ->
             new Artifact(
                     resultSet.getObject("id", UUID.class),
@@ -36,14 +37,18 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                     resultSet.getObject("created_at", OffsetDateTime.class).toInstant(),
                     resultSet.getObject("updated_at", OffsetDateTime.class).toInstant());
 
+    /** 执行参数化 SQL 和版本条件更新。 */
     private final JdbcClient jdbcClient;
+    /** 将正文和类型化引用序列化为 JSONB。 */
     private final ObjectMapper objectMapper;
 
+    /** 初始化正文及产物行的 JSON 映射依赖。 */
     public JdbcArtifactRepository(JdbcClient jdbcClient, ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
     }
 
+    /** 先占用用户、作用域和键的唯一槽位；并发请求中只有一个请求可首次创建。 */
     @Override
     public boolean reserveCreateKey(UUID ownerId, String scope, String key,
             String requestHash, Instant expiresAt, Instant now) {
@@ -61,6 +66,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 读取幂等请求摘要、状态及首次创建时固定的响应快照。 */
     @Override
     public Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key) {
         return jdbcClient.sql("""
@@ -76,6 +82,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .optional();
     }
 
+    /** 仅原摘要匹配且仍 IN_PROGRESS 时完成创建键，固定资源 ID 和原响应。 */
     @Override
     public boolean completeCreateKey(UUID ownerId, String scope, String key,
             String requestHash, UUID artifactId, String responseJson, Instant now) {
@@ -94,6 +101,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .update() == 1;
     }
 
+    /** 插入尚未关联当前版本的稳定产物身份。 */
     @Override
     public void createArtifact(Artifact artifact) {
         jdbcClient.sql("""
@@ -115,16 +123,19 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .update();
     }
 
+    /** 锁定指定所有者项目中的产物行，供追加版本与选择 CAS 使用。 */
     @Override
     public Optional<Artifact> findForUpdate(UUID ownerId, UUID projectId, UUID artifactId) {
         return findArtifact(ownerId, projectId, artifactId, true);
     }
 
+    /** 在所有者、项目和产物 ID 三重范围内读取稳定身份。 */
     @Override
     public Optional<Artifact> find(UUID ownerId, UUID projectId, UUID artifactId) {
         return findArtifact(ownerId, projectId, artifactId, false);
     }
 
+    /** 共享读写查询；只有调用方请求写操作时才锁定产物行。 */
     private Optional<Artifact> findArtifact(
             UUID ownerId, UUID projectId, UUID artifactId, boolean forUpdate) {
         String lockClause = forUpdate ? " for update of a" : "";
@@ -143,6 +154,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .optional();
     }
 
+    /** 插入不可变正文行及其关系表引用；同一事务失败时两者一并回滚。 */
     @Override
     public void appendVersion(ArtifactVersion version) {
         jdbcClient.sql("""
@@ -185,6 +197,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
         }
     }
 
+    /** 只在空指针且初始版本号为零时关联首个版本，避免覆盖已有选择。 */
     @Override
     public void setInitialCurrentVersion(UUID artifactId, UUID versionId, Instant updatedAt) {
         int changed = jdbcClient.sql("""
@@ -201,6 +214,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
         }
     }
 
+    /** 仅预期版本匹配、产物未归档且目标版本属于该产物时切换当前指针。 */
     @Override
     public boolean selectVersion(
             UUID ownerId,
@@ -237,6 +251,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .update() == 1;
     }
 
+    /** 以项目、产物和版本三重键读取正文，并附加其规范化语义引用。 */
     @Override
     public Optional<ArtifactVersion> findVersion(
             UUID projectId, UUID artifactId, UUID versionId) {
@@ -256,6 +271,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .map(this::withReferences);
     }
 
+    /** 由项目内版本 ID 解析其所属产物和类型，不接受跨项目引用。 */
     @Override
     public Optional<VersionTarget> findVersionTarget(UUID projectId, UUID versionId) {
         return jdbcClient.sql("""
@@ -273,6 +289,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .optional();
     }
 
+    /** 单次查询解析多个版本目标，避免逐个引用产生 N+1 查询。 */
     @Override
     public Map<UUID, VersionTarget> findVersionTargets(UUID projectId, Set<UUID> versionIds) {
         if (versionIds.isEmpty()) {
@@ -296,6 +313,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
         return Map.copyOf(byId);
     }
 
+    /** 按版本序号倒序列出一个产物的正文，并分别附加类型化输入引用。 */
     @Override
     public List<ArtifactVersion> listVersions(UUID projectId, UUID artifactId) {
         return jdbcClient.sql("""
@@ -315,6 +333,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .toList();
     }
 
+    /** 在项目所有者范围内按创建顺序列出稳定产物身份。 */
     @Override
     public List<Artifact> listProjectArtifacts(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -328,6 +347,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .query(ARTIFACT_MAPPER).list();
     }
 
+    /** 为导出清单按产物和版本顺序读取项目正文；调用方负责白名单脱敏。 */
     @Override
     public List<ArtifactVersion> listProjectVersions(UUID projectId) {
         return jdbcClient.sql("""
@@ -340,6 +360,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .param("projectId", projectId).query(this::mapBaseVersion).list();
     }
 
+    /** 返回该产物当前最大版本序号加一；调用方需先锁定产物行串行化追加。 */
     @Override
     public int nextVersionNo(UUID projectId, UUID artifactId) {
         return jdbcClient.sql("""
@@ -353,6 +374,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .single();
     }
 
+    /** 映射版本正文和创建来源，不加载单独规范化的引用关系。 */
     private ArtifactVersion mapBaseVersion(java.sql.ResultSet resultSet, int rowNumber)
             throws java.sql.SQLException {
         JsonNode content = objectMapper.readTree(resultSet.getString("content_json"));
@@ -369,6 +391,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 resultSet.getObject("created_at", OffsetDateTime.class).toInstant());
     }
 
+    /** 加载来源版本的语义引用并按原顺序组装不可变版本对象。 */
     private ArtifactVersion withReferences(ArtifactVersion version) {
         List<ArtifactVersion.InputReference> references = jdbcClient.sql("""
                         select r.target_version_id, r.reference_role, r.reference_order, a.kind
@@ -400,6 +423,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 version.createdAt());
     }
 
+    /** 将业务时间转换成 JDBC UTC 偏移值，避免依赖数据库会话时区。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

@@ -25,20 +25,32 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Authenticated project-level sequential export, status and cancellation boundary. */
+/** 项目级顺序视频导出的创建、查询和取消入口；导出输入在后台执行前已固定。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/exports")
 public class MediaExportController {
 
+    /** 创建导出任务并读取导出历史。 */
     private final MediaExportService exports;
+    /** 按所有者和项目范围读取持久化任务。 */
     private final TaskService tasks;
 
+    /** 注入导出用例及任务读取服务。
+     * @param exports 导出输入校验与任务创建服务
+     * @param tasks 项目范围内的任务查询服务
+     */
     public MediaExportController(MediaExportService exports, TaskService tasks) {
         this.exports = exports;
         this.tasks = tasks;
     }
 
-    /** Saves an immutable input snapshot before any FFmpeg process is started. */
+    /** 固定输入版本和片段顺序后受理导出任务；HTTP 请求期间不会启动 FFmpeg。
+     * @param principal 当前认证用户
+     * @param projectId 导出所属项目
+     * @param idempotencyKey 客户端导出命令键，重复提交返回同一任务
+     * @param request 有序视频版本及剪辑区间
+     * @return 已持久化任务及其状态查询地址信息
+     */
     @PostMapping
     public ResponseEntity<TaskResponse> create(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
@@ -51,7 +63,11 @@ public class MediaExportController {
         return ResponseEntity.accepted().body(TaskResponse.from(task));
     }
 
-    /** Returns up to one hundred newest durable exports for history and recovery. */
+    /** 查询项目最近的持久化导出任务。
+     * @param principal 当前认证用户
+     * @param projectId 导出所属项目
+     * @return 按创建时间排序的导出历史
+     */
     @GetMapping
     public List<TaskResponse> list(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId) {
@@ -59,7 +75,12 @@ public class MediaExportController {
                 .map(TaskResponse::from).toList();
     }
 
-    /** Reads one exact export without relying on the current Agent Run slot. */
+    /** 读取指定导出；历史导出不依赖项目当前是否占用 Agent Run 槽位。
+     * @param principal 当前认证用户
+     * @param projectId 任务所属项目
+     * @param taskId 导出任务 UUID
+     * @return 导出任务状态
+     */
     @GetMapping("/{taskId}")
     public TaskResponse get(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID taskId) {
@@ -72,18 +93,30 @@ public class MediaExportController {
         return TaskResponse.from(task);
     }
 
-    /** Requests stop without promising any external generation cancellation or refund. */
+    /** 请求停止本地导出编排，不表示外部媒体生成已停止或费用会退回。
+     * @param principal 当前认证用户
+     * @param projectId 任务所属项目
+     * @param taskId 要取消的导出任务
+     * @return 持久化取消请求后的任务状态
+     */
     @PostMapping("/{taskId}/cancel")
     public TaskResponse cancel(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID taskId) {
         return TaskResponse.from(exports.cancel(principal.userId(), projectId, taskId));
     }
 
-    /** One to six exact video-version ranges in the caller's intended order. */
+    /** 导出请求；段落顺序即最终播放顺序。
+     * @param segments 一到六个固定视频版本及其时间区间
+     */
     public record CreateExportRequest(
             @NotEmpty @Size(max = 6) List<@Valid Segment> segments) {}
 
-    /** Millisecond ranges are closed-open and validated against archived duration by worker. */
+    /** 视频区间采用毫秒闭开范围，Worker 会依据归档媒体时长再次校验。
+     * @param videoArtifactId 视频产物
+     * @param videoVersionId 固定的不可变视频版本
+     * @param startMs 包含的起始毫秒
+     * @param endMs 不包含的结束毫秒
+     */
     public record Segment(@NotNull UUID videoArtifactId, @NotNull UUID videoVersionId,
             @Min(0) @Max(60_000) int startMs,
             @Min(1) @Max(60_000) int endMs) {}

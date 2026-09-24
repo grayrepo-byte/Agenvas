@@ -16,17 +16,31 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Assembles project recovery state and its event waterline from one MVCC snapshot. */
+/** 在一个 MVCC 一致性快照中组装项目恢复状态及 SSE 事件水位。 */
 @Service
 public class ProjectSnapshotService {
 
+    /** 核验调用者对项目的读取权限。 */
     private final ProjectService projects;
+    /** 读取与其他快照数据同一事务视图中的事件水位和活动槽位。 */
     private final ProjectRepository projectRepository;
+    /** 读取画布投影。 */
     private final CanvasService canvas;
+    /** 读取项目 Agent 配置和固定输入。 */
     private final AgentInstanceService agents;
+    /** 按项目锚点读取活动 Run。 */
     private final AgentRunService runs;
+    /** 读取活动 Run 任务和待核对 UNKNOWN 任务。 */
     private final TaskService tasks;
 
+    /** 注入快照所需的项目、画布、Agent、Run 和任务读取边界。
+     * @param projects 检查项目授权并读取一致性锚点
+     * @param projectRepository 获取数据库快照水位
+     * @param canvas 读取画布空间项
+     * @param agents 读取卡片与固定绑定
+     * @param runs 读取活动及历史 Run 状态
+     * @param tasks 读取项目任务状态
+     */
     public ProjectSnapshotService(
             ProjectService projects,
             ProjectRepository projectRepository,
@@ -43,8 +57,12 @@ public class ProjectSnapshotService {
     }
 
     /**
-     * Reads every component under PostgreSQL REPEATABLE READ so snapshotSeq can safely become the
-     * exclusive cursor for subsequent event replay.
+     * 在 PostgreSQL REPEATABLE READ 事务内读取项目、事件水位、画布、Agent、活动 Run 和任务。
+     * 返回的 snapshotSeq 可直接作为后续 SSE 补发的独占游标，不会遗漏快照并发期间已提交的事件。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId 要恢复的项目
+     * @return 与单一数据库快照一致的项目恢复数据
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ProjectSnapshot snapshot(UUID ownerId, UUID projectId) {
@@ -71,6 +89,7 @@ public class ProjectSnapshotService {
                 anchor.eventSequence());
     }
 
+    /** 项目不存在或不属于当前用户时统一返回 404。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
@@ -80,7 +99,17 @@ public class ProjectSnapshotService {
                 false);
     }
 
-    /** Complete project recovery payload tied to one project-local event sequence. */
+    /**
+     * 与项目本地事件序号水位绑定的完整恢复负载。
+     *
+     * @param project 项目设置及事件序号
+     * @param canvas 当前画布展示项
+     * @param agents 项目 Agent 卡片及固定输入
+     * @param activeRun 当前占用项目槽位的 Run；无活动 Run 时为空
+     * @param activeTasks 活动 Run 的执行任务
+     * @param unknownTasks 需要核对或人工处理的未决任务
+     * @param snapshotSeq 与上述所有数据来自同一 MVCC 快照的事件水位
+     */
     public record ProjectSnapshot(
             Project project,
             List<CanvasService.CanvasEntry> canvas,

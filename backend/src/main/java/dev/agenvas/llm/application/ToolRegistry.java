@@ -5,27 +5,32 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.stereotype.Component;
 
-/** Allowlisted model-visible definitions; callbacks cannot bypass the durable tool executor. */
+/** 只发布已实现的工具 Schema；回调本身拒绝执行，所有副作用必须经过持久化工具执行器。 */
 @Component
 public class ToolRegistry {
 
+    /** 项目摘要由服务端作用域决定，不接受模型传入项目 ID。 */
     private static final String READ_PROJECT_SUMMARY_SCHEMA = """
             {"type":"object","additionalProperties":false,"properties":{}}
             """;
+    /** 读取 Run 创建时快照中的画布选择，不接受额外选择 ID。 */
     private static final String READ_SELECTION_SCHEMA = """
             {"type":"object","additionalProperties":false,"properties":{}}
             """;
+    /** 精确版本白名单读取；最多 12 个互异 UUID。 */
     private static final String READ_ARTIFACTS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["versionIds"],
              "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":12,
                "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
             """;
+    /** Run 内任务状态查询；最多 12 个互异任务 ID。 */
     private static final String READ_TASK_STATUS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["taskIds"],
              "properties":{"taskIds":{"type":"array","minItems":1,"maxItems":12,
                "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
             """;
 
+    /** 文本产物只允许标题、正文和格式字段。 */
     private static final String CREATE_TEXT_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["title","text","format"],
@@ -33,6 +38,7 @@ public class ToolRegistry {
                "text":{"type":"string","minLength":1,"maxLength":20000},
                "format":{"type":"string","enum":["PLAIN_TEXT","MARKDOWN"]}}}
             """;
+    /** 角色创建字段白名单及显式参考版本数量上限。 */
     private static final String CREATE_CHARACTER_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["name","description","appearance","referenceVersionIds"],
@@ -42,6 +48,7 @@ public class ToolRegistry {
                "referenceVersionIds":{"type":"array","maxItems":8,"uniqueItems":true,
                  "items":{"type":"string","format":"uuid"}}}}
             """;
+    /** 场景创建字段白名单及显式参考版本数量上限。 */
     private static final String CREATE_SCENE_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["name","location","timeOfDay","lighting","style","referenceVersionIds"],
@@ -53,6 +60,7 @@ public class ToolRegistry {
                "referenceVersionIds":{"type":"array","maxItems":8,"uniqueItems":true,
                  "items":{"type":"string","format":"uuid"}}}}
             """;
+    /** 一次最多提出六个有序镜头，每个镜头显式关联角色和场景版本。 */
     private static final String CREATE_SHOTS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["shots"],
              "properties":{"shots":{"type":"array","minItems":1,"maxItems":6,
@@ -69,6 +77,7 @@ public class ToolRegistry {
                      "items":{"type":"string","format":"uuid"}},
                    "sceneVersionId":{"type":"string","format":"uuid"}}}}}}
             """;
+    /** 媒体 DAG 提案 Schema；只表达待审批步骤，不包含批准字段。 */
     private static final String PROPOSE_GENERATION_PLAN_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["stage","objective","steps"],
@@ -89,6 +98,7 @@ public class ToolRegistry {
                      "dependsOnStepKeys":{"type":"array","maxItems":6,"uniqueItems":true,
                        "items":{"type":"string"}}}}}}}
             """;
+    /** 版本追加要求 expectedVersion 和完整内容，禁止局部补丁或服务端字段。 */
     private static final String REVISE_ARTIFACT_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["artifactId","expectedVersion","content"],
@@ -97,6 +107,7 @@ public class ToolRegistry {
                "title":{"type":"string","minLength":1,"maxLength":160},
                "content":{"type":"object"}}}
             """;
+    /** 仅允许把当前 Run 可见产物放入服务端指定的 Agent 输出组。 */
     private static final String PLACE_ARTIFACTS_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["versionIds","group"],
@@ -104,6 +115,7 @@ public class ToolRegistry {
                "uniqueItems":true,"items":{"type":"string","format":"uuid"}},
                "group":{"type":"string","const":"AGENT_OUTPUT"}}}
             """;
+    /** 布局命令须提供画布项、内容版本和布局 CAS 版本。 */
     private static final String ARRANGE_ITEMS_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["items","layout"],
@@ -116,6 +128,7 @@ public class ToolRegistry {
                      "versionId":{"type":"string","format":"uuid"},
                      "expectedVersion":{"type":"integer","minimum":0}}}}}}
             """;
+    /** 语义连线关系白名单；连线只表示内容引用，不触发执行。 */
     private static final String LINK_ARTIFACTS_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["sourceArtifactId","expectedVersion","targetVersionId","relationship"],
@@ -125,6 +138,7 @@ public class ToolRegistry {
                "relationship":{"type":"string","enum":["CHARACTER_REFERENCE_IMAGE",
                  "SCENE_REFERENCE_IMAGE","SHOT_CHARACTER","SHOT_SCENE"]}}}
             """;
+    /** 无声导出顺序提案；是否启动 FFmpeg 仍由独立人工审批接口决定。 */
     private static final String PROPOSE_EXPORT_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["aspectRatio","segments"],
@@ -142,7 +156,7 @@ public class ToolRegistry {
                      "endMs":{"type":"integer","minimum":1,"maximum":60000}}}}}}
             """;
 
-    /** Returns only capabilities the current application executor actually implements. */
+    /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */
     public List<ToolCallback> modelDefinitions() {
         return List.of(
                 definition("read_project_summary",
@@ -197,25 +211,32 @@ public class ToolRegistry {
                         PROPOSE_EXPORT_SCHEMA));
     }
 
-    /** Scoped redo cannot create unrelated scene, shot, character or text artifacts. */
+    /** 局部重做只公开媒体计划提案，不能创建无关角色、场景、镜头或文本产物。 */
     public List<ToolCallback> modelDefinitions(boolean scopedRedo) {
         return scopedRedo ? List.of(definition("propose_generation_plan",
                 "Propose one target-shot media plan for separate authenticated approval",
                 PROPOSE_GENERATION_PLAN_SCHEMA)) : modelDefinitions();
     }
 
+    /** 组装模型可见定义；此回调只供序列化 Schema，不能直接执行业务调用。 */
     private ToolCallback definition(String name, String description, String schema) {
         return new DefinitionOnlyCallback(ToolDefinition.builder().name(name)
                 .description(description).inputSchema(schema).build());
     }
 
-    /** Spring AI must not be permitted to execute model-supplied calls automatically. */
+    /**
+     * 防止 Spring AI 自动运行模型工具调用；Runtime 必须先保存响应并逐项通过业务执行器。
+     *
+     * @param definition 暴露给模型、但不绑定副作用执行逻辑的工具定义
+     */
     private record DefinitionOnlyCallback(ToolDefinition definition) implements ToolCallback {
+        /** 返回传给模型的工具 Schema。 */
         @Override
         public ToolDefinition getToolDefinition() {
             return definition;
         }
 
+        /** 自动调用路径始终失败，杜绝绕过权限、审批和幂等账本。 */
         @Override
         public String call(String toolInput) {
             throw new IllegalStateException("Tool callbacks require the durable business executor");

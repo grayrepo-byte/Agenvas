@@ -26,21 +26,39 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Coordinates owner checks, immutable revisions, typed references, and current selection. */
+/** 校验产物权限、正文引用和媒体资产，并协调不可变版本与当前版本选择。 */
 @Service
 public class ArtifactService {
 
+    /** 当前写入的产物正文 Schema 版本。 */
     private static final int SCHEMA_VERSION = 1;
+    /** 手工创建产物的幂等命令保留时长。 */
     private static final Duration CREATE_KEY_RETENTION = Duration.ofHours(24);
 
+    /** 确认项目归属、活跃状态和资源可见性。 */
     private final ProjectService projects;
+    /** 保存稳定产物身份、版本和当前选择。 */
     private final ArtifactRepository artifacts;
+    /** 按产物类型校验正文并提取版本引用。 */
     private final ArtifactContentValidator contentValidator;
+    /** 确认媒体正文引用的是当前项目内已就绪文件。 */
     private final AssetService assets;
+    /** 将产物及版本变化与项目事件同事务提交。 */
     private final ProjectEventService events;
+    /** 构造不可变正文副本和安全事件负载。 */
     private final ObjectMapper objectMapper;
+    /** 生成版本创建及幂等过期时间。 */
     private final Clock clock;
 
+    /** 组装产物校验、媒体引用鉴权、不可变版本写入与事件事务。
+     * @param projects 校验所有者和项目状态
+     * @param artifacts 读取并创建产物及内容版本
+     * @param contentValidator 验证内容结构与媒体引用
+     * @param assets 校验素材归属并读取已归档媒体
+     * @param events 与产物变更同事务追加事件
+     * @param objectMapper 规范化内容并生成事件负载
+     * @param clock 提供幂等过期时间和版本创建时间
+     */
     public ArtifactService(
             ProjectService projects,
             ArtifactRepository artifacts,
@@ -58,7 +76,16 @@ public class ArtifactService {
         this.clock = clock;
     }
 
-    /** Creates a stable identity and its first immutable user-authored version atomically. */
+    /**
+     * 原子创建产物身份和首个用户版本；正文 Schema、引用版本及媒体文件均需通过校验。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId 产物所属项目
+     * @param kind 正文必须符合的产物类型
+     * @param requestedTitle 展示标题，去除首尾空白后限 160 字符
+     * @param content 首个用户版本的完整 JSON 正文
+     * @return 新产物和其当前首个版本
+     */
     @Transactional
     public ArtifactView create(
             UUID ownerId,
@@ -75,7 +102,18 @@ public class ArtifactService {
                 .value();
     }
 
-    /** Atomically creates or replays one manual Artifact without repeating its first version. */
+    /**
+     * 使用项目内幂等键创建手工产物；同键同载荷返回原响应快照，同键异载荷返回冲突。
+     * 重放时仍重新鉴权原产物，不会再次追加首个版本。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId 产物所属项目
+     * @param kind 产物类型
+     * @param requestedTitle 用户提交的标题
+     * @param content 用户提交的完整正文
+     * @param requestedKey 客户端 Idempotency-Key，限 1 至 200 字符
+     * @return 原创建结果，并标明是否重放
+     */
     @Transactional
     public CreateResult createIdempotent(UUID ownerId, UUID projectId,
             Artifact.Kind kind, String requestedTitle, JsonNode content,
@@ -105,7 +143,7 @@ public class ArtifactService {
                     || existing.responseJson() == null) {
                 throw createInProgress();
             }
-            // Re-authorize the nested resource, but return the original response snapshot.
+            // 重放仍重新鉴权嵌套资源，但返回首次提交时的响应快照。
             get(ownerId, projectId, existing.artifactId());
             return new CreateResult(objectMapper.readValue(existing.responseJson(),
                     ArtifactView.class), true);
@@ -122,11 +160,13 @@ public class ArtifactService {
         }).value();
     }
 
+    /** 同一创建键已预留但尚未完成时返回可重试冲突。 */
     private ApiProblemException createInProgress() {
         return new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_IN_PROGRESS",
                 "相同请求正在处理", "请稍后使用相同 Idempotency-Key 重试。", true);
     }
 
+    /** 对类型、规范化标题及正文文本计算幂等请求摘要。 */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -136,7 +176,7 @@ public class ArtifactService {
         }
     }
 
-    /** Creates an Agent-authored artifact through the same validation and event transaction. */
+    /** Agent 通过已鉴权 Run 创建新产物；复用用户创建路径的正文、引用和媒体校验。 */
     @Transactional
     public ArtifactView createFromAgent(UUID ownerId, UUID projectId, UUID runId,
             Artifact.Kind kind, String requestedTitle, JsonNode content) {
@@ -148,7 +188,7 @@ public class ArtifactService {
         }).value();
     }
 
-    /** Materializes a Task output inside its caller's locked project-change transaction. */
+    /** 在调用方已持有项目事件锁的事务内物化任务输出，禁止脱离对应任务状态提交。 */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public ArtifactView createFromTaskWithinChange(UUID ownerId, UUID projectId, UUID runId,
             Artifact.Kind kind, String requestedTitle, JsonNode content) {
@@ -156,6 +196,7 @@ public class ArtifactService {
                 ArtifactVersion.CreatedByKind.TASK, runId, true);
     }
 
+    /** 统一创建边界；任务晚到结果可归档到已归档项目，其他来源只允许活动项目。 */
     private ArtifactView createLocked(
             UUID ownerId,
             UUID projectId,
@@ -166,7 +207,7 @@ public class ArtifactService {
             UUID runId,
             boolean taskOutput) {
         if (taskOutput) {
-            // Accepted external work must remain archival even if the user archived the project.
+            // 已受理外部请求的晚到结果仍需归档，即使用户期间归档了项目。
             projects.get(ownerId, projectId);
         } else {
             projects.requireActiveProject(ownerId, projectId);
@@ -208,7 +249,7 @@ public class ArtifactService {
                 requireArtifact(ownerId, projectId, artifactId), version);
     }
 
-    /** Returns an artifact and its currently selected immutable revision. */
+    /** 读取稳定产物身份及其当前选用的不可变版本。 */
     @Transactional(readOnly = true)
     public ArtifactView get(UUID ownerId, UUID projectId, UUID artifactId) {
         projects.get(ownerId, projectId);
@@ -219,7 +260,17 @@ public class ArtifactService {
         return new ArtifactView(artifact, current);
     }
 
-    /** Appends a complete revision and atomically selects it when the caller version matches. */
+    /**
+     * 追加完整的新版本，并以产物 CAS 版本原子切换当前选择；旧版本永不覆盖。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId 产物所属项目
+     * @param artifactId 要追加版本的稳定产物 ID
+     * @param expectedArtifactVersion 调用方读取到的产物版本，防止覆盖并发编辑
+     * @param requestedTitle 新标题；仅为 null 时保留当前标题，空白文本会校验失败
+     * @param content 新版本的完整正文
+     * @return 已追加并选中的新版本
+     */
     @Transactional
     public ArtifactView revise(
             UUID ownerId,
@@ -242,7 +293,7 @@ public class ArtifactService {
                 .value();
     }
 
-    /** Revises only a Run-visible creative artifact; the model cannot select another project. */
+    /** Agent 只能改写本 Run 显式绑定或本轮创建的产物，引用版本也须处于可见范围。 */
     @Transactional
     public ArtifactView reviseFromAgent(UUID ownerId, UUID projectId, UUID runId,
             JsonNode contextSnapshot, UUID artifactId, long expectedArtifactVersion,
@@ -256,6 +307,7 @@ public class ArtifactService {
         }).value();
     }
 
+    /** 追加版本前核对 Run 可见范围、人工媒体选择和预期产物版本。 */
     private ArtifactView reviseLocked(
             UUID ownerId,
             UUID projectId,
@@ -351,7 +403,7 @@ public class ArtifactService {
                 requireArtifact(ownerId, projectId, artifactId), revision);
     }
 
-    /** Lists all immutable versions after checking the nested resource owner boundary. */
+    /** 先核验产物所属项目，再列出该产物所有不可变历史版本。 */
     @Transactional(readOnly = true)
     public List<ArtifactVersion> listVersions(
             UUID ownerId, UUID projectId, UUID artifactId) {
@@ -360,7 +412,7 @@ public class ArtifactService {
         return artifacts.listVersions(projectId, artifactId);
     }
 
-    /** Owner-scoped bulk reads for the redacted project manifest transaction. */
+    /** 为项目导出清单读取已鉴权项目的产物和版本；导出层仍须显式筛选正文。 */
     @Transactional(readOnly = true)
     public ProjectExportVersions listProjectExport(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
@@ -369,11 +421,16 @@ public class ArtifactService {
                 artifacts.listProjectVersions(projectId));
     }
 
-    /** Stable identities and immutable versions; callers must explicitly whitelist content. */
+    /**
+     * 项目导出所需的稳定身份与不可变版本集合；调用方必须按白名单选择内容。
+     *
+     * @param artifacts 项目内已鉴权的稳定产物身份
+     * @param versions 对应的不可变版本正文及输入引用
+     */
     public record ProjectExportVersions(List<Artifact> artifacts,
             List<ArtifactVersion> versions) {}
 
-    /** Resolves an exact owner-scoped historical version for binding and task snapshots. */
+    /** 解析所有者可访问的精确历史版本，供 Agent 绑定和任务输入快照使用。 */
     @Transactional(readOnly = true)
     public ArtifactVersion requireVersion(
             UUID ownerId, UUID projectId, UUID artifactId, UUID versionId) {
@@ -383,7 +440,7 @@ public class ArtifactService {
                 .orElseThrow(this::notFound);
     }
 
-    /** Resolves only an already pinned, same-project image version for a trusted media Task. */
+    /** 只解析同项目图片版本，供可信媒体任务读取已固定的参考图。 */
     @Transactional(readOnly = true)
     public ArtifactVersion requireImageVersionForTask(UUID ownerId, UUID projectId,
             UUID versionId) {
@@ -395,7 +452,7 @@ public class ArtifactService {
                 .orElseThrow(this::notFound);
     }
 
-    /** Limits Agent references to pinned explicit inputs or output versions from this Run. */
+    /** 限制 Agent 只能读取创建 Run 时显式绑定的版本或本轮自身产出的版本。 */
     @Transactional(readOnly = true)
     public ArtifactVersion requireAgentVisibleVersion(UUID ownerId, UUID projectId,
             UUID runId, UUID versionId, JsonNode contextSnapshot) {
@@ -425,7 +482,7 @@ public class ArtifactService {
         return version;
     }
 
-    /** Selects an existing historical version with optimistic concurrency and replay safety. */
+    /** 选择已有历史版本；按预期产物版本保护并发修改，重复选择保持幂等。 */
     @Transactional
     public ArtifactView selectVersion(
             UUID ownerId,
@@ -448,9 +505,8 @@ public class ArtifactService {
     }
 
     /**
-     * Appends one Task-owned immutable version while the caller holds the project event lock.
-     * Selection is conditional on both the pinned current-version ID and Artifact CAS version;
-     * a canceled Run or intervening edit leaves the new version in history only.
+     * 在调用方项目事件事务中追加任务产物版本。只有任务固定的当前版本 ID 和 CAS 版本都未变化，
+     * 且调用方允许选用时才切换当前版本；取消后的结果或用户编辑后的旧输入只保留在历史。
      */
     public TaskVersionResult appendTaskVersionWithinChange(UUID ownerId, UUID projectId,
             UUID artifactId, UUID runId, UUID expectedCurrentVersionId,
@@ -476,7 +532,7 @@ public class ArtifactService {
         return new TaskVersionResult(revision.id(), selected);
     }
 
-    /** Pins the approved keyframe and completed video on a still-current shot as one new version. */
+    /** 将批准的关键帧和已完成视频写入仍为预期版本的镜头，形成一个新的镜头版本。 */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public ArtifactView selectTaskVideoOnShotWithinChange(UUID ownerId, UUID projectId,
             UUID runId, UUID shotId, UUID expectedShotVersionId,
@@ -500,9 +556,15 @@ public class ArtifactService {
         }).value();
     }
 
-    /** Outcome of a generated immutable revision and its conditional current selection. */
+    /**
+     * 任务版本归档结果及其是否通过并发前提成为当前选用版本。
+     *
+     * @param versionId 新追加的不可变版本 ID
+     * @param selected 是否已将该版本设为产物当前选用版本
+     */
     public record TaskVersionResult(UUID versionId, boolean selected) {}
 
+    /** 调用方持有项目事件锁时执行的版本选择；接受同一版本的安全幂等重放。 */
     private ArtifactView selectVersionLocked(
             UUID ownerId,
             UUID projectId,
@@ -538,6 +600,7 @@ public class ArtifactService {
                 requireArtifact(ownerId, projectId, artifactId), target);
     }
 
+    /** 事件仅携带产物 ID、当前版本 ID 和类型，不含正文或媒体地址。 */
     private ProjectEventService.EventDraft artifactEvent(String type, ArtifactView view) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("artifactId", view.artifact().id().toString());
@@ -547,6 +610,7 @@ public class ArtifactService {
                 type, 1, view.artifact().id(), view.artifact().version(), payload);
     }
 
+    /** 批量核对正文引用版本存在于同一项目且其产物类型符合 Schema 声明。 */
     private void validateReferences(
             UUID projectId, List<ArtifactVersion.InputReference> references) {
         Set<UUID> ids = new LinkedHashSet<>();
@@ -566,7 +630,7 @@ public class ArtifactService {
         }
     }
 
-    /** Schema checks shape; this check binds media identity to real, private project bytes. */
+    /** Schema 只校验字段形状；此处还要把媒体身份绑定到项目内真实且已就绪的私有文件。 */
     private void validateMediaAsset(UUID ownerId, UUID projectId, Artifact.Kind kind,
             JsonNode content) {
         if (kind == Artifact.Kind.IMAGE || kind == Artifact.Kind.VIDEO) {
@@ -577,7 +641,7 @@ public class ArtifactService {
         }
     }
 
-    /** User-upload provenance cannot be asserted by a model or generation Task. */
+    /** 禁止 Agent 或生成任务伪造用户上传来源。 */
     private void requireUploadAuthorship(Artifact.Kind kind, JsonNode content,
             ArtifactVersion.CreatedByKind author) {
         if (kind == Artifact.Kind.IMAGE
@@ -589,10 +653,12 @@ public class ArtifactService {
         }
     }
 
+    /** 以所有者和项目范围读取产物，越权与不存在使用相同错误。 */
     private Artifact requireArtifact(UUID ownerId, UUID projectId, UUID artifactId) {
         return artifacts.find(ownerId, projectId, artifactId).orElseThrow(this::notFound);
     }
 
+    /** 归档产物仍可读取历史，但不能追加或选择新版本。 */
     private void requireEditable(Artifact artifact) {
         if (artifact.archivedAt() != null) {
             throw new ApiProblemException(
@@ -604,6 +670,7 @@ public class ArtifactService {
         }
     }
 
+    /** 去除标题首尾空白，并限制为 1 至 160 字符。 */
     private String validateTitle(String title) {
         String normalized = title == null ? "" : title.trim();
         if (normalized.isEmpty() || normalized.length() > 160) {
@@ -617,6 +684,7 @@ public class ArtifactService {
         return normalized;
     }
 
+    /** 将产物、版本不存在与越权统一映射为 404。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
@@ -626,6 +694,7 @@ public class ArtifactService {
                 false);
     }
 
+    /** CAS 失败时拒绝切换当前版本或覆盖较新编辑。 */
     private ApiProblemException versionConflict() {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
@@ -635,9 +704,19 @@ public class ArtifactService {
                 false);
     }
 
-    /** Stable identity paired with the selected immutable content revision. */
+    /**
+     * 稳定产物身份及其当前选用的不可变正文版本。
+     *
+     * @param artifact 产物身份、当前版本指针和项目状态
+     * @param currentVersion 当前指针所对应的完整不可变正文
+     */
     public record ArtifactView(Artifact artifact, ArtifactVersion currentVersion) {}
 
-    /** Manual create outcome; replay uses the original response snapshot. */
+    /**
+     * 手工创建结果；幂等重放使用首次保存的响应快照。
+     *
+     * @param view 首次创建时固定的产物响应
+     * @param replayed 是否从已完成的幂等记录读取
+     */
     public record CreateResult(ArtifactView view, boolean replayed) {}
 }

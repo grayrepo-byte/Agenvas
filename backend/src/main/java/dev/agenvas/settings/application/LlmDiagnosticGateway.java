@@ -2,9 +2,9 @@ package dev.agenvas.settings.application;
 
 import dev.agenvas.llm.application.ChatGateway;
 
-/** Opens only the administrator's selected version for a synthetic capability probe. */
+/** 仅使用管理员选定的配置版本执行合成能力探测。 */
 public interface LlmDiagnosticGateway {
 
-    /** The caller must never pass user-authored prompts or business tools through this probe. */
+    /** 调用方不得将用户编写的提示词或业务工具传入诊断探测。 */
     ChatGateway open(LlmProviderConfig config);
 }

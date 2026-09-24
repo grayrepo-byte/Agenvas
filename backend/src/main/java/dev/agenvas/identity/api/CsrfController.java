@@ -7,12 +7,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Supplies the CSRF token that the SPA must echo on state-changing requests. */
+/** 向前端提供写请求必须回传的 CSRF Token。 */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class CsrfController {
 
-    /** Forces deferred token creation and returns only the header contract needed by the SPA. */
+    /** 触发延迟 Token 创建，并仅返回前端构造请求头所需的信息。 */
     @GetMapping("/csrf")
     public ResponseEntity<CsrfResponse> csrf(CsrfToken token) {
         return ResponseEntity.ok()
@@ -20,6 +20,9 @@ public class CsrfController {
                 .body(new CsrfResponse(token.getHeaderName(), token.getToken()));
     }
 
-    /** CSRF token response for browser clients. */
+    /** 前端提交写请求所需的 CSRF 元数据。
+     * @param headerName 后续请求必须使用的 CSRF 请求头名称
+     * @param token 当前会话的 CSRF token
+     */
     public record CsrfResponse(String headerName, String token) {}
 }

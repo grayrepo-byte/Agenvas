@@ -13,14 +13,18 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL event repository using the project row as the commit-order serialization point. */
+/** PostgreSQL 项目事件仓储；项目行锁串行化序号，提交顺序不依赖全局自增 ID。 */
 @Repository
 public class JdbcProjectEventRepository implements ProjectEventRepository {
 
+    /** 执行项目行锁、序号更新及事件日志 SQL。 */
     private final JdbcClient jdbcClient;
+    /** 将事件 payload JSONB 反序列化为只读 JSON 树。 */
     private final ObjectMapper objectMapper;
+    /** 将数据库事件列映射为不可变领域事件。 */
     private final RowMapper<ProjectEvent> eventMapper;
 
+    /** 初始化复用事件映射器；时间列统一按数据库时区转换为 Instant。 */
     public JdbcProjectEventRepository(JdbcClient jdbcClient, ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
@@ -36,6 +40,7 @@ public class JdbcProjectEventRepository implements ProjectEventRepository {
                 resultSet.getObject("occurred_at", OffsetDateTime.class).toInstant());
     }
 
+    /** 在调用方事务内锁定所有者项目行，并读取该项目当前事件水位。 */
     @Override
     public OptionalLong lockCurrentSequence(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -52,6 +57,7 @@ public class JdbcProjectEventRepository implements ProjectEventRepository {
                 .orElseGet(OptionalLong::empty);
     }
 
+    /** 水位仍等于预期值时递增项目序号，提供提交顺序 CAS。 */
     @Override
     public boolean advanceSequence(
             UUID ownerId, UUID projectId, long expectedSequence, long nextSequence) {
@@ -68,6 +74,7 @@ public class JdbcProjectEventRepository implements ProjectEventRepository {
                 .update() == 1;
     }
 
+    /** 插入与水位递增同事务提交的事件行。 */
     @Override
     public void insert(ProjectEvent event) {
         jdbcClient.sql("""
@@ -91,6 +98,7 @@ public class JdbcProjectEventRepository implements ProjectEventRepository {
                 .update();
     }
 
+    /** 只返回该所有者项目中游标之后的连续有序补发页。 */
     @Override
     public List<ProjectEvent> listAfter(
             UUID ownerId, UUID projectId, long afterSequence, int limit) {
@@ -112,6 +120,7 @@ public class JdbcProjectEventRepository implements ProjectEventRepository {
                 .list();
     }
 
+    /** 同时读取最新水位和最早保留事件序号；项目越权或不存在时返回 null。 */
     @Override
     public CursorBounds cursorBounds(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -130,6 +139,7 @@ public class JdbcProjectEventRepository implements ProjectEventRepository {
                 .orElse(null);
     }
 
+    /** 跨项目按时间清理有界旧事件，不修改项目已分配水位。 */
     @Override
     public int pruneOlderThan(Instant cutoff, int limit) {
         return jdbcClient.sql("""

@@ -24,18 +24,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
-/** REST boundary for creating, revising, reading, and selecting Artifact versions. */
+/** 产物创建、读取、追加不可变版本和选择历史版本的 REST 边界。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/artifacts")
 public class ArtifactController {
 
+    /** 校验项目权限、正文 Schema、版本引用并提交产物操作。 */
     private final ArtifactService artifacts;
 
+    /** 注入产物应用服务；控制器不直接访问产物仓储。
+     * @param artifacts 执行项目授权、版本读取和手工产物创建
+     */
     public ArtifactController(ArtifactService artifacts) {
         this.artifacts = artifacts;
     }
 
-    /** Creates an Artifact and its first immutable version. */
+    /** 使用 Idempotency-Key 创建首个用户版本；同键重放通过响应头标记。 */
     @PostMapping
     public ResponseEntity<ArtifactResponse> create(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -50,7 +54,7 @@ public class ArtifactController {
                 .body(ArtifactResponse.from(result.view()));
     }
 
-    /** Reads an owner-scoped Artifact with its selected version. */
+    /** 读取项目范围内的稳定产物身份和当前选用版本。 */
     @GetMapping("/{artifactId}")
     public ArtifactResponse get(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -60,7 +64,7 @@ public class ArtifactController {
                 artifacts.get(principal.userId(), projectId, artifactId));
     }
 
-    /** Appends and selects a complete immutable revision. */
+    /** 按 expectedVersion 追加完整正文并切换当前版本，不修改既有版本内容。 */
     @PostMapping("/{artifactId}/revisions")
     public ResponseEntity<ArtifactResponse> revise(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -77,7 +81,7 @@ public class ArtifactController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ArtifactResponse.from(view));
     }
 
-    /** Lists immutable history newest first. */
+    /** 列出产物的不可变版本历史，按服务端顺序返回。 */
     @GetMapping("/{artifactId}/versions")
     public ArtifactVersionListResponse listVersions(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -90,7 +94,7 @@ public class ArtifactController {
                 .toList());
     }
 
-    /** Selects a historical revision without altering its content. */
+    /** 按产物预期版本切换到已有历史版本，不产生新正文。 */
     @PostMapping("/{artifactId}/select-version")
     public ArtifactResponse selectVersion(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -105,23 +109,52 @@ public class ArtifactController {
                 request.expectedVersion()));
     }
 
-    /** Request for the first complete content revision. */
+    /**
+     * 创建产物的完整请求正文。
+     *
+     * @param kind 正文所属产物类型
+     * @param title 展示标题，长度不超过 160 字符
+     * @param content 符合该类型 Schema 的首个完整版本正文
+     */
     public record CreateArtifactRequest(
             @NotNull Artifact.Kind kind,
             @NotBlank @Size(max = 160) String title,
             @NotNull JsonNode content) {}
 
-    /** Request for a complete replacement revision. */
+    /**
+     * 整体替换产物正文的请求；旧版本仍保留。
+     *
+     * @param expectedVersion 客户端读取到的产物乐观锁版本
+     * @param title 新标题；null 时保留原标题
+     * @param content 新版本完整正文，不能只提交差异字段
+     */
     public record ReviseArtifactRequest(
             @PositiveOrZero long expectedVersion,
             @Size(min = 1, max = 160) String title,
             @NotNull JsonNode content) {}
 
-    /** Optimistic command selecting an existing historical revision. */
+    /**
+     * 选择已有历史版本的并发控制请求。
+     *
+     * @param versionId 要设为当前版本的历史版本 ID
+     * @param expectedVersion 客户端读取到的产物版本
+     */
     public record SelectArtifactVersionRequest(
             @NotNull UUID versionId, @PositiveOrZero long expectedVersion) {}
 
-    /** Stable Artifact identity plus its currently selected version. */
+    /**
+     * 稳定产物身份和当前选中版本的 API 投影。
+     *
+     * @param id 产物 ID
+     * @param projectId 所属项目 ID
+     * @param kind 产物类型
+     * @param title 当前展示标题
+     * @param currentVersionId 当前选中版本 ID
+     * @param version 产物并发控制版本
+     * @param createdAt 创建时间
+     * @param updatedAt 最近更新时间
+     * @param currentVersion 当前选中版本的完整投影
+     */
     public record ArtifactResponse(
             UUID id,
             UUID projectId,
@@ -133,6 +166,7 @@ public class ArtifactController {
             Instant updatedAt,
             ArtifactVersionResponse currentVersion) {
 
+        /** 将领域产物与当前版本组合为 API 响应。 */
         public static ArtifactResponse from(ArtifactService.ArtifactView view) {
             Artifact artifact = view.artifact();
             return new ArtifactResponse(
@@ -148,7 +182,18 @@ public class ArtifactController {
         }
     }
 
-    /** Immutable version representation with exact typed inputs. */
+    /**
+     * 不可变正文版本及其精确类型化输入引用。
+     *
+     * @param id 版本 ID
+     * @param versionNo 产物内递增的版本序号
+     * @param schemaVersion 正文 Schema 版本
+     * @param content 完整不可变正文
+     * @param inputReferences 正文读取的精确历史版本
+     * @param createdByKind 版本创建来源
+     * @param runId 产生该版本的 Run；用户版本可为空
+     * @param createdAt 创建时间
+     */
     public record ArtifactVersionResponse(
             UUID id,
             int versionNo,
@@ -159,6 +204,7 @@ public class ArtifactController {
             UUID runId,
             Instant createdAt) {
 
+        /** 将内部版本转换为包含语义引用、但不含存储路径的 API 投影。 */
         static ArtifactVersionResponse from(ArtifactVersion version) {
             return new ArtifactVersionResponse(
                     version.id(),
@@ -174,10 +220,18 @@ public class ArtifactController {
         }
     }
 
-    /** Public semantic input reference. */
+    /**
+     * 对外显示的语义输入引用。
+     *
+     * @param versionId 被读取的精确版本 ID
+     * @param role 该引用在正文中的角色
+     * @param order 同角色输入顺序
+     * @param kind 预期的产物类型
+     */
     public record InputReferenceResponse(
             UUID versionId, String role, int order, Artifact.Kind kind) {
 
+        /** 将领域引用映射为 API 类型名。 */
         static InputReferenceResponse from(ArtifactVersion.InputReference reference) {
             return new InputReferenceResponse(
                     reference.versionId(),
@@ -187,6 +241,10 @@ public class ArtifactController {
         }
     }
 
-    /** Immutable version history response. */
+    /**
+     * 不可变版本历史响应。
+     *
+     * @param items 按版本顺序返回的正文版本
+     */
     public record ArtifactVersionListResponse(List<ArtifactVersionResponse> items) {}
 }

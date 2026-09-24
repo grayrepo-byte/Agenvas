@@ -19,17 +19,23 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Rebuilds a bounded repair prompt from the durable failed model round. */
+/** 从持久化失败回合重建有界修复提示，只加入服务端校验错误而不执行残留工具调用。 */
 @Service
 public class RepairModelContextService {
 
+    /** 回放模型拒绝响应中的工具调用前允许读取的最大 JSON 字节数。 */
     private static final int MAX_REPLAY_BYTES = 64 * 1024;
 
+    /** 确认修复任务所属 Run 对当前用户可见。 */
     private final AgentRunRepository runs;
+    /** 读取已持久化的原始模型请求和失败响应。 */
     private final LlmTurnRepository turns;
+    /** 将模型回合 JSON 还原为 Spring AI 消息。 */
     private final LlmProtocolCodec codec;
+    /** 构造模拟拒绝结果，不调用任何业务工具。 */
     private final ObjectMapper mapper;
 
+    /** 注入 Run 鉴权、模型回合账本与协议编解码能力。 */
     public RepairModelContextService(AgentRunRepository runs, LlmTurnRepository turns,
             LlmProtocolCodec codec, ObjectMapper mapper) {
         this.runs = runs;
@@ -38,7 +44,7 @@ public class RepairModelContextService {
         this.mapper = mapper;
     }
 
-    /** Uses only recorded model input and a server-authored validation error, not partial tool data. */
+    /** 只使用记录的请求和服务端生成的校验错误，不把部分工具结果当作成功业务数据。 */
     @Transactional(readOnly = true)
     public List<Message> assemble(UUID ownerId, Task repairTask) {
         runs.find(ownerId, repairTask.projectId(), repairTask.runId())
@@ -68,7 +74,7 @@ public class RepairModelContextService {
         return List.copyOf(messages);
     }
 
-    /** Replays safe, bounded call IDs with synthetic failures; no business tool is invoked. */
+    /** 对安全且有界的调用 ID 回放合成拒绝结果；不会再次调用任何业务工具。 */
     private void appendRejectedCalls(List<Message> messages, JsonNode response,
             String code, String detail) {
         AssistantMessage assistant;

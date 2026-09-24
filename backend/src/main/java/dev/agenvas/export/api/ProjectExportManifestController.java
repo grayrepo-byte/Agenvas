@@ -12,18 +12,26 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Authenticated JSON download; media bytes remain behind their own protected endpoints. */
+/** 项目 JSON 导出清单下载入口；媒体字节仍须通过各自的鉴权接口读取。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/export-manifest")
 public class ProjectExportManifestController {
 
+    /** 在一致性快照内构造脱敏的项目清单。 */
     private final ProjectExportManifestService manifests;
 
+    /** 注入清单构建服务。
+     * @param manifests 执行项目授权并构造导出快照的服务
+     */
     public ProjectExportManifestController(ProjectExportManifestService manifests) {
         this.manifests = manifests;
     }
 
-    /** Serves a redacted MVCC manifest with no signed links or raw configuration. */
+    /** 下载脱敏的一致性项目清单，不包含签名媒体链接或原始配置。
+     * @param principal 当前认证用户
+     * @param projectId 要导出的项目
+     * @return JSON 附件响应
+     */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ProjectExportManifestService.Manifest> get(
             @AuthenticationPrincipal AdminPrincipal principal,

@@ -13,27 +13,33 @@ import java.util.concurrent.CancellationException;
 import java.util.function.BooleanSupplier;
 import org.springframework.stereotype.Component;
 
-/** Executes only server-built argument arrays with bounded time and discarded diagnostics. */
+/** 只执行服务端构造的参数数组，限制运行时间并丢弃可能含敏感信息的进程输出。 */
 @Component
 public class MediaToolRunner {
 
-    /** Distinguishes bad media from an unavailable or interrupted local tool. */
+    /** 区分媒体输入无效与本地工具不可用、超时或中断。 */
     public static final class MediaToolException extends IllegalStateException {
+        /** 非零退出码是否由不可解码或不支持的媒体输入造成。 */
         private final boolean invalidInput;
 
+        /** 保存不含原始进程输出的稳定错误信息和媒体输入分类。 */
         public MediaToolException(String message, boolean invalidInput, Throwable cause) {
             super(message, cause);
             this.invalidInput = invalidInput;
         }
 
+        /** 返回是否应将错误映射为媒体输入无效。 */
         public boolean invalidInput() {
             return invalidInput;
         }
     }
 
+    /** 固定 ffmpeg/ffprobe 可执行文件路径与默认超时。 */
     private final MediaToolsProperties properties;
+    /** 常规探测任务的本地工作目录，不从调用参数接收。 */
     private final Path defaultWorkDirectory;
 
+    /** 校验默认临时工作目录存在，并保存固定媒体工具路径配置。 */
     public MediaToolRunner(MediaToolsProperties properties) {
         this.properties = properties;
         defaultWorkDirectory = Path.of(System.getProperty("java.io.tmpdir"))
@@ -43,12 +49,12 @@ public class MediaToolRunner {
         }
     }
 
-    /** Runs a fixed ffmpeg operation without a shell or inherited environment output. */
+    /** 通过固定可执行文件和参数数组运行 FFmpeg，不经过 Shell 或继承环境变量。 */
     public void ffmpeg(List<String> arguments) {
         execute(properties.ffmpeg(), arguments, null, null, properties.timeout(), null, null, true);
     }
 
-    /** Long local exports run inside their private scratch directory and poll cancellation. */
+    /** 在私有 scratch 目录运行长导出，循环检查取消状态并执行租约心跳回调。 */
     public void ffmpegExport(List<String> arguments, Path workDirectory, Duration timeout,
             BooleanSupplier shouldCancel, Runnable onTick) {
         if (timeout == null || timeout.isNegative() || timeout.isZero()
@@ -62,7 +68,7 @@ public class MediaToolRunner {
                 shouldCancel, onTick, false);
     }
 
-    /** Runs ffprobe into a bounded local result file, never accepting a remote URL. */
+    /** 将 ffprobe 输出写入受大小限制的本地临时文件，不接受远端 URL 作为读取目标。 */
     public String ffprobe(List<String> arguments) {
         Path output;
         try {
@@ -88,6 +94,7 @@ public class MediaToolRunner {
         }
     }
 
+    /** 统一启动媒体子进程、清空环境并执行超时、取消及退出码检查。 */
     private void execute(Path executable, List<String> arguments, Path workDirectory, Path output,
             Duration timeout, BooleanSupplier shouldCancel, Runnable onTick,
             boolean nonzeroIsInvalidInput) {
@@ -101,7 +108,7 @@ public class MediaToolRunner {
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .redirectOutput(output == null ? ProcessBuilder.Redirect.DISCARD
                         : ProcessBuilder.Redirect.to(output.toFile()));
-        // Media decoders must not inherit bootstrap, database or provider credentials.
+        // 媒体解码器不得继承初始化凭据、数据库凭据或 Provider 密钥。
         builder.environment().clear();
         builder.environment().put("TMPDIR", selectedDirectory.toString());
         Process process = null;

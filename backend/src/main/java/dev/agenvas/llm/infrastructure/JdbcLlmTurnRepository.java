@@ -12,18 +12,22 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL response ledger with a unique Run/step key and compare-and-set writes. */
+/** PostgreSQL 模型回合账本；Run/步骤唯一，响应仅能从 REQUESTED 条件更新一次。 */
 @Repository
 public class JdbcLlmTurnRepository implements LlmTurnRepository {
 
+    /** 执行模型请求与响应检查点 SQL。 */
     private final JdbcClient jdbc;
+    /** 将完整模型请求和响应 JSON 还原为持久化回合数据。 */
     private final ObjectMapper mapper;
 
+    /** 注入模型回合账本 SQL 执行器与 JSON 映射器。 */
     public JdbcLlmTurnRepository(JdbcClient jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
     }
 
+    /** 在模型网络调用前创建 REQUESTED 检查点；每个 Run 步骤最多一条记录。 */
     @Override
     public boolean insertRequested(UUID projectId, UUID runId, int stepIndex,
             int modelConfigVersion, JsonNode request, Instant now) {
@@ -43,6 +47,7 @@ public class JdbcLlmTurnRepository implements LlmTurnRepository {
                 .update() == 1;
     }
 
+    /** 读取完整保存的请求、响应及模型配置版本。 */
     @Override
     public Optional<LlmTurn> find(UUID projectId, UUID runId, int stepIndex) {
         return jdbc.sql("""
@@ -70,6 +75,7 @@ public class JdbcLlmTurnRepository implements LlmTurnRepository {
                 .optional();
     }
 
+    /** 仅在响应为空且状态仍为 REQUESTED 时保存完整模型响应。 */
     @Override
     public boolean saveResponse(UUID projectId, UUID runId, int stepIndex,
             JsonNode response, Instant now) {
@@ -88,6 +94,7 @@ public class JdbcLlmTurnRepository implements LlmTurnRepository {
                 .update() == 1;
     }
 
+    /** 将 Instant 转为数据库 JDBC 参数要求的 UTC 偏移时间。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

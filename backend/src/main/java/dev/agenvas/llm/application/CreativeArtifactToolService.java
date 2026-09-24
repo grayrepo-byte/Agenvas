@@ -20,24 +20,32 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Bounded creative commands shared by the durable tool executor and Artifact validation. */
+/** 实现受限的创作工具：校验 Run 可见范围后调用产物与画布应用服务。 */
 @Service
 public class CreativeArtifactToolService {
 
+    /** 角色正文允许字段；引用仅保存已校验的图片版本 ID。 */
     private static final Set<String> CHARACTER_FIELDS = Set.of(
             "name", "description", "appearance", "referenceVersionIds");
+    /** 场景正文允许字段；不接受模型提供资产路径或 Provider 配置。 */
     private static final Set<String> SCENE_FIELDS = Set.of(
             "name", "location", "timeOfDay", "lighting", "style", "referenceVersionIds");
+    /** 镜头正文允许字段；素材关系必须指向可见的角色和场景版本。 */
     private static final Set<String> SHOT_FIELDS = Set.of(
             "title", "order", "durationMs", "description", "camera", "action",
             "characterVersionIds", "sceneVersionId");
+    /** Agent 修订请求允许字段，预期版本用于保护并发编辑。 */
     private static final Set<String> REVISE_FIELDS = Set.of(
             "artifactId", "expectedVersion", "title", "content");
 
+    /** 创建产物及验证 Agent 引用版本范围。 */
     private final ArtifactService artifacts;
+    /** 在业务画布中创建或排列 Agent 输出卡片。 */
     private final CanvasService canvas;
+    /** 解析工具参数并组装统一结果结构。 */
     private final ObjectMapper mapper;
 
+    /** 连接产物领域校验、画布投影和工具 JSON 编解码。 */
     public CreativeArtifactToolService(ArtifactService artifacts, CanvasService canvas,
             ObjectMapper mapper) {
         this.artifacts = artifacts;
@@ -45,7 +53,7 @@ public class CreativeArtifactToolService {
         this.mapper = mapper;
     }
 
-    /** Creates a typed character description with only Run-visible image references. */
+    /** 创建角色说明，仅允许引用本 Run 可见的图片版本。 */
     public JsonNode createCharacter(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -58,7 +66,7 @@ public class CreativeArtifactToolService {
                 "已创建角色说明");
     }
 
-    /** Creates a typed scene description with only Run-visible image references. */
+    /** 创建场景说明，仅允许引用本 Run 可见的图片版本。 */
     public JsonNode createScene(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -73,7 +81,7 @@ public class CreativeArtifactToolService {
                 "已创建场景说明");
     }
 
-    /** Creates one to six ordered shots; the caller transaction rolls back the whole batch. */
+    /** 批量创建一至六个有序镜头；任一镜头失败时由调用事务回滚整批操作。 */
     public JsonNode createShots(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -118,7 +126,7 @@ public class CreativeArtifactToolService {
         return result(operationId, created, "已创建有序镜头");
     }
 
-    /** Applies a complete, CAS-protected creative revision with server-checked Run scope. */
+    /** 按预期版本完整修订产物，并由服务端确认目标处于当前 Run 的授权范围。 */
     public JsonNode reviseArtifact(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -152,6 +160,7 @@ public class CreativeArtifactToolService {
         return result;
     }
 
+    /** 创建单个产物、放入该 Agent 的持久化输出分组并组装标准工具结果。 */
     private JsonNode createOne(TrustedToolContext context, AgentRun run, UUID operationId,
             Artifact.Kind kind, String title, ObjectNode content, String summary) {
         ArtifactService.ArtifactView created = artifacts.createFromAgent(context.ownerId(),
@@ -160,7 +169,7 @@ public class CreativeArtifactToolService {
         return result(operationId, List.of(created), summary);
     }
 
-    /** Places newly created outputs in the Agent's persisted output group, not a UI-only draft. */
+    /** 将新产物写入 Agent 持久化输出分组，使其成为业务画布项。 */
     public void placeOutputs(TrustedToolContext context, AgentRun run,
             List<ArtifactService.ArtifactView> created) {
         JsonNode group = run.contextSnapshot().path("outputGroupId");
@@ -179,7 +188,7 @@ public class CreativeArtifactToolService {
         canvas.apply(context.ownerId(), context.projectId(), commands);
     }
 
-    /** Places only current Run-visible versions in the server-owned Agent output group. */
+    /** 仅将本 Run 可见且仍为当前版本的产物放入服务端确定的 Agent 输出分组。 */
     public JsonNode placeArtifacts(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -248,7 +257,7 @@ public class CreativeArtifactToolService {
         return result;
     }
 
-    /** Arranges only Run-visible cards in the Agent output group with per-card layout CAS. */
+    /** 以每张卡片的预期版本更新布局，且只允许排列本 Run 输出分组中的卡片。 */
     public JsonNode arrangeItems(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -370,7 +379,7 @@ public class CreativeArtifactToolService {
         return result;
     }
 
-    /** Links a typed semantic reference by creating an immutable source-content version. */
+    /** 按允许的语义关系更新源产物，并创建不可变的新内容版本。 */
     public JsonNode linkArtifacts(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -468,7 +477,7 @@ public class CreativeArtifactToolService {
         return result;
     }
 
-    /** Rejects relation kinds outside the four content-schema-backed P0 edges. */
+    /** 仅允许内容结构已定义的四种源类型与目标类型组合。 */
     private void requireLinkKinds(Artifact.Kind source, Artifact.Kind expectedSource,
             Artifact.Kind target, Artifact.Kind expectedTarget) {
         if (source != expectedSource || target != expectedTarget) {
@@ -476,9 +485,14 @@ public class CreativeArtifactToolService {
         }
     }
 
-    /** Immutable tool input checked before any canvas mutation. */
+    /** 已校验的单张卡片布局请求，在批量画布更新前保持不可变。
+     * @param itemId 要移动或调整尺寸的画布项
+     * @param versionId 项目产物卡片当前展示的内容版本；Agent 卡片时为空
+     * @param expectedVersion 写入前必须匹配的画布布局版本
+     */
     private record ArrangeRequest(UUID itemId, UUID versionId, long expectedVersion) {}
 
+    /** 统一返回新建产物 ID、内容版本 ID 和 Artifact 乐观版本。 */
     private ObjectNode result(UUID operationId, List<ArtifactService.ArtifactView> created,
             String summary) {
         ObjectNode result = mapper.createObjectNode();
@@ -499,6 +513,7 @@ public class CreativeArtifactToolService {
         return result;
     }
 
+    /** 限制引用数量和重复项，并验证每个版本对当前 Run 可见且类型匹配。 */
     private void verifyReferences(TrustedToolContext context, AgentRun run, JsonNode references,
             int maximum, Artifact.Kind kind) {
         if (!references.isArray() || references.size() > maximum) {
@@ -519,6 +534,7 @@ public class CreativeArtifactToolService {
         }
     }
 
+    /** 解析工具 JSON 对象；语法错误和非对象根节点均转换为稳定参数错误。 */
     private ObjectNode parseObject(String arguments) {
         JsonNode node;
         try {
@@ -532,6 +548,7 @@ public class CreativeArtifactToolService {
         return object;
     }
 
+    /** 拒绝工具契约之外的属性，确保后续逻辑只消费显式校验过的字段。 */
     private void allowOnly(ObjectNode input, Set<String> allowed) {
         for (String field : input.propertyNames()) {
             if (!allowed.contains(field)) {
@@ -540,6 +557,7 @@ public class CreativeArtifactToolService {
         }
     }
 
+    /** 读取非空且不超过指定长度的文本值。 */
     private String requiredText(JsonNode input, String field, int maximum) {
         JsonNode value = input.get(field);
         if (value == null || !value.isTextual() || value.asText().isBlank()
@@ -549,6 +567,7 @@ public class CreativeArtifactToolService {
         return value.asText();
     }
 
+    /** 将 JSON 字符串解析为 UUID，阻止数字或其他节点被宽松强转。 */
     private UUID parseUuid(JsonNode value) {
         if (!value.isTextual()) {
             throw invalid("Reference version ID must be a UUID string");
@@ -560,6 +579,7 @@ public class CreativeArtifactToolService {
         }
     }
 
+    /** 构造创作工具参数或引用校验失败时使用的 400 响应。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                 "工具参数无效", detail, false);

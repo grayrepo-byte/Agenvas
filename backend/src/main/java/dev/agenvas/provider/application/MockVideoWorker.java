@@ -23,21 +23,31 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Produces an unmistakable demo MP4 from the approved exact archived keyframe version. */
+/** 从审批固定的归档关键帧生成明确标为演示素材的 MP4，不调用真实视频模型。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "mock", matchIfMissing = true)
 public class MockVideoWorker {
 
+    /** 负责有限批次认领、租约续期和带 fencing 的任务终态更新。 */
     private final TaskWorker worker;
+    /** 查询任务所有者并校验已固定的生成输入。 */
     private final TaskService tasks;
+    /** 读取审批指定的镜头和关键帧历史版本。 */
     private final ArtifactService artifacts;
+    /** 读取关键帧资产并幂等归档输出视频。 */
     private final AssetService assets;
+    /** 通过受控 FFmpeg 参数合成演示视频。 */
     private final MediaToolRunner mediaTools;
+    /** 产生本地演示结果，不依赖外部媒体 Provider。 */
     private final GenerationGateway gateway;
+    /** 选择应用内置或部署提供的演示图片素材。 */
     private final MockProviderProperties fixture;
+    /** 将当前 Provider 配置版本写入结果并校验任务输入。 */
     private final PlanProviderProperties provider;
+    /** 构造生成结果中的 JSON 内容。 */
     private final ObjectMapper mapper;
 
+    /** 组装演示视频 Worker 的任务、素材和固定媒体工具依赖。 */
     public MockVideoWorker(TaskService tasks, ArtifactService artifacts, AssetService assets,
             MediaToolRunner mediaTools, GenerationGateway gateway,
             MockProviderProperties fixture, PlanProviderProperties provider, ObjectMapper mapper) {
@@ -52,15 +62,17 @@ public class MockVideoWorker {
         this.mapper = mapper;
     }
 
-    /** Claims only video Tasks and never consumes an unapproved image or model turn. */
+    /** 仅认领已批准的视频任务，不处理图片任务或尚未审批的模型回合。 */
     public int runOnce(String workerId) {
         return worker.runVideosOnce(workerId, 1, new TaskWorker.MediaHandler() {
+            /** Provider 配置版本变化时在提交演示生成前阻止旧任务继续。 */
             @Override
             public String preflightFailure(Task task) {
                 return task.input().path("providerConfigVersion").asInt(-1)
                         == provider.configVersion() ? null : "PROVIDER_CONFIG_CHANGED";
             }
 
+            /** 使用持久化请求键执行一次本地演示生成。 */
             @Override
             public TaskWorker.Outcome execute(Task task, UUID requestKey) {
                 return submit(task, requestKey);
@@ -68,7 +80,7 @@ public class MockVideoWorker {
         });
     }
 
-    /** A durable request key precedes every synchronous demo render and fenced success. */
+    /** 在同步演示渲染前已有持久请求键，成功结果再由 Worker fencing 提交。 */
     private TaskWorker.Outcome submit(Task task, UUID requestKey) {
         GenerationResult result = gateway.submit(new GenerationRequest(task.projectId(),
                 requestKey.toString(), fixture.fixture()));
@@ -82,7 +94,7 @@ public class MockVideoWorker {
         };
     }
 
-    /** Reads only the exact validated image version, then archives the actual generated MP4. */
+    /** 仅读取审批指定的图片版本，再归档 FFmpeg 实际生成的 MP4 文件。 */
     private TaskWorker.GeneratedArtifact completed(Task task, GenerationResult result) {
         if (!result.demoOutput()) {
             throw new IllegalStateException("Mock video result lacks the demo marker");

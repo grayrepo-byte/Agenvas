@@ -3,12 +3,13 @@ package dev.agenvas.provider.infrastructure;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
-/** Interprets one exact ComfyUI prompt history without treating absent history as failure. */
+/** 解释指定 ComfyUI prompt 的固定模板输出；尚无历史时保留待查询状态，不误判失败。 */
 public final class ComfyUiHistory {
 
+    /** 纯解析器不允许实例化。 */
     private ComfyUiHistory() {}
 
-    /** The trusted output node is fixed by the installed template, never chosen by a user. */
+    /** 可信输出节点由已安装模板固定，用户不能自行指定。 */
     public static ImageResult image(JsonNode response, UUID promptId, String outputNodeId) {
         if (response == null || !response.isObject() || promptId == null
                 || outputNodeId == null || !outputNodeId.matches("[0-9]{1,8}")) {
@@ -48,7 +49,12 @@ public final class ComfyUiHistory {
         return new Ready(filename);
     }
 
-    /** Native SaveVideo reports one animated MP4 in its historical `images` UI bucket. */
+    /** 解析固定视频输出节点，并校验 SaveVideo 的 MP4 文件名和动画标记。
+     * @param response ComfyUI history 查询响应
+     * @param promptId 已持久化的原始 prompt ID
+     * @param outputNodeId 固定视频模板的输出节点 ID
+     * @return 尚未完成、失败或包含一个安全 MP4 文件名的结果
+     */
     public static VideoResult video(JsonNode response, UUID promptId, String outputNodeId) {
         if (response == null || !response.isObject() || promptId == null
                 || outputNodeId == null || !outputNodeId.matches("[0-9]{1,8}")) {
@@ -90,24 +96,33 @@ public final class ComfyUiHistory {
         return new VideoReady(filename);
     }
 
-    /** The history record may not exist until the original prompt finishes. */
+    /** 原 prompt 完成前，ComfyUI 可能尚未创建对应历史记录。 */
     public sealed interface ImageResult permits Pending, Failed, Ready {}
 
-    /** No completed history yet; query the same prompt id later. */
+    /** 尚无完成历史；稍后继续查询同一个 prompt ID。 */
     public record Pending() implements ImageResult {}
 
-    /** ComfyUI recorded terminal execution failure for this prompt. */
+    /** ComfyUI 已将该 prompt 记录为终态失败。 */
     public record Failed() implements ImageResult {}
 
-    /** One safe output file from the template's expected image node. */
+    /** 图片模板预期输出节点的唯一安全文件。
+     * @param filename ComfyUI 输出目录中的文件名，不含子目录
+     */
     public record Ready(String filename) implements ImageResult {}
 
-    /** Video polling is deliberately distinct from the image-only output parser. */
+    /** 视频轮询使用独立结果类型，避免误用仅识别图片的解析逻辑。 */
     public sealed interface VideoResult permits VideoPending, VideoFailed, VideoReady {}
 
+    /** 原 prompt 尚无已完成视频历史；继续查询同一个 prompt ID。
+     */
     public record VideoPending() implements VideoResult {}
 
+    /** ComfyUI 已将原 prompt 标记为终态执行失败。
+     */
     public record VideoFailed() implements VideoResult {}
 
+    /** 视频模板预期输出节点的唯一安全 MP4。
+     * @param filename ComfyUI 输出目录中的 MP4 文件名
+     */
     public record VideoReady(String filename) implements VideoResult {}
 }

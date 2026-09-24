@@ -14,15 +14,18 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Fixed, opt-in Wan 2.1 I2V candidate; no model-supplied node or file name is accepted. */
+/** 固定且显式启用的 Wan 2.1 图生视频模板；模型不能指定节点、模型文件或输出路径。 */
 @Component
 @ConditionalOnProperty(prefix = "agenvas.provider.comfyui.video", name = "enabled",
         havingValue = "true")
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiVideoWorkflow {
 
+    /** 固定模板中负责保存最终视频的节点编号，历史任务轮询依赖此编号。 */
     public static final String OUTPUT_NODE_ID = "14";
+    /** 随应用打包的工作流定义；不会从模型输出或用户请求加载图。 */
     private static final String RESOURCE = "comfyui/image-to-video-v1.json";
+    /** 允许的节点 ID 与类型白名单，启动时用于拒绝被意外替换的模板。 */
     private static final Map<String, String> TYPES = Map.ofEntries(
             Map.entry("1", "LoadImage"), Map.entry("2", "UNETLoader"),
             Map.entry("3", "CLIPLoader"), Map.entry("4", "VAELoader"),
@@ -32,10 +35,17 @@ public class ComfyUiVideoWorkflow {
             Map.entry("11", "KSampler"), Map.entry("12", "VAEDecode"),
             Map.entry("13", "CreateVideo"), Map.entry("14", "SaveVideo"));
 
+    /** 启动时读取并验证的只读模板，渲染时先深拷贝再写入本次输入。 */
     private final ObjectNode template;
+    /** 固定模板使用的四个服务端配置模型文件名。 */
     private final ComfyUiVideoProperties models;
+    /** 绑定模板字节和模型文件名的版本摘要，审批计划会固定该值。 */
     private final String version;
 
+    /** 加载并验证随应用发布的固定图生视频图；工作流结构不由用户或模型提供。
+     * @param models 服务端配置的模型文件名
+     * @param mapper 解析和复制 JSON 工作流模板
+     */
     public ComfyUiVideoWorkflow(ComfyUiVideoProperties models, ObjectMapper mapper) {
         validateModelName(models.diffusionModel());
         validateModelName(models.textEncoder());
@@ -56,22 +66,22 @@ public class ComfyUiVideoWorkflow {
         version = "image-to-video-v1-" + hash(bytes, models).substring(0, 32);
     }
 
-    /** Approval hashes include the exact graph and four installed model basenames. */
+    /** 审批摘要绑定精确工作流图及四个已配置模型文件名。 */
     public String version() {
         return version;
     }
 
-    /** Historical v1 results retain the same output node even when installed models change. */
+    /** 即使当前模型配置变化，历史 v1 任务仍使用相同的输出节点编号。 */
     public static boolean supportsHistoricalVersion(String version) {
         return version != null && version.matches("image-to-video-v1-[0-9a-f]{32}");
     }
 
-    /** The candidate only supports exact quarter-second lengths from one to five seconds. */
+    /** 此模板只支持一至五秒且以四分之一秒为步长的时长。 */
     public boolean supportsDuration(int durationMs) {
         return durationMs >= 1_000 && durationMs <= 5_000 && durationMs % 250 == 0;
     }
 
-    /** Creates a fresh fixed graph with an uploaded, pinned keyframe on both I2V inputs. */
+    /** 深拷贝固定工作流，并将已上传的固定关键帧写入图生视频的两个图像输入。 */
     public ObjectNode render(String prompt, String negativePrompt, long seed,
             String uploadedImageName, Project.AspectRatio ratio, int durationMs) {
         if (prompt == null || prompt.isBlank() || prompt.length() > 8_000
@@ -98,7 +108,7 @@ public class ComfyUiVideoWorkflow {
         return graph;
     }
 
-    /** Normalization and graph dimensions always use the same fixed aspect mapping. */
+    /** 归一化与工作流图使用同一套固定画幅到尺寸映射。 */
     public Dimensions dimensions(Project.AspectRatio ratio) {
         return switch (ratio) {
             case LANDSCAPE_16_9 -> new Dimensions(832, 480);
@@ -107,8 +117,13 @@ public class ComfyUiVideoWorkflow {
         };
     }
 
+    /** 固定工作流输出尺寸。
+     * @param width 输出宽度，单位为像素
+     * @param height 输出高度，单位为像素
+     */
     public record Dimensions(int width, int height) {}
 
+    /** 启动时校验节点、连线和编码参数，确保模板仍是预期的固定图。 */
     private void verifyFixedGraph() {
         if (template.size() != TYPES.size()) {
             throw new IllegalStateException("I2V graph contains unexpected nodes");
@@ -149,6 +164,7 @@ public class ComfyUiVideoWorkflow {
         }
     }
 
+    /** 校验一个输入必须连到模板中指定来源节点及输出端口。 */
     private void link(String node, String input, String source, int index) {
         JsonNode value = inputs(template, node).path(input);
         if (!value.isArray() || value.size() != 2
@@ -157,6 +173,7 @@ public class ComfyUiVideoWorkflow {
         }
     }
 
+    /** 取得指定节点的 inputs 对象；节点或输入结构缺失时停止启动或渲染。 */
     private ObjectNode inputs(ObjectNode graph, String id) {
         if (!(graph.path(id).path("inputs") instanceof ObjectNode node)) {
             throw new IllegalStateException("I2V inputs missing: " + id);
@@ -164,6 +181,7 @@ public class ComfyUiVideoWorkflow {
         return node;
     }
 
+    /** 仅允许安全的 safetensors 基名，禁止路径分隔符、遍历片段和其他扩展名。 */
     private void validateModelName(String name) {
         if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
                 || name.contains("..") || !name.endsWith(".safetensors")) {
@@ -171,6 +189,7 @@ public class ComfyUiVideoWorkflow {
         }
     }
 
+    /** 将模板原始字节和四个模型名纳入 SHA-256，确保配置变化使计划版本变化。 */
     private String hash(byte[] bytes, ComfyUiVideoProperties names) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

@@ -10,11 +10,14 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Makes a restored installation read-only until an operator reconciles external submissions. */
+/** 运维完成外部提交核对前，将恢复中的安装限制为只读。 */
 @Component
 @ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode", havingValue = "true")
 public class RecoveryModeWriteGuard implements WebMvcConfigurer {
 
+    /** 注册只拦截写方法的恢复模式守卫。
+     * @param registry Spring MVC 拦截器注册表
+     */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new WriteGuard())
@@ -22,8 +25,14 @@ public class RecoveryModeWriteGuard implements WebMvcConfigurer {
                         "/api/v1/settings", "/api/v1/settings/**");
     }
 
-    /** Authentication endpoints remain available; resource mutations stay frozen. */
+    /** 保留认证相关入口，冻结项目资源的写操作。 */
     private static final class WriteGuard implements HandlerInterceptor {
+        /** 恢复模式仅允许状态检查和认证读取，拒绝所有写请求。
+         * @param request 当前 HTTP 请求
+         * @param response 当前 HTTP 响应
+         * @param handler Spring MVC 选定的处理器
+         * @return 非恢复模式或安全读取请求返回 true
+         */
         @Override
         public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                 Object handler) {

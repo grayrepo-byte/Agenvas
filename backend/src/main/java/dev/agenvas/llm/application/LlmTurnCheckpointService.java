@@ -14,17 +14,31 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Commits complete model-round protocol checkpoints independently of network calls. */
+/** 在独立短事务中保存模型请求与完整响应；网络调用不属于这些事务。 */
 @Service
 public class LlmTurnCheckpointService {
 
+    /** 检查 Run 状态及启动时固定的模型配置版本。 */
     private final AgentRunRepository runs;
+    /** 按 Run 和步骤序号存取请求、响应检查点。 */
     private final LlmTurnRepository turns;
+    /** 保证检查点变化与项目事件在同一事务提交。 */
     private final ProjectEventService events;
+    /** 构造只包含 Run ID 和步骤序号的事件负载。 */
     private final ObjectMapper mapper;
+    /** 给请求预留和响应完成提供统一时间。 */
     private final Clock clock;
+    /** 按回合预留并根据实际响应结算模型用量。 */
     private final UsageService usage;
 
+    /** 组装 Run 状态推进、模型回合检查点、事件和用量预留事务。
+     * @param runs 条件推进 Run 的持久化服务
+     * @param turns 创建和读取模型调用检查点
+     * @param events 将回合检查点与项目事件同事务提交
+     * @param mapper 生成检查点事件负载
+     * @param clock 记录调用与用量时间
+     * @param usage 在首次提交模型请求时预留用量
+     */
     public LlmTurnCheckpointService(AgentRunRepository runs, LlmTurnRepository turns,
             ProjectEventService events, ObjectMapper mapper, Clock clock,
             UsageService usage) {
@@ -36,7 +50,19 @@ public class LlmTurnCheckpointService {
         this.usage = usage;
     }
 
-    /** Reserves a Run step before dispatch; exact replays retain the original request. */
+    /**
+     * 模型请求发出前预留步骤和用量。重复进入同一步骤只能使用完全相同的请求与配置版本；
+     * 首次插入才记录请求事件，避免恢复时重复预留用量。
+     *
+     * @param ownerId 服务端认证的项目所有者
+     * @param projectId 本次 Run 的项目
+     * @param runId 必须处于 RUNNING 的 Run
+     * @param stepIndex 本次回合序号，也是检查点幂等键的一部分
+     * @param configVersion Run 启动时固定的模型配置版本
+     * @param configSource Run 启动时固定的模型配置来源
+     * @param request 模型实际可见的版本化请求快照
+     * @return 原有或新创建的请求检查点
+     */
     @Transactional
     public LlmTurn reserve(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             int configVersion, String configSource, JsonNode request) {
@@ -66,7 +92,18 @@ public class LlmTurnCheckpointService {
         }).value();
     }
 
-    /** Saves every generation and tool-call ID before any caller may execute a tool. */
+    /**
+     * 在工具执行前保存所有 generation 及 tool_call_id，结算模型用量并发出回合事件。
+     * 同一响应可重放；若同一步骤已保存不同响应，则拒绝覆盖。
+     *
+     * @param ownerId 服务端认证的项目所有者
+     * @param projectId 检查点所属项目
+     * @param runId 检查点所属 Run
+     * @param stepIndex 已预留请求的回合序号
+     * @param configVersion 发起请求时固定的配置版本，必须与预留记录一致
+     * @param response 模型返回的完整协议响应
+     * @return 已落库的响应检查点
+     */
     @Transactional
     public LlmTurn saveResponse(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             int configVersion, JsonNode response) {
@@ -97,6 +134,7 @@ public class LlmTurnCheckpointService {
         }).value();
     }
 
+    /** 新请求只能附着于仍在运行、且属于该所有者项目的 Run。 */
     private AgentRun requireRunning(UUID ownerId, UUID projectId, UUID runId) {
         AgentRun run = runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> conflict("Run is not accessible"));
@@ -106,6 +144,7 @@ public class LlmTurnCheckpointService {
         return run;
     }
 
+    /** 构造不包含提示词、响应正文或工具参数的模型回合事件。 */
     private ProjectEventService.EventDraft event(String type, AgentRun run, int stepIndex) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("runId", run.id().toString());
@@ -114,6 +153,7 @@ public class LlmTurnCheckpointService {
                 run.version(), payload);
     }
 
+    /** 将步骤、配置或持久化响应冲突映射到同一稳定错误码。 */
     private ApiProblemException conflict(String detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "LLM_TURN_CONFLICT",
                 "模型回合冲突", detail, false);

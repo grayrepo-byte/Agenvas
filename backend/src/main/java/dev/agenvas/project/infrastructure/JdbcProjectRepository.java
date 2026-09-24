@@ -12,10 +12,11 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** PostgreSQL project repository with owner-scoped and parameterized queries. */
+/** PostgreSQL 项目仓储；查询始终校验所有者，更新通过版本或槽位条件防止并发覆盖。 */
 @Repository
 public class JdbcProjectRepository implements ProjectRepository {
 
+    /** 将数据库项目行还原为领域对象，并把所有时间统一读取为 Instant。 */
     private static final RowMapper<Project> PROJECT_MAPPER = (resultSet, rowNumber) -> new Project(
             resultSet.getObject("id", UUID.class),
             resultSet.getObject("owner_id", UUID.class),
@@ -30,12 +31,15 @@ public class JdbcProjectRepository implements ProjectRepository {
                     .map(OffsetDateTime::toInstant)
                     .orElse(null));
 
+    /** 执行项目及活动 Run 槽位的参数化 SQL。 */
     private final JdbcClient jdbcClient;
 
+    /** 注入项目仓储使用的 JDBC 客户端。 */
     public JdbcProjectRepository(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 
+    /** 创建项目基础行；项目 ID、事件序号和初始版本由应用服务提供。 */
     @Override
     public void create(Project project) {
         jdbcClient.sql("""
@@ -59,6 +63,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .update();
     }
 
+    /** 仅按项目 ID 与所有者 ID 读取项目，避免跨用户查询。 */
     @Override
     public Optional<Project> findById(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -73,6 +78,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .optional();
     }
 
+    /** 读取项目快照所需事件水位和活动 Run 指针，使用一次一致的 SQL 视图。 */
     @Override
     public Optional<SnapshotAnchor> findSnapshotAnchor(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -88,6 +94,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .optional();
     }
 
+    /** 锁定项目行并读取活动 Run 槽位，供创建 Run 的事务串行化。 */
     @Override
     public Optional<RunSlot> lockRunSlot(UUID ownerId, UUID projectId) {
         return jdbcClient.sql("""
@@ -104,6 +111,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .optional();
     }
 
+    /** 仅当项目仍活动且槽位为空时占用活动 Run 槽位。 */
     @Override
     public boolean claimRunSlot(
             UUID ownerId, UUID projectId, UUID runId, Instant updatedAt) {
@@ -120,6 +128,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .update() == 1;
     }
 
+    /** 仅由占用该槽位的同一 Run 释放项目活动槽位。 */
     @Override
     public boolean releaseRunSlot(
             UUID ownerId, UUID projectId, UUID runId, Instant updatedAt) {
@@ -136,6 +145,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .update() == 1;
     }
 
+    /** 按创建时间和 ID 稳定倒序游标分页，可按需包含已归档项目。 */
     @Override
     public List<Project> list(
             UUID ownerId,
@@ -167,6 +177,7 @@ public class JdbcProjectRepository implements ProjectRepository {
         return statement.query(PROJECT_MAPPER).list();
     }
 
+    /** 以 expectedVersion 更新活动项目名称和画幅，成功时递增项目版本。 */
     @Override
     public boolean update(
             UUID ownerId,
@@ -193,6 +204,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 .update() == 1;
     }
 
+    /** 仅在所有者、活动状态和预期版本匹配时归档项目并递增版本。 */
     @Override
     public boolean archive(
             UUID ownerId, UUID projectId, long expectedVersion, Instant archivedAt) {

@@ -17,21 +17,26 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Deterministic, openly labeled demo turns through the same durable model/tool protocol. */
+/** 通过与真实模型相同的持久化工具协议返回确定性演示回合，并明确标注结果并非 AI 生成。 */
 public final class MockStoryboardChatGateway implements ChatGateway {
 
+    /** 写入响应元数据的固定演示模型标识。 */
     private static final String MODEL_ID = "mock-storyboard-v1";
+    /** 正常演示流程要求可用的工具白名单。 */
     private static final Set<String> REQUIRED_TOOLS = Set.of("create_text", "create_scene",
             "create_shots", "propose_generation_plan", "propose_export");
+    /** 创建工具参数和解析已保存工具结果。 */
     private final ObjectMapper mapper;
+    /** 固定本演示网关对应的配置版本。 */
     private final int configVersion;
 
+    /** 初始化无外部模型依赖的确定性演示网关。 */
     public MockStoryboardChatGateway(ObjectMapper mapper, int configVersion) {
         this.mapper = mapper;
         this.configVersion = configVersion;
     }
 
-    /** Derives its next turn only from saved messages, so process restarts do not reset it. */
+    /** 仅根据已保存的对话和工具结果决定下一步，进程重启后流程仍可继续。 */
     @Override
     public Exchange call(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext) {
@@ -66,27 +71,31 @@ public final class MockStoryboardChatGateway implements ChatGateway {
                 new ChatResponse(List.of(new Generation(assistant)), metadata));
     }
 
+    /** 演示网关支持工具调用，但不支持视觉输入或 Provider 流式输出。 */
     @Override
     public Capabilities capabilities() {
         return new Capabilities(true, false, false);
     }
 
+    /** 返回创建网关时固定的演示配置版本。 */
     @Override
     public int configVersion() {
         return configVersion;
     }
 
+    /** 标记响应来源为 Mock，避免与真实模型用量混淆。 */
     @Override
     public String configSource() {
         return "mock";
     }
 
+    /** 返回明确标注为非 AI 的模型展示信息。 */
     @Override
     public ModelDetails modelDetails() {
         return new ModelDetails(true, "演示模型（非 AI）", MODEL_ID, true);
     }
 
-    /** The demo never claims to understand bound image pixels or synthesize prose. */
+    /** 不声称理解图片像素或生成原创文字；正文明确展示用户指令和演示标签。 */
     private AssistantMessage briefAndScene(List<Message> messages) {
         String request = messages.stream().map(Message::getText)
                 .filter(value -> value != null && value.startsWith("Current Run request:\n"))
@@ -110,7 +119,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
                 tool("mock-scene-0", "create_scene", scene)));
     }
 
-    /** Exact Scene version comes from the durable tool result, never a guessed UUID. */
+    /** 从已提交的工具结果读取场景的准确版本 ID，不自行猜测资源标识。 */
     private AssistantMessage shots(ToolResponseMessage reply) {
         JsonNode scene = result(reply, "create_scene");
         String sceneId = requiredId(scene.path("createdIds").path(0));
@@ -131,7 +140,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return calls(List.of(tool("mock-shots-1", "create_shots", arguments)));
     }
 
-    /** The image DAG remains a proposal: only the authenticated user may approve it. */
+    /** 图片 DAG 只生成待审提案，只有已鉴权用户能批准并触发任务。 */
     private AssistantMessage imagePlan(ToolResponseMessage reply) {
         JsonNode result = result(reply, "create_shots");
         JsonNode created = result.path("createdIds");
@@ -156,7 +165,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return calls(List.of(tool("mock-image-plan-2", "propose_generation_plan", plan)));
     }
 
-    /** A scoped manual edit needs one new keyframe, never three new unrelated shots. */
+    /** 局部重做仅为指定镜头提出一个关键帧，不重新创建其他镜头。 */
     private AssistantMessage redoImagePlan(RedoScope scope) {
         ObjectNode plan = mapper.createObjectNode();
         plan.put("stage", "IMAGE");
@@ -171,7 +180,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return calls(List.of(tool("mock-redo-image-plan-0", "propose_generation_plan", plan)));
     }
 
-    /** Human-selected exact versions become the only allowed video-plan inputs. */
+    /** 仅把用户选定的精确素材版本作为视频计划输入。 */
     private AssistantMessage afterImageDecision(List<Message> messages, int expectedShots) {
         String decision = messages.getLast().getText();
         if (decision == null || !decision.startsWith("User decision for plan ")) {
@@ -211,7 +220,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return calls(List.of(tool("mock-video-plan-3", "propose_generation_plan", plan)));
     }
 
-    /** A video approval completes only after the archived media results are in the prompt. */
+    /** 只有已归档的视频结果写入后续对话，才报告该演示阶段结束。 */
     private AssistantMessage finishVideo(List<Message> messages, int expectedShots) {
         String decision = messages.getLast().getText();
         if (decision == null || !decision.startsWith("User decision for plan ")) {
@@ -223,7 +232,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return AssistantMessage.builder().content(summary).build();
     }
 
-    /** Mock media results become a reviewable export proposal, never an immediate FFmpeg task. */
+    /** 演示媒体结果只转成可审阅的导出提案，不直接创建 FFmpeg 任务。 */
     private AssistantMessage afterVideoDecision(List<Message> messages, int expectedShots) {
         String decision = messages.getLast().getText();
         if (decision == null || !decision.startsWith("User decision for plan ")) {
@@ -267,7 +276,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return calls(List.of(tool("mock-export-proposal-4", "propose_export", proposal)));
     }
 
-    /** The final message cites the persisted proposal rather than claiming export completed. */
+    /** 最终回复引用已保存的提案，不声称导出已经完成。 */
     private AssistantMessage finishExportProposal(ToolResponseMessage reply) {
         JsonNode proposal = result(reply, "propose_export");
         String proposalId = requiredId(proposal.path("createdIds").path(0));
@@ -276,7 +285,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
                 .build();
     }
 
-    /** The server-supplied scope message is part of the saved first-turn snapshot. */
+    /** 从服务端写入的首轮上下文提取局部重做范围。 */
     private RedoScope redoScope(List<Message> messages) {
         for (Message message : messages) {
             String value = message.getText();
@@ -293,8 +302,13 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         return null;
     }
 
+    /** 已由服务端上下文限定的局部重做目标。
+     * @param artifactId 需要重做关键帧的镜头产物 ID
+     * @param versionId 本次 Run 固定的镜头内容版本 ID
+     */
     private record RedoScope(String artifactId, String versionId) {}
 
+    /** 从指定工具响应中取得已提交成功的 JSON 结果。 */
     private JsonNode result(ToolResponseMessage reply, String name) {
         for (ToolResponseMessage.ToolResponse response : reply.getResponses()) {
             if (name.equals(response.name())) {
@@ -307,6 +321,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         throw new IllegalStateException("Mock storyboard lacks committed result for " + name);
     }
 
+    /** 将工具结果中的文本 ID 规范化为 UUID；拒绝演示链路中的无效标识。 */
     private String requiredId(JsonNode value) {
         String id = value.asText("");
         try {
@@ -316,10 +331,12 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         }
     }
 
+    /** 按 Spring AI 结构构造演示工具调用，不在网关内执行工具。 */
     private AssistantMessage.ToolCall tool(String id, String name, ObjectNode arguments) {
         return new AssistantMessage.ToolCall(id, "function", name, arguments.toString());
     }
 
+    /** 构造仅包含工具调用的助手消息，交由持久化回合执行器处理。 */
     private AssistantMessage calls(List<AssistantMessage.ToolCall> toolCalls) {
         return AssistantMessage.builder().content("").toolCalls(new ArrayList<>(toolCalls)).build();
     }

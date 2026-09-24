@@ -13,17 +13,23 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Coordinates one-time setup and security-sensitive administrator changes. */
+/** 负责首次管理员初始化和敏感账户操作，并在服务端验证部署凭据及并发版本。 */
 @Service
 public class IdentityService {
 
+    /** BCrypt 实际处理的 UTF-8 字节上限，避免长密码被算法静默截断。 */
     private static final int BCRYPT_MAX_BYTES = 72;
 
+    /** 创建账户并锁定初始化流程，防止并发创建多个初始管理员。 */
     private final AdminAccountRepository accounts;
+    /** 对管理员密码进行带盐编码并验证现有密码。 */
     private final PasswordEncoder passwordEncoder;
+    /** 提供部署时注入的一次性初始化凭据。 */
     private final IdentityProperties properties;
+    /** 为账户创建和密码更新提供可注入的时间源。 */
     private final Clock clock;
 
+    /** 注入账户持久化、密码编码和初始化配置依赖。 */
     public IdentityService(
             AdminAccountRepository accounts,
             PasswordEncoder passwordEncoder,
@@ -35,7 +41,7 @@ public class IdentityService {
         this.clock = clock;
     }
 
-    /** Creates the installation's only administrator after verifying the bootstrap secret. */
+    /** 校验部署凭据并串行执行一次性初始化；账户已存在时拒绝再次创建。 */
     @Transactional
     public AdminPrincipal setup(String presentedSecret, String loginName, String password) {
         verifyBootstrapSecret(presentedSecret);
@@ -57,7 +63,7 @@ public class IdentityService {
         return new AdminPrincipal(userId, normalizedLogin);
     }
 
-    /** Changes the authenticated administrator password using optimistic concurrency. */
+    /** 验证当前密码后更新新密码，并以账户版本防止并发覆盖。 */
     @Transactional
     public void changePassword(AdminPrincipal principal, String currentPassword, String newPassword) {
         validatePassword(newPassword);
@@ -97,7 +103,7 @@ public class IdentityService {
         }
     }
 
-    /** Normalizes the case-insensitive P0 login identifier. */
+    /** 去除首尾空白并按 Locale.ROOT 转小写，形成大小写不敏感的登录名。 */
     public static String normalizeLoginName(String loginName) {
         if (loginName == null) {
             return "";
@@ -105,6 +111,7 @@ public class IdentityService {
         return loginName.trim().toLowerCase(Locale.ROOT);
     }
 
+    /** 以常量时间字节比较验证部署凭据，不记录或回显任一凭据内容。 */
     private void verifyBootstrapSecret(String presentedSecret) {
         byte[] expected = properties.bootstrapSecret().getBytes(StandardCharsets.UTF_8);
         byte[] actual = presentedSecret == null
@@ -120,6 +127,7 @@ public class IdentityService {
         }
     }
 
+    /** 限制密码字符长度和 UTF-8 字节数，避免 BCrypt 截断产生等价密码。 */
     private void validatePassword(String password) {
         if (password == null || password.length() < 12 || password.length() > 128) {
             throw validationProblem("密码必须为 12 至 128 个字符。");
@@ -134,12 +142,14 @@ public class IdentityService {
         }
     }
 
+    /** 仅允许规范化后的 ASCII 登录标识及规定长度。 */
     private void validateLoginName(String loginName) {
         if (!loginName.matches("[a-z0-9._-]{3,64}")) {
             throw validationProblem("登录名必须为 3 至 64 位字母、数字、点、下划线或连字符。");
         }
     }
 
+    /** 构造登录名或通用密码规则失败时使用的 400 响应。 */
     private ApiProblemException validationProblem(String detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
@@ -149,6 +159,7 @@ public class IdentityService {
                 false);
     }
 
+    /** 构造初始化已完成时使用的 409 响应。 */
     private ApiProblemException alreadyInitialized() {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,

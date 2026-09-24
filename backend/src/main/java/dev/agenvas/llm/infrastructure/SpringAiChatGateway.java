@@ -11,13 +11,17 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 
-/** Calls Spring AI exactly once per business round without registering its tool-loop advisor. */
+/** 每个业务回合只调用一次 Spring AI，并关闭自动工具循环，由持久化 Runtime 管理工具执行。 */
 public class SpringAiChatGateway implements ChatGateway {
 
+    /** 不注册自动工具执行顾问的聊天客户端。 */
     private final ChatClient client;
+    /** 提供模型能力选项和 Spring AI 请求执行。 */
     private final ChatModel model;
+    /** 本次请求固定使用的 LLM 配置版本。 */
     private final int configVersion;
 
+    /** 创建禁用自动工具循环的客户端，并拒绝无效配置版本。 */
     public SpringAiChatGateway(ChatModel model, int configVersion) {
         if (configVersion < 1) {
             throw new IllegalArgumentException("LLM configVersion must be positive");
@@ -30,6 +34,7 @@ public class SpringAiChatGateway implements ChatGateway {
         this.configVersion = configVersion;
     }
 
+    /** 提交一个有界消息回合并返回模型原始响应，不在此处执行工具调用。 */
     @Override
     public Exchange call(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext) {
@@ -52,22 +57,26 @@ public class SpringAiChatGateway implements ChatGateway {
         return new Exchange(configVersion, response);
     }
 
+    /** 根据 ChatModel 选项报告工具调用能力，视觉和流式能力保持未验证。 */
     @Override
     public Capabilities capabilities() {
         return new Capabilities(model.getOptions() instanceof ToolCallingChatOptions,
                 false, false);
     }
 
+    /** 返回创建网关时固定的配置版本，供 LlmTurn 持久化来源身份。 */
     @Override
     public int configVersion() {
         return configVersion;
     }
 
+    /** 标识响应来自 Spring AI 配置 Provider。 */
     @Override
     public String configSource() {
         return "spring-ai";
     }
 
+    /** 提供管理员诊断使用的模型类名和可用模型 ID，不返回客户端凭证。 */
     @Override
     public ModelDetails modelDetails() {
         String modelId = model.getOptions() == null ? null : model.getOptions().getModel();

@@ -16,17 +16,23 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Recovers accepted fixed-v1 videos independently of whether new video submission is enabled. */
+/** 独立恢复已受理的固定版本视频任务；即使关闭新提交，历史请求仍可查询和归档。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiVideoPoller {
 
+    /** 提供短事务认领、状态轮询租约和 fencing 终态提交。 */
     private final TaskWorker worker;
+    /** 获取已受理来源摘要、任务所有者和持久输入。 */
     private final TaskService tasks;
+    /** 按任务 ID 幂等归档 Provider 返回的视频文件。 */
     private final AssetService assets;
+    /** 只在端点版本和摘要匹配时恢复历史客户端。 */
     private final ComfyUiClientRegistry clientRegistry;
+    /** 构造归档后的视频产物内容。 */
     private final ObjectMapper mapper;
 
+    /** 初始化独立轮询 Worker，不依赖是否装配视频提交组件。 */
     public ComfyUiVideoPoller(TaskService tasks, AssetService assets,
             ComfyUiClientRegistry clientRegistry, ObjectMapper mapper) {
         this.worker = new TaskWorker(tasks);
@@ -36,7 +42,7 @@ public class ComfyUiVideoPoller {
         this.mapper = mapper;
     }
 
-    /** Only queries and downloads from the saved origin and prompt ID; never submits. */
+    /** 只向已保存来源查询原 prompt ID 并下载结果，绝不上传或重新提交生成请求。 */
     public int pollOnce(String workerId) {
         return worker.runComfyVideoPollsOnce(workerId, task -> {
             String savedOrigin = tasks.acceptedProviderOrigin(task).orElse(null);
@@ -68,7 +74,7 @@ public class ComfyUiVideoPoller {
         });
     }
 
-    /** Repeated downloads are reconciled through the task-keyed MP4 archive. */
+    /** 重复查询或下载通过任务键 MP4 归档幂等合并。 */
     private TaskWorker.PollGenerated archive(Task task, UUID promptId, String filename,
             ComfyUiClient original) {
         UUID ownerId = tasks.ownerForWorker(task);

@@ -20,17 +20,31 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Authorizes private asset writes and reads; files are installed before READY metadata. */
+/** 校验项目权限并管理私有媒体归档；文件先安装，数据库只记录已校验的 READY 元数据。 */
 @Service
 public class AssetService {
 
+    /** 对上传和读取执行所有者、项目及归档状态检查。 */
     private final ProjectService projects;
+    /** 保存 READY 素材元数据并按项目查询。 */
     private final AssetRepository assets;
+    /** 验证字节、解码媒体、生成缩略图并安装不可变文件。 */
     private final LocalAssetStorage storage;
+    /** 将素材就绪状态与项目事件一起提交。 */
     private final ProjectEventService events;
+    /** 构造不暴露存储路径的素材事件负载。 */
     private final ObjectMapper mapper;
+    /** 为素材元数据提供统一创建时间。 */
     private final Clock clock;
 
+    /** 组装项目授权、文件存储和数据库事件发布边界。
+     * @param projects 校验项目所有权与活动状态
+     * @param assets 持久化已就绪素材元数据
+     * @param storage 验证并安装媒体文件
+     * @param events 与素材状态同事务写入项目事件
+     * @param mapper 生成不暴露文件路径的事件负载
+     * @param clock 提供可控的素材创建时间
+     */
     public AssetService(ProjectService projects, AssetRepository assets,
             LocalAssetStorage storage, ProjectEventService events, ObjectMapper mapper,
             Clock clock) {
@@ -42,7 +56,7 @@ public class AssetService {
         this.clock = clock;
     }
 
-    /** Stores an image with bounded streaming and real decoder validation. */
+    /** 流式接收用户图片，在字节、像素和解码校验通过并生成缩略图后才写 READY。 */
     public Asset archiveImage(UUID ownerId, UUID projectId, InputStream input) {
         projects.requireActiveProject(ownerId, projectId);
         UUID assetId = UUID.randomUUID();
@@ -50,7 +64,7 @@ public class AssetService {
         return publishImage(ownerId, projectId, assetId, stored, true, false);
     }
 
-    /** One generated task owns one image archive, including across file/DB crash windows. */
+    /** 以任务 ID 派生稳定素材 ID，并在共享卷锁内恢复或完成唯一图片归档。 */
     public Asset archiveTaskImage(UUID ownerId, UUID projectId, UUID taskId,
             Supplier<InputStream> download) {
         projects.get(ownerId, projectId);
@@ -59,7 +73,7 @@ public class AssetService {
                 () -> archiveTaskImageLocked(ownerId, projectId, assetId, download));
     }
 
-    /** This check/download/publish sequence runs under the shared-volume task lock. */
+    /** 锁内先核对已有元数据和文件，再下载、安装或恢复文件并发布 READY。 */
     private Asset archiveTaskImageLocked(UUID ownerId, UUID projectId, UUID assetId,
             Supplier<InputStream> download) {
         var recovered = storage.recoverImage(projectId, assetId);
@@ -82,20 +96,21 @@ public class AssetService {
         try (InputStream input = download.get()) {
             if (input == null) throw new IllegalStateException("Image download returned no stream");
             LocalAssetStorage.StoredImage stored = storage.storeImage(projectId, assetId, input);
-            // Keep task-keyed files after a DB failure so the next poll can reconcile them.
+            // 数据库写入失败时保留任务键文件，后续轮询可核对文件并补交元数据。
             return publishImage(ownerId, projectId, assetId, stored, false, true);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close generated image stream", failure);
         }
     }
 
-    /** Namespaces the deterministic key away from random user-upload asset identifiers. */
+    /** 使用带版本的命名空间派生任务图片 ID，避免与随机用户上传 ID 冲突。 */
     public static UUID taskImageAssetId(UUID taskId) {
         if (taskId == null) throw new IllegalArgumentException("taskId is required");
         return UUID.nameUUIDFromBytes(("agenvas:task-image:v1:" + taskId)
                 .getBytes(StandardCharsets.UTF_8));
     }
 
+    /** 图片原件与缩略图都已落盘后才在项目事件事务中创建 READY 元数据。 */
     private Asset publishImage(UUID ownerId, UUID projectId, UUID assetId,
             LocalAssetStorage.StoredImage stored, boolean discardOnFailure,
             boolean taskOutput) {
@@ -133,7 +148,7 @@ public class AssetService {
         }
     }
 
-    /** Archives an actual bounded MP4 and its decoded poster before publishing READY metadata. */
+    /** 校验实际视频容器、解码结果、时长和分辨率，提取海报图后才发布 READY。 */
     public Asset archiveVideo(UUID ownerId, UUID projectId, InputStream input) {
         projects.requireActiveProject(ownerId, projectId);
         UUID assetId = UUID.randomUUID();
@@ -141,7 +156,7 @@ public class AssetService {
         return publishVideo(ownerId, projectId, assetId, stored, true, false);
     }
 
-    /** A generated video Task owns one recoverable MP4, even after a file/DB crash. */
+    /** 以任务 ID 派生稳定素材 ID，在共享卷锁内恢复唯一 MP4 和海报图。 */
     public Asset archiveTaskVideo(UUID ownerId, UUID projectId, UUID taskId,
             Supplier<InputStream> download) {
         projects.get(ownerId, projectId);
@@ -150,6 +165,7 @@ public class AssetService {
                 () -> archiveTaskVideoLocked(ownerId, projectId, assetId, download));
     }
 
+    /** 与图片归档相同，先核对文件和元数据，再下载或恢复后发布视频素材。 */
     private Asset archiveTaskVideoLocked(UUID ownerId, UUID projectId, UUID assetId,
             Supplier<InputStream> download) {
         var recovered = storage.recoverVideo(projectId, assetId);
@@ -179,13 +195,14 @@ public class AssetService {
         }
     }
 
-    /** Keeps generated video identifiers separate from images and random user uploads. */
+    /** 派生与图片及随机上传隔离的任务视频素材 ID。 */
     public static UUID taskVideoAssetId(UUID taskId) {
         if (taskId == null) throw new IllegalArgumentException("taskId is required");
         return UUID.nameUUIDFromBytes(("agenvas:task-video:v1:" + taskId)
                 .getBytes(StandardCharsets.UTF_8));
     }
 
+    /** 视频原件及 PNG 海报均安装成功后，才提交 READY 元数据和事件。 */
     private Asset publishVideo(UUID ownerId, UUID projectId, UUID assetId,
             LocalAssetStorage.StoredVideo stored, boolean discardOnFailure,
             boolean taskOutput) {
@@ -222,7 +239,7 @@ public class AssetService {
         }
     }
 
-    /** Returns metadata and a checked private file after the owner-scoped project lookup. */
+    /** 先核验项目所有权，再检查 READY 文件路径和字节大小后返回私有文件。 */
     public AssetFile get(UUID ownerId, UUID projectId, UUID assetId) {
         projects.get(ownerId, projectId);
         Asset asset = assets.find(projectId, assetId).orElseThrow(() ->
@@ -232,13 +249,13 @@ public class AssetService {
         return new AssetFile(asset, path);
     }
 
-    /** Exposes only owned Asset records to the manifest assembler, not storage paths. */
+    /** 向项目清单组装器返回已鉴权的素材记录，不返回磁盘路径。 */
     public List<Asset> listProjectAssets(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
         return assets.listProjectAssets(projectId);
     }
 
-    /** Rejects a media version unless its referenced bytes are ready in this exact project. */
+    /** 产物引用媒体前确认素材已 READY、属于该项目且类型匹配。 */
     public Asset requireReadyMedia(UUID ownerId, UUID projectId, UUID assetId,
             Asset.MediaKind expectedKind) {
         Asset asset = get(ownerId, projectId, assetId).asset();
@@ -249,7 +266,7 @@ public class AssetService {
         return asset;
     }
 
-    /** Resolves a small precomputed PNG preview with the same project authorization. */
+    /** 使用与原素材相同的项目权限返回预先生成的小型 PNG 缩略图。 */
     public ThumbnailFile getThumbnail(UUID ownerId, UUID projectId, UUID assetId) {
         Asset asset = get(ownerId, projectId, assetId).asset();
         if (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null) {
@@ -260,6 +277,7 @@ public class AssetService {
                 checkedReadyFile(asset.thumbnailKey(), asset.thumbnailByteSize()));
     }
 
+    /** 通过存储层路径白名单解析文件，并拒绝符号链接、非普通文件或大小不符。 */
     private Path checkedReadyFile(String objectKey, long expectedSize) {
         Path path = storage.checkedPath(objectKey);
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
@@ -275,9 +293,15 @@ public class AssetService {
         return path;
     }
 
-    /** Authorized archive reference used by private download handlers. */
+    /** 已鉴权的原始素材元数据和服务端内部文件路径。
+     * @param asset 项目内可访问的素材记录
+     * @param path 已规范化并核验大小的服务端文件路径，不得直接序列化给客户端
+     */
     public record AssetFile(Asset asset, Path path) {}
 
-    /** Authorized preview reference backed by a bounded archived PNG. */
+    /** 已鉴权的缩略图元数据和受大小限制的 PNG 文件路径。
+     * @param asset 所属素材记录
+     * @param path 经项目授权及路径边界校验的缩略图文件
+     */
     public record ThumbnailFile(Asset asset, Path path) {}
 }

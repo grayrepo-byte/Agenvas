@@ -5,15 +5,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Durable idempotency boundary for append-only usage records. */
+/** 只追加用量账本的持久化幂等边界。 */
 public interface UsageRepository {
 
-    /** Inserts only the first record for an operation key. */
+    /** 每个逻辑操作键只插入首条记录。 */
     boolean insertOnce(UsageEntry entry);
 
-    /** Allows a replay to prove it matches the original operation, not hide a conflict. */
+    /** 重放时核对载荷是否与原操作一致，不掩盖同键冲突。 */
     Optional<UsageEntry> findByOperationKey(String operationKey);
 
-    /** Lists owned project records in creation order. */
+    /** 按创建时间列出已授权项目的用量记录。 */
     List<UsageEntry> listProject(UUID projectId);
 }

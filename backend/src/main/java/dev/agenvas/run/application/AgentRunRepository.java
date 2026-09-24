@@ -6,10 +6,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Persistence boundary for owner-scoped Agent Runs and command idempotency records. */
+/** 按项目所有者限定的 Run 持久化边界，同时维护创建命令的幂等仲裁记录。 */
 public interface AgentRunRepository {
 
-    /** Reserves a principal/scope/key before any business side effect. */
+    /** 任何业务写入前按用户、作用域和命令键预留幂等记录。 */
     boolean reserveIdempotency(
             UUID principalId,
             String scope,
@@ -18,10 +18,10 @@ public interface AgentRunRepository {
             Instant expiresAt,
             Instant now);
 
-    /** Reads a competing or completed idempotency record after uniqueness arbitration. */
+    /** 唯一约束仲裁后读取竞争中或已完成的原命令记录。 */
     Optional<IdempotencyRecord> findIdempotency(UUID principalId, String scope, String key);
 
-    /** Completes a reserved record with the created Run response in the same transaction. */
+    /** 与 Run 创建同事务，将预留记录标记完成并固定原响应。 */
     boolean completeIdempotency(
             UUID principalId,
             String scope,
@@ -31,20 +31,20 @@ public interface AgentRunRepository {
             String responseJson,
             Instant now);
 
-    /** Inserts one Run after its project slot has been checked. */
+    /** 项目活动槽位已检查并锁定后插入 Run。 */
     void create(AgentRun run);
 
-    /** Reads one nested Run inside the authenticated owner boundary. */
+    /** 仅在认证所有者及项目范围内读取指定 Run。 */
     Optional<AgentRun> find(UUID ownerId, UUID projectId, UUID runId);
 
-    /** Lists newest Runs for one owned Agent using a stable created-time keyset. */
+    /** 以创建时间和 Run ID 的稳定键集分页读取同一 Agent 的运行历史。 */
     List<AgentRun> list(UUID ownerId, UUID projectId, UUID agentId,
             Instant beforeCreatedAt, UUID beforeId, int limit);
 
-    /** Locks one nested Run for a state transition. */
+    /** 状态转换前在所有者和项目边界内锁定 Run。 */
     Optional<AgentRun> findForUpdate(UUID ownerId, UUID projectId, UUID runId);
 
-    /** Changes state with a version guard and optional completion timestamp. */
+    /** 仅版本匹配时更新状态；终态同时写入完成时间。 */
     boolean updateStatus(
             UUID ownerId,
             UUID projectId,
@@ -54,11 +54,17 @@ public interface AgentRunRepository {
             Instant updatedAt,
             Instant completedAt);
 
-    /** Advances the durable model-step cursor without changing Run status. */
+    /** 比较 Run 版本和当前步骤后前移持久化模型游标，不改变状态。 */
     boolean advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex, Instant updatedAt);
 
-    /** One durable idempotency arbitration result. */
+    /** 一次创建命令的持久化幂等仲裁记录。
+     * @param requestHash 规范化命令载荷摘要；相同键不同摘要必须冲突
+     * @param state 键当前处于创建中还是可重放状态
+     * @param resourceId 首次命令创建的 Run UUID
+     * @param responseJson 已保存的首次响应，用于同键请求一致重放
+     * @param expiresAt 幂等记录的过期时刻
+     */
     record IdempotencyRecord(
             String requestHash,
             State state,
@@ -66,9 +72,11 @@ public interface AgentRunRepository {
             String responseJson,
             Instant expiresAt) {
 
-        /** Reservation lifecycle. */
+        /** 预留记录的生命周期。 */
         public enum State {
+            /** 首次命令已占用键，业务结果尚未提交。 */
             IN_PROGRESS,
+            /** 原 Run 和响应已提交，同键同载荷可直接重放。 */
             COMPLETED
         }
     }

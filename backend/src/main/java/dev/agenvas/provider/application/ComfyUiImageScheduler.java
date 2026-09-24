@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Advances approved ComfyUI image Tasks independently of browser and model-turn lifetimes. */
+/** 独立于浏览器连接和模型回合推进已审批的 ComfyUI 图片任务。 */
 @Component
 @ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
         havingValue = "false", matchIfMissing = true)
@@ -16,16 +16,23 @@ import org.springframework.stereotype.Component;
         havingValue = "true", matchIfMissing = true)
 public class ComfyUiImageScheduler {
 
+    /** 记录单轮调度错误类别，不输出可能包含请求内容的异常消息。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(ComfyUiImageScheduler.class);
+    /** 执行单次图片提交或轮询，不持有调度器级数据库事务。 */
     private final ComfyUiImageWorker worker;
+    /** 本实例轮询租约使用的唯一 Worker 身份。 */
     private final String pollerId = "comfy-image-poll-" + UUID.randomUUID();
+    /** 本实例新提交租约使用的唯一 Worker 身份。 */
     private final String submitterId = "comfy-image-submit-" + UUID.randomUUID();
 
+    /** 注入独立处理图片提交和查询的 Worker。
+     * @param worker 图片 Provider 工作单元
+     */
     public ComfyUiImageScheduler(ComfyUiImageWorker worker) {
         this.worker = worker;
     }
 
-    /** Poll the saved request first; the DB gate only admits a new job after it completes. */
+    /** 先轮询已保存的原请求；数据库槽位确认后才允许提交新任务。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
         try {

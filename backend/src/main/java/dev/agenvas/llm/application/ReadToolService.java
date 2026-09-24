@@ -21,21 +21,31 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Bounded, owner- and Run-scoped reads through the same durable tool ledger as writes. */
+/** 提供受所有者与 Run 范围约束的读取工具，并限制批量大小及内联内容字节数。 */
 @Service
 public class ReadToolService {
 
+    /** 一次读取最多返回的产物版本数，限制查询与模型上下文膨胀。 */
     private static final int MAX_READ_VERSIONS = 12;
+    /** 一次读取最多检查的任务数。 */
     private static final int MAX_READ_TASKS = 12;
+    /** 单个版本允许完整内联到工具结果中的 UTF-8 字节上限。 */
     private static final int MAX_INLINE_BYTES = 24 * 1024;
+    /** 单次工具调用全部完整内联内容的累计上限。 */
     private static final int MAX_TOTAL_INLINE_BYTES = 160 * 1024;
+    /** 超出内联上限时，预览文本按 Unicode 码点截取的字符数。 */
     private static final int PREVIEW_CHARS = 2_000;
 
+    /** 读取项目元数据时检查请求用户的项目权限。 */
     private final ProjectService projects;
+    /** 只读取当前 Run 获准访问的 Artifact 与版本。 */
     private final ArtifactService artifacts;
+    /** 查询任务时同时核验用户和项目作用域。 */
     private final TaskService tasks;
+    /** 构造具有稳定结果结构的 JSON 工具响应。 */
     private final ObjectMapper mapper;
 
+    /** 组装项目元数据、产物版本和任务状态三类受限读取能力。 */
     public ReadToolService(ProjectService projects, ArtifactService artifacts, TaskService tasks,
             ObjectMapper mapper) {
         this.projects = projects;
@@ -44,7 +54,7 @@ public class ReadToolService {
         this.mapper = mapper;
     }
 
-    /** Reads public project metadata and server-pinned limits, never credentials or all items. */
+    /** 读取项目公开元数据与服务端固定限制，不读取凭证，也不枚举所有画布项。 */
     public JsonNode projectSummary(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -69,7 +79,7 @@ public class ReadToolService {
         return output;
     }
 
-    /** Replays the creation-time UI selection as intent, never as write authorization. */
+    /** 返回 Run 创建时记录的界面选择供理解意图；该快照不能作为写入授权。 */
     public JsonNode selection(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         if (!input.isEmpty()) {
@@ -86,7 +96,7 @@ public class ReadToolService {
         return output;
     }
 
-    /** Reads only explicitly bound or same-Run versions, with bounded inline content. */
+    /** 仅读取显式绑定或本 Run 创建的版本，并限制完整内联内容的大小。 */
     public JsonNode artifacts(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -138,7 +148,7 @@ public class ReadToolService {
         return output;
     }
 
-    /** Returns a bounded status snapshot for this Run's tasks, without Provider internals. */
+    /** 返回本 Run 任务的有限状态快照，不包含 Provider 内部数据。 */
     public JsonNode taskStatus(TrustedToolContext context, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         if (input.size() != 1 || !input.has("taskIds")) {
@@ -174,7 +184,7 @@ public class ReadToolService {
         return output;
     }
 
-    /** A bound historical version never supplies a CAS token for a newer user selection. */
+    /** 绑定的历史版本不能为用户后来选定的新版本提供 CAS 令牌。 */
     private boolean unchangedBinding(AgentRun run, ArtifactVersion version, long artifactVersion) {
         JsonNode bindings = run.contextSnapshot().path("bindings");
         if (!bindings.isArray()) return false;
@@ -190,6 +200,7 @@ public class ReadToolService {
         return false;
     }
 
+    /** 构造成功读取工具共用的空变更结果结构。 */
     private ObjectNode result(UUID operationId, String summary) {
         ObjectNode result = mapper.createObjectNode();
         result.put("status", "SUCCEEDED");
@@ -203,6 +214,7 @@ public class ReadToolService {
         return result;
     }
 
+    /** 将原始工具参数解析为 JSON 对象，并把语法或根类型错误映射为参数错误。 */
     private ObjectNode parseObject(String arguments) {
         JsonNode value;
         try {
@@ -216,6 +228,7 @@ public class ReadToolService {
         return object;
     }
 
+    /** 只接受 UUID 文本节点，避免 Jackson 对数字等类型进行宽松转换。 */
     private UUID uuid(JsonNode value) {
         if (!value.isTextual()) {
             throw invalid("IDs must contain UUID strings");
@@ -227,7 +240,7 @@ public class ReadToolService {
         }
     }
 
-    /** Rejects malformed or repeated IDs before any project-scoped lookup begins. */
+    /** 在任何项目范围查询前拒绝格式错误或重复的 ID。 */
     private List<UUID> validatedIds(JsonNode requested, String toolName) {
         Set<UUID> unique = new HashSet<>();
         List<UUID> ids = new ArrayList<>(requested.size());
@@ -241,6 +254,7 @@ public class ReadToolService {
         return List.copyOf(ids);
     }
 
+    /** 构造读取工具输入不符合契约时的 400 问题响应。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                 "工具参数无效", detail, false);

@@ -6,28 +6,28 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Persistence boundary for owner-scoped Agent card configuration and explicit bindings. */
+/** Agent 卡片配置及显式输入绑定的所有者范围持久化边界。 */
 public interface AgentInstanceRepository {
 
-    /** Inserts one configuration without any implicit project-wide input access. */
+    /** 插入单个卡片配置，不授予其隐式读取项目全部素材的权限。 */
     void create(AgentInstance instance);
 
-    /** Lists instances and their bindings in deterministic creation order. */
+    /** 按确定的创建顺序列出卡片及其绑定。 */
     List<AgentInstance> list(UUID ownerId, UUID projectId);
 
-    /** Reads one owner-scoped instance. */
+    /** 在所有者范围内读取单个卡片。 */
     Optional<AgentInstance> find(UUID ownerId, UUID projectId, UUID agentId);
 
-    /** Locks one instance for a complete optimistic configuration update. */
+    /** 锁定卡片，供完整配置的乐观并发更新使用。 */
     Optional<AgentInstance> findForUpdate(UUID ownerId, UUID projectId, UUID agentId);
 
-    /** Updates mutable configuration fields when the expected version matches. */
+    /** 预期配置版本匹配时更新可变字段。 */
     boolean update(
             UUID ownerId,
             AgentInstance instance,
             long expectedVersion,
             Instant updatedAt);
 
-    /** Replaces the explicit input set within the caller's transaction. */
+    /** 在调用方事务内整体替换显式输入绑定集合。 */
     void replaceBindings(UUID projectId, UUID agentId, List<AgentInstance.Binding> bindings);
 }

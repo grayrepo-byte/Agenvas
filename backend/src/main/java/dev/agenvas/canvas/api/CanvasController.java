@@ -23,18 +23,22 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Authenticated REST boundary for persisted canvas projection and atomic layout commands. */
+/** 已认证的画布布局读取与原子命令 REST 边界。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/canvas")
 public class CanvasController {
 
+    /** 验证项目权限、命令范围并提交布局变化。 */
     private final CanvasService canvas;
 
+    /** 注入画布布局用例服务。
+     * @param canvas 校验项目访问并处理布局命令
+     */
     public CanvasController(CanvasService canvas) {
         this.canvas = canvas;
     }
 
-    /** Returns the authoritative persisted layout with card subject projections. */
+    /** 返回数据库中的布局及卡片当前业务对象投影。 */
     @GetMapping("/items")
     public CanvasResponse list(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -42,7 +46,7 @@ public class CanvasController {
         return CanvasResponse.from(canvas.list(principal.userId(), projectId));
     }
 
-    /** Applies one atomic batch so partial drag or resize saves cannot leak through. */
+    /** 将同批拖动或缩放命令原子提交；任一命令失败时不保留部分布局。 */
     @PostMapping("/commands")
     public CanvasResponse apply(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -53,6 +57,7 @@ public class CanvasController {
         return CanvasResponse.from(canvas.apply(principal.userId(), projectId, commands));
     }
 
+    /** 按命令类型提取必填字段并转换为封闭的应用层命令。 */
     private CanvasService.CanvasCommand toCommand(CanvasCommandRequest request) {
         return switch (request.type()) {
             case PLACE_ARTIFACT -> new CanvasService.PlaceArtifact(
@@ -93,6 +98,7 @@ public class CanvasController {
         };
     }
 
+    /** 联合 DTO 按多种命令建模；选中命令缺少必需字段时返回 400。 */
     private <T> T require(T value, String field) {
         if (value == null) {
             throw new ApiProblemException(
@@ -105,11 +111,30 @@ public class CanvasController {
         return value;
     }
 
-    /** Atomic command batch with a bounded number of independent item targets. */
+    /**
+     * 画布命令批次；目标卡片在同批中不可重复。
+     *
+     * @param commands 有序的布局命令列表，至少一条且最多 100 条
+     */
     public record CanvasCommandBatchRequest(
             @NotEmpty @Size(max = 100) List<@Valid CanvasCommandRequest> commands) {}
 
-    /** Union-shaped command input; type-specific required fields are checked before execution. */
+    /**
+     * 联合式命令输入；具体必填字段由 type 决定，并在转换前再次检查。
+     *
+     * @param type 命令类别
+     * @param itemId 目标或新建画布项 ID
+     * @param artifactId PLACE_ARTIFACT 的产物 ID
+     * @param agentId PLACE_AGENT 的 Agent ID
+     * @param expectedVersion 更新、锁定或删除时的预期布局版本
+     * @param x 放置或更新后的横坐标
+     * @param y 放置或更新后的纵坐标
+     * @param width 放置或更新后的宽度
+     * @param height 放置或更新后的高度
+     * @param zIndex 放置或更新后的显示层级
+     * @param groupId 放置或更新后的分组
+     * @param locked 初始或目标锁定状态
+     */
     public record CanvasCommandRequest(
             @NotNull CommandType type,
             @NotNull UUID itemId,
@@ -124,24 +149,50 @@ public class CanvasController {
             UUID groupId,
             Boolean locked) {}
 
-    /** Supported canvas operations. */
+    /** 首版允许的画布展示操作。 */
     public enum CommandType {
+        /** 创建产物卡片。 */
         PLACE_ARTIFACT,
+        /** 创建 Agent 卡片。 */
         PLACE_AGENT,
+        /** 更新位置、尺寸、层级或分组。 */
         UPDATE_LAYOUT,
+        /** 改变布局锁状态。 */
         SET_LOCKED,
+        /** 删除卡片展示项。 */
         REMOVE
     }
 
-    /** Full authoritative canvas response. */
+    /**
+     * 完整权威画布响应。
+     *
+     * @param items 布局及当前卡片内容投影
+     */
     public record CanvasResponse(List<CanvasItemResponse> items) {
 
+        /** 将应用层画布条目逐项映射为 API 卡片投影。 */
         public static CanvasResponse from(List<CanvasService.CanvasEntry> entries) {
             return new CanvasResponse(entries.stream().map(CanvasItemResponse::from).toList());
         }
     }
 
-    /** Persisted layout plus the current content projection used to render its card. */
+    /**
+     * 持久化布局和该卡片当前渲染所需的内容投影；artifact 与 agent 仅一个非空。
+     *
+     * @param id 画布项 ID
+     * @param subjectType 被展示对象类型
+     * @param subjectId 被展示对象 ID
+     * @param x 卡片横坐标
+     * @param y 卡片纵坐标
+     * @param width 卡片宽度
+     * @param height 卡片高度
+     * @param zIndex 显示层级
+     * @param groupId 所属画布分组
+     * @param locked 布局是否锁定
+     * @param version 布局乐观锁版本
+     * @param artifact 产物卡片当前版本投影
+     * @param agent Agent 卡片当前配置投影
+     */
     public record CanvasItemResponse(
             UUID id,
             CanvasItem.SubjectType subjectType,
@@ -157,6 +208,7 @@ public class CanvasController {
             ArtifactResponse artifact,
             AgentResponse agent) {
 
+        /** 按 subjectType 只填充对应的产物或 Agent 投影。 */
         static CanvasItemResponse from(CanvasService.CanvasEntry entry) {
             CanvasItem item = entry.item();
             return new CanvasItemResponse(

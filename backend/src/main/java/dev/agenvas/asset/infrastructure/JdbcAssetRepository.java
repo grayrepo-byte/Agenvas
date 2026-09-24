@@ -10,16 +10,23 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** PostgreSQL implementation of the immutable asset metadata ledger. */
+/** PostgreSQL 素材元数据账本实现；媒体字节由本地存储管理。 */
 @Repository
 public class JdbcAssetRepository implements AssetRepository {
 
+    /** 执行参数化 SQL 并将查询结果映射为领域素材记录。 */
     private final JdbcClient jdbc;
 
+    /** 注入带参数绑定的 JDBC 客户端。
+     * @param jdbc Spring JDBC 执行器
+     */
     public JdbcAssetRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
     }
 
+    /** 插入已完成文件归档与媒体校验的 READY 记录。
+     * @param asset 素材元数据及不可变对象键
+     */
     @Override
     public void insert(Asset asset) {
         jdbc.sql("""
@@ -47,6 +54,11 @@ public class JdbcAssetRepository implements AssetRepository {
                 .update();
     }
 
+    /** 按项目和素材 ID 查询，避免跨项目 ID 被当作有效引用。
+     * @param projectId 资源作用域项目
+     * @param assetId 素材 UUID
+     * @return 匹配的素材记录
+     */
     @Override
     public Optional<Asset> find(UUID projectId, UUID assetId) {
         return jdbc.sql("""
@@ -75,6 +87,10 @@ public class JdbcAssetRepository implements AssetRepository {
                 .optional();
     }
 
+    /** 稳定排序读取项目素材，供画布快照生成使用。
+     * @param projectId 要读取的项目
+     * @return 按创建时间和 UUID 排序的素材记录
+     */
     @Override
     public List<Asset> listProjectAssets(UUID projectId) {
         return jdbc.sql("""

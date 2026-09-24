@@ -18,17 +18,24 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Idempotent model, media, and export accounting without inventing prices. */
+/** 记录模型、媒体任务和导出的预留与结算；缺少真实价格时保持 UNKNOWN，不伪造金额。 */
 @Service
 public class UsageService {
 
+    /** 以 operationKey 唯一约束保证每笔用量账目最多写入一次。 */
     private final UsageRepository ledger;
+    /** 用于项目归属检查，保护用量历史查询。 */
     private final ProjectService projects;
+    /** 将账本变化与项目事件放在同一事务提交。 */
     private final ProjectEventService events;
+    /** 构造 quantity JSON，避免账本字段由调用方任意拼装。 */
     private final ObjectMapper mapper;
+    /** 为账目时间戳提供可注入的时钟。 */
     private final Clock clock;
+    /** 区分 Mock 与真实 Provider 来源，不据此推导价格。 */
     private final LlmModeProperties llmMode;
 
+    /** 注入账本、事件和时钟；写入方法要求由调用方处于同一事务中。 */
     public UsageService(UsageRepository ledger, ProjectService projects,
             ProjectEventService events, ObjectMapper mapper, Clock clock,
             LlmModeProperties llmMode) {
@@ -40,7 +47,7 @@ public class UsageService {
         this.llmMode = llmMode;
     }
 
-    /** A durable REQUESTED checkpoint reserves one bounded model request. */
+    /** 持久化的 REQUESTED 检查点对应一次模型请求预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveModelTurn(UUID ownerId, LlmTurn turn) {
         if (turn.status() != LlmTurn.Status.REQUESTED) {
@@ -52,7 +59,7 @@ public class UsageService {
                 source, null, null, null));
     }
 
-    /** A saved response settles the same request, with tokens only when reported. */
+    /** 模型响应已保存后结算同一请求；仅在 Provider 报告时记录 token 数。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleModelTurn(UUID ownerId, LlmTurn turn) {
         if (turn.status() != LlmTurn.Status.RESPONDED) {
@@ -68,6 +75,7 @@ public class UsageService {
                 tokenCount(usage, "completionTokens"), modelId));
     }
 
+    /** 根据已持久化模型回合构造单次请求的预留或结算账目。 */
     private UsageEntry modelEntry(LlmTurn turn, UsageEntry.EntryType type, String source,
             Integer inputTokens, Integer outputTokens, String modelId) {
         ObjectNode quantity = mapper.createObjectNode();
@@ -86,22 +94,25 @@ public class UsageService {
                         ? null : modelId, clock.instant());
     }
 
+    /** 用 Run、步骤和阶段组成模型账目幂等键，区分预留与结算。 */
     private String modelOperationKey(LlmTurn turn, String stage) {
         return "llm:" + turn.runId() + ":" + turn.stepIndex() + ":" + stage;
     }
 
+    /** 仅接受非负且可表示为 int 的 Provider token 计数，其他值记为未知。 */
     private Integer tokenCount(JsonNode usage, String field) {
         JsonNode value = usage.path(field);
         return value.isIntegralNumber() && value.canConvertToInt() && value.asInt() >= 0
                 ? value.asInt() : null;
     }
 
+    /** 保留缺失 token 数量的未知语义，不将其写成零。 */
     private void putNullableToken(ObjectNode quantity, String field, Integer tokens) {
         if (tokens == null) quantity.putNull(field);
         else quantity.put(field, tokens);
     }
 
-    /** Called in the authenticated approval transaction after each media Task is created. */
+    /** 在已鉴权的审批事务中，每创建一个媒体任务后写入对应预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveMediaTask(UUID ownerId, Task task, String costSource) {
         if (task.planId() == null || task.runId() == null) {
@@ -111,7 +122,7 @@ public class UsageService {
                 costSource, "media:" + task.id() + ":reserve"));
     }
 
-    /** Called only after the fenced media result is committed in the same transaction. */
+    /** 仅在带 fencing 校验的媒体结果同事务提交后结算。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task) {
         if (task.planId() == null) return;
@@ -122,7 +133,7 @@ public class UsageService {
                 reservation.costSource(), "media:" + task.id() + ":settle"));
     }
 
-    /** Releases media work whose caller proved no submission checkpoint was reached. */
+    /** 调用方确认任务未到达提交检查点后，释放媒体任务的预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseUnsubmittedMediaTask(UUID ownerId, Task task) {
         if ((task.kind() != Task.Kind.IMAGE_GENERATION
@@ -146,7 +157,7 @@ public class UsageService {
                 reservation.costSource(), prefix + ":release"));
     }
 
-    /** A local export reservation records demand, not proof that a video was produced. */
+    /** 本地导出预留记录导出需求，不代表已生成视频。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveExportTask(UUID ownerId, Task task) {
         if (task.kind() != Task.Kind.MEDIA_EXPORT || task.runId() != null) {
@@ -156,7 +167,7 @@ public class UsageService {
                 "LOCAL_UNPRICED", "export:" + task.id() + ":reserve"));
     }
 
-    /** Only a fenced SUCCEEDED export gets a completion count. */
+    /** 仅带 fencing 校验且已成功的导出任务计入完成量。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleExportTask(UUID ownerId, Task task) {
         if (task.kind() != Task.Kind.MEDIA_EXPORT) {
@@ -169,7 +180,7 @@ public class UsageService {
                 "LOCAL_UNPRICED", "export:" + task.id() + ":settle"));
     }
 
-    /** A terminal export without an output releases its reserved completion count once. */
+    /** 已终结且无输出的导出任务只释放一次预留完成量。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseExportTask(UUID ownerId, Task task) {
         if (task.kind() != Task.Kind.MEDIA_EXPORT
@@ -188,13 +199,14 @@ public class UsageService {
                 "LOCAL_UNPRICED", prefix + ":release"));
     }
 
-    /** Owner-scoped history; null money values are serialized as unknown, never zero. */
+    /** 查询用户有权访问的项目账本；金额为空表示未知，不序列化为零。 */
     @Transactional(readOnly = true)
     public List<UsageEntry> listProject(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
         return ledger.listProject(projectId);
     }
 
+    /** 从已批准任务的固定输入生成数量账目，并核验 Provider 与工作流快照。 */
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
             String operationKey) {
         ObjectNode quantity = mapper.createObjectNode();
@@ -245,6 +257,7 @@ public class UsageService {
                 workflowVersion, null, clock.instant());
     }
 
+    /** 幂等插入账目；重放时逐字段比较载荷，冲突则拒绝并在首次插入时追加事件。 */
     private void persist(UUID ownerId, UsageEntry entry) {
         if (!ledger.insertOnce(entry)) {
             UsageEntry prior = ledger.findByOperationKey(entry.operationKey()).orElseThrow();

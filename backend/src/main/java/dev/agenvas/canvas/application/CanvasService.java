@@ -22,29 +22,55 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Applies atomic canvas command batches while keeping presentation separate from content. */
+/** 原子执行画布布局命令；画布卡片位置与产物正文版本分开保存。 */
 @Service
 public class CanvasService {
 
+    /** 一次布局提交允许的最大命令数。 */
     private static final int MAX_COMMANDS = 100;
+    /** 卡片坐标的最小边界。 */
     private static final BigDecimal MIN_COORDINATE = new BigDecimal("-1000000");
+    /** 卡片坐标的最大边界。 */
     private static final BigDecimal MAX_COORDINATE = new BigDecimal("1000000");
+    /** 卡片最小宽度。 */
     private static final BigDecimal MIN_WIDTH = new BigDecimal("120");
+    /** 卡片最大宽度。 */
     private static final BigDecimal MAX_WIDTH = new BigDecimal("2000");
+    /** 卡片最小高度。 */
     private static final BigDecimal MIN_HEIGHT = new BigDecimal("80");
+    /** 卡片最大高度。 */
     private static final BigDecimal MAX_HEIGHT = new BigDecimal("2000");
+    /** 自动放置生成产物时使用的卡片宽度。 */
     private static final BigDecimal OUTPUT_WIDTH = new BigDecimal("300");
+    /** 自动放置生成产物时使用的卡片高度。 */
     private static final BigDecimal OUTPUT_HEIGHT = new BigDecimal("300");
+    /** 自动放置卡片之间保留的最小空隙。 */
     private static final BigDecimal OUTPUT_GAP = new BigDecimal("24");
 
+    /** 验证项目读取与活动状态。 */
     private final ProjectService projects;
+    /** 将画布产物卡片投影到当前服务端版本。 */
     private final ArtifactService artifacts;
+    /** 将 Agent 卡片投影到当前配置。 */
     private final AgentInstanceService agents;
+    /** 保存纯布局数据，不持有产物正文。 */
     private final CanvasItemRepository canvasItems;
+    /** 原子提交批量布局变化及项目事件。 */
     private final ProjectEventService events;
+    /** 构造变化事件的受限负载。 */
     private final ObjectMapper objectMapper;
+    /** 为新布局项提供统一时间。 */
     private final Clock clock;
 
+    /** 组装空间投影、布局并发校验和项目事件写入能力。
+     * @param projects 校验项目归属和活动状态
+     * @param artifacts 校验画布产物引用
+     * @param agents 校验画布 Agent 卡片引用
+     * @param items 读取和批量修改画布布局
+     * @param events 将布局变更与项目事件一并提交
+     * @param objectMapper 生成事件负载
+     * @param clock 为布局更新时间提供统一时钟
+     */
     public CanvasService(
             ProjectService projects,
             ArtifactService artifacts,
@@ -62,7 +88,7 @@ public class CanvasService {
         this.clock = clock;
     }
 
-    /** Loads persisted layout and projects each Artifact card from its current server version. */
+    /** 读取持久化布局，并按卡片类型附加当前产物版本或 Agent 配置。 */
     @Transactional(readOnly = true)
     public List<CanvasEntry> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
@@ -72,8 +98,7 @@ public class CanvasService {
     }
 
     /**
-     * Places a newly completed output in the Agent's output group inside the caller's task
-     * transaction. Existing cards, including locked cards, are never moved or modified.
+     * 在调用方任务事务内将新产物放入 Agent 输出分组；已有卡片包括锁定卡片均不移动、不修改。
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeGeneratedArtifactWithinChange(UUID ownerId, UUID projectId,
@@ -132,10 +157,7 @@ public class CanvasService {
         return placed;
     }
 
-    /**
-     * Places a bounded batch in the trusted Agent output group. A second tool call with a
-     * different tool_call_id reuses existing cards instead of duplicating the presentation.
-     */
+    /** 在 Agent 输出分组内放置 1 至 6 个互异产物；已存在的卡片复用，避免重复展示。 */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public OutputPlacements placeArtifactsInAgentOutputWithinChange(UUID ownerId,
             UUID projectId, UUID agentId, List<UUID> artifactIds) {
@@ -164,11 +186,16 @@ public class CanvasService {
         return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
     }
 
-    /** Server-owned layout identities returned by a bounded output placement command. */
+    /**
+     * 有界输出放置操作的结果。
+     *
+     * @param created 本次新建的画布卡片
+     * @param alreadyPresent 已位于该 Agent 输出分组而被复用的卡片
+     */
     public record OutputPlacements(List<CanvasItem> created,
             List<CanvasItem> alreadyPresent) {}
 
-    /** Tests candidate geometry with whitespace so generated cards do not cover existing work. */
+    /** 将输出卡片和间距一并计入碰撞检测，避免遮挡已有工作。 */
     private boolean overlaps(BigDecimal x, BigDecimal y, CanvasItem existing) {
         return x.compareTo(existing.x().add(existing.width()).add(OUTPUT_GAP)) < 0
                 && x.add(OUTPUT_WIDTH).add(OUTPUT_GAP).compareTo(existing.x()) > 0
@@ -176,7 +203,15 @@ public class CanvasService {
                 && y.add(OUTPUT_HEIGHT).add(OUTPUT_GAP).compareTo(existing.y()) > 0;
     }
 
-    /** Applies all commands in one transaction and returns the authoritative resulting layout. */
+    /**
+     * 在单一事务中应用命令批次；全部成功才返回数据库布局并追加事件，任何一项失败则整批回滚。
+     * 相同布局重放不新增事件序号。
+     *
+     * @param ownerId 经认证的项目所有者
+     * @param projectId 画布所属项目
+     * @param commands 要原子应用的 1 至 100 条命令，同批不能重复目标卡片
+     * @return 应用后的权威画布布局
+     */
     @Transactional
     public List<CanvasEntry> apply(
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {
@@ -200,6 +235,7 @@ public class CanvasService {
                 .value();
     }
 
+    /** 调用方已锁定项目事件序号；逐条验证目标资源和版本后返回完整布局。 */
     private List<CanvasEntry> applyLocked(
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {
         projects.requireActiveProject(ownerId, projectId);
@@ -224,6 +260,7 @@ public class CanvasService {
                 .toList();
     }
 
+    /** 核验产物权限和坐标后创建卡片；客户端 ID 只允许完全相同的布局重放。 */
     private void placeArtifact(UUID ownerId, UUID projectId, PlaceArtifact command) {
         validateGeometry(
                 command.x(),
@@ -247,6 +284,7 @@ public class CanvasService {
         createOrReplay(ownerId, requested);
     }
 
+    /** 核验 Agent 权限和坐标后创建卡片；客户端 ID 冲突时比较完整布局字段。 */
     private void placeAgent(UUID ownerId, UUID projectId, PlaceAgent command) {
         validateGeometry(
                 command.x(),
@@ -270,6 +308,7 @@ public class CanvasService {
         createOrReplay(ownerId, requested);
     }
 
+    /** 为经校验的放置命令构造初始版本为零的纯布局行。 */
     private CanvasItem placement(
             UUID itemId,
             UUID projectId,
@@ -300,6 +339,7 @@ public class CanvasService {
                 now);
     }
 
+    /** 首次创建布局项；主键重放只有全部展示字段相同才视为成功。 */
     private void createOrReplay(UUID ownerId, CanvasItem requested) {
         if (canvasItems.create(requested)) {
             return;
@@ -312,6 +352,7 @@ public class CanvasService {
         }
     }
 
+    /** 完整替换布局字段；锁定卡片不可移动，更新必须匹配预期版本。 */
     private void updateLayout(UUID ownerId, UUID projectId, UpdateLayout command) {
         validateGeometry(
                 command.x(),
@@ -357,6 +398,7 @@ public class CanvasService {
         }
     }
 
+    /** 只改变布局锁状态，不触碰内容；相同目标值可安全重放。 */
     private void setLocked(UUID ownerId, UUID projectId, SetLocked command) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, command.itemId())
                 .orElseThrow(this::notFound);
@@ -388,6 +430,7 @@ public class CanvasService {
         }
     }
 
+    /** 删除画布展示项，不删除被展示的产物或 Agent；不存在时作为幂等重放处理。 */
     private void remove(UUID ownerId, UUID projectId, Remove command) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, command.itemId())
                 .orElse(null);
@@ -404,6 +447,7 @@ public class CanvasService {
         }
     }
 
+    /** 根据 subjectType 读取对应业务对象，画布行本身不作为内容来源。 */
     private CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
         ArtifactService.ArtifactView artifact = item.subjectType() == CanvasItem.SubjectType.ARTIFACT
                 ? artifacts.get(ownerId, item.projectId(), item.subjectId())
@@ -414,6 +458,7 @@ public class CanvasService {
         return new CanvasEntry(item, artifact, agent);
     }
 
+    /** 精确比较首次放置请求的所有持久化展示字段，用于客户端 ID 重放判定。 */
     private boolean samePlacement(CanvasItem left, CanvasItem right) {
         return left.projectId().equals(right.projectId())
                 && left.subjectType() == right.subjectType()
@@ -427,6 +472,7 @@ public class CanvasService {
                 && left.locked() == right.locked();
     }
 
+    /** 比较更新请求中的布局字段，BigDecimal 按数值相等而非 scale 比较。 */
     private boolean sameLayout(CanvasItem item, UpdateLayout command) {
         return compare(item.x(), command.x())
                 && compare(item.y(), command.y())
@@ -436,10 +482,12 @@ public class CanvasService {
                 && java.util.Objects.equals(item.groupId(), command.groupId());
     }
 
+    /** 忽略十进制 scale 比较坐标或尺寸数值。 */
     private boolean compare(BigDecimal left, BigDecimal right) {
         return left.compareTo(right) == 0;
     }
 
+    /** 拒绝 null、越界坐标/尺寸及超出 [-1000,1000] 的层级。 */
     private void validateGeometry(
             BigDecimal x,
             BigDecimal y,
@@ -460,10 +508,12 @@ public class CanvasService {
         }
     }
 
+    /** 判断十进制值是否落在闭区间之外。 */
     private boolean outside(BigDecimal value, BigDecimal minimum, BigDecimal maximum) {
         return value.compareTo(minimum) < 0 || value.compareTo(maximum) > 0;
     }
 
+    /** 将不存在和无权访问的画布项映射为相同 404。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
@@ -473,6 +523,7 @@ public class CanvasService {
                 false);
     }
 
+    /** 映射乐观版本不符、主键异参重放和锁定冲突。 */
     private ApiProblemException conflict() {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
@@ -482,6 +533,7 @@ public class CanvasService {
                 false);
     }
 
+    /** 将坐标、尺寸、批量大小和命令结构错误映射为 HTTP 400。 */
     private ApiProblemException validation(String detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
@@ -491,13 +543,28 @@ public class CanvasService {
                 false);
     }
 
-    /** One supported atomic canvas mutation. */
+    /** 画布支持的封闭命令集合；所有命令只修改空间展示状态。 */
     public sealed interface CanvasCommand
             permits PlaceArtifact, PlaceAgent, UpdateLayout, SetLocked, Remove {
+        /** 返回命令明确定位的画布项，供批量操作检测重复目标。
+         * @return 目标画布项 UUID
+         */
         UUID itemId();
     }
 
-    /** Adds an Artifact presentation using a client-generated id for safe retry. */
+    /**
+     * 新增产物卡片；客户端重放必须复用同一 itemId 和完整布局。
+     *
+     * @param itemId 客户端生成且用于安全重试的画布项 ID
+     * @param artifactId 要展示的项目产物
+     * @param x 左上角横坐标
+     * @param y 左上角纵坐标
+     * @param width 卡片宽度
+     * @param height 卡片高度
+     * @param zIndex 显示层级
+     * @param groupId 可选画布分组
+     * @param locked 是否创建后锁定布局
+     */
     public record PlaceArtifact(
             UUID itemId,
             UUID artifactId,
@@ -510,7 +577,19 @@ public class CanvasService {
             boolean locked)
             implements CanvasCommand {}
 
-    /** Adds an Agent presentation using a client-generated id for safe retry. */
+    /**
+     * 新增 Agent 卡片；目标 Agent 必须属于当前项目。
+     *
+     * @param itemId 客户端生成且用于安全重试的画布项 ID
+     * @param agentId 要展示的 Agent 卡片
+     * @param x 左上角横坐标
+     * @param y 左上角纵坐标
+     * @param width 卡片宽度
+     * @param height 卡片高度
+     * @param zIndex 显示层级
+     * @param groupId 可选画布分组
+     * @param locked 是否创建后锁定布局
+     */
     public record PlaceAgent(
             UUID itemId,
             UUID agentId,
@@ -523,7 +602,18 @@ public class CanvasService {
             boolean locked)
             implements CanvasCommand {}
 
-    /** Replaces one card's complete layout using optimistic concurrency. */
+    /**
+     * 整体替换一张卡片的布局字段。
+     *
+     * @param itemId 目标画布项
+     * @param expectedVersion 客户端读取到的布局版本
+     * @param x 新横坐标
+     * @param y 新纵坐标
+     * @param width 新宽度
+     * @param height 新高度
+     * @param zIndex 新层级
+     * @param groupId 新分组；null 表示移出分组
+     */
     public record UpdateLayout(
             UUID itemId,
             long expectedVersion,
@@ -535,14 +625,31 @@ public class CanvasService {
             UUID groupId)
             implements CanvasCommand {}
 
-    /** Toggles the layout lock without altering content or geometry. */
+    /**
+     * 只切换布局锁，不改变卡片位置或产物内容。
+     *
+     * @param itemId 目标画布项
+     * @param expectedVersion 客户端读取到的布局版本
+     * @param locked 新锁定状态
+     */
     public record SetLocked(UUID itemId, long expectedVersion, boolean locked)
             implements CanvasCommand {}
 
-    /** Removes only the presentation card. */
+    /**
+     * 删除展示卡片而保留产物和 Agent。
+     *
+     * @param itemId 要删除的画布项
+     * @param expectedVersion 客户端读取到的布局版本
+     */
     public record Remove(UUID itemId, long expectedVersion) implements CanvasCommand {}
 
-    /** Canvas projection with optional subject data required by the current card type. */
+    /**
+     * 画布布局行及当前卡片类型所需的业务对象投影。
+     *
+     * @param item 持久化的空间展示状态
+     * @param artifact subjectType 为 ARTIFACT 时的当前产物和版本
+     * @param agent subjectType 为 AGENT 时的当前 Agent 配置
+     */
     public record CanvasEntry(
             CanvasItem item,
             ArtifactService.ArtifactView artifact,

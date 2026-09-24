@@ -9,16 +9,25 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** PostgreSQL CAS implementation of one human keyframe selection per shot. */
+/** PostgreSQL 关键帧选择实现；唯一约束和版本条件保证每镜头只有一条可并发更新的选择。 */
 @Repository
 public class JdbcShotKeyframeSelectionRepository implements ShotKeyframeSelectionRepository {
 
+    /** 执行带参数绑定的 SQL，避免将资源标识拼入查询文本。 */
     private final JdbcClient jdbc;
 
+    /** 注入 JDBC 查询执行器。
+     * @param jdbc Spring JDBC 客户端
+     */
     public JdbcShotKeyframeSelectionRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
     }
 
+    /** 按项目和镜头读取当前选择，避免只凭镜头 UUID 跨项目命中。
+     * @param projectId 选择所属项目
+     * @param shotArtifactId 镜头产物 UUID
+     * @return 已保存选择；镜头尚未选择关键帧时为空
+     */
     @Override
     public Optional<ShotKeyframeSelection> find(UUID projectId, UUID shotArtifactId) {
         return jdbc.sql("""
@@ -43,6 +52,10 @@ public class JdbcShotKeyframeSelectionRepository implements ShotKeyframeSelectio
                 .optional();
     }
 
+    /** 首次创建选择；并发首次写入时由唯一键让其中一个插入失败。
+     * @param selection 镜头、图片版本和用户组成的选择关系
+     * @return 本次是否成功创建选择
+     */
     @Override
     public boolean insert(ShotKeyframeSelection selection) {
         return jdbc.sql("""
@@ -65,6 +78,11 @@ public class JdbcShotKeyframeSelectionRepository implements ShotKeyframeSelectio
                 .update() == 1;
     }
 
+    /** 仅当现有版本等于 expectedVersion 时替换选择并递增版本。
+     * @param selection 新的镜头与图片固定版本
+     * @param expectedVersion 客户端读取到的旧选择版本
+     * @return 是否恰好更新一行；false 表示版本冲突或关系不存在
+     */
     @Override
     public boolean update(ShotKeyframeSelection selection, long expectedVersion) {
         return jdbc.sql("""

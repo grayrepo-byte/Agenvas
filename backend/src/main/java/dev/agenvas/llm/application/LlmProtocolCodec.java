@@ -18,19 +18,31 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Versioned application-level protocol codec; never relies on framework class-name JSON tags. */
+/** 将 Spring AI 消息转换为版本化的应用协议，恢复时只接受本应用明确支持的消息结构。 */
 @Component
 public class LlmProtocolCodec {
 
+    /** 单轮请求检查点的 UTF-8 字节上限，防止无界上下文进入数据库。 */
     private static final int MAX_REQUEST_BYTES = 512 * 1024;
+    /** 单轮响应检查点的 UTF-8 字节上限，包含所有 generation 与工具调用。 */
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    /** 在应用协议与 Jackson JSON 树之间转换消息和供应商元数据。 */
     private final ObjectMapper mapper;
 
+    /** 注入 JSON 映射器以序列化和恢复版本化模型协议。
+     * @param mapper 项目配置的 Jackson 映射器
+     */
     public LlmProtocolCodec(ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
-    /** Snapshots exactly the text messages and tool definitions made visible to the model. */
+    /**
+     * 保存模型实际可见的文本消息和工具定义，不把未注册工具写入请求检查点。
+     *
+     * @param messages 本次发送的有序消息，媒体输入不在该路径开放
+     * @param tools 本次按 Run 策略选出的工具定义
+     * @return 包含 Schema 版本且受大小上限约束的请求快照
+     */
     public ObjectNode request(List<Message> messages, List<ToolCallback> tools) {
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("schemaVersion", 1);
@@ -49,14 +61,19 @@ public class LlmProtocolCodec {
         return envelope;
     }
 
-    /** Saves all returned generations, tool IDs and provider protocol metadata before execution. */
+    /**
+     * 保存完整响应、全部 generation、工具调用 ID 与恢复协议所需元数据；未提供的用量保留为空。
+     *
+     * @param response 模型网关返回的原始 Spring AI 响应
+     * @return 受大小上限约束的响应检查点，工具执行必须晚于此值落库
+     */
     public ObjectNode response(ChatResponse response) {
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("schemaVersion", 1);
         ObjectNode metadata = envelope.putObject("metadata");
         metadata.put("id", response.getMetadata().getId());
         metadata.put("model", response.getMetadata().getModel());
-        // Spring AI's EmptyUsage reports synthetic zeroes, not provider-supplied tokens.
+        // EmptyUsage 的零值由框架补出，不能当作供应商实际报告的 Token 用量。
         if (response.getMetadata().getUsage() instanceof EmptyUsage) {
             metadata.putNull("usage");
         } else {
@@ -75,7 +92,12 @@ public class LlmProtocolCodec {
         return envelope;
     }
 
-    /** Restores the exact bounded message sequence saved before a model request. */
+    /**
+     * 从版本化请求快照恢复原消息顺序；拒绝空消息集、超过 80 条或不支持的消息结构。
+     *
+     * @param request 先前保存的模型请求 JSON
+     * @return 可用于同一协议回合的消息序列
+     */
     public List<Message> requestMessages(JsonNode request) {
         requireSchema(request, MAX_REQUEST_BYTES);
         JsonNode values = request.path("messages");
@@ -89,7 +111,12 @@ public class LlmProtocolCodec {
         return List.copyOf(messages);
     }
 
-    /** Restores the selected assistant generation including opaque provider metadata and IDs. */
+    /**
+     * 从已保存响应的第一个 generation 恢复 Assistant 消息及原始工具调用标识。
+     *
+     * @param response 已持久化且带受支持 Schema 版本的模型响应
+     * @return 被选中 generation 的 Assistant 消息
+     */
     public AssistantMessage selectedAssistant(JsonNode response) {
         requireSchema(response, MAX_RESPONSE_BYTES);
         JsonNode generations = response.path("generations");
@@ -103,7 +130,13 @@ public class LlmProtocolCodec {
         return assistant;
     }
 
-    /** Builds one tool reply in the assistant's original call order and rejects missing results. */
+    /**
+     * 按 Assistant 原始调用顺序构建工具回复；调用数、ID 或结果缺失时拒绝继续模型对话。
+     *
+     * @param assistant 已保存的 Assistant 消息
+     * @param results 以原始 tool_call_id 为键的持久化工具结果
+     * @return 与原调用一一对应的工具回复消息
+     */
     public ToolResponseMessage toolResults(AssistantMessage assistant,
             Map<String, JsonNode> results) {
         if (assistant == null || results == null || assistant.getToolCalls().isEmpty()
@@ -122,6 +155,12 @@ public class LlmProtocolCodec {
         return ToolResponseMessage.builder().responses(List.copyOf(replies)).build();
     }
 
+    /**
+     * 只恢复 SYSTEM、USER、ASSISTANT 与 TOOL 四种文本协议消息，拒绝缺失调用字段及其他角色。
+     *
+     * @param value 单条已保存消息的 JSON 对象
+     * @return 带原有元数据和工具调用 ID 的 Spring AI 消息
+     */
     private Message decodeMessage(JsonNode value) {
         if (value == null || !value.isObject()) {
             throw new IllegalArgumentException("Saved model message is malformed");
@@ -166,6 +205,12 @@ public class LlmProtocolCodec {
         };
     }
 
+    /**
+     * 检查持久化元数据仍为对象，再恢复供应商续接协议需要的键值。
+     *
+     * @param value 消息中保存的元数据节点
+     * @return 保持键值结构的元数据映射
+     */
     private Map<String, Object> metadata(JsonNode value) {
         if (!value.isObject()) {
             throw new IllegalArgumentException("Saved model metadata is malformed");
@@ -173,6 +218,13 @@ public class LlmProtocolCodec {
         return mapper.convertValue(value, new tools.jackson.core.type.TypeReference<>() {});
     }
 
+    /**
+     * 读取工具调用和回复中的必需文本字段，防止结构不完整的检查点被用于续接。
+     *
+     * @param value 调用或回复的 JSON 对象
+     * @param field 协议要求存在的字段名
+     * @return 原样保存的文本值
+     */
     private String required(JsonNode value, String field) {
         JsonNode item = value.path(field);
         if (!item.isTextual()) {
@@ -181,6 +233,12 @@ public class LlmProtocolCodec {
         return item.asText();
     }
 
+    /**
+     * 只接受版本 1 的应用协议，并再次按 UTF-8 字节数校验读取的检查点。
+     *
+     * @param value 要恢复的请求或响应 JSON
+     * @param maximumBytes 对应方向允许的字节上限
+     */
     private void requireSchema(JsonNode value, int maximumBytes) {
         if (value == null || !value.isObject() || value.path("schemaVersion").asInt(-1) != 1) {
             throw new IllegalArgumentException("Unsupported model checkpoint schema");
@@ -188,6 +246,12 @@ public class LlmProtocolCodec {
         requireBounded(value, maximumBytes);
     }
 
+    /**
+     * 显式编码受支持的文本消息；用户视觉输入和 Assistant 媒体输出均在此路径拒绝。
+     *
+     * @param message 模型将看到或已返回的 Spring AI 消息
+     * @return 含角色、文本、元数据及必要工具关联字段的协议对象
+     */
     private ObjectNode encodeMessage(Message message) {
         ObjectNode value = mapper.createObjectNode();
         value.put("role", message.getMessageType().name());
@@ -226,6 +290,12 @@ public class LlmProtocolCodec {
         return value;
     }
 
+    /**
+     * 按实际 UTF-8 序列化字节数限制检查点，避免只检查字符数导致越界。
+     *
+     * @param value 待保存或读取的协议 JSON
+     * @param maximumBytes 当前方向允许的最大字节数
+     */
     private void requireBounded(JsonNode value, int maximumBytes) {
         if (value.toString().getBytes(StandardCharsets.UTF_8).length > maximumBytes) {
             throw new IllegalArgumentException("Model protocol checkpoint exceeds size limit");

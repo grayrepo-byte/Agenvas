@@ -10,11 +10,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
-/** Installs a lazy chat boundary without creating a remote client in Mock-only mode. */
+/** 安装延迟初始化的聊天网关，纯 Mock 模式不会创建远端客户端。 */
 @Configuration
 public class ChatGatewayConfiguration {
 
-    /** Mock mode uses a deterministic fixture; configured mode resolves the real model lazily. */
+    /** Mock 模式使用确定性 fixture；配置模式仅在需要时解析真实模型。 */
     @Bean
     public ChatGateway chatGateway(ObjectProvider<ChatModel> models, LlmProperties properties,
             LlmModeProperties mode, ObjectMapper mapper,

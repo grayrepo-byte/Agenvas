@@ -12,18 +12,22 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL tool ledger; unique call keys arbitrate retries across workers. */
+/** PostgreSQL 工具执行账本；唯一调用键在多 Worker 重试时仲裁唯一副作用。 */
 @Repository
 public class JdbcToolExecutionRepository implements ToolExecutionRepository {
 
+    /** 执行工具执行记录的参数化 SQL。 */
     private final JdbcClient jdbc;
+    /** 将已完成工具结果从 JSONB 还原为结果树。 */
     private final ObjectMapper mapper;
 
+    /** 注入 SQL 执行器与工具结果 JSON 映射器。 */
     public JdbcToolExecutionRepository(JdbcClient jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
     }
 
+    /** 统计 Run 已登记的工具调用数，用于执行预算限制。 */
     @Override
     public long countByRun(UUID projectId, UUID runId) {
         return jdbc.sql("select count(*) from tool_execution where project_id = :projectId and run_id = :runId")
@@ -31,6 +35,7 @@ public class JdbcToolExecutionRepository implements ToolExecutionRepository {
                 .query(Long.class).single();
     }
 
+    /** 按 Run、步骤和 toolCallId 读取去重记录及已完成结果。 */
     @Override
     public Optional<ToolExecution> find(UUID projectId, UUID runId,
             int stepIndex, String toolCallId) {
@@ -52,6 +57,7 @@ public class JdbcToolExecutionRepository implements ToolExecutionRepository {
                 .optional();
     }
 
+    /** 以唯一调用键插入 EXECUTING 记录；冲突时交由调用方读取既有结果。 */
     @Override
     public boolean insertExecuting(UUID id, UUID projectId, UUID runId, int stepIndex,
             String toolCallId, String toolName, String argumentHash, Instant now) {
@@ -68,6 +74,7 @@ public class JdbcToolExecutionRepository implements ToolExecutionRepository {
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 只允许 EXECUTING 且尚无结果的记录完成一次并保存 JSON 结果。 */
     @Override
     public boolean complete(UUID id, JsonNode result, Instant now) {
         return jdbc.sql("""
@@ -79,6 +86,7 @@ public class JdbcToolExecutionRepository implements ToolExecutionRepository {
                 .param("now", utc(now)).update() == 1;
     }
 
+    /** 将绝对时刻转换为 PostgreSQL 参数所需的 UTC 偏移时间。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

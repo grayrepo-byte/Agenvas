@@ -13,14 +13,18 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL Run repository; all resource reads retain the project owner boundary. */
+/** 负责 Run 与幂等记录的 PostgreSQL 读写；所有资源查询都联结项目校验所有者。 */
 @Repository
 public class JdbcAgentRunRepository implements AgentRunRepository {
 
+    /** 执行带所有者和项目边界的 Run 与幂等记录 SQL。 */
     private final JdbcClient jdbcClient;
+    /** 将冻结的上下文策略 JSON 与数据库行互相转换。 */
     private final ObjectMapper objectMapper;
+    /** 将 ResultSet 还原为领域 Run，包括快照和完成时间。 */
     private final RowMapper<AgentRun> runMapper;
 
+    /** 初始化 Run 行映射；映射保留创建时冻结的上下文与策略快照。 */
     public JdbcAgentRunRepository(JdbcClient jdbcClient, ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
@@ -43,6 +47,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                         .orElse(null));
     }
 
+    /** 以用户、操作范围和幂等键为唯一身份预留请求；冲突时不覆盖已有记录。 */
     @Override
     public boolean reserveIdempotency(
             UUID principalId,
@@ -70,6 +75,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .update() == 1;
     }
 
+    /** 读取幂等请求的摘要、状态和原响应，用于区分重放、进行中及载荷冲突。 */
     @Override
     public Optional<IdempotencyRecord> findIdempotency(
             UUID principalId, String scope, String key) {
@@ -92,6 +98,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .optional();
     }
 
+    /** 仅把匹配摘要且仍处于进行中的记录提交为完成状态。 */
     @Override
     public boolean completeIdempotency(
             UUID principalId,
@@ -119,6 +126,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .update() == 1;
     }
 
+    /** 保存 Run 创建时冻结的上下文、策略、配置版本及初始步骤序号。 */
     @Override
     public void create(AgentRun run) {
         jdbcClient.sql("""
@@ -148,11 +156,13 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .update();
     }
 
+    /** 以所有者、项目和 Run 三重范围读取，不取得写锁。 */
     @Override
     public Optional<AgentRun> find(UUID ownerId, UUID projectId, UUID runId) {
         return find(ownerId, projectId, runId, false);
     }
 
+    /** 按创建时间与 ID 组成稳定游标倒序分页，避免同时间记录被跳过。 */
     @Override
     public List<AgentRun> list(UUID ownerId, UUID projectId, UUID agentId,
             Instant beforeCreatedAt, UUID beforeId, int limit) {
@@ -185,11 +195,13 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
         return statement.query(runMapper).list();
     }
 
+    /** 对目标 Run 行加锁，供状态机先读后写的事务使用。 */
     @Override
     public Optional<AgentRun> findForUpdate(UUID ownerId, UUID projectId, UUID runId) {
         return find(ownerId, projectId, runId, true);
     }
 
+    /** 普通读取与行锁读取共用同一所有者边界，锁仅作用于 Run 行。 */
     private Optional<AgentRun> find(
             UUID ownerId, UUID projectId, UUID runId, boolean forUpdate) {
         String lockClause = forUpdate ? " for update of ar" : "";
@@ -212,6 +224,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .optional();
     }
 
+    /** 通过版本比较实现并发安全的状态写入；零行更新表示版本已变化或越权。 */
     @Override
     public boolean updateStatus(
             UUID ownerId,
@@ -242,6 +255,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .update() == 1;
     }
 
+    /** 仅在 Run 状态、版本和当前步骤都匹配时递增步骤与版本。 */
     @Override
     public boolean advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex, Instant updatedAt) {
@@ -266,6 +280,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .update() == 1;
     }
 
+    /** 将绝对时刻绑定为 JDBC 使用的 UTC offset datetime。 */
     private OffsetDateTime utc(Instant instant) {
         return instant.atOffset(ZoneOffset.UTC);
     }

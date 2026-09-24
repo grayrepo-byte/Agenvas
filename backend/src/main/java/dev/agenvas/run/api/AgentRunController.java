@@ -22,18 +22,22 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
-/** REST boundary for idempotent Run creation, status reads, and cancellation. */
+/** Run 预检、幂等创建、状态读取和取消的 REST 边界。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/runs")
 public class AgentRunController {
 
+    /** 执行项目权限、幂等、版本核对和 Run 状态转换。 */
     private final AgentRunService runs;
 
+    /** 注入 Run 预检、持久化创建和状态转换服务。
+     * @param runs Agent Run 应用服务
+     */
     public AgentRunController(AgentRunService runs) {
         this.runs = runs;
     }
 
-    /** Allows the UI to show model availability, bounded policy and exact inputs before consent. */
+    /** 用户确认前展示模型可用性、预算策略和 Agent 固定输入。 */
     @GetMapping("/preflight")
     public AgentRunService.RunPreflight preflight(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -42,7 +46,7 @@ public class AgentRunController {
         return runs.preflight(principal.userId(), projectId, agentId);
     }
 
-    /** Lists owner-scoped history for exactly one Agent with a bounded opaque cursor. */
+    /** 按一个 Agent 的所有者范围返回有界历史页和不透明续页游标。 */
     @GetMapping
     public RunListResponse list(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -56,7 +60,7 @@ public class AgentRunController {
                 page.nextCursor());
     }
 
-    /** Atomically reserves the project activity slot and returns a durable queued Run. */
+    /** 固定请求键与用户预览版本，原子占用项目活动槽位并返回持久化 Run。 */
     @PostMapping
     public ResponseEntity<RunResponse> create(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -80,7 +84,7 @@ public class AgentRunController {
                 .body(RunResponse.from(result.run()));
     }
 
-    /** Returns persistent status and immutable creation-time snapshots. */
+    /** 返回当前持久化状态及创建时固定的上下文、策略快照。 */
     @GetMapping("/{runId}")
     public RunResponse get(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -89,7 +93,7 @@ public class AgentRunController {
         return RunResponse.from(runs.get(principal.userId(), projectId, runId));
     }
 
-    /** Idempotently stops future orchestration and releases the project activity slot. */
+    /** 停止后续本地编排并释放项目活动槽位；不声称外部 Provider 已停止。 */
     @PostMapping("/{runId}/cancel")
     public RunResponse cancel(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -98,7 +102,19 @@ public class AgentRunController {
         return RunResponse.from(runs.cancel(principal.userId(), projectId, runId));
     }
 
-    /** Client-controlled fields for a new Run. Policy and context are server snapshots. */
+    /**
+     * 创建 Run 时客户端可提交的指令与预览版本。
+     * 身份、执行策略、预算和授权上下文均由服务端构造，不接受客户端提供。
+     *
+     * @param agentId 用户选择的 Agent 卡片
+     * @param instruction 本次 Run 指令，最多 20,000 字符
+     * @param expectedAgentVersion 用户预览时的 Agent 配置版本
+     * @param redoShotArtifactId 可选局部重做目标镜头
+     * @param selectedItemIds 可选画布选择，只作为意图
+     * @param expectedModelConfigSource 用户预览的模型配置来源
+     * @param expectedModelConfigVersion 用户预览的模型配置版本
+     * @param expectedSystemPromptVersion 用户预览的系统规则版本
+     */
     public record CreateRunRequest(
             @NotNull UUID agentId,
             @NotBlank @Size(max = 20_000) String instruction,
@@ -109,19 +125,52 @@ public class AgentRunController {
             @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion,
             @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion) {}
 
-    /** Safe list representation omitting context, policy and model-private messages. */
+    /** 列表摘要省略完整上下文、策略细节和模型原始消息。
+     * @param id Run UUID
+     * @param agentInstanceId 发起 Run 的 Agent 卡片
+     * @param status 当前运行状态
+     * @param instruction 本次固定用户指令
+     * @param createdAt Run 创建时间
+     * @param updatedAt 最近状态更新时间
+     * @param completedAt 进入终态的时间；仍在运行时为空
+     */
     public record RunSummary(UUID id, UUID agentInstanceId, AgentRun.Status status,
             String instruction, Instant createdAt, Instant updatedAt, Instant completedAt) {
+        /** 提取列表展示所需字段，不复制模型消息或策略快照。
+         * @param run 已授权的领域 Run
+         * @return 列表摘要
+         */
         public static RunSummary from(AgentRun run) {
             return new RunSummary(run.id(), run.agentInstanceId(), run.status(),
                     run.instruction(), run.createdAt(), run.updatedAt(), run.completedAt());
         }
     }
 
-    /** One page of Run summaries, newest first. */
+    /**
+     * 一页按创建时间倒序排列的 Run 摘要。
+     *
+     * @param items 当前页摘要
+     * @param nextCursor 后续历史游标；无下一页时为空
+     */
     public record RunListResponse(List<RunSummary> items, String nextCursor) {}
 
-    /** Public Run representation without model-private reasoning or credentials. */
+    /**
+     * 对外 Run 状态；不含模型私有推理和凭证。
+     *
+     * @param id Run ID
+     * @param projectId 所属项目
+     * @param agentInstanceId 发起运行的 Agent
+     * @param status 当前编排状态
+     * @param instruction 固定用户指令
+     * @param contextSnapshot 创建时固定的项目、绑定和选择快照
+     * @param policySnapshot 创建时固定的模型配置和预算策略
+     * @param profileVersion 使用的 Agent 档案版本
+     * @param nextStepIndex 下一模型回合序号
+     * @param version Run 状态乐观锁版本
+     * @param createdAt 创建时间
+     * @param updatedAt 最近更新时间
+     * @param completedAt 终态完成时间；运行中为空
+     */
     public record RunResponse(
             UUID id,
             UUID projectId,
@@ -137,6 +186,7 @@ public class AgentRunController {
             Instant updatedAt,
             Instant completedAt) {
 
+        /** 将持久化 Run 快照映射为 API 表示。 */
         public static RunResponse from(AgentRun run) {
             return new RunResponse(
                     run.id(),

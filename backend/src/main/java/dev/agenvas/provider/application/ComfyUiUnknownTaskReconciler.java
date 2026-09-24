@@ -13,20 +13,27 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-/** Queries only the fixed ComfyUI origin for an exact precommitted prompt ID. */
+/** 只在原 ComfyUI 配置和实例上核对已预提交 prompt ID，不会再次创建请求。 */
 @Service
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiUnknownTaskReconciler implements UnknownTaskReconciler {
 
+    /** 读取提交尝试并以版本条件恢复已核实的原任务。 */
     private final TaskService tasks;
+    /** 按原配置版本和端点摘要查找 Provider 客户端。 */
     private final ComfyUiClientRegistry clientRegistry;
+
+    /** 注入任务恢复服务与历史 Provider 客户端注册表。
+     * @param tasks 提交尝试读取和条件恢复服务
+     * @param clientRegistry 原配置对应的客户端查找器
+     */
     public ComfyUiUnknownTaskReconciler(TaskService tasks,
             ComfyUiClientRegistry clientRegistry) {
         this.tasks = tasks;
         this.clientRegistry = clientRegistry;
     }
 
-    /** No provider network call runs in the transaction that changes business state. */
+    /** 业务状态事务之外执行 Provider 查询，避免网络调用占用数据库事务。 */
     @Override
     public Result reconcile(UUID ownerId, UUID projectId, UUID taskId) {
         TaskService.ReconciliationCandidate candidate = tasks.reconciliationCandidate(

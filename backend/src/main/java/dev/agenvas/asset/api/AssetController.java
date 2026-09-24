@@ -34,18 +34,20 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-/** Authenticated image upload and private synchronous streaming with single byte-range support. */
+/** 提供鉴权图片上传、私有媒体流和单字节范围读取，不向客户端暴露磁盘路径。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/assets")
 public class AssetController {
 
+    /** 校验媒体内容、检查项目权限并读取归档文件。 */
     private final AssetService assets;
 
+    /** 注入资产归档和读取服务。 */
     public AssetController(AssetService assets) {
         this.assets = assets;
     }
 
-    /** Client filename and declared MIME are intentionally ignored. */
+    /** 忽略客户端文件名和声明 MIME，由服务端检查字节内容后归档。 */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AssetResponse> upload(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -57,14 +59,14 @@ public class AssetController {
         }
     }
 
-    /** Returns only authorized immutable media metadata, never a local object key. */
+    /** 返回经项目权限检查的不可变媒体元数据，不暴露本地对象键。 */
     @GetMapping("/{assetId}")
     public AssetResponse metadata(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID assetId) {
         return AssetResponse.from(assets.get(principal.userId(), projectId, assetId).asset());
     }
 
-    /** Sends a bounded range without loading the media into JVM memory. */
+    /** 流式发送完整内容或受限字节范围，不把媒体文件整体读入 JVM 内存。 */
     @GetMapping("/{assetId}/content")
     public ResponseEntity<InputStreamResource> content(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -74,7 +76,7 @@ public class AssetController {
         return stream(principal, projectId, assetId, range, false);
     }
 
-    /** Provides the same headers as GET while leaving the response body empty. */
+    /** 返回与 GET 相同的状态和范围响应头，但不打开媒体响应体。 */
     @RequestMapping(path = "/{assetId}/content", method = RequestMethod.HEAD)
     public ResponseEntity<InputStreamResource> head(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -84,7 +86,7 @@ public class AssetController {
         return stream(principal, projectId, assetId, range, true);
     }
 
-    /** Serves only the precomputed bounded preview, never decoding the original on GET. */
+    /** 仅读取已预生成且有大小上限的缩略图，不在 GET 请求中解码原图。 */
     @GetMapping("/{assetId}/thumbnail")
     public ResponseEntity<byte[]> thumbnail(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -113,6 +115,7 @@ public class AssetController {
                 .body(bytes);
     }
 
+    /** 先取得经授权的资产文件，再使用记录的大小与类型构造流式响应。 */
     private ResponseEntity<InputStreamResource> stream(AdminPrincipal principal,
             UUID projectId, UUID assetId, String requestedRange, boolean head) throws IOException {
         AssetService.AssetFile file = assets.get(principal.userId(), projectId, assetId);
@@ -120,6 +123,7 @@ public class AssetController {
                 file.asset().contentType(), requestedRange, head);
     }
 
+    /** 根据单段范围请求构造 200/206 响应，并为 HEAD 留空响应体。 */
     private ResponseEntity<InputStreamResource> streamFile(Path path, long size,
             String contentType, String requestedRange, boolean head) throws IOException {
         ByteRange selected = ByteRange.parse(requestedRange, size);
@@ -138,7 +142,7 @@ public class AssetController {
                 selected.partial() ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
     }
 
-    /** Opens without symlink traversal and exposes at most the approved byte interval. */
+    /** 禁止符号链接跟随，并将输入流严格限制在已解析的字节区间内。 */
     private InputStream boundedFileRange(Path path, ByteRange selected) throws IOException {
         FileChannel channel = FileChannel.open(path,
                 StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
@@ -146,6 +150,7 @@ public class AssetController {
         return new FilterInputStream(Channels.newInputStream(channel)) {
             private long remaining = selected.length();
 
+            /** 读取单字节并维护范围剩余长度，文件意外提前结束时报错。 */
             @Override
             public int read() throws IOException {
                 if (remaining == 0) return -1;
@@ -155,6 +160,7 @@ public class AssetController {
                 return value;
             }
 
+            /** 限制批量读取长度，不允许越过所选范围末端。 */
             @Override
             public int read(byte[] bytes, int offset, int length) throws IOException {
                 if (length == 0) return 0;
@@ -165,6 +171,7 @@ public class AssetController {
                 return count;
             }
 
+            /** 通过文件通道前移位置并同步扣减可读取范围。 */
             @Override
             public long skip(long count) throws IOException {
                 if (count <= 0 || remaining == 0) return 0;
@@ -174,6 +181,7 @@ public class AssetController {
                 return skipped;
             }
 
+            /** 返回不超过当前范围剩余量的可立即读取字节数。 */
             @Override
             public int available() throws IOException {
                 return (int) Math.min(in.available(), Math.min(remaining, Integer.MAX_VALUE));
@@ -181,7 +189,7 @@ public class AssetController {
         };
     }
 
-    /** Range failures carry the mandatory unsatisfied Content-Range size hint. */
+    /** 为范围错误返回 416，并附带客户端重新请求所需的文件总长度。 */
     @ExceptionHandler(InvalidRange.class)
     public ResponseEntity<ProblemDetail> invalidRange(InvalidRange exception,
             HttpServletRequest request) {
@@ -197,11 +205,23 @@ public class AssetController {
                 .body(problem);
     }
 
-    /** Public metadata contains no filesystem path or untrusted provider URL. */
+    /** 对外媒体元数据，不包含文件系统路径或不可信 Provider URL。
+     * @param id 资产 ID
+     * @param projectId 所属项目 ID
+     * @param mediaKind 媒体类别
+     * @param contentType 服务端识别的媒体类型
+     * @param byteSize 文件字节数
+     * @param sha256 文件内容摘要
+     * @param width 图像宽度；非图像时为空
+     * @param height 图像高度；非图像时为空
+     * @param durationMs 视频时长；非视频时为空
+     * @param createdAt 归档时间
+     */
     public record AssetResponse(UUID id, UUID projectId, Asset.MediaKind mediaKind,
             String contentType, long byteSize, String sha256, Integer width,
             Integer height, Integer durationMs, Instant createdAt) {
 
+        /** 将资产领域对象投影为不含存储位置的公开响应。 */
         public static AssetResponse from(Asset asset) {
             return new AssetResponse(asset.id(), asset.projectId(), asset.mediaKind(),
                     asset.contentType(), asset.byteSize(), asset.sha256(), asset.width(),
@@ -209,13 +229,19 @@ public class AssetController {
         }
     }
 
-    /** Strictly accepts a single satisfiable RFC 7233 byte range. */
+    /** 一个已解析的单段字节范围，start/end 均为包含端点。
+     * @param start 起始字节位置
+     * @param end 结束字节位置
+     * @param partial 是否为客户端显式请求的部分内容
+     */
     record ByteRange(long start, long end, boolean partial) {
 
+        /** 返回包含起止字节后的总长度。 */
         long length() {
             return end - start + 1;
         }
 
+        /** 解析单个 RFC 字节范围；拒绝多段、不满足或超出文件边界的请求。 */
         static ByteRange parse(String header, long size) {
             if (header == null || header.isBlank()) {
                 return new ByteRange(0, size - 1, false);
@@ -253,10 +279,12 @@ public class AssetController {
         }
     }
 
-    /** Carries the authenticated file length without exposing its filesystem location. */
+    /** 供异常处理器构造 Content-Range 提示，仅携带文件长度。 */
     private static final class InvalidRange extends RuntimeException {
+        /** 原文件长度，用于生成 416 响应的未满足范围总长提示。 */
         private final long size;
 
+        /** 保留原文件长度供 416 响应生成器使用。 */
         private InvalidRange(long size) {
             this.size = size;
         }

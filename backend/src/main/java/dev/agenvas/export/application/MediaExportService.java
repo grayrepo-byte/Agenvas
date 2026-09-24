@@ -20,17 +20,24 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Validates exact video versions and snapshots an ordered silent export before queueing work. */
+/** 校验精确视频版本与裁剪范围，生成无声导出任务使用的不可变输入快照。 */
 @Service
 public class MediaExportService {
 
+    /** 导出幂等键允许的字符和长度，禁止空白及路径分隔符。 */
     private static final Pattern KEY = Pattern.compile("[A-Za-z0-9._:-]{1,120}");
+    /** 检查项目状态和画幅设置，并创建项目级导出任务。 */
     private final ProjectService projects;
+    /** 确认视频产物与指定历史版本的归属和类型。 */
     private final ArtifactService artifacts;
+    /** 确认输入视频资产已归档且时长可验证。 */
     private final AssetService assets;
+    /** 查找幂等任务并持久化项目导出任务。 */
     private final TaskService tasks;
+    /** 构造固定字段的导出输入快照。 */
     private final ObjectMapper mapper;
 
+    /** 组合项目设置、产物版本、归档资产和任务幂等服务。 */
     public MediaExportService(ProjectService projects, ArtifactService artifacts,
             AssetService assets, TaskService tasks, ObjectMapper mapper) {
         this.projects = projects;
@@ -40,7 +47,7 @@ public class MediaExportService {
         this.mapper = mapper;
     }
 
-    /** Freezes caller-selected order, versions, archived bytes and trim ranges in one Task. */
+    /** 将用户指定的片段顺序、版本、归档字节摘要和裁剪范围冻结到单个幂等任务。 */
     public Task create(UUID ownerId, UUID projectId, String idempotencyKey,
             List<SegmentRequest> segments) {
         if (idempotencyKey == null || !KEY.matcher(idempotencyKey).matches()) {
@@ -77,7 +84,7 @@ public class MediaExportService {
                 stepKey, preview.inputSnapshot(), preview.projectVersion());
     }
 
-    /** Validates a proposed order without creating a Task or authorizing FFmpeg execution. */
+    /** 预览并校验片段顺序但不创建任务，因此不会授权或启动 FFmpeg。 */
     public ExportPreview preview(UUID ownerId, UUID projectId,
             List<SegmentRequest> segments) {
         requireSegmentCount(segments);
@@ -130,31 +137,41 @@ public class MediaExportService {
         return new ExportPreview(input, project.version());
     }
 
+    /** 限制片段数量为一至六个，避免无界输入扩大探测和编码负载。 */
     private void requireSegmentCount(List<SegmentRequest> segments) {
         if (segments == null || segments.isEmpty() || segments.size() > 6) {
             throw invalid("导出必须包含 1 至 6 个视频片段。");
         }
     }
 
-    /** Existing export summaries stay visible after the Agent Run ends. */
+    /** 查询项目级导出任务摘要，不依赖 Agent Run 是否仍在运行。 */
     public List<Task> list(UUID ownerId, UUID projectId) {
         return tasks.listProjectExports(ownerId, projectId);
     }
 
-    /** Export cancellation only affects this project's local work. */
+    /** 取消项目本地导出编排，不尝试停止或修改 Provider 媒体生成。 */
     public Task cancel(UUID ownerId, UUID projectId, UUID taskId) {
         return tasks.cancelProjectExport(ownerId, projectId, taskId);
     }
 
+    /** 构造导出素材、版本或区间无效时返回的 400 响应。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "EXPORT_INPUT_INVALID",
                 "导出输入无效", detail, false);
     }
 
-    /** One explicit historical version and its selected millisecond interval. */
+    /** 一段明确指定的历史视频版本及其裁剪区间。
+     * @param videoArtifactId 视频产物 ID
+     * @param videoVersionId 要导出的不可变内容版本 ID
+     * @param startMs 裁剪起点，单位毫秒，包含该位置
+     * @param endMs 裁剪终点，单位毫秒，不包含该位置
+     */
     public record SegmentRequest(UUID videoArtifactId, UUID videoVersionId,
             int startMs, int endMs) {}
 
-    /** Server-owned export input plus the project settings version used to validate it. */
+    /** 服务端生成的固定导出输入及校验时的项目设置版本。
+     * @param inputSnapshot 含资产摘要、裁剪范围和输出规格的任务输入
+     * @param projectVersion 预览时读取的项目乐观版本
+     */
     public record ExportPreview(JsonNode inputSnapshot, long projectVersion) {}
 }

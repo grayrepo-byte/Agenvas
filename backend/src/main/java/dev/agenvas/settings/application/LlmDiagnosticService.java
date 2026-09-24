@@ -17,17 +17,24 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
-/** Explicit billable probe that verifies tool request, tool result and second model reply. */
+/** 经用户确认后执行最多两次模型调用，验证工具请求、结果回填和后续回复的完整往返。 */
 @Service
 public class LlmDiagnosticService {
 
+    /** 诊断专用工具名，不访问项目数据，也不调用业务工具。 */
     private static final String PROBE_TOOL = "agenvas_connection_probe";
+    /** 获取当前活动配置并在成功后写回能力验证状态。 */
     private final LlmProviderConfigRepository repository;
+    /** 返回不含密钥的配置状态给调用方。 */
     private final LlmProviderConfigService configs;
+    /** 使用指定配置创建本次诊断专用聊天网关。 */
     private final LlmDiagnosticGateway gatewayFactory;
+    /** 验证模型返回的 nonce 参数是否为合法 JSON。 */
     private final ObjectMapper mapper;
+    /** 进程内单飞闸门，避免并发触发多组可能计费的诊断请求。 */
     private final AtomicBoolean inFlight = new AtomicBoolean();
 
+    /** 注入配置读写与 Provider 网关工厂；诊断调用本身在方法内事务之外执行。 */
     public LlmDiagnosticService(LlmProviderConfigRepository repository,
             LlmProviderConfigService configs, LlmDiagnosticGateway gatewayFactory,
             ObjectMapper mapper) {
@@ -37,7 +44,7 @@ public class LlmDiagnosticService {
         this.mapper = mapper;
     }
 
-    /** Never runs in a database transaction; the final capability update is version-guarded. */
+    /** 网络诊断不占用数据库事务；结束时按配置版本条件更新能力状态。 */
     public LlmProviderConfigService.Status diagnose(int expectedVersion, boolean acknowledgeCost) {
         if (!acknowledgeCost || expectedVersion < 1) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST,
@@ -61,6 +68,7 @@ public class LlmDiagnosticService {
         }
     }
 
+    /** 要求模型发起唯一探针调用，再将工具结果回填并验证第二轮文本响应。 */
     private void probe(LlmProviderConfig config) {
         String nonce = UUID.randomUUID().toString();
         ToolCallback tool = new ProbeTool();
@@ -104,10 +112,12 @@ public class LlmDiagnosticService {
         }
     }
 
+    /** 创建协议不匹配异常，以便和端点或网络故障分别映射错误码。 */
     private DiagnosticProtocolFailure protocolFailure() {
         return new DiagnosticProtocolFailure();
     }
 
+    /** 限制参数长度并检查模型工具参数中的 nonce 与本次随机值完全一致。 */
     private boolean matchesArguments(String arguments, String nonce) {
         if (arguments == null || arguments.length() > 4_096) return false;
         try {
@@ -117,14 +127,16 @@ public class LlmDiagnosticService {
         }
     }
 
+    /** 构造诊断期间配置版本被修改时使用的冲突响应。 */
     private ApiProblemException changed() {
         return new ApiProblemException(HttpStatus.CONFLICT,
                 "PROVIDER_CONFIG_VERSION_CONFLICT", "模型配置已变化",
                 "请重新读取模型配置后再诊断。", false);
     }
 
-    /** Any accidental Spring AI auto tool execution is a diagnostic failure. */
+    /** Spring AI 回调若被自动执行即视为失败，确保工具结果只由诊断流程回填。 */
     private static final class ProbeTool implements ToolCallback {
+        /** 描述仅接受 nonce 的诊断工具，拒绝额外参数或业务数据。 */
         @Override
         public ToolDefinition getToolDefinition() {
             return ToolDefinition.builder().name(PROBE_TOOL)
@@ -134,12 +146,13 @@ public class LlmDiagnosticService {
                     .build();
         }
 
+        /** 禁止框架直接执行回调；诊断服务必须显式检查调用后自行回填结果。 */
         @Override
         public String call(String input) {
             throw new IllegalStateException("Diagnostic tool must be executed by the caller");
         }
     }
 
-    /** Distinguishes a model-protocol mismatch from a transport failure. */
+    /** 标记模型没有遵守工具往返协议，与传输或 Provider 错误区分。 */
     private static final class DiagnosticProtocolFailure extends RuntimeException {}
 }

@@ -14,16 +14,23 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Assigns a trusted correlation ID before security or application request handling. */
+/** 在安全过滤器和应用处理前生成可信请求 ID，并加入响应头与日志 MDC。 */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestCorrelationFilter extends OncePerRequestFilter {
 
+    /** 记录请求方法、状态和耗时，不记录请求体或凭据。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(RequestCorrelationFilter.class);
+    /** Servlet request attribute 中可信请求 ID 的键。 */
     public static final String ATTRIBUTE = RequestCorrelationFilter.class.getName() + ".id";
+    /** 返回给客户端的请求关联头名称。 */
     public static final String HEADER = "X-Request-Id";
 
-    /** Never trusts an incoming correlation header as a log identifier. */
+    /** 无条件生成服务端关联 ID，不使用客户端传入头作为日志标识。
+     * @param request 当前 Servlet 请求
+     * @param response 当前 Servlet 响应
+     * @param chain 后续安全与应用过滤器链
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
@@ -47,7 +54,7 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
         }
     }
 
-    /** Async SSE completion is not a second client request and retains its original header. */
+    /** SSE 异步派发属于原请求的延续，不重新生成或覆盖原关联头。 */
     @Override
     protected boolean shouldNotFilterAsyncDispatch() {
         return true;

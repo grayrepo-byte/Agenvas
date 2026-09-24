@@ -3,11 +3,11 @@ package dev.agenvas.shared.security;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
 import org.springframework.stereotype.Component;
 
-/** Refuses published development database passwords before an installation becomes ready. */
+/** 安装就绪前拒绝使用已公开的开发数据库密码。 */
 @Component
 public class DatabasePasswordGuard {
 
-    /** Never includes the configured password in validation errors or logs. */
+    /** 校验错误和日志均不包含配置的数据库密码。 */
     public DatabasePasswordGuard(DataSourceProperties dataSource) {
         String password = dataSource.getPassword();
         if ("local-development-only".equals(password)

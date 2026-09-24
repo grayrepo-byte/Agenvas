@@ -24,23 +24,33 @@ import javax.imageio.ImageIO;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-/** Opt-in fixed Wan I2V adapter; only a durable prompt ID is ever polled. */
+/** 显式启用的固定 Wan 图生视频适配器；仅轮询已持久化的 Provider 请求 ID。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 @ConditionalOnProperty(prefix = "agenvas.provider.comfyui.video", name = "enabled",
         havingValue = "true")
 public class ComfyUiVideoWorker {
 
+    /** 提供任务认领、租约与提交检查点状态转换。 */
     private final TaskWorker worker;
+    /** 读取 Worker 权限范围、任务固定输入和已受理 Provider 身份。 */
     private final TaskService tasks;
+    /** 读取审批时固定的图片产物版本。 */
     private final ArtifactService artifacts;
+    /** 读取关键帧文件并幂等归档视频输出。 */
     private final AssetService assets;
+    /** 获取项目画幅设置，用于归一化关键帧。 */
     private final ProjectService projects;
+    /** 向当前 ComfyUI 端点上传图片并提交固定工作流。 */
     private final ComfyUiClient client;
+    /** 使用持久化的 Provider 身份只读轮询已受理请求。 */
     private final ComfyUiVideoPoller poller;
+    /** 提供版本固定的图生视频模板及输入时长约束。 */
     private final ComfyUiVideoWorkflow workflow;
+    /** 用于提交前核对当前 Provider 配置版本。 */
     private final PlanProviderProperties provider;
 
+    /** 装配提交与轮询分离的视频 Worker，避免轮询路径重新提交生成请求。 */
     public ComfyUiVideoWorker(TaskService tasks, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ComfyUiClient client,
             ComfyUiVideoPoller poller, ComfyUiVideoWorkflow workflow,
@@ -56,14 +66,16 @@ public class ComfyUiVideoWorker {
         this.provider = provider;
     }
 
-    /** The submission checkpoint is committed before upload or the non-idempotent POST. */
+    /** 在上传或非幂等 POST 前先提交任务检查点，再执行固定模板请求。 */
     public int submitOnce(String workerId) {
         return worker.runComfyVideosOnce(workerId, new TaskWorker.MediaHandler() {
+            /** 返回当前 Provider 来源摘要供任务认领前校验。 */
             @Override
             public String candidateOriginSha256() {
                 return client.originSha256();
             }
 
+            /** 若配置、来源或工作流版本已变化，阻止向新端点提交旧计划。 */
             @Override
             public String preflightFailure(Task task) {
                 return task.input().path("providerConfigVersion").asInt(-1)
@@ -74,6 +86,7 @@ public class ComfyUiVideoWorker {
                         ? null : "PROVIDER_CONFIG_CHANGED";
             }
 
+            /** 只执行一次上传与提交；后续状态交给独立轮询流程。 */
             @Override
             public TaskWorker.Outcome execute(Task task, UUID requestKey) {
                 return submit(task, requestKey);
@@ -81,11 +94,12 @@ public class ComfyUiVideoWorker {
         });
     }
 
-    /** An accepted request is queried by its original ID; no path here can submit again. */
+    /** 按原始请求 ID 查询已受理任务，不经过上传或提交代码路径。 */
     public int pollOnce(String workerId) {
         return poller.pollOnce(workerId);
     }
 
+    /** 上传审批固定的关键帧，并用任务请求键生成种子后提交版本固定的模板。 */
     private TaskWorker.WaitingProvider submit(Task task, UUID requestKey) {
         UUID ownerId = tasks.ownerForWorker(task);
         Project.AspectRatio ratio = projects.get(ownerId, task.projectId()).aspectRatio();
@@ -102,7 +116,7 @@ public class ComfyUiVideoWorker {
         return new TaskWorker.WaitingProvider(promptId.toString(), Instant.now().plusSeconds(5));
     }
 
-    /** Reads only the approved historical IMAGE version and letterboxes before upload. */
+    /** 读取审批固定的历史图片版本，按项目画幅等比缩放并在空白底色上居中。 */
     private byte[] pinnedKeyframe(UUID ownerId, Task task, Project.AspectRatio ratio) {
         UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
         UUID versionId = UUID.fromString(task.input().path("imageVersionId").asText());

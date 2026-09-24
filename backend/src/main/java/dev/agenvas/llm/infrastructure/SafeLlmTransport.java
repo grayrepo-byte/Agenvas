@@ -14,18 +14,29 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/** Pins each model request to the admitted origin and validates DNS at connection time. */
+/** 限定模型请求只能访问已准入端点，并在连接时校验 DNS 解析结果。 */
 final class SafeLlmTransport {
 
+    /** 准入策略检查通过的配置端点，作为请求校验的来源。 */
     private final HttpUrl base;
+    /** 固定的补全 API 路径；拒绝客户端请求其他端点。 */
     private final String completionPath;
+    /** 禁止代理、重定向和自动重试，并在连接时验证 DNS 的客户端。 */
     private final OkHttpClient client;
 
+    /** 使用系统 DNS 构造生产传输层。
+     * @param endpoint 管理员配置的 LLM 端点
+     * @param policy 检查主机名及解析地址是否允许访问的策略
+     */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy) {
         this(endpoint, policy, Dns.SYSTEM);
     }
 
-    /** Injectable DNS makes rebinding and mixed-address rejection deterministic in tests. */
+    /** 使用可替换解析器执行与生产一致的地址校验。
+     * @param endpoint 已准入的 LLM 端点
+     * @param policy DNS 地址安全策略
+     * @param resolver 域名解析器；测试可注入混合或变化地址
+     */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver) {
         this.base = HttpUrl.get(endpoint);
         String path = base.encodedPath().replaceAll("/+$", "");
@@ -56,11 +67,18 @@ final class SafeLlmTransport {
                 .build();
     }
 
-    /** Routes Spring AI's request through a separate client that cannot follow redirects. */
+    /** 为 Spring AI 安装拦截器，将请求转交给禁用重定向和自动重试的专用客户端。
+     * @return 校验请求目标后执行网络调用的拦截器
+     */
     Interceptor interceptor() {
         return chain -> execute(chain.request());
     }
 
+    /** 校验 Spring AI 实际发出的 URL、方法和查询参数后执行请求，并拒绝重定向。
+     * @param request Spring AI 构造的 HTTP 请求
+     * @return 未消费的 Provider 响应，由调用方负责关闭
+     * @throws IOException 请求目标不匹配、DNS 失败或网络调用失败
+     */
     private Response execute(Request request) throws IOException {
         HttpUrl url = request.url();
         if (!url.scheme().equals(base.scheme()) || !url.host().equalsIgnoreCase(base.host())

@@ -23,26 +23,55 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Explicit, auditable new attempt for an ambiguous external submission; never retries implicitly. */
+/** 用户明确接受潜在重复费用后，为无法核对的外部提交建立可审计的新尝试。 */
 @Service
 public class ManualUnknownRetryService {
 
+    /** 创建替代任务所需的精确风险确认值，不能由模型代填。 */
     public static final String RISK_ACKNOWLEDGEMENT = "ACCEPT_POSSIBLE_DUPLICATE_COST";
 
+    /** 读取原任务，并通过统一任务规则创建替代媒体任务。 */
     private final TaskService tasks;
+    /** 检查原请求、替代关系和未执行下游依赖。 */
     private final TaskRepository repository;
+    /** 读取原任务已审批计划。 */
     private final ExecutionPlanService plans;
+    /** 重新核验计划输入和 Provider origin。 */
     private final PlanDraftValidator validator;
+    /** 检查当前 Provider 配置版本是否仍等于审批版本。 */
     private final PlanProviderProperties provider;
+    /** 检查审批时的工作流版本仍可使用。 */
     private final PlanWorkflowPolicy workflows;
+    /** 确认项目仍可执行新尝试。 */
     private final ProjectService projects;
+    /** 确认原 Run 仍等待该媒体任务，并按条件解除阻断。 */
     private final AgentRunService runs;
+    /** 对已有输出目标再次比较产物版本。 */
     private final ArtifactService artifacts;
+    /** 新尝试独立预留媒体用量，原 UNKNOWN 费用记录不消失。 */
     private final UsageService usage;
+    /** 与替代关系、依赖重连同事务写入项目事件。 */
     private final ProjectEventService events;
+    /** 构造不包含任务输入的状态事件负载。 */
     private final ObjectMapper mapper;
+    /** 给不可变替代关系记录创建时间。 */
     private final Clock clock;
 
+    /** 组装 UNKNOWN 替代任务创建所需的风险确认、计划核验、额度与依赖更新能力。
+     * @param tasks 读取和条件推进持久化任务
+     * @param repository 读取原提交尝试与下游依赖
+     * @param plans 核验原计划和审批状态
+     * @param validator 重新校验固定输入和计划结构
+     * @param provider 当前 Provider 模式及配置版本
+     * @param workflows 确认原工作流版本仍受支持
+     * @param projects 校验项目仍处于活动状态
+     * @param runs 核验原 Run 并按条件恢复编排
+     * @param artifacts 确认结果归档目标未被用户更新
+     * @param usage 为新尝试单独预留用量
+     * @param events 持久化替代关系和任务事件
+     * @param mapper 构造安全事件负载
+     * @param clock 为替代关系提供创建时间
+     */
     public ManualUnknownRetryService(TaskService tasks, TaskRepository repository,
             ExecutionPlanService plans, PlanDraftValidator validator,
             PlanProviderProperties provider, PlanWorkflowPolicy workflows,
@@ -63,7 +92,19 @@ public class ManualUnknownRetryService {
         this.clock = clock;
     }
 
-    /** Creates one separately reserved Task and redirects only pending downstream work. */
+    /**
+     * 用户确认可能重复收费后，在同一项目事务中创建一次新的媒体任务与独立用量预留。
+     * 必须重新核验原 UNKNOWN 任务、已审批计划、Provider/工作流版本、固定输入和预算；
+     * 只把尚未执行的 PENDING 下游任务改为依赖新任务，原 UNKNOWN 记录始终保留。
+     *
+     * @param ownerId 经认证且实际批准风险的用户 ID
+     * @param projectId 原任务和计划所属项目
+     * @param originalTaskId 状态仍为 UNKNOWN、没有可查询原请求 ID 的媒体任务
+     * @param expectedTaskVersion 用户确认时看到的原任务版本
+     * @param acknowledgement 必须精确等于风险确认常量
+     * @param idempotencyKey 同一人工重试命令的客户端键；相同键不能用于别的任务或版本
+     * @return 新建或同键重放得到的替代任务
+     */
     @Transactional
     public Task create(UUID ownerId, UUID projectId, UUID originalTaskId,
             long expectedTaskVersion, String acknowledgement, String idempotencyKey) {
@@ -168,7 +209,7 @@ public class ManualUnknownRetryService {
         }).value();
     }
 
-    /** Superseded UNKNOWN rows remain audit history, not active Run blockers. */
+    /** 被替换的 UNKNOWN 任务只作为审计历史；其他未替换 UNKNOWN 或失败任务仍阻止恢复 Run。 */
     private boolean noOtherBlockers(UUID ownerId, UUID projectId, UUID runId, UUID originalId) {
         return tasks.listByRun(ownerId, projectId, runId).stream()
                 .filter(task -> !task.id().equals(originalId))
@@ -179,7 +220,7 @@ public class ManualUnknownRetryService {
                         || task.status() == Task.Status.CANCELED);
     }
 
-    /** Existing task event type causes snapshot clients to refresh both original and successor. */
+    /** 对原任务与替代任务沿用状态事件，促使客户端刷新两者及依赖关系。 */
     private ProjectEventService.EventDraft statusEvent(Task task, UUID replacementId) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("taskId", task.id().toString());
@@ -191,6 +232,7 @@ public class ManualUnknownRetryService {
                 task.id(), task.version(), payload);
     }
 
+    /** 原任务或审批前提变化时返回稳定冲突码，不隐式创建新的外部请求。 */
     private ApiProblemException conflict(String detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "UNKNOWN_RETRY_CONFLICT",
                 "不能创建新尝试", detail, false);

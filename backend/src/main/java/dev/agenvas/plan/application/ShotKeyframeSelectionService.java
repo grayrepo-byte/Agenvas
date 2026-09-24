@@ -20,19 +20,28 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Records an explicit human keyframe choice only for a successful image from this Run and shot. */
+/** 持久化用户明确选择的镜头关键帧，并要求图片任务在同一 Run 中成功完成。 */
 @Service
 public class ShotKeyframeSelectionService {
 
+    /** 检查项目归属与是否仍允许编辑。 */
     private final ProjectService projects;
+    /** 验证 Run 所有者，并读取当前 Run 状态。 */
     private final AgentRunService runs;
+    /** 检查镜头、图片和当前内容版本。 */
     private final ArtifactService artifacts;
+    /** 验证图片来源任务，并在关键帧选择后推进等待中的视频任务。 */
     private final TaskService tasks;
+    /** 以镜头为键保存当前关键帧选择及其 CAS 版本。 */
     private final ShotKeyframeSelectionRepository selections;
+    /** 在项目事件序号锁内提交选择变更事件。 */
     private final ProjectEventService events;
+    /** 构造只包含镜头与版本标识的事件载荷。 */
     private final ObjectMapper mapper;
+    /** 为选择记录创建和更新时间。 */
     private final Clock clock;
 
+    /** 组合 Run、素材和任务校验，选择写入通过项目事件事务保持原子性。 */
     public ShotKeyframeSelectionService(ProjectService projects, AgentRunService runs,
             ArtifactService artifacts, TaskService tasks,
             ShotKeyframeSelectionRepository selections, ProjectEventService events,
@@ -47,14 +56,14 @@ public class ShotKeyframeSelectionService {
         this.clock = clock;
     }
 
-    /** Returns the stored selection without treating an absent selection as an implicit choice. */
+    /** 返回已保存的选择；不存在时明确报错，不把空选择解释为用户已确认。 */
     @Transactional(readOnly = true)
     public ShotKeyframeSelection get(UUID ownerId, UUID projectId, UUID runId, UUID shotId) {
         runs.get(ownerId, projectId, runId);
         return selections.find(projectId, shotId).orElseThrow(this::notFound);
     }
 
-    /** Uses the project lock so selection CAS and plan proposal observe one ordered state. */
+    /** 在项目锁内执行选择 CAS，使关键帧变更与计划提案看到同一有序状态。 */
     @Transactional
     public ShotKeyframeSelection select(UUID ownerId, UUID projectId, UUID runId,
             UUID shotId, UUID shotVersionId, UUID imageId, UUID imageVersionId,
@@ -117,6 +126,7 @@ public class ShotKeyframeSelectionService {
         }).value();
     }
 
+    /** 从生成图片版本的内容中提取来源任务 ID；格式错误时拒绝作为关键帧使用。 */
     private UUID sourceTaskId(ArtifactVersion imageVersion) {
         try {
             return UUID.fromString(imageVersion.content().path("sourceTaskId").asText());
@@ -125,6 +135,7 @@ public class ShotKeyframeSelectionService {
         }
     }
 
+    /** 为镜头当前选择生成稳定聚合 ID 的事件，不携带图片字节或描述正文。 */
     private ProjectEventService.EventDraft selectionEvent(ShotKeyframeSelection selection) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("shotArtifactId", selection.shotArtifactId().toString());
@@ -137,11 +148,13 @@ public class ShotKeyframeSelectionService {
                 aggregateId, selection.version(), payload);
     }
 
+    /** 构造镜头尚无选择或用户无权读取时使用的 404 响应。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                 "关键帧未选择", "镜头尚未选择关键帧或当前用户无权访问。", false);
     }
 
+    /** 构造 Run 状态、素材版本或选择 CAS 不匹配时使用的 409 响应。 */
     private ApiProblemException conflict(String detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "KEYFRAME_SELECTION_CONFLICT",
                 "关键帧选择冲突", detail, false);

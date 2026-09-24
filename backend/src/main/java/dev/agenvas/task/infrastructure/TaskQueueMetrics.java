@@ -14,18 +14,26 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Publishes a read-only, bounded-cardinality snapshot of durable task states and queue age. */
+/** 只读发布持久任务状态数量和最老到期任务年龄，指标标签仅使用固定状态值。 */
 @Component
 public class TaskQueueMetrics {
 
+    /** 记录数据库指标采集失败和恢复，不记录任务内容。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskQueueMetrics.class);
+    /** 从数据库加载同一快照的任务数量和等待年龄。 */
     private final Supplier<Snapshot> snapshotLoader;
+    /** 最近一次快照中的 READY 数量；-1 表示尚未采集或数据库不可用。 */
     private final AtomicLong ready = new AtomicLong(-1);
+    /** 最近一次快照中的 UNKNOWN 数量；-1 表示该值当前不可用。 */
     private final AtomicLong unknown = new AtomicLong(-1);
+    /** 最近一次快照中的 BLOCKED 数量；-1 表示该值当前不可用。 */
     private final AtomicLong blocked = new AtomicLong(-1);
+    /** 最老到期 READY 任务距最近状态更新的秒数；不可用时为 -1。 */
     private final AtomicReference<Double> oldestReadyAgeSeconds = new AtomicReference<>(-1.0);
+    /** 控制数据库故障日志仅在状态转换时输出一次。 */
     private final AtomicBoolean databaseUnavailable = new AtomicBoolean();
 
+    /** 注册持久层快照查询，并将可见数值映射到无项目标签的 Micrometer 指标。 */
     @Autowired
     public TaskQueueMetrics(JdbcClient jdbc, MeterRegistry meters) {
         this(() -> jdbc.sql("""
@@ -44,7 +52,7 @@ public class TaskQueueMetrics {
                         row.getDouble("oldest_ready_age_seconds"))).single(), meters);
     }
 
-    /** A deterministic loader keeps DB failure and recovery observable in a unit test. */
+    /** 注入快照加载器，便于隔离数据库状态源并验证失败与恢复行为。 */
     TaskQueueMetrics(Supplier<Snapshot> snapshotLoader, MeterRegistry meters) {
         this.snapshotLoader = snapshotLoader;
         register(meters, "READY", ready);
@@ -56,7 +64,7 @@ public class TaskQueueMetrics {
                 .register(meters);
     }
 
-    /** A negative value means the first snapshot has not completed or the DB is unavailable. */
+    /** 注册固定状态标签的任务数量 Gauge，负值表示快照尚未可用。 */
     private void register(MeterRegistry meters, String status, AtomicLong value) {
         Gauge.builder("agenvas.tasks.current", value, AtomicLong::get)
                 .description("Durable tasks in one allowlisted state; -1 when unavailable")
@@ -64,7 +72,7 @@ public class TaskQueueMetrics {
                 .register(meters);
     }
 
-    /** Refreshes all three values from one database statement without claiming work. */
+    /** 用一次只读 SQL 刷新全部状态和队列年龄，不认领或改变任何任务。 */
     @Scheduled(fixedDelay = 30_000)
     public void refresh() {
         try {
@@ -88,6 +96,11 @@ public class TaskQueueMetrics {
         }
     }
 
-    /** One query result keeps count and age from the same committed database snapshot. */
+    /** 来自同一 SQL 语句的已提交数据库快照。
+     * @param ready 到期或未到期 READY 任务总数
+     * @param unknown 需人工或 Provider 核对的任务数
+     * @param blocked 等待恢复条件满足的任务数
+     * @param oldestReadyAgeSeconds 最老到期 READY 任务等待秒数
+     */
     record Snapshot(long ready, long unknown, long blocked, double oldestReadyAgeSeconds) {}
 }

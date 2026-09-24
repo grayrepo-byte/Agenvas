@@ -13,18 +13,22 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL append-only ledger with a unique operation key. */
+/** PostgreSQL 只追加用量账本；唯一 operationKey 防止任务或模型回合重复计量。 */
 @Repository
 public class JdbcUsageRepository implements UsageRepository {
 
+    /** 执行账本插入、幂等查询和项目历史读取 SQL。 */
     private final JdbcClient jdbc;
+    /** 将数量 JSONB 还原为账本领域值。 */
     private final ObjectMapper mapper;
 
+    /** 注入用量账本 SQL 执行器与 JSON 映射器。 */
     public JdbcUsageRepository(JdbcClient jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
     }
 
+    /** 以唯一操作键插入账目；相同操作再次写入时返回 false，不覆盖原记录。 */
     @Override
     public boolean insertOnce(UsageEntry entry) {
         return jdbc.sql("""
@@ -56,6 +60,7 @@ public class JdbcUsageRepository implements UsageRepository {
                 .update() == 1;
     }
 
+    /** 按全局唯一 operationKey 查找既有账目，供服务层核对幂等重放载荷。 */
     @Override
     public Optional<UsageEntry> findByOperationKey(String operationKey) {
         return jdbc.sql("""
@@ -64,6 +69,7 @@ public class JdbcUsageRepository implements UsageRepository {
                 .param("operationKey", operationKey).query(this::map).optional();
     }
 
+    /** 按项目和时间顺序读取账目，访问权限由应用服务预先校验。 */
     @Override
     public List<UsageEntry> listProject(UUID projectId) {
         return jdbc.sql("""
@@ -73,6 +79,7 @@ public class JdbcUsageRepository implements UsageRepository {
                 .param("projectId", projectId).query(this::map).list();
     }
 
+    /** 将数据库行中的可空价格、版本来源及数量 JSON 还原为账目实体。 */
     private UsageEntry map(ResultSet rs, int row) throws SQLException {
         return new UsageEntry(rs.getObject("id", UUID.class),
                 rs.getObject("project_id", UUID.class),

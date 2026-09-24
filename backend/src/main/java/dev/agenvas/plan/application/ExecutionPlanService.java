@@ -29,24 +29,38 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Separates model proposals from authenticated, version-checked Task authorization. */
+/** 管理计划提案与人工审批；审批通过前不创建媒体任务，审批时重新核对输入和额度。 */
 @Service
 public class ExecutionPlanService {
 
+    /** 检查项目可用性、所有者并取得项目状态版本。 */
     private final ProjectService projects;
+    /** 锁定并推进 Run 状态，避免审批与取消并发覆盖。 */
     private final AgentRunRepository runRepository;
+    /** 执行带用户权限检查的 Run 查询和状态迁移。 */
     private final AgentRunService runs;
+    /** 持久化计划正文、步骤及审批凭据。 */
     private final ExecutionPlanRepository plans;
+    /** 将模型提案校验并规范化为带版本固定的步骤草稿。 */
     private final PlanDraftValidator validator;
+    /** 当前 Provider 配置版本，用于审批阶段检测配置漂移。 */
     private final PlanProviderProperties provider;
+    /** 读取对应阶段固定工作流版本并校验媒体时长。 */
     private final PlanWorkflowPolicy workflows;
+    /** 读取 Run 已创建的媒体任务数量以执行预算限制。 */
     private final TaskRepository taskRepository;
+    /** 创建媒体任务和模型续跑任务。 */
     private final TaskService tasks;
+    /** 为审批创建的媒体任务原子预留用量。 */
     private final UsageService usage;
+    /** 在状态事务内分配项目事件序号并写入计划事件。 */
     private final ProjectEventService events;
+    /** 生成不可变 JSON 快照与审批预留载荷。 */
     private final ObjectMapper mapper;
+    /** 为计划创建、状态迁移和审批凭据提供统一时刻。 */
     private final Clock clock;
 
+    /** 组装计划生命周期依赖；校验器、仓储和服务分别负责规则、持久化及副作用。 */
     public ExecutionPlanService(ProjectService projects, AgentRunRepository runRepository,
             AgentRunService runs, ExecutionPlanRepository plans, PlanDraftValidator validator,
             PlanProviderProperties provider, PlanWorkflowPolicy workflows,
@@ -67,14 +81,14 @@ public class ExecutionPlanService {
         this.clock = clock;
     }
 
-    /** Stores a model proposal and moves its Run to WAITING_APPROVAL without any media Task. */
+    /** 在项目事件序号锁内校验并保存模型提案，将 Run 转入等待审批且不创建媒体任务。 */
     @Transactional
     public ExecutionPlan propose(TrustedToolContext context, JsonNode proposed) {
         return events.recordChange(context.ownerId(), context.projectId(), () ->
                 ProjectEventService.Change.unchanged(proposeLocked(context, proposed))).value();
     }
 
-    /** Runs after the project event row is locked, matching Artifact revision lock order. */
+    /** 在项目事件行锁内读取 Run 和素材，保持与产物修订相同的锁顺序。 */
     private ExecutionPlan proposeLocked(TrustedToolContext context, JsonNode proposed) {
         projects.requireActiveProject(context.ownerId(), context.projectId());
         AgentRun run = lockedRun(context);
@@ -101,7 +115,7 @@ public class ExecutionPlanService {
         return plan;
     }
 
-    /** Returns a nested proposal only after the requesting user owns its Run. */
+    /** 仅在请求者拥有计划所属 Run 时返回计划内容。 */
     @Transactional(readOnly = true)
     public ExecutionPlan get(UUID ownerId, UUID projectId, UUID planId) {
         ExecutionPlan plan = plans.find(projectId, planId).orElseThrow(this::notFound);
@@ -109,7 +123,7 @@ public class ExecutionPlanService {
         return plan;
     }
 
-    /** Lists proposals for a Run after checking its owner and project scope. */
+    /** 校验 Run 的用户和项目归属后，按仓储提供的 ID 顺序读取该 Run 的计划。 */
     @Transactional(readOnly = true)
     public List<ExecutionPlan> listByRun(UUID ownerId, UUID projectId, UUID runId) {
         runs.get(ownerId, projectId, runId);
@@ -118,7 +132,7 @@ public class ExecutionPlanService {
                 .toList();
     }
 
-    /** Authenticated approval atomically reserves use, creates one Task per step and records events. */
+    /** 校验用户确认的计划摘要，再于项目锁内原子预留额度、创建步骤任务并记录事件。 */
     @Transactional
     public ApprovalResult approve(UUID ownerId, UUID projectId, UUID planId,
             String submittedPlanHash) {
@@ -131,7 +145,7 @@ public class ExecutionPlanService {
                         preliminary, submittedPlanHash))).value();
     }
 
-    /** Serializes the final input read against Artifact revisions before reserving any work. */
+    /** 锁定 Run 和计划，重验 Provider、输入版本及预算后原子预留额度并创建依赖任务。 */
     private ApprovalResult approveLocked(UUID ownerId, UUID projectId,
             ExecutionPlan preliminary, String submittedPlanHash) {
         AgentRun run = runRepository.findForUpdate(ownerId, projectId, preliminary.runId())
@@ -209,7 +223,7 @@ public class ExecutionPlanService {
                 plans.find(projectId, preliminary.id()).orElseThrow(), List.copyOf(created), false);
     }
 
-    /** A rejected proposal never creates Tasks and allows the same Run to re-plan. */
+    /** 拒绝待审批计划且不创建媒体任务，随后安排同一 Run 继续下一轮模型回合。 */
     @Transactional
     public ExecutionPlan reject(UUID ownerId, UUID projectId, UUID planId) {
         ExecutionPlan preliminary = get(ownerId, projectId, planId);
@@ -218,7 +232,7 @@ public class ExecutionPlanService {
                         preliminary))).value();
     }
 
-    /** Rejects under the same project-before-Run lock order as cancellation and content edits. */
+    /** 按项目后 Run 的锁顺序更新拒绝状态，避免与取消或内容修改交错。 */
     private ExecutionPlan rejectLocked(UUID ownerId, UUID projectId, ExecutionPlan preliminary) {
         AgentRun run = runRepository.findForUpdate(ownerId, projectId, preliminary.runId())
                 .orElseThrow(this::notFound);
@@ -241,7 +255,7 @@ public class ExecutionPlanService {
         return plans.find(projectId, preliminary.id()).orElseThrow();
     }
 
-    /** Creates one durable continuation, pinned to this exact approval decision and dependencies. */
+    /** 创建固定审批决定和任务依赖的持久化续跑回合；图片阶段仍等待用户选择关键帧。 */
     private AgentRun createResumeTurn(UUID ownerId, UUID projectId, AgentRun run,
             ExecutionPlan plan, List<Task> mediaTasks, String decision) {
         int previousStep = run.nextStepIndex();
@@ -279,17 +293,20 @@ public class ExecutionPlanService {
         return runs.advanceStep(ownerId, projectId, run.id(), run.version(), previousStep);
     }
 
+    /** 查询该计划首次创建的任务，用于重复审批返回原结果。 */
     private List<Task> planTasks(UUID ownerId, UUID projectId, ExecutionPlan plan) {
         return tasks.listByRun(ownerId, projectId, plan.runId()).stream()
                 .filter(task -> plan.id().equals(task.planId()) && task.attemptNo() == 1)
                 .toList();
     }
 
+    /** 按可信上下文取得带行锁的 Run，缺失或越权时统一返回未找到。 */
     private AgentRun lockedRun(TrustedToolContext context) {
         return runRepository.findForUpdate(context.ownerId(), context.projectId(),
                 context.runId()).orElseThrow(this::notFound);
     }
 
+    /** 生成只包含计划标识和状态的事件载荷，不向事件总线复制计划正文。 */
     private ProjectEventService.EventDraft planEvent(String type, ExecutionPlan plan) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("planId", plan.id().toString());
@@ -300,6 +317,7 @@ public class ExecutionPlanService {
                 plan.revision(), payload);
     }
 
+    /** 对规范化 JSON 文本计算 UTF-8 SHA-256，用于用户确认精确提案。 */
     private String sha256(String content) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -309,22 +327,30 @@ public class ExecutionPlanService {
         }
     }
 
+    /** 构造计划不存在或不属于当前用户时的 404 响应。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                 "计划不存在", "计划不存在或当前用户无权访问。", false);
     }
 
+    /** 构造计划输入不符合契约时的 400 响应。 */
     private ApiProblemException invalid(String detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "PLAN_INVALID",
                 "执行计划无效", detail, false);
     }
 
+    /** 构造计划、Run 或预算状态不再允许当前决定时的 409 响应。 */
     private ApiProblemException conflict(String detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "PLAN_CONFLICT",
                 "计划状态冲突", detail, false);
     }
 
-    /** Approval ID, frozen plan and the Tasks created (or replayed) by one decision. */
+    /** 一次审批决定的标识、冻结计划及新建或重放得到的任务列表。
+     * @param approvalId 已持久化审批凭据的 ID
+     * @param plan 审批后的计划快照
+     * @param tasks 本次审批创建或重放返回的媒体任务
+     * @param replayed 是否命中已经完成的相同审批
+     */
     public record ApprovalResult(UUID approvalId, ExecutionPlan plan,
             List<Task> tasks, boolean replayed) {}
 }
