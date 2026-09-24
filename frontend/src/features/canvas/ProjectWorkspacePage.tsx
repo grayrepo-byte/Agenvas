@@ -1,0 +1,1061 @@
+import {
+  Background,
+  Controls,
+  MiniMap,
+  NodeResizer,
+  ReactFlow,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+  type ResizeParams,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Link, Navigate, useParams } from "react-router";
+import {
+  ApiError,
+  applyCanvasCommands,
+  assetContentUrl,
+  assetThumbnailUrl,
+  cancelRun,
+  createAgent,
+  createArtifact,
+  createRun,
+  getCurrentUser,
+  getProject,
+  getProjectSnapshot,
+  getRunPreflight,
+  listCanvasItems,
+  uploadImageAsset,
+  updateAgent,
+  type Agent,
+  type AgentRun,
+  type CanvasCommand,
+  type CanvasItem,
+  type ProjectSnapshot,
+} from "../../shared/api/client";
+import { useCanvasStore } from "./canvasStore";
+import { subscribeProjectEvents, type EventSyncStatus } from "./projectEvents";
+import { PlanApprovalPanel } from "./PlanApprovalPanel";
+import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
+import { MediaExportPanel } from "./MediaExportPanel";
+import { ShotRedoEditor } from "./ShotRedoEditor";
+import { RunHistoryPanel } from "./RunHistoryPanel";
+import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
+import { BlockedRunNotice } from "./BlockedRunNotice";
+
+type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
+
+type CanvasNodeData = {
+  item: CanvasItem;
+  projectId: string;
+  activeRun: AgentRun | null;
+  redoCandidates: { artifactId: string; versionId: string; title: string }[];
+  onResizeEnd: (itemId: string, layout: LayoutPatch) => void;
+  onRemove: (item: CanvasItem) => void;
+  onToggleLocked: (item: CanvasItem) => void;
+  onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
+  updatingAgent: boolean;
+};
+
+type CanvasNode = Node<CanvasNodeData, "canvasCard">;
+const emptyEdges: never[] = [];
+
+/** React Flow workspace whose nodes are projections of query data plus transient layout drafts. */
+export function ProjectWorkspacePage() {
+  const { projectId } = useParams();
+  if (!projectId) return <Navigate to="/projects" replace />;
+  return <ProjectWorkspace key={projectId} projectId={projectId} />;
+}
+
+function ProjectWorkspace({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [imageTitle, setImageTitle] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imageProgress = useRef<{ projectId: string; file: File; title: string; assetId?: string; artifactId?: string; itemId?: string } | null>(null);
+  const [imagePartialStage, setImagePartialStage] = useState<"asset" | "artifact" | null>(null);
+  const [agentName, setAgentName] = useState("Creator Agent");
+  const [agentInstruction, setAgentInstruction] = useState("根据明确绑定的输入创作内容。");
+  const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
+  const drafts = useCanvasStore((state) => state.drafts);
+  const saveState = useCanvasStore((state) => state.saveState);
+  const selectedIds = useCanvasStore((state) => state.selectedIds);
+  const updateDraft = useCanvasStore((state) => state.updateDraft);
+  const clearDraft = useCanvasStore((state) => state.clearDraft);
+  const setSaveState = useCanvasStore((state) => state.setSaveState);
+  const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
+  const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
+  const snapshot = useQuery({
+    queryKey: ["snapshot", projectId],
+    queryFn: () => getProjectSnapshot(projectId),
+    enabled: currentUser.isSuccess,
+  });
+  // Pin the SSE starting waterline once; subsequent snapshot updates must not reopen the stream.
+  const initialEventSequence = useRef<number | null>(null);
+  if (initialEventSequence.current === null && snapshot.data) {
+    initialEventSequence.current = snapshot.data.snapshotSeq;
+  }
+  const project = useQuery({
+    queryKey: ["projects", projectId],
+    queryFn: () => getProject(projectId),
+    enabled: snapshot.isSuccess,
+  });
+  const canvas = useQuery({
+    queryKey: ["canvas", projectId],
+    queryFn: () => listCanvasItems(projectId),
+    enabled: snapshot.isSuccess,
+  });
+
+  useEffect(() => {
+    if (initialEventSequence.current === null || typeof EventSource === "undefined") return;
+    return subscribeProjectEvents(projectId, initialEventSequence.current, {
+      onChange: (event) => {
+        if (event.type.startsWith("artifact.") || event.type === "canvas.items.changed" ||
+            event.type === "agent.instance.changed") {
+          void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
+        }
+        if (event.type === "project.changed") {
+          void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+        }
+        if (event.type === "task.status.changed" || event.type === "agent.run.changed" ||
+            event.type.startsWith("execution.plan.")) {
+          void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId] });
+        }
+        const activeRunId = queryClient.getQueryData<ProjectSnapshot>(["snapshot", projectId])?.activeRun?.id;
+        if (event.type.startsWith("execution.plan.") && activeRunId) {
+          void queryClient.invalidateQueries({ queryKey: ["plans", projectId, activeRunId] });
+        }
+        if (event.type === "task.status.changed" && event.payload.artifactId) {
+          void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
+        }
+        if (event.type.startsWith("task.") && activeRunId) {
+          void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId, activeRunId] });
+        }
+        if (event.type === "task.status.changed") {
+          void queryClient.invalidateQueries({ queryKey: ["media-exports", projectId] });
+        }
+        if (event.type === "export.proposal.changed") {
+          void queryClient.invalidateQueries({ queryKey: ["export-proposals", projectId] });
+        }
+        if (event.type === "usage.changed") {
+          void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
+        }
+        if (event.type === "shot.keyframe.selected" && activeRunId) {
+          void queryClient.invalidateQueries({ queryKey: ["keyframe-selection", projectId,
+            activeRunId] });
+        }
+      },
+      onSnapshot: (fresh) => {
+        queryClient.setQueryData(["snapshot", projectId], fresh);
+        queryClient.setQueryData(["projects", projectId], fresh.project);
+        queryClient.setQueryData(["canvas", projectId], fresh.canvas);
+        // The snapshot contains the current workspace, but not historical panels or lists.
+        // A missed event may have changed any of them while the stream was unavailable.
+        void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["plans", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["keyframe-selection", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["export-proposals", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["media-exports", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
+      },
+      onStatus: setEventStatus,
+    });
+  }, [projectId, queryClient, snapshot.isSuccess]);
+
+  const saveLayout = useMutation({
+    mutationFn: ({ item, patch }: { item: CanvasItem; patch: Partial<LayoutPatch> }) => {
+      const draft = useCanvasStore.getState().drafts[item.id];
+      const command: CanvasCommand = {
+        type: "UPDATE_LAYOUT",
+        itemId: item.id,
+        expectedVersion: item.version,
+        x: patch.x ?? draft?.x ?? item.x,
+        y: patch.y ?? draft?.y ?? item.y,
+        width: patch.width ?? draft?.width ?? item.width,
+        height: patch.height ?? draft?.height ?? item.height,
+        zIndex: item.zIndex,
+        groupId: item.groupId,
+      };
+      return applyCanvasCommands(projectId, [command]);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved, variables) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      clearDraft(variables.item.id);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const removeItem = useMutation({
+    mutationFn: (item: CanvasItem) =>
+      applyCanvasCommands(projectId, [
+        { type: "REMOVE", itemId: item.id, expectedVersion: item.version },
+      ]),
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved, item) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      clearDraft(item.id);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const toggleLocked = useMutation({
+    mutationFn: (item: CanvasItem) =>
+      applyCanvasCommands(projectId, [
+        {
+          type: "SET_LOCKED",
+          itemId: item.id,
+          expectedVersion: item.version,
+          locked: !item.locked,
+        },
+      ]),
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const addTextCard = useMutation({
+    mutationFn: async ({ cardTitle, cardText }: { cardTitle: string; cardText: string }) => {
+      const artifact = await createArtifact(projectId, {
+        kind: "TEXT",
+        title: cardTitle,
+        content: { format: "PLAIN_TEXT", text: cardText },
+      });
+      const index = canvas.data?.items.length ?? 0;
+      return applyCanvasCommands(projectId, [
+        {
+          type: "PLACE_ARTIFACT",
+          itemId: crypto.randomUUID(),
+          artifactId: artifact.id,
+          x: 80 + (index % 3) * 320,
+          y: 80 + Math.floor(index / 3) * 220,
+          width: 280,
+          height: 180,
+          zIndex: index,
+          locked: false,
+        },
+      ]);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setTitle("");
+      setText("");
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const addImageCard = useMutation({
+    mutationFn: async ({ cardTitle, file }: { cardTitle: string; file: File }) => {
+      const progress = imageProgress.current?.projectId === projectId &&
+        imageProgress.current.file === file && imageProgress.current.title === cardTitle
+        ? imageProgress.current : { projectId, file, title: cardTitle };
+      imageProgress.current = progress;
+      if (!progress.assetId) {
+        const asset = await uploadImageAsset(projectId, file);
+        progress.assetId = asset.id;
+      }
+      if (!progress.artifactId) {
+        const artifact = await createArtifact(projectId, {
+          kind: "IMAGE",
+          title: cardTitle,
+          content: { sourceType: "UPLOAD", assetId: progress.assetId },
+        });
+        progress.artifactId = artifact.id;
+      }
+      progress.itemId ??= crypto.randomUUID();
+      const index = canvas.data?.items.length ?? 0;
+      return applyCanvasCommands(projectId, [{
+        type: "PLACE_ARTIFACT",
+        itemId: progress.itemId,
+        artifactId: progress.artifactId,
+        x: 80 + (index % 3) * 320,
+        y: 80 + Math.floor(index / 3) * 220,
+        width: 280,
+        height: 240,
+        zIndex: index,
+        locked: false,
+      }]);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      imageProgress.current = null;
+      setImagePartialStage(null);
+      setImageTitle("");
+      setImageFile(null);
+      if (imageInput.current) imageInput.current.value = "";
+      setSaveState("saved");
+    },
+    onError: () => {
+      setImagePartialStage(imageProgress.current?.artifactId ? "artifact"
+        : imageProgress.current?.assetId ? "asset" : null);
+      setSaveState("failed");
+    },
+  });
+  const addAgentCard = useMutation({
+    mutationFn: async ({ name, instruction }: { name: string; instruction: string }) => {
+      const bindings = selectedArtifactBindings(canvas.data?.items ?? [], selectedIds);
+      const agent = await createAgent(projectId, { name, instruction, bindings });
+      const index = canvas.data?.items.length ?? 0;
+      return applyCanvasCommands(projectId, [
+        {
+          type: "PLACE_AGENT",
+          itemId: crypto.randomUUID(),
+          agentId: agent.id,
+          x: 100 + (index % 3) * 360,
+          y: 100 + Math.floor(index / 3) * 360,
+          width: 340,
+          height: 320,
+          zIndex: index,
+          locked: false,
+        },
+      ]);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const editAgent = useMutation({
+    mutationFn: async ({ agent, name, instruction }: { agent: Agent; name: string; instruction: string }) => {
+      await updateAgent(projectId, agent.id, {
+        expectedVersion: agent.version,
+        name,
+        instruction,
+        bindings: agent.bindings.map(({ artifactId, selectedVersionId }) => ({
+          artifactId,
+          selectedVersionId,
+        })),
+      });
+      return listCanvasItems(projectId);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const bindSelection = useMutation({
+    mutationFn: async () => {
+      const items = canvas.data?.items ?? [];
+      const selectedAgent = items.find(
+        (item) => selectedIds.includes(item.id) && item.agent !== null,
+      )?.agent;
+      if (!selectedAgent) throw new Error("请选择一张 Agent 卡片。");
+      const selected = selectedArtifactBindings(items, selectedIds);
+      const bindings = new Map(
+        selectedAgent.bindings.map((binding) => [
+          binding.artifactId,
+          { artifactId: binding.artifactId, selectedVersionId: binding.selectedVersionId },
+        ]),
+      );
+      selected.forEach((binding) => bindings.set(binding.artifactId, binding));
+      await updateAgent(projectId, selectedAgent.id, {
+        expectedVersion: selectedAgent.version,
+        name: selectedAgent.name,
+        instruction: selectedAgent.instruction,
+        bindings: [...bindings.values()],
+      });
+      return listCanvasItems(projectId);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const clearBindings = useMutation({
+    mutationFn: async () => {
+      const selectedAgent = (canvas.data?.items ?? []).find(
+        (item) => selectedIds.includes(item.id) && item.agent !== null,
+      )?.agent;
+      if (!selectedAgent) throw new Error("请选择一张 Agent 卡片。");
+      await updateAgent(projectId, selectedAgent.id, {
+        expectedVersion: selectedAgent.version,
+        name: selectedAgent.name,
+        instruction: selectedAgent.instruction,
+        bindings: [],
+      });
+      return listCanvasItems(projectId);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+  const alignSelected = useMutation({
+    mutationFn: () => {
+      const selected = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
+      const targetX = Math.min(...selected.map((item) => drafts[item.id]?.x ?? item.x));
+      const commands: CanvasCommand[] = selected.map((item) => ({
+        type: "UPDATE_LAYOUT",
+        itemId: item.id,
+        expectedVersion: item.version,
+        x: targetX,
+        y: drafts[item.id]?.y ?? item.y,
+        width: drafts[item.id]?.width ?? item.width,
+        height: drafts[item.id]?.height ?? item.height,
+        zIndex: item.zIndex,
+        groupId: item.groupId,
+      }));
+      return applyCanvasCommands(projectId, commands);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      selectedIds.forEach(clearDraft);
+      setSaveState("saved");
+    },
+    onError: () => setSaveState("failed"),
+  });
+
+  const saveLayoutMutate = saveLayout.mutate;
+  const removeItemMutate = removeItem.mutate;
+  const toggleLockedMutate = toggleLocked.mutate;
+  const editAgentMutate = editAgent.mutate;
+
+  const handleResizeEnd = useCallback(
+    (itemId: string, layout: LayoutPatch) => {
+      const item = canvas.data?.items.find((candidate) => candidate.id === itemId);
+      if (!item) return;
+      updateDraft(itemId, layout);
+      saveLayoutMutate({ item, patch: layout });
+    },
+    [canvas.data?.items, saveLayoutMutate, updateDraft],
+  );
+  const handleRemove = useCallback(
+    (item: CanvasItem) => removeItemMutate(item),
+    [removeItemMutate],
+  );
+  const handleToggleLocked = useCallback(
+    (item: CanvasItem) => toggleLockedMutate(item),
+    [toggleLockedMutate],
+  );
+  const handleUpdateAgent = useCallback(
+    (agent: Agent, name: string, instruction: string) =>
+      editAgentMutate({ agent, name, instruction }),
+    [editAgentMutate],
+  );
+
+  const nodes = useMemo<CanvasNode[]>(
+    () =>
+      (canvas.data?.items ?? [])
+        .filter((item) => item.artifact !== null || item.agent !== null)
+        .map((item) => {
+          const draft = drafts[item.id];
+          return {
+            id: item.id,
+            type: "canvasCard",
+            position: { x: draft?.x ?? item.x, y: draft?.y ?? item.y },
+            // React Flow needs node dimensions, not only CSS sizes, before it will show a card.
+            initialWidth: draft?.width ?? item.width,
+            initialHeight: draft?.height ?? item.height,
+            style: { width: draft?.width ?? item.width, height: draft?.height ?? item.height },
+            draggable: !item.locked,
+            data: {
+              item,
+              projectId,
+              activeRun: snapshot.data?.activeRun ?? null,
+              redoCandidates: item.agent ? (canvas.data?.items ?? []).flatMap((candidate) => {
+                const shot = candidate.artifact;
+                if (shot?.kind !== "SHOT" || !item.agent?.bindings.some((binding) =>
+                  binding.artifactId === shot.id &&
+                  binding.selectedVersionId === shot.currentVersionId)) return [];
+                return [{ artifactId: shot.id, versionId: shot.currentVersionId,
+                  title: shot.title }];
+              }) : [],
+              onResizeEnd: handleResizeEnd,
+              onRemove: handleRemove,
+              onToggleLocked: handleToggleLocked,
+              onUpdateAgent: handleUpdateAgent,
+              updatingAgent: editAgent.isPending,
+            },
+          };
+        }),
+    [
+      canvas.data?.items,
+      drafts,
+      editAgent.isPending,
+      handleRemove,
+      handleResizeEnd,
+      handleToggleLocked,
+      handleUpdateAgent,
+      projectId,
+      snapshot.data?.activeRun,
+    ],
+  );
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<CanvasNode>[]) => {
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          updateDraft(change.id, change.position);
+        } else if (change.type === "dimensions" && change.dimensions) {
+          updateDraft(change.id, change.dimensions);
+        }
+      }
+    },
+    [updateDraft],
+  );
+
+  function submitText(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    addTextCard.mutate({ cardTitle: title, cardText: text });
+  }
+
+  function submitAgent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    addAgentCard.mutate({ name: agentName, instruction: agentInstruction });
+  }
+
+  function submitImage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (imageFile) addImageCard.mutate({ cardTitle: imageTitle, file: imageFile });
+  }
+
+  const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
+  const canBindSelection =
+    selectedItems.filter((item) => item.agent !== null).length === 1 &&
+    selectedItems.some((item) => item.artifact !== null);
+  const canClearBindings = selectedItems.filter((item) => item.agent !== null).length === 1;
+  const unknownTasks = snapshot.data?.unknownTasks ?? [];
+
+  if (currentUser.isError) return <Navigate to="/login" replace />;
+
+  return (
+    <main className="workspace-shell text-[var(--ink)]">
+      <header className="workspace-header">
+        <div className="flex items-center gap-4">
+          <Link className="secondary-button" to="/projects">项目</Link>
+          <div>
+            <p className="text-xs text-[var(--muted)]">创作画布</p>
+            <h1 className="text-lg font-semibold">{project.data?.name ?? "正在读取项目…"}</h1>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[var(--muted)]" role="status">
+            {eventStatus === "live" ? "实时同步" :
+              eventStatus === "failed" ? "同步失败，正在重试" :
+                eventStatus === "recovering" ? "正在恢复项目快照…" : "正在连接事件流…"}
+          </span>
+          <SaveBadge state={saveState} />
+        </div>
+      </header>
+
+      {snapshot.data?.activeRun?.status === "BLOCKED" ?
+        <BlockedRunNotice projectId={projectId} runId={snapshot.data.activeRun.id} /> : null}
+
+      {unknownTasks.length > 0 ? (
+        <div className="col-span-full border-b border-amber-300 bg-amber-50 px-6 py-3 text-sm text-amber-950" role="alert">
+          <p>{unknownTasks.length} 个任务的外部提交结果未知：可能已开始执行并产生费用。系统不会自动重复提交；取消运行也不表示外部任务已停止或退款。请先核对原请求。</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer font-medium">查看待核对任务</summary>
+            <ul className="mt-2 space-y-2">
+              {unknownTasks.map((task) => <li className="break-all rounded border border-amber-300 p-2" key={task.id}>
+                <span className="font-medium">{task.kind} · {task.stepKey} · 第 {task.attemptNo} 次尝试</span>
+                <span className="block">任务 ID：{task.id}</span>
+                {task.providerRequestId ? <span className="block">原 Provider 请求 ID：{task.providerRequestId}</span> :
+                  <span className="block">原 Provider 请求 ID 未保存；不能据此判断外部未受理。</span>}
+                {task.errorCode ? <span className="block">状态码：{task.errorCode}</span> : null}
+                <span className="block">最近更新：<time dateTime={task.updatedAt}>{new Date(task.updatedAt).toLocaleString()}</time></span>
+                {task.cancelRequested ? <span className="block">本系统已请求停止后续编排。</span> : null}
+                <UnknownTaskAttemptPanel projectId={projectId} taskId={task.id} taskVersion={task.version}
+                  planned={task.planId !== null} cancelRequested={task.cancelRequested} />
+              </li>)}
+            </ul>
+          </details>
+        </div>
+      ) : null}
+
+      {snapshot.data?.activeRun?.status === "WAITING_APPROVAL" ? (
+        <PlanApprovalPanel projectId={projectId} runId={snapshot.data.activeRun.id} />
+      ) : null}
+
+      {snapshot.data?.activeRun?.status === "WAITING_TASKS" ? (
+        <KeyframeSelectionPanel projectId={projectId} runId={snapshot.data.activeRun.id} />
+      ) : null}
+
+      <aside className="workspace-sidebar">
+        <h2 className="text-base font-semibold">添加文字卡片</h2>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">创建 Artifact 后再放到画布；删除卡片不会删除内容。</p>
+        <form className="mt-4" onSubmit={submitText}>
+          <label className="text-sm font-medium">标题<input maxLength={160} required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+          <label className="mt-3 block text-sm font-medium">内容<textarea className="mt-2 min-h-32 w-full rounded-xl border border-[var(--line)] bg-white p-3" maxLength={20000} required value={text} onChange={(event) => setText(event.target.value)} /></label>
+          <button className="primary-button mt-4 w-full" disabled={addTextCard.isPending} type="submit">{addTextCard.isPending ? "正在添加…" : "添加到画布"}</button>
+        </form>
+        {addTextCard.error ? <WorkspaceError error={addTextCard.error} /> : null}
+        <div className="mt-6 border-t border-[var(--line)] pt-5">
+          <h2 className="text-base font-semibold">上传参考图</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">支持 PNG、JPEG、WebP；不超过 20 MiB/40 MP。上传后选中图片卡片与 Agent 卡片，再绑定为精确版本输入。模型规划默认不读取图片字节。</p>
+          <form className="mt-4" onSubmit={submitImage}>
+            <label className="text-sm font-medium">图片标题<input maxLength={160} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
+            <label className="mt-3 block text-sm font-medium">参考图片<input accept="image/png,image/jpeg,image/webp" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
+            <button className="secondary-button mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? "正在上传并放置…" : "上传并放到画布"}</button>
+          </form>
+          {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}
+          {imagePartialStage ? <p className="mt-2 text-xs text-amber-900" role="status">{imagePartialStage === "artifact"
+            ? "图片和产物已创建，但画布放置未完成；保留当前标题与文件重试会继续放置。"
+            : "图片已归档，但产物创建未完成；保留当前标题与文件重试会复用已确认的上传。"}若请求结果不明，请先刷新并核对，避免重复创建。</p> : null}
+        </div>
+        <div className="mt-6 border-t border-[var(--line)] pt-5">
+          <h2 className="text-base font-semibold">添加 Creator Agent</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">当前选中的 Artifact 会以精确版本绑定；创建 Agent 不会自动运行。</p>
+          <form className="mt-4" onSubmit={submitAgent}>
+            <label className="text-sm font-medium">名称<input maxLength={120} required value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
+            <label className="mt-3 block text-sm font-medium">指令<textarea className="mt-2 min-h-24 w-full rounded-xl border border-[var(--line)] bg-white p-3" maxLength={8000} required value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} /></label>
+            <button className="primary-button mt-4 w-full" disabled={addAgentCard.isPending} type="submit">{addAgentCard.isPending ? "正在添加…" : "添加 Agent 到画布"}</button>
+          </form>
+          {addAgentCard.error ? <WorkspaceError error={addAgentCard.error} /> : null}
+        </div>
+        {saveLayout.error ? <WorkspaceError error={saveLayout.error} /> : null}
+        {removeItem.error ? <WorkspaceError error={removeItem.error} /> : null}
+        {toggleLocked.error ? <WorkspaceError error={toggleLocked.error} /> : null}
+        {editAgent.error ? <WorkspaceError error={editAgent.error} /> : null}
+        <div className="mt-6 border-t border-[var(--line)] pt-5">
+          <h2 className="text-sm font-semibold">选择与对齐</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Shift 或拖出选框选择多张卡片。</p>
+          <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
+          <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">把已选 Artifact 绑定到 Agent</button>
+          <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">清空已选 Agent 输入</button>
+          {alignSelected.error ? <WorkspaceError error={alignSelected.error} /> : null}
+          {bindSelection.error ? <WorkspaceError error={bindSelection.error} /> : null}
+          {clearBindings.error ? <WorkspaceError error={clearBindings.error} /> : null}
+        </div>
+        <MediaExportPanel projectId={projectId} items={canvas.data?.items ?? []} />
+      </aside>
+
+      <section className="workspace-canvas" aria-label="项目画布">
+        {snapshot.isPending || canvas.isPending ? <div className="canvas-message">正在恢复画布…</div> : null}
+        {snapshot.error ? <div className="canvas-message"><WorkspaceError error={snapshot.error} /></div> : null}
+        {canvas.error ? <div className="canvas-message"><WorkspaceError error={canvas.error} /></div> : null}
+        {canvas.data && canvas.data.items.length === 0 ? <div className="canvas-message">画布还是空的，从左侧添加第一张卡片。</div> : null}
+        <ReactFlow<CanvasNode>
+          deleteKeyCode={null}
+          edges={emptyEdges}
+          fitView
+          minZoom={0.25}
+          nodes={nodes}
+          nodeTypes={nodeTypes}
+          nodesConnectable={false}
+          onNodeDragStop={(_, node) => {
+            const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
+            if (item) saveLayout.mutate({ item, patch: { x: node.position.x, y: node.position.y } });
+          }}
+          onNodesChange={handleNodesChange}
+          onSelectionChange={({ nodes: selectedNodes }) => setSelectedIds(selectedNodes.map((node) => node.id))}
+          selectionOnDrag
+        >
+          <Background color="#cfd4d8" gap={24} />
+          <MiniMap pannable zoomable />
+          <Controls />
+        </ReactFlow>
+      </section>
+      <div className="workspace-narrow-warning">画布编辑需要至少 1280px 宽度；当前仅提供只读预览。</div>
+    </main>
+  );
+}
+
+const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProps<CanvasNode>) {
+  if (data.item.agent) {
+    return <AgentCard data={data} selected={selected} />;
+  }
+  const artifact = data.item.artifact;
+  const content = artifact?.currentVersion.content;
+  const text = content ? contentPreview(content) : "内容不可用";
+  const imageAssetId = artifact?.kind === "IMAGE" ? mediaAssetId(content) : null;
+  const videoAssetId = artifact?.kind === "VIDEO" ? mediaAssetId(content) : null;
+  return (
+    <article className={`artifact-node ${selected ? "artifact-node-selected" : ""}`}>
+      <NodeResizer
+        isVisible={selected && !data.item.locked}
+        minHeight={80}
+        minWidth={120}
+        onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)}
+      />
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <span className="artifact-kind">{artifact?.kind ?? data.item.subjectType}</span>
+          <h3 className="mt-2 font-semibold">{artifact?.title ?? "未知卡片"}</h3>
+        </div>
+        <span className="text-xs text-[var(--muted)]">v{artifact?.currentVersion.versionNo ?? 0}</span>
+      </div>
+      {artifact?.kind === "IMAGE" ? (
+        <>
+          <ArtifactImagePreview
+            key={imageAssetId ?? artifact.currentVersion.id}
+            assetId={imageAssetId}
+            projectId={artifact.projectId}
+            title={artifact.title}
+            demo={isDemoMedia(content)}
+          />
+          <p className="mt-2 line-clamp-1 text-xs text-[var(--muted)]" title={text}>{text}</p>
+        </>
+      ) : artifact?.kind === "VIDEO" ? (
+        <>
+          <ArtifactVideoPreview key={videoAssetId ?? artifact.currentVersion.id}
+            assetId={videoAssetId} projectId={artifact.projectId}
+            title={artifact.title} demo={isDemoMedia(content)} />
+          <p className="mt-2 line-clamp-1 text-xs text-[var(--muted)]" title={text}>{text}</p>
+        </>
+      ) : (
+        <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[var(--muted)]">{text}</p>
+      )}
+      {artifact?.kind === "SHOT" ? <ShotRedoEditor key={artifact.currentVersionId}
+        artifact={artifact} /> : null}
+      <div className="nodrag mt-4 flex gap-2">
+        <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? "解锁" : "锁定"}</button>
+        <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">移除卡片</button>
+      </div>
+    </article>
+  );
+});
+
+/** Precomputed thumbnail only; the original file is fetched only on explicit click. */
+function ArtifactImagePreview({ assetId, projectId, title, demo }: {
+  assetId: string | null;
+  projectId: string;
+  title: string;
+  demo: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="nodrag nowheel mt-3">
+      <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+        {assetId && !failed ? (
+          <img
+            alt={`${title} 的预览`}
+            className="h-full w-full object-contain"
+            decoding="async"
+            draggable={false}
+            loading="lazy"
+            onError={() => setFailed(true)}
+            src={assetThumbnailUrl(projectId, assetId)}
+          />
+        ) : (
+          <span className="px-3 text-center text-xs text-[var(--muted)]">
+            {assetId ? "预览暂不可用" : "图片素材尚未归档"}
+          </span>
+        )}
+        {demo ? <span className="absolute left-2 top-2 rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">演示素材</span> : null}
+      </div>
+      {assetId ? (
+        <a className="mt-1 inline-block text-xs text-[var(--accent)] underline" href={assetContentUrl(projectId, assetId)} rel="noopener noreferrer" target="_blank">打开原图</a>
+      ) : null}
+    </div>
+  );
+}
+
+/** Video loads only after an explicit user action; the card otherwise uses its poster. */
+function ArtifactVideoPreview({ assetId, projectId, title, demo }: {
+  assetId: string | null;
+  projectId: string;
+  title: string;
+  demo: boolean;
+}) {
+  const [playing, setPlaying] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+  return <div className="nodrag nowheel mt-3">
+    <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+      {assetId && playing ? <video aria-label={`${title} 的视频`} className="h-full w-full"
+        controls preload="metadata" src={assetContentUrl(projectId, assetId)} /> :
+        assetId && !posterFailed ? <img alt={`${title} 的视频封面`} className="h-full w-full object-contain"
+          decoding="async" draggable={false} loading="lazy"
+          onError={() => setPosterFailed(true)} src={assetThumbnailUrl(projectId, assetId)} /> :
+          <span className="text-xs text-[var(--muted)]">视频封面暂不可用</span>}
+      {demo ? <span className="absolute left-2 top-2 rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">演示视频</span> : null}
+    </div>
+    {assetId ? <div className="mt-2 flex gap-3 text-xs">
+      <button className="text-[var(--accent)] underline" onClick={() => setPlaying(true)}
+        type="button">播放视频</button>
+      <a className="text-[var(--accent)] underline" href={assetContentUrl(projectId, assetId)}
+        rel="noopener noreferrer" target="_blank">打开视频文件</a>
+    </div> : null}
+  </div>;
+}
+
+function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean }) {
+  const queryClient = useQueryClient();
+  const agent = data.item.agent;
+  const [runInstruction, setRunInstruction] = useState("");
+  const [redoShotId, setRedoShotId] = useState("");
+  const [reviewInstruction, setReviewInstruction] = useState<string | null>(null);
+  const [reviewSelection, setReviewSelection] = useState<string[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const runIntent = useRef<{ instruction: string; agentVersion: number;
+    modelConfigSource: string; modelConfigVersion: number;
+    redoShotArtifactId: string | null; selectedItemIds: string[]; key: string } | null>(null);
+  useEffect(() => {
+    setReviewInstruction(null);
+    setReviewSelection([]);
+  }, [agent?.id, agent?.version, redoShotId]);
+  const preflight = useQuery({
+    queryKey: ["run-preflight", data.projectId, agent?.id, agent?.version],
+    queryFn: () => {
+      if (!agent) throw new Error("Agent 卡片不可用。");
+      return getRunPreflight(data.projectId, agent.id);
+    },
+    enabled: false,
+  });
+  const start = useMutation({
+    mutationFn: ({ agentId, instruction, key, expectedAgentVersion,
+      expectedModelConfigSource, expectedModelConfigVersion, redoShotArtifactId,
+      selectedItemIds }: {
+      agentId: string; instruction: string; key: string; expectedAgentVersion: number;
+      expectedModelConfigSource: string; expectedModelConfigVersion: number;
+      redoShotArtifactId: string | null; selectedItemIds: string[];
+    }) => createRun(data.projectId, key, { agentId, instruction, expectedAgentVersion,
+      expectedModelConfigSource, expectedModelConfigVersion,
+      selectedItemIds,
+      ...(redoShotArtifactId ? { redoShotArtifactId } : {}) }),
+    onSuccess: async () => {
+      runIntent.current = null;
+      setRunInstruction("");
+      setReviewInstruction(null);
+      setReviewSelection([]);
+      await queryClient.invalidateQueries({ queryKey: ["snapshot", data.projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["run-history", data.projectId, agent?.id] });
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && (error.code === "AGENT_VERSION_CONFLICT" ||
+          error.code === "MODEL_CONFIG_CONFLICT")) {
+        runIntent.current = null;
+        setReviewInstruction(null);
+        void queryClient.invalidateQueries({ queryKey: ["canvas", data.projectId] });
+      }
+    },
+  });
+  const stop = useMutation({
+    mutationFn: (runId: string) => cancelRun(data.projectId, runId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["snapshot", data.projectId] });
+    },
+  });
+  if (!agent) return null;
+  const ownRun = data.activeRun?.agentInstanceId === agent.id ? data.activeRun : null;
+  const redoShot = data.redoCandidates.find((shot) => shot.artifactId === redoShotId) ?? null;
+  const redoBound = !redoShotId || redoShot !== null;
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    data.onUpdateAgent(agent as Agent, String(values.get("name")), String(values.get("instruction")));
+  }
+  function submitRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!agent || data.activeRun || start.isPending || !redoBound) return;
+    const instruction = runInstruction.trim();
+    if (!instruction) return;
+    setReviewInstruction(instruction);
+    setReviewSelection([...useCanvasStore.getState().selectedIds]);
+    void preflight.refetch();
+  }
+  function confirmRun() {
+    const reviewed = preflight.data;
+    if (!agent || !reviewInstruction || !reviewed || preflight.isFetching ||
+        !reviewed.modelAvailable || !reviewed.toolCalling || data.activeRun || start.isPending ||
+        reviewed.agentVersion !== agent.version || reviewed.agentId !== agent.id) return;
+    if (runIntent.current?.instruction !== reviewInstruction ||
+        runIntent.current.agentVersion !== reviewed.agentVersion ||
+        runIntent.current.modelConfigSource !== reviewed.policySnapshot.modelConfigSource ||
+        runIntent.current.modelConfigVersion !== reviewed.policySnapshot.modelConfigVersion ||
+        runIntent.current.redoShotArtifactId !== (redoShot?.artifactId ?? null) ||
+        runIntent.current.selectedItemIds.join(",") !== reviewSelection.join(",")) {
+      runIntent.current = {
+        instruction: reviewInstruction, agentVersion: reviewed.agentVersion,
+        modelConfigSource: reviewed.policySnapshot.modelConfigSource,
+        modelConfigVersion: reviewed.policySnapshot.modelConfigVersion,
+        redoShotArtifactId: redoShot?.artifactId ?? null,
+        selectedItemIds: reviewSelection,
+        key: crypto.randomUUID(),
+      };
+    }
+    start.mutate({ agentId: agent.id, instruction: reviewInstruction,
+      key: runIntent.current.key, expectedAgentVersion: reviewed.agentVersion,
+      expectedModelConfigSource: runIntent.current.modelConfigSource,
+      expectedModelConfigVersion: runIntent.current.modelConfigVersion,
+      redoShotArtifactId: redoShot?.artifactId ?? null,
+      selectedItemIds: runIntent.current.selectedItemIds });
+  }
+  return (
+    <article className={`artifact-node h-full overflow-auto ${selected ? "artifact-node-selected" : ""}`}>
+      <NodeResizer
+        isVisible={selected && !data.item.locked}
+        minHeight={220}
+        minWidth={280}
+        onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)}
+      />
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <span className="artifact-kind">AGENT · {agent.profileKey} v{agent.profileVersion}</span>
+          <h3 className="mt-2 font-semibold">{agent.name}</h3>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+          {ownRun ? ownRun.status : data.activeRun ? "其他 Agent 运行中" : "空闲"}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-[var(--muted)]">当前运行：{ownRun ? ownRun.id : "无"}</p>
+      <p className="mt-1 text-xs text-[var(--muted)]">待审批：{ownRun?.status === "WAITING_APPROVAL" ? "请检查上方计划" : "无"}</p>
+      <p className="mt-1 break-all text-xs text-[var(--muted)]">输出范围：{agent.outputGroupId}</p>
+      <details className="nodrag nowheel mt-3 text-xs" open>
+        <summary className="cursor-pointer font-semibold">明确输入（{agent.bindings.length}）</summary>
+        {agent.bindings.length === 0 ? (
+          <p className="mt-2 text-[var(--muted)]">无输入；不会读取项目中的其他内容。</p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-[var(--muted)]">
+            {agent.bindings.map((binding) => (
+              <li className="break-all" key={binding.id}>Artifact {binding.artifactId}<br />Version {binding.selectedVersionId}</li>
+            ))}
+          </ul>
+        )}
+      </details>
+      <form className="nodrag nowheel mt-3" key={agent.version} onSubmit={submit}>
+        <label className="text-xs font-medium">名称<input defaultValue={agent.name} maxLength={120} name="name" required /></label>
+        <label className="mt-2 block text-xs font-medium">指令<textarea className="mt-1 min-h-16 w-full rounded-lg border border-[var(--line)] bg-white p-2 text-xs" defaultValue={agent.instruction} maxLength={8000} name="instruction" required /></label>
+        <button className="node-action mt-2" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? "保存中…" : "保存配置"}</button>
+      </form>
+      <form className="nodrag nowheel mt-3" onSubmit={submitRun}>
+        <label className="mb-2 block text-xs font-medium">运行范围
+          <select className="mt-1 w-full rounded-lg border border-[var(--line)] bg-white p-2"
+            onChange={(event) => setRedoShotId(event.target.value)} value={redoShotId}>
+            <option value="">全项目创作</option>
+            {data.redoCandidates.map((shot) => <option key={shot.artifactId}
+              value={shot.artifactId}>仅重做「{shot.title}」</option>)}
+          </select>
+        </label>
+        {redoShot ? <p className="mb-2 text-xs text-amber-900">
+          仅为「{redoShot.title}」的新版本规划媒体，图片和视频仍需分别审批。
+        </p> : null}
+        {!redoBound ? <p className="mb-2 text-xs text-red-700">目标镜头版本已变化，请重新绑定。</p> : null}
+        <label className="block text-xs font-medium">本次任务
+          <textarea className="mt-1 min-h-16 w-full rounded-lg border border-[var(--line)] bg-white p-2 text-xs"
+            maxLength={8000} onChange={(event) => {
+              setRunInstruction(event.target.value);
+              setReviewInstruction(null);
+              setReviewSelection([]);
+            }}
+            placeholder="例如：规划三个镜头并生成关键帧" required value={runInstruction} />
+        </label>
+        <div className="mt-2 flex gap-2">
+          <button className="node-action" disabled={Boolean(data.activeRun) || start.isPending ||
+            !redoBound || !runInstruction.trim()}
+            type="submit">检查运行范围</button>
+          <button className="node-action" disabled={!ownRun || stop.isPending}
+            onClick={() => { if (ownRun) stop.mutate(ownRun.id); }} type="button">
+            {stop.isPending ? "停止中…" : "停止"}
+          </button>
+        </div>
+      </form>
+      {reviewInstruction !== null ? (
+        <div className="nodrag nowheel mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">
+          <p className="font-semibold">运行前确认</p>
+          {preflight.isPending || preflight.isFetching ? <p className="mt-2">正在核对模型与输入…</p> : null}
+          {preflight.error ? <WorkspaceError error={preflight.error} /> : null}
+          {preflight.data && !preflight.isFetching ? (
+            <>
+              <p className="mt-2 break-words">本次任务：{reviewInstruction}</p>
+              {redoShot ? <p className="mt-1">局部重做目标：{redoShot.title} · 版本 {redoShot.versionId}</p> : null}
+              <p className="mt-1 break-words">Agent 指令：{preflight.data.agentInstruction}</p>
+              <p className="mt-1">模型：{preflight.data.modelAvailable
+                ? `${preflight.data.providerAdapter ?? "未知适配器"} / ${preflight.data.modelId ?? "未声明模型 ID"}`
+                : "未配置 ChatModel，无法启动规划"}</p>
+              <p className="mt-1">模型配置：{preflight.data.policySnapshot.modelConfigSource} v{preflight.data.policySnapshot.modelConfigVersion}；确认后若配置变化，需重新检查。</p>
+              <p className="mt-1">精确绑定输入：{preflight.data.bindings.length} 个版本；首轮只发送有上限的内容预览，不发送图片字节。</p>
+              <p className="mt-1 break-all">当前选择：{reviewSelection.length} 张卡片
+                {reviewSelection.length ? `（${reviewSelection.join("、")}）` : ""}；仅作为操作意图，不扩大 Agent 权限。</p>
+              {preflight.data.bindings.map((binding) => (
+                <p className="mt-1 break-all" key={binding.selectedVersionId}>
+                  {binding.artifactKind}「{binding.artifactTitle}」 · Artifact {binding.artifactId}
+                  <br />Version {binding.selectedVersionId}
+                </p>
+              ))}
+              <p className="mt-1">还会发送项目名称与画幅。模型调用最多 {preflight.data.policySnapshot.maxModelTurns} 轮、工具最多 {preflight.data.policySnapshot.maxToolExecutions} 次；媒体生成仍需单独审批。</p>
+              <p className="mt-1">本轮限额：图片 {preflight.data.policySnapshot.maxImages}、视频 {preflight.data.policySnapshot.maxVideos}、镜头 {preflight.data.policySnapshot.maxShots}。</p>
+              {!preflight.data.toolCalling && preflight.data.modelAvailable ?
+                <p className="mt-1 text-red-700">当前模型未确认支持工具调用，无法运行。</p> : null}
+              <button className="node-action mt-2" disabled={Boolean(data.activeRun) || start.isPending ||
+                preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
+                !preflight.data.toolCalling || !redoBound} onClick={confirmRun} type="button">
+                {start.isPending ? "启动中…" : "确认开始规划"}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {start.error ? <WorkspaceError error={start.error} /> : null}
+      {stop.error ? <WorkspaceError error={stop.error} /> : null}
+      <div className="nodrag mt-3 flex gap-2">
+        <button aria-expanded={showHistory} className="node-action"
+          onClick={() => setShowHistory(!showHistory)} type="button">
+          {showHistory ? "收起记录" : "查看记录"}
+        </button>
+      </div>
+      {showHistory ? <RunHistoryPanel agentId={agent.id} projectId={data.projectId} /> : null}
+      <div className="nodrag mt-3 flex gap-2">
+        <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? "解锁" : "锁定"}</button>
+        <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">移除卡片</button>
+      </div>
+    </article>
+  );
+}
+
+const nodeTypes = { canvasCard: CanvasCardNode };
+
+function selectedArtifactBindings(items: CanvasItem[], selectedIds: string[]) {
+  return items.flatMap((item) => {
+    if (!selectedIds.includes(item.id) || !item.artifact) return [];
+    return [{ artifactId: item.artifact.id, selectedVersionId: item.artifact.currentVersionId }];
+  });
+}
+
+function contentPreview(content: unknown): string {
+  if (typeof content !== "object" || content === null) return "";
+  if ("text" in content && typeof content.text === "string") return content.text;
+  if ("description" in content && typeof content.description === "string") return content.description;
+  if ("prompt" in content && typeof content.prompt === "string") return content.prompt;
+  return JSON.stringify(content);
+}
+
+function mediaAssetId(content: unknown): string | null {
+  if (typeof content !== "object" || content === null || !("assetId" in content)) return null;
+  const candidate = content.assetId;
+  return typeof candidate === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)
+    ? candidate : null;
+}
+
+function isDemoMedia(content: unknown): boolean {
+  if (typeof content !== "object" || content === null || !("parameters" in content)) return false;
+  const parameters = content.parameters;
+  return typeof parameters === "object" && parameters !== null &&
+    "mock" in parameters && parameters.mock === true;
+}
+
+function SaveBadge({ state }: { state: "saved" | "saving" | "failed" }) {
+  const labels = { saved: "已保存", saving: "保存中…", failed: "保存失败，草稿已保留" };
+  return <span className={`save-badge save-badge-${state}`}>{labels[state]}</span>;
+}
+
+function WorkspaceError({ error }: { error: Error }) {
+  const message = error instanceof ApiError ? error.message : "操作失败，画布草稿仍保留在本页。";
+  return <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-800" role="alert">{message}</p>;
+}

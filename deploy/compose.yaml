@@ -2,7 +2,10 @@ name: agenvas
 
 services:
   postgres:
-    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    build:
+      context: ..
+      dockerfile: deploy/docker/postgres.Dockerfile
+    image: agenvas-postgres:local
     environment:
       POSTGRES_DB: agenvas
       POSTGRES_USER: agenvas
@@ -24,8 +27,23 @@ services:
       AGENVAS_DB_URL: jdbc:postgresql://postgres:5432/agenvas
       AGENVAS_DB_USER: agenvas
       AGENVAS_DB_PASSWORD: ${AGENVAS_DB_PASSWORD:-local-development-only}
-      AGENVAS_PROVIDER_MODE: mock
-      AGENVAS_SECURE_COOKIES: "false"
+      AGENVAS_BOOTSTRAP_SECRET: ${AGENVAS_BOOTSTRAP_SECRET:-local-bootstrap-secret-change-me}
+      AGENVAS_LLM_MODE: ${AGENVAS_LLM_MODE:-mock}
+      AGENVAS_CREDENTIAL_MASTER_KEY: ${AGENVAS_CREDENTIAL_MASTER_KEY:-}
+      AGENVAS_CREDENTIAL_KEY_VERSION: ${AGENVAS_CREDENTIAL_KEY_VERSION:-1}
+      AGENVAS_CREDENTIAL_PREVIOUS_KEYS: ${AGENVAS_CREDENTIAL_PREVIOUS_KEYS:-}
+      AGENVAS_PROVIDER_MODE: ${AGENVAS_PROVIDER_MODE:-mock}
+      AGENVAS_PROVIDER_CONFIG_VERSION: ${AGENVAS_PROVIDER_CONFIG_VERSION:-1}
+      AGENVAS_COMFYUI_ENDPOINT: ${AGENVAS_COMFYUI_ENDPOINT:-}
+      AGENVAS_COMFYUI_IMAGE_CHECKPOINT: ${AGENVAS_COMFYUI_IMAGE_CHECKPOINT:-}
+      AGENVAS_COMFYUI_VIDEO_ENABLED: ${AGENVAS_COMFYUI_VIDEO_ENABLED:-false}
+      AGENVAS_COMFYUI_VIDEO_DIFFUSION_MODEL: ${AGENVAS_COMFYUI_VIDEO_DIFFUSION_MODEL:-}
+      AGENVAS_COMFYUI_VIDEO_TEXT_ENCODER: ${AGENVAS_COMFYUI_VIDEO_TEXT_ENCODER:-}
+      AGENVAS_COMFYUI_VIDEO_VAE: ${AGENVAS_COMFYUI_VIDEO_VAE:-}
+      AGENVAS_COMFYUI_VIDEO_CLIP_VISION: ${AGENVAS_COMFYUI_VIDEO_CLIP_VISION:-}
+      AGENVAS_STORAGE_ROOT: /opt/agenvas/data/assets
+      AGENVAS_RECOVERY_MODE: ${AGENVAS_RECOVERY_MODE:-false}
+      AGENVAS_SECURE_COOKIES: ${AGENVAS_SECURE_COOKIES:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,7 +56,7 @@ services:
     volumes:
       - asset-data:/opt/agenvas/data
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${AGENVAS_API_PORT:-8080}:8080"
     read_only: true
     tmpfs:
       - /opt/agenvas/tmp:size=256m,mode=1770,uid=100,gid=101
@@ -54,7 +72,7 @@ services:
       server:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8088:8080"
+      - "127.0.0.1:${AGENVAS_WEB_PORT:-8088}:8080"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ >/dev/null"]
       interval: 10s

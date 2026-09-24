@@ -17,7 +17,7 @@ public class MockGenerationGateway implements GenerationGateway {
         String providerRequestId = deterministicRequestId(request);
         return switch (request.fixture()) {
             case SUCCESS -> new GenerationResult(
-                    GenerationResult.Status.ACCEPTED, providerRequestId, true, null);
+                    GenerationResult.Status.COMPLETED, providerRequestId, true, null);
             case FAILURE -> new GenerationResult(
                     GenerationResult.Status.FAILED,
                     providerRequestId,

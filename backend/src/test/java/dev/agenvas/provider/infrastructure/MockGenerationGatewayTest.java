@@ -20,7 +20,7 @@ class MockGenerationGatewayTest {
         GenerationResult first = gateway.submit(request);
         GenerationResult replay = gateway.submit(request);
 
-        assertThat(first.status()).isEqualTo(GenerationResult.Status.ACCEPTED);
+        assertThat(first.status()).isEqualTo(GenerationResult.Status.COMPLETED);
         assertThat(first.demoOutput()).isTrue();
         assertThat(replay.providerRequestId()).isEqualTo(first.providerRequestId());
     }

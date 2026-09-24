@@ -1,0 +1,203 @@
+package dev.agenvas.provider.infrastructure;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/** Local fake-protocol checks; this is not evidence of a real ComfyUI template or GPU. */
+class ComfyUiClientTest {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+    private HttpServer server;
+    private ComfyUiClient client;
+
+    @BeforeEach
+    void startServer() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.start();
+        client = new ComfyUiClient(new ComfyUiProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort()), mapper);
+    }
+
+    @AfterEach
+    void stopServer() {
+        server.stop(0);
+    }
+
+    @Test
+    void submitsOnlyToFixedOriginAndQueriesSamePromptWithoutResubmission() {
+        UUID promptId = UUID.randomUUID();
+        AtomicInteger submits = new AtomicInteger();
+        AtomicInteger histories = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            JsonNode body = mapper.readTree(exchange.getRequestBody().readAllBytes());
+            assertThat(body.path("client_id").asText()).isEqualTo(promptId.toString());
+            assertThat(body.path("prompt_id").asText()).isEqualTo(promptId.toString());
+            assertThat(body.path("prompt").path("1").path("class_type").asText())
+                    .isEqualTo("TrustedFixture");
+            submits.incrementAndGet();
+            respond(exchange, 200, "{\"prompt_id\":\"" + promptId + "\",\"number\":0}");
+        });
+        server.createContext("/history/", exchange -> {
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/history/" + promptId);
+            histories.incrementAndGet();
+            respond(exchange, 200, "{}");
+        });
+        JsonNode fixed = mapper.readTree("{\"1\":{\"class_type\":\"TrustedFixture\",\"inputs\":{}}}");
+        assertThat(client.submit(fixed, promptId)).isEqualTo(promptId);
+        assertThat(client.imageStatus(promptId, "9"))
+                .isInstanceOf(ComfyUiHistory.Pending.class);
+        assertThat(client.imageStatus(promptId, "9"))
+                .isInstanceOf(ComfyUiHistory.Pending.class);
+        assertThat(submits).hasValue(1);
+        assertThat(histories).hasValue(2);
+    }
+
+    @Test
+    void mismatchedAcknowledgementIsAmbiguousAndNeverSubmittedAgain() {
+        UUID requestKey = UUID.randomUUID();
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            JsonNode body = mapper.readTree(exchange.getRequestBody().readAllBytes());
+            assertThat(body.path("prompt_id").asText()).isEqualTo(requestKey.toString());
+            submissions.incrementAndGet();
+            respond(exchange, 200, "{\"prompt_id\":\"" + UUID.randomUUID() + "\"}");
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), requestKey))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThat(submissions).hasValue(1);
+    }
+
+    @Test
+    void readsOnlyExpectedOutputNodeFromCompletedOriginalPrompt() {
+        UUID promptId = UUID.randomUUID();
+        server.createContext("/history/", exchange -> respond(exchange, 200,
+                "{\"" + promptId + "\":{\"status\":{\"completed\":true,"
+                        + "\"status_str\":\"success\"},\"outputs\":{\"9\":{"
+                        + "\"images\":[{\"filename\":\"render.png\","
+                        + "\"subfolder\":\"\",\"type\":\"output\"}]}}}}"));
+        assertThat(client.imageStatus(promptId, "9"))
+                .isEqualTo(new ComfyUiHistory.Ready("render.png"));
+    }
+
+    @Test
+    void reconcilesOnlyHistoryOrQueueEntriesWithTheOriginalClientIdentity() {
+        UUID promptId = UUID.randomUUID();
+        AtomicInteger historyReads = new AtomicInteger();
+        server.createContext("/history/", exchange -> {
+            if (historyReads.incrementAndGet() == 1) {
+                respond(exchange, 200, "{}");
+            } else {
+                respond(exchange, 200, "{\"" + promptId + "\":{\"prompt\":[0,\""
+                        + promptId + "\",{}, {\"client_id\":\"" + promptId + "\"}]}}");
+            }
+        });
+        server.createContext("/queue", exchange -> respond(exchange, 200,
+                "{\"queue_running\":[],\"queue_pending\":[[0,\"" + promptId
+                        + "\",{}, {\"client_id\":\"" + promptId + "\"}]]}"));
+        assertThat(client.originalPromptExists(promptId)).isTrue();
+        assertThat(client.originalPromptExists(promptId)).isTrue();
+        assertThat(historyReads).hasValue(2);
+    }
+
+    @Test
+    void missingOriginalIsNotEvidenceOfRejectionAndMismatchedClientIsBlocked() {
+        UUID promptId = UUID.randomUUID();
+        server.createContext("/history/", exchange -> respond(exchange, 200, "{}"));
+        server.createContext("/queue", exchange -> respond(exchange, 200,
+                "{\"queue_running\":[],\"queue_pending\":[]}"));
+        assertThat(client.originalPromptExists(promptId)).isFalse();
+        server.removeContext("/queue");
+        server.createContext("/queue", exchange -> respond(exchange, 200,
+                "{\"queue_running\":[[0,\"" + promptId
+                        + "\",{}, {\"client_id\":\"" + UUID.randomUUID()
+                        + "\"}]],\"queue_pending\":[]}"));
+        assertThatThrownBy(() -> client.originalPromptExists(promptId))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+    }
+
+    @Test
+    void historyWithoutMatchingClientIdentityCannotResurrectAnUnknownTask() {
+        UUID promptId = UUID.randomUUID();
+        AtomicInteger queueReads = new AtomicInteger();
+        server.createContext("/history/", exchange -> respond(exchange, 200,
+                "{\"" + promptId + "\":{\"prompt\":[0,\"" + promptId
+                        + "\",{}, {\"client_id\":\"foreign\"}]}}"));
+        server.createContext("/queue", exchange -> {
+            queueReads.incrementAndGet();
+            respond(exchange, 200, "{\"queue_running\":[],\"queue_pending\":[]}");
+        });
+        assertThatThrownBy(() -> client.originalPromptExists(promptId))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThat(queueReads).hasValue(0);
+    }
+
+    @Test
+    void uploadsServerNamedImageAndStreamsOneSanitizedOutput() throws IOException {
+        UUID requestId = UUID.randomUUID();
+        server.createContext("/upload/image", exchange -> {
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/upload/image");
+            assertThat(exchange.getRequestBody().readAllBytes().length).isGreaterThan(4);
+            respond(exchange, 200, "{\"name\":\"agenvas-" + requestId
+                    + ".png\",\"type\":\"input\",\"subfolder\":\"\"}");
+        });
+        server.createContext("/view", exchange -> {
+            assertThat(exchange.getRequestURI().getQuery())
+                    .isEqualTo("filename=rendered_01.png&type=output&subfolder=");
+            respond(exchange, 200, "PNG-BYTES");
+        });
+        assertThat(client.uploadImage(requestId, new byte[] {1, 2, 3}, "png"))
+                .isEqualTo("agenvas-" + requestId + ".png");
+        try (var output = client.output("rendered_01.png")) {
+            assertThat(output.readAllBytes()).isEqualTo("PNG-BYTES".getBytes(StandardCharsets.UTF_8));
+        }
+        assertThatThrownBy(() -> client.output("../secrets"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void refusesRedirectsAndClassifiesAmbiguousServerFailure() {
+        server.createContext("/prompt", exchange -> {
+            exchange.getResponseHeaders().add("Location", "http://127.0.0.1:1/private");
+            respond(exchange, 302, "redirect");
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        server.removeContext("/prompt");
+        server.createContext("/prompt", exchange -> respond(exchange, 503, "unavailable"));
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.TransportFailure.class);
+    }
+
+    @Test
+    void rejectsDnsUserInfoAndNonOriginEndpointsAtConstruction() {
+        for (String endpoint : new String[] {"http://localhost:8188", "http://127.0.0.1:8188/path",
+                "http://user@127.0.0.1:8188", "http://127.0.0.1:8188?x=1",
+                "http://169.254.169.254:80/metadata", "http://8.8.8.8:8188",
+                "file:///etc/passwd"}) {
+            assertThatThrownBy(() -> new ComfyUiClient(new ComfyUiProperties(endpoint), mapper))
+                    .as(endpoint).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    private static void respond(HttpExchange exchange, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(status, bytes.length);
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
+    }
+}

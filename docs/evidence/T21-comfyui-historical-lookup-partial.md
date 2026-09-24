@@ -1,0 +1,14 @@
+# T21：ComfyUI 旧地址原请求查询（阶段性）
+
+- 行为：V34 为每个 ComfyUI 数字配置版本只追加保存精确 IPv4 origin 与 SHA-256。启动时登记活动版本；同一个版本号若绑定了不同地址，或尝试降回已登记的旧版本号，启动失败并要求递增版本。新的提交仍只用活动客户端；已受理的图片/视频任务通过 ProviderAttempt 的原 request ID、origin 指纹和任务固定的版本选中历史客户端，仅进行原请求轮询与输出下载。UNKNOWN 手工核对走同一历史地址选择，不会创建新的提交。归档产物保留任务原配置版本。
+- 安全边界：历史记录必须同时匹配任务输入与原 attempt 指纹；地址重新通过精确 IPv4/路由限制校验，HTTP 不跟随重定向。缺失或不匹配时任务保持阻断，不改向当前实例。恢复模式不登记版本、不访问新增表，保留旧备份只读核对能力。
+- 迁移/合约：新增 Flyway `V34__comfyui_config_versions.sql`；既有迁移不修改，OpenAPI 和前端类型无变化。部署时必须保留数据库中的 V34 历史记录以及原 ComfyUI 实例；升级到 V34 之前未登记过的旧地址不会自动补齐。
+- 测试：真实 PostgreSQL＋假 HTTP 的图片、视频测试分别将当前版本从 1 模拟轮换至 2，验证旧任务仍查询/归档原实例且不向新实例提交；UNKNOWN 测试在轮换后查询原候选 ID，查询无证据仍保持 UNKNOWN。同版本不同地址登记被拒，恢复模式单元测试证明零数据库读写。未访问真实 ComfyUI。
+- 实际检查：图片、视频、UNKNOWN、提交前保护四组 PostgreSQL 定向测试及恢复模式单元测试通过。加入 V34 后首次完整 `./mvnw --batch-mode --no-transfer-progress -q verify` 因九个旧的“最新 Flyway=33”断言失败；这些断言已更新为 V34。修正后完整 `verify` 通过；补充“版本不能倒退”规则后对应定向测试及最终完整 `verify` 再次通过，当前 Surefire/Failsafe 文本报告无失败/错误，`git diff --check` 通过。本次无前端代码或 API 合约变更，前端测试未重复运行。
+- 补充：已受理的固定 `image-v1` / `image-to-video-v1` 请求可在当前模型文件名变化后，继续按历史地址与原 prompt ID 查询固定输出节点并归档；UNKNOWN 原请求核对不依赖当前视频模板开关。新提交仍严格匹配当前完整工作流版本，未知工作流族仍阻断历史查询。图片、视频、UNKNOWN 的假服务＋PostgreSQL 测试覆盖了模型名和地址同时轮换；不代表任意旧模板都可解释。
+- 补充检查：`./mvnw --batch-mode --no-transfer-progress -q -Dtest=ComfyUiImagePostgresIT,ComfyUiVideoPostgresIT,ComfyUiReconciliationPostgresIT verify` 返回 0；三个指定集成测试报告均为 1 test、0 failures、0 errors。该命令的 Failsafe 阶段还执行了全部集成测试，当前 Surefire/Failsafe 共 109 个测试套件报告均无失败/错误；`git diff --check` 无输出。未运行前端测试或真实 GPU/模型请求。
+- 补充恢复：将视频原请求轮询/归档从仅在视频生成开启时存在的提交 Worker 中拆出。ComfyUI 模式的轮询器与调度器在轮询调度开启时可认领已受理视频任务，关闭视频生成功能时不会实例化提交 Worker；`ComfyUiVideoDisabledPostgresIT` 使用真实 PostgreSQL、已归档的固定图片版本、本地 FFmpeg 生成的有效 MP4 和假 HTTP，验证禁用状态下的原 ID 等待、完成下载、任务键资产归档与新 VIDEO ArtifactVersion，以及零新提交、单一 attempt。没有使用真实 GPU/模型。
+- 补充归档检查：`./mvnw --batch-mode --no-transfer-progress -q -Dtest=ComfyUiVideoDisabledPostgresIT -Dfailsafe.skip=true test` 返回 0，Surefire 报告为 1 test、0 failures、0 errors。首次扩展夹具时因缺少视频内容必需的 prompt 失败，补齐合法图片版本和 prompt 后通过；此结果不改变前述两次完整 `verify` 的未通过记录。
+- 最终回归：禁用视频归档、启用视频归档、UNKNOWN 原请求核对三组 PostgreSQL 定向测试返回 0；随后最终源码的 `./mvnw --batch-mode --no-transfer-progress -q verify` 返回 0。当前 Surefire/Failsafe 共 111 个测试套件报告，无失败或错误；`git diff --check` 无输出。前述两次 Docker Desktop/PostgreSQL EOF 属于已记录的间歇环境问题，不作为本次逻辑断言通过的依据；未运行前端或真实 GPU/模型测试。
+- 本轮检查：最终源码的 `-Dtest=ComfyUiVideoDisabledPostgresIT,ComfyUiVideoPostgresIT,ExecutionPlanPostgresIT -Dfailsafe.skip=true test` 返回 0，三组 Surefire 报告各 1 test、0 failures、0 errors；`TaskArtifactSelectionPostgresIT` 单独重跑也返回 0。两次完整 `verify` 均有一组无关的 PostgreSQL 集成测试在 Spring/Flyway 建连阶段收到 `java.io.EOFException`，分别落在 `TaskArtifactSelectionPostgresIT` 与 `ExecutionPlanPostgresIT`，测试方法未执行；因此本轮不能声称完整后端回归通过。`git diff --check` 无输出。未运行前端或真实 GPU/模型测试。
+- 限制：当前 ComfyUI 适配器没有独立的 Provider API Key；因此这里保留的是 endpoint，不是通用凭证轮换机制。若显式关闭视频轮询调度开关，则仍需手动运行轮询器才能恢复旧任务；未知历史模板、凭证恢复、真实 Provider 联调和备份后的跨机器演练尚未完成；T21/MVP 总门禁不因此通过。

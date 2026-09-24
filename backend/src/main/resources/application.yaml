@@ -11,9 +11,24 @@ spring:
     jdbc:
       initialize-schema: never
     timeout: 12h
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   ai:
     model:
-      chat: none
+      chat: ${AGENVAS_LLM_CHAT_ADAPTER:none}
+      embedding: none
+      image: none
+      audio:
+        transcription: none
+        speech: none
+      moderation: none
+    openai:
+      base-url: ${AGENVAS_LLM_BASE_URL:https://api.openai.com}
+      api-key: ${AGENVAS_LLM_API_KEY:}
+      chat:
+        model: ${AGENVAS_LLM_MODEL:}
 
 server:
   shutdown: graceful
@@ -28,11 +43,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,db
 
 springdoc:
   api-docs:
@@ -41,5 +59,39 @@ springdoc:
     enabled: ${AGENVAS_OPENAPI_ENABLED:false}
 
 agenvas:
+  recovery-mode: ${AGENVAS_RECOVERY_MODE:false}
+  credentials:
+    master-key-base64: ${AGENVAS_CREDENTIAL_MASTER_KEY:}
+    key-version: ${AGENVAS_CREDENTIAL_KEY_VERSION:1}
+    previous-keys: ${AGENVAS_CREDENTIAL_PREVIOUS_KEYS:}
+  settings:
+    llm:
+      allow-loopback-http: ${AGENVAS_LLM_ALLOW_LOOPBACK_HTTP:false}
+  llm:
+    mode: ${AGENVAS_LLM_MODE:mock}
+    config-version: ${AGENVAS_LLM_CONFIG_VERSION:1}
+    tool-calling-verified: ${AGENVAS_LLM_TOOL_CALLING_VERIFIED:false}
+    scheduler-enabled: ${AGENVAS_LLM_SCHEDULER_ENABLED:true}
+  identity:
+    bootstrap-secret: ${AGENVAS_BOOTSTRAP_SECRET}
   provider:
     mode: ${AGENVAS_PROVIDER_MODE:mock}
+    config-version: ${AGENVAS_PROVIDER_CONFIG_VERSION:1}
+    comfyui:
+      endpoint: ${AGENVAS_COMFYUI_ENDPOINT:}
+      image:
+        checkpoint: ${AGENVAS_COMFYUI_IMAGE_CHECKPOINT:}
+      video:
+        enabled: ${AGENVAS_COMFYUI_VIDEO_ENABLED:false}
+        diffusion-model: ${AGENVAS_COMFYUI_VIDEO_DIFFUSION_MODEL:}
+        text-encoder: ${AGENVAS_COMFYUI_VIDEO_TEXT_ENCODER:}
+        vae: ${AGENVAS_COMFYUI_VIDEO_VAE:}
+        clip-vision: ${AGENVAS_COMFYUI_VIDEO_CLIP_VISION:}
+    mock:
+      fixture: ${AGENVAS_MOCK_FIXTURE:SUCCESS}
+      scheduler-enabled: ${AGENVAS_MOCK_IMAGE_SCHEDULER_ENABLED:true}
+      video-scheduler-enabled: ${AGENVAS_MOCK_VIDEO_SCHEDULER_ENABLED:true}
+  storage:
+    root: ${AGENVAS_STORAGE_ROOT:data/assets}
+  export:
+    scheduler-enabled: ${AGENVAS_EXPORT_SCHEDULER_ENABLED:true}

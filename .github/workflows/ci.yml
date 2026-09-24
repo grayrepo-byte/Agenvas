@@ -45,6 +45,8 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      - name: Install local media tools required by PostgreSQL integration tests
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: ./mvnw --batch-mode --no-transfer-progress verify
 
   compose-config:
@@ -52,3 +54,116 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f deploy/compose.yaml config --quiet
+      - name: Verify explicit candidate Provider overrides reach the server
+        run: |
+          AGENVAS_LLM_MODE=configured \
+          AGENVAS_PROVIDER_MODE=comfyui \
+          AGENVAS_PROVIDER_CONFIG_VERSION=2 \
+          AGENVAS_COMFYUI_ENDPOINT=http://192.168.1.20:8188 \
+          AGENVAS_COMFYUI_IMAGE_CHECKPOINT=test.safetensors \
+          AGENVAS_SECURE_COOKIES=true \
+          docker compose -f deploy/compose.yaml config --format json |
+            jq -e '.services.server.environment |
+              .AGENVAS_LLM_MODE == "configured" and
+              .AGENVAS_PROVIDER_MODE == "comfyui" and
+              .AGENVAS_PROVIDER_CONFIG_VERSION == "2" and
+              .AGENVAS_COMFYUI_ENDPOINT == "http://192.168.1.20:8188" and
+              .AGENVAS_COMFYUI_IMAGE_CHECKPOINT == "test.safetensors" and
+              .AGENVAS_SECURE_COOKIES == "true"'
+
+  security-source:
+    runs-on: ubuntu-latest
+    env:
+      # Avoid Maven Central lookups during PR scans; image scans inspect the bundled JAR.
+      TRIVY_OFFLINE_SCAN: 'true'
+    steps:
+      # This job runs on fork PRs. Do not pass Provider or deployment secrets to it.
+      - uses: actions/checkout@v4
+      - name: Reject committed secrets
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          exit-code: '1'
+      - name: Check source dependencies for high-risk vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.74.0
+          skip-setup-trivy: true
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+  security-images:
+    runs-on: ubuntu-latest
+    env:
+      TRIVY_OFFLINE_SCAN: 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: server
+            image: agenvas-server:ci
+            dockerfile: deploy/docker/server.Dockerfile
+            skipFile: ''
+          - service: web
+            image: agenvas-web:ci
+            dockerfile: deploy/docker/frontend.Dockerfile
+            skipFile: ''
+          - service: postgres
+            image: agenvas-postgres:ci
+            dockerfile: deploy/docker/postgres.Dockerfile
+            # The final filesystem has this symlink to su-exec, but Trivy also
+            # scans the deleted upstream gosu binary from a lower image layer.
+            skipFile: usr/local/bin/gosu
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build application image
+        id: build
+        if: matrix.dockerfile != ''
+        run: docker build --file "${{ matrix.dockerfile }}" --tag "${{ matrix.image }}" .
+      - name: Check release image for high-risk vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.74.0
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          skip-files: ${{ matrix.skipFile }}
+          exit-code: '1'
+      - name: Generate release image SBOM
+        if: always() && (matrix.dockerfile == '' || steps.build.outcome == 'success')
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.74.0
+          skip-setup-trivy: true
+          image-ref: ${{ matrix.image }}
+          format: cyclonedx
+          skip-files: ${{ matrix.skipFile }}
+          output: sbom-${{ matrix.service }}.json
+          exit-code: '0'
+      - name: Generate license inventory
+        if: always() && (matrix.dockerfile == '' || steps.build.outcome == 'success')
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.74.0
+          skip-setup-trivy: true
+          image-ref: ${{ matrix.image }}
+          scanners: license
+          format: json
+          skip-files: ${{ matrix.skipFile }}
+          output: licenses-${{ matrix.service }}.json
+          exit-code: '0'
+      - name: Keep SBOM and license inventory for release review
+        if: always() && (matrix.dockerfile == '' || steps.build.outcome == 'success')
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-${{ matrix.service }}
+          path: |
+            sbom-${{ matrix.service }}.json
+            licenses-${{ matrix.service }}.json
+          if-no-files-found: error

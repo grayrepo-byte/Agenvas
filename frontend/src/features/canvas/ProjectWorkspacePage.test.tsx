@@ -1,0 +1,799 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createQueryClient } from "../../app/queryClient";
+import { server } from "../../test/server";
+import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
+import { useCanvasStore } from "./canvasStore";
+import type { ProjectSnapshot } from "../../shared/api/client";
+
+describe("ProjectWorkspacePage", () => {
+  beforeEach(() => {
+    useCanvasStore.setState({ selectedIds: [] });
+    server.use(
+      http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
+        HttpResponse.json({
+        project: {
+          id: params.projectId,
+          name: "Workspace snapshot",
+          aspectRatio: "LANDSCAPE_16_9",
+          status: "ACTIVE",
+          version: 0,
+          createdAt: "2026-09-23T00:00:00Z",
+          updatedAt: "2026-09-23T00:00:00Z",
+          archivedAt: null,
+        },
+        canvas: { items: [] },
+        agents: [],
+        activeRun: null,
+        activeTasks: [],
+        unknownTasks: [],
+        snapshotSeq: 0,
+        }),
+      ),
+    );
+  });
+
+  it("keeps one SSE connection across snapshots and invalidates auxiliary views after a gap", async () => {
+    const sources: TrackingEventSource[] = [];
+    let proposalReads = 0;
+    let exportReads = 0;
+    class TrackingEventSource extends EventTarget {
+      onopen: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      closed = false;
+
+      constructor(url: string) {
+        super();
+        expect(url).toContain("/events?after=");
+        sources.push(this);
+      }
+
+      close() { this.closed = true; }
+    }
+    vi.stubGlobal("EventSource", TrackingEventSource);
+    try {
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+        http.get("/api/v1/projects/:projectId", ({ params }) =>
+          HttpResponse.json({ id: params.projectId, name: "SSE project", status: "ACTIVE" })),
+        http.get("/api/v1/projects/:projectId/canvas/items", () =>
+          HttpResponse.json({ items: [] })),
+        http.get("/api/v1/projects/:projectId/export-proposals", () => {
+          proposalReads++;
+          return HttpResponse.json([]);
+        }),
+        http.get("/api/v1/projects/:projectId/exports", () => {
+          exportReads++;
+          return HttpResponse.json([]);
+        }),
+      );
+      const queryClient = createQueryClient();
+      const { unmount } = render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={["/projects/project-1"]}>
+            <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      await waitFor(() => expect(sources).toHaveLength(1));
+      await waitFor(() => expect([proposalReads, exportReads]).toEqual([1, 1]));
+      const current = queryClient.getQueryData<ProjectSnapshot>(["snapshot", "project-1"]);
+      expect(current).toBeDefined();
+      queryClient.setQueryData(["snapshot", "project-1"], { ...current, snapshotSeq: 5 });
+      await screen.findByText("SSE project");
+      expect(sources).toHaveLength(1);
+      expect(sources[0]?.closed).toBe(false);
+      const auxiliaryKeys = [
+        ["run-history", "project-1", "agent-1"],
+        ["run-history-plans", "project-1", "run-1"],
+        ["run-history-tasks", "project-1", "run-1"],
+        ["provider-attempts", "project-1", "task-1"],
+        ["plans", "project-1", "run-1"],
+        ["run-tasks", "project-1", "run-1"],
+        ["keyframe-selection", "project-1", "run-1"],
+      ];
+      for (const key of auxiliaryKeys) queryClient.setQueryData(key, { staleView: true });
+      sources[0]?.dispatchEvent(new MessageEvent("task.status.changed", {
+        data: JSON.stringify({
+          projectId: "project-1", seq: 7, eventId: crypto.randomUUID(),
+          type: "task.status.changed", schemaVersion: 1,
+          aggregateId: crypto.randomUUID(), aggregateVersion: 1,
+          payload: { status: "SUCCEEDED" }, occurredAt: "2026-09-24T00:00:00Z",
+        }),
+        lastEventId: "7",
+      }));
+      await waitFor(() => expect(sources).toHaveLength(2));
+      await waitFor(() => expect([proposalReads, exportReads]).toEqual([2, 2]));
+      expect(sources[0]?.closed).toBe(true);
+      for (const key of auxiliaryKeys) {
+        expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+      }
+      unmount();
+      expect(sources[1]?.closed).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uploads a reference image and places an exact-version IMAGE card", async () => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    let uploaded = false;
+    let created = false;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        const body = await request.json() as { kind: string; title: string; content: unknown };
+        expect(body).toMatchObject({ kind: "IMAGE", title: "Product reference",
+          content: { sourceType: "UPLOAD", assetId } });
+        created = true;
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: Array<{ artifactId: string }> };
+        expect(body.commands[0]?.artifactId).toBe(artifactId);
+        return HttpResponse.json({ items: [{
+          id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
+          locked: false, version: 0, agent: null,
+          artifact: {
+            id: artifactId, projectId: "project-1", kind: "IMAGE",
+            title: "Product reference", currentVersionId: versionId, version: 0,
+            createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
+            currentVersion: { id: versionId, versionNo: 1, schemaVersion: 1,
+              content: { sourceType: "UPLOAD", assetId }, inputReferences: [],
+              createdByKind: "USER", runId: null, createdAt: "2026-09-23T00:00:00Z" },
+          },
+        }] });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets") {
+        expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-token");
+        expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+        expect(init?.body).toBeInstanceOf(FormData);
+        expect((init?.body as FormData).get("file")).toHaveProperty("name", "reference.webp");
+        uploaded = true;
+        return HttpResponse.json({ id: assetId, mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByLabelText("图片标题"), "Product reference");
+    await user.upload(screen.getByLabelText("参考图片"),
+      new File(["real bytes checked by backend"], "reference.webp", { type: "image/webp" }));
+    expect((screen.getByLabelText("参考图片") as HTMLInputElement).files).toHaveLength(1);
+    fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
+    const preview = await screen.findByAltText("Product reference 的预览");
+    expect(preview).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+    expect(preview.closest(".react-flow__node")).toHaveStyle({ visibility: "visible" });
+    expect(uploaded).toBe(true);
+    expect(created).toBe(true);
+    expect(screen.getByLabelText("图片标题")).toHaveValue("");
+  });
+
+  it("keeps the chosen reference file after a rejected upload", async () => {
+    let creates = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", () => {
+        creates++;
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets") {
+        return HttpResponse.json({ title: "素材无效", detail: "图片解码失败。",
+          code: "ASSET_INVALID_IMAGE", retryable: false },
+        { status: 422, headers: { "Content-Type": "application/problem+json" } });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await user.type(screen.getByLabelText("图片标题"), "Broken reference");
+    await user.upload(screen.getByLabelText("参考图片"),
+      new File(["bad image"], "broken.webp", { type: "image/webp" }));
+    expect((screen.getByLabelText("参考图片") as HTMLInputElement).files).toHaveLength(1);
+    fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
+    expect(await screen.findByText("图片解码失败。")).toBeInTheDocument();
+    expect(screen.getByLabelText("图片标题")).toHaveValue("Broken reference");
+    expect((screen.getByLabelText("参考图片") as HTMLInputElement).files?.[0]?.name)
+      .toBe("broken.webp");
+    expect(creates).toBe(0);
+  });
+
+  it("reuses the confirmed upload and artifact when canvas placement is retried", async () => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    let uploads = 0;
+    let artifacts = 0;
+    let placements = 0;
+    let placedItemId: string | undefined;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", () => {
+        artifacts++;
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        placements++;
+        const body = await request.json() as { commands: Array<{ itemId: string }> };
+        if (placements === 1) placedItemId = body.commands[0]?.itemId;
+        else expect(body.commands[0]?.itemId).toBe(placedItemId);
+        if (placements === 1) return HttpResponse.json({ title: "冲突", detail: "画布版本冲突。",
+          code: "CANVAS_CONFLICT", retryable: true },
+        { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets") {
+        uploads++;
+        return HttpResponse.json({ id: assetId, mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await user.type(screen.getByLabelText("图片标题"), "Retry reference");
+    await user.upload(screen.getByLabelText("参考图片"),
+      new File(["bytes"], "retry.webp", { type: "image/webp" }));
+    const form = screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(await screen.findByText("画布版本冲突。")).toBeInTheDocument();
+    expect(screen.getByText(/图片和产物已创建，但画布放置未完成/)).toBeInTheDocument();
+    fireEvent.submit(form);
+    await waitFor(() => expect(placements).toBe(2));
+    expect(uploads).toBe(1);
+    expect(artifacts).toBe(1);
+    expect(screen.getByLabelText("图片标题")).toHaveValue("");
+  });
+
+  it("keeps the card while Delete edits a focused text input", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+      ),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({
+          id: params.projectId,
+          name: "Canvas test",
+          aspectRatio: "LANDSCAPE_16_9",
+          status: "ACTIVE",
+          version: 0,
+          createdAt: "2026-09-23T00:00:00Z",
+          updatedAt: "2026-09-23T00:00:00Z",
+          archivedAt: null,
+        }),
+      ),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: crypto.randomUUID(),
+              subjectType: "ARTIFACT",
+              subjectId: crypto.randomUUID(),
+              x: 10,
+              y: 10,
+              width: 280,
+              height: 180,
+              zIndex: 0,
+              groupId: null,
+              locked: false,
+              version: 0,
+              artifact: {
+                id: crypto.randomUUID(),
+                projectId: crypto.randomUUID(),
+                kind: "TEXT",
+                title: "Existing card",
+                currentVersionId: crypto.randomUUID(),
+                version: 0,
+                createdAt: "2026-09-23T00:00:00Z",
+                updatedAt: "2026-09-23T00:00:00Z",
+                currentVersion: {
+                  id: crypto.randomUUID(),
+                  versionNo: 1,
+                  schemaVersion: 1,
+                  content: { format: "PLAIN_TEXT", text: "Persisted" },
+                  inputReferences: [],
+                  createdByKind: "USER",
+                  runId: null,
+                  createdAt: "2026-09-23T00:00:00Z",
+                },
+              },
+              agent: null,
+            },
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes>
+            <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Existing card")).toBeInTheDocument();
+    const content = screen.getByLabelText("内容");
+    await user.type(content, "draft");
+    await user.keyboard("{Delete}");
+
+    expect(screen.getByText("Existing card")).toBeInTheDocument();
+    expect(content).toHaveFocus();
+  });
+
+  it("warns that UNKNOWN submissions may have external cost and will not retry automatically", async () => {
+    let attemptReads = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+      ),
+      http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
+        HttpResponse.json({
+          project: { id: params.projectId, name: "Unknown test", aspectRatio: "LANDSCAPE_16_9",
+            status: "ACTIVE", version: 0, createdAt: "2026-09-23T00:00:00Z",
+            updatedAt: "2026-09-23T00:00:00Z", archivedAt: null },
+          canvas: { items: [] }, agents: [], activeRun: null, activeTasks: [],
+          unknownTasks: [{ id: "task-1", kind: "IMAGE_GENERATION", stepKey: "image-2",
+            attemptNo: 1, status: "UNKNOWN", cancelRequested: true,
+            providerRequestId: null, errorCode: "PROVIDER_SUBMISSION_UNKNOWN",
+            updatedAt: "2026-09-23T00:00:00Z", input: { privatePrompt: "not for UI" } }],
+          snapshotSeq: 1,
+        }),
+      ),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Unknown test" }),
+      ),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] }),
+      ),
+      http.get("/api/v1/projects/:projectId/tasks/:taskId/attempts", () => {
+        attemptReads += 1;
+        return HttpResponse.json([{ id: "attempt-1", taskId: "task-1", status: "UNKNOWN",
+          requestKey: "e6422a3f-c91d-4874-b684-118fd6be068a", reconcilable: false,
+          providerRequestId: null,
+          createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z" }]);
+      }),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("可能已开始执行并产生费用");
+    expect(screen.getByRole("alert")).toHaveTextContent("不会自动重复提交");
+    expect(screen.getByRole("alert")).toHaveTextContent("任务 ID：task-1");
+    expect(screen.getByRole("alert")).toHaveTextContent("原 Provider 请求 ID 未保存");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("not for UI");
+    expect(attemptReads).toBe(0);
+    const user = userEvent.setup();
+    await user.click(screen.getByText("查看待核对任务"));
+    await user.click(screen.getByRole("button", { name: "查看提交账本" }));
+    expect(await screen.findByText(/提交关联键：e6422a3f/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("不能证明请求已受理");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("not for UI");
+    expect(attemptReads).toBe(1);
+  });
+
+  it("shows exact Agent bindings and saves editable card configuration", async () => {
+    const agentId = crypto.randomUUID();
+    const itemId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const outputGroupId = crypto.randomUUID();
+    const bindingId = crypto.randomUUID();
+    let updated = false;
+    let activeRun: { id: string; agentInstanceId: string; status: string } | null = null;
+    let starts = 0;
+    let modelAvailable = false;
+    const idempotencyKeys: string[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+      ),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({
+          id: params.projectId,
+          name: "Agent canvas",
+          aspectRatio: "LANDSCAPE_16_9",
+          status: "ACTIVE",
+          version: 0,
+          createdAt: "2026-09-23T00:00:00Z",
+          updatedAt: "2026-09-23T00:00:00Z",
+          archivedAt: null,
+        }),
+      ),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" }),
+      ),
+      http.get("/api/v1/projects/:projectId/runs/preflight", ({ request }) => {
+        expect(new URL(request.url).searchParams.get("agentId")).toBe(agentId);
+        return HttpResponse.json({
+          agentId, agentVersion: updated ? 1 : 0, agentName: updated ? "Agent Beta" : "Agent Alpha",
+          agentInstruction: updated ? "Updated instruction" : "Initial instruction",
+          bindings: [{ artifactId, selectedVersionId: versionId,
+            artifactTitle: "Bound brief", artifactKind: "TEXT" }],
+          modelAvailable, providerAdapter: modelAvailable ? "FakeChatModel" : null,
+          modelId: modelAvailable ? "fixture-model" : null,
+          toolCalling: true,
+          policySnapshot: { schemaVersion: 1, modelConfigSource: "fixture",
+            modelConfigVersion: 7, maxModelTurns: 12, maxToolExecutions: 40,
+            maxImages: 8, maxVideos: 6, maxShots: 6 },
+        });
+      }),
+      http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
+        HttpResponse.json({
+          project: { id: params.projectId, name: "Agent canvas", status: "ACTIVE" },
+          canvas: { items: [] }, agents: [], activeRun, activeTasks: [], unknownTasks: [],
+          snapshotSeq: 0,
+        }),
+      ),
+      http.post("/api/v1/projects/:projectId/runs", async ({ request }) => {
+        const body = (await request.json()) as {
+          agentId: string; instruction: string; expectedAgentVersion: number;
+          expectedModelConfigSource: string; expectedModelConfigVersion: number;
+          selectedItemIds: string[];
+        };
+        expect(body).toMatchObject({ agentId, instruction: "规划三个镜头",
+          expectedAgentVersion: 1, expectedModelConfigSource: "fixture",
+          expectedModelConfigVersion: 7 });
+        expect(Array.isArray(body.selectedItemIds)).toBe(true);
+        idempotencyKeys.push(request.headers.get("Idempotency-Key") ?? "");
+        starts += 1;
+        if (starts === 1) return new HttpResponse(null, { status: 503 });
+        if (starts === 2) return HttpResponse.json({
+          code: "MODEL_CONFIG_CONFLICT", title: "模型配置已变化",
+          detail: "请重新检查运行范围。", retryable: false,
+        }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        activeRun = { id: crypto.randomUUID(), agentInstanceId: agentId, status: "RUNNING" };
+        return HttpResponse.json(activeRun, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/runs/:runId/cancel", () => {
+        const canceled = { ...activeRun, status: "CANCEL_REQUESTED" };
+        activeRun = null;
+        return HttpResponse.json(canceled);
+      }),
+      http.get("/api/v1/projects/:projectId/runs", ({ request }) => {
+        expect(new URL(request.url).searchParams.get("agentId")).toBe(agentId);
+        return HttpResponse.json({ items: [{
+          id: "historical-run", agentInstanceId: agentId, status: "CANCELED",
+          instruction: "之前的创作", createdAt: "2026-09-22T10:00:00Z",
+          updatedAt: "2026-09-22T10:01:00Z", completedAt: "2026-09-22T10:01:00Z",
+        }], nextCursor: null });
+      }),
+      http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
+        const body = (await request.json()) as { name: string; instruction: string };
+        updated = body.name === "Agent Beta" && body.instruction === "Updated instruction";
+        return HttpResponse.json(agent(updated));
+      }),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: itemId,
+              subjectType: "AGENT",
+              subjectId: agentId,
+              x: 10,
+              y: 10,
+              width: 340,
+              height: 320,
+              zIndex: 0,
+              groupId: null,
+              locked: false,
+              version: 0,
+              artifact: null,
+              agent: agent(updated),
+            },
+          ],
+        }),
+      ),
+    );
+    function agent(isUpdated: boolean) {
+      return {
+        id: agentId,
+        projectId: "project-1",
+        profileKey: "creator",
+        profileVersion: 1,
+        name: isUpdated ? "Agent Beta" : "Agent Alpha",
+        instruction: isUpdated ? "Updated instruction" : "Initial instruction",
+        outputGroupId,
+        version: isUpdated ? 1 : 0,
+        createdAt: "2026-09-23T00:00:00Z",
+        updatedAt: "2026-09-23T00:00:00Z",
+        bindings: [
+          {
+            id: bindingId,
+            artifactId,
+            selectedVersionId: versionId,
+            bindingType: "INPUT",
+          },
+        ],
+      };
+    }
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes>
+            <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const heading = await screen.findByText("Agent Alpha");
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText(/明确输入（1）/)).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText(new RegExp(artifactId))).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText(new RegExp(versionId))).toBeInTheDocument();
+    const name = within(card as HTMLElement).getByDisplayValue("Agent Alpha");
+    const instruction = within(card as HTMLElement).getByDisplayValue("Initial instruction");
+    fireEvent.change(name, { target: { value: "Agent Beta" } });
+    fireEvent.change(instruction, { target: { value: "Updated instruction" } });
+    fireEvent.submit(name.closest("form") as HTMLFormElement);
+
+    expect(await screen.findByText("Agent Beta")).toBeInTheDocument();
+    expect(updated).toBe(true);
+
+    const taskInput = within(card as HTMLElement).getByLabelText("本次任务");
+    fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
+    fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
+    expect(await within(card as HTMLElement).findByText("确认开始规划")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("确认开始规划")).toBeDisabled();
+    expect(starts).toBe(0);
+    modelAvailable = true;
+    fireEvent.change(taskInput, { target: { value: "规划三个镜头！" } });
+    fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
+    fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
+    await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
+    expect(within(card as HTMLElement).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText(/Bound brief/)).toBeInTheDocument();
+    fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
+    await waitFor(() => expect(starts).toBe(1));
+    await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
+    fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
+    await waitFor(() => expect(starts).toBe(2));
+    expect(idempotencyKeys[0]).toBeTruthy();
+    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
+    await waitFor(() => expect(within(card as HTMLElement).queryByText("确认开始规划")).not.toBeInTheDocument());
+    fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
+    await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
+    fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
+    await waitFor(() => expect(starts).toBe(3));
+    expect(idempotencyKeys[2]).not.toBe(idempotencyKeys[1]);
+    expect(await screen.findByText("RUNNING")).toBeInTheDocument();
+    fireEvent.click(within(card as HTMLElement).getByText("停止"));
+    await waitFor(() => expect(screen.getByText("空闲")).toBeInTheDocument());
+    fireEvent.click(within(card as HTMLElement).getByText("查看记录"));
+    expect(await within(card as HTMLElement).findByText("之前的创作")).toBeInTheDocument();
+  });
+
+  it("starts an explicitly scoped redo Run only for a bound current shot", async () => {
+    const agentId = crypto.randomUUID();
+    const agentItemId = crypto.randomUUID();
+    const shotId = crypto.randomUUID();
+    const shotItemId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    let submitted: unknown = null;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
+      })),
+      http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json({
+        id: params.projectId, name: "Redo canvas", status: "ACTIVE",
+      })),
+      http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [
+        { id: agentItemId, subjectType: "AGENT", subjectId: agentId,
+          x: 10, y: 10, width: 340, height: 320, zIndex: 0, groupId: null,
+          locked: false, version: 0, artifact: null,
+          agent: { id: agentId, projectId: "project-1", profileKey: "creator",
+            profileVersion: 1, name: "Redo agent", instruction: "Work only on the chosen shot",
+            outputGroupId: crypto.randomUUID(), version: 0,
+            bindings: [{ id: crypto.randomUUID(), artifactId: shotId,
+              selectedVersionId: versionId, bindingType: "INPUT" }] } },
+        { id: shotItemId, subjectType: "ARTIFACT", subjectId: shotId,
+          x: 380, y: 10, width: 280, height: 180, zIndex: 1, groupId: null,
+          locked: false, version: 0, agent: null,
+          artifact: { id: shotId, projectId: "project-1", kind: "SHOT", title: "Second shot",
+            currentVersionId: versionId, version: 1,
+            currentVersion: { id: versionId, versionNo: 2, schemaVersion: 1,
+              content: { order: 2, durationMs: 5000, description: "Revised",
+                camera: "Close", action: "Pour", characterVersionIds: [],
+                sceneVersionId: crypto.randomUUID() }, inputReferences: [],
+              createdByKind: "USER", runId: null } } },
+      ] })),
+      http.get("/api/v1/projects/:projectId/runs/preflight", () => HttpResponse.json({
+        agentId, agentVersion: 0, agentName: "Redo agent",
+        agentInstruction: "Work only on the chosen shot",
+        bindings: [{ artifactId: shotId, selectedVersionId: versionId,
+          artifactTitle: "Second shot", artifactKind: "SHOT" }],
+        modelAvailable: true, providerAdapter: "Mock", modelId: "mock-storyboard-v1",
+        toolCalling: true, policySnapshot: { schemaVersion: 1,
+          modelConfigSource: "mock", modelConfigVersion: 1,
+          maxModelTurns: 12, maxToolExecutions: 40,
+          maxImages: 8, maxVideos: 6, maxShots: 6 },
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test-token",
+      })),
+      http.post("/api/v1/projects/:projectId/runs", async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ id: crypto.randomUUID(), agentInstanceId: agentId,
+          status: "QUEUED" }, { status: 202 });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>);
+    const heading = await screen.findByText("Redo agent");
+    const card = heading.closest("article") as HTMLElement;
+    await user.selectOptions(within(card).getByLabelText("运行范围"), shotId);
+    await user.type(within(card).getByLabelText("本次任务"), "只重做第二镜头");
+    fireEvent.click(within(card).getByText("检查运行范围"));
+    fireEvent.click(await within(card).findByText("确认开始规划"));
+    await waitFor(() => expect(submitted).toMatchObject({ agentId,
+      redoShotArtifactId: shotId, expectedAgentVersion: 0,
+      instruction: "只重做第二镜头", selectedItemIds: [agentItemId] }));
+  });
+
+  it("shows an authorized thumbnail for a generated image without fetching the original", async () => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+      ),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Image canvas", status: "ACTIVE" }),
+      ),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [{
+          id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: crypto.randomUUID(),
+          locked: false, version: 0, agent: null,
+          artifact: {
+            id: artifactId, projectId: "project-1", kind: "IMAGE",
+            title: "Demo still", currentVersionId: crypto.randomUUID(), version: 0,
+            createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
+            currentVersion: {
+              id: crypto.randomUUID(), versionNo: 1, schemaVersion: 1,
+              content: { assetId, prompt: "Ridge sunrise", providerConfigVersion: 1,
+                workflowVersion: "mock-image-v1", sourceTaskId: crypto.randomUUID(),
+                parameters: { mock: true, displayLabel: "演示素材" } },
+              inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
+              createdAt: "2026-09-23T00:00:00Z",
+            },
+          },
+        }] }),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // React Flow marks unmeasured nodes visibility:hidden in jsdom; the image still exists in the DOM.
+    const preview = await screen.findByAltText("Demo still 的预览");
+    expect(preview).toHaveAttribute("src",
+      `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+    expect(screen.getByText("打开原图").closest("a")).toHaveAttribute("href",
+      `/api/v1/projects/project-1/assets/${assetId}/content`);
+    expect(screen.getByText("演示素材")).toBeInTheDocument();
+    fireEvent.error(preview);
+    expect(screen.getByText("预览暂不可用")).toBeInTheDocument();
+  });
+
+  it("keeps generated video on its poster until the user chooses playback", async () => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+      ),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Video canvas", status: "ACTIVE" }),
+      ),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [{
+          id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: null,
+          locked: false, version: 0, agent: null,
+          artifact: {
+            id: artifactId, projectId: "project-1", kind: "VIDEO",
+            title: "Demo clip", currentVersionId: crypto.randomUUID(), version: 0,
+            createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
+            currentVersion: {
+              id: crypto.randomUUID(), versionNo: 1, schemaVersion: 1,
+              content: { assetId, prompt: "Coffee", providerConfigVersion: 1,
+                workflowVersion: "mock-video-v1", sourceTaskId: crypto.randomUUID(),
+                keyframeVersionId: crypto.randomUUID(), parameters: { mock: true } },
+              inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
+              createdAt: "2026-09-23T00:00:00Z",
+            },
+          },
+        }] }),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByAltText("Demo clip 的视频封面")).toHaveAttribute("src",
+      `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+    expect(screen.queryByLabelText("Demo clip 的视频")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("播放视频"));
+    expect(screen.getByLabelText("Demo clip 的视频")).toHaveAttribute("src",
+      `/api/v1/projects/project-1/assets/${assetId}/content`);
+    expect(screen.getByText("演示视频")).toBeInTheDocument();
+  });
+});

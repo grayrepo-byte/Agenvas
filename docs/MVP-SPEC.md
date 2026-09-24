@@ -401,7 +401,7 @@ SCENE：`name`、`location`、`timeOfDay`、`lighting`、`style`、`referenceVer
 
 SHOT：`order`、`durationMs`、`description`、`camera`、`action`、`characterVersionIds`、`sceneVersionId`、`selectedImageVersionId`、`selectedVideoVersionId`。
 
-IMAGE / VIDEO：`assetId`、`prompt`、`negativePrompt`（可选）、`providerConfigVersion`、`workflowVersion`、`parameters`、`sourceTaskId`。
+生成 IMAGE / VIDEO：`assetId`、`prompt`、`negativePrompt`（可选）、`providerConfigVersion`、`workflowVersion`、`parameters`、`sourceTaskId`。用户上传参考图的 IMAGE 使用互斥分支 `sourceType: UPLOAD`、`assetId`，不伪造生成 Task/Provider 字段；详见 [ADR 0001](adr/0001-upload-image-provenance.md)。
 
 所有 Schema 有明确必填项、字段长度和枚举约束。客户端与模型都不能提供 storage_key、owner_id、审批状态等受保护字段。
 
@@ -480,6 +480,7 @@ UI 在 WAITING_* 状态不显示虚假的“模型正在思考”。
 读取素材是按需分页，不把整张大画布 JSON 或全部原图塞进 Prompt。模型具有视觉能力且任务需要时，才传引用图片的受控预览。
 
 当前选择只表示操作意图，不是权限。Tool 服务端仍重新检查目标是否属于项目、是否在授权输入/影响范围内。
+创建 Run 时可提交最多 20 个当前选中 CanvasItem ID；服务端核对同项目归属并将主体与当时版本引用固定到 Run 快照，幂等键相同而选择不同须冲突。选择变更不追溯改写运行中快照，也不让未绑定产物获得读取或修订权限。
 
 ### 8.6 默认限制
 
@@ -511,12 +512,12 @@ Controller 与 Tool 使用同一组业务命令和权限规则。Tool 不直接�
 | `create_scene` | 结构化场景描述与合法引用 | 创建场景说明 |
 | `create_shots` | 1–6 个镜头，带引用与排序 | 原子批量创建镜头 |
 | `revise_artifact` | id、expectedVersion、允许字段 | 创建内容新版本 |
-| `place_artifacts` | id 列表、输出分组 | 创建显示卡片 |
-| `arrange_items` | id 列表、布局类型 | 修改允许范围内布局 |
-| `link_artifacts` | source、target、合法关系类型 | 建立语义关系，不触发执行 |
+| `place_artifacts` | 1–6 个当前可见产物版本 ID、固定 `AGENT_OUTPUT` 分组 | 创建显示卡片；已有卡片复用 |
+| `arrange_items` | 1–6 个输出卡片 ID、内容版本、预期布局版本；水平/垂直/网格 | 仅修改 Agent 输出分组内允许的布局，不修改内容 |
+| `link_artifacts` | source Artifact ID 与预期 CAS 版本、target 内容版本 ID；角色/场景→图片引用、镜头→角色/场景四种合法关系 | 在 Run 可见范围内修订 source 的内容引用并创建不可变版本；已有相同引用不重复建版本，不触发执行 |
 | `propose_generation_plan` | 目标、工作流类型、输入版本、步骤参数 | 创建待审批计划，不调用媒体 Provider |
 | `read_task_status` | taskId 列表 | 只读；正常进度由调度器查询，不让 LLM 反复轮询 |
-| `propose_export` | 镜头顺序、选定视频版本、画幅 | 创建导出计划 |
+| `propose_export` | 有序镜头与当前视频的精确版本、区间、项目画幅 | 保存待人工确认的导出提案；不创建 Task、不运行 FFmpeg |
 
 Agent 没有 `approve_plan` 工具。审批只能从经过鉴权的用户 API 发起。
 
@@ -664,6 +665,10 @@ Provider 层：只有对方明确支持且实测验证幂等时才复用其幂�
 
 能够查询到原任务则恢复追踪。没有查询手段时，用户可明确知悉潜在重复成本后另建一次尝试；原尝试保留 UNKNOWN，不被伪装成失败。
 
+新尝试命令必须携带原 Task 的 expectedVersion、明确的重复成本确认和 Idempotency-Key。服务端在项目与 Run 边界内复核已批准计划、固定输入版本、Provider/工作流配置及剩余额度；同一事务建立新 Task、独立用量预留、原任务到新任务的审计关联，并仅把尚未执行的下游依赖改指向新 Task。原 UNKNOWN、Provider attempt 及其用量预留均不覆盖或释放；同键重放只能返回原新任务。该流程已用 Mock 模式与 PostgreSQL 验证，真实 ComfyUI 及浏览器端到端仍待联调。
+
+当前 ComfyUI 候选核对仅适用于目标 Task 唯一、未被替代的 UNKNOWN attempt：提交前账本明确保存候选 `prompt_id`、提交时精确 endpoint 的 SHA-256 指纹和任务固定配置版本。核对从历史登记中按原版本及指纹查找原实例，并从其 `/history/{id}` 或 `/queue` 取得同一 `prompt_id`、同一 `client_id`；任务工作流版本须属于已知固定模板族，不能用当前模型文件名变化误判原请求。只有通过这些检查才以预期 Task 版本原子恢复原任务的轮询及 attempt 状态；旧 attempt、取消或已替代任务、原地址缺失或身份不匹配、未知模板族及查询失败均不得恢复。新提交仍必须匹配当前完整工作流版本。查不到只表示“暂无证据”，UNKNOWN 与额度预留不变，不自动发起第二次 `/prompt`。查询与数据库更新分开执行，最终写入仍用版本/状态 CAS。
+
 ### 12.8 取消与超时
 
 取消先持久化 cancel_requested；检查点与每次外部提交前都读取它。未提交任务取消，已提交任务仅在 Provider 支持且当前任务归属可验证时请求取消。
@@ -711,6 +716,8 @@ image-v1 必须验证参考图确实映射到图像条件输入；仅把参考�
 官方自托管 API 提供 `/prompt` 提交、`/history/{prompt_id}` 查询、图片上传及媒体读取等路由；本适配器以提交与查询为真相，WebSocket 进度最多是优化。[S15]
 
 保存返回的 prompt_id 后持续查询原任务。历史暂时为空不等于失败；结合队列信息与超时策略核对。
+
+ComfyUI 新提交以数据库已提交的 `provider_attempt.request_key` 作为请求中的 `prompt_id`，并要求回执返回同一 UUID；这样响应丢失时仍保有一个可精确查询的候选 ID。该字段不是幂等键：查询不到历史/队列不能证明请求从未受理，不能据此自动重新提交。旧 attempt 没有这个保证，必须按实际提交时的协议版本处理。
 
 共享实例的 `/interrupt` 可能停止“当前运行任务”，因此 P0 默认禁用取消外部运行中的 ComfyUI 任务；只取消本系统后续编排。不能为了一个项目取消他人的任务。[S15]
 
@@ -821,15 +828,20 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 | POST `/projects/{id}/agents` | 添加内置 Agent 实例 |
 | PATCH `/projects/{id}/agents/{agentId}` | 修改指令/绑定/名称 |
 | POST `/projects/{id}/runs` | 创建 Run，202 + runId |
+| GET `/projects/{id}/runs?agentId=...` | 按 Agent 游标分页的运行摘要；不含模型私有消息 |
 | GET `/projects/{id}/runs/{runId}` | Run、计划与任务摘要 |
 | POST `/projects/{id}/runs/{runId}/cancel` | 请求停止，幂等 |
-| POST `/projects/{id}/plans/{planId}/decision` | 对指定 revision/hash 批准或拒绝 |
+| POST `/projects/{id}/plans/{planId}/approve` 或 `/reject` | 对指定生成计划 hash 批准或拒绝 |
 | GET `/projects/{id}/tasks/{taskId}` | 任务状态 |
-| POST `/projects/{id}/tasks/{taskId}/reconcile` | 请求核对，不直接重复提交 |
+| GET `/projects/{id}/tasks/{taskId}/attempts` | 原外部提交账本的只读关联键与状态；不代表安全重试 |
+| POST `/projects/{id}/tasks/{taskId}/reconcile` | 仅核对唯一且未替代的 ComfyUI UNKNOWN attempt 的原 prompt；找到后恢复原 ID 轮询，查不到保持 UNKNOWN，不重复提交 |
 | POST `/projects/{id}/tasks/{taskId}/new-attempt` | 明确风险/额度后新建尝试 |
 | POST `/projects/{id}/assets` | multipart 上传，进行检查与归档 |
 | GET/HEAD `/projects/{id}/assets/{assetId}/content` | 受保护读取，支持 Range |
 | POST `/projects/{id}/exports` | 创建导出任务，202 |
+| GET `/projects/{id}/export-proposals` | 列出 Agent 保存的待确认及已决定导出提案 |
+| GET `/projects/{id}/export-proposals/{proposalId}` | 读取精确提案内容与哈希 |
+| POST `/projects/{id}/export-proposals/{proposalId}/approve` 或 `/reject` | 用户确认哈希后创建唯一导出任务，或拒绝且不执行 |
 | GET `/projects/{id}/export-manifest` | 导出脱敏项目描述 |
 | GET/POST/PATCH `/provider-configs` | 管理 Provider；列表与返回永不包含明文密钥 |
 | POST `/provider-configs/{id}/test` | 明确测试范围与潜在调用成本 |
@@ -907,6 +919,8 @@ P1 的 S3 实现可按授权生成短时链接，但数据库只保存对象键�
 先规范化各段的尺寸、帧率、像素格式和时间戳，再拼接。不能假定任意 Provider 的视频直接 concat 就一定可播放。[S20]
 
 导出任务的输入是版本快照，导出过程中用户改镜头顺序不改变已开始的任务。新顺序需要新导出任务。
+
+Agent 的 `propose_export` 只保存有序镜头/视频版本和区间的待确认提案；服务器固定 Asset 摘要与项目画幅，并在审批时复核项目及内容版本。提案本身不启动 FFmpeg。用户可通过独立鉴权 API 对所展示的提案哈希批准或拒绝；相同批准重放只关联原导出 Task。手工导出仍可直接由用户发起。
 
 ### 16.5 FFmpeg 安全与许可证
 

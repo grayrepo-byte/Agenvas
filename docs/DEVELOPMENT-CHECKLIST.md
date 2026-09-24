@@ -44,9 +44,11 @@
 
 交付：Flyway、管理员初始化、登录/退出/改密、Session JDBC。
 
-- [ ] 新数据库一次迁移成功；初始化竞态只创建一个管理员。
-- [ ] bootstrap secret、CSRF、会话失效、暴力尝试限制经过测试。
-- [ ] 重启后会话按设计保存；生产不存在无认证旁路。
+- [x] 新数据库一次迁移成功；初始化竞态只创建一个管理员。
+- [x] bootstrap secret、CSRF、会话失效、暴力尝试限制经过测试。
+- [x] 重启后会话按设计保存；生产不存在无认证旁路。
+
+补充：`/settings/general` 已接入管理员改密表单，复用现有 CSRF/会话失效 API；前端对密码确认、提交及清空输入有测试，见 `docs/evidence/T28-system-diagnostics-partial.md`。语言选择仍未实现。
 
 ### T04 API 合约与 CI
 
@@ -54,9 +56,9 @@
 
 交付：OpenAPI、错误 Schema、TS 类型生成、测试脚本、CI 工作流。
 
-- [ ] 成功与错误状态符合合约，生成类型可用于前端请求。
-- [ ] 生成文件无漂移；失败用例不会被统一转换成 HTTP 200。
-- [ ] 真实密钥不进入 fork PR；依赖、镜像、密钥与许可证扫描可运行。
+- [x] 成功与错误状态符合合约，生成类型可用于前端请求。
+- [x] 生成文件无漂移；失败用例不会被统一转换成 HTTP 200。
+- [x] 真实密钥不进入 fork PR；依赖、镜像、密钥与许可证扫描可运行。
 
 **M0 门禁**：可从干净环境启动与构建，并有实际测试输出；不是仅写好了 Dockerfile。
 
@@ -70,8 +72,8 @@
 
 交付：项目 CRUD/归档、owner 边界、UUID/UTC 规范、分页。
 
-- [ ] 两用户测试夹具不能交叉读取/修改资源。
-- [ ] 归档后禁止新运行；版本冲突有明确错误。
+- [x] 两用户测试夹具不能交叉读取/修改资源。
+- [x] 归档后禁止新运行；版本冲突有明确错误。
 
 ### T06 Artifact 与不可变版本
 
@@ -79,9 +81,9 @@
 
 交付：六类 Artifact Schema、Version、语义引用、当前版本选择。
 
-- [ ] 版本递增唯一，历史内容不可覆盖。
-- [ ] 引用验证同项目、存在性和类型，非法半截 JSON 不入库。
-- [ ] 共享场景局部修改不会影响未选中的镜头。
+- [x] 版本递增唯一，历史内容不可覆盖。
+- [x] 引用验证同项目、存在性和类型，非法半截 JSON 不入库。
+- [x] 共享场景局部修改不会影响未选中的镜头。
 
 ### T07 画布与持久化命令
 
@@ -89,9 +91,9 @@
 
 交付：React Flow 投影层、卡片、拖拽缩放、选中/框选、布局命令。
 
-- [ ] 刷新后布局与内容恢复，保存失败保留草稿。
-- [ ] Query/Zustand/React Flow 没有三份独立内容状态。
-- [ ] 删除展示卡片不删除媒体；输入文字时不会误删节点。
+- [x] 刷新后布局与内容恢复，保存失败保留草稿。
+- [x] Query/Zustand/React Flow 没有三份独立内容状态。
+- [x] 删除展示卡片不删除媒体；输入文字时不会误删节点。
 
 ### T08 Agent 卡片与输入绑定
 
@@ -99,9 +101,9 @@
 
 交付：Creator Profile、AgentInstance、AgentBinding、输出区域。
 
-- [ ] 在画布中添加并编辑 Agent；不是只有侧栏聊天。
-- [ ] 选中引用、绑定输入、查看输出范围可见且可修改。
-- [ ] Agent 实例不存线程或跨请求共享用户上下文。
+- [x] 在画布中添加并编辑 Agent；不是只有侧栏聊天。
+- [x] 选中引用、绑定输入、查看输出范围可见且可修改。
+- [x] Agent 实例不存线程或跨请求共享用户上下文。
 
 **M1 门禁**：不依赖真实 AI，即可手工完整操作一个三镜头项目并刷新恢复。
 
@@ -115,9 +117,9 @@
 
 交付：Run 状态机、项目活动槽位、输入与策略快照、创建请求幂等。
 
-- [ ] 同项目两个并发新 Run 只允许一个活动执行。
-- [ ] 重放同一幂等请求返回原 Run；同 key 不同参数返回冲突。
-- [ ] WAITING/BLOCKED 状态持久化，取消/结束能释放槽位。
+- [x] 同项目两个并发新 Run 只允许一个活动执行。
+- [x] 重放同一幂等请求返回原 Run；同 key 不同参数返回冲突。
+- [x] WAITING/BLOCKED 状态持久化，取消/结束能释放槽位。
 
 ### T10 Task 调度与租约
 
@@ -125,9 +127,9 @@
 
 交付：Task/Dependency、SKIP LOCKED、lease、heartbeat、fencing epoch。
 
-- [ ] 两个 Worker 竞争任务不产生两份已确认业务结果。
-- [ ] 旧租约 Worker 的状态更新被拒绝。
-- [ ] 网络工作不占数据库事务；等待外部状态不长期占用线程。
+- [x] 两个 Worker 竞争任务不产生两份已确认业务结果。
+- [x] 旧租约 Worker 的状态更新被拒绝。
+- [x] 网络工作不占数据库事务；等待外部状态不长期占用线程。
 
 ### T11 持久事件与提交水位
 
@@ -135,9 +137,9 @@
 
 交付：project_event、项目计数行锁、事务事件、快照水位。
 
-- [ ] 业务成功而事件写入失败时，事务按设计回滚。
-- [ ] 并发事务产生事件不会因提交顺序不同而漏读。
-- [ ] 快照与 snapshotSeq 来自同一一致性快照。
+- [x] 业务成功而事件写入失败时，事务按设计回滚。
+- [x] 并发事务产生事件不会因提交顺序不同而漏读。
+- [x] 快照与 snapshotSeq 来自同一一致性快照。
 
 ### T12 SSE 与前端重连
 
@@ -145,9 +147,11 @@
 
 交付：单项目事件连接、历史补发、心跳、游标失效处理。
 
-- [ ] 断网重连、重复事件、旧版本事件均正确处理。
-- [ ] 游标过期重新获取快照，不继续使用不完整缓存。
-- [ ] 慢消费不会无限增长服务器内存。
+补验：导出提案浏览器黄金路径曾发现媒体归档后事件流重连及提案列表陈旧；现补齐 `asset.ready`、`export.proposal.changed` 游标处理，固定项目初始订阅水位，并在恢复快照时刷新提案/导出/用量及未包含在快照中的运行历史、计划、任务等缓存。单连接、事件序列和缺口恢复缓存回归已增加；浏览器服务端进程中断重连见 `docs/evidence/T12-browser-process-reconnect.md`。长时间断网和游标过期的浏览器端到端验证仍待做，见 `docs/evidence/T15-export-proposal-partial.md`。
+
+- [x] 断网重连、重复事件、旧版本事件均正确处理。
+- [x] 游标过期重新获取快照，不继续使用不完整缓存。
+- [x] 慢消费不会无限增长服务器内存。
 
 ### T13 取消、UNKNOWN 与恢复分类
 
@@ -155,9 +159,16 @@
 
 交付：取消请求、恢复扫描、Provider attempt 记录、UNKNOWN UI。
 
-- [ ] SUBMITTING 崩溃不会自动重提。
-- [ ] 取消后晚到结果不自动替换当前版本或唤醒下游。
-- [ ] 显示可能的外部成本，不伪装成退款或确定失败。
+- [x] SUBMITTING 崩溃不会自动重提。
+- [x] 取消后晚到结果不自动替换当前版本或唤醒下游。
+- [x] 显示可能的外部成本，不伪装成退款或确定失败。
+- [x] UNKNOWN 列表逐项展示任务 ID、尝试次数、已保存的原请求 ID 或缺失警告、错误码，不展示私有输入；保留人工核对线索。
+- [x] 按项目权限读取单任务的提交关联键、attempt 状态与原 Provider 请求 ID，页面按需展开且不暴露工作线程信息。
+- [x] 新 ComfyUI 请求使用提交前持久化的关联键作为候选 prompt_id，并拒绝不一致回执；不把该 ID 当幂等保证。
+- [x] 新 ComfyUI UNKNOWN 仅在候选 ID、原 endpoint 指纹、工作流配置及 Provider 返回的 prompt/client ID 全部匹配时恢复原请求轮询；空查询、旧 attempt、配置漂移和取消不自动重提。
+- [x] UNKNOWN 可核对原请求；不能核对时仅在明确提示潜在重复成本后新建尝试，原 attempt 保留。新尝试、独立用量预留与待执行依赖重连已通过 PostgreSQL 并发测试；真实 ComfyUI 联调暂缓。
+- [x] 实际中断进程并重启，验证提交 checkpoint 与租约恢复不重复提交。
+- [x] 进程中断期间的 SSE 客户端重连在浏览器端到端验证（隔离 Compose 中 stop/start server，页面自动恢复并接收新 Run 事件；见 `docs/evidence/T12-browser-process-reconnect.md`）。
 
 **M2 门禁**：在 Mock 下通过重复、崩溃、租约过期、晚到结果和 SSE 故障测试，才允许进入真实媒体提交。
 
@@ -171,15 +182,19 @@
 
 交付：Spring AI ChatClient、配置版本、受控回合、工具协议测试。
 
-- [ ] 默认自动工具执行在此路径关闭，只有一套执行器。
+进展：Spring AI 2.0.1 OpenAI 兼容 ChatModel 候选已接入可显式启用的 configured 模式；真实适配器＋假 HTTP 端点验证双回合工具 ID、供应商 Token 元数据、默认 Mock 无外部 ChatModel，并在 PostgreSQL 上将配置模型五回合接到三镜头、图片/视频双审批、Mock 媒体与导出。Worker 端到端还核对原 assistant `tool_call_id` 与持久化工具结果的回填一致性，见 `docs/evidence/T14-openai-compatible-candidate.md`、`docs/evidence/T15-tool-ledger-partial.md`。未进行真实模型调用或具体模型能力鉴定，以下真实验收仍未完成。
+
+- [x] 默认自动工具执行在此路径关闭，只有一套执行器（假模型及受控业务工具执行器已验证）。
 - [ ] 工具调用完整往返成功，保留必要 tool_call_id 与协议元数据。
-- [ ] 视觉/结构化输出能力只在测试通过后声明。
+- [x] 视觉/结构化输出能力只在测试通过后声明（当前显式为 false，真实能力未验证）。
 
 ### T15 Tool Registry 与工具账本
 
 依赖：T14、T06–T08。
 
 交付：限定工具、ToolContext、权限链、tool_execution、业务命令键。
+
+进展：已增加受 Run 输入/输出范围与 Artifact CAS 保护的 `revise_artifact`、`place_artifacts`、`arrange_items`、`link_artifacts`，以及 `read_project_summary`、`read_artifacts`、`read_selection`、`read_task_status` 四个有上限的只读工具；长绑定内容在首轮上下文只显示预览，可按显式版本 ID 读取全文。启动 Run 时所选卡片由服务端验证并固定到上下文，仅表示操作意图，不扩大绑定权限；任务状态查询只允许本 Run 的任务，不返回 Provider 内部输入或输出。输出卡片只可放置当前 Run 可见版本，固定到 Agent 输出分组，重复工具调用复用原卡片；布局工具仅排列该分组且检查内容版本、布局 CAS 和锁定状态。语义关系工具只修改当前 Run 可见内容版本的四种 Schema 支持引用，不创建媒体任务。`propose_export` 已保存可审阅的精确版本提案，须经鉴权用户按哈希批准才建本地导出任务，见 `docs/evidence/T15-export-proposal-partial.md`。真实模型兼容性与完整安全验收仍未完成。
 
 - [ ] 工具不能伪造身份、项目、审批和额度。
 - [ ] 响应持久化先于业务副作用；重放返回原结果。
@@ -191,15 +206,19 @@
 
 交付：说明、角色、场景、镜头创建及输出布局。
 
+进展补充：活动 Run 进入 BLOCKED 时，画布只读取同项目持久 Task 的稳定错误码，明确解释固定模型配置/工具能力不可用、历史密钥缺失或模型结构修复耗尽；媒体 UNKNOWN 保持独立核对提示，不展示模型输入或私有内容。结构或计划领域校验失败时，同轮工具事务回滚，并在持久化模型回合内最多修复两次；真实 Provider 效果仍未验证。见 `docs/evidence/T16-structured-repair.md`。
+
 - [ ] 一句指令创建三个有合法引用和顺序的镜头。
 - [ ] 模型不支持某能力时明确提示，不伪装成已看图或已生成。
-- [ ] 结构错误最多两次修复；失败无不合法业务数据写入。
+- [x] 结构错误最多两次修复；失败无不合法业务数据写入（Fake 模型 + 真实 PostgreSQL 集成测试；真实 Provider 未验证）。
 
 ### T17 计划、DAG 与两阶段审批
 
 依赖：T16、T10。
 
 交付：ExecutionPlan、Approval、输入/计划 hash、输出槽位、额度预留。
+
+阶段性实现与未覆盖边界见 `docs/evidence/T17-plan-approval-partial.md`；现有 PostgreSQL 回归已覆盖 20 路同时审批只保留一组任务与一笔预留，审批面板也可直接取消 Run。真实 Provider 和完整边界验收未完成，以下验收项保持未勾选。
 
 - [ ] 环、非法类型、跨项目引用、超过限额等被服务端拒绝。
 - [ ] 并发审批只创建一组任务；Agent 无批准工具。
@@ -210,6 +229,8 @@
 依赖：T17。
 
 交付：等待审批、等待任务、任务完成唤醒、模型回合限制、取消检查点。
+
+首个持久化回合、默认 Mock 三镜头、图片/视频审批及归档、逐镜头人工选择的持久恢复门禁、新输出画布放置，以及配置模型＋假 HTTP 服务贯穿同一链路的阶段性实现见 `docs/evidence/T18-initial-turn-partial.md` 和 `docs/evidence/T14-openai-compatible-candidate.md`。Run 预览与确认增加模型配置来源/版本对照，变更后拒绝未重新确认的 UI 启动，亦见 T18 证据。另有隔离 Compose 项目的浏览器 Mock 黄金路径，见 `docs/evidence/T-browser-mock-golden-path.md`。Agent Run 历史的只读游标列表和计划/任务摘要见 `docs/evidence/T18-run-history-partial.md`；真实 Provider 与以下验收项仍未完成。
 
 - [ ] 关闭浏览器不影响后台持久化编排。
 - [ ] 不存在等视频完成的无限 LLM 轮询。
@@ -227,7 +248,9 @@
 
 交付：本地 StorageGateway、上传检查、临时文件、hash、GET/HEAD/Range。
 
-- [ ] 恶意格式、超大像素、路径穿越、越权读取被拒绝。
+PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的真实 Artifact/画布放置，以及任务键视频文件归档恢复的阶段性实现见 `docs/evidence/T19-local-image-archive-partial.md`、`docs/adr/0001-upload-image-provenance.md` 和 `docs/evidence/T23-mock-video-partial.md`；真实 PostgreSQL 插入故障已验证用户上传清理与任务键原字节恢复。图片原图、缩略图及 MP4 临时写入的 ENOSPC 注入与原 Provider ID 重试见 `docs/evidence/T27-disk-full-injection.md`。格式/像素、路径及越权拒绝已在 PostgreSQL 与 HTTP 测试中覆盖；真实存储耗尽、大文件内存测量及浏览器端到端故障恢复尚未完成。
+
+- [x] 恶意格式、超大像素、路径穿越、越权读取被拒绝（含静态项目目录符号链接；不覆盖有卷写入权的本地进程并发替换目录）。
 - [ ] 下载流式执行，大文件不会整段加载到 JVM 内存。
 - [ ] 磁盘满或数据库失败不产生 READY 坏文件。
 
@@ -236,6 +259,10 @@
 依赖：T17–T19。
 
 交付：受信任 image-v1、模板/节点/模型版本清单、submit/query/归档映射。
+
+进展：精确服务地址与固定 HTTP 路由、`image-v1` 候选模板、参考图到固定节点映射、审批 Task 到提交/原 ID 核对/归档的假服务＋PostgreSQL 闭环，以及 V23 持久单槽调度见 `docs/evidence/T20-comfyui-protocol-partial.md`。真实 ComfyUI/模型和模板兼容性尚未验证，验收项保持未勾选。
+
+Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模板模型名及 Provider 配置版本，默认仍为 Mock；见 `docs/evidence/T20-compose-provider-config-partial.md`。这只解除部署配置阻断，不作为真实兼容性证据。
 
 - [ ] 至少一个真实生图任务完成，并验证参考图实际进入正确输入路径。
 - [ ] 返回 prompt_id 后只查询原任务；历史为空不被立即当成失败。
@@ -247,6 +274,12 @@
 
 交付：加密配置、配置版本快照、诊断、端点白名单、脱敏。
 
+进展：管理员加密配置与脱敏页面、活动数据库配置优先读取、Run 策略快照中的来源/版本已实现；数据库中已验证的旧 LLM 版本可供固定该版本的 Run 继续使用，环境变量来源变更仍阻断。部署主密钥增加显式历史密钥环，缺失旧密钥明确报错；合成工具双回合诊断成功才标记 Tool Calling。LLM 出站固定主机/路径、逐次验证 DNS 并拒绝重定向；假 HTTP＋真实 PostgreSQL 已验证。ComfyUI 计划和任务固定精确服务地址指纹，V34 只追加保留历史 endpoint，已受理的固定 v1 请求可在模型名轮换后按原版本/指纹核对和归档；新提交仍严格匹配当前工作流版本，同版本换地址拒绝启动，见 `docs/evidence/T21-comfyui-origin-pinning-partial.md` 与 `docs/evidence/T21-comfyui-historical-lookup-partial.md`。真实 Provider、未知旧媒体模板/凭证版本、跨备份密钥轮换演练及更完整的 SSRF/运维验收仍未完成，见 `docs/evidence/T21-encrypted-llm-settings-partial.md`。
+
+补验：关闭新 ComfyUI 视频生成后，历史轮询器仍可按原请求 ID 下载并归档有效 MP4，创建任务键 VIDEO Asset 与新 ArtifactVersion；真实 PostgreSQL＋本地 FFmpeg＋假 HTTP 已验证，无新提交。真实 Provider 与跨备份演练仍未验证。
+
+设置页补充：`/settings/providers` 已合并现有管理员 LLM 设置与媒体配置状态；媒体端点/模板仍通过服务端环境变量安装，页面不提供在线编辑，也不把配置齐全误称为真实连通或模板兼容，见 `docs/evidence/T28-system-diagnostics-partial.md`。
+
 - [ ] Key 轮换后旧任务仍能按原配置核对，或明确报认证阻断。
 - [ ] 无 Key 泄露到日志、SSE、导出或浏览器持久存储。
 - [ ] 本地服务例外未放开任意内网 URL；重定向/DNS 等 SSRF 测试通过。
@@ -256,6 +289,8 @@
 依赖：T20–T21。
 
 交付：图片历史、选用版本、旧输入标记、结果 CAS。
+
+进展：假 ComfyUI 完成后首次下载返回无效图片、归档拒绝，只轮询原 prompt 并重新下载的 PostgreSQL 故障测试见 `docs/evidence/T20-comfyui-protocol-partial.md`。V24 持久技术重试账本覆盖带抖动退避、五次重试后 BLOCKED、成功清零；Task 固定资产 ID 的原图落盘后恢复、缩略图重建、READY 资产复用及同进程双 Worker 竞争也有 PostgreSQL＋本地卷测试。独立进程交错写入和真实 Provider 尚未验证，本项保持未勾选。
 
 - [ ] 用户改输入后旧生成结果只进入历史。
 - [ ] 归档失败重试下载，不重新生图。
@@ -273,6 +308,8 @@
 
 交付：受信任 image-to-video-v1、参数能力、图像版本固定、进度与归档。
 
+阶段性 Mock 视频、固定关键帧版本、任务键 MP4 归档恢复和前端手动播放证据见 `docs/evidence/T23-mock-video-partial.md`。另有默认关闭的 Wan 2.1 `image-to-video-v1` 候选接入、选定图片上传、帧数/画幅映射、原 prompt 核对和假 ComfyUI＋PostgreSQL 闭环，见 `docs/evidence/T23-comfyui-video-candidate.md`；尚无真实模型兼容测试，以下真实 Provider 验收项仍未完成。
+
 - [ ] 真实参考关键帧进入视频输入，不只验证文生视频替代路径。
 - [ ] 时长/画幅/分辨率映射与模板能力一致。
 - [ ] 不调用共享实例全局 interrupt 取消其他任务。
@@ -283,15 +320,22 @@
 
 交付：选中镜头修改、依赖影响计算、新计划、新审批、历史保留。
 
-- [ ] 只改第二镜头，不改变第一/第三镜头的内容、引用和选用视频。
-- [ ] 对共享场景创建新版本并仅重新绑定目标镜头。
-- [ ] 未完成的旧任务结果不会回盖新结果。
+进展：目标镜头与可选共享场景的原子新版本、旧媒体选用清除、其他镜头引用隔离、Mock 模式下的限定单镜头新 Run、图片/视频双审批闭环，以及旧任务提交前阻断和晚到结果历史归档见 `docs/evidence/T24-local-redo-partial.md`。现增加真实归档视频选择的两侧镜头隔离核对，以及旧任务归档与第二镜头修订的双线程提交交错；真实 Provider 和局部 Run 浏览器端到端仍未验收，总门禁未通过。
+
+- [x] 只改第二镜头，不改变第一/第三镜头的内容、引用和选用视频（真实 PostgreSQL + 已归档 MP4 版本测试）。
+- [x] 对共享场景创建新版本并仅重新绑定目标镜头（真实 PostgreSQL 精确引用测试）。
+- [x] 未完成的旧任务结果不会回盖新结果（提交前过期阻断、提交后晚到历史归档及双线程修订/归档交错测试；未穷尽全部时序）。
+- [x] 输入修改后尚未提交的旧计划任务按主规格 11.4 进入 BLOCKED，提示停止旧 Run、重新绑定及审批新计划；真实 PostgreSQL 测试核对用量释放、Run 阻断和新计划审批。
 
 ### T25 顺序导出
 
 依赖：T23–T24。
 
 交付：镜头顺序、输入快照、受控 FFmpeg、无声 MP4、播放与下载。
+
+进展：项目级持久导出、精确版本/区间快照、受控 FFmpeg 规范化、前端顺序编辑与私有下载已实现；服务端预览与手动入队现共用同一套精确版本/素材/区间校验，预览本身不创建 Task。Agent 可另行提出需用户审批的导出快照；Mock 三镜头黄金路径已覆盖“提案→批准→无声 MP4”，并在隔离浏览器中完成审批界面和 3 秒 MP4 下载补验，见 `docs/evidence/T15-export-proposal-partial.md`。PostgreSQL + FFmpeg 混合素材及原有 Mock 导出测试见 `docs/evidence/T25-sequential-export-partial.md`。隔离 Compose 项目中的浏览器也已完成手动顺序编辑、提交和“已完成”呈现，并经同项目已登录 HTTP 会话下载实际 15 秒无声 MP4，见 `docs/evidence/T-browser-mock-golden-path.md`。运行中取消、工具超时/非零故障及临时清理已有受控测试；已归档但未记成功的导出现在按 Task 键恢复且不重复编码。浏览器播放、真实磁盘满与杀进程重启演练未验证，故验收项保持未勾选。
+
+补验：PostgreSQL＋FFmpeg 集成测试已覆盖横向、纵向、方形输出，逐帧解码核对纵向/方形补边和主体颜色，输出均为 24fps；浏览器播放器尚未端到端验收，以下总项继续保持未勾选。
 
 - [ ] 不同输入分辨率/帧率规范化后可播放，默认不裁剪主体。
 - [ ] 命令不经过 shell，参数与路径不由模型自由提供。
@@ -303,8 +347,10 @@
 
 交付：脱敏项目 JSON/素材清单、模型/模板版本、已知/估算/未知用量。
 
-- [ ] 导出无 Key、会话、原始内部配置或可复用签名链接。
-- [ ] 未知费用不显示零；同一任务重复通知不重复结算。
+进展：同一一致性快照下的脱敏项目 JSON/素材元数据清单、历史产物版本、前端下载入口，以及 LLM 回合和图片/视频/项目导出 Task 的持久预留与唯一结算、UNKNOWN 费用显示见 `docs/evidence/T26-project-manifest-partial.md`。项目导出的取消、失败及过期租约恢复会幂等释放预留；图片/视频仅在证明尚无提交检查点的取消、预检失败或取消租约恢复后释放。Mock 三镜头已通过真实 PostgreSQL/FFmpeg 与受保护 HTTP 下载验证；已提交请求、LLM 的安全失败释放、真实价格与真实 Provider 三镜头下载仍未完成，以下验收项保持未勾选。
+
+- [x] 导出无服务端 Key、会话、原始内部配置或可复用签名链接（项目清单逐字段白名单；真实 PostgreSQL 配置密钥、HTTP 会话标记、媒体参数与签名链接的集成测试；用户主动写入的创作正文仍按内容导出）。
+- [x] 未知费用不显示零；同一任务重复通知不重复结算（HTTP null 金额、前端 UNKNOWN 优先显示及媒体/导出重复结算的真实 PostgreSQL 测试；外部真实价格和提交后失败费用语义仍未验证）。
 - [ ] 可从一个真实三镜头项目下载最终视频与各段素材。
 
 **M5 门禁**：真实 LLM + 真实图片 + 真实视频 + 局部修改 + 实际可下载导出全链路通过。
@@ -317,6 +363,8 @@
 
 依赖：T26。
 
+进展：已冻结 30 条 Creator 指令样本，分类、fixture 与预期判定由本地测试保护；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的 `approve_plan` 调用不能创建计划或媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run/审批落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、缩略图、MP4 写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 15 的步骤数量与任务落库核对及前端数量不一致阻断见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
+
 - [ ] 主规格第 22 节的全部故障验收有可重复测试证据。
 - [ ] 至少 30 条固定 Agent 样本集，保存配置版本与失败报告。
 - [ ] 越权、审批绕过、Prompt 注入、SSRF、恶意媒体、密钥泄露测试通过。
@@ -324,6 +372,8 @@
 ### T28 性能与可观测性
 
 依赖：T27。
+
+进展：项目 SSE 活跃/关闭连接、发送失败和服务端事件发送延迟已有无高基数标签的指标；Actuator metrics 仅已认证管理员可读。Task READY/UNKNOWN/BLOCKED 总量以三个固定状态标签从 PostgreSQL 定期刷新，V33 有部分索引；活动 Run 数量以无标签指标定期读取持久状态。readiness 已纳入数据库健康，独立 PostgreSQL 停机测试验证 503 readiness 与 200 liveness。新增管理员只读系统诊断页，展示本地数据库/存储/Provider 配置状态及七天内异常 Task 状态计数，不触发外部探测或付费任务，见 `docs/evidence/T28-system-diagnostics-partial.md`。前端按路由拆包与构建体积见 `docs/evidence/T28-route-bundles-partial.md`。真实 PostgreSQL＋HTTP SSE 回放、连接释放及持久状态测试见 `docs/evidence/T28-sse-metrics-partial.md`。尚无浏览器性能目标测量，以下门禁保持未勾选。
 
 - [ ] 使用真实缩略图和媒体卡片测 300 节点/600 关系，记录机器与浏览器。
 - [ ] API、事件延迟、SSE 连接释放、任务队列与内存目标经过测量。
@@ -333,6 +383,8 @@
 
 依赖：T27–T28。
 
+进展：已实现显式 `AGENVAS_RECOVERY_MODE=true` 只读核对模式，关闭后台调度并拒绝项目/模型配置写入；在两个隔离 Compose 项目之间实际恢复 PostgreSQL 与资产卷，验证原管理员登录、项目/Artifact 读取、图片哈希和写入 503。另以隔离 PostgreSQL `pg_dump/pg_restore` 验证加密模型配置版本在新密钥实例或轮换后的历史密钥环下可解密、缺失历史密钥时拒绝，见 `docs/evidence/T29-isolated-restore-partial.md` 与 `docs/operations/backup-restore.md`。完整部署密钥交接、真实 Provider 请求与生产 RPO/RTO 尚未演练，门禁未完成。
+
 - [ ] 全新机器按 README 成功启动与登录。
 - [ ] 备份数据库、媒体、模板和密钥并完成实际恢复。
 - [ ] 旧备份恢复以恢复模式启动，不盲目重提可能已经执行的外部请求。
@@ -341,6 +393,8 @@
 ### T30 开源发布
 
 依赖：T29。
+
+进展：新增 `SECURITY.md`，明确开发版尚无受支持发布，并仅在仓库启用 GitHub 私密漏洞报告时使用该入口；私密渠道当前无法核实，仍是发布阻断。`docs/release-notes/0.1.0-mvp-draft.md` 汇总 Mock 支持范围、候选 Provider 限制、升级恢复边界与待验门禁，不作为正式发行。CI 已配置镜像级 CycloneDX SBOM/许可证清单工件生成，但项目许可证决定、NOTICE、模型/FFmpeg 许可审查和具体发行工件尚未完成。
 
 - [ ] README/README.en、CONTRIBUTING、SECURITY、LICENSE、NOTICE、SBOM 完整。
 - [ ] 媒体模板、模型权重、Custom Node 与 FFmpeg 构建许可分别核验。

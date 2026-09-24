@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:image:1",
+  "title": "IMAGE Artifact content v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType", "assetId"],
+      "properties": {
+        "sourceType": {"const": "UPLOAD"},
+        "assetId": {"type": "string", "format": "uuid"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetId", "prompt", "providerConfigVersion", "workflowVersion", "parameters", "sourceTaskId"],
+      "properties": {
+        "assetId": {"type": "string", "format": "uuid"},
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 8000},
+        "negativePrompt": {"type": "string", "maxLength": 8000},
+        "providerConfigVersion": {"type": "integer", "minimum": 1},
+        "workflowVersion": {"type": "string", "minLength": 1, "maxLength": 120},
+        "parameters": {"type": "object", "additionalProperties": true},
+        "sourceTaskId": {"type": "string", "format": "uuid"}
+      }
+    }
+  ]
+}

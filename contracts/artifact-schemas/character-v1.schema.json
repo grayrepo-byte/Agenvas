@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:character:1",
+  "title": "CHARACTER Artifact content v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "appearance", "referenceVersionIds"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 120},
+    "description": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "appearance": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "referenceVersionIds": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"type": "string", "format": "uuid"}
+    }
+  }
+}

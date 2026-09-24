@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:scene:1",
+  "title": "SCENE Artifact content v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "location", "timeOfDay", "lighting", "style", "referenceVersionIds"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 120},
+    "location": {"type": "string", "minLength": 1, "maxLength": 500},
+    "timeOfDay": {"type": "string", "minLength": 1, "maxLength": 80},
+    "lighting": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "style": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "referenceVersionIds": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"type": "string", "format": "uuid"}
+    }
+  }
+}

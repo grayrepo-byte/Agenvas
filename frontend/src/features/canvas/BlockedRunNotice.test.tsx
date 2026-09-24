@@ -1,0 +1,71 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { describe, expect, it } from "vitest";
+import { createQueryClient } from "../../app/queryClient";
+import { server } from "../../test/server";
+import { BlockedRunNotice } from "./BlockedRunNotice";
+
+describe("BlockedRunNotice", () => {
+  it("explains pinned model capability failure without showing private inputs", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+      HttpResponse.json([{ id: "task-1", kind: "AGENT_TURN", status: "FAILED",
+        errorCode: "LLM_CONFIG_UNAVAILABLE", input: { secret: "private-model-prompt" } }]),
+    ));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-1" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/固定的模型配置或工具调用能力不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/不会擅自切换到另一个模型/)).toBeInTheDocument();
+    expect(screen.queryByText(/private-model-prompt/)).not.toBeInTheDocument();
+  });
+
+  it("keeps an unknown media blocker generic instead of inventing a model failure", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+      HttpResponse.json([{ id: "task-2", kind: "IMAGE_GENERATION", status: "UNKNOWN",
+        errorCode: "PROVIDER_SUBMISSION_UNKNOWN" }]),
+    ));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-2" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/UNKNOWN 核对提示/)).toBeInTheDocument();
+    expect(screen.queryByText(/固定的模型配置或工具调用能力不可用/)).not.toBeInTheDocument();
+  });
+
+  it("explains the bounded structured-output repair failure", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+      HttpResponse.json([{ id: "task-3", kind: "AGENT_TURN", status: "FAILED",
+        errorCode: "MODEL_OUTPUT_INVALID" }]),
+    ));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-3" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/已达到两次修复或回合上限/)).toBeInTheDocument();
+  });
+
+  it("requires a new approval when an unsubmitted media task is stale", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+      HttpResponse.json([{ id: "task-4", kind: "IMAGE_GENERATION", status: "BLOCKED",
+        errorCode: "TASK_INPUT_STALE" }]),
+    ));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-4" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/重新绑定该版本并发起新 Run/)).toBeInTheDocument();
+    expect(screen.getByText(/仍须分别由你审批/)).toBeInTheDocument();
+    expect(screen.queryByText(/UNKNOWN 核对提示/)).not.toBeInTheDocument();
+  });
+
+  it("explains archived-project media blocking without claiming accepted work was canceled", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+      HttpResponse.json([{ id: "task-5", kind: "IMAGE_GENERATION", status: "BLOCKED",
+        errorCode: "TASK_PROJECT_ARCHIVED" }]),
+    ));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-5" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/项目已归档，尚未提交的媒体任务已阻断/)).toBeInTheDocument();
+    expect(screen.getByText(/已受理的外部请求仍会核对/)).toBeInTheDocument();
+    expect(screen.getByText(/TASK_PROJECT_ARCHIVED/)).toBeInTheDocument();
+  });
+});

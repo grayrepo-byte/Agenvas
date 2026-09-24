@@ -3,8 +3,8 @@ info:
   title: Agenvas API
   version: 0.1.0
   description: |
-    Agenvas 的权威 HTTP 合约。当前只包含工程基线已实现的只读初始化状态端点；
-    后续接口随纵向切片同步加入，不能仅凭 MVP 目录提前声称已实现。
+    Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、计划、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
+    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects 与 /api/v1/settings 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
 servers:
   - url: /
 paths:
@@ -19,45 +19,2222 @@ paths:
           description: 初始化状态
           headers:
             Cache-Control:
-              schema:
-                type: string
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SetupStatus"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /api/v1/auth/csrf:
+    get:
+      operationId: getCsrfToken
+      summary: 获取浏览器写请求所需的 CSRF token
+      tags: [Identity]
+      security: []
+      responses:
+        "200":
+          description: CSRF token
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CsrfToken"}
+  /api/v1/auth/setup:
+    post:
+      operationId: setupAdministrator
+      summary: 一次性创建管理员
+      tags: [Identity]
+      security: []
+      parameters:
+        - name: X-Agenvas-Bootstrap-Secret
+          in: header
+          required: true
+          schema: {type: string, minLength: 24, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SetupRequest"}
+      responses:
+        "201":
+          description: 管理员已创建
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CurrentUser"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: 创建数据库持久化会话
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoginRequest"}
+      responses:
+        "200":
+          description: 已登录管理员
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CurrentUser"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: 退出并失效当前会话
+      tags: [Identity]
+      responses:
+        "204": {description: 会话已失效}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: 获取当前管理员
+      tags: [Identity]
+      responses:
+        "200":
+          description: 当前管理员
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CurrentUser"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /api/v1/auth/change-password:
+    post:
+      operationId: changePassword
+      summary: 修改密码并失效其他会话
+      tags: [Identity]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChangePasswordRequest"}
+      responses:
+        "204": {description: 密码已修改}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /api/v1/settings/llm:
+    get:
+      operationId: getLlmSettings
+      summary: 读取管理员模型配置的脱敏状态
+      tags: [Settings]
+      responses:
+        "200":
+          description: 配置状态，不包含凭证明文或密文
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+    put:
+      operationId: replaceLlmSettings
+      summary: 用完整新凭证替换活动模型配置版本
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReplaceLlmSettingsRequest"}
+      responses:
+        "200":
+          description: 新版本的脱敏状态
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/settings/diagnostics:
+    get:
+      operationId: getSystemDiagnostics
+      summary: 读取管理员本地系统诊断，不连接或生成付费 Provider 请求
+      tags: [Settings]
+      responses:
+        "200":
+          description: 数据库、存储和 Provider 配置状态及七天内任务错误摘要
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SystemDiagnostics"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /api/v1/settings/llm/diagnose:
+    post:
+      operationId: diagnoseLlmSettings
+      summary: 管理员显式发起最多两次可能计费的工具协议诊断
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DiagnoseLlmRequest"}
+      responses:
+        "200":
+          description: 完成诊断后的脱敏配置状态
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422":
+          description: 模型未完成完整工具协议
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "502":
+          description: 模型连接或调用失败
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+  /api/v1/projects:
+    get:
+      operationId: listProjects
+      summary: 游标分页列出当前用户项目
+      tags: [Projects]
+      parameters:
+        - {name: includeArchived, in: query, schema: {type: boolean, default: false}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        "200":
+          description: 项目页
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectList"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+    post:
+      operationId: createProject
+      summary: 创建项目
+      tags: [Projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateProjectRequest"}
+      responses:
+        "201":
+          description: 项目已创建
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Project"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/projects/{projectId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: getProject
+      summary: 获取项目概要
+      tags: [Projects]
+      responses:
+        "200":
+          description: 项目概要
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Project"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      operationId: updateProject
+      summary: 乐观更新项目设置
+      tags: [Projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateProjectRequest"}
+      responses:
+        "200":
+          description: 更新后的项目
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Project"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/archive:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: archiveProject
+      summary: 归档项目
+      tags: [Projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ArchiveProjectRequest"}
+      responses:
+        "200":
+          description: 已归档项目
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Project"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/snapshot:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: getProjectSnapshot
+      summary: 获取一致性项目快照与事件水位
+      tags: [Projects]
+      responses:
+        "200":
+          description: 同一 REPEATABLE READ 事务中的项目恢复数据
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectSnapshot"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/export-manifest:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: getProjectExportManifest
+      summary: 下载脱敏项目 JSON 与素材元数据清单
+      tags: [Exports]
+      responses:
+        "200":
+          description: 同一一致性快照中的白名单项目元数据，不含媒体字节或可复用下载链接
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectExportManifest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/usage:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listProjectUsage
+      summary: 读取项目的持久用量预留与结算记录
+      tags: [Usage]
+      responses:
+        "200":
+          description: 金额未知时保持 null，绝不伪装为零
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SetupStatus"
-        "500":
-          $ref: "#/components/responses/InternalError"
+                type: array
+                items: {$ref: "#/components/schemas/UsageEntry"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/events:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: streamProjectEvents
+      summary: 从项目事件水位之后补发并订阅 SSE
+      tags: [Events]
+      parameters:
+        - name: after
+          in: query
+          schema: {type: integer, format: int64, minimum: 0, default: 0}
+        - name: Last-Event-ID
+          in: header
+          description: 浏览器自动重连游标；提供时优先于 after
+          schema: {type: string, pattern: "^[0-9]+$"}
+      responses:
+        "200":
+          description: 事件使用项目 seq 作为 SSE id，并以业务 type 作为 SSE event 名称；15 秒心跳
+          content:
+            text/event-stream:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+  /api/v1/projects/{projectId}/assets:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: uploadImageAsset
+      summary: 上传并校验私有 PNG/JPEG/WebP 图片素材
+      tags: [Assets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 素材已归档
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Asset"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {description: 图片超过大小限制}
+        "422": {description: 图片格式、解码或像素限制未通过}
+  /api/v1/projects/{projectId}/assets/{assetId}/content:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: assetId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getAssetContent
+      summary: 读取私有素材，支持单个字节范围
+      tags: [Assets]
+      parameters:
+        - name: Range
+          in: header
+          schema: {type: string}
+      responses:
+        "200":
+          description: 完整文件
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        "206": {description: 部分文件，返回 Content-Range}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "416": {description: 请求的字节范围不可用}
+    head:
+      operationId: headAssetContent
+      summary: 查询私有素材的大小及 MIME
+      tags: [Assets]
+      parameters:
+        - name: Range
+          in: header
+          schema: {type: string}
+      responses:
+        "200": {description: 文件元数据响应头}
+        "206": {description: 部分文件元数据响应头}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "416": {description: 请求的字节范围不可用}
+  /api/v1/projects/{projectId}/assets/{assetId}/thumbnail:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: assetId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getAssetThumbnail
+      summary: 读取私有、预先生成的小尺寸 PNG 预览
+      tags: [Assets]
+      responses:
+        "200":
+          description: 缩略图
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/artifacts:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: createArtifact
+      summary: 创建产物及首个不可变版本
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateArtifactRequest"}
+      responses:
+        "201":
+          description: 产物已创建
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    get:
+      operationId: getArtifact
+      summary: 获取产物及当前选用版本
+      tags: [Artifacts]
+      responses:
+        "200":
+          description: 产物详情
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/revisions:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    post:
+      operationId: reviseArtifact
+      summary: 追加并选用一个完整不可变版本
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReviseArtifactRequest"}
+      responses:
+        "201":
+          description: 新版本已创建并选用
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/versions:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    get:
+      operationId: listArtifactVersions
+      summary: 列出不可变版本历史
+      tags: [Artifacts]
+      responses:
+        "200":
+          description: 版本历史，按版本号降序
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ArtifactVersionList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/select-version:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    post:
+      operationId: selectArtifactVersion
+      summary: 乐观选择一个历史版本
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SelectArtifactVersionRequest"}
+      responses:
+        "200":
+          description: 更新后的产物
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas/items:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listCanvasItems
+      summary: 获取持久化画布投影
+      tags: [Canvas]
+      responses:
+        "200":
+          description: 画布卡片与当前业务对象投影
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Canvas"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/agents:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listAgents
+      summary: 获取项目中的 Creator Agent 配置
+      tags: [Agents]
+      responses:
+        "200":
+          description: Agent 列表及其明确绑定的输入
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createAgent
+      summary: 创建一个空闲的 Creator Agent
+      tags: [Agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateAgentRequest"}
+      responses:
+        "201":
+          description: 新建的 Agent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Agent"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/agents/{agentId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getAgent
+      summary: 获取一个 Agent 配置
+      tags: [Agents]
+      responses:
+        "200":
+          description: Agent 配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Agent"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      operationId: updateAgent
+      summary: 乐观替换 Agent 配置和明确输入绑定
+      tags: [Agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateAgentRequest"}
+      responses:
+        "200":
+          description: 更新后的 Agent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Agent"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/runs:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listAgentRuns
+      summary: 分页查看一个 Agent 的持久化运行记录
+      tags: [Runs]
+      parameters:
+        - name: agentId
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: 不含模型原始消息的运行摘要，按创建时间倒序
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentRunList"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createRun
+      summary: 幂等创建一个持久化 Agent Run
+      tags: [Runs]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 200}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateRunRequest"}
+      responses:
+        "202":
+          description: 新建或精确重放的 Run
+          headers:
+            Idempotency-Replayed:
+              schema: {type: string, enum: ["true", "false"]}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentRun"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/runs/preflight:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: getRunPreflight
+      summary: 运行前查看模型、精确输入和服务端限额
+      tags: [Runs]
+      parameters:
+        - name: agentId
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: 当前配置与输入范围的只读预览；创建时仍以服务端实时快照为准
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunPreflight"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/runs/{runId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: runId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getRun
+      summary: 获取 Run、输入快照与策略快照
+      tags: [Runs]
+      responses:
+        "200":
+          description: Run 状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentRun"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/runs/{runId}/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: runId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: cancelRun
+      summary: 幂等取消 Run 并停止后续编排
+      tags: [Runs]
+      responses:
+        "200":
+          description: 取消后的 Run
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentRun"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/runs/{runId}/plans:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: runId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listExecutionPlans
+      summary: 列出当前 Run 的执行计划修订
+      tags: [Plans]
+      responses:
+        "200":
+          description: 按创建时间倒序排列的计划
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/ExecutionPlan"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/plans/{planId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getExecutionPlan
+      summary: 获取冻结的计划内容、输入与审批哈希
+      tags: [Plans]
+      responses:
+        "200":
+          description: 执行计划
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExecutionPlan"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/plans/{planId}/approve:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: approveExecutionPlan
+      summary: 用户按完整计划哈希批准并原子创建任务
+      tags: [Plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApproveExecutionPlanRequest"}
+      responses:
+        "200":
+          description: 审批与由此创建或重放的任务
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExecutionPlanApproval"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/plans/{planId}/reject:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: rejectExecutionPlan
+      summary: 用户拒绝待审批计划且不创建任务
+      tags: [Plans]
+      responses:
+        "200":
+          description: 已拒绝的计划
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExecutionPlan"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/runs/{runId}/tasks:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: runId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listRunTasks
+      summary: 列出本轮全部任务和已完成的媒体输出
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 持久化任务列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Task"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/runs/{runId}/shots/{shotId}/keyframe-selection:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: runId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: shotId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getShotKeyframeSelection
+      summary: 获取用户明确选定的镜头关键帧
+      tags: [Plans]
+      responses:
+        "200":
+          description: 当前选择
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ShotKeyframeSelection"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      operationId: selectShotKeyframe
+      summary: 用户从本轮已完成的图片中显式选定关键帧
+      tags: [Plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SelectShotKeyframeRequest"}
+      responses:
+        "200":
+          description: 新的或精确重放的选择
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ShotKeyframeSelection"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/tasks/{taskId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getTask
+      summary: 获取一个持久化 Task 的状态
+      tags: [Tasks]
+      responses:
+        "200":
+          description: Task 状态与归一化结果
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/tasks/{taskId}/attempts:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listProviderAttempts
+      summary: 查看一个任务的外部提交账本，用于人工核对原请求
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 最近最多 100 条提交尝试；requestKey 不表示外部已经受理
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/ProviderAttempt"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/tasks/{taskId}/new-attempt:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: createManualUnknownAttempt
+      summary: 明确接受原请求可能仍在执行及重复费用后，为 UNKNOWN 创建独立新尝试
+      tags: [Tasks]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 120}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ManualUnknownAttemptRequest"}
+      responses:
+        "200":
+          description: 新尝试；同幂等键重放返回相同任务，原 UNKNOWN 和用量预留仍保留
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/tasks/{taskId}/reconcile:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: reconcileUnknownTask
+      summary: 仅查询 UNKNOWN 的原 ComfyUI prompt，不重新提交生成
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 找到并恢复原请求，或没有找到证据且保持 UNKNOWN
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReconciliationResult"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "502": {$ref: "#/components/responses/ProviderFailure"}
+  /api/v1/projects/{projectId}/shots/{shotId}/revisions:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: shotId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: reviseShotForRedo
+      summary: 仅修订目标镜头，并可创建共享场景的新版本仅重新绑定该镜头
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReviseShotForRedoRequest"}
+      responses:
+        "201":
+          description: 新镜头版本及可选新场景版本，旧媒体选用仍在历史中
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ShotRedoResult"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/exports:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listMediaExports
+      summary: 列出项目最近的顺序导出任务
+      tags: [Exports]
+      responses:
+        "200":
+          description: 最近的项目导出
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Task"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createMediaExport
+      summary: 固定有序视频版本和区间并创建无声 MP4 导出任务
+      tags: [Exports]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 120}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMediaExportRequest"}
+      responses:
+        "202":
+          description: 已受理或精确重放的持久导出任务
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/export-proposals:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listExportProposals
+      summary: 列出最近的 Agent 导出提案，包含已审批和已拒绝项
+      tags: [Exports]
+      responses:
+        "200":
+          description: 最近 100 个持久导出提案
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/ExportProposal"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/export-proposals/{proposalId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: proposalId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getExportProposal
+      summary: 读取一个不可变导出提案和当前审批状态
+      tags: [Exports]
+      responses:
+        "200":
+          description: 导出提案
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExportProposal"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/export-proposals/{proposalId}/approve:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: proposalId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: approveExportProposal
+      summary: 用户确认精确提案哈希后创建唯一的持久导出任务
+      tags: [Exports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApproveExportProposalRequest"}
+      responses:
+        "200":
+          description: 已审批或同哈希精确重放
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExportProposalApproval"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/export-proposals/{proposalId}/reject:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: proposalId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: rejectExportProposal
+      summary: 拒绝未审批的 Agent 导出提案且不创建任务
+      tags: [Exports]
+      responses:
+        "200":
+          description: 已拒绝或精确重放
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExportProposal"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/exports/{taskId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getMediaExport
+      summary: 读取一个项目导出任务
+      tags: [Exports]
+      responses:
+        "200":
+          description: 持久导出状态与结果
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/exports/{taskId}/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: cancelMediaExport
+      summary: 取消排队导出或请求终止本地 FFmpeg 进程
+      tags: [Exports]
+      responses:
+        "200":
+          description: 取消后的当前任务状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/canvas/commands:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: applyCanvasCommands
+      summary: 原子批量保存画布展示命令
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CanvasCommandBatchRequest"}
+      responses:
+        "200":
+          description: 保存后的权威画布
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Canvas"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
+    SystemDiagnostics:
+      type: object
+      additionalProperties: false
+      required: [checkedAt, database, storage, llmMode, llmConfigured,
+        llmToolCallingVerified, mediaMode, imageConfigured, videoConfigured, recentErrors]
+      properties:
+        checkedAt: {type: string, format: date-time}
+        database: {type: string, enum: [AVAILABLE, UNAVAILABLE]}
+        storage: {type: string, enum: [AVAILABLE, UNAVAILABLE]}
+        llmMode: {type: string, enum: [MOCK, CONFIGURED]}
+        llmConfigured: {type: boolean}
+        llmToolCallingVerified: {type: boolean}
+        mediaMode: {type: string, enum: [MOCK, COMFYUI]}
+        imageConfigured: {type: boolean}
+        videoConfigured: {type: boolean}
+        recentErrors:
+          type: array
+          items: {$ref: "#/components/schemas/RecentTaskError"}
+    RecentTaskError:
+      type: object
+      additionalProperties: false
+      required: [status, count, lastAt]
+      properties:
+        status: {type: string, enum: [FAILED, UNKNOWN, BLOCKED]}
+        count: {type: integer, format: int64, minimum: 1}
+        lastAt: {type: string, format: date-time}
+    LlmSettings:
+      type: object
+      additionalProperties: false
+      required: [configured, version, endpoint, modelId, keyMask,
+        toolCallingVerified, updatedAt]
+      properties:
+        configured: {type: boolean}
+        version: {type: integer, minimum: 0}
+        endpoint: {type: [string, "null"], maxLength: 500}
+        modelId: {type: [string, "null"], maxLength: 160}
+        keyMask: {type: [string, "null"], maxLength: 16}
+        toolCallingVerified: {type: boolean}
+        updatedAt: {type: [string, "null"], format: date-time}
+    ReplaceLlmSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, endpoint, modelId, apiKey]
+      properties:
+        expectedVersion: {type: integer, minimum: 0}
+        endpoint: {type: string, minLength: 1, maxLength: 500, format: uri}
+        modelId: {type: string, minLength: 1, maxLength: 160}
+        apiKey: {type: string, minLength: 8, maxLength: 4096, writeOnly: true}
+    DiagnoseLlmRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, acknowledgeCost]
+      properties:
+        expectedVersion: {type: integer, minimum: 1}
+        acknowledgeCost: {type: boolean}
+    UsageEntry:
+      type: object
+      additionalProperties: false
+      required: [id, runId, taskId, operationKey, entryType, quantity, estimatedCost,
+        actualCost, currency, costStatus, costSource, providerConfigVersion,
+        workflowVersion, modelId, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        runId: {type: [string, "null"], format: uuid}
+        taskId: {type: [string, "null"], format: uuid}
+        operationKey: {type: string}
+        entryType: {type: string, enum: [RESERVATION, SETTLEMENT, RELEASE]}
+        quantity:
+          type: object
+          additionalProperties: false
+          required: [imageCount, videoCount, videoSeconds, exportCount,
+            llmRequestCount, inputTokens, outputTokens]
+          properties:
+            imageCount: {type: integer, minimum: 0}
+            videoCount: {type: integer, minimum: 0}
+            videoSeconds: {type: string, pattern: "^[0-9]+\\.[0-9]{3}$"}
+            exportCount: {type: integer, minimum: 0}
+            llmRequestCount: {type: integer, minimum: 0}
+            inputTokens: {type: [integer, "null"], minimum: 0}
+            outputTokens: {type: [integer, "null"], minimum: 0}
+        estimatedCost: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]+)?$"}
+        actualCost: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]+)?$"}
+        currency: {type: [string, "null"], pattern: "^[A-Z]{3}$"}
+        costStatus: {type: string, enum: [KNOWN, ESTIMATED, UNKNOWN]}
+        costSource: {type: string}
+        providerConfigVersion: {type: [integer, "null"], minimum: 1}
+        workflowVersion: {type: [string, "null"]}
+        modelId: {type: [string, "null"]}
+        createdAt: {type: string, format: date-time}
+    ProjectExportManifest:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets]
+      properties:
+        schemaVersion: {type: integer, const: 1}
+        generatedAt: {type: string, format: date-time}
+        snapshotSeq: {type: integer, format: int64, minimum: 0}
+        project: {$ref: "#/components/schemas/ManifestProject"}
+        artifacts:
+          type: array
+          items: {$ref: "#/components/schemas/ManifestArtifact"}
+        assets:
+          type: array
+          items: {$ref: "#/components/schemas/ManifestAsset"}
+    ManifestProject:
+      type: object
+      additionalProperties: false
+      required: [id, name, aspectRatio, status, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        aspectRatio: {$ref: "#/components/schemas/AspectRatio"}
+        status: {$ref: "#/components/schemas/ProjectStatus"}
+        createdAt: {type: string, format: date-time}
+    ManifestArtifact:
+      type: object
+      additionalProperties: false
+      required: [id, kind, title, currentVersionId, versions]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        title: {type: string}
+        currentVersionId: {type: string, format: uuid}
+        archivedAt: {type: [string, "null"], format: date-time}
+        versions:
+          type: array
+          items: {$ref: "#/components/schemas/ManifestArtifactVersion"}
+    ManifestArtifactVersion:
+      type: object
+      additionalProperties: false
+      required: [id, versionNo, schemaVersion, createdAt, content]
+      properties:
+        id: {type: string, format: uuid}
+        versionNo: {type: integer, minimum: 1}
+        schemaVersion: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        content: {$ref: "#/components/schemas/ManifestVersionContent"}
+    ManifestVersionContent:
+      type: object
+      description: 按产物类型白名单复制的创作字段；排除任意 parameters、sourceTaskId 和内部配置
+      additionalProperties: false
+      properties:
+        format: {type: string}
+        text: {type: string}
+        name: {type: string}
+        description: {type: string}
+        appearance: {type: string}
+        referenceVersionIds: {type: array, items: {type: string, format: uuid}}
+        location: {type: string}
+        timeOfDay: {type: string}
+        lighting: {type: string}
+        style: {type: string}
+        order: {type: integer}
+        durationMs: {type: integer}
+        camera: {type: string}
+        action: {type: string}
+        characterVersionIds: {type: array, items: {type: string, format: uuid}}
+        sceneVersionId: {type: string, format: uuid}
+        selectedImageVersionId: {type: [string, "null"], format: uuid}
+        selectedVideoVersionId: {type: [string, "null"], format: uuid}
+        assetId: {type: string, format: uuid}
+        prompt: {type: string}
+        negativePrompt: {type: string}
+        providerConfigVersion: {type: integer}
+        workflowVersion: {type: string}
+        keyframeVersionId: {type: string, format: uuid}
+    ManifestAsset:
+      type: object
+      additionalProperties: false
+      required: [id, mediaKind, contentType, byteSize, sha256, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        mediaKind: {type: string, enum: [IMAGE, VIDEO]}
+        contentType: {type: string}
+        byteSize: {type: integer, format: int64, minimum: 1}
+        sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        width: {type: [integer, "null"]}
+        height: {type: [integer, "null"]}
+        thumbnailSha256: {type: [string, "null"]}
+        createdAt: {type: string, format: date-time}
+    MediaExportSegment:
+      type: object
+      additionalProperties: false
+      required: [videoArtifactId, videoVersionId, startMs, endMs]
+      properties:
+        videoArtifactId: {type: string, format: uuid}
+        videoVersionId: {type: string, format: uuid}
+        startMs: {type: integer, minimum: 0, maximum: 60000}
+        endMs: {type: integer, minimum: 1, maximum: 60000}
+    CreateMediaExportRequest:
+      type: object
+      additionalProperties: false
+      required: [segments]
+      properties:
+        segments:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: {$ref: "#/components/schemas/MediaExportSegment"}
+    ExportProposalSegment:
+      type: object
+      additionalProperties: false
+      required: [videoArtifactId, videoVersionId, assetId, assetSha256, startMs, endMs, shotArtifactId, shotVersionId]
+      properties:
+        videoArtifactId: {type: string, format: uuid}
+        videoVersionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        assetSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        startMs: {type: integer, minimum: 0, maximum: 60000}
+        endMs: {type: integer, minimum: 1, maximum: 60000}
+        shotArtifactId: {type: string, format: uuid}
+        shotVersionId: {type: string, format: uuid}
+    ExportProposalInput:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, aspectRatio, outputFormat, segments, durationMs]
+      properties:
+        schemaVersion: {type: integer, const: 1}
+        aspectRatio: {type: string, enum: [LANDSCAPE_16_9, PORTRAIT_9_16, SQUARE_1_1]}
+        outputFormat: {type: string, const: SILENT_MP4_720P_24FPS}
+        segments:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: {$ref: "#/components/schemas/ExportProposalSegment"}
+        durationMs: {type: integer, minimum: 1, maximum: 60000}
+    ExportProposal:
+      type: object
+      additionalProperties: false
+      required: [id, runId, status, input, proposalHash, projectVersion, approvedTaskId, createdAt, decidedAt]
+      properties:
+        id: {type: string, format: uuid}
+        runId: {type: string, format: uuid}
+        status: {type: string, enum: [PENDING, APPROVED, REJECTED]}
+        input: {$ref: "#/components/schemas/ExportProposalInput"}
+        proposalHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        projectVersion: {type: integer, format: int64, minimum: 0}
+        approvedTaskId: {type: [string, "null"], format: uuid}
+        createdAt: {type: string, format: date-time}
+        decidedAt: {type: [string, "null"], format: date-time}
+    ApproveExportProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [proposalHash]
+      properties:
+        proposalHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+    ExportProposalApproval:
+      type: object
+      additionalProperties: false
+      required: [proposal, task, replayed]
+      properties:
+        proposal: {$ref: "#/components/schemas/ExportProposal"}
+        task: {$ref: "#/components/schemas/Task"}
+        replayed: {type: boolean}
     SetupStatus:
       type: object
       additionalProperties: false
       required: [setupRequired]
       properties:
-        setupRequired:
+        setupRequired: {type: boolean}
+    CsrfToken:
+      type: object
+      additionalProperties: false
+      required: [headerName, token]
+      properties:
+        headerName: {type: string, const: X-XSRF-TOKEN}
+        token: {type: string, minLength: 1}
+    SetupRequest:
+      type: object
+      additionalProperties: false
+      required: [loginName, password]
+      properties:
+        loginName:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[A-Za-z0-9._-]+$"
+        password: {type: string, minLength: 12, maxLength: 128}
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [loginName, password]
+      properties:
+        loginName: {type: string, minLength: 3, maxLength: 64}
+        password: {type: string, minLength: 1, maxLength: 128}
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: {type: string, minLength: 1, maxLength: 128}
+        newPassword: {type: string, minLength: 12, maxLength: 128}
+    CurrentUser:
+      type: object
+      additionalProperties: false
+      required: [id, loginName, role]
+      properties:
+        id: {type: string, format: uuid}
+        loginName: {type: string}
+        role: {type: string, const: ADMIN}
+    AspectRatio:
+      type: string
+      enum: [LANDSCAPE_16_9, PORTRAIT_9_16, SQUARE_1_1]
+    ProjectStatus:
+      type: string
+      enum: [ACTIVE, ARCHIVED]
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [name, aspectRatio]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        aspectRatio: {$ref: "#/components/schemas/AspectRatio"}
+    UpdateProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 120}
+        aspectRatio: {$ref: "#/components/schemas/AspectRatio"}
+    ArchiveProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, name, aspectRatio, status, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        aspectRatio: {$ref: "#/components/schemas/AspectRatio"}
+        status: {$ref: "#/components/schemas/ProjectStatus"}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+    ProjectList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/Project"}
+        nextCursor:
+          type: [string, "null"]
+    Asset:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, mediaKind, contentType, byteSize, sha256, width, height, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        mediaKind: {type: string, enum: [IMAGE, VIDEO]}
+        contentType: {type: string}
+        byteSize: {type: integer, format: int64, minimum: 1}
+        sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        width: {type: [integer, "null"], minimum: 1}
+        height: {type: [integer, "null"], minimum: 1}
+        createdAt: {type: string, format: date-time}
+    ArtifactKind:
+      type: string
+      enum: [TEXT, IMAGE, VIDEO, CHARACTER, SCENE, SHOT]
+    ArtifactContent:
+      oneOf:
+        - {$ref: "./artifact-schemas/text-v1.schema.json"}
+        - {$ref: "./artifact-schemas/image-v1.schema.json"}
+        - {$ref: "./artifact-schemas/video-v1.schema.json"}
+        - {$ref: "./artifact-schemas/character-v1.schema.json"}
+        - {$ref: "./artifact-schemas/scene-v1.schema.json"}
+        - {$ref: "./artifact-schemas/shot-v1.schema.json"}
+    ShotSceneEdit:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        location: {type: string, minLength: 1, maxLength: 500}
+        timeOfDay: {type: string, minLength: 1, maxLength: 80}
+        lighting: {type: string, minLength: 1, maxLength: 1000}
+        style: {type: string, minLength: 1, maxLength: 1000}
+    ReviseShotForRedoRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedShotVersionId, expectedShotArtifactVersion, description, camera, action]
+      properties:
+        expectedShotVersionId: {type: string, format: uuid}
+        expectedShotArtifactVersion: {type: integer, format: int64, minimum: 0}
+        description: {type: string, minLength: 1, maxLength: 4000}
+        camera: {type: string, minLength: 1, maxLength: 1000}
+        action: {type: string, minLength: 1, maxLength: 2000}
+        durationMs: {type: integer, minimum: 100, maximum: 30000}
+        scene: {$ref: "#/components/schemas/ShotSceneEdit"}
+    ShotRedoResult:
+      type: object
+      additionalProperties: false
+      required: [shot, scene]
+      properties:
+        shot: {$ref: "#/components/schemas/Artifact"}
+        scene:
+          oneOf:
+            - {$ref: "#/components/schemas/Artifact"}
+            - {type: "null"}
+    CreateArtifactRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, title, content]
+      properties:
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        title: {type: string, minLength: 1, maxLength: 160}
+        content: {$ref: "#/components/schemas/ArtifactContent"}
+    ReviseArtifactRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, content]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        title: {type: string, minLength: 1, maxLength: 160}
+        content: {$ref: "#/components/schemas/ArtifactContent"}
+    SelectArtifactVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [versionId, expectedVersion]
+      properties:
+        versionId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+    ArtifactInputReference:
+      type: object
+      additionalProperties: false
+      required: [versionId, role, order, kind]
+      properties:
+        versionId: {type: string, format: uuid}
+        role: {type: string, minLength: 1, maxLength: 64}
+        order: {type: integer, minimum: 0}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+    ArtifactVersion:
+      type: object
+      additionalProperties: false
+      required: [id, versionNo, schemaVersion, content, inputReferences, createdByKind, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        versionNo: {type: integer, minimum: 1}
+        schemaVersion: {type: integer, const: 1}
+        content: {$ref: "#/components/schemas/ArtifactContent"}
+        inputReferences:
+          type: array
+          items: {$ref: "#/components/schemas/ArtifactInputReference"}
+        createdByKind: {type: string, enum: [USER, AGENT, TASK]}
+        runId: {type: [string, "null"], format: uuid}
+        createdAt: {type: string, format: date-time}
+    Artifact:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, kind, title, currentVersionId, version, createdAt, updatedAt, currentVersion]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        title: {type: string, minLength: 1, maxLength: 160}
+        currentVersionId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        currentVersion: {$ref: "#/components/schemas/ArtifactVersion"}
+    ArtifactVersionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ArtifactVersion"}
+    AgentBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [artifactId, selectedVersionId]
+      properties:
+        artifactId: {type: string, format: uuid}
+        selectedVersionId: {type: string, format: uuid}
+    CreateAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [name, instruction, bindings]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        instruction: {type: string, minLength: 1, maxLength: 8000}
+        bindings:
+          type: array
+          maxItems: 40
+          items: {$ref: "#/components/schemas/AgentBindingRequest"}
+    UpdateAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, instruction, bindings]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 120}
+        instruction: {type: string, minLength: 1, maxLength: 8000}
+        bindings:
+          type: array
+          maxItems: 40
+          items: {$ref: "#/components/schemas/AgentBindingRequest"}
+    AgentBinding:
+      type: object
+      additionalProperties: false
+      required: [id, artifactId, selectedVersionId, bindingType]
+      properties:
+        id: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        selectedVersionId: {type: string, format: uuid}
+        bindingType: {type: string, const: INPUT}
+    Agent:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, profileKey, profileVersion, name, instruction, outputGroupId, version, createdAt, updatedAt, bindings]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        profileKey: {type: string, const: creator}
+        profileVersion: {type: integer, minimum: 1}
+        name: {type: string}
+        instruction: {type: string}
+        outputGroupId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        bindings:
+          type: array
+          items: {$ref: "#/components/schemas/AgentBinding"}
+    AgentList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/Agent"}
+    AgentRunStatus:
+      type: string
+      enum: [QUEUED, RUNNING, WAITING_APPROVAL, WAITING_TASKS, BLOCKED, CANCEL_REQUESTED, CANCELED, FAILED, SUCCEEDED]
+    CreateRunRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId, instruction]
+      properties:
+        agentId: {type: string, format: uuid}
+        instruction: {type: string, minLength: 1, maxLength: 20000}
+        expectedAgentVersion: {type: integer, format: int64, minimum: 0}
+        expectedModelConfigSource:
+          type: string
+          maxLength: 80
+          description: 运行前预览中的模型配置来源；须与 expectedModelConfigVersion 同时提交
+        expectedModelConfigVersion:
+          type: integer
+          minimum: 1
+          description: 运行前预览中的模型配置版本；配置变化时创建返回 409
+        redoShotArtifactId:
+          type: string
+          format: uuid
+          description: 可选单镜头重做范围；必须为 Agent 明确绑定的当前镜头版本
+        selectedItemIds:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          description: 启动 Run 时选中的同项目画布卡片；仅供上下文指向，不授予工具修改权限
+          items: {type: string, format: uuid}
+    RunContextSnapshot:
+      type: object
+      additionalProperties: true
+      required: [agentId, agentVersion, profileKey, profileVersion, outputGroupId, bindings]
+      properties:
+        agentId: {type: string, format: uuid}
+        agentVersion: {type: integer, format: int64, minimum: 0}
+        profileKey: {type: string}
+        profileVersion: {type: integer, minimum: 1}
+        outputGroupId: {type: string, format: uuid}
+        bindings:
+          type: array
+          items: {$ref: "#/components/schemas/RunInputSnapshot"}
+        selection:
+          type: array
+          maxItems: 20
+          description: 创建 Run 时由服务端核对并固定的画布选择；不扩大工具权限
+          items:
+            type: object
+            additionalProperties: false
+            required: [itemId, subjectType, subjectId]
+            properties:
+              itemId: {type: string, format: uuid}
+              subjectType: {type: string, enum: [ARTIFACT, AGENT]}
+              subjectId: {type: string, format: uuid}
+              versionId: {type: string, format: uuid}
+              kind: {$ref: "#/components/schemas/ArtifactKind"}
+    RunInputSnapshot:
+      type: object
+      additionalProperties: false
+      required: [artifactId, selectedVersionId, bindingType]
+      properties:
+        artifactId: {type: string, format: uuid}
+        selectedVersionId: {type: string, format: uuid}
+        bindingType: {type: string, const: INPUT}
+    RunPreflightBinding:
+      type: object
+      additionalProperties: false
+      required: [artifactId, selectedVersionId, artifactTitle, artifactKind]
+      properties:
+        artifactId: {type: string, format: uuid}
+        selectedVersionId: {type: string, format: uuid}
+        artifactTitle: {type: string}
+        artifactKind: {$ref: "#/components/schemas/ArtifactKind"}
+    RunPreflight:
+      type: object
+      additionalProperties: false
+      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot]
+      properties:
+        agentId: {type: string, format: uuid}
+        agentVersion: {type: integer, format: int64, minimum: 0}
+        agentName: {type: string}
+        agentInstruction: {type: string}
+        bindings:
+          type: array
+          items: {$ref: "#/components/schemas/RunPreflightBinding"}
+        modelAvailable: {type: boolean}
+        providerAdapter: {type: [string, "null"]}
+        modelId: {type: [string, "null"]}
+        toolCalling: {type: boolean}
+        policySnapshot: {$ref: "#/components/schemas/RunPolicySnapshot"}
+    RunPolicySnapshot:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions, maxImages, maxVideos, maxShots]
+      properties:
+        schemaVersion: {type: integer, const: 1}
+        modelConfigSource: {type: string}
+        modelConfigVersion: {type: integer, minimum: 1}
+        maxModelTurns: {type: integer, minimum: 1}
+        maxToolExecutions: {type: integer, minimum: 1}
+        maxImages: {type: integer, minimum: 0}
+        maxVideos: {type: integer, minimum: 0}
+        maxShots: {type: integer, minimum: 1}
+    AgentRun:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, agentInstanceId, status, instruction, contextSnapshot, policySnapshot, profileVersion, nextStepIndex, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        agentInstanceId: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/AgentRunStatus"}
+        instruction: {type: string}
+        contextSnapshot: {$ref: "#/components/schemas/RunContextSnapshot"}
+        policySnapshot: {$ref: "#/components/schemas/RunPolicySnapshot"}
+        profileVersion: {type: integer, minimum: 1}
+        nextStepIndex: {type: integer, minimum: 0}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        completedAt: {type: [string, "null"], format: date-time}
+    AgentRunSummary:
+      type: object
+      additionalProperties: false
+      required: [id, agentInstanceId, status, instruction, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        agentInstanceId: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/AgentRunStatus"}
+        instruction: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        completedAt: {type: [string, "null"], format: date-time}
+    AgentRunList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/AgentRunSummary"}
+        nextCursor: {type: [string, "null"]}
+    ExecutionPlanStep:
+      type: object
+      additionalProperties: false
+      required: [stepKey, ordinal, kind, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, outputSlotKey, input, dependencyKeys]
+      properties:
+        stepKey: {type: string, minLength: 1}
+        ordinal: {type: integer, minimum: 0}
+        kind: {$ref: "#/components/schemas/TaskKind"}
+        shotArtifactId: {type: string, format: uuid}
+        shotVersionId: {type: string, format: uuid}
+        imageArtifactId: {type: [string, "null"], format: uuid}
+        imageVersionId: {type: [string, "null"], format: uuid}
+        outputSlotKey: {type: string, minLength: 1}
+        input: {type: object, additionalProperties: true}
+        dependencyKeys:
+          type: array
+          items: {type: string}
+    ExecutionPlan:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, runId, revision, stage, status, objective, plan, inputSnapshot, inputSnapshotHash, planHash, providerConfigVersion, workflowVersion, estimate, createdAt, updatedAt, steps]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        runId: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        stage: {type: string, enum: [IMAGE, VIDEO]}
+        status: {type: string, enum: [PENDING, APPROVED, REJECTED, STALE]}
+        objective: {type: string}
+        plan: {type: object, additionalProperties: true}
+        inputSnapshot: {type: object, additionalProperties: true}
+        inputSnapshotHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        planHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        providerConfigVersion: {type: integer, minimum: 1}
+        workflowVersion: {type: string}
+        estimate: {type: object, additionalProperties: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        steps:
+          type: array
+          items: {$ref: "#/components/schemas/ExecutionPlanStep"}
+    ApproveExecutionPlanRequest:
+      type: object
+      additionalProperties: false
+      required: [planHash]
+      properties:
+        planHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+    ExecutionPlanApproval:
+      type: object
+      additionalProperties: false
+      required: [approvalId, plan, tasks, replayed]
+      properties:
+        approvalId: {type: string, format: uuid}
+        plan: {$ref: "#/components/schemas/ExecutionPlan"}
+        tasks:
+          type: array
+          items: {$ref: "#/components/schemas/Task"}
+        replayed: {type: boolean}
+    SelectShotKeyframeRequest:
+      type: object
+      additionalProperties: false
+      required: [shotVersionId, imageArtifactId, imageVersionId, expectedVersion]
+      properties:
+        shotVersionId: {type: string, format: uuid}
+        imageArtifactId: {type: string, format: uuid}
+        imageVersionId: {type: string, format: uuid}
+        expectedVersion: {type: [integer, "null"], format: int64, minimum: 0}
+    ShotKeyframeSelection:
+      type: object
+      additionalProperties: false
+      required: [projectId, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, sourceTaskId, selectedByUserId, version, createdAt, updatedAt]
+      properties:
+        projectId: {type: string, format: uuid}
+        shotArtifactId: {type: string, format: uuid}
+        shotVersionId: {type: string, format: uuid}
+        imageArtifactId: {type: string, format: uuid}
+        imageVersionId: {type: string, format: uuid}
+        sourceTaskId: {type: string, format: uuid}
+        selectedByUserId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    TaskKind:
+      type: string
+      enum: [AGENT_TURN, IMAGE_GENERATION, VIDEO_GENERATION, MEDIA_EXPORT, ASSET_INGEST]
+    TaskStatus:
+      type: string
+      enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]
+    ManualUnknownAttemptRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedTaskVersion, riskAcknowledgement]
+      properties:
+        expectedTaskVersion: {type: integer, format: int64, minimum: 0}
+        riskAcknowledgement:
+          type: string
+          enum: [ACCEPT_POSSIBLE_DUPLICATE_COST]
+    ProviderAttempt:
+      type: object
+      additionalProperties: false
+      required: [id, taskId, status, requestKey, reconcilable, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        taskId: {type: string, format: uuid}
+        status: {type: string, enum: [SUBMITTING, ACCEPTED, UNKNOWN, REJECTED]}
+        requestKey:
+          type: string
+          format: uuid
+          description: 提交前生成的随机关联键，不是幂等保证或已受理证明
+        candidateRequestId:
+          type: [string, "null"]
+          format: uuid
+          description: 仅新协议明确把关联键作为 Provider 查询 ID 发出时有值；旧 attempt 为空，仍不是已受理证明
+        reconcilable:
           type: boolean
+          description: 仅表示账本具有候选 ID 与提交时 endpoint 指纹；仍须验证当前配置与原 Provider 响应
+        providerRequestId: {type: [string, "null"]}
+        replacementTaskId:
+          type: [string, "null"]
+          format: uuid
+          description: 用户明确接受重复费用后创建的新尝试；原 UNKNOWN 仍保留
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ReconciliationResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, taskId, taskStatus]
+      properties:
+        outcome: {type: string, enum: [NO_EVIDENCE, RESUMED]}
+        taskId: {type: string, format: uuid}
+        taskStatus: {$ref: "#/components/schemas/TaskStatus"}
+        providerRequestId: {type: [string, "null"]}
+    Task:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, runId, stepKey, kind, status, cancelRequested, input, attemptNo, nextActionAt, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        runId: {type: [string, "null"], format: uuid}
+        planId: {type: [string, "null"], format: uuid}
+        stepKey: {type: string}
+        kind: {$ref: "#/components/schemas/TaskKind"}
+        status: {$ref: "#/components/schemas/TaskStatus"}
+        cancelRequested: {type: boolean, description: "已要求停止本系统后续编排，不表示外部任务已停止或退款"}
+        input: {type: object, additionalProperties: true}
+        output:
+          oneOf:
+            - {type: object, additionalProperties: true}
+            - {type: "null"}
+        providerId: {type: [string, "null"], format: uuid}
+        providerRequestId: {type: [string, "null"]}
+        attemptNo: {type: integer, minimum: 1}
+        nextActionAt: {type: string, format: date-time}
+        version: {type: integer, format: int64, minimum: 0}
+        errorCode: {type: [string, "null"]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        completedAt: {type: [string, "null"], format: date-time}
+    CanvasSubjectType:
+      type: string
+      enum: [ARTIFACT, AGENT]
+    CanvasItem:
+      type: object
+      additionalProperties: false
+      required: [id, subjectType, subjectId, x, y, width, height, zIndex, locked, version, artifact, agent]
+      properties:
+        id: {type: string, format: uuid}
+        subjectType: {$ref: "#/components/schemas/CanvasSubjectType"}
+        subjectId: {type: string, format: uuid}
+        x: {type: number, minimum: -1000000, maximum: 1000000}
+        y: {type: number, minimum: -1000000, maximum: 1000000}
+        width: {type: number, minimum: 120, maximum: 2000}
+        height: {type: number, minimum: 80, maximum: 2000}
+        zIndex: {type: integer, minimum: -1000, maximum: 1000}
+        groupId: {type: [string, "null"], format: uuid}
+        locked: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        artifact:
+          oneOf:
+            - {$ref: "#/components/schemas/Artifact"}
+            - {type: "null"}
+        agent:
+          oneOf:
+            - {$ref: "#/components/schemas/Agent"}
+            - {type: "null"}
+    Canvas:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/CanvasItem"}
+    ProjectSnapshot:
+      type: object
+      additionalProperties: false
+      required: [project, canvas, agents, activeRun, activeTasks, unknownTasks, snapshotSeq]
+      properties:
+        project: {$ref: "#/components/schemas/Project"}
+        canvas: {$ref: "#/components/schemas/Canvas"}
+        agents:
+          type: array
+          items: {$ref: "#/components/schemas/Agent"}
+        activeRun:
+          oneOf:
+            - {$ref: "#/components/schemas/AgentRun"}
+            - {type: "null"}
+        activeTasks:
+          type: array
+          items: {$ref: "#/components/schemas/Task"}
+        unknownTasks:
+          type: array
+          description: 最近 100 个未核对的外部提交，取消 Run 后仍可见
+          items: {$ref: "#/components/schemas/Task"}
+        snapshotSeq: {type: integer, format: int64, minimum: 0}
+    ProjectEvent:
+      type: object
+      additionalProperties: false
+      required: [projectId, seq, eventId, type, schemaVersion, aggregateId, aggregateVersion, payload, occurredAt]
+      properties:
+        projectId: {type: string, format: uuid}
+        seq: {type: integer, format: int64, minimum: 1}
+        eventId: {type: string, format: uuid}
+        type: {type: string, minLength: 3, maxLength: 120}
+        schemaVersion: {type: integer, minimum: 1}
+        aggregateId: {type: string, format: uuid}
+        aggregateVersion: {type: integer, format: int64, minimum: 0}
+        payload: {type: object, additionalProperties: true}
+        occurredAt: {type: string, format: date-time}
+    PlaceArtifactCommand:
+      type: object
+      additionalProperties: false
+      required: [type, itemId, artifactId, x, y, width, height, zIndex]
+      properties:
+        type: {type: string, const: PLACE_ARTIFACT}
+        itemId: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        x: {type: number, minimum: -1000000, maximum: 1000000}
+        y: {type: number, minimum: -1000000, maximum: 1000000}
+        width: {type: number, minimum: 120, maximum: 2000}
+        height: {type: number, minimum: 80, maximum: 2000}
+        zIndex: {type: integer, minimum: -1000, maximum: 1000}
+        groupId: {type: [string, "null"], format: uuid}
+        locked: {type: boolean, default: false}
+    PlaceAgentCommand:
+      type: object
+      additionalProperties: false
+      required: [type, itemId, agentId, x, y, width, height, zIndex]
+      properties:
+        type: {type: string, const: PLACE_AGENT}
+        itemId: {type: string, format: uuid}
+        agentId: {type: string, format: uuid}
+        x: {type: number, minimum: -1000000, maximum: 1000000}
+        y: {type: number, minimum: -1000000, maximum: 1000000}
+        width: {type: number, minimum: 120, maximum: 2000}
+        height: {type: number, minimum: 80, maximum: 2000}
+        zIndex: {type: integer, minimum: -1000, maximum: 1000}
+        groupId: {type: [string, "null"], format: uuid}
+        locked: {type: boolean, default: false}
+    UpdateLayoutCommand:
+      type: object
+      additionalProperties: false
+      required: [type, itemId, expectedVersion, x, y, width, height, zIndex]
+      properties:
+        type: {type: string, const: UPDATE_LAYOUT}
+        itemId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        x: {type: number, minimum: -1000000, maximum: 1000000}
+        y: {type: number, minimum: -1000000, maximum: 1000000}
+        width: {type: number, minimum: 120, maximum: 2000}
+        height: {type: number, minimum: 80, maximum: 2000}
+        zIndex: {type: integer, minimum: -1000, maximum: 1000}
+        groupId: {type: [string, "null"], format: uuid}
+    SetCanvasItemLockedCommand:
+      type: object
+      additionalProperties: false
+      required: [type, itemId, expectedVersion, locked]
+      properties:
+        type: {type: string, const: SET_LOCKED}
+        itemId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        locked: {type: boolean}
+    RemoveCanvasItemCommand:
+      type: object
+      additionalProperties: false
+      required: [type, itemId, expectedVersion]
+      properties:
+        type: {type: string, const: REMOVE}
+        itemId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+    CanvasCommand:
+      oneOf:
+        - {$ref: "#/components/schemas/PlaceArtifactCommand"}
+        - {$ref: "#/components/schemas/PlaceAgentCommand"}
+        - {$ref: "#/components/schemas/UpdateLayoutCommand"}
+        - {$ref: "#/components/schemas/SetCanvasItemLockedCommand"}
+        - {$ref: "#/components/schemas/RemoveCanvasItemCommand"}
+      discriminator:
+        propertyName: type
+        mapping:
+          PLACE_ARTIFACT: "#/components/schemas/PlaceArtifactCommand"
+          PLACE_AGENT: "#/components/schemas/PlaceAgentCommand"
+          UPDATE_LAYOUT: "#/components/schemas/UpdateLayoutCommand"
+          SET_LOCKED: "#/components/schemas/SetCanvasItemLockedCommand"
+          REMOVE: "#/components/schemas/RemoveCanvasItemCommand"
+    CanvasCommandBatchRequest:
+      type: object
+      additionalProperties: false
+      required: [commands]
+      properties:
+        commands:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: "#/components/schemas/CanvasCommand"}
     Problem:
       type: object
       additionalProperties: true
       required: [type, title, status, code, traceId, retryable]
       properties:
-        type:
-          type: string
-          format: uri
-        title:
-          type: string
-        status:
-          type: integer
-          minimum: 400
-          maximum: 599
-        code:
-          type: string
-        detail:
-          type: string
-        traceId:
-          type: string
-        retryable:
-          type: boolean
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer, minimum: 400, maximum: 599}
+        code: {type: string}
+        detail: {type: string}
+        instance: {type: string, format: uri-reference}
+        traceId: {type: string}
+        retryable: {type: boolean}
         fieldErrors:
           type: array
           items:
@@ -65,14 +2242,62 @@ components:
             additionalProperties: false
             required: [field, message]
             properties:
-              field:
-                type: string
-              message:
-                type: string
+              field: {type: string}
+              message: {type: string}
   responses:
+    ValidationError:
+      description: 请求参数无效
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Unauthenticated:
+      description: 未登录或凭据不正确
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Forbidden:
+      description: CSRF、初始化凭据或权限校验失败
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Conflict:
+      description: 初始化或乐观版本冲突
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    NotFound:
+      description: 资源不存在或当前用户无权访问
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    RateLimited:
+      description: 认证尝试次数过多
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
     InternalError:
       description: 服务端错误
       content:
         application/problem+json:
-          schema:
-            $ref: "#/components/schemas/Problem"
+          schema: {$ref: "#/components/schemas/Problem"}
+    ProviderFailure:
+      description: 原 Provider 请求核对不可用或身份不匹配，任务仍为 UNKNOWN
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Unavailable:
+      description: 部署凭证加密主密钥尚未配置
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ArtifactId:
+      name: artifactId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}

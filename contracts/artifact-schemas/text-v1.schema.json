@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:text:1",
+  "title": "TEXT Artifact content v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "text"],
+  "properties": {
+    "format": {"type": "string", "enum": ["PLAIN_TEXT", "MARKDOWN"]},
+    "text": {"type": "string", "minLength": 1, "maxLength": 20000}
+  }
+}

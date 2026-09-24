@@ -1,8 +1,21 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { SetupPage } from "../features/auth/SetupPage";
 import { createQueryClient } from "./queryClient";
+
+/** Each route loads only its own screen; React Flow stays out of auth and list bundles. */
+const SetupPage = lazy(() => import("../features/auth/SetupPage")
+  .then((module) => ({ default: module.SetupPage })));
+const LoginPage = lazy(() => import("../features/auth/LoginPage")
+  .then((module) => ({ default: module.LoginPage })));
+const ProjectsPage = lazy(() => import("../features/projects/ProjectsPage")
+  .then((module) => ({ default: module.ProjectsPage })));
+const ProjectWorkspacePage = lazy(() => import("../features/canvas/ProjectWorkspacePage")
+  .then((module) => ({ default: module.ProjectWorkspacePage })));
+const LlmSettingsPage = lazy(() => import("../features/settings/LlmSettingsPage")
+  .then((module) => ({ default: module.LlmSettingsPage })));
+const SystemDiagnosticsPage = lazy(() => import("../features/settings/SystemDiagnosticsPage")
+  .then((module) => ({ default: module.SystemDiagnosticsPage })));
 
 export function App() {
   const [queryClient] = useState(createQueryClient);
@@ -10,11 +23,19 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
+        <Suspense fallback={<main className="min-h-screen bg-[var(--canvas)] p-8" role="status">正在加载页面…</main>}>
+          <Routes>
           <Route path="/setup" element={<SetupPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/settings/llm" element={<LlmSettingsPage />} />
+          <Route path="/settings/providers" element={<LlmSettingsPage />} />
+          <Route path="/settings/general" element={<SystemDiagnosticsPage />} />
+          <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
           <Route path="/" element={<Navigate to="/setup" replace />} />
           <Route path="*" element={<Navigate to="/setup" replace />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   );

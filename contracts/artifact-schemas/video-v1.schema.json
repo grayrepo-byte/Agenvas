@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:video:1",
+  "title": "VIDEO Artifact content v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assetId", "prompt", "providerConfigVersion", "workflowVersion", "parameters", "sourceTaskId"],
+  "properties": {
+    "assetId": {"type": "string", "format": "uuid"},
+    "prompt": {"type": "string", "minLength": 1, "maxLength": 8000},
+    "negativePrompt": {"type": "string", "maxLength": 8000},
+    "providerConfigVersion": {"type": "integer", "minimum": 1},
+    "workflowVersion": {"type": "string", "minLength": 1, "maxLength": 120},
+    "parameters": {"type": "object", "additionalProperties": true},
+    "sourceTaskId": {"type": "string", "format": "uuid"},
+    "keyframeVersionId": {"type": "string", "format": "uuid"}
+  }
+}

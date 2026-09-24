@@ -2,6 +2,7 @@ package dev.agenvas.identity.application;
 
 import org.springframework.stereotype.Service;
 
+/** Reads whether this installation still needs its first administrator. */
 @Service
 public class SetupStatusService {
 
@@ -11,6 +12,7 @@ public class SetupStatusService {
         this.adminAccountRepository = adminAccountRepository;
     }
 
+    /** Returns true only while no active administrator exists. */
     public boolean isSetupRequired() {
         return !adminAccountRepository.hasAdminAccount();
     }
