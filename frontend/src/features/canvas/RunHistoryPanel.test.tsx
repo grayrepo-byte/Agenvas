@@ -45,6 +45,9 @@ describe("RunHistoryPanel", () => {
     expect(await within(history).findByText(/IMAGE · 第 1 版 · APPROVED/)).toBeInTheDocument();
     expect(await within(history).findByText(/IMAGE_GENERATION · image-1 · FAILED · PROVIDER_TIMEOUT/))
       .toBeInTheDocument();
+    expect(history).toHaveTextContent("技术重试只核对原 Provider 请求");
+    expect(history).toHaveTextContent("可能产生额外成本的新生成尝试");
+    expect(history).toHaveTextContent("UNKNOWN 请先核对原请求");
     expect(history).not.toHaveTextContent("must not render");
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByText("旧任务")).toBeInTheDocument();

@@ -21,3 +21,5 @@
 2026-09-24 用量显示补验：`MediaExportPanel.test.tsx` 现向 UNKNOWN 记录注入与状态矛盾的 `estimatedCost=0.00 USD`，仍只显示“费用未知”，不呈现 `0.00 USD`。后端 `ExecutionPlanPostgresIT` 验证 HTTP 未知金额为 null、20 路审批只保留单组预留和同一媒体任务重复结算只留一行；`MediaExportPostgresIT` 验证重复导出结算不增账本或事件；`LlmTurnPostgresIT` 验证已保存模型回合重放不再调用模型或追加账本。前端全套 Vitest 12 文件/42 测试、TypeScript typecheck、ESLint、Vite build，以及三组后端定向 PostgreSQL 测试均返回 0。由此勾选“未知费用不显示零；同一任务重复通知不重复结算”。这不解决已预留后发生不确定外部调用的费用释放；没有 Provider 明确证明未提交前，仍必须保留预留。
 
 契约兼容说明：`UsageEntry.quantity` 新增必填的 `llmRequestCount`、可空的 `inputTokens`/`outputTokens`，是开发阶段的破坏性响应结构升级；前端类型已从 OpenAPI 重新生成。V27 Flyway 迁移为已有媒体/导出账本行回填新字段；旧版客户端未适配新数量维度，不能假定其兼容。
+
+2026-09-24 导出素材入口补验：完成的导出记录从服务端保存的 Task `input.segments[].assetId` 构造同源鉴权下载链接，依快照顺序逐段提供原视频，不依赖刷新后会丢失的编辑草稿，也不接受任意 URL。最终 MP4 下载保持独立。`MediaExportPanel.test.tsx` 验证重排后的两个原视频 ID、顺序、下载文件名和最终 MP4 链接；全套前端 19 文件/71 测试、TypeScript typecheck、ESLint、Vite build 均返回 0。此项只是前端入口与已有私有素材 API 的组合验证，尚未在真实三镜头 Provider 项目逐个点击下载，T26 最后一项仍未勾选。API 合约和数据库迁移未变。

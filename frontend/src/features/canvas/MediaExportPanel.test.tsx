@@ -9,18 +9,47 @@ import { server } from "../../test/server";
 import { MediaExportPanel } from "./MediaExportPanel";
 
 describe("MediaExportPanel", () => {
+  it("does not queue a legacy video without verified duration", async () => {
+    const projectId = crypto.randomUUID();
+    const assetId = crypto.randomUUID();
+    const clip = videoItem(projectId, "Legacy clip", crypto.randomUUID(), assetId);
+    server.use(
+      http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/assets/:assetId", () =>
+        HttpResponse.json({ id: assetId, projectId, mediaKind: "VIDEO", durationMs: null })),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}>
+      <MediaExportPanel projectId={projectId} items={[clip]} />
+    </QueryClientProvider>);
+    await user.selectOptions(screen.getByLabelText("选择视频"), clip.artifact?.id ?? "");
+    expect(await screen.findByRole("alert")).toHaveTextContent("缺少可验证时长");
+    expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "开始导出" })).toBeDisabled();
+  });
+
   it("submits explicit version order and intervals, then offers private download", async () => {
     const projectId = crypto.randomUUID();
-    const first = videoItem(projectId, "First", crypto.randomUUID());
-    const second = videoItem(projectId, "Second", crypto.randomUUID());
+    const firstAssetId = crypto.randomUUID();
+    const secondAssetId = crypto.randomUUID();
+    const first = videoItem(projectId, "First", crypto.randomUUID(), firstAssetId);
+    const second = videoItem(projectId, "Second", crypto.randomUUID(), secondAssetId);
     const submitted: unknown[] = [];
     const exportId = crypto.randomUUID();
     const outputAssetId = crypto.randomUUID();
     server.use(
+      http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) =>
+        HttpResponse.json({ id: params.assetId, projectId, mediaKind: "VIDEO",
+          durationMs: params.assetId === firstAssetId ? 2000 : 1250 })),
       http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json(submitted.length ? [{
         id: exportId, projectId, runId: null, kind: "MEDIA_EXPORT", status: "SUCCEEDED",
-        cancelRequested: false, input: {}, output: { assetId: outputAssetId },
+        cancelRequested: false, input: { segments: [
+          { assetId: secondAssetId, videoVersionId: second.artifact?.currentVersionId },
+          { assetId: firstAssetId, videoVersionId: first.artifact?.currentVersionId },
+        ] }, output: { assetId: outputAssetId },
       }] : [])),
       http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([{
         id: crypto.randomUUID(), entryType: "RESERVATION",
@@ -61,13 +90,19 @@ describe("MediaExportPanel", () => {
     expect(await screen.findByText(/输入 Token 23 · 输出 Token 7/)).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText("选择视频"), first.artifact?.id ?? "");
+    await waitFor(() => expect(screen.getByRole("button", { name: "添加" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "添加" }));
     await user.selectOptions(screen.getByLabelText("选择视频"), second.artifact?.id ?? "");
+    await waitFor(() => expect(screen.getByRole("button", { name: "添加" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "添加" }));
     const rows = screen.getAllByRole("listitem").filter((element) => element.textContent?.includes("版本"));
     await user.click(within(rows[1]!).getByRole("button", { name: "上移" }));
     const reordered = screen.getAllByRole("listitem").filter((element) => element.textContent?.includes("版本"));
     expect(reordered[0]).toHaveTextContent("Second");
+    expect(reordered[0]).toHaveTextContent("片源时长 1.250 秒");
+    await user.clear(within(reordered[0]!).getByLabelText("终点（秒）"));
+    await user.type(within(reordered[0]!).getByLabelText("终点（秒）"), "2");
+    expect(screen.getByRole("button", { name: "开始导出" })).toBeDisabled();
     await user.clear(within(reordered[0]!).getByLabelText("终点（秒）"));
     await user.type(within(reordered[0]!).getByLabelText("终点（秒）"), "1.25");
     await user.click(screen.getByRole("button", { name: "开始导出" }));
@@ -78,12 +113,28 @@ describe("MediaExportPanel", () => {
         { videoArtifactId: second.artifact?.id, videoVersionId: second.artifact?.currentVersionId,
           startMs: 0, endMs: 1250 },
         { videoArtifactId: first.artifact?.id, videoVersionId: first.artifact?.currentVersionId,
-          startMs: 0, endMs: 5000 },
+          startMs: 0, endMs: 2000 },
       ] },
     });
     expect(await screen.findByRole("link", { name: "下载 MP4" })).toHaveAttribute(
       "href", `/api/v1/projects/${projectId}/assets/${outputAssetId}/content`,
     );
+    expect(screen.getByRole("link", { name: "下载片段 1 原视频" })).toHaveAttribute(
+      "href", `/api/v1/projects/${projectId}/assets/${secondAssetId}/content`,
+    );
+    expect(screen.getByRole("link", { name: "下载片段 2 原视频" })).toHaveAttribute(
+      "href", `/api/v1/projects/${projectId}/assets/${firstAssetId}/content`,
+    );
+    expect(screen.getByRole("link", { name: "下载片段 1 原视频" }))
+      .toHaveAttribute("download", "agenvas-source-1.mp4");
+    expect(screen.queryByLabelText(`导出 ${exportId.slice(0, 8)} 的视频`))
+      .not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "播放导出" }));
+    expect(screen.getByLabelText(`导出 ${exportId.slice(0, 8)} 的视频`))
+      .toHaveAttribute("src", `/api/v1/projects/${projectId}/assets/${outputAssetId}/content`);
+    await user.click(screen.getByRole("button", { name: "关闭预览" }));
+    expect(screen.queryByLabelText(`导出 ${exportId.slice(0, 8)} 的视频`))
+      .not.toBeInTheDocument();
   });
 
   it("requires a visible Agent proposal before authenticated approval starts export", async () => {
@@ -168,7 +219,8 @@ describe("MediaExportPanel", () => {
   });
 });
 
-function videoItem(projectId: string, title: string, artifactId: string): CanvasItem {
+function videoItem(projectId: string, title: string, artifactId: string,
+  assetId: string): CanvasItem {
   const versionId = crypto.randomUUID();
   return {
     id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
@@ -180,7 +232,7 @@ function videoItem(projectId: string, title: string, artifactId: string): Canvas
       createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
       currentVersion: {
         id: versionId, versionNo: 1, schemaVersion: 1,
-        content: { assetId: crypto.randomUUID(), prompt: "Mock clip",
+        content: { assetId, prompt: "Mock clip",
           providerConfigVersion: 1, workflowVersion: "mock-v1", parameters: {},
           sourceTaskId: crypto.randomUUID() }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: "2026-09-23T00:00:00Z",

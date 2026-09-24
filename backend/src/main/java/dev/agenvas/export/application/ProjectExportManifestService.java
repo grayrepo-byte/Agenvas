@@ -98,7 +98,7 @@ public class ProjectExportManifestService {
     private AssetEntry assetEntry(Asset asset) {
         return new AssetEntry(asset.id(), asset.mediaKind(), asset.contentType(),
                 asset.byteSize(), asset.sha256(), asset.width(), asset.height(),
-                asset.thumbnailSha256(), asset.createdAt());
+                asset.durationMs(), asset.thumbnailSha256(), asset.createdAt());
     }
 
     /** Top-level export intentionally excludes owner IDs, sessions and provider configuration. */
@@ -120,5 +120,5 @@ public class ProjectExportManifestService {
     /** Asset metadata omits private object keys and any reusable download URL. */
     public record AssetEntry(UUID id, Asset.MediaKind mediaKind, String contentType,
             long byteSize, String sha256, Integer width, Integer height,
-            String thumbnailSha256, Instant createdAt) {}
+            Integer durationMs, String thumbnailSha256, Instant createdAt) {}
 }

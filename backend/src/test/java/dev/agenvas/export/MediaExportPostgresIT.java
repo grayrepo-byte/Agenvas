@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -59,7 +60,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=export-integration-secret")
+        properties = {"agenvas.identity.bootstrap-secret=export-integration-secret",
+                "agenvas.export.scheduler-enabled=false"})
 class MediaExportPostgresIT {
 
     @Container
@@ -96,6 +98,8 @@ class MediaExportPostgresIT {
                 Project.AspectRatio.LANDSCAPE_16_9);
         Asset red = generatedVideo(owner.userId(), project.id(), "red", "640x360", 15);
         Asset blue = generatedVideo(owner.userId(), project.id(), "blue", "800x600", 30);
+        assertThat(red.durationMs()).isEqualTo(1_000);
+        assertThat(blue.durationMs()).isEqualTo(1_000);
         ArtifactService.ArtifactView first = videoArtifact(owner.userId(), project.id(),
                 "First", red.id());
         ArtifactService.ArtifactView second = videoArtifact(owner.userId(), project.id(),
@@ -105,6 +109,18 @@ class MediaExportPostgresIT {
                         first.currentVersion().id(), 0, 1000),
                 new MediaExportService.SegmentRequest(second.artifact().id(),
                         second.currentVersion().id(), 0, 1000));
+        assertThatThrownBy(() -> exports.preview(owner.userId(), project.id(), List.of(
+                new MediaExportService.SegmentRequest(first.artifact().id(),
+                        first.currentVersion().id(), 0, 1_001))))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("EXPORT_INPUT_INVALID"));
+        jdbc.sql("update asset set duration_ms = null where id = :assetId")
+                .param("assetId", red.id()).update();
+        assertThatThrownBy(() -> exports.preview(owner.userId(), project.id(), ordered))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("EXPORT_INPUT_INVALID"));
+        jdbc.sql("update asset set duration_ms = 1000 where id = :assetId")
+                .param("assetId", red.id()).update();
         MediaExportService.ExportPreview preview = exports.preview(owner.userId(),
                 project.id(), ordered);
         assertThat(preview.projectVersion()).isEqualTo(project.version());
@@ -199,6 +215,7 @@ class MediaExportPostgresIT {
         verifyToolFailure(owner, project, ordered);
         verifyArchivedExportRecovery(owner, project, ordered, exported.path());
         verifyAspectRatioLetterboxing(owner);
+        verifyKilledProcessExportRecovery(owner);
     }
 
     /** Portrait and square outputs retain the full source frame with black padding. */
@@ -214,6 +231,118 @@ class MediaExportPostgresIT {
         Asset tallBlue = generatedVideo(owner.userId(), square.id(), "blue", "360x640", 30);
         verifyPaddedExport(owner, square, tallBlue, "square-padding-export",
                 720, 720, false);
+    }
+
+    /** A real terminated server leaves an in-flight encode for a fresh server to reclaim. */
+    private void verifyKilledProcessExportRecovery(AdminPrincipal owner) throws Exception {
+        Project project = projects.create(owner.userId(), "Killed export recovery",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        Asset source = generatedVideo(owner.userId(), project.id(), "green", "640x360", 24, 3);
+        var video = videoArtifact(owner.userId(), project.id(), "Long recovery clip", source.id());
+        var segment = new MediaExportService.SegmentRequest(video.artifact().id(),
+                video.currentVersion().id(), 0, 2500);
+        Task queued = exports.create(owner.userId(), project.id(), "real-process-kill",
+                java.util.Collections.nCopies(6, segment));
+        Path childLog = Files.createTempFile(STORAGE_ROOT, "export-process-", ".log");
+        Process first = null;
+        Process second = null;
+        try {
+            first = startExportServer(childLog);
+            Path partialOutput = null;
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35);
+            while (System.nanoTime() < deadline && first.isAlive()) {
+                if (tasks.get(owner.userId(), project.id(), queued.id()).status()
+                        == Task.Status.RUNNING) {
+                    partialOutput = partialExportOutput(project.id());
+                    if (partialOutput != null && Files.size(partialOutput) > 0) break;
+                }
+                Thread.sleep(50);
+            }
+            assertThat(partialOutput).as("FFmpeg must have begun writing before process kill")
+                    .isNotNull();
+            assertThat(Files.size(partialOutput)).isPositive();
+            assertThat(tasks.get(owner.userId(), project.id(), queued.id()).status())
+                    .isEqualTo(Task.Status.RUNNING);
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(tasks.get(owner.userId(), project.id(), queued.id()).status())
+                    .isEqualTo(Task.Status.RUNNING);
+            UUID outputId = AssetService.taskVideoAssetId(queued.id());
+            assertThat(jdbc.sql("select count(*) from asset where id = :assetId")
+                    .param("assetId", outputId).query(Integer.class).single()).isZero();
+
+            second = startExportServer(childLog);
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(95);
+            Task completed = tasks.get(owner.userId(), project.id(), queued.id());
+            while (System.nanoTime() < deadline && second.isAlive()
+                    && completed.status() == Task.Status.RUNNING) {
+                Thread.sleep(200);
+                completed = tasks.get(owner.userId(), project.id(), queued.id());
+            }
+            assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(completed.leaseEpoch()).isGreaterThan(1);
+            assertThat(completed.output().path("assetId").asText())
+                    .isEqualTo(outputId.toString());
+            assertThat(jdbc.sql("select count(*) from asset where id = :assetId")
+                    .param("assetId", outputId).query(Integer.class).single()).isEqualTo(1);
+            assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :taskId "
+                            + "and entry_type = 'SETTLEMENT'")
+                    .param("taskId", queued.id()).query(Integer.class).single()).isEqualTo(1);
+            assertThat(jdbc.sql("select count(*) from project_event "
+                            + "where project_id = :projectId and aggregate_id = :assetId "
+                            + "and type = 'asset.ready'")
+                    .param("projectId", project.id()).param("assetId", outputId)
+                    .query(Integer.class).single()).isEqualTo(1);
+            assertThat(storage.cleanupStaleExportWorkDirectories(Instant.now().plusSeconds(1), 100))
+                    .isGreaterThanOrEqualTo(1);
+            assertThat(Files.exists(partialOutput.getParent())).isFalse();
+        } finally {
+            stopServer(first);
+            stopServer(second);
+            Files.deleteIfExists(childLog);
+        }
+    }
+
+    /** Starts the packaged application against this test's PostgreSQL and private asset root. */
+    private Process startExportServer(Path log) throws IOException {
+        Path jar = Path.of("target/agenvas-server-0.1.0-SNAPSHOT.jar").toAbsolutePath();
+        assertThat(Files.isRegularFile(jar)).isTrue();
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        ProcessBuilder builder = new ProcessBuilder(java.toString(), "-Xmx512m",
+                "-jar", jar.toString(),
+                "--agenvas.export.scheduler-enabled=true",
+                "--agenvas.llm.scheduler-enabled=false",
+                "--agenvas.provider.mock.scheduler-enabled=false",
+                "--agenvas.provider.mock.video-scheduler-enabled=false",
+                "--server.port=0")
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
+        builder.environment().put("AGENVAS_DB_URL", POSTGRES.getJdbcUrl());
+        builder.environment().put("AGENVAS_DB_USER", POSTGRES.getUsername());
+        builder.environment().put("AGENVAS_DB_PASSWORD", POSTGRES.getPassword());
+        builder.environment().put("AGENVAS_STORAGE_ROOT", STORAGE_ROOT.toString());
+        builder.environment().put("AGENVAS_BOOTSTRAP_SECRET", "export-integration-secret");
+        return builder.start();
+    }
+
+    /** Finds only this project's real FFmpeg output, not a READY archived asset. */
+    private Path partialExportOutput(UUID projectId) throws IOException {
+        try (var directories = Files.newDirectoryStream(
+                STORAGE_ROOT.resolve(projectId.toString()), ".export-*")) {
+            for (Path directory : directories) {
+                Path candidate = directory.resolve("silent-export.mp4");
+                if (Files.isRegularFile(candidate)) return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** Fenced test child cleanup never touches the developer's running Compose service. */
+    private void stopServer(Process process) throws InterruptedException {
+        if (process != null && process.isAlive()) {
+            process.destroyForcibly();
+            assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     private void verifyPaddedExport(AdminPrincipal owner, Project project, Asset source,
@@ -268,7 +397,7 @@ class MediaExportPostgresIT {
         MediaExportWorker resumed = new MediaExportWorker(tasks, assets, storage,
                 neverEncode, mapper);
         assertThat(resumed.runOnce("resumed-export-worker")).isEqualTo(1);
-        verify(neverEncode, never()).ffmpegExport(anyList(), any(), any(), any());
+        verify(neverEncode, never()).ffmpegExport(anyList(), any(), any(), any(), any());
         Task completed = tasks.get(owner.userId(), project.id(), pending.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(completed.output().path("assetId").asText()).isEqualTo(archived.id().toString());
@@ -316,7 +445,7 @@ class MediaExportPostgresIT {
                 "{\"streams\":[{\"codec_type\":\"video\"}],\"format\":{\"duration\":\"2.0\"}}");
         CountDownLatch encodingStarted = new CountDownLatch(1);
         doAnswer(invocation -> {
-            BooleanSupplier shouldStop = invocation.getArgument(2);
+            BooleanSupplier shouldStop = invocation.getArgument(3);
             encodingStarted.countDown();
             for (int attempt = 0; attempt < 200; attempt++) {
                 if (shouldStop.getAsBoolean()) {
@@ -325,7 +454,7 @@ class MediaExportPostgresIT {
                 Thread.sleep(20);
             }
             throw new IllegalStateException("Controlled export did not observe cancellation");
-        }).when(controlled).ffmpegExport(anyList(), any(), any(), any());
+        }).when(controlled).ffmpegExport(anyList(), any(), any(), any(), any());
         MediaExportWorker controlledWorker = new MediaExportWorker(tasks, assets, storage,
                 controlled, mapper);
         try (var pool = Executors.newSingleThreadExecutor()) {
@@ -364,7 +493,7 @@ class MediaExportPostgresIT {
         doAnswer(invocation -> {
             throw new MediaToolRunner.MediaToolException("Controlled timeout or full disk",
                     false, null);
-        }).when(controlled).ffmpegExport(anyList(), any(), any(), any());
+        }).when(controlled).ffmpegExport(anyList(), any(), any(), any(), any());
         MediaExportWorker controlledWorker = new MediaExportWorker(tasks, assets, storage,
                 controlled, mapper);
         assertThat(controlledWorker.runOnce("failed-export-worker")).isEqualTo(1);
@@ -396,12 +525,17 @@ class MediaExportPostgresIT {
 
     private Asset generatedVideo(UUID ownerId, UUID projectId, String color,
             String dimensions, int fps) throws IOException {
+        return generatedVideo(ownerId, projectId, color, dimensions, fps, 1);
+    }
+
+    private Asset generatedVideo(UUID ownerId, UUID projectId, String color,
+            String dimensions, int fps, int durationSeconds) throws IOException {
         Path rendered = Files.createTempFile(STORAGE_ROOT, "source-video-", ".mp4");
         try {
             mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                     "-f", "lavfi", "-i", "color=c=" + color + ":s=" + dimensions
                             + ":r=" + fps,
-                    "-t", "1", "-an", "-c:v", "libx264", "-preset", "veryfast",
+                    "-t", Integer.toString(durationSeconds), "-an", "-c:v", "libx264", "-preset", "veryfast",
                     "-crf", "23", "-y", rendered.toString()));
             return assets.archiveVideo(ownerId, projectId, Files.newInputStream(rendered));
         } finally {

@@ -45,6 +45,56 @@ public class JdbcArtifactRepository implements ArtifactRepository {
     }
 
     @Override
+    public boolean reserveCreateKey(UUID ownerId, String scope, String key,
+            String requestHash, Instant expiresAt, Instant now) {
+        return jdbcClient.sql("""
+                        insert into idempotency_record (
+                            principal_id, scope, idempotency_key, request_hash, state,
+                            resource_id, response_json, expires_at, created_at, updated_at
+                        ) values (
+                            :ownerId, :scope, :key, :requestHash, 'IN_PROGRESS',
+                            null, null, :expiresAt, :now, :now
+                        ) on conflict (principal_id, scope, idempotency_key) do nothing
+                        """)
+                .param("ownerId", ownerId).param("scope", scope).param("key", key)
+                .param("requestHash", requestHash).param("expiresAt", utc(expiresAt))
+                .param("now", utc(now)).update() == 1;
+    }
+
+    @Override
+    public Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key) {
+        return jdbcClient.sql("""
+                        select request_hash, state, resource_id,
+                               response_json::text as response_json
+                        from idempotency_record
+                        where principal_id = :ownerId and scope = :scope and idempotency_key = :key
+                        """)
+                .param("ownerId", ownerId).param("scope", scope).param("key", key)
+                .query((rs, row) -> new CreateKey(rs.getString("request_hash"),
+                        rs.getString("state"), rs.getObject("resource_id", UUID.class),
+                        rs.getString("response_json")))
+                .optional();
+    }
+
+    @Override
+    public boolean completeCreateKey(UUID ownerId, String scope, String key,
+            String requestHash, UUID artifactId, String responseJson, Instant now) {
+        return jdbcClient.sql("""
+                        update idempotency_record
+                        set state = 'COMPLETED', resource_id = :artifactId,
+                            response_json = cast(:response as jsonb), updated_at = :now
+                        where principal_id = :ownerId and scope = :scope
+                          and idempotency_key = :key and request_hash = :requestHash
+                          and state = 'IN_PROGRESS'
+                        """)
+                .param("artifactId", artifactId)
+                .param("response", responseJson)
+                .param("now", utc(now)).param("ownerId", ownerId)
+                .param("scope", scope).param("key", key).param("requestHash", requestHash)
+                .update() == 1;
+    }
+
+    @Override
     public void createArtifact(Artifact artifact) {
         jdbcClient.sql("""
                         insert into artifact (

@@ -16,3 +16,13 @@
 `LlmProviderConfigPostgresIT` 在源 PostgreSQL 中通过管理员 API 保存三个加密模型配置版本（固定零值测试密钥，不接真实 Provider），使用容器内 `pg_dump -Fc` 生成真实数据库备份，再导入全新的 PostgreSQL 17.11 容器。新建 `CredentialCipher` 使用恢复的同版本测试主密钥逐条解密原配置凭证；轮换后的新主密钥配合版本 7 历史密钥环也能解密，遗漏历史密钥或全部不提供密钥均返回 `CREDENTIAL_KEY_VERSION_MISSING`。备份临时文件及目标容器由测试清理；没有使用、输出或写入真实部署密钥。最终源码的定向 `./mvnw --batch-mode --no-transfer-progress -Dit.test=LlmProviderConfigPostgresIT verify -q` 和后端全套 `./mvnw --batch-mode --no-transfer-progress verify -q` 均退出码 0，`git diff --check` 退出码 0；本轮没有前端改动，未重跑前端检查。
 
 这仅证明数据库加密行与匹配密钥可一起恢复，不等于实际部署已安全交接/轮换密钥，也不证明旧 Provider 请求在恢复后可核对；T29 仍未完成。
+
+## 2026-09-24 显式项目备份命令补验
+
+新增 `deploy/backup-compose.sh`，要求确切 Compose 项目名、env 文件和仓库外全新绝对输出目录；仅对选定项目停写、导出数据库和资产卷，并归档仓库模板、计算 SHA-256 清单。脚本不收集密钥，不把归档可读误称为完整恢复成功。隔离项目 `agenvas-backup-slice-0924` 中只启动 PostgreSQL，插入 `backup_probe(1, 'retained')` 并在独立资产卷放入 `asset-probe-20260924`；没有操作默认 `agenvas` 项目。
+
+- 脚本退出码 0，生成 `database.dump`、`assets.tgz`、`repository-templates.tgz` 和 `manifest.json`。清单中的三项 SHA-256 与实际文件一致；数据库归档经容器内 `pg_restore -l` 可读，资产包含探针文件。
+- 将该数据库归档恢复到同一隔离 PostgreSQL 的**新空数据库** `agenvas_backup_check`，`pg_restore --no-owner --no-acl` 退出码 0，查询返回 `1|retained`。这是备份命令的数据库实际恢复核对，但不是完整应用＋密钥恢复演练。
+- 对同一已存在输出目录再次调用脚本返回退出码 2，没有覆盖归档。`bash -n deploy/backup-compose.sh` 与 `git diff --check` 退出码 0。宿主机没有 `pg_restore`，实际恢复与归档检查使用 PostgreSQL 容器。
+- 本次只运行 PostgreSQL，未测试脚本对原先运行中 Web/Server 的停机和重启路径；尝试以 `--no-build` 启动两服务，但该隔离项目没有对应本地镜像，命令在镜像拉取阶段失败，未进入应用启动。已有单独的完整 Mock 恢复证据见上文。未测试真实 Provider、密钥托管、生产 RPO/RTO 或旧备份中已受理请求的对账。T29 保持未完成。
+- 演练后仅对准确的隔离项目执行 `down --volumes`，删除其 PostgreSQL/资产两个测试卷及容器/网络；再删除 `/tmp/agenvas-backup-slice.a1KFKZ/backup` 中的四个合成归档文件和空目录。这些测试数据不可恢复。默认 `agenvas` 项目未操作，事后 `docker ps` 显示其 Web、Server、PostgreSQL 均 healthy。

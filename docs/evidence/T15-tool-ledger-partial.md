@@ -45,3 +45,9 @@ CAS 可用性补充：新建与修订工具回执增加 `artifactVersions`（Art
 2026-09-24 语义关系补充：`link_artifacts` 仅接受 source Artifact ID、预期 CAS 整数版本、target 内容版本 ID 和四种类型化关系（角色/场景→图片引用、镜头→角色/场景）。source 当前版本与 target 版本都必须在可信 Run 范围内；工具通过 `reviseFromAgent` 复用内容 Schema、权限、版本与引用校验，以 source 新的不可变内容版本记录关系，不写画布线或执行 DAG。同一 source 当前内容中已有相同引用时返回成功但不新增版本；不同 `tool_call_id` 也不重复改写。`LinkArtifactsPostgresIT` 的假模型 + 真实 PostgreSQL 定向测试通过，覆盖双回合工具回执、四种关系、作用域拒绝、类型拒绝、旧 CAS 冲突和无媒体任务。未新增 HTTP 合约或 Flyway 迁移；未调用真实模型。
 
 语义关系切片随后运行普通 `./mvnw -q verify`，退出码 0；`git diff --check` 退出码 0。后端全量测试中的故障注入曾输出数据库回滚异常日志，但未造成该次验证失败。本切片未修改前端，未重跑浏览器测试。
+
+2026-09-24 跨 `tool_call_id` 批准去重补验：`PlanResumeWorkerPostgresIT` 在真实 PostgreSQL 中先持久化含两个不同 ID、相同 `propose_generation_plan` 参数的模型响应。服务层执行第一个提案并经鉴权用户批准后，原 ID 重放返回原持久结果；再以第二个 ID 执行被当前 Run 状态拒绝。该项目最终仅有一份计划、一笔审批、一项 `IMAGE_GENERATION` Task、一笔媒体预留和一条已完成工具账本。此用例刻意直接调用已持久化响应后的工具服务，以验证即使绕过 Runtime 对“一回合计划提案必须为最后一个工具调用”的批次形状检查，也不会因新 ID 再次授权同一步骤。定向 `./mvnw -q -Dit.test=PlanResumeWorkerPostgresIT verify` 与后端全量 `./mvnw -q verify` 均退出码 0；Surefire/Failsafe XML 中未发现失败或错误，`git diff --check` 退出码 0。真实模型未调用，不能据此勾选 T15 整体安全验收。
+
+2026-09-24 可信权限补验：新增 `ToolAuthorityPostgresIT`。已持久化的模型响应分别在合法图片计划参数中夹带 `ownerId`、`userId`、`projectId`、`approved`、`maxImages`、`maxVideos` 和 `budget`，每项均由服务端字段白名单返回 `PLAN_INVALID`；伪造未注册的 `approve_plan` 返回 `TOOL_ARGUMENT_INVALID`。拒绝后无计划、Approval、媒体 Task、媒体额度预留或已完成工具账本；随后同一可信 Run 的合法计划可创建一份待批计划，但仍无审批和媒体 Task。测试故意直接调用已持久响应后的工具服务，检验 Runtime 批次形状校验之外的防御。Run 自身的正常 LLM 用量预留不计入“无媒体预留”断言；首次测试误把它算入而失败，修正断言范围后通过。
+
+`ToolAuthorityPostgresIT`、`ToolExecutionPostgresIT`、`PlanResumeWorkerPostgresIT` 组合定向 `verify` 与完整后端 `./mvnw -q verify` 均退出码 0；Surefire/Failsafe XML 无失败或错误。前端、OpenAPI、Flyway 和生产代码本轮未变更。以上证明本地应用服务权限链和账本行为，不代替真实模型工具协议、真实 Provider、恶意素材或全路径安全验收。

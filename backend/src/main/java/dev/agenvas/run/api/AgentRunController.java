@@ -73,7 +73,8 @@ public class AgentRunController {
                 request.redoShotArtifactId(),
                 request.selectedItemIds(),
                 request.expectedModelConfigSource(),
-                request.expectedModelConfigVersion());
+                request.expectedModelConfigVersion(),
+                request.expectedSystemPromptVersion());
         return ResponseEntity.accepted()
                 .header("Idempotency-Replayed", Boolean.toString(result.replayed()))
                 .body(RunResponse.from(result.run()));
@@ -105,7 +106,8 @@ public class AgentRunController {
             UUID redoShotArtifactId,
             @Size(max = 20) List<@NotNull UUID> selectedItemIds,
             @Size(max = 80) String expectedModelConfigSource,
-            @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion) {}
+            @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion,
+            @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion) {}
 
     /** Safe list representation omitting context, policy and model-private messages. */
     public record RunSummary(UUID id, UUID agentInstanceId, AgentRun.Status status,

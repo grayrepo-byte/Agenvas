@@ -8,13 +8,39 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { useCanvasStore } from "./canvasStore";
-import type { ProjectSnapshot } from "../../shared/api/client";
+import type { CanvasItem, ProjectSnapshot } from "../../shared/api/client";
+
+const imageVersionId = "11111111-1111-4111-8111-111111111111";
+
+/** One persisted character with an optional exact-version reference. */
+function referenceCard(linked: boolean): CanvasItem {
+  const now = "2026-09-24T00:00:00Z";
+  return {
+    id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id",
+    x: 20, y: 20, width: 320, height: 240, zIndex: 0, groupId: null,
+    locked: false, version: 0, agent: null,
+    artifact: {
+      id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "Hero",
+      currentVersionId: linked ? "character-v1" : "character-v2",
+      version: linked ? 3 : 4, createdAt: now, updatedAt: now,
+      currentVersion: {
+        id: linked ? "character-v1" : "character-v2", versionNo: linked ? 1 : 2,
+        schemaVersion: 1, content: { name: "Hero", description: "Lead",
+          appearance: "Blue coat", referenceVersionIds: linked ? [imageVersionId] : [] },
+        inputReferences: linked ? [{ versionId: imageVersionId, role: "referenceImage",
+          order: 0, kind: "IMAGE" }] : [],
+        createdByKind: "USER", runId: null, createdAt: now,
+      },
+    },
+  };
+}
 
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     useCanvasStore.setState({ selectedIds: [] });
     server.use(
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
         HttpResponse.json({
@@ -256,7 +282,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.post("/api/v1/projects/:projectId/artifacts", () => {
+      http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
+        expect(request.headers.get("Idempotency-Key")).toBeTruthy();
         artifacts++;
         return HttpResponse.json({ id: artifactId }, { status: 201 });
       }),
@@ -299,6 +326,51 @@ describe("ProjectWorkspacePage", () => {
     expect(uploads).toBe(1);
     expect(artifacts).toBe(1);
     expect(screen.getByLabelText("图片标题")).toHaveValue("");
+  });
+
+  it("reuses the text creation key after an uncertain response", async () => {
+    const artifactId = crypto.randomUUID();
+    const keys: string[] = [];
+    let placedItemId: string | undefined;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Text project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key") ?? "");
+        if (keys.length === 1) return HttpResponse.error();
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: Array<{ itemId: string; artifactId: string }> };
+        placedItemId = body.commands[0]?.itemId;
+        expect(body.commands[0]?.artifactId).toBe(artifactId);
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const form = screen.getByRole("button", { name: "添加到画布" }).closest("form")!;
+    await user.type(within(form).getByLabelText("标题"), "Retry note");
+    await user.type(within(form).getByLabelText("内容"), "A stable note");
+    fireEvent.submit(form);
+    await screen.findByRole("alert");
+    expect(within(form).getByLabelText("标题")).toHaveValue("Retry note");
+    fireEvent.submit(form);
+    await waitFor(() => expect(keys).toHaveLength(2));
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(placedItemId).toBeTruthy();
   });
 
   it("keeps the card while Delete edits a focused text input", async () => {
@@ -371,7 +443,7 @@ describe("ProjectWorkspacePage", () => {
     );
 
     expect(await screen.findByText("Existing card")).toBeInTheDocument();
-    const content = screen.getByLabelText("内容");
+    const content = within(screen.getByRole("complementary")).getByLabelText("内容");
     await user.type(content, "draft");
     await user.keyboard("{Delete}");
 
@@ -475,7 +547,7 @@ describe("ProjectWorkspacePage", () => {
           modelAvailable, providerAdapter: modelAvailable ? "FakeChatModel" : null,
           modelId: modelAvailable ? "fixture-model" : null,
           toolCalling: true,
-          policySnapshot: { schemaVersion: 1, modelConfigSource: "fixture",
+          policySnapshot: { schemaVersion: 2, systemPromptVersion: 2, modelConfigSource: "fixture",
             modelConfigVersion: 7, maxModelTurns: 12, maxToolExecutions: 40,
             maxImages: 8, maxVideos: 6, maxShots: 6 },
         });
@@ -491,17 +563,18 @@ describe("ProjectWorkspacePage", () => {
         const body = (await request.json()) as {
           agentId: string; instruction: string; expectedAgentVersion: number;
           expectedModelConfigSource: string; expectedModelConfigVersion: number;
+          expectedSystemPromptVersion: number;
           selectedItemIds: string[];
         };
         expect(body).toMatchObject({ agentId, instruction: "规划三个镜头",
           expectedAgentVersion: 1, expectedModelConfigSource: "fixture",
-          expectedModelConfigVersion: 7 });
+          expectedModelConfigVersion: 7, expectedSystemPromptVersion: 2 });
         expect(Array.isArray(body.selectedItemIds)).toBe(true);
         idempotencyKeys.push(request.headers.get("Idempotency-Key") ?? "");
         starts += 1;
         if (starts === 1) return new HttpResponse(null, { status: 503 });
         if (starts === 2) return HttpResponse.json({
-          code: "MODEL_CONFIG_CONFLICT", title: "模型配置已变化",
+          code: "SYSTEM_PROMPT_CONFLICT", title: "系统提示词已变化",
           detail: "请重新检查运行范围。", retryable: false,
         }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
         activeRun = { id: crypto.randomUUID(), agentInstanceId: agentId, status: "RUNNING" };
@@ -606,6 +679,7 @@ describe("ProjectWorkspacePage", () => {
     fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
     await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
     expect(within(card as HTMLElement).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText(/当前模型看不到图片像素、视频帧或音频/)).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(/Bound brief/)).toBeInTheDocument();
     fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
     await waitFor(() => expect(starts).toBe(1));
@@ -668,7 +742,7 @@ describe("ProjectWorkspacePage", () => {
         bindings: [{ artifactId: shotId, selectedVersionId: versionId,
           artifactTitle: "Second shot", artifactKind: "SHOT" }],
         modelAvailable: true, providerAdapter: "Mock", modelId: "mock-storyboard-v1",
-        toolCalling: true, policySnapshot: { schemaVersion: 1,
+        toolCalling: true, policySnapshot: { schemaVersion: 2, systemPromptVersion: 2,
           modelConfigSource: "mock", modelConfigVersion: 1,
           maxModelTurns: 12, maxToolExecutions: 40,
           maxImages: 8, maxVideos: 6, maxShots: 6 },
@@ -795,5 +869,59 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByLabelText("Demo clip 的视频")).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(screen.getByText("演示视频")).toBeInTheDocument();
+  });
+
+  it("removes an optional card reference only after the CAS revision is saved", async () => {
+    let linked = true;
+    let revisions = 0;
+    let rejectOnce = true;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
+      })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
+        id: "project-1", name: "Reference project", status: "ACTIVE",
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [referenceCard(linked)] })),
+      http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test-token",
+      })),
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions",
+        async ({ request, params }) => {
+          revisions++;
+          expect(params.artifactId).toBe("character-id");
+          expect(await request.json()).toEqual({ expectedVersion: 3, content: {
+            name: "Hero", description: "Lead", appearance: "Blue coat",
+            referenceVersionIds: [],
+          } });
+          if (rejectOnce) {
+            rejectOnce = false;
+            return HttpResponse.json({ title: "版本冲突", detail: "请刷新后重试。",
+              code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
+            { status: 409, headers: { "Content-Type": "application/problem+json" } });
+          }
+          linked = false;
+          return HttpResponse.json(referenceCard(false).artifact, { status: 201 });
+        }),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByText("素材引用（1 个精确版本）"));
+    fireEvent.click(screen.getByRole("button", { name: "移除引用" }));
+    expect(await screen.findByText("请刷新后重试。")).toBeInTheDocument();
+    expect(screen.getByText("素材引用（1 个精确版本）")).toBeInTheDocument();
+    expect(screen.getByText("内容有冲突，当前修改未保存")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "移除引用" }));
+    await waitFor(() => expect(screen.queryByText("素材引用（1 个精确版本）"))
+      .not.toBeInTheDocument());
+    expect(revisions).toBe(2);
+    expect(screen.getByText("已保存")).toBeInTheDocument();
   });
 });

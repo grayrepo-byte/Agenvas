@@ -50,6 +50,8 @@
 
 补充：`/settings/general` 已接入管理员改密表单，复用现有 CSRF/会话失效 API；前端对密码确认、提交及清空输入有测试，见 `docs/evidence/T28-system-diagnostics-partial.md`。语言选择仍未实现。
 
+部署安全补验：Compose 不再为数据库密码或管理员初始化密钥提供公开回退值，README/恢复命令显式读取根目录 `.env`，后端拒绝历史示例 bootstrap secret；见 `docs/evidence/T03-bootstrap-secret-fail-closed.md`。已有本机默认实例仍使用旧值，未获授权前不自动轮换。
+
 ### T04 API 合约与 CI
 
 依赖：T01。
@@ -91,6 +93,8 @@
 
 交付：React Flow 投影层、卡片、拖拽缩放、选中/框选、布局命令。
 
+2026-09-24 补充：已保存的输入绑定、Agent 输出组和当前可见精确版本素材引用现投影为不同样式的关系线；Artifact→Agent 手工连线保存绑定，Artifact→Artifact 手工连线通过受控内容修订建立四种精确版本引用，不触发执行。可选参考图和镜头角色引用可从卡片移除并保留历史，必填场景只能替换；历史引用不误连到新版卡片。所有画布保存命令将 409 与普通失败分开显示，未确认草稿不清除。浏览器真实指针手势已补验角色→镜头与 Artifact→Agent，且修复受控节点重建时连接点边界丢失的问题；大画布性能仍待验收，见 `docs/evidence/T07-canvas-persistence.md`。
+
 - [x] 刷新后布局与内容恢复，保存失败保留草稿。
 - [x] Query/Zustand/React Flow 没有三份独立内容状态。
 - [x] 删除展示卡片不删除媒体；输入文字时不会误删节点。
@@ -106,6 +110,10 @@
 - [x] Agent 实例不存线程或跨请求共享用户上下文。
 
 **M1 门禁**：不依赖真实 AI，即可手工完整操作一个三镜头项目并刷新恢复。
+
+2026-09-24 进展：工作区新增角色、场景、镜头的手工创建表单；镜头固定场景与可选角色当前精确版本，内容创建和画布放置失败重试有组件回归。TEXT/CHARACTER/SCENE 可在卡片上保存不可变新版本，SHOT 继续使用受控局部修改；所有 Artifact 卡片可按需读取历史并以 CAS 选用旧版本，见 `docs/evidence/T06-manual-storyboard-partial.md`。
+
+创建请求现增加服务端持久幂等键，前端对未确认的同一表单内容沿用键重试；真实 PostgreSQL 已覆盖并发去重与原响应重放。隔离 Compose + 真实 Chrome 已完成无 AI 的场景、角色、三镜头创建，检查精确版本引用、手工拖线、拖拽布局、场景修订、刷新恢复与无 Run/Task；据此 M1 所述手工三镜头路径通过，见 `docs/evidence/T06-browser-m1-gate.md`。图片上传断线恢复、大画布性能和真实 Provider 不由此验收。
 
 ---
 
@@ -147,7 +155,7 @@
 
 交付：单项目事件连接、历史补发、心跳、游标失效处理。
 
-补验：导出提案浏览器黄金路径曾发现媒体归档后事件流重连及提案列表陈旧；现补齐 `asset.ready`、`export.proposal.changed` 游标处理，固定项目初始订阅水位，并在恢复快照时刷新提案/导出/用量及未包含在快照中的运行历史、计划、任务等缓存。单连接、事件序列和缺口恢复缓存回归已增加；浏览器服务端进程中断重连见 `docs/evidence/T12-browser-process-reconnect.md`。长时间断网和游标过期的浏览器端到端验证仍待做，见 `docs/evidence/T15-export-proposal-partial.md`。
+补验：导出提案浏览器黄金路径曾发现媒体归档后事件流重连及提案列表陈旧；现补齐 `asset.ready`、`export.proposal.changed` 游标处理，固定项目初始订阅水位，并在恢复快照时刷新提案/导出/用量及未包含在快照中的运行历史、计划、任务等缓存。单连接、事件序列和缺口恢复缓存回归已增加；浏览器服务端进程中断重连见 `docs/evidence/T12-browser-process-reconnect.md`。隔离 Chrome 验收现还覆盖断线时清理事件、旧游标 409、快照恢复和后续直播事件，见 `docs/evidence/T12-browser-cursor-expiry.md`；未等待真实保留期或压测长期抖动。
 
 - [x] 断网重连、重复事件、旧版本事件均正确处理。
 - [x] 游标过期重新获取快照，不继续使用不完整缓存。
@@ -194,11 +202,11 @@
 
 交付：限定工具、ToolContext、权限链、tool_execution、业务命令键。
 
-进展：已增加受 Run 输入/输出范围与 Artifact CAS 保护的 `revise_artifact`、`place_artifacts`、`arrange_items`、`link_artifacts`，以及 `read_project_summary`、`read_artifacts`、`read_selection`、`read_task_status` 四个有上限的只读工具；长绑定内容在首轮上下文只显示预览，可按显式版本 ID 读取全文。启动 Run 时所选卡片由服务端验证并固定到上下文，仅表示操作意图，不扩大绑定权限；任务状态查询只允许本 Run 的任务，不返回 Provider 内部输入或输出。输出卡片只可放置当前 Run 可见版本，固定到 Agent 输出分组，重复工具调用复用原卡片；布局工具仅排列该分组且检查内容版本、布局 CAS 和锁定状态。语义关系工具只修改当前 Run 可见内容版本的四种 Schema 支持引用，不创建媒体任务。`propose_export` 已保存可审阅的精确版本提案，须经鉴权用户按哈希批准才建本地导出任务，见 `docs/evidence/T15-export-proposal-partial.md`。真实模型兼容性与完整安全验收仍未完成。
+进展：已增加受 Run 输入/输出范围与 Artifact CAS 保护的 `revise_artifact`、`place_artifacts`、`arrange_items`、`link_artifacts`，以及 `read_project_summary`、`read_artifacts`、`read_selection`、`read_task_status` 四个有上限的只读工具；长绑定内容在首轮上下文只显示预览，可按显式版本 ID 读取全文。启动 Run 时所选卡片由服务端验证并固定到上下文，仅表示操作意图，不扩大绑定权限；任务状态查询只允许本 Run 的任务，不返回 Provider 内部输入或输出。输出卡片只可放置当前 Run 可见版本，固定到 Agent 输出分组，重复工具调用复用原卡片；布局工具仅排列该分组且检查内容版本、布局 CAS 和锁定状态。语义关系工具只修改当前 Run 可见内容版本的四种 Schema 支持引用，不创建媒体任务。`propose_export` 已保存可审阅的精确版本提案，须经鉴权用户按哈希批准才建本地导出任务，见 `docs/evidence/T15-export-proposal-partial.md`。已批准提案换 `tool_call_id` 后不重复建任务/预留，模型伪造身份/项目/审批/额度字段与不存在的批准工具也无媒体副作用，见 `docs/evidence/T15-tool-ledger-partial.md`。真实模型协议兼容性与更广的端到端安全验收仍未完成。
 
-- [ ] 工具不能伪造身份、项目、审批和额度。
-- [ ] 响应持久化先于业务副作用；重放返回原结果。
-- [ ] 同一批准步骤换一个 tool_call_id 仍不会重复建生成任务。
+- [x] 工具不能伪造身份、项目、审批和额度（模型响应注入字段/不存在的 `approve_plan`、可信上下文越权拒绝；真实 PostgreSQL 测试）。
+- [x] 响应持久化先于业务副作用；重放返回原结果（先执行被拒、持久响应后并发同 ID 只写一条账本/一份产物）。
+- [x] 同一批准步骤换一个 tool_call_id 仍不会重复建生成任务（获批提案的新 ID 被 Run 状态拒绝，原 ID 重放；计划/审批/Task/预留均单份）。
 
 ### T16 文本与分镜闭环
 
@@ -206,7 +214,7 @@
 
 交付：说明、角色、场景、镜头创建及输出布局。
 
-进展补充：活动 Run 进入 BLOCKED 时，画布只读取同项目持久 Task 的稳定错误码，明确解释固定模型配置/工具能力不可用、历史密钥缺失或模型结构修复耗尽；媒体 UNKNOWN 保持独立核对提示，不展示模型输入或私有内容。结构或计划领域校验失败时，同轮工具事务回滚，并在持久化模型回合内最多修复两次；真实 Provider 效果仍未验证。见 `docs/evidence/T16-structured-repair.md`。
+进展补充：活动 Run 进入 BLOCKED 时，画布只读取同项目持久 Task 的稳定错误码，明确解释固定模型配置/工具能力不可用、历史密钥缺失或模型结构修复耗尽；媒体 UNKNOWN 保持独立核对提示，不展示模型输入或私有内容。结构或计划领域校验失败时，同轮工具事务回滚，并在持久化模型回合内最多修复两次；真实 Provider 效果仍未验证。见 `docs/evidence/T16-structured-repair.md`。首轮模型规则与运行前确认面板现明确声明当前不传像素/帧/音频、不能声称已分析视觉内容，也不能把媒体计划冒充已归档结果；Mock＋PostgreSQL 与前端测试见 `docs/evidence/T16-media-capability-boundary.md`，真实模型遵循情况尚未验证。
 
 - [ ] 一句指令创建三个有合法引用和顺序的镜头。
 - [ ] 模型不支持某能力时明确提示，不伪装成已看图或已生成。
@@ -218,23 +226,25 @@
 
 交付：ExecutionPlan、Approval、输入/计划 hash、输出槽位、额度预留。
 
-阶段性实现与未覆盖边界见 `docs/evidence/T17-plan-approval-partial.md`；现有 PostgreSQL 回归已覆盖 20 路同时审批只保留一组任务与一笔预留，审批面板也可直接取消 Run。真实 Provider 和完整边界验收未完成，以下验收项保持未勾选。
+阶段性实现与未覆盖边界见 `docs/evidence/T17-plan-approval-partial.md`；现有 PostgreSQL 回归已覆盖 DAG 环、已绑定但错误类型的资源、跨项目镜头、超额度、20 路同时审批只保留一组任务与一笔预留，以及输入、Provider 配置和固定工作流版本变化时的审批拒绝；纯布局变化不使审批失效。审批面板可直接取消 Run。真实 Provider 和更广的故障/兼容边界仍未验收。
 
-- [ ] 环、非法类型、跨项目引用、超过限额等被服务端拒绝。
-- [ ] 并发审批只创建一组任务；Agent 无批准工具。
-- [ ] 输入/模型/工作流变化使批准失效；布局变化不使批准失效。
+- [x] 环、非法类型、跨项目引用、超过限额等被服务端拒绝（真实 PostgreSQL 计划提案/审批测试；拒绝时无新增计划或超额任务）。
+- [x] 并发审批只创建一组任务；Agent 无批准工具（20 路并发数据库断言及工具注册表断言）。
+- [x] 输入/模型/工作流变化使批准失效；布局变化不使批准失效（PostgreSQL 输入编辑/布局及模拟服务端配置、工作流版本变化的审批测试；真实 Provider 版本轮换未演练）。
 
 ### T18 Run 唤醒与停止边界
+
+运行前确认补验：卡片现在显示并提交系统提示词版本；若预览后规则变化，创建返回 409、无 Run/首轮 Task，旧确认清空后须重新预览。PostgreSQL/HTTP 与前端测试见 `docs/evidence/T18-initial-turn-partial.md`；真实部署交错尚未浏览器端到端演练。
 
 依赖：T17。
 
 交付：等待审批、等待任务、任务完成唤醒、模型回合限制、取消检查点。
 
-首个持久化回合、默认 Mock 三镜头、图片/视频审批及归档、逐镜头人工选择的持久恢复门禁、新输出画布放置，以及配置模型＋假 HTTP 服务贯穿同一链路的阶段性实现见 `docs/evidence/T18-initial-turn-partial.md` 和 `docs/evidence/T14-openai-compatible-candidate.md`。Run 预览与确认增加模型配置来源/版本对照，变更后拒绝未重新确认的 UI 启动，亦见 T18 证据。另有隔离 Compose 项目的浏览器 Mock 黄金路径，见 `docs/evidence/T-browser-mock-golden-path.md`。Agent Run 历史的只读游标列表和计划/任务摘要见 `docs/evidence/T18-run-history-partial.md`；真实 Provider 与以下验收项仍未完成。
+首个持久化回合、默认 Mock 三镜头、图片/视频审批及归档、逐镜头人工选择的持久恢复门禁、新输出画布放置，以及配置模型＋假 HTTP 服务贯穿同一链路的阶段性实现见 `docs/evidence/T18-initial-turn-partial.md` 和 `docs/evidence/T14-openai-compatible-candidate.md`。Run 预览与确认增加模型配置来源/版本对照，变更后拒绝未重新确认的 UI 启动，亦见 T18 证据。另有隔离 Compose 项目的浏览器 Mock 黄金路径，见 `docs/evidence/T-browser-mock-golden-path.md`。Agent Run 历史的只读游标列表和计划/任务摘要见 `docs/evidence/T18-run-history-partial.md`。连续工具回合到第 12 次会以可见诊断码停止，不建第 13 次回合；隔离 Chrome 关闭和新服务进程从已持久化回合账本接管的实测见 `docs/evidence/T18-browser-close.md`。真实 Provider 和随机中断模型 HTTP 调用仍未验收。
 
-- [ ] 关闭浏览器不影响后台持久化编排。
-- [ ] 不存在等视频完成的无限 LLM 轮询。
-- [ ] 重启从账本恢复，不重新执行整条原始用户指令。
+- [x] 关闭浏览器不影响后台持久化编排（隔离 Compose＋真实 Chrome：关闭进程后 Mock Run 完成 3 个持久回合并只产生一份待批计划）。
+- [x] 不存在等视频完成的无限 LLM 轮询（持续请求工具的假模型在真实 PostgreSQL 后台任务中恰好执行 12 回合后阻断；媒体完成由 Task 唤醒，不靠模型无限轮询）。
+- [x] 重启从账本恢复，不重新执行整条原始用户指令（隔离 Compose 的已响应/已执行工具/未完成任务窗口，重启后原任务收尾、epoch 递增，计划/工具/版本及响应摘要不变；随机崩溃窗口仍待更广演练）。
 
 **M3 门禁**：真实 LLM + Mock 媒体完成黄金路径；执行动作与画布结果一致。
 
@@ -248,11 +258,13 @@
 
 交付：本地 StorageGateway、上传检查、临时文件、hash、GET/HEAD/Range。
 
-PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的真实 Artifact/画布放置，以及任务键视频文件归档恢复的阶段性实现见 `docs/evidence/T19-local-image-archive-partial.md`、`docs/adr/0001-upload-image-provenance.md` 和 `docs/evidence/T23-mock-video-partial.md`；真实 PostgreSQL 插入故障已验证用户上传清理与任务键原字节恢复。图片原图、缩略图及 MP4 临时写入的 ENOSPC 注入与原 Provider ID 重试见 `docs/evidence/T27-disk-full-injection.md`。格式/像素、路径及越权拒绝已在 PostgreSQL 与 HTTP 测试中覆盖；真实存储耗尽、大文件内存测量及浏览器端到端故障恢复尚未完成。
+PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的真实 Artifact/画布放置，以及任务键视频文件归档恢复的阶段性实现见 `docs/evidence/T19-local-image-archive-partial.md`、`docs/adr/0001-upload-image-provenance.md` 和 `docs/evidence/T23-mock-video-partial.md`；真实 PostgreSQL 插入故障已验证用户上传清理与任务键原字节恢复。图片原图、缩略图及 MP4 临时写入的 ENOSPC 注入与原 Provider ID 重试见 `docs/evidence/T27-disk-full-injection.md`。格式/像素、路径及越权拒绝已在 PostgreSQL 与 HTTP 测试中覆盖；真实存储耗尽、生产网络与非稀疏大文件吞吐，以及浏览器端到端故障恢复尚未完成。
+
+下载路径现有 400 MiB 稀疏媒体在 `-Xmx128m` 下通过 Spring `ResourceHttpMessageConverter` 完整传输，单次写入有界；Range 跳过不能越过选定字节区间。该内存检查不等于生产网络压测或实际非稀疏磁盘吞吐测试。
 
 - [x] 恶意格式、超大像素、路径穿越、越权读取被拒绝（含静态项目目录符号链接；不覆盖有卷写入权的本地进程并发替换目录）。
-- [ ] 下载流式执行，大文件不会整段加载到 JVM 内存。
-- [ ] 磁盘满或数据库失败不产生 READY 坏文件。
+- [x] 下载流式执行，大文件不会整段加载到 JVM 内存（400 MiB、128 MiB JVM 堆、Spring 资源转换器完整读取；生产网络与磁盘吞吐仍待测）。
+- [x] 磁盘满或数据库失败不产生 READY 坏文件（ENOSPC 写入故障注入覆盖原图/缩略图/MP4/导出，PostgreSQL INSERT 故障覆盖上传清理与任务键恢复；未演练物理磁盘耗尽）。
 
 ### T20 ComfyUI 固定图像工作流
 
@@ -278,11 +290,11 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 补验：关闭新 ComfyUI 视频生成后，历史轮询器仍可按原请求 ID 下载并归档有效 MP4，创建任务键 VIDEO Asset 与新 ArtifactVersion；真实 PostgreSQL＋本地 FFmpeg＋假 HTTP 已验证，无新提交。真实 Provider 与跨备份演练仍未验证。
 
-设置页补充：`/settings/providers` 已合并现有管理员 LLM 设置与媒体配置状态；媒体端点/模板仍通过服务端环境变量安装，页面不提供在线编辑，也不把配置齐全误称为真实连通或模板兼容，见 `docs/evidence/T28-system-diagnostics-partial.md`。
+设置页补充：`/settings/providers` 已合并现有管理员 LLM 设置与媒体配置状态；媒体端点/模板仍通过服务端环境变量安装，页面不提供在线编辑，也不把配置齐全误称为真实连通或模板兼容，见 `docs/evidence/T28-system-diagnostics-partial.md`。固定 ComfyUI origin、LLM 逐次 DNS 校验及提交/下载重定向拒绝的本地假服务测试见 `docs/evidence/T21-outbound-ssrf.md`；不代表生产网络层隔离已演练。
 
 - [ ] Key 轮换后旧任务仍能按原配置核对，或明确报认证阻断。
 - [ ] 无 Key 泄露到日志、SSE、导出或浏览器持久存储。
-- [ ] 本地服务例外未放开任意内网 URL；重定向/DNS 等 SSRF 测试通过。
+- [x] 本地服务例外未放开任意内网 URL；重定向/DNS 等 SSRF 测试通过（精确管理员端点、ComfyUI 双路由重定向目标零请求、LLM 模拟恶意 DNS；真实网络基础设施仍未演练）。
 
 ### T22 图片版本与晚到结果
 
@@ -292,9 +304,11 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 进展：假 ComfyUI 完成后首次下载返回无效图片、归档拒绝，只轮询原 prompt 并重新下载的 PostgreSQL 故障测试见 `docs/evidence/T20-comfyui-protocol-partial.md`。V24 持久技术重试账本覆盖带抖动退避、五次重试后 BLOCKED、成功清零；Task 固定资产 ID 的原图落盘后恢复、缩略图重建、READY 资产复用及同进程双 Worker 竞争也有 PostgreSQL＋本地卷测试。独立进程交错写入和真实 Provider 尚未验证，本项保持未勾选。
 
+输入选用补验：视频 Task 现固定人工关键帧选择版本，并在提交前与晚到结果选用前复核选择、图片和镜头当前版本；图片计划输入快照包含间接参考图版本，审批及图片 Task 均复核其当前状态。真实 PostgreSQL 下旧计划审批冲突、旧结果只归档、未提交任务阻断的测试见 `docs/evidence/T22-stale-media-input-selection.md`。前端阻断提示现覆盖三种输入过期来源，运行记录也区分原请求的技术核对/归档与用户新审批的重做；改选交互及所有并发交错未穷尽，T22 总门禁仍未完成。
+
 - [ ] 用户改输入后旧生成结果只进入历史。
 - [ ] 归档失败重试下载，不重新生图。
-- [ ] 明确区分“技术失败重试”与“用户要求再生成一张”。
+- [x] 明确区分“技术失败重试”与“用户要求再生成一张”（已受理请求仅查询/下载原任务且有持久重试上限；用户不满意须新 Run、新计划与审批，局部重做在 PostgreSQL/Mock 链路中创建独立媒体 Task；运行记录明确提示潜在新成本。真实 Provider 尚未联调）。
 
 **M4 门禁**：真实图片链路与 UNKNOWN、归档失败、输入更新竞争均通过。
 
@@ -320,7 +334,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 交付：选中镜头修改、依赖影响计算、新计划、新审批、历史保留。
 
-进展：目标镜头与可选共享场景的原子新版本、旧媒体选用清除、其他镜头引用隔离、Mock 模式下的限定单镜头新 Run、图片/视频双审批闭环，以及旧任务提交前阻断和晚到结果历史归档见 `docs/evidence/T24-local-redo-partial.md`。现增加真实归档视频选择的两侧镜头隔离核对，以及旧任务归档与第二镜头修订的双线程提交交错；真实 Provider 和局部 Run 浏览器端到端仍未验收，总门禁未通过。
+进展：目标镜头与可选共享场景的原子新版本、旧媒体选用清除、其他镜头引用隔离、Mock 模式下的限定单镜头新 Run、图片/视频双审批闭环，以及旧任务提交前阻断和晚到结果历史归档见 `docs/evidence/T24-local-redo-partial.md`。现增加真实归档视频选择的两侧镜头隔离核对，以及旧任务归档与第二镜头修订的双线程提交交错；隔离 Chrome＋当前代码镜像 Compose 已验证 Agent 卡片局部 Run 的 Mock 双审批、单镜头媒体输出、镜头精确选用、手动视频预览与刷新恢复。视频完成后按固定镜头版本 CAS 追加镜头选用关键帧/视频的新版本，恢复回合引用该新版本继续提出导出提案，真实 PostgreSQL＋FFmpeg 三镜头及局部重做测试已通过。真实 Provider 尚未验证，总门禁未通过。
 
 - [x] 只改第二镜头，不改变第一/第三镜头的内容、引用和选用视频（真实 PostgreSQL + 已归档 MP4 版本测试）。
 - [x] 对共享场景创建新版本并仅重新绑定目标镜头（真实 PostgreSQL 精确引用测试）。
@@ -333,12 +347,12 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 交付：镜头顺序、输入快照、受控 FFmpeg、无声 MP4、播放与下载。
 
-进展：项目级持久导出、精确版本/区间快照、受控 FFmpeg 规范化、前端顺序编辑与私有下载已实现；服务端预览与手动入队现共用同一套精确版本/素材/区间校验，预览本身不创建 Task。Agent 可另行提出需用户审批的导出快照；Mock 三镜头黄金路径已覆盖“提案→批准→无声 MP4”，并在隔离浏览器中完成审批界面和 3 秒 MP4 下载补验，见 `docs/evidence/T15-export-proposal-partial.md`。PostgreSQL + FFmpeg 混合素材及原有 Mock 导出测试见 `docs/evidence/T25-sequential-export-partial.md`。隔离 Compose 项目中的浏览器也已完成手动顺序编辑、提交和“已完成”呈现，并经同项目已登录 HTTP 会话下载实际 15 秒无声 MP4，见 `docs/evidence/T-browser-mock-golden-path.md`。运行中取消、工具超时/非零故障及临时清理已有受控测试；已归档但未记成功的导出现在按 Task 键恢复且不重复编码。浏览器播放、真实磁盘满与杀进程重启演练未验证，故验收项保持未勾选。
+进展：项目级持久导出、精确版本/区间快照、受控 FFmpeg 规范化、前端顺序编辑、点击后才加载的预览与私有下载已实现；服务端预览与手动入队现共用同一套精确版本/素材/区间校验，预览本身不创建 Task。Agent 可另行提出需用户审批的导出快照；Mock 三镜头黄金路径已覆盖“提案→批准→无声 MP4”，并在隔离浏览器中完成审批界面和 3 秒 MP4 下载补验，见 `docs/evidence/T15-export-proposal-partial.md`。PostgreSQL + FFmpeg 混合素材及原有 Mock 导出测试见 `docs/evidence/T25-sequential-export-partial.md`。隔离 Compose 项目中的浏览器也已完成手动顺序编辑、提交和“已完成”呈现，并经同项目已登录 HTTP 会话下载实际 15 秒无声 MP4，见 `docs/evidence/T-browser-mock-golden-path.md`。现另以当前代码镜像在 Chrome 中完成 Mock 单段手动导出的私有 HEAD、下载链接和 1280×720 MP4 手动播放。运行中取消、工具超时/非零故障及临时清理已有受控测试；已归档但未记成功的导出现在按 Task 键恢复且不重复编码。真实服务子进程在 FFmpeg 写入期间被强杀、原租约过期后由第二进程接管并只登记一份结果的测试已通过；物理磁盘写满和容器级进程组退出仍未演练，相关验收项保持未勾选。
 
-补验：PostgreSQL＋FFmpeg 集成测试已覆盖横向、纵向、方形输出，逐帧解码核对纵向/方形补边和主体颜色，输出均为 24fps；浏览器播放器尚未端到端验收，以下总项继续保持未勾选。
+补验：PostgreSQL＋FFmpeg 集成测试已覆盖横向、纵向、方形输出，逐帧解码核对纵向/方形补边和主体颜色，输出均为 24fps；浏览器只验收单段 Mock 导出的播放器，多分辨率混合输入未在浏览器复验。V35 起新视频归档固定时长，手工导出按源时长设置默认终点，服务端预检在入队前拒绝越界或缺时长的旧素材；见 `docs/evidence/T25-sequential-export-partial.md`。旧视频不自动回填，需重新归档。
 
 - [ ] 不同输入分辨率/帧率规范化后可播放，默认不裁剪主体。
-- [ ] 命令不经过 shell，参数与路径不由模型自由提供。
+- [x] 命令不经过 shell，参数与路径不由模型自由提供（服务端固定 FFmpeg 参数及归档 Asset 路径、`ProcessBuilder` 参数数组；导出进程在独立锁定工作目录运行，媒体子进程不继承应用密钥环境；真实 PostgreSQL/FFmpeg 导出与本地进程测试通过）。
 - [ ] 取消、超时、磁盘不足正确清理临时文件，不伪装成功。
 
 ### T26 项目导出与用量显示
@@ -347,7 +361,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 交付：脱敏项目 JSON/素材清单、模型/模板版本、已知/估算/未知用量。
 
-进展：同一一致性快照下的脱敏项目 JSON/素材元数据清单、历史产物版本、前端下载入口，以及 LLM 回合和图片/视频/项目导出 Task 的持久预留与唯一结算、UNKNOWN 费用显示见 `docs/evidence/T26-project-manifest-partial.md`。项目导出的取消、失败及过期租约恢复会幂等释放预留；图片/视频仅在证明尚无提交检查点的取消、预检失败或取消租约恢复后释放。Mock 三镜头已通过真实 PostgreSQL/FFmpeg 与受保护 HTTP 下载验证；已提交请求、LLM 的安全失败释放、真实价格与真实 Provider 三镜头下载仍未完成，以下验收项保持未勾选。
+进展：同一一致性快照下的脱敏项目 JSON/素材元数据清单、历史产物版本、前端下载入口，以及 LLM 回合和图片/视频/项目导出 Task 的持久预留与唯一结算、UNKNOWN 费用显示见 `docs/evidence/T26-project-manifest-partial.md`。项目导出的取消、失败及过期租约恢复会幂等释放预留；图片/视频仅在证明尚无提交检查点的取消、预检失败或取消租约恢复后释放。完成的导出记录现可按服务端固定的 Task 输入快照分别下载最终 MP4 与各段原视频，刷新后不依赖编辑草稿；前端组件测试见同一证据。Mock 三镜头已通过真实 PostgreSQL/FFmpeg 与受保护 HTTP 下载验证；已提交请求、LLM 的安全失败释放、真实价格与真实 Provider 三镜头下载仍未完成，以下验收项保持未勾选。
 
 - [x] 导出无服务端 Key、会话、原始内部配置或可复用签名链接（项目清单逐字段白名单；真实 PostgreSQL 配置密钥、HTTP 会话标记、媒体参数与签名链接的集成测试；用户主动写入的创作正文仍按内容导出）。
 - [x] 未知费用不显示零；同一任务重复通知不重复结算（HTTP null 金额、前端 UNKNOWN 优先显示及媒体/导出重复结算的真实 PostgreSQL 测试；外部真实价格和提交后失败费用语义仍未验证）。
@@ -361,9 +375,11 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 ### T27 故障、安全和回归套件
 
+Prompt 版本补充：新 Run 的策略快照固定系统 Prompt v2；历史无版本 Run 无法可靠还原，未发送的首轮请求必须阻断并人工重建。v1 历史套件已保留，当前 v2 也有独立的 30 条固定样本输入；两者均未作为真实模型评估通过证据，详见 `docs/evidence/T27-creator-corpus-partial.md`。
+
 依赖：T26。
 
-进展：已冻结 30 条 Creator 指令样本，分类、fixture 与预期判定由本地测试保护；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的 `approve_plan` 调用不能创建计划或媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run/审批落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、缩略图、MP4 写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 15 的步骤数量与任务落库核对及前端数量不一致阻断见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
+进展：已冻结 30 条 Creator 指令样本，分类、fixture 与预期判定由本地测试保护；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的 `approve_plan` 调用不能创建计划或媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run/审批落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 3 已补同一次假 ComfyUI 接收请求窗口内强杀真实提交进程、第二进程恢复 UNKNOWN 且不重提的测试，见 `docs/evidence/T27-comfy-accepted-process-kill.md`，响应丢失和独立进程恢复的早期证据另见 `docs/evidence/T27-comfy-response-loss.md` 与 `docs/evidence/T13-process-kill-smoke.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、缩略图、MP4 及导出 MP4 归档写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 13 的 Artifact/Asset/Run/SSE 精确 ID 越权 HTTP 测试见 `docs/evidence/T27-resource-scope.md`；场景 15 已补单镜头 `1+1` 及三镜头 `3+3` 图片/视频审批的 Chrome 展示与持久 Task 数量跨层核对，见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
 
 - [ ] 主规格第 22 节的全部故障验收有可重复测试证据。
 - [ ] 至少 30 条固定 Agent 样本集，保存配置版本与失败报告。
@@ -371,11 +387,17 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 ### T28 性能与可观测性
 
+HTTP 关联补验：服务端生成的请求 ID 同时进入响应头、ProblemDetail 与 ECS 结构化日志；客户端伪造值被忽略，请求线程 MDC 会清理。真实 Tomcat＋PostgreSQL 和单测见 `docs/evidence/T28-request-correlation.md`。后台任务与异步 SSE 后续发送尚未补齐全量关联；此关联测试本身不测性能。
+
+本机隔离性能补验：真实 Chrome＋PostgreSQL 在 M1 业务项目上测项目列表/快照各 100 次、Run 受理及场景写入到画布可见各 30 次；首次事件 p95 超过 1 秒，改为事务提交后提示共享事件读取、保留 1 秒持久补发后复测四项本机目标均满足。方法、样本和限制见 `docs/evidence/T28-api-and-event-latency.md`；高并发、长期内存和任务队列目标仍待验。
+
+SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE 连接反复打开/关闭，管理员指标每轮在 45 秒内归零；25 秒时曾残留 6 条，断线并非即时感知。见 `docs/evidence/T28-sse-connection-cycle.md`。长期堆、代理连接与预览内存仍未测量。
+
 依赖：T27。
 
-进展：项目 SSE 活跃/关闭连接、发送失败和服务端事件发送延迟已有无高基数标签的指标；Actuator metrics 仅已认证管理员可读。Task READY/UNKNOWN/BLOCKED 总量以三个固定状态标签从 PostgreSQL 定期刷新，V33 有部分索引；活动 Run 数量以无标签指标定期读取持久状态。readiness 已纳入数据库健康，独立 PostgreSQL 停机测试验证 503 readiness 与 200 liveness。新增管理员只读系统诊断页，展示本地数据库/存储/Provider 配置状态及七天内异常 Task 状态计数，不触发外部探测或付费任务，见 `docs/evidence/T28-system-diagnostics-partial.md`。前端按路由拆包与构建体积见 `docs/evidence/T28-route-bundles-partial.md`。真实 PostgreSQL＋HTTP SSE 回放、连接释放及持久状态测试见 `docs/evidence/T28-sse-metrics-partial.md`。尚无浏览器性能目标测量，以下门禁保持未勾选。
+进展：项目 SSE 活跃/关闭连接、发送失败和服务端事件发送延迟已有无高基数标签的指标；Actuator metrics 仅已认证管理员可读。`http.server.requests` 已配置服务端 p95 观测入口并经真实 Tomcat 请求验证，但尚非性能达标证据，见 `docs/evidence/T28-http-p95-instrumentation.md`。Task READY/UNKNOWN/BLOCKED 总量以三个固定状态标签从 PostgreSQL 定期刷新，V33 有部分索引；同一快照现还给出无 ID 标签的最久到期 READY 等待年龄，数据库失效置 -1，见 `docs/evidence/T28-ready-queue-age.md`。活动 Run 数量以无标签指标定期读取持久状态。资产卷所在文件系统的总量、可用量和占用比现按 30 秒采样、无项目标签，失效时返回 -1 而非旧值，见 `docs/evidence/T28-storage-capacity-metric.md`。readiness 已纳入数据库健康，独立 PostgreSQL 停机测试验证 503 readiness 与 200 liveness。新增管理员只读系统诊断页，展示本地数据库/存储/Provider 配置状态及七天内异常 Task 状态计数，不触发外部探测或付费任务，见 `docs/evidence/T28-system-diagnostics-partial.md`。前端按路由拆包与构建体积见 `docs/evidence/T28-route-bundles-partial.md`。真实 PostgreSQL＋HTTP SSE 回放、连接释放及持久状态测试见 `docs/evidence/T28-sse-metrics-partial.md`。隔离 Chrome 中 300 张真实业务卡片、600 条可见关系和 40 张归档 PNG 缩略图的刷新/拖动测量见 `docs/evidence/T28-canvas-capacity.md`；其他性能指标仍待独立测量。
 
-- [ ] 使用真实缩略图和媒体卡片测 300 节点/600 关系，记录机器与浏览器。
+- [x] 使用真实缩略图和媒体卡片测 300 节点/600 关系，记录机器与浏览器（40 张图片卡片；Chrome/M2/隔离 4 vCPU Compose，约 59 FPS；尚未包含视频卡片）。
 - [ ] API、事件延迟、SSE 连接释放、任务队列与内存目标经过测量。
 - [ ] 高基数 ID 未成为指标 label；诊断不会发起未确认的付费任务。
 
@@ -383,7 +405,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 依赖：T27–T28。
 
-进展：已实现显式 `AGENVAS_RECOVERY_MODE=true` 只读核对模式，关闭后台调度并拒绝项目/模型配置写入；在两个隔离 Compose 项目之间实际恢复 PostgreSQL 与资产卷，验证原管理员登录、项目/Artifact 读取、图片哈希和写入 503。另以隔离 PostgreSQL `pg_dump/pg_restore` 验证加密模型配置版本在新密钥实例或轮换后的历史密钥环下可解密、缺失历史密钥时拒绝，见 `docs/evidence/T29-isolated-restore-partial.md` 与 `docs/operations/backup-restore.md`。完整部署密钥交接、真实 Provider 请求与生产 RPO/RTO 尚未演练，门禁未完成。
+进展：已实现显式 `AGENVAS_RECOVERY_MODE=true` 只读核对模式，关闭后台调度并拒绝项目/模型配置写入；在两个隔离 Compose 项目之间实际恢复 PostgreSQL 与资产卷，验证原管理员登录、项目/Artifact 读取、图片哈希和写入 503。另以隔离 PostgreSQL `pg_dump/pg_restore` 验证加密模型配置版本在新密钥实例或轮换后的历史密钥环下可解密、缺失历史密钥时拒绝；新增需显式项目名的备份命令，并以隔离项目验证三份归档、哈希和空库恢复探针，见 `docs/evidence/T29-isolated-restore-partial.md` 与 `docs/operations/backup-restore.md`。Compose 现配置可调的三服务内存/CPU 上限、日志轮转和服务停机等待期，并有 CI 配置断言，见 `docs/evidence/T29-compose-runtime-bounds.md`。应用关闭事件阻止新 Run 和全部 Task 认领入口，保留已有 READY 工作供后续恢复；隔离子 JVM 已实测 SIGTERM 触发关闭门闩且不重写待认领任务，见 `docs/evidence/T29-shutdown-admission.md`。本机隔离空卷 Compose 镜像构建、初始化/登录、容器优雅停机和重启后会话恢复也已实测，见 `docs/evidence/T29-fresh-compose-smoke.md`；这还不是全新机器验收。活跃外部提交交错和生产容量尚未验证。完整部署密钥交接、真实 Provider 请求与生产 RPO/RTO 尚未演练，门禁未完成。
 
 - [ ] 全新机器按 README 成功启动与登录。
 - [ ] 备份数据库、媒体、模板和密钥并完成实际恢复。

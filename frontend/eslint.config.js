@@ -15,4 +15,13 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ["e2e/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+  },
 );

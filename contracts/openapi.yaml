@@ -5,6 +5,7 @@ info:
   description: |
     Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、计划、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
     部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects 与 /api/v1/settings 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
+    服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
 servers:
   - url: /
 paths:
@@ -429,6 +430,8 @@ paths:
               schema: {type: string, format: binary}
             image/webp:
               schema: {type: string, format: binary}
+            video/mp4:
+              schema: {type: string, format: binary}
         "206": {description: 部分文件，返回 Content-Range}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -447,6 +450,25 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "416": {description: 请求的字节范围不可用}
+  /api/v1/projects/{projectId}/assets/{assetId}:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: assetId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getAssetMetadata
+      summary: 读取已授权素材的不可变元数据与已验证视频时长
+      tags: [Assets]
+      responses:
+        "200":
+          description: 素材元数据
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Asset"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/assets/{assetId}/thumbnail:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -471,8 +493,13 @@ paths:
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: createArtifact
-      summary: 创建产物及首个不可变版本
+      summary: 幂等创建产物及首个不可变版本
       tags: [Artifacts]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 200}
       requestBody:
         required: true
         content:
@@ -480,7 +507,10 @@ paths:
             schema: {$ref: "#/components/schemas/CreateArtifactRequest"}
       responses:
         "201":
-          description: 产物已创建
+          description: 产物已创建或精确重放
+          headers:
+            Idempotency-Replayed:
+              schema: {type: string, enum: ["true", "false"]}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Artifact"}
@@ -709,6 +739,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ServiceStopping"}
   /api/v1/projects/{projectId}/runs/preflight:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1390,7 +1421,7 @@ components:
     ManifestAsset:
       type: object
       additionalProperties: false
-      required: [id, mediaKind, contentType, byteSize, sha256, createdAt]
+      required: [id, mediaKind, contentType, byteSize, sha256, durationMs, createdAt]
       properties:
         id: {type: string, format: uuid}
         mediaKind: {type: string, enum: [IMAGE, VIDEO]}
@@ -1399,6 +1430,7 @@ components:
         sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         width: {type: [integer, "null"]}
         height: {type: [integer, "null"]}
+        durationMs: {type: [integer, "null"], minimum: 1, maximum: 60000}
         thumbnailSha256: {type: [string, "null"]}
         createdAt: {type: string, format: date-time}
     MediaExportSegment:
@@ -1576,7 +1608,7 @@ components:
     Asset:
       type: object
       additionalProperties: false
-      required: [id, projectId, mediaKind, contentType, byteSize, sha256, width, height, createdAt]
+      required: [id, projectId, mediaKind, contentType, byteSize, sha256, width, height, durationMs, createdAt]
       properties:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
@@ -1586,6 +1618,7 @@ components:
         sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         width: {type: [integer, "null"], minimum: 1}
         height: {type: [integer, "null"], minimum: 1}
+        durationMs: {type: [integer, "null"], minimum: 1, maximum: 60000}
         createdAt: {type: string, format: date-time}
     ArtifactKind:
       type: string
@@ -1783,6 +1816,10 @@ components:
           type: integer
           minimum: 1
           description: 运行前预览中的模型配置版本；配置变化时创建返回 409
+        expectedSystemPromptVersion:
+          type: integer
+          minimum: 1
+          description: 运行前预览中的系统提示词版本；规则变化时创建返回 409
         redoShotArtifactId:
           type: string
           format: uuid
@@ -1857,9 +1894,13 @@ components:
     RunPolicySnapshot:
       type: object
       additionalProperties: false
+      description: >-
+        New Run policies are schema v2 and pin systemPromptVersion=2. Historical v1
+        snapshots lack this field and cannot safely start an uncheckpointed model turn.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions, maxImages, maxVideos, maxShots]
       properties:
-        schemaVersion: {type: integer, const: 1}
+        schemaVersion: {type: integer, enum: [1, 2]}
+        systemPromptVersion: {type: integer, enum: [1, 2], description: Required on new v2 snapshots; absent on historical v1 snapshots.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}
@@ -2287,6 +2328,11 @@ components:
           schema: {$ref: "#/components/schemas/Problem"}
     Unavailable:
       description: 部署凭证加密主密钥尚未配置
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    ServiceStopping:
+      description: 实例正在关闭，拒绝创建新的 Agent Run；稍后以新的请求重试
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}

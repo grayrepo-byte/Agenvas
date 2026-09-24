@@ -101,7 +101,7 @@ public class AssetService {
             boolean taskOutput) {
         Asset asset = new Asset(assetId, projectId, Asset.MediaKind.IMAGE,
                 stored.objectKey(), stored.contentType(), stored.byteSize(),
-                stored.sha256(), stored.width(), stored.height(),
+                stored.sha256(), stored.width(), stored.height(), null,
                 stored.thumbnailKey(), stored.thumbnailByteSize(),
                 stored.thumbnailSha256(), clock.instant());
         try {
@@ -191,7 +191,7 @@ public class AssetService {
             boolean taskOutput) {
         Asset asset = new Asset(assetId, projectId, Asset.MediaKind.VIDEO,
                 stored.objectKey(), "video/mp4", stored.byteSize(), stored.sha256(),
-                stored.width(), stored.height(), stored.thumbnailKey(),
+                stored.width(), stored.height(), stored.durationMs(), stored.thumbnailKey(),
                 stored.thumbnailByteSize(), stored.thumbnailSha256(), clock.instant());
         try {
             events.recordChange(ownerId, projectId, () -> {

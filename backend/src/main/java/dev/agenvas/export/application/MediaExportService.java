@@ -115,6 +115,9 @@ public class MediaExportService {
             }
             Asset asset = assets.requireReadyMedia(ownerId, projectId, assetId,
                     Asset.MediaKind.VIDEO);
+            if (asset.durationMs() == null || segment.endMs() > asset.durationMs()) {
+                throw invalid("裁剪终点超过已归档视频时长，或旧素材缺少可验证时长。");
+            }
             ObjectNode item = pinned.addObject();
             item.put("videoArtifactId", segment.videoArtifactId().toString());
             item.put("videoVersionId", segment.videoVersionId().toString());

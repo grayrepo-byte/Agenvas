@@ -7,10 +7,14 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.plan.application.ShotKeyframeSelection;
+import dev.agenvas.plan.application.ShotKeyframeSelectionRepository;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,34 +41,40 @@ public class TaskService {
     private final ProjectService projects;
     private final ArtifactService artifacts;
     private final CanvasService canvas;
+    private final ShotKeyframeSelectionRepository keyframeSelections;
     private final TaskRepository tasks;
     private final TaskProperties properties;
     private final ProjectEventService events;
     private final UsageService usage;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ShutdownGate shutdownGate;
 
     public TaskService(
             AgentRunService runs,
             ProjectService projects,
             ArtifactService artifacts,
             CanvasService canvas,
+            ShotKeyframeSelectionRepository keyframeSelections,
             TaskRepository tasks,
             TaskProperties properties,
             ProjectEventService events,
             UsageService usage,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            ShutdownGate shutdownGate) {
         this.runs = runs;
         this.projects = projects;
         this.artifacts = artifacts;
         this.canvas = canvas;
+        this.keyframeSelections = keyframeSelections;
         this.tasks = tasks;
         this.properties = properties;
         this.events = events;
         this.usage = usage;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.shutdownGate = shutdownGate;
     }
 
     /** Persists one Task with immutable input and same-Run dependency validation. */
@@ -341,7 +351,7 @@ public class TaskService {
             Task updated = tasks.findById(taskId).orElseThrow(this::notFound);
             AgentRun run = runs.get(ownerId, projectId, updated.runId());
             if (run.status() == AgentRun.Status.BLOCKED
-                    && pinnedShotIsCurrent(ownerId, updated)
+                    && pinnedMediaInputsCurrent(ownerId, updated)
                     && tasks.listByRun(ownerId, projectId, run.id()).stream()
                             .noneMatch(item -> item.status() == Task.Status.UNKNOWN
                                     || item.status() == Task.Status.BLOCKED
@@ -369,104 +379,113 @@ public class TaskService {
     /** Claims a bounded batch in a short transaction; caller executes work after return. */
     @Transactional
     public List<Task> claimDue(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
             throw validation("claim limit 必须为正数。");
         }
         Instant now = clock.instant();
-        return tasks.claimDue(
-                workerId, limit, now, now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDue(
+                workerId, limit, now, now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Claims only image tasks so a Mock image adapter never consumes unimplemented video work. */
     @Transactional
     public List<Task> claimImagesDue(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
             throw validation("claim limit 必须为正数。");
         }
         Instant now = clock.instant();
-        return tasks.claimDueImages(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueImages(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Claims at most one ComfyUI image under the persisted cross-instance dispatch gate. */
     @Transactional
     public List<Task> claimComfyImage(String requestedWorkerId) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         Instant now = clock.instant();
-        return tasks.claimDueComfyImage(workerId, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyImage(workerId, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Claims one video submission only while the shared ComfyUI slot is free. */
     @Transactional
     public List<Task> claimComfyVideo(String requestedWorkerId) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         Instant now = clock.instant();
-        return tasks.claimDueComfyVideo(workerId, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyVideo(workerId, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Keeps video claims separate from image and Agent worker domains. */
     @Transactional
     public List<Task> claimVideosDue(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
             throw validation("claim limit 必须为正数。");
         }
         Instant now = clock.instant();
-        return tasks.claimDueVideos(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueVideos(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Claims only saved external request ids; canceled Runs remain queryable for late archival. */
     @Transactional
     public List<Task> claimProviderPolls(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) throw validation("claim limit 必须为正数。");
         Instant now = clock.instant();
-        return tasks.claimDueProviderPolls(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueProviderPolls(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** ComfyUI image worker cannot steal an accepted video request. */
     @Transactional
     public List<Task> claimComfyImagePolls(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) throw validation("claim limit 必须为正数。");
         Instant now = clock.instant();
-        return tasks.claimDueComfyImagePolls(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyImagePolls(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Video pollers can never consume a saved image request. */
     @Transactional
     public List<Task> claimComfyVideoPolls(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) throw validation("claim limit 必须为正数。");
         Instant now = clock.instant();
-        return tasks.claimDueComfyVideoPolls(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyVideoPolls(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Claims only project-level exports with their own bounded lease. */
     @Transactional
     public List<Task> claimExportsDue(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
             throw validation("claim limit 必须为正数。");
         }
         Instant now = clock.instant();
-        return tasks.claimDueExports(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueExports(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Resolves a claimed task's trusted owner without accepting an owner id from the model. */
@@ -483,14 +502,15 @@ public class TaskService {
     /** Claims only model-turn work for the bounded Run scheduler. */
     @Transactional
     public List<Task> claimAgentTurns(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
             throw validation("claim limit 必须为正数。");
         }
         Instant now = clock.instant();
-        return tasks.claimDueAgentTurns(workerId, limit, now,
-                now.plus(properties.leaseDuration()));
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueAgentTurns(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
     }
 
     /** Extends an unexpired lease without sharing the long-work execution thread. */
@@ -566,7 +586,7 @@ public class TaskService {
             boolean projectArchived = projects.get(ownerId, lease.projectId()).status()
                     == Project.Status.ARCHIVED;
             boolean selectResult = !canceled && !projectArchived
-                    && pinnedShotIsCurrent(ownerId, lease);
+                    && pinnedMediaInputsCurrent(ownerId, lease);
             boolean activeOrUnknown = current.status() == Task.Status.RUNNING
                     || current.status() == Task.Status.SUBMITTING
                     || current.status() == Task.Status.WAITING_PROVIDER
@@ -615,10 +635,25 @@ public class TaskService {
                         target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
                         content, selectResult);
             }
+            ArtifactService.ArtifactView selectedShot = null;
+            if (result.selected() && lease.kind() == Task.Kind.VIDEO_GENERATION
+                    && lease.input().has("shotArtifactId")
+                    && lease.input().has("shotVersionId")
+                    && lease.input().has("imageVersionId")) {
+                selectedShot = artifacts.selectTaskVideoOnShotWithinChange(ownerId,
+                        lease.projectId(), lease.runId(),
+                        UUID.fromString(lease.input().path("shotArtifactId").asText()),
+                        UUID.fromString(lease.input().path("shotVersionId").asText()),
+                        UUID.fromString(lease.input().path("imageVersionId").asText()),
+                        result.versionId());
+            }
             ObjectNode output = objectMapper.createObjectNode();
             output.put("artifactId", artifactId.toString());
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
+            if (selectedShot != null) {
+                output.put("selectedShotVersionId", selectedShot.currentVersion().id().toString());
+            }
             if (canceled) {
                 preserveCanceledResult(lease, workerId, output, now);
             } else if (!(acknowledgedPoll
@@ -643,6 +678,10 @@ public class TaskService {
             payload.put("artifactId", artifactId.toString());
             payload.put("artifactVersionId", result.versionId().toString());
             payload.put("selected", result.selected());
+            if (selectedShot != null) {
+                payload.put("shotArtifactId", selectedShot.artifact().id().toString());
+                payload.put("shotVersionId", selectedShot.currentVersion().id().toString());
+            }
             payload.put("possibleExternalCost", true);
             events.append(ownerId, lease.projectId(),
                     new ProjectEventService.EventDraft("task.status.changed", 1,
@@ -850,9 +889,9 @@ public class TaskService {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_PROJECT_ARCHIVED",
                         "项目已归档", "项目归档后不会提交新的媒体生成请求。", false);
             }
-            if (!pinnedShotIsCurrent(ownerId, lease)) {
+            if (!pinnedMediaInputsCurrent(ownerId, lease)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_INPUT_STALE",
-                        "任务输入已过期", "镜头已修改，旧媒体任务不会提交生成请求。", false);
+                        "任务输入已过期", "镜头或选定关键帧已修改，旧媒体任务不会提交生成请求。", false);
             }
             if (!tasks.beginSubmission(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
                     UUID.randomUUID(), requestKey, candidateOriginSha256, now)) {
@@ -982,6 +1021,49 @@ public class TaskService {
                     && shot.artifact().archivedAt() == null
                     && versionId.equals(shot.currentVersion().id());
         } catch (ApiProblemException | IllegalArgumentException invalidOrInaccessible) {
+            return false;
+        }
+    }
+
+    /** Planned video work may select its result only while the exact human keyframe choice remains. */
+    private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
+        if (!pinnedShotIsCurrent(ownerId, task)) return false;
+        JsonNode input = task.input();
+        if (task.kind() == Task.Kind.IMAGE_GENERATION
+                && input.has("referenceImageVersionId")) {
+            try {
+                UUID versionId = UUID.fromString(input.path("referenceImageVersionId").asText());
+                ArtifactVersion pinned = artifacts.requireImageVersionForTask(ownerId,
+                        task.projectId(), versionId);
+                Artifact current = artifacts.get(ownerId, task.projectId(), pinned.artifactId())
+                        .artifact();
+                return current.archivedAt() == null && current.currentVersionId().equals(versionId);
+            } catch (ApiProblemException | IllegalArgumentException unavailable) {
+                return false;
+            }
+        }
+        if (task.kind() != Task.Kind.VIDEO_GENERATION
+                || !input.has("keyframeSelectionVersion")) return true;
+        JsonNode selectionVersion = input.path("keyframeSelectionVersion");
+        if (!selectionVersion.isIntegralNumber() || !selectionVersion.canConvertToLong()) {
+            return false;
+        }
+        try {
+            UUID shotId = UUID.fromString(input.path("shotArtifactId").asText());
+            UUID shotVersionId = UUID.fromString(input.path("shotVersionId").asText());
+            UUID imageId = UUID.fromString(input.path("imageArtifactId").asText());
+            UUID imageVersionId = UUID.fromString(input.path("imageVersionId").asText());
+            ShotKeyframeSelection current = keyframeSelections.find(task.projectId(), shotId)
+                    .orElse(null);
+            Artifact image = artifacts.get(ownerId, task.projectId(), imageId).artifact();
+            return current != null
+                    && image.archivedAt() == null
+                    && image.currentVersionId().equals(imageVersionId)
+                    && current.shotVersionId().equals(shotVersionId)
+                    && current.imageArtifactId().equals(imageId)
+                    && current.imageVersionId().equals(imageVersionId)
+                    && current.version() == selectionVersion.longValue();
+        } catch (ApiProblemException | IllegalArgumentException invalidInput) {
             return false;
         }
     }

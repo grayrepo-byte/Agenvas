@@ -1,6 +1,8 @@
 spring:
   application:
     name: agenvas-server
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   datasource:
     url: ${AGENVAS_DB_URL:jdbc:postgresql://localhost:5432/agenvas}
     username: ${AGENVAS_DB_USER:agenvas}
@@ -39,7 +41,16 @@ server:
         same-site: lax
         secure: ${AGENVAS_SECURE_COOKIES:false}
 
+logging:
+  structured:
+    format:
+      console: ecs
+
 management:
+  metrics:
+    distribution:
+      percentiles:
+        http.server.requests: 0.95
   endpoints:
     web:
       exposure:

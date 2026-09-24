@@ -24,10 +24,10 @@ public class JdbcAssetRepository implements AssetRepository {
     public void insert(Asset asset) {
         jdbc.sql("""
                 insert into asset (id, project_id, media_kind, status, object_key,
-                    content_type, byte_size, sha256, width, height,
+                    content_type, byte_size, sha256, width, height, duration_ms,
                     thumbnail_key, thumbnail_byte_size, thumbnail_sha256, created_at)
                 values (:id, :projectId, :kind, 'READY', :objectKey, :contentType,
-                    :byteSize, :sha256, :width, :height,
+                    :byteSize, :sha256, :width, :height, :durationMs,
                     :thumbnailKey, :thumbnailByteSize, :thumbnailSha256, :createdAt)
                 """)
                 .param("id", asset.id())
@@ -39,6 +39,7 @@ public class JdbcAssetRepository implements AssetRepository {
                 .param("sha256", asset.sha256())
                 .param("width", asset.width())
                 .param("height", asset.height())
+                .param("durationMs", asset.durationMs(), java.sql.Types.INTEGER)
                 .param("thumbnailKey", asset.thumbnailKey(), java.sql.Types.VARCHAR)
                 .param("thumbnailByteSize", asset.thumbnailByteSize(), java.sql.Types.BIGINT)
                 .param("thumbnailSha256", asset.thumbnailSha256(), java.sql.Types.VARCHAR)
@@ -50,7 +51,7 @@ public class JdbcAssetRepository implements AssetRepository {
     public Optional<Asset> find(UUID projectId, UUID assetId) {
         return jdbc.sql("""
                 select id, project_id, media_kind, object_key, content_type,
-                    byte_size, sha256, width, height,
+                    byte_size, sha256, width, height, duration_ms,
                     thumbnail_key, thumbnail_byte_size, thumbnail_sha256, created_at
                 from asset where project_id = :projectId and id = :assetId
                 """)
@@ -66,6 +67,7 @@ public class JdbcAssetRepository implements AssetRepository {
                         rs.getString("sha256"),
                         rs.getObject("width", Integer.class),
                         rs.getObject("height", Integer.class),
+                        rs.getObject("duration_ms", Integer.class),
                         rs.getString("thumbnail_key"),
                         rs.getObject("thumbnail_byte_size", Long.class),
                         rs.getString("thumbnail_sha256"),
@@ -77,7 +79,7 @@ public class JdbcAssetRepository implements AssetRepository {
     public List<Asset> listProjectAssets(UUID projectId) {
         return jdbc.sql("""
                         select id, project_id, media_kind, object_key, content_type,
-                            byte_size, sha256, width, height,
+                            byte_size, sha256, width, height, duration_ms,
                             thumbnail_key, thumbnail_byte_size, thumbnail_sha256, created_at
                         from asset where project_id = :projectId
                         order by created_at, id
@@ -93,6 +95,7 @@ public class JdbcAssetRepository implements AssetRepository {
                         rs.getString("sha256"),
                         rs.getObject("width", Integer.class),
                         rs.getObject("height", Integer.class),
+                        rs.getObject("duration_ms", Integer.class),
                         rs.getString("thumbnail_key"),
                         rs.getObject("thumbnail_byte_size", Long.class),
                         rs.getString("thumbnail_sha256"),

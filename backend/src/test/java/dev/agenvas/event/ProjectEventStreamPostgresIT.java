@@ -23,6 +23,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -136,6 +137,20 @@ class ProjectEventStreamPostgresIT {
         }
         assertThat(deliveredCount).isGreaterThanOrEqualTo(1);
 
+        // Repeated real socket closes must not retain subscribers or exhaust the 64-client cap.
+        for (int round = 0; round < 3; round++) {
+            for (int index = 0; index < 20; index++) {
+                HttpResponse<InputStream> repeated = client.send(
+                        eventRequest(project.id(), 0, null),
+                        HttpResponse.BodyHandlers.ofInputStream());
+                assertThat(repeated.statusCode()).isEqualTo(200);
+                try (InputStream body = repeated.body()) {
+                    assertThat(readFrame(body).id()).isEqualTo("1");
+                }
+            }
+            awaitNoActiveStreams(client, activeMetricPath);
+        }
+
         runService.create(owner.userId(), project.id(), agent.id(), "Create shots", "stream-run");
         HttpResponse<InputStream> replay = client.send(
                 eventRequest(project.id(), 0, "1"),
@@ -180,6 +195,25 @@ class ProjectEventStreamPostgresIT {
                                 "{\"loginName\":\"stream-admin\",\"password\":\"stream-password-123\"}"))
                         .build(), HttpResponse.BodyHandlers.ofString());
         assertThat(login.statusCode()).isEqualTo(200);
+    }
+
+    /** A closed client may be noticed on the next bounded heartbeat, never indefinitely. */
+    private void awaitNoActiveStreams(HttpClient client, String metricPath) throws Exception {
+        Instant deadline = Instant.now().plusSeconds(45);
+        double lastActive = -1;
+        while (Instant.now().isBefore(deadline)) {
+            HttpResponse<String> metric = client.send(HttpRequest.newBuilder(uri(metricPath))
+                            .timeout(Duration.ofSeconds(5)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(metric.statusCode()).isEqualTo(200);
+            double active = objectMapper.readTree(metric.body())
+                    .path("measurements").path(0).path("value").asDouble(-1);
+            lastActive = active;
+            if (active == 0) return;
+            Thread.sleep(250);
+        }
+        throw new AssertionError("Closed SSE clients remained active beyond the heartbeat window: "
+                + lastActive);
     }
 
     private HttpRequest eventRequest(UUID projectId, long after, String lastEventId) {

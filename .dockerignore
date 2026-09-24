@@ -9,3 +9,4 @@ frontend/dist
 frontend/coverage
 docs
 !docs/evaluation/creator-v1-cases.json
+!docs/evaluation/creator-v2-cases.json

@@ -12,6 +12,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
@@ -57,6 +58,7 @@ public class AgentRunService {
     private final ChatGateway chatGateway;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ShutdownGate shutdownGate;
 
     public AgentRunService(
             ProjectService projects,
@@ -70,7 +72,8 @@ public class AgentRunService {
             UsageService usage,
             ChatGateway chatGateway,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            ShutdownGate shutdownGate) {
         this.projects = projects;
         this.agents = agents;
         this.artifacts = artifacts;
@@ -83,6 +86,7 @@ public class AgentRunService {
         this.chatGateway = chatGateway;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.shutdownGate = shutdownGate;
     }
 
     /** Creates one queued Run or returns the original Run for an exact command replay. */
@@ -153,6 +157,26 @@ public class AgentRunService {
             List<UUID> selectedItemIds,
             String expectedModelConfigSource,
             Integer expectedModelConfigVersion) {
+        return create(ownerId, projectId, agentId, requestedInstruction,
+                requestedIdempotencyKey, expectedAgentVersion, redoShotArtifactId,
+                selectedItemIds, expectedModelConfigSource, expectedModelConfigVersion, null);
+    }
+
+    /** Rejects creation when the reviewed system prompt changed before consent. */
+    @Transactional
+    public CreateResult create(
+            UUID ownerId,
+            UUID projectId,
+            UUID agentId,
+            String requestedInstruction,
+            String requestedIdempotencyKey,
+            Long expectedAgentVersion,
+            UUID redoShotArtifactId,
+            List<UUID> selectedItemIds,
+            String expectedModelConfigSource,
+            Integer expectedModelConfigVersion,
+            Integer expectedSystemPromptVersion) {
+        shutdownGate.requireAcceptingRuns();
         String instruction = validateInstruction(requestedInstruction);
         String key = validateIdempotencyKey(requestedIdempotencyKey);
         List<UUID> selection = validateSelection(selectedItemIds);
@@ -165,6 +189,9 @@ public class AgentRunService {
         if (expectedModelConfigSource != null) {
             requestFingerprint += "\n" + expectedModelConfigSource + "\n"
                     + expectedModelConfigVersion;
+        }
+        if (expectedSystemPromptVersion != null) {
+            requestFingerprint += "\nsystem-prompt:" + expectedSystemPromptVersion;
         }
         String requestHash = sha256(requestFingerprint);
         Instant now = clock.instant();
@@ -203,6 +230,11 @@ public class AgentRunService {
             throw new ApiProblemException(HttpStatus.CONFLICT, "MODEL_CONFIG_CONFLICT",
                     "模型配置已变化", "将使用的模型配置与运行前预览不同，请重新检查运行范围。", false);
         }
+        if (expectedSystemPromptVersion != null
+                && expectedSystemPromptVersion != policy.path("systemPromptVersion").asInt(-1)) {
+            throw new ApiProblemException(HttpStatus.CONFLICT, "SYSTEM_PROMPT_CONFLICT",
+                    "系统提示词已变化", "运行规则与运行前预览不同，请重新检查后再启动。", false);
+        }
         UUID redoShotVersionId = null;
         if (redoShotArtifactId != null) {
             ArtifactService.ArtifactView shot = artifacts.get(ownerId, projectId,
@@ -233,7 +265,8 @@ public class AgentRunService {
                 now,
                 now,
                 null);
-        CreatedRun created = events.recordChange(ownerId, projectId, () -> {
+        CreatedRun created = shutdownGate.admitRun(() -> events.recordChange(ownerId, projectId, () -> {
+                    shutdownGate.requireAcceptingRuns();
                     projects.requireAvailableRunSlot(ownerId, projectId);
                     runs.create(run);
                     projects.assignRunSlot(ownerId, projectId, runId);
@@ -252,7 +285,7 @@ public class AgentRunService {
                     return ProjectEventService.Change.changed(
                             new CreatedRun(run, firstTaskId), runEvent(run));
                 })
-                .value();
+                .value());
         ObjectNode taskPayload = objectMapper.createObjectNode();
         taskPayload.put("taskId", created.firstTaskId().toString());
         taskPayload.put("status", "READY");
@@ -538,7 +571,8 @@ public class AgentRunService {
 
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
-        policy.put("schemaVersion", 1);
+        policy.put("schemaVersion", 2);
+        policy.put("systemPromptVersion", 2);
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
         policy.put("modelConfigVersion", model.version());
         policy.put("modelConfigSource", model.source());

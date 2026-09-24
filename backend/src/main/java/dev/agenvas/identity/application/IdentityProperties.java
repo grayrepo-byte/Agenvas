@@ -9,4 +9,14 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "agenvas.identity")
 public record IdentityProperties(
-        @NotBlank @Size(min = 24, max = 512) String bootstrapSecret) {}
+        @NotBlank @Size(min = 24, max = 512) String bootstrapSecret) {
+
+    /** Refuses historical example values even outside Compose-based deployments. */
+    public IdentityProperties {
+        if ("local-bootstrap-secret-change-me".equals(bootstrapSecret)
+                || "replace-with-a-long-random-bootstrap-secret".equals(bootstrapSecret)) {
+            throw new IllegalArgumentException(
+                    "Administrator bootstrap secret must be deployment-specific");
+        }
+    }
+}

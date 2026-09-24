@@ -348,6 +348,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/assets/{assetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                assetId: string;
+            };
+            cookie?: never;
+        };
+        /** 读取已授权素材的不可变元数据与已验证视频时长 */
+        get: operations["getAssetMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/assets/{assetId}/thumbnail": {
         parameters: {
             query?: never;
@@ -379,7 +399,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 创建产物及首个不可变版本 */
+        /** 幂等创建产物及首个不可变版本 */
         post: operations["createArtifact"];
         delete?: never;
         options?: never;
@@ -1150,6 +1170,7 @@ export interface components {
             sha256: string;
             width?: number | null;
             height?: number | null;
+            durationMs: number | null;
             thumbnailSha256?: string | null;
             /** Format: date-time */
             createdAt: string;
@@ -1293,6 +1314,7 @@ export interface components {
             sha256: string;
             width: number | null;
             height: number | null;
+            durationMs: number | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -1443,6 +1465,8 @@ export interface components {
             expectedModelConfigSource?: string;
             /** @description 运行前预览中的模型配置版本；配置变化时创建返回 409 */
             expectedModelConfigVersion?: number;
+            /** @description 运行前预览中的系统提示词版本；规则变化时创建返回 409 */
+            expectedSystemPromptVersion?: number;
             /**
              * Format: uuid
              * @description 可选单镜头重做范围；必须为 Agent 明确绑定的当前镜头版本
@@ -1506,9 +1530,15 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
+        /** @description New Run policies are schema v2 and pin systemPromptVersion=2. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
         RunPolicySnapshot: {
-            /** @constant */
-            schemaVersion: 1;
+            /** @enum {integer} */
+            schemaVersion: 1 | 2;
+            /**
+             * @description Required on new v2 snapshots; absent on historical v1 snapshots.
+             * @enum {integer}
+             */
+            systemPromptVersion?: 1 | 2;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
@@ -2038,6 +2068,15 @@ export interface components {
         };
         /** @description 部署凭证加密主密钥尚未配置 */
         Unavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description 实例正在关闭，拒绝创建新的 Agent Run；稍后以新的请求重试 */
+        ServiceStopping: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2657,6 +2696,7 @@ export interface operations {
                     "image/png": string;
                     "image/jpeg": string;
                     "image/webp": string;
+                    "video/mp4": string;
                 };
             };
             /** @description 部分文件，返回 Content-Range */
@@ -2716,6 +2756,31 @@ export interface operations {
             };
         };
     };
+    getAssetMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                assetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 素材元数据 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getAssetThumbnail: {
         parameters: {
             query?: never;
@@ -2744,7 +2809,9 @@ export interface operations {
     createArtifact: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -2756,9 +2823,10 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 产物已创建 */
+            /** @description 产物已创建或精确重放 */
             201: {
                 headers: {
+                    "Idempotency-Replayed"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -3079,6 +3147,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["ServiceStopping"];
         };
     };
     getRunPreflight: {

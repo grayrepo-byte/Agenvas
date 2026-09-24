@@ -53,6 +53,10 @@ export function RunHistoryPanel({ projectId, agentId }: { projectId: string; age
             <ul>{tasks.data.map((task) => <li className="break-words" key={task.id}>
               {task.kind} · {task.stepKey} · {task.status}{task.errorCode ? ` · ${task.errorCode}` : ""}
             </li>)}</ul>
+            {tasks.data.some((task) => task.kind === "IMAGE_GENERATION" ||
+              task.kind === "VIDEO_GENERATION") ? <p className="mt-2 text-[var(--muted)]">
+              已受理任务的查询或归档技术重试只核对原 Provider 请求，不会因下载失败重新生成。若内容不满意，需要基于当前版本发起新 Run 并重新审批媒体计划；这属于可能产生额外成本的新生成尝试。UNKNOWN 请先核对原请求，不把未知状态当作可安全重做。
+            </p> : null}
           </div> : null}
         </div> : null}
       </li>)}

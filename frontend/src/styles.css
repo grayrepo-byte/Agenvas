@@ -156,7 +156,8 @@ button:disabled {
   color: #8b5a0a;
 }
 
-.save-badge-failed {
+.save-badge-failed,
+.save-badge-conflict {
   background: #fff0ed;
   color: #9b2c2c;
 }

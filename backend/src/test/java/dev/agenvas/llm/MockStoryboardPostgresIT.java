@@ -22,9 +22,12 @@ import dev.agenvas.export.application.MediaExportWorker;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnWorker;
+import dev.agenvas.llm.application.InitialModelContextService;
 import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.ShotKeyframeSelectionService;
+import dev.agenvas.plan.application.ShotKeyframeSelection;
+import dev.agenvas.plan.application.ShotKeyframeSelectionRepository;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MockImageWorker;
@@ -36,8 +39,12 @@ import dev.agenvas.task.domain.Task;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
 import org.springframework.http.HttpHeaders;
 import org.junit.jupiter.api.Test;
@@ -56,6 +63,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 
 /** Real database proof that account-free Mock planning uses the durable Agent and media path. */
@@ -85,8 +93,10 @@ class MockStoryboardPostgresIT {
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
     @Autowired private AgentTurnWorker turns;
+    @Autowired private InitialModelContextService initialContext;
     @Autowired private ExecutionPlanService plans;
     @Autowired private ShotKeyframeSelectionService keyframes;
+    @Autowired private ShotKeyframeSelectionRepository keyframeSelections;
     @Autowired private MockImageWorker images;
     @Autowired private MockVideoWorker videos;
     @Autowired private TaskService tasks;
@@ -122,6 +132,9 @@ class MockStoryboardPostgresIT {
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "制作一个 15 秒、三个镜头的咖啡广告，现代极简风。", "mock-coffee-run",
                 preflight.agentVersion()).run();
+        assertThat(initialContext.assemble(owner.userId(), project.id(), run.id()).getFirst()
+                .getText()).contains("no image pixels", "do not claim to have seen",
+                        "A proposed media plan is not generated media");
 
         for (int step = 0; step < 3; step++) {
             assertThat(turns.runOnce("mock-storyboard-turn")).isEqualTo(1);
@@ -196,9 +209,21 @@ class MockStoryboardPostgresIT {
                 .stream().filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION).toList();
         assertThat(videoTasks).hasSize(3).allSatisfy(task -> {
             assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(task.output().path("selected").booleanValue()).isTrue();
             UUID artifactId = UUID.fromString(task.output().path("artifactId").asText());
             ArtifactService.ArtifactView video = artifacts.get(owner.userId(), project.id(),
                     artifactId);
+            UUID shotId = UUID.fromString(task.input().path("shotArtifactId").asText());
+            ArtifactService.ArtifactView shot = artifacts.get(owner.userId(), project.id(), shotId);
+            assertThat(task.input().path("keyframeSelectionVersion").longValue())
+                    .isEqualTo(keyframes.get(owner.userId(), project.id(), run.id(), shotId)
+                            .version());
+            assertThat(shot.currentVersion().content().path("selectedImageVersionId").asText())
+                    .isEqualTo(task.input().path("imageVersionId").asText());
+            assertThat(shot.currentVersion().content().path("selectedVideoVersionId").asText())
+                    .isEqualTo(task.output().path("artifactVersionId").asText());
+            assertThat(shot.currentVersion().createdByKind())
+                    .isEqualTo(dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.TASK);
             assertThat(video.currentVersion().content().path("keyframeVersionId").asText())
                     .isEqualTo(task.input().path("imageVersionId").asText());
             assertThat(video.currentVersion().inputReferences()).anySatisfy(reference ->
@@ -224,6 +249,11 @@ class MockStoryboardPostgresIT {
                 throw new AssertionError("Archived video cannot be read", exception);
             }
         });
+        Map<UUID, UUID> shotVersionsAfterFirstRun = videoTasks.stream().collect(Collectors.toMap(
+                task -> UUID.fromString(task.input().path("shotArtifactId").asText()),
+                task -> artifacts.get(owner.userId(), project.id(),
+                        UUID.fromString(task.input().path("shotArtifactId").asText()))
+                        .currentVersion().id()));
         assertThat(turns.runOnce("mock-storyboard-turn")).isEqualTo(1);
         assertThat(exportProposals.list(owner.userId(), project.id())).hasSize(1);
         ExportProposal exportProposal = exportProposals.list(owner.userId(), project.id()).getFirst();
@@ -336,6 +366,17 @@ class MockStoryboardPostgresIT {
         plans.approve(owner.userId(), project.id(), redoVideoPlan.id(),
                 redoVideoPlan.planHash());
         assertThat(videos.runOnce("mock-redo-video")).isEqualTo(1);
+        Task redoVideo = tasks.listByRun(owner.userId(), project.id(), redoRun.id()).stream()
+                .filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION)
+                .findFirst().orElseThrow();
+        ArtifactService.ArtifactView completedSecondShot = artifacts.get(owner.userId(),
+                project.id(), secondShotId);
+        assertThat(completedSecondShot.currentVersion().content()
+                .path("selectedImageVersionId").asText())
+                .isEqualTo(redoImage.output().path("artifactVersionId").asText());
+        assertThat(completedSecondShot.currentVersion().content()
+                .path("selectedVideoVersionId").asText())
+                .isEqualTo(redoVideo.output().path("artifactVersionId").asText());
         assertThat(turns.runOnce("mock-redo-turn")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), redoRun.id()).status())
                 .isEqualTo(AgentRun.Status.SUCCEEDED);
@@ -350,13 +391,105 @@ class MockStoryboardPostgresIT {
                     .path("shotArtifactId").asText());
             assertThat(artifacts.get(owner.userId(), project.id(), untouchedShotId)
                     .currentVersion().id().toString())
-                    .isEqualTo(untouched.input().path("shotVersionId").asText());
+                    .isEqualTo(shotVersionsAfterFirstRun.get(untouchedShotId).toString());
             UUID untouchedVideoId = UUID.fromString(untouched.output()
                     .path("artifactId").asText());
             assertThat(artifacts.get(owner.userId(), project.id(), untouchedVideoId)
                     .currentVersion().id().toString())
                     .isEqualTo(untouched.output().path("artifactVersionId").asText());
         }
+
+        // A submitted video that finishes after a human shot edit is archived, never reselected.
+        AgentRun lateRun = runs.create(owner.userId(), project.id(), agent.id(),
+                "核对旧视频晚到", "mock-late-video-run", scopedAgent.version()).run();
+        runs.transition(owner.userId(), project.id(), lateRun.id(), lateRun.version(),
+                AgentRun.Status.RUNNING);
+        ObjectNode lateInput = ((ObjectNode) redoVideo.input()).deepCopy();
+        lateInput.put("shotVersionId", completedSecondShot.currentVersion().id().toString());
+        lateInput.remove("keyframeSelectionVersion");
+        Task lateVideo = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
+                lateRun.id(), null, "late-video", Task.Kind.VIDEO_GENERATION,
+                lateInput, null, 1, List.of(), "late-video-output");
+        Task lateLease = tasks.claimVideosDue("late-video-worker", 1).getFirst();
+        tasks.beginSubmission(lateLease, "late-video-worker");
+        ShotRedoService.Result laterEdit = redo.revise(owner.userId(), project.id(),
+                secondShotId, new ShotRedoService.Request(
+                        completedSecondShot.currentVersion().id(),
+                        completedSecondShot.artifact().version(),
+                        "用户再次修改第二镜头", "特写", "重新安排动作", null, null));
+        ObjectNode lateVideoContent = ((ObjectNode) artifacts.get(owner.userId(), project.id(),
+                UUID.fromString(redoVideo.output().path("artifactId").asText()))
+                .currentVersion().content()).deepCopy();
+        lateVideoContent.put("sourceTaskId", lateVideo.id().toString());
+        ArtifactService.TaskVersionResult lateResult = tasks.succeedWithArtifact(lateLease,
+                "late-video-worker", lateVideoContent);
+        Task storedLateVideo = tasks.get(owner.userId(), project.id(), lateVideo.id());
+        assertThat(lateResult.selected()).isFalse();
+        assertThat(storedLateVideo.output().path("selectedShotVersionId").isMissingNode())
+                .isTrue();
+        assertThat(artifacts.get(owner.userId(), project.id(), secondShotId)
+                .currentVersion().id()).isEqualTo(laterEdit.shot().currentVersion().id());
+        assertThat(artifacts.get(owner.userId(), project.id(), secondShotId)
+                .currentVersion().content().has("selectedVideoVersionId")).isFalse();
+
+        // Simulate a newer human keyframe choice while an accepted video is still in flight.
+        // The public selection API is tested separately; here the persisted choice is advanced
+        // directly so the worker's pre-submit and late-result fences can be isolated.
+        ShotKeyframeSelection previousChoice = keyframeSelections.find(project.id(), secondShotId)
+                .orElseThrow();
+        ShotKeyframeSelection repinnedChoice = new ShotKeyframeSelection(project.id(),
+                secondShotId, laterEdit.shot().currentVersion().id(),
+                UUID.fromString(redoImage.output().path("artifactId").asText()),
+                UUID.fromString(redoImage.output().path("artifactVersionId").asText()),
+                redoImage.id(), owner.userId(), previousChoice.version() + 1,
+                previousChoice.createdAt(), Instant.now());
+        assertThat(keyframeSelections.update(repinnedChoice, previousChoice.version())).isTrue();
+        ObjectNode pinnedVideoInput = ((ObjectNode) redoVideo.input()).deepCopy();
+        pinnedVideoInput.put("shotVersionId", laterEdit.shot().currentVersion().id().toString());
+        pinnedVideoInput.put("keyframeSelectionVersion", repinnedChoice.version());
+        Task acceptedVideo = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
+                lateRun.id(), null, "accepted-before-keyframe-change", Task.Kind.VIDEO_GENERATION,
+                pinnedVideoInput, null, 1, List.of(), "accepted-video-history");
+        Task unsubmittedVideo = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
+                lateRun.id(), null, "not-submitted-before-keyframe-change",
+                Task.Kind.VIDEO_GENERATION, pinnedVideoInput, null, 1, List.of(),
+                "unsubmitted-video-history");
+        Task acceptedLease = tasks.claimVideosDue("keyframe-accepted-worker", 1).getFirst();
+        assertThat(acceptedLease.id()).isEqualTo(acceptedVideo.id());
+        tasks.beginSubmission(acceptedLease, "keyframe-accepted-worker");
+        Task originalImage = imageTasks.stream().filter(candidate ->
+                secondShotId.toString().equals(candidate.input().path("shotArtifactId").asText()))
+                .findFirst().orElseThrow();
+        ShotKeyframeSelection changedChoice = new ShotKeyframeSelection(project.id(),
+                secondShotId, laterEdit.shot().currentVersion().id(),
+                UUID.fromString(originalImage.output().path("artifactId").asText()),
+                UUID.fromString(originalImage.output().path("artifactVersionId").asText()),
+                originalImage.id(), owner.userId(), repinnedChoice.version() + 1,
+                repinnedChoice.createdAt(), Instant.now());
+        assertThat(keyframeSelections.update(changedChoice, repinnedChoice.version())).isTrue();
+        ObjectNode obsoleteVideoContent = ((ObjectNode) artifacts.get(owner.userId(), project.id(),
+                UUID.fromString(redoVideo.output().path("artifactId").asText()))
+                .currentVersion().content()).deepCopy();
+        obsoleteVideoContent.put("sourceTaskId", acceptedVideo.id().toString());
+        var historicalVideo = tasks.succeedWithArtifact(acceptedLease,
+                "keyframe-accepted-worker", obsoleteVideoContent);
+        assertThat(historicalVideo.selected()).isFalse();
+        assertThat(tasks.get(owner.userId(), project.id(), acceptedVideo.id()).output()
+                .path("selected").booleanValue()).isFalse();
+        assertThat(artifacts.get(owner.userId(), project.id(), secondShotId)
+                .currentVersion().id()).isEqualTo(laterEdit.shot().currentVersion().id());
+        AtomicInteger unexpectedSubmissions = new AtomicInteger();
+        assertThat(new dev.agenvas.task.application.TaskWorker(tasks).runVideosOnce(
+                "keyframe-stale-worker", 1, (task, requestKey) -> {
+                    unexpectedSubmissions.incrementAndGet();
+                    return new dev.agenvas.task.application.TaskWorker.Failed("UNEXPECTED_SUBMISSION");
+                })).isEqualTo(1);
+        assertThat(unexpectedSubmissions).hasValue(0);
+        assertThat(tasks.get(owner.userId(), project.id(), unsubmittedVideo.id()).status())
+                .isEqualTo(Task.Status.BLOCKED);
+        assertThat(tasks.get(owner.userId(), project.id(), unsubmittedVideo.id()).errorCode())
+                .isEqualTo("TASK_INPUT_STALE");
+        runs.cancel(owner.userId(), project.id(), lateRun.id());
 
         Project rejectedProject = projects.create(owner.userId(), "Rejected mock storyboard",
                 Project.AspectRatio.SQUARE_1_1);

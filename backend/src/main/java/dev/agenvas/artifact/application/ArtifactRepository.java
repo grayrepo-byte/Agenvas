@@ -12,6 +12,17 @@ import java.util.UUID;
 /** Persistence boundary for stable artifacts and append-only content revisions. */
 public interface ArtifactRepository {
 
+    /** Reserves one owner/project-scoped manual creation key in the current transaction. */
+    boolean reserveCreateKey(UUID ownerId, String scope, String key, String requestHash,
+            Instant expiresAt, Instant now);
+
+    /** Reads a competing committed creation key after PostgreSQL uniqueness arbitration. */
+    Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key);
+
+    /** Completes the same key in the artifact/event transaction. */
+    boolean completeCreateKey(UUID ownerId, String scope, String key,
+            String requestHash, UUID artifactId, String responseJson, Instant now);
+
     /** Inserts the stable identity before its initial version is appended. */
     void createArtifact(Artifact artifact);
 
@@ -61,4 +72,7 @@ public interface ArtifactRepository {
 
     /** Small projection used to validate the kind and ownership of a reference. */
     record VersionTarget(UUID versionId, UUID artifactId, Artifact.Kind kind) {}
+
+    /** Minimal durable replay projection for manual Artifact creation. */
+    record CreateKey(String requestHash, String state, UUID artifactId, String responseJson) {}
 }

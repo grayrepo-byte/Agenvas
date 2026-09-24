@@ -106,6 +106,7 @@ class AssetPostgresIT {
                 .path("id").asText());
         AssetService.AssetFile archived = assets.get(owner.userId(), project.id(), id);
         assertThat(archived.asset().contentType()).isEqualTo("image/png");
+        assertThat(archived.asset().durationMs()).isNull();
         assertThat(archived.asset().byteSize()).isEqualTo(png.length);
         assertThat(Files.readAllBytes(archived.path())).containsExactly(png);
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
@@ -315,6 +316,7 @@ class AssetPostgresIT {
         assertThat(content.getResponse().getContentAsByteArray()).containsExactly(webp);
         MvcResult artifactCreated = mvc.perform(post("/api/v1/projects/" + project.id()
                         + "/artifacts").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .content("""
                                 {"kind":"IMAGE","title":"Product reference",
                                  "content":{"sourceType":"UPLOAD","assetId":"%s"}}
@@ -453,9 +455,20 @@ class AssetPostgresIT {
             Asset archived = assets.archiveVideo(owner.userId(), project.id(),
                     Files.newInputStream(video));
             assertThat(archived.contentType()).isEqualTo("video/mp4");
+            assertThat(archived.durationMs()).isEqualTo(1_000);
             assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(),
                     archived.id()).path().toFile())).isNotNull();
             String path = "/api/v1/projects/" + project.id() + "/assets/" + archived.id();
+            MvcResult metadata = mvc.perform(get(path).with(authentication(asUser(owner))))
+                    .andExpect(status().isOk()).andReturn();
+            assertThat(mapper.readTree(metadata.getResponse().getContentAsString())
+                    .path("durationMs").asInt()).isEqualTo(1_000);
+            assertThat(mapper.readTree(metadata.getResponse().getContentAsString())
+                    .has("objectKey")).isFalse();
+            mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(
+                            UUID.randomUUID(), "foreign")))))
+                    .andExpect(status().isNotFound());
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
             MvcResult range = mvc.perform(get(path + "/content")
                             .header(HttpHeaders.RANGE, "bytes=4-7")
                             .with(authentication(asUser(owner))))

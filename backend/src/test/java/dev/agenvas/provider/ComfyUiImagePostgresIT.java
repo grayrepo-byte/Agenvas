@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -73,9 +74,11 @@ class ComfyUiImagePostgresIT {
     private static final HttpServer SERVER = startServer();
     private static final AtomicReference<UUID> FIRST_PROMPT_ID = new AtomicReference<>();
     private static final AtomicReference<UUID> SECOND_PROMPT_ID = new AtomicReference<>();
+    private static final AtomicReference<UUID> LAST_PROMPT_ID = new AtomicReference<>();
     private static final AtomicInteger SUBMISSIONS = new AtomicInteger();
     private static final AtomicInteger QUERIES = new AtomicInteger();
     private static final AtomicInteger DOWNLOADS = new AtomicInteger();
+    private static final AtomicBoolean DROP_NEXT_PROMPT_RESPONSE = new AtomicBoolean();
     private static final AtomicReference<JsonNode> SUBMITTED_GRAPH = new AtomicReference<>();
 
     @DynamicPropertySource
@@ -303,6 +306,57 @@ class ComfyUiImagePostgresIT {
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :id "
                         + "and entry_type = 'RELEASE'")
                 .param("id", queuedSecond.id()).query(Integer.class).single()).isZero();
+
+        // The provider accepted a prompt, but the response was lost before its id was saved.
+        // Expiry must preserve the committed candidate and must never submit a second prompt.
+        var uncertainAgent = agents.create(owner.userId(), project.id(), "Uncertain creator",
+                "Create", List.of(new AgentInstanceService.BindingInput(
+                        targetWithoutReference.artifact().id(),
+                        targetWithoutReference.currentVersion().id())));
+        AgentRun uncertainRun = runs.create(owner.userId(), project.id(), uncertainAgent.id(),
+                "Make uncertain image", "comfy-uncertain-run").run();
+        runs.transition(owner.userId(), project.id(), uncertainRun.id(), uncertainRun.version(),
+                AgentRun.Status.RUNNING);
+        ObjectNode uncertainProposal = mapper.createObjectNode();
+        uncertainProposal.put("stage", "IMAGE");
+        uncertainProposal.put("objective", "Response-loss recovery");
+        ObjectNode uncertainStep = uncertainProposal.putArray("steps").addObject();
+        uncertainStep.put("stepKey", "uncertain-frame");
+        uncertainStep.put("outputSlotKey", "uncertain-frame-output");
+        uncertainStep.put("shotArtifactId", targetWithoutReference.artifact().id().toString());
+        uncertainStep.put("shotVersionId", targetWithoutReference.currentVersion().id().toString());
+        uncertainStep.put("prompt", "A cinematic coffee pour");
+        uncertainStep.putArray("dependsOnStepKeys");
+        var uncertainPlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
+                uncertainRun.id()), uncertainProposal);
+        Task uncertainTask = plans.approve(owner.userId(), project.id(), uncertainPlan.id(),
+                uncertainPlan.planHash()).tasks().getFirst();
+        int acceptedBeforeLoss = SUBMISSIONS.get();
+        DROP_NEXT_PROMPT_RESPONSE.set(true);
+        assertThatThrownBy(() -> worker.submitOnce("response-loss-worker"))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
+        assertThat(tasks.get(owner.userId(), project.id(), uncertainTask.id()).status())
+                .isEqualTo(Task.Status.SUBMITTING);
+        assertThat(tasks.listProviderAttempts(owner.userId(), project.id(), uncertainTask.id()))
+                .singleElement().satisfies(attempt -> {
+                    assertThat(attempt.candidateRequestId()).isEqualTo(LAST_PROMPT_ID.get());
+                    assertThat(attempt.providerRequestId()).isNull();
+                });
+        jdbc.sql("update task set lease_until = now() - interval '1 second' where id = :id")
+                .param("id", uncertainTask.id()).update();
+        assertThat(tasks.recoverExpiredSubmissions(16)).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), project.id(), uncertainTask.id()).status())
+                .isEqualTo(Task.Status.UNKNOWN);
+        assertThat(tasks.listProviderAttempts(owner.userId(), project.id(), uncertainTask.id()))
+                .singleElement().satisfies(attempt -> {
+                    assertThat(attempt.status().name()).isEqualTo("UNKNOWN");
+                    assertThat(attempt.providerRequestId()).isNull();
+                });
+        assertThat(worker.submitOnce("post-loss-worker")).isZero();
+        assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
+        assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
+                .param("id", uncertainTask.id()).query(Integer.class).single()).isEqualTo(1);
     }
 
     private void due(UUID taskId) {
@@ -323,11 +377,16 @@ class ComfyUiImagePostgresIT {
                 JsonNode body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 SUBMITTED_GRAPH.set(body.path("prompt"));
                 UUID promptId = UUID.fromString(body.path("prompt_id").asText());
+                LAST_PROMPT_ID.set(promptId);
                 assertThat(body.path("client_id").asText()).isEqualTo(promptId.toString());
                 if (SUBMISSIONS.incrementAndGet() == 1) {
                     FIRST_PROMPT_ID.set(promptId);
                 } else {
                     SECOND_PROMPT_ID.set(promptId);
+                }
+                if (DROP_NEXT_PROMPT_RESPONSE.getAndSet(false)) {
+                    exchange.close();
+                    return;
                 }
                 respond(exchange, 200, "{\"prompt_id\":\"" + promptId + "\",\"number\":0}");
             });

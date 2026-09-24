@@ -7,8 +7,13 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class ArtifactService {
 
     private static final int SCHEMA_VERSION = 1;
+    private static final Duration CREATE_KEY_RETENTION = Duration.ofHours(24);
 
     private final ProjectService projects;
     private final ArtifactRepository artifacts;
@@ -67,6 +73,67 @@ public class ArtifactService {
                             created, artifactEvent("artifact.created", created));
                 })
                 .value();
+    }
+
+    /** Atomically creates or replays one manual Artifact without repeating its first version. */
+    @Transactional
+    public CreateResult createIdempotent(UUID ownerId, UUID projectId,
+            Artifact.Kind kind, String requestedTitle, JsonNode content,
+            String requestedKey) {
+        String key = requestedKey == null ? "" : requestedKey.trim();
+        if (key.isEmpty() || key.length() > 200) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                    "幂等键无效", "Idempotency-Key 必须为 1 至 200 个字符。", false);
+        }
+        String title = validateTitle(requestedTitle);
+        if (kind == null || content == null) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                    "产物内容无效", "必须提供产物类型和完整内容。", false);
+        }
+        String scope = "project:" + projectId + ":create-artifact";
+        String requestHash = sha256(kind.name() + "\n" + title + "\n" + content);
+        Instant now = clock.instant();
+        if (!artifacts.reserveCreateKey(ownerId, scope, key, requestHash,
+                now.plus(CREATE_KEY_RETENTION), now)) {
+            ArtifactRepository.CreateKey existing = artifacts.findCreateKey(ownerId, scope, key)
+                    .orElseThrow(this::createInProgress);
+            if (!existing.requestHash().equals(requestHash)) {
+                throw new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                        "幂等键已用于不同请求", "请为不同的产物内容使用新的 Idempotency-Key。", false);
+            }
+            if (!"COMPLETED".equals(existing.state()) || existing.artifactId() == null
+                    || existing.responseJson() == null) {
+                throw createInProgress();
+            }
+            // Re-authorize the nested resource, but return the original response snapshot.
+            get(ownerId, projectId, existing.artifactId());
+            return new CreateResult(objectMapper.readValue(existing.responseJson(),
+                    ArtifactView.class), true);
+        }
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
+                    ArtifactVersion.CreatedByKind.USER, null, false);
+            if (!artifacts.completeCreateKey(ownerId, scope, key, requestHash,
+                    created.artifact().id(), objectMapper.writeValueAsString(created), now)) {
+                throw new IllegalStateException("Failed to complete Artifact creation key");
+            }
+            return ProjectEventService.Change.changed(new CreateResult(created, false),
+                    artifactEvent("artifact.created", created));
+        }).value();
+    }
+
+    private ApiProblemException createInProgress() {
+        return new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_IN_PROGRESS",
+                "相同请求正在处理", "请稍后使用相同 Idempotency-Key 重试。", true);
+    }
+
+    private String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is required by Java", impossible);
+        }
     }
 
     /** Creates an Agent-authored artifact through the same validation and event transaction. */
@@ -409,6 +476,30 @@ public class ArtifactService {
         return new TaskVersionResult(revision.id(), selected);
     }
 
+    /** Pins the approved keyframe and completed video on a still-current shot as one new version. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ArtifactView selectTaskVideoOnShotWithinChange(UUID ownerId, UUID projectId,
+            UUID runId, UUID shotId, UUID expectedShotVersionId,
+            UUID imageVersionId, UUID videoVersionId) {
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView current = get(ownerId, projectId, shotId);
+            if (current.artifact().kind() != Artifact.Kind.SHOT
+                    || current.artifact().archivedAt() != null
+                    || !current.currentVersion().id().equals(expectedShotVersionId)
+                    || !(current.currentVersion().content() instanceof ObjectNode shotContent)) {
+                throw versionConflict();
+            }
+            ObjectNode selected = shotContent.deepCopy();
+            selected.put("selectedImageVersionId", imageVersionId.toString());
+            selected.put("selectedVideoVersionId", videoVersionId.toString());
+            ArtifactView revised = reviseLocked(ownerId, projectId, shotId,
+                    current.artifact().version(), null, selected,
+                    ArtifactVersion.CreatedByKind.TASK, runId, null);
+            return ProjectEventService.Change.changed(revised,
+                    artifactEvent("artifact.version.created", revised));
+        }).value();
+    }
+
     /** Outcome of a generated immutable revision and its conditional current selection. */
     public record TaskVersionResult(UUID versionId, boolean selected) {}
 
@@ -546,4 +637,7 @@ public class ArtifactService {
 
     /** Stable identity paired with the selected immutable content revision. */
     public record ArtifactView(Artifact artifact, ArtifactVersion currentVersion) {}
+
+    /** Manual create outcome; replay uses the original response snapshot. */
+    public record CreateResult(ArtifactView view, boolean replayed) {}
 }

@@ -51,9 +51,35 @@ jobs:
 
   compose-config:
     runs-on: ubuntu-latest
+    env:
+      AGENVAS_DB_PASSWORD: ci-isolated-database-password
+      AGENVAS_BOOTSTRAP_SECRET: ci-isolated-bootstrap-secret-2026
     steps:
       - uses: actions/checkout@v4
+      - name: Reject missing required installation secrets
+        run: |
+          if env -u AGENVAS_DB_PASSWORD docker compose -f deploy/compose.yaml config --quiet >/dev/null 2>&1; then
+            echo 'Compose accepted a missing database password' >&2
+            exit 1
+          fi
+          if env -u AGENVAS_BOOTSTRAP_SECRET docker compose -f deploy/compose.yaml config --quiet >/dev/null 2>&1; then
+            echo 'Compose accepted a missing bootstrap secret' >&2
+            exit 1
+          fi
       - run: docker compose -f deploy/compose.yaml config --quiet
+      - name: Verify bounded resources, log rotation, and shutdown window
+        run: |
+          docker compose -f deploy/compose.yaml config --format json |
+            jq -e '([.services.postgres, .services.server, .services.web] |
+              all(.[]; (.mem_limit | tonumber) > 0 and .cpus > 0 and
+                .logging.driver == "json-file" and
+                .logging.options."max-size" == "10m" and
+                .logging.options."max-file" == "3")) and
+              .services.server.stop_grace_period == "45s"'
+          AGENVAS_SERVER_MEMORY_LIMIT=2g AGENVAS_SERVER_CPUS=3.0 \
+            docker compose -f deploy/compose.yaml config --format json |
+            jq -e '.services.server.mem_limit == "2147483648" and
+              .services.server.cpus == 3'
       - name: Verify explicit candidate Provider overrides reach the server
         run: |
           AGENVAS_LLM_MODE=configured \

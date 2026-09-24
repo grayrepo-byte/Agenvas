@@ -13,6 +13,11 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnWorker;
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmTurnCheckpointService;
+import dev.agenvas.llm.application.ToolExecutionService;
+import dev.agenvas.llm.application.ToolRegistry;
+import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.ShotKeyframeSelectionService;
@@ -25,6 +30,7 @@ import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.MockFixture;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.tool.ToolCallback;
@@ -53,6 +60,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Fake-model golden paths for database-triggered approval and rejection continuation. */
@@ -90,6 +98,10 @@ class PlanResumeWorkerPostgresIT {
     @Autowired private FakeGateway gateway;
     @Autowired private ObjectMapper mapper;
     @Autowired private JdbcClient jdbc;
+    @Autowired private LlmTurnCheckpointService checkpoints;
+    @Autowired private LlmProtocolCodec codec;
+    @Autowired private ToolExecutionService toolExecutor;
+    @Autowired private ToolRegistry toolRegistry;
 
     @Test
     void approvalWaitsForMediaAndRejectionResumesWithoutMedia() throws Exception {
@@ -212,6 +224,59 @@ class PlanResumeWorkerPostgresIT {
                 .isEqualTo(AgentRun.Status.BLOCKED);
         assertThat(worker.runOnce("resume-model-worker")).isZero();
         assertThat(gateway.calls.get()).isEqualTo(6);
+        verifyChangedToolCallIdCannotDuplicateApprovedMedia(owner);
+    }
+
+    /** A new model call ID cannot re-authorize a step whose original proposal was approved. */
+    private void verifyChangedToolCallIdCannotDuplicateApprovedMedia(AdminPrincipal owner) {
+        Fixture fixture = fixture(owner.userId(), "Duplicate proposal project", "duplicate-plan-run");
+        AgentRun running = runs.transition(owner.userId(), fixture.project().id(),
+                fixture.run().id(), fixture.run().version(), AgentRun.Status.RUNNING);
+        TrustedToolContext context = new TrustedToolContext(owner.userId(),
+                fixture.project().id(), fixture.run().id());
+        int configVersion = running.policySnapshot().path("modelConfigVersion").asInt();
+        String configSource = running.policySnapshot().path("modelConfigSource").asText();
+        List<Message> messages = List.of(new UserMessage("Propose one image plan"));
+        List<ToolCallback> definitions = toolRegistry.modelDefinitions();
+        checkpoints.reserve(owner.userId(), fixture.project().id(), fixture.run().id(),
+                0, configVersion, configSource, codec.request(messages, definitions));
+        String arguments = draft(fixture.shot()).toString();
+        AssistantMessage response = AssistantMessage.builder().content("")
+                .toolCalls(List.of(
+                        new AssistantMessage.ToolCall("proposal-original", "function",
+                                "propose_generation_plan", arguments),
+                        new AssistantMessage.ToolCall("proposal-new-id", "function",
+                                "propose_generation_plan", arguments)))
+                .build();
+        checkpoints.saveResponse(owner.userId(), fixture.project().id(), fixture.run().id(),
+                0, configVersion, codec.response(new ChatResponse(List.of(
+                        new Generation(response)))));
+        JsonNode original = toolExecutor.execute(context, 0, "proposal-original");
+        ExecutionPlan plan = plans.listByRun(owner.userId(), fixture.project().id(),
+                fixture.run().id()).getFirst();
+        assertThat(original.path("createdIds").get(0).asText()).isEqualTo(plan.id().toString());
+        ExecutionPlanService.ApprovalResult approved = plans.approve(owner.userId(),
+                fixture.project().id(), plan.id(), plan.planHash());
+        assertThat(approved.tasks()).hasSize(1);
+        assertThat(toolExecutor.execute(context, 0, "proposal-original")).isEqualTo(original);
+        assertThatThrownBy(() -> toolExecutor.execute(context, 0, "proposal-new-id"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(plans.listByRun(owner.userId(), fixture.project().id(),
+                fixture.run().id())).hasSize(1);
+        assertThat(jdbc.sql("select count(*) from plan_approval where project_id = :projectId")
+                .param("projectId", fixture.project().id()).query(Long.class).single())
+                .isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
+                        + "and kind = 'IMAGE_GENERATION'")
+                .param("projectId", fixture.project().id()).query(Long.class).single())
+                .isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from usage_ledger where project_id = :projectId "
+                        + "and task_id is not null and entry_type = 'RESERVATION'")
+                .param("projectId", fixture.project().id()).query(Long.class).single())
+                .isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where project_id = :projectId")
+                .param("projectId", fixture.project().id()).query(Long.class).single())
+                .isEqualTo(1);
     }
 
     private Fixture fixture(UUID ownerId, String projectName, String key) {

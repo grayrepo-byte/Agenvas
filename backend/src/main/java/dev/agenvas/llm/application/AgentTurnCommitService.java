@@ -89,8 +89,15 @@ public class AgentTurnCommitService {
             output.put("stepIndex", stepIndex);
             output.put("assistantText", assistant.getText() == null ? "" : assistant.getText());
             if (decision == Decision.CONTINUE) {
-                if (run.status() != AgentRun.Status.RUNNING || stepIndex >= 11) {
-                    throw new IllegalStateException("Model turn limit or Run state prevents continuation");
+                if (run.status() != AgentRun.Status.RUNNING) {
+                    throw new IllegalStateException("Run state prevents model continuation");
+                }
+                if (stepIndex >= 11) {
+                    // The response and tool ledger are durable; stop without scheduling turn 13.
+                    tasks.fail(lease, workerId, "MODEL_TURN_LIMIT");
+                    runs.transition(ownerId, lease.projectId(), lease.runId(),
+                            run.version(), AgentRun.Status.BLOCKED);
+                    return ProjectEventService.Change.unchanged(Decision.LIMIT_REACHED);
                 }
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", 1);
@@ -241,5 +248,5 @@ public class AgentTurnCommitService {
     }
 
     /** A completed assistant message, an approval wait, or a durable next step. */
-    public enum Decision { CONTINUE, WAIT_APPROVAL, FINISH }
+    public enum Decision { CONTINUE, WAIT_APPROVAL, FINISH, LIMIT_REACHED }
 }

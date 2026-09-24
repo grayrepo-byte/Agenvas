@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
@@ -39,10 +40,14 @@ public class ArtifactController {
     public ResponseEntity<ArtifactResponse> create(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateArtifactRequest request) {
-        ArtifactService.ArtifactView view = artifacts.create(
-                principal.userId(), projectId, request.kind(), request.title(), request.content());
-        return ResponseEntity.status(HttpStatus.CREATED).body(ArtifactResponse.from(view));
+        ArtifactService.CreateResult result = artifacts.createIdempotent(
+                principal.userId(), projectId, request.kind(), request.title(), request.content(),
+                idempotencyKey);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Idempotency-Replayed", Boolean.toString(result.replayed()))
+                .body(ArtifactResponse.from(result.view()));
     }
 
     /** Reads an owner-scoped Artifact with its selected version. */

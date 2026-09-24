@@ -3,6 +3,7 @@ package dev.agenvas.asset.infrastructure;
 import dev.agenvas.asset.application.MediaToolsProperties;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -31,25 +32,34 @@ public class MediaToolRunner {
     }
 
     private final MediaToolsProperties properties;
+    private final Path defaultWorkDirectory;
 
     public MediaToolRunner(MediaToolsProperties properties) {
         this.properties = properties;
+        defaultWorkDirectory = Path.of(System.getProperty("java.io.tmpdir"))
+                .toAbsolutePath().normalize();
+        if (!Files.isDirectory(defaultWorkDirectory, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException("Media tool work directory must exist");
+        }
     }
 
     /** Runs a fixed ffmpeg operation without a shell or inherited environment output. */
     public void ffmpeg(List<String> arguments) {
-        execute(properties.ffmpeg(), arguments, null, properties.timeout(), null, null, true);
+        execute(properties.ffmpeg(), arguments, null, null, properties.timeout(), null, null, true);
     }
 
-    /** Long local exports poll cancellation and heartbeat while the process is running. */
-    public void ffmpegExport(List<String> arguments, Duration timeout,
+    /** Long local exports run inside their private scratch directory and poll cancellation. */
+    public void ffmpegExport(List<String> arguments, Path workDirectory, Duration timeout,
             BooleanSupplier shouldCancel, Runnable onTick) {
         if (timeout == null || timeout.isNegative() || timeout.isZero()
                 || timeout.compareTo(Duration.ofMinutes(3)) > 0
+                || workDirectory == null || !workDirectory.isAbsolute()
+                || !Files.isDirectory(workDirectory, LinkOption.NOFOLLOW_LINKS)
                 || shouldCancel == null || onTick == null) {
             throw new IllegalArgumentException("Invalid bounded export process settings");
         }
-        execute(properties.ffmpeg(), arguments, null, timeout, shouldCancel, onTick, false);
+        execute(properties.ffmpeg(), arguments, workDirectory, null, timeout,
+                shouldCancel, onTick, false);
     }
 
     /** Runs ffprobe into a bounded local result file, never accepting a remote URL. */
@@ -61,7 +71,7 @@ public class MediaToolRunner {
             throw new IllegalStateException("Cannot create media probe output", exception);
         }
         try {
-            execute(properties.ffprobe(), arguments, output, properties.timeout(), null, null,
+            execute(properties.ffprobe(), arguments, null, output, properties.timeout(), null, null,
                     true);
             if (Files.size(output) > 16_384) {
                 throw new IllegalStateException("Media probe output exceeded the limit");
@@ -78,17 +88,22 @@ public class MediaToolRunner {
         }
     }
 
-    private void execute(Path executable, List<String> arguments, Path output,
+    private void execute(Path executable, List<String> arguments, Path workDirectory, Path output,
             Duration timeout, BooleanSupplier shouldCancel, Runnable onTick,
             boolean nonzeroIsInvalidInput) {
         List<String> command = new ArrayList<>(arguments.size() + 1);
         command.add(executable.toString());
         command.addAll(arguments);
+        Path selectedDirectory = workDirectory == null ? defaultWorkDirectory : workDirectory;
         ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(selectedDirectory.toFile())
                 .redirectInput(ProcessBuilder.Redirect.from(Path.of("/dev/null").toFile()))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .redirectOutput(output == null ? ProcessBuilder.Redirect.DISCARD
                         : ProcessBuilder.Redirect.to(output.toFile()));
+        // Media decoders must not inherit bootstrap, database or provider credentials.
+        builder.environment().clear();
+        builder.environment().put("TMPDIR", selectedDirectory.toString());
         Process process = null;
         try {
             process = builder.start();

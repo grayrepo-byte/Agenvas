@@ -4,7 +4,7 @@
 
 Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操作卡片存在于画布中，在明确的权限、审批、版本和恢复边界内生成三镜头短片。
 
-当前仓库已完成 **M0/T01–T03、T04 的合约主链路、M1/T05–T08 与 M2/T09–T12**：Vite/React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、改密与退出、项目 CRUD/归档、六类 Artifact 不可变版本、持久化 React Flow 画布、Creator Agent 卡片与精确版本输入绑定、数据库互斥/幂等的 Run 状态骨架、带租约与 fencing epoch 的持久化 Task、事务性项目事件、一致性快照与可补发 SSE。真实图片与视频仍按开发清单逐步实现，不能把当前版本视为稳定 MVP 成品。
+当前仓库已完成 M0–M2 的基础链路，并实现可运行的 Mock 三镜头、分阶段审批、媒体归档、局部重做与无声导出纵向切片：Vite/React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、项目与不可变内容版本、持久画布、Creator Agent、租约与 fencing epoch 任务、事务事件及可补发 SSE。真实 LLM/ComfyUI 接口和生产发布门禁仍未验收，不能把当前版本视为稳定 MVP 成品；逐项状态以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
 
 ## 已实现的最小纵向切片
 
@@ -35,10 +35,14 @@ Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操�
 ```sh
 cp .env.example .env
 # 编辑 .env，为数据库密码和一次性初始化密钥设置随机值。
-docker compose -f deploy/compose.yaml up -d --build
+docker compose --env-file .env -f deploy/compose.yaml up -d --build
 ```
 
+这两项在 `.env.example` 中故意留空；缺失或未填写时 Compose 会拒绝启动。旧部署若使用过早期版本的公开回退值，不能只改 `.env` 中的数据库密码：应在维护窗口同步轮换 PostgreSQL 账户密码与服务端配置，并检查初始化密钥是否仍为已知示例值；不要把实际密钥写进工单、日志或 Git。
+
 需要并行运行隔离验收实例时，可设置 `COMPOSE_PROJECT_NAME`、`AGENVAS_API_PORT` 和 `AGENVAS_WEB_PORT`。它们分别控制 Compose 项目/卷命名与仅绑定本机的 API、Web 端口；默认仍是 8080/8088。隔离实例也应使用独立的数据库密码与 bootstrap secret。
+
+Compose 默认限制 PostgreSQL/server/web 分别使用 768 MiB/1 CPU、1536 MiB/2 CPU、256 MiB/0.5 CPU，并为各服务的 JSON 日志保留最多 3 个 10 MiB 文件。可在 `.env` 中用 `AGENVAS_*_MEMORY_LIMIT`、`AGENVAS_*_CPUS` 按实际机器容量调整；内存上限不是容量性能已验收的证明。server 停机等待最多 45 秒，应用优雅停机阶段为 30 秒；已提交的外部请求仍须按 Provider attempt 核对，不会因为等待期结束就安全重试。
 
 打开 <http://127.0.0.1:8088/setup>，输入 `.env` 中的 `AGENVAS_BOOTSTRAP_SECRET` 创建管理员，然后在 `/login` 登录。也可以检查反代后的 API：
 
@@ -55,7 +59,7 @@ curl http://127.0.0.1:8088/api/v1/auth/setup-status
 停止服务：
 
 ```sh
-docker compose -f deploy/compose.yaml down
+docker compose --env-file .env -f deploy/compose.yaml down
 ```
 
 该命令保留数据库和资产卷；如需清除测试数据，应明确使用 Compose 的卷删除选项，并确认没有需要保留的内容。
@@ -112,6 +116,6 @@ docs/           MVP 规格、依赖基线与开发验收清单
 - 已实现单管理员身份闭环，但尚未提供账户找回、多管理员或团队能力。
 - 已有 Run 创建、读取和取消 API，受控模型回合、工具账本、后台模型回合调度、只读运行历史，以及图片/视频计划的审批。默认 Mock LLM 可推进三镜头、图片审批、关键帧选择及视频审批，批准后的 Mock 图片和视频由后台 Worker 归档。可修订单个镜头并将共享场景新版本仅重绑该镜头，基于新镜头发起限定范围的 Mock Run，重新经历图片与视频审批。另有项目级无声顺序 MP4 导出、私有下载与脱敏项目 JSON/素材元数据清单；图片/视频 Task 已记录未定价用量的预留和唯一结算。ComfyUI 生图与图生视频候选模板已接入审批 Task、原请求核对与归档，并由假 HTTP 服务＋PostgreSQL 测试；真实模型/模板兼容、完整用量结算和发布门禁尚未完成。
 - 没有真实 LLM/ComfyUI 调用；Spring AI 聊天适配器只经假 HTTP 端点验证工具调用协议，本地 FFmpeg 仅用于演示视频编码及媒体验证，这些都不能证明真实模型 Provider 已接通。
-- Flyway V1–V34 覆盖身份、项目、产物版本、画布、Agent/Run/Task、事件、工具账本、执行计划/审批、镜头关键帧选择、Provider 明确拒绝记录、私有 Asset/缩略图、项目级导出任务、ComfyUI 持久单槽调度与历史地址版本、Provider 核对重试账本、媒体用量账本、版本化加密 LLM 配置、UNKNOWN 原请求核对标识、导出提案及只读任务队列统计索引；迁移仍只增不改。详见 `backend/src/main/resources/db/migration/`。
+- Flyway V1–V35 覆盖身份、项目、产物版本、画布、Agent/Run/Task、事件、工具账本、执行计划/审批、镜头关键帧选择、Provider 明确拒绝记录、私有 Asset/缩略图与视频时长、项目级导出任务、ComfyUI 持久单槽调度与历史地址版本、Provider 核对重试账本、媒体用量账本、版本化加密 LLM 配置、UNKNOWN 原请求核对标识、导出提案及只读任务队列统计索引；迁移仍只增不改。V35 前的视频 Asset 未自动回填时长，需重新归档后才能提交新的顺序导出。详见 `backend/src/main/resources/db/migration/`。
 
 项目目标许可为 Apache-2.0；正式许可证、NOTICE 与第三方/模型许可证清单在 M6/T30 发布门禁完成前仍属于待办事项。安全报告边界见 [SECURITY.md](SECURITY.md)，当前支持范围与升级限制见 [0.1.0 发行说明草案](docs/release-notes/0.1.0-mvp-draft.md)。

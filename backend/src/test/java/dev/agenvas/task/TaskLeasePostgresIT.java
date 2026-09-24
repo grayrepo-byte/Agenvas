@@ -164,7 +164,7 @@ class TaskLeasePostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("34");
+                .isEqualTo("35");
     }
 
     private Task create(

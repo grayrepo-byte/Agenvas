@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
@@ -24,10 +25,13 @@ public class ProjectEventService {
 
     private final ProjectEventRepository events;
     private final Clock clock;
+    private final ApplicationEventPublisher publisher;
 
-    public ProjectEventService(ProjectEventRepository events, Clock clock) {
+    public ProjectEventService(ProjectEventRepository events, Clock clock,
+            ApplicationEventPublisher publisher) {
         this.events = events;
         this.clock = clock;
+        this.publisher = publisher;
     }
 
     /**
@@ -59,6 +63,7 @@ public class ProjectEventService {
                 draft.payload().deepCopy(),
                 clock.instant());
         events.insert(event);
+        publisher.publishEvent(new ProjectEventCommitted(projectId));
         return new RecordedChange<>(change.value(), event);
     }
 

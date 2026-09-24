@@ -169,17 +169,38 @@ class ComfyUiClientTest {
     }
 
     @Test
-    void refusesRedirectsAndClassifiesAmbiguousServerFailure() {
-        server.createContext("/prompt", exchange -> {
-            exchange.getResponseHeaders().add("Location", "http://127.0.0.1:1/private");
-            respond(exchange, 302, "redirect");
+    void refusesRedirectsForSubmissionsAndOutputDownloads() throws IOException {
+        HttpServer redirectTarget = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicInteger followed = new AtomicInteger();
+        redirectTarget.createContext("/private", exchange -> {
+            followed.incrementAndGet();
+            respond(exchange, 200, "private bytes");
         });
-        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
-                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-        server.removeContext("/prompt");
-        server.createContext("/prompt", exchange -> respond(exchange, 503, "unavailable"));
-        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
-                .isInstanceOf(ComfyUiClient.TransportFailure.class);
+        redirectTarget.start();
+        try {
+            String target = "http://127.0.0.1:" + redirectTarget.getAddress().getPort()
+                    + "/private";
+            server.createContext("/prompt", exchange -> {
+                exchange.getResponseHeaders().add("Location", target);
+                respond(exchange, 302, "redirect");
+            });
+            server.createContext("/view", exchange -> {
+                exchange.getResponseHeaders().add("Location", target);
+                respond(exchange, 302, "redirect");
+            });
+            assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                    .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+            assertThatThrownBy(() -> client.output("rendered_01.png"))
+                    .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+            assertThat(followed).hasValue(0);
+
+            server.removeContext("/prompt");
+            server.createContext("/prompt", exchange -> respond(exchange, 503, "unavailable"));
+            assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                    .isInstanceOf(ComfyUiClient.TransportFailure.class);
+        } finally {
+            redirectTarget.stop(0);
+        }
     }
 
     @Test

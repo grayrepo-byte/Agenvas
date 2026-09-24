@@ -21,6 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -30,6 +31,8 @@ import org.springframework.http.MediaType;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -89,6 +92,41 @@ public class ProjectEventHub {
     @PostConstruct
     public void start() {
         poller.scheduleWithFixedDelay(this::tickSafely, 0, 1, TimeUnit.SECONDS);
+    }
+
+    /** Coalesces post-commit hints; the periodic database poll remains the recovery path. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onCommitted(ProjectEventCommitted committed) {
+        ProjectChannel channel = channels.get(committed.projectId());
+        if (channel == null || channel.subscribers.isEmpty()) return;
+        channel.wakeRequested.set(true);
+        scheduleWake(channel);
+    }
+
+    private void scheduleWake(ProjectChannel channel) {
+        if (!channel.wakeQueued.compareAndSet(false, true)) return;
+        try {
+            poller.execute(() -> {
+                try {
+                    // Yield after a bounded burst so other projects and the fallback tick run.
+                    for (int attempt = 0; attempt < 4; attempt++) {
+                        if (!channel.wakeRequested.getAndSet(false)) break;
+                        try {
+                            pollProject(channel);
+                        } catch (RuntimeException failure) {
+                            LOGGER.warn("Project event wake-up poll failed", failure);
+                            break;
+                        }
+                    }
+                } finally {
+                    channel.wakeQueued.set(false);
+                    if (channel.wakeRequested.get()) scheduleWake(channel);
+                }
+            });
+        } catch (RejectedExecutionException stopping) {
+            channel.wakeQueued.set(false);
+            // Shutdown or saturation only loses the hint, not the committed event.
+        }
     }
 
     /** Authorizes the waterline before starting the asynchronous SSE response. */
@@ -286,6 +324,8 @@ public class ProjectEventHub {
     private static final class ProjectChannel {
         private final UUID ownerId;
         private final CopyOnWriteArrayList<Subscriber> subscribers = new CopyOnWriteArrayList<>();
+        private final AtomicBoolean wakeRequested = new AtomicBoolean();
+        private final AtomicBoolean wakeQueued = new AtomicBoolean();
 
         private ProjectChannel(UUID ownerId) {
             this.ownerId = ownerId;

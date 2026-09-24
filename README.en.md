@@ -11,18 +11,22 @@ Install Docker Engine/Desktop with Compose. From the repository root:
 ```sh
 cp .env.example .env
 # Set random AGENVAS_DB_PASSWORD and AGENVAS_BOOTSTRAP_SECRET values in .env.
-docker compose -f deploy/compose.yaml up -d --build
+docker compose --env-file .env -f deploy/compose.yaml up -d --build
 ```
+
+Both example values are intentionally blank; Compose refuses to start until they are set. For an older installation that used the former public defaults, changing only the database password in `.env` will break the connection: rotate the PostgreSQL account password and server configuration together during maintenance, and replace any known example bootstrap secret. Do not put real credentials in Git or logs.
 
 Open <http://127.0.0.1:8088/setup>, enter the bootstrap secret from `.env`, create the administrator, and sign in at `/login`. The setup secret must not be exposed to untrusted visitors. The Compose defaults bind both web and API ports to loopback; do not publish this HTTP-only configuration directly on the internet. Production deployment requires HTTPS, secure cookies, and an explicit security review.
 
 Stop without deleting the database or asset volumes:
 
 ```sh
-docker compose -f deploy/compose.yaml down
+docker compose --env-file .env -f deploy/compose.yaml down
 ```
 
 Do not add `--volumes` unless you intentionally want to delete that Compose project's data. For an isolated acceptance instance, set a distinct `COMPOSE_PROJECT_NAME`, `AGENVAS_API_PORT`, and `AGENVAS_WEB_PORT`, plus separate passwords and bootstrap secret.
+
+Compose defaults cap PostgreSQL/server/web at 768 MiB/1 CPU, 1536 MiB/2 CPUs, and 256 MiB/0.5 CPU respectively, with three 10 MiB JSON log files per service. Adjust `AGENVAS_*_MEMORY_LIMIT` and `AGENVAS_*_CPUS` in `.env` after measuring your host. The server has a 45-second container stop grace period and a 30-second Spring shutdown phase; neither makes an uncertain external submission safe to retry without checking its Provider attempt.
 
 ## What the current build can do
 
@@ -63,3 +67,5 @@ When restoring an older backup, start with `AGENVAS_RECOVERY_MODE=true`. It keep
 ## Current limits
 
 This is a single-administrator, single-application development build, not a multi-tenant hosted service. There has been no verified real LLM + real image + real video golden path, no full backup-and-restore exercise, and no completed security/performance/release audit. The outstanding checks remain unchecked in [DEVELOPMENT-CHECKLIST.md](docs/DEVELOPMENT-CHECKLIST.md). The planned project license is Apache-2.0; the formal license and third-party notices are still pending the release gate. See [SECURITY.md](SECURITY.md) for the current reporting boundary and the [0.1.0 release-notes draft](docs/release-notes/0.1.0-mvp-draft.md) for verified scope and upgrade cautions.
+
+Video assets archived before migration V35 have no verified duration metadata. They cannot be used for new manual or Agent-proposed exports until re-archived; new video archives include a probed duration, and export segments must fit within it.

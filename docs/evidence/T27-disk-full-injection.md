@@ -7,3 +7,5 @@
 同一测试还在普通图片上传的缩略图编码、普通视频上传的 MP4 临时写入分别注入相同错误；每次故障后的项目文件清单与 Asset 行数均不变，随后用相同有效图片/本地 FFmpeg 生成的 MP4 成功归档。视频测试覆盖文件与 READY 边界，不覆盖已受理视频 Task 的状态机。
 
 这不是对物理磁盘实际写满、MP4 海报编码阶段、进程强杀或跨机器共享卷的完整演练；T19、T27 总验收保持未勾选。
+
+2026-09-24 导出补验：扩展同一 `AssetDiskFullPostgresIT`，先用真实 FFmpeg 生成并归档一段 MP4，创建其精确 VIDEO ArtifactVersion，再提交本地顺序导出。导出编码实际运行，只有目标 MP4 向资产临时文件写入时注入一次“先写 16 字节、再抛 IOException”的 ENOSPC 等价故障。真实 PostgreSQL 中原导出 Task 为 `FAILED`/`EXPORT_FAILED`、输出为 JSON null，不新增 READY Asset 或 `asset.ready` 事件、不结算用量而只释放一次预留；项目目录中没有残留 `.export-*`、`.video-ingest-*` 或稳定坏文件。解除注入后，以新幂等键提交同一精确版本与区间，导出成功。首次运行受 Testcontainers Ryuk 握手超时阻断，重试运行到测试后发现 JSON null 与 Java null、任务锁文件保留两处断言错误，修正断言后定向 `./mvnw --batch-mode --no-transfer-progress -q -Dit.test=AssetDiskFullPostgresIT verify` 和全量 `./mvnw --batch-mode --no-transfer-progress -q verify` 均退出码 0。这仍是受控中途写入故障，不声称真实物理卷写满或杀进程恢复已验证。

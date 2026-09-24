@@ -1,9 +1,12 @@
 import {
   Background,
   Controls,
+  Handle,
   MiniMap,
   NodeResizer,
+  Position,
   ReactFlow,
+  type Connection,
   type Node,
   type NodeChange,
   type NodeProps,
@@ -27,6 +30,7 @@ import {
   getProjectSnapshot,
   getRunPreflight,
   listCanvasItems,
+  reviseArtifact,
   uploadImageAsset,
   updateAgent,
   type Agent,
@@ -44,6 +48,11 @@ import { ShotRedoEditor } from "./ShotRedoEditor";
 import { RunHistoryPanel } from "./RunHistoryPanel";
 import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
 import { BlockedRunNotice } from "./BlockedRunNotice";
+import { ManualStoryboardPanel } from "./ManualStoryboardPanel";
+import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
+import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
+import { inputConnectionUpdate, projectCanvasRelations,
+  semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 
@@ -56,11 +65,16 @@ type CanvasNodeData = {
   onRemove: (item: CanvasItem) => void;
   onToggleLocked: (item: CanvasItem) => void;
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
+  onRemoveReference: (item: CanvasItem,
+    reference: NonNullable<CanvasItem["artifact"]>["currentVersion"]["inputReferences"][number]) => void;
   updatingAgent: boolean;
+  removingReference: boolean;
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
-const emptyEdges: never[] = [];
+
+/** Safe client-side validation message for unsupported canvas connection gestures. */
+class CanvasConnectionError extends Error {}
 
 /** React Flow workspace whose nodes are projections of query data plus transient layout drafts. */
 export function ProjectWorkspacePage() {
@@ -73,10 +87,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const textProgress = useRef<{ fingerprint: string; createKey: string;
+    itemId: string; artifactId?: string } | null>(null);
   const [imageTitle, setImageTitle] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
-  const imageProgress = useRef<{ projectId: string; file: File; title: string; assetId?: string; artifactId?: string; itemId?: string } | null>(null);
+  const imageProgress = useRef<{ projectId: string; file: File; title: string;
+    assetId?: string; artifactId?: string; itemId?: string; createKey?: string } | null>(null);
   const [imagePartialStage, setImagePartialStage] = useState<"asset" | "artifact" | null>(null);
   const [agentName, setAgentName] = useState("Creator Agent");
   const [agentInstruction, setAgentInstruction] = useState("根据明确绑定的输入创作内容。");
@@ -87,6 +104,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const updateDraft = useCanvasStore((state) => state.updateDraft);
   const clearDraft = useCanvasStore((state) => state.clearDraft);
   const setSaveState = useCanvasStore((state) => state.setSaveState);
+  const setSaveError = (error: Error) => setSaveState(
+    error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const snapshot = useQuery({
@@ -196,7 +215,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       clearDraft(variables.item.id);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
@@ -209,7 +228,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       clearDraft(item.id);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const toggleLocked = useMutation({
     mutationFn: (item: CanvasItem) =>
@@ -226,21 +245,29 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const addTextCard = useMutation({
     mutationFn: async ({ cardTitle, cardText }: { cardTitle: string; cardText: string }) => {
-      const artifact = await createArtifact(projectId, {
-        kind: "TEXT",
-        title: cardTitle,
-        content: { format: "PLAIN_TEXT", text: cardText },
-      });
+      const fingerprint = JSON.stringify({ projectId, cardTitle, cardText });
+      if (textProgress.current?.fingerprint !== fingerprint) {
+        textProgress.current = { fingerprint, createKey: crypto.randomUUID(),
+          itemId: crypto.randomUUID() };
+      }
+      const pending = textProgress.current;
+      if (!pending.artifactId) {
+        const artifact = await createArtifact(projectId, {
+          kind: "TEXT", title: cardTitle,
+          content: { format: "PLAIN_TEXT", text: cardText },
+        }, pending.createKey);
+        pending.artifactId = artifact.id;
+      }
       const index = canvas.data?.items.length ?? 0;
       return applyCanvasCommands(projectId, [
         {
           type: "PLACE_ARTIFACT",
-          itemId: crypto.randomUUID(),
-          artifactId: artifact.id,
+          itemId: pending.itemId,
+          artifactId: pending.artifactId,
           x: 80 + (index % 3) * 320,
           y: 80 + Math.floor(index / 3) * 220,
           width: 280,
@@ -253,11 +280,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     onMutate: () => setSaveState("saving"),
     onSuccess: (saved) => {
       queryClient.setQueryData(["canvas", projectId], saved);
+      textProgress.current = null;
       setTitle("");
       setText("");
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const addImageCard = useMutation({
     mutationFn: async ({ cardTitle, file }: { cardTitle: string; file: File }) => {
@@ -270,11 +298,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         progress.assetId = asset.id;
       }
       if (!progress.artifactId) {
+        progress.createKey ??= crypto.randomUUID();
         const artifact = await createArtifact(projectId, {
           kind: "IMAGE",
           title: cardTitle,
           content: { sourceType: "UPLOAD", assetId: progress.assetId },
-        });
+        }, progress.createKey);
         progress.artifactId = artifact.id;
       }
       progress.itemId ??= crypto.randomUUID();
@@ -301,10 +330,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (imageInput.current) imageInput.current.value = "";
       setSaveState("saved");
     },
-    onError: () => {
+    onError: (error) => {
       setImagePartialStage(imageProgress.current?.artifactId ? "artifact"
         : imageProgress.current?.assetId ? "asset" : null);
-      setSaveState("failed");
+      setSaveError(error);
     },
   });
   const addAgentCard = useMutation({
@@ -331,7 +360,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const editAgent = useMutation({
     mutationFn: async ({ agent, name, instruction }: { agent: Agent; name: string; instruction: string }) => {
@@ -351,7 +380,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const bindSelection = useMutation({
     mutationFn: async () => {
@@ -381,7 +410,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
   const clearBindings = useMutation({
     mutationFn: async () => {
@@ -402,7 +431,55 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
+  });
+  const connectInput = useMutation({
+    mutationFn: async (connection: Connection) => {
+      if (connection.targetHandle === "artifact-input") {
+        const update = semanticConnectionRevision(canvas.data?.items ?? [], connection);
+        if (!update) {
+          throw new CanvasConnectionError("仅支持图片→角色/场景、角色/场景→镜头的精确版本语义关系。");
+        }
+        if (update.revision) {
+          await reviseArtifact(projectId, update.artifactId, update.revision);
+        }
+        return listCanvasItems(projectId);
+      }
+      const update = inputConnectionUpdate(canvas.data?.items ?? [], connection);
+      if (!update) {
+        throw new CanvasConnectionError("仅支持把 Artifact 连到 Agent 输入或支持的 Artifact 语义关系；连线不会触发生成。");
+      }
+      await updateAgent(projectId, update.agent.id, {
+        expectedVersion: update.agent.version,
+        name: update.agent.name,
+        instruction: update.agent.instruction,
+        bindings: update.bindings,
+      });
+      return listCanvasItems(projectId);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: setSaveError,
+  });
+  const removeReference = useMutation({
+    mutationFn: async ({ item, reference }: { item: CanvasItem;
+      reference: NonNullable<CanvasItem["artifact"]>["currentVersion"]["inputReferences"][number] }) => {
+      const revision = semanticReferenceRemoval(item, reference);
+      if (!item.artifact || !revision) {
+        throw new CanvasConnectionError("此引用是必填项或版本已变化，不能直接移除。请刷新后检查。");
+      }
+      await reviseArtifact(projectId, item.artifact.id, revision);
+      return listCanvasItems(projectId);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: setSaveError,
   });
   const alignSelected = useMutation({
     mutationFn: () => {
@@ -427,13 +504,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       selectedIds.forEach(clearDraft);
       setSaveState("saved");
     },
-    onError: () => setSaveState("failed"),
+    onError: setSaveError,
   });
 
   const saveLayoutMutate = saveLayout.mutate;
   const removeItemMutate = removeItem.mutate;
   const toggleLockedMutate = toggleLocked.mutate;
   const editAgentMutate = editAgent.mutate;
+  const removeReferenceMutate = removeReference.mutate;
 
   const handleResizeEnd = useCallback(
     (itemId: string, layout: LayoutPatch) => {
@@ -457,6 +535,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       editAgentMutate({ agent, name, instruction }),
     [editAgentMutate],
   );
+  const handleRemoveReference = useCallback(
+    (item: CanvasItem,
+      reference: NonNullable<CanvasItem["artifact"]>["currentVersion"]["inputReferences"][number]) =>
+      removeReferenceMutate({ item, reference }),
+    [removeReferenceMutate],
+  );
 
   const nodes = useMemo<CanvasNode[]>(
     () =>
@@ -471,6 +555,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             // React Flow needs node dimensions, not only CSS sizes, before it will show a card.
             initialWidth: draft?.width ?? item.width,
             initialHeight: draft?.height ?? item.height,
+            // Preserve measured dimensions across controlled-node projections so React Flow
+            // keeps its DOM-measured handle bounds for edges and drag-to-connect.
+            measured: { width: draft?.width ?? item.width,
+              height: draft?.height ?? item.height },
             style: { width: draft?.width ?? item.width, height: draft?.height ?? item.height },
             draggable: !item.locked,
             data: {
@@ -489,7 +577,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onRemove: handleRemove,
               onToggleLocked: handleToggleLocked,
               onUpdateAgent: handleUpdateAgent,
+              onRemoveReference: handleRemoveReference,
               updatingAgent: editAgent.isPending,
+              removingReference: removeReference.isPending,
             },
           };
         }),
@@ -501,10 +591,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleResizeEnd,
       handleToggleLocked,
       handleUpdateAgent,
+      handleRemoveReference,
       projectId,
+      removeReference.isPending,
       snapshot.data?.activeRun,
     ],
   );
+  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? []),
+    [canvas.data?.items]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -605,6 +699,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <button className="primary-button mt-4 w-full" disabled={addTextCard.isPending} type="submit">{addTextCard.isPending ? "正在添加…" : "添加到画布"}</button>
         </form>
         {addTextCard.error ? <WorkspaceError error={addTextCard.error} /> : null}
+        <ManualStoryboardPanel projectId={projectId} items={canvas.data?.items ?? []}
+          onSaveStart={() => setSaveState("saving")}
+          onSaved={(saved) => {
+            queryClient.setQueryData(["canvas", projectId], saved);
+            setSaveState("saved");
+          }}
+          onSaveError={setSaveError} />
         <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-base font-semibold">上传参考图</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">支持 PNG、JPEG、WebP；不超过 20 MiB/40 MP。上传后选中图片卡片与 Agent 卡片，再绑定为精确版本输入。模型规划默认不读取图片字节。</p>
@@ -635,12 +736,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-sm font-semibold">选择与对齐</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Shift 或拖出选框选择多张卡片。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">从 Artifact 右侧连接点拖到 Agent 左侧可保存输入；拖到另一张 Artifact 左侧可建立图片→角色/场景、角色/场景→镜头的精确版本引用，并为目标产物创建新版本（场景→镜头会替换原场景引用）。蓝线是输入、绿线是输出组、灰虚线是素材引用；连线不会触发生成。</p>
           <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
           <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">把已选 Artifact 绑定到 Agent</button>
           <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">清空已选 Agent 输入</button>
           {alignSelected.error ? <WorkspaceError error={alignSelected.error} /> : null}
           {bindSelection.error ? <WorkspaceError error={bindSelection.error} /> : null}
           {clearBindings.error ? <WorkspaceError error={clearBindings.error} /> : null}
+          {connectInput.error ? <WorkspaceError error={connectInput.error} /> : null}
+          {removeReference.error ? <WorkspaceError error={removeReference.error} /> : null}
         </div>
         <MediaExportPanel projectId={projectId} items={canvas.data?.items ?? []} />
       </aside>
@@ -652,12 +756,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {canvas.data && canvas.data.items.length === 0 ? <div className="canvas-message">画布还是空的，从左侧添加第一张卡片。</div> : null}
         <ReactFlow<CanvasNode>
           deleteKeyCode={null}
-          edges={emptyEdges}
+          edges={relationEdges}
           fitView
           minZoom={0.25}
           nodes={nodes}
           nodeTypes={nodeTypes}
-          nodesConnectable={false}
+          nodesConnectable
+          onConnect={(connection) => connectInput.mutate(connection)}
           onNodeDragStop={(_, node) => {
             const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
             if (item) saveLayout.mutate({ item, patch: { x: node.position.x, y: node.position.y } });
@@ -686,7 +791,12 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   const imageAssetId = artifact?.kind === "IMAGE" ? mediaAssetId(content) : null;
   const videoAssetId = artifact?.kind === "VIDEO" ? mediaAssetId(content) : null;
   return (
-    <article className={`artifact-node ${selected ? "artifact-node-selected" : ""}`}>
+    <>
+      <Handle id="artifact-input" position={Position.Left}
+        style={{ background: "#64748b" }} type="target" />
+      <Handle id="artifact-output" position={Position.Right}
+        style={{ background: "#2563eb" }} type="source" />
+      <article className={`artifact-node ${selected ? "artifact-node-selected" : ""}`}>
       <NodeResizer
         isVisible={selected && !data.item.locked}
         minHeight={80}
@@ -721,13 +831,36 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       ) : (
         <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[var(--muted)]">{text}</p>
       )}
+      {artifact && (artifact.kind === "TEXT" || artifact.kind === "CHARACTER" ||
+        artifact.kind === "SCENE")
+        ? <StructuredArtifactEditor key={artifact.currentVersionId} artifact={artifact} /> : null}
       {artifact?.kind === "SHOT" ? <ShotRedoEditor key={artifact.currentVersionId}
         artifact={artifact} /> : null}
+      {artifact ? <ArtifactVersionHistory artifact={artifact} /> : null}
+      {artifact && artifact.currentVersion.inputReferences.length > 0 ? (
+        <details className="nodrag nowheel mt-3 text-xs text-[var(--muted)]">
+          <summary className="cursor-pointer">素材引用（{artifact.currentVersion.inputReferences.length} 个精确版本）</summary>
+          <ul className="mt-2 space-y-1">
+            {artifact.currentVersion.inputReferences.map((reference) => (
+              <li className="break-all" key={`${reference.role}:${reference.order}:${reference.versionId}`}>
+                {reference.role} · {reference.kind} · {reference.versionId}
+                {semanticReferenceRemoval(data.item, reference) ? (
+                  <button className="node-action ml-2" disabled={data.removingReference}
+                    onClick={() => data.onRemoveReference(data.item, reference)} type="button">
+                    {data.removingReference ? "保存中…" : "移除引用"}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       <div className="nodrag mt-4 flex gap-2">
         <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? "解锁" : "锁定"}</button>
         <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">移除卡片</button>
       </div>
-    </article>
+      </article>
+    </>
   );
 });
 
@@ -803,7 +936,7 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
   const [reviewSelection, setReviewSelection] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const runIntent = useRef<{ instruction: string; agentVersion: number;
-    modelConfigSource: string; modelConfigVersion: number;
+    modelConfigSource: string; modelConfigVersion: number; systemPromptVersion: number;
     redoShotArtifactId: string | null; selectedItemIds: string[]; key: string } | null>(null);
   useEffect(() => {
     setReviewInstruction(null);
@@ -819,13 +952,15 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
   });
   const start = useMutation({
     mutationFn: ({ agentId, instruction, key, expectedAgentVersion,
-      expectedModelConfigSource, expectedModelConfigVersion, redoShotArtifactId,
+      expectedModelConfigSource, expectedModelConfigVersion, expectedSystemPromptVersion,
+      redoShotArtifactId,
       selectedItemIds }: {
       agentId: string; instruction: string; key: string; expectedAgentVersion: number;
       expectedModelConfigSource: string; expectedModelConfigVersion: number;
+      expectedSystemPromptVersion: number;
       redoShotArtifactId: string | null; selectedItemIds: string[];
     }) => createRun(data.projectId, key, { agentId, instruction, expectedAgentVersion,
-      expectedModelConfigSource, expectedModelConfigVersion,
+      expectedModelConfigSource, expectedModelConfigVersion, expectedSystemPromptVersion,
       selectedItemIds,
       ...(redoShotArtifactId ? { redoShotArtifactId } : {}) }),
     onSuccess: async () => {
@@ -838,7 +973,8 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
     },
     onError: (error) => {
       if (error instanceof ApiError && (error.code === "AGENT_VERSION_CONFLICT" ||
-          error.code === "MODEL_CONFIG_CONFLICT")) {
+          error.code === "MODEL_CONFIG_CONFLICT" ||
+          error.code === "SYSTEM_PROMPT_CONFLICT")) {
         runIntent.current = null;
         setReviewInstruction(null);
         void queryClient.invalidateQueries({ queryKey: ["canvas", data.projectId] });
@@ -873,17 +1009,20 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
     const reviewed = preflight.data;
     if (!agent || !reviewInstruction || !reviewed || preflight.isFetching ||
         !reviewed.modelAvailable || !reviewed.toolCalling || data.activeRun || start.isPending ||
+        reviewed.policySnapshot.systemPromptVersion == null ||
         reviewed.agentVersion !== agent.version || reviewed.agentId !== agent.id) return;
     if (runIntent.current?.instruction !== reviewInstruction ||
         runIntent.current.agentVersion !== reviewed.agentVersion ||
         runIntent.current.modelConfigSource !== reviewed.policySnapshot.modelConfigSource ||
         runIntent.current.modelConfigVersion !== reviewed.policySnapshot.modelConfigVersion ||
+        runIntent.current.systemPromptVersion !== reviewed.policySnapshot.systemPromptVersion ||
         runIntent.current.redoShotArtifactId !== (redoShot?.artifactId ?? null) ||
         runIntent.current.selectedItemIds.join(",") !== reviewSelection.join(",")) {
       runIntent.current = {
         instruction: reviewInstruction, agentVersion: reviewed.agentVersion,
         modelConfigSource: reviewed.policySnapshot.modelConfigSource,
         modelConfigVersion: reviewed.policySnapshot.modelConfigVersion,
+        systemPromptVersion: reviewed.policySnapshot.systemPromptVersion,
         redoShotArtifactId: redoShot?.artifactId ?? null,
         selectedItemIds: reviewSelection,
         key: crypto.randomUUID(),
@@ -893,11 +1032,17 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
       key: runIntent.current.key, expectedAgentVersion: reviewed.agentVersion,
       expectedModelConfigSource: runIntent.current.modelConfigSource,
       expectedModelConfigVersion: runIntent.current.modelConfigVersion,
+      expectedSystemPromptVersion: runIntent.current.systemPromptVersion,
       redoShotArtifactId: redoShot?.artifactId ?? null,
       selectedItemIds: runIntent.current.selectedItemIds });
   }
   return (
-    <article className={`artifact-node h-full overflow-auto ${selected ? "artifact-node-selected" : ""}`}>
+    <>
+      <Handle id="agent-input" position={Position.Left}
+        style={{ background: "#2563eb" }} type="target" />
+      <Handle id="agent-output" isConnectable={false} position={Position.Right}
+        style={{ background: "#059669" }} type="source" />
+      <article className={`artifact-node h-full overflow-auto ${selected ? "artifact-node-selected" : ""}`}>
       <NodeResizer
         isVisible={selected && !data.item.locked}
         minHeight={220}
@@ -978,8 +1123,9 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
               <p className="mt-1">模型：{preflight.data.modelAvailable
                 ? `${preflight.data.providerAdapter ?? "未知适配器"} / ${preflight.data.modelId ?? "未声明模型 ID"}`
                 : "未配置 ChatModel，无法启动规划"}</p>
-              <p className="mt-1">模型配置：{preflight.data.policySnapshot.modelConfigSource} v{preflight.data.policySnapshot.modelConfigVersion}；确认后若配置变化，需重新检查。</p>
+              <p className="mt-1">模型配置：{preflight.data.policySnapshot.modelConfigSource} v{preflight.data.policySnapshot.modelConfigVersion}；系统提示词 v{preflight.data.policySnapshot.systemPromptVersion ?? "未知"}。确认后若配置或规则变化，需重新检查。</p>
               <p className="mt-1">精确绑定输入：{preflight.data.bindings.length} 个版本；首轮只发送有上限的内容预览，不发送图片字节。</p>
+              <p className="mt-1">当前模型看不到图片像素、视频帧或音频，只能依据文字与元数据规划；生成计划不等于媒体已生成，实际结果须等待任务归档。</p>
               <p className="mt-1 break-all">当前选择：{reviewSelection.length} 张卡片
                 {reviewSelection.length ? `（${reviewSelection.join("、")}）` : ""}；仅作为操作意图，不扩大 Agent 权限。</p>
               {preflight.data.bindings.map((binding) => (
@@ -994,7 +1140,8 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
                 <p className="mt-1 text-red-700">当前模型未确认支持工具调用，无法运行。</p> : null}
               <button className="node-action mt-2" disabled={Boolean(data.activeRun) || start.isPending ||
                 preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
-                !preflight.data.toolCalling || !redoBound} onClick={confirmRun} type="button">
+                !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
+                !redoBound} onClick={confirmRun} type="button">
                 {start.isPending ? "启动中…" : "确认开始规划"}
               </button>
             </>
@@ -1014,7 +1161,8 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
         <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? "解锁" : "锁定"}</button>
         <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">移除卡片</button>
       </div>
-    </article>
+      </article>
+    </>
   );
 }
 
@@ -1050,12 +1198,14 @@ function isDemoMedia(content: unknown): boolean {
     "mock" in parameters && parameters.mock === true;
 }
 
-function SaveBadge({ state }: { state: "saved" | "saving" | "failed" }) {
-  const labels = { saved: "已保存", saving: "保存中…", failed: "保存失败，草稿已保留" };
+function SaveBadge({ state }: { state: "saved" | "saving" | "failed" | "conflict" }) {
+  const labels = { saved: "已保存", saving: "保存中…", failed: "保存失败，草稿已保留",
+    conflict: "内容有冲突，当前修改未保存" };
   return <span className={`save-badge save-badge-${state}`}>{labels[state]}</span>;
 }
 
 function WorkspaceError({ error }: { error: Error }) {
-  const message = error instanceof ApiError ? error.message : "操作失败，画布草稿仍保留在本页。";
+  const message = error instanceof ApiError || error instanceof CanvasConnectionError
+    ? error.message : "操作失败，画布草稿仍保留在本页。";
   return <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-800" role="alert">{message}</p>;
 }

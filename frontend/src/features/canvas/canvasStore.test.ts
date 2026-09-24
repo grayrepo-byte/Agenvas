@@ -14,6 +14,13 @@ describe("canvas interaction store", () => {
     expect(useCanvasStore.getState().drafts["item-1"]).toEqual({ x: 42, y: 84 });
   });
 
+  it("keeps an unsaved draft while showing a distinct conflict state", () => {
+    useCanvasStore.getState().updateDraft("item-1", { x: 42 });
+    useCanvasStore.getState().setSaveState("conflict");
+    expect(useCanvasStore.getState().saveState).toBe("conflict");
+    expect(useCanvasStore.getState().drafts["item-1"]).toEqual({ x: 42 });
+  });
+
   it("clears only the acknowledged item draft", () => {
     useCanvasStore.getState().updateDraft("item-1", { x: 42 });
     useCanvasStore.getState().updateDraft("item-2", { x: 99 });

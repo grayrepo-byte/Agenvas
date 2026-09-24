@@ -41,17 +41,29 @@ class CreatorEvaluationCorpusTest {
     /** Case IDs, fixtures and semantic oracles must not drift silently between evaluations. */
     @Test
     void frozenSuiteHasThirtyDistinctClassifiedInstructions() throws Exception {
+        verifySuite(1);
+    }
+
+    /** The currently issued Run prompt must have its own immutable evaluation fixture. */
+    @Test
+    void currentPromptHasThirtyDistinctClassifiedInstructions() throws Exception {
+        verifySuite(2);
+    }
+
+    private void verifySuite(int promptVersion) throws Exception {
         Path root = Path.of(System.getProperty("user.dir"));
-        Path corpusPath = root.resolve("docs/evaluation/creator-v1-cases.json");
+        String fileName = "creator-v" + promptVersion + "-cases.json";
+        Path corpusPath = root.resolve("docs/evaluation/" + fileName);
         if (!Files.isRegularFile(corpusPath)) {
-            corpusPath = root.resolve("../docs/evaluation/creator-v1-cases.json");
+            corpusPath = root.resolve("../docs/evaluation/" + fileName);
         }
         JsonNode corpus = new ObjectMapper().readTree(Files.readString(corpusPath));
         assertThat(corpus.path("schemaVersion").asInt()).isEqualTo(1);
-        assertThat(corpus.path("suiteId").asText()).isEqualTo("creator-mvp-v1");
+        assertThat(corpus.path("suiteId").asText())
+                .isEqualTo("creator-mvp-v" + promptVersion);
         assertThat(corpus.path("profileKey").asText()).isEqualTo("CREATOR");
         assertThat(corpus.path("profileVersion").asInt()).isEqualTo(1);
-        assertThat(corpus.path("systemPromptVersion").asInt()).isEqualTo(1);
+        assertThat(corpus.path("systemPromptVersion").asInt()).isEqualTo(promptVersion);
         assertThat(corpus.path("toolSchemaVersion").asInt()).isEqualTo(1);
         JsonNode cases = corpus.path("cases");
         assertThat(cases.isArray()).isTrue();

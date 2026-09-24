@@ -151,7 +151,7 @@ public class MediaExportWorker {
                 "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                 "-threads", "2", "-movflags", "+faststart", "-y", output.toString()));
         long[] lastHeartbeat = {System.nanoTime()};
-        mediaTools.ffmpegExport(arguments, EXPORT_TIMEOUT,
+        mediaTools.ffmpegExport(arguments, workspace.directory(), EXPORT_TIMEOUT,
                 () -> tasks.exportShouldStop(lease), () -> {
                     if (System.nanoTime() - lastHeartbeat[0] >= HEARTBEAT_NANOS) {
                         tasks.heartbeat(lease.id(), workerId, lease.leaseEpoch());

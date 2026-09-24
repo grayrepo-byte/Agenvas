@@ -128,9 +128,14 @@ class ExecutionPlanPostgresIT {
         mediaOwnerId = owner.userId();
         mediaProjectId = project.id();
         List<ArtifactService.ArtifactView> shots = createShots(owner.userId(), project.id());
-        List<AgentInstanceService.BindingInput> bindings = shots.stream()
+        UUID sceneVersionId = UUID.fromString(shots.getFirst().currentVersion()
+                .content().path("sceneVersionId").asText());
+        UUID sceneArtifactId = jdbc.sql("select artifact_id from artifact_version where id = :id")
+                .param("id", sceneVersionId).query(UUID.class).single();
+        List<AgentInstanceService.BindingInput> bindings = new ArrayList<>(shots.stream()
                 .map(shot -> new AgentInstanceService.BindingInput(shot.artifact().id(),
-                        shot.currentVersion().id())).toList();
+                        shot.currentVersion().id())).toList());
+        bindings.add(new AgentInstanceService.BindingInput(sceneArtifactId, sceneVersionId));
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
                 bindings);
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
@@ -146,6 +151,27 @@ class ExecutionPlanPostgresIT {
         ((ObjectNode) cyclic.path("steps").get(1)).putArray("dependsOnStepKeys").add("step-1");
         assertThatThrownBy(() -> plans.propose(context, cyclic))
                 .isInstanceOf(ApiProblemException.class);
+        assertThat(count("execution_plan")).isZero();
+
+        ObjectNode wrongType = draft("IMAGE", shots, List.of());
+        ((ObjectNode) wrongType.path("steps").get(0))
+                .put("shotArtifactId", sceneArtifactId.toString())
+                .put("shotVersionId", sceneVersionId.toString());
+        assertThatThrownBy(() -> plans.propose(context, wrongType))
+                .isInstanceOfSatisfying(ApiProblemException.class, error ->
+                        assertThat(error.code()).isEqualTo("PLAN_INVALID"));
+
+        Project foreignProject = projects.create(owner.userId(), "Foreign plan inputs",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        ArtifactService.ArtifactView foreignShot = createShots(owner.userId(),
+                foreignProject.id()).getFirst();
+        ObjectNode foreignInput = draft("IMAGE", shots, List.of());
+        ((ObjectNode) foreignInput.path("steps").get(0))
+                .put("shotArtifactId", foreignShot.artifact().id().toString())
+                .put("shotVersionId", foreignShot.currentVersion().id().toString());
+        assertThatThrownBy(() -> plans.propose(context, foreignInput))
+                .isInstanceOfSatisfying(ApiProblemException.class, error ->
+                        assertThat(error.code()).isEqualTo("RESOURCE_NOT_FOUND"));
         assertThat(count("execution_plan")).isZero();
 
         ObjectNode imageDraft = draft("IMAGE", shots, List.of());
@@ -532,7 +558,7 @@ class ExecutionPlanPostgresIT {
                 .param("projectId", budgetProject.id()).query(Integer.class).single())
                 .isEqualTo(6);
         assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("34");
+                .query(String.class).single()).isEqualTo("35");
     }
 
     /** A no-submission terminal media task closes exactly one unknown-cost reservation. */

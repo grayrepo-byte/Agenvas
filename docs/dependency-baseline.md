@@ -13,7 +13,7 @@
 | Node.js | 24.21.0 | 前端构建镜像；`package.json` 接受同一 Node 24 LTS 系列的 24.12+ |
 | pnpm | 12.5.1 | `packageManager`、engine、CI 和容器一致 |
 | Trivy | 0.74.0 | CI action 固定到 v0.36.0 对应 commit；本机以同版本容器复验扫描命令 |
-| PostgreSQL | 17.11 | Testcontainers 已执行 Flyway V1–V34；Compose 最近一次验证以各阶段证据为准，V34 尚未在 Compose 升级演练 |
+| PostgreSQL | 17.11 | Testcontainers 已执行 Flyway V1–V35；Compose 最近一次验证以各阶段证据为准，V35 尚未在 Compose 升级演练 |
 
 ## 后端直接依赖
 
@@ -58,7 +58,9 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 三个运行镜像均在固定基础镜像上执行 `apk upgrade --no-cache`，用同一 Alpine 稳定分支的安全修复构建；实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。数据库镜像额外用 Alpine `su-exec` 替换官方入口脚本所调用的 `gosu`；本机已验证初始化和 `pg_isready`。Trivy 0.74.0 仍会读到底层镜像中已被替换的旧 `gosu`，CI 仅对 PostgreSQL 镜像的 `usr/local/bin/gosu` 路径做精确排除，其余路径不排除；此例外的负责人、证据和到期日见 `docs/security-exceptions.md`。
 
-## 已执行验证
+## 初始基线验证（历史记录）
+
+以下命令结果记录的是建立 M0 基线时的执行快照，不代表当前 V35 全量测试计数或最新部署验收；后续行为与回归结果以 `docs/evidence/` 和开发清单为准。
 
 ```text
 frontend: ./node_modules/.bin/openapi-typescript ../contracts/openapi.yaml -o src/shared/api/schema.ts
@@ -81,7 +83,7 @@ Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前
 
 ## 尚未验证或不在本基线范围
 
-- 上述 Compose 验证发生于 V15；新 V16–V30 目前仅由 PostgreSQL Testcontainers 集成测试验证，尚未完成 Compose 升级验证。
+- 上述初始 Compose 验证发生于 V15；当前 V35 已在隔离空卷 Compose 中构建、初始化、登录及停机重启，见 `docs/evidence/T29-fresh-compose-smoke.md`。从 V15 旧部署原位升级到 V35 仍未演练。
 - T04 已加入 fork PR 可运行且不注入 Provider/部署密钥的 Trivy 源码密钥与依赖扫描、三个运行镜像的 HIGH/CRITICAL 漏洞门禁，以及每镜像的 CycloneDX SBOM/许可证清单工件。2026-09-24 本机用 Trivy 0.74.0 验证：源码密钥与依赖扫描均为 0；后端运行镜像的许可证 JSON 和 CycloneDX 输出成功；Web 原镜像有 37 项 HIGH/CRITICAL，Alpine 安全更新后为 0；后端原镜像的 Tomcat 11.0.24 命中 CVE-2026-68525，固定到 11.0.25 后的运行镜像 OS 和 JAR 均为 0；PostgreSQL 派生镜像精确排除已被 `su-exec` 替换的底层旧 `gosu` 文件后为 0。后端 `./mvnw verify` 实际通过（Surefire 50、Failsafe 41），Docker 内构建通过（Surefire 50）；三张运行镜像均成功构建，PostgreSQL 派生镜像初始化并通过 `pg_isready`，Nginx 配置测试通过。工作流 YAML 已解析且无 `secrets.*` 引用，Compose 配置检查通过；GitHub Actions 托管运行尚未在本工作区验证。源码离线扫描无法完整解析 Maven 父 BOM 的传递依赖，后端镜像扫描补足了运行 JAR 覆盖。
 - Spring AI 2.0.1 的受控 ChatClient 工具往返经假模型测试；OpenAI 兼容 starter 的实际 `ChatModel` 又经假 HTTP Chat Completions 端点与真实 PostgreSQL 上下文验证工具 ID、下一回合 tool reply 和 Token 元数据。完整响应 checkpoint、持久工具结果的下一回合消息重建与文本/角色/场景/镜头工具业务执行经真实 PostgreSQL + 假 ChatGateway 或保存的假模型响应测试。尚未验证特定真实 Provider 对恢复后元数据的要求；没有真实 LLM 或视觉调用。
 - ComfyUI `image-v1` 候选模板已接入审批后的图片提交、原 prompt_id 核对、Asset 归档和 V23 单槽调度，并由假 HTTP 服务与 PostgreSQL 集成测试验证；尚未以真实 ComfyUI/模型验证图片。默认仍是 Mock。PNG/JPEG/WebP 上传已由 PostgreSQL＋HTTP 验证；真实 Provider 的归档失败恢复和固定视频模板现场兼容性尚未完成。

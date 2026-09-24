@@ -71,7 +71,7 @@ public class LocalAssetStorage {
 
     /** A probed MP4 and its extracted PNG poster installed under immutable object keys. */
     public record StoredVideo(String objectKey, long byteSize, String sha256,
-            int width, int height, String thumbnailKey, long thumbnailByteSize,
+            int width, int height, int durationMs, String thumbnailKey, long thumbnailByteSize,
             String thumbnailSha256) {}
 
     /** Serializes one task archive across processes sharing the required local volume. */
@@ -139,7 +139,7 @@ public class LocalAssetStorage {
                 throw new IllegalStateException("Recovered task video poster is invalid");
             }
             return Optional.of(new StoredVideo(prefix + ".mp4", size, sha256(original),
-                    details.width(), details.height(), prefix + ".thumb.png",
+                    details.width(), details.height(), details.durationMs(), prefix + ".thumb.png",
                     Files.size(poster), sha256(poster)));
         } catch (IOException | NoSuchAlgorithmException failure) {
             throw new IllegalStateException("Cannot recover task video archive", failure);
@@ -172,10 +172,14 @@ public class LocalAssetStorage {
                 || !Double.isFinite(duration) || duration <= 0 || duration > 60) {
             throw invalid("视频必须是可解码且不超过 60 秒的 MP4。", "ASSET_INVALID_VIDEO");
         }
-        return new VideoDetails(width, height);
+        int durationMs = Math.toIntExact(Math.round(duration * 1_000));
+        if (durationMs < 1 || durationMs > 60_000) {
+            throw invalid("视频时长超出支持范围。", "ASSET_INVALID_VIDEO");
+        }
+        return new VideoDetails(width, height, durationMs);
     }
 
-    private record VideoDetails(int width, int height) {}
+    private record VideoDetails(int width, int height, int durationMs) {}
 
     /** Gives a local export one locked private scratch directory on the asset volume. */
     public ExportWorkspace createExportWorkDirectory(UUID projectId) {
@@ -345,7 +349,7 @@ public class LocalAssetStorage {
             posterMoved = true;
             StoredVideo result = new StoredVideo(key, size,
                     HexFormat.of().formatHex(digest.digest()), details.width(),
-                    details.height(), posterKey,
+                    details.height(), details.durationMs(), posterKey,
                     Files.size(posterStable), sha256(posterStable));
             installed = true;
             return result;

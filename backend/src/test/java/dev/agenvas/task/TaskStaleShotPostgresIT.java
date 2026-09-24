@@ -305,6 +305,83 @@ class TaskStaleShotPostgresIT {
                     .param("taskId", approvedTask.id()).query(Integer.class).single())
                     .isEqualTo(1);
         }
+
+        // An unchanged shot is not enough: a newer reference-image version also fences work.
+        Project referenceProject = projects.create(owner.userId(), "Changed reference image",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        var referenceScene = artifacts.create(owner.userId(), referenceProject.id(),
+                Artifact.Kind.SCENE, "Scene", sceneContent);
+        ObjectNode uploadContent = mapper.createObjectNode();
+        uploadContent.put("sourceType", "UPLOAD");
+        uploadContent.put("assetId", ImageAssetFixture.archive(assets, owner.userId(),
+                referenceProject.id()).toString());
+        var referenceImage = artifacts.create(owner.userId(), referenceProject.id(),
+                Artifact.Kind.IMAGE, "Reference", uploadContent);
+        ObjectNode referenceShotContent = shotContent.deepCopy();
+        referenceShotContent.put("sceneVersionId", referenceScene.currentVersion().id().toString());
+        referenceShotContent.put("selectedImageVersionId",
+                referenceImage.currentVersion().id().toString());
+        var referenceShot = artifacts.create(owner.userId(), referenceProject.id(),
+                Artifact.Kind.SHOT, "Reference shot", referenceShotContent);
+        AgentInstance referenceAgent = agents.create(owner.userId(), referenceProject.id(),
+                "Creator", "Create", List.of(new AgentInstanceService.BindingInput(
+                        referenceShot.artifact().id(), referenceShot.currentVersion().id())));
+        AgentRun referenceRun = runs.create(owner.userId(), referenceProject.id(),
+                referenceAgent.id(), "Use reference", "changed-reference-run").run();
+        runs.transition(owner.userId(), referenceProject.id(), referenceRun.id(),
+                referenceRun.version(), AgentRun.Status.RUNNING);
+        ObjectNode pinnedReferenceInput = input(referenceShot.artifact().id(),
+                referenceShot.currentVersion().id());
+        pinnedReferenceInput.put("referenceImageVersionId",
+                referenceImage.currentVersion().id().toString());
+        Task referenceLate = tasks.createMediaTaskForNewOutput(owner.userId(),
+                referenceProject.id(), referenceRun.id(), null, "reference-late",
+                Task.Kind.IMAGE_GENERATION, pinnedReferenceInput, null, 1, List.of(),
+                "reference-late-output");
+        Task referenceUnsubmitted = tasks.createMediaTaskForNewOutput(owner.userId(),
+                referenceProject.id(), referenceRun.id(), null, "reference-unsubmitted",
+                Task.Kind.IMAGE_GENERATION, pinnedReferenceInput, null, 1, List.of(),
+                "reference-unsubmitted-output");
+        Task referenceLease = tasks.claimImagesDue("reference-submitter", 1).getFirst();
+        assertThat(referenceLease.id()).isEqualTo(referenceLate.id());
+        tasks.beginSubmission(referenceLease, "reference-submitter");
+        ExecutionPlan referencePlan = plans.propose(new TrustedToolContext(owner.userId(),
+                referenceProject.id(), referenceRun.id()), imageDraft(List.of(referenceShot)));
+        assertThat(referencePlan.inputSnapshot().path("inputs")).anySatisfy(pin ->
+                assertThat(pin.path("versionId").asText())
+                        .isEqualTo(referenceImage.currentVersion().id().toString()));
+        var changedReference = artifacts.revise(owner.userId(), referenceProject.id(),
+                referenceImage.artifact().id(), referenceImage.artifact().version(), null,
+                uploadContent.deepCopy());
+        assertThat(changedReference.currentVersion().id())
+                .isNotEqualTo(referenceImage.currentVersion().id());
+        assertThat(artifacts.get(owner.userId(), referenceProject.id(),
+                referenceShot.artifact().id()).currentVersion().id())
+                .isEqualTo(referenceShot.currentVersion().id());
+        assertThatThrownBy(() -> plans.approve(owner.userId(), referenceProject.id(),
+                referencePlan.id(), referencePlan.planHash()))
+                .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("PLAN_CONFLICT"));
+        plans.reject(owner.userId(), referenceProject.id(), referencePlan.id());
+        ObjectNode referenceLateContent = mapper.createObjectNode();
+        referenceLateContent.put("assetId", ImageAssetFixture.archive(assets, owner.userId(),
+                referenceProject.id()).toString());
+        referenceLateContent.put("prompt", "Old reference version");
+        referenceLateContent.put("providerConfigVersion", 1);
+        referenceLateContent.put("workflowVersion", "mock-image-v1");
+        referenceLateContent.putObject("parameters");
+        referenceLateContent.put("sourceTaskId", referenceLate.id().toString());
+        assertThat(tasks.succeedWithArtifact(referenceLease, "reference-submitter",
+                referenceLateContent).selected()).isFalse();
+        AtomicInteger referenceSubmissions = new AtomicInteger();
+        assertThat(new TaskWorker(tasks).runImagesOnce("reference-stale-worker", 1,
+                (task, requestKey) -> {
+                    referenceSubmissions.incrementAndGet();
+                    return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");
+                })).isEqualTo(1);
+        assertThat(referenceSubmissions).hasValue(0);
+        assertThat(tasks.get(owner.userId(), referenceProject.id(),
+                referenceUnsubmitted.id()).errorCode()).isEqualTo("TASK_INPUT_STALE");
     }
 
     /** Three exact shots are the P0 approval boundary, even when one was locally revised. */

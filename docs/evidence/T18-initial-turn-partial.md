@@ -19,6 +19,7 @@
 - 合约兼容：OpenAPI 在 0.1.0 开发期加法增加 `GET /runs/preflight` 和创建 Run 可选的 `expectedAgentVersion`；服务端旧调用路径仍可省略该字段。前端生成类型已重建。
 
 - 2026-09-24 运行前模型配置竞态补验：预览的 `policySnapshot` 正式声明配置来源/版本；Agent 卡片确认时一并提交 `expectedModelConfigSource` 和 `expectedModelConfigVersion`。服务端用同一份创建时策略快照比较，不匹配返回 409 `MODEL_CONFIG_CONFLICT`，不会创建 Run；前端清除旧确认并要求重新预览，网络失败重试仍沿用相同幂等键。真实 PostgreSQL `AgentRunPostgresIT` 覆盖错版本无 Run、预览返回身份和带正确身份的 20 路 HTTP 并发创建；前端 `ProjectWorkspacePage.test.tsx` 覆盖字段发送和冲突后换键。OpenAPI 与生成 TS 同步；新增字段为可选对照条件，旧 API 调用仍可省略，但 UI 总是提交。未新增迁移；仍未做真实模型配置切换期间的浏览器端到端测试。
+- 2026-09-24 系统提示词版本补验：预览现展示 `systemPromptVersion`，卡片确认提交 `expectedSystemPromptVersion`；创建时版本不同返回 409 `SYSTEM_PROMPT_CONFLICT`，无 Run 或首轮任务。该值参与幂等请求指纹，网络失败仍可同键重放原请求，规则冲突则清除旧确认。OpenAPI/生成 TS 加法更新，旧 API 可省略此对照条件；没有数据库迁移。真实部署交错仍未做浏览器端到端演练。
 - 本次检查：最终 Java 源码 `./mvnw --batch-mode --no-transfer-progress -Dit.test=AgentRunPostgresIT verify -q` 及完整 `./mvnw --batch-mode --no-transfer-progress verify -q` 均退出码 0。前端最终源码 `npm run typecheck && npm run lint && npm test && npm run build` 退出码 0，15 个测试文件、48 个测试通过；`git diff --check` 退出码 0。真实模型和浏览器端配置切换竞态均未实测。
 - 停止边界：已批准媒体 Task 确认失败或其提交恢复为 `UNKNOWN` 时，Run 与任务事件同事务转为 `BLOCKED`，未完成的后续 Agent 回合不被唤醒。媒体 Worker 的明确拒绝结果经过租约与 epoch 校验，将 `SUBMITTING` Task 置为 `FAILED`、相应 attempt 置为 `REJECTED`；过期 Worker 不能写回。成功归档同步把 attempt 置为 `ACCEPTED`。含糊的网络失败仍等待租约恢复为 `UNKNOWN`，不自动重新提交生成请求。
 - 合约/迁移：Run preflight 是加法 HTTP 合约，Mock ChatGateway 只增加部署模式配置，没有新数据库迁移；Flyway V19 曾增加 Provider attempt 的 `REJECTED` 状态。数据库继续以 Run/Task/Provider attempt 行为真相。

@@ -7,7 +7,7 @@ type LayoutDraft = {
   height?: number;
 };
 
-type SaveState = "saved" | "saving" | "failed";
+type SaveState = "saved" | "saving" | "failed" | "conflict";
 
 type CanvasInteractionState = {
   drafts: Record<string, LayoutDraft>;

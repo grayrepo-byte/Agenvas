@@ -19,3 +19,7 @@
 2026-09-24 路径边界补验：`LocalAssetStorage.checkedPath` 除拒绝词法 `..` 外，还拒绝已有的符号链接父目录；上传图片、视频归档、任务锁和导出临时目录在创建文件前统一检查项目目录不是符号链接。`AssetPostgresIT` 在归档卷内构造指向卷外临时目录的项目符号链接，验证四条写入路径均拒绝且卷外未产生文件；原测试继续覆盖伪造 MIME/SVG/WebP、49 MP PNG、未认证/跨项目原图与缩略图读取。该检查不承诺防御拥有本地卷写权限的进程在检查后并发替换目录；P0 部署仍须限制卷写权限。无 API 合约或迁移变化。
 
 本次最终源码的 `./mvnw --batch-mode --no-transfer-progress -Dit.test=AssetPostgresIT verify -q` 和完整 `./mvnw --batch-mode --no-transfer-progress verify -q` 均退出码 0；`git diff --check` 退出码 0。没有前端行为或合约变化，本轮未重跑前端检查。未做真实磁盘耗尽、跨进程目录替换或真实媒体 Provider 验证。
+
+2026-09-24 大文件流式读取补验：新增 `AssetControllerStreamingTest`，以仅占少量实际磁盘块的 400 MiB 稀疏视频文件作为已授权 Asset fixture。在 `-Xmx128m` 的 JVM 中，控制器返回 `InputStreamResource` 与准确的 400 MiB Content-Length，Spring `ResourceHttpMessageConverter` 完整复制全部字节到不缓存的计数输出流，单次写入不超过 64 KiB，首尾字节一致；若整段载入堆内存，此用例无法通过。另验证末尾 Range、HEAD 与 `skip()` 不能越过选定区间；后者原实现会移动到底层文件更远位置，现同步扣减剩余长度并限界。`./mvnw -q -Dtest=AssetControllerStreamingTest -DargLine=-Xmx128m test` 退出码 0；本轮后端全套 `./mvnw -q verify` 退出码 0。授权与跨项目边界仍由 `AssetPostgresIT` 的真实 PostgreSQL/HTTP 用例覆盖；本次大文件测试不走生产网络，也不测实际非稀疏磁盘吞吐。无 OpenAPI、Flyway、前端改动。
+
+2026-09-24 READY 故障门禁复核：当前源码定向 `./mvnw -q -Dit.test=AssetDiskFullPostgresIT,AssetPostgresIT verify` 退出码 0。前者在真实 PostgreSQL＋本地 FFmpeg 上注入 `No space left on device` 写入错误，核对图片原图、缩略图、MP4 与导出归档均无额外 Asset/`asset.ready`，无残留临时文件；同一已受理图片请求可只重试归档而不再提交生成。后者以数据库 INSERT 拒绝触发器核对用户上传失败会清理已写字节、任务键归档失败只保留可恢复的稳定文件而无 READY 行/事件，故障解除后复用原字节一次性发布。该证据满足 T19 的“故障不能产生 READY 坏文件”行为验收，但 ENOSPC 是注入而非真实物理磁盘写满，生产容量、磁盘异常与进程崩溃仍需另行演练。

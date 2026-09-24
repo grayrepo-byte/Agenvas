@@ -130,6 +130,9 @@ class AgentRunPostgresIT {
                 });
         assertThat(preflight.modelAvailable()).isFalse();
         assertThat(preflight.policySnapshot().path("maxModelTurns").asInt()).isEqualTo(12);
+        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(preflight.policySnapshot().path("systemPromptVersion").asInt())
+                .isEqualTo(2);
         String reviewedModelSource = preflight.policySnapshot()
                 .path("modelConfigSource").asText();
         int reviewedModelVersion = preflight.policySnapshot()
@@ -138,6 +141,10 @@ class AgentRunPostgresIT {
                 project.id(), agent.id(), "Create three shots", "stale-model-consent",
                 preflight.agentVersion(), null, List.of(), reviewedModelSource,
                 reviewedModelVersion + 1));
+        assertProblem("SYSTEM_PROMPT_CONFLICT", () -> runService.create(owner.userId(),
+                project.id(), agent.id(), "Create three shots", "stale-prompt-consent",
+                preflight.agentVersion(), null, List.of(), reviewedModelSource,
+                reviewedModelVersion, 1));
         assertThat(jdbcClient.sql("select count(*) from agent_run where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isZero();
         MockMvc mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
@@ -152,8 +159,22 @@ class AgentRunPostgresIT {
                         .value(reviewedModelSource))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigVersion")
                         .value(reviewedModelVersion))
+                .andExpect(jsonPath("$.policySnapshot.systemPromptVersion").value(2))
                 .andExpect(jsonPath("$.modelAvailable").value(false));
         mvc.perform(get(preflightPath)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/projects/" + project.id() + "/runs")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                owner, null, List.of())))
+                        .with(csrf())
+                        .header("Idempotency-Key", "stale-prompt-http")
+                        .contentType("application/json")
+                        .content("{\"agentId\":\"" + agent.id()
+                                + "\",\"instruction\":\"Create three shots\""
+                                + ",\"expectedSystemPromptVersion\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SYSTEM_PROMPT_CONFLICT"));
+        assertThat(jdbcClient.sql("select count(*) from agent_run where project_id = :projectId")
+                .param("projectId", project.id()).query(Integer.class).single()).isZero();
 
         List<AgentRunService.CreateResult> replays = concurrentSameKey(
                 owner.userId(), project.id(), agent.id());
@@ -176,6 +197,9 @@ class AgentRunPostgresIT {
         assertThat(run.contextSnapshot().path("bindings").path(0)
                 .path("expectedVersion").longValue()).isEqualTo(0);
         assertThat(run.policySnapshot().get("maxModelTurns").intValue()).isEqualTo(12);
+        assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(2);
+        assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
+                .getFirst().getText()).contains("no image pixels");
 
         agentService.update(owner.userId(), project.id(), agent.id(), 0,
                 agent.name(), "Ignore the original storyboard", List.of());
@@ -310,7 +334,7 @@ class AgentRunPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("34");
+                .isEqualTo("35");
 
         Project httpProject = projectService.create(owner.userId(), "HTTP replay project",
                 Project.AspectRatio.LANDSCAPE_16_9);
@@ -330,7 +354,9 @@ class AgentRunPostgresIT {
                 + ",\"expectedModelConfigSource\":\""
                 + reviewed.policySnapshot().path("modelConfigSource").asText()
                 + "\",\"expectedModelConfigVersion\":"
-                + reviewed.policySnapshot().path("modelConfigVersion").asInt() + "}";
+                + reviewed.policySnapshot().path("modelConfigVersion").asInt()
+                + ",\"expectedSystemPromptVersion\":"
+                + reviewed.policySnapshot().path("systemPromptVersion").asInt() + "}";
         CountDownLatch start = new CountDownLatch(1);
         List<Future<MvcResult>> requests = new ArrayList<>();
         try (ExecutorService executor = Executors.newFixedThreadPool(20)) {

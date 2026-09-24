@@ -6,6 +6,7 @@ import java.util.UUID;
 /** Database identity and verified metadata for one private, immutable media file. */
 public record Asset(UUID id, UUID projectId, MediaKind mediaKind, String objectKey,
         String contentType, long byteSize, String sha256, Integer width, Integer height,
+        Integer durationMs,
         String thumbnailKey, Long thumbnailByteSize, String thumbnailSha256,
         Instant createdAt) {
 

@@ -101,7 +101,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> handleUnexpected(
             Exception exception, HttpServletRequest request) {
-        String traceId = UUID.randomUUID().toString().replace("-", "");
+        String traceId = traceId(request);
         LOGGER.error("Unhandled API failure traceId={} path={}", traceId, request.getRequestURI(), exception);
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR, "服务端暂时无法完成请求。");
@@ -127,12 +127,19 @@ public class ApiExceptionHandler {
         problem.setTitle(title);
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("code", code);
-        problem.setProperty("traceId", UUID.randomUUID().toString().replace("-", ""));
+        problem.setProperty("traceId", traceId(request));
         problem.setProperty("retryable", retryable);
         if (fieldErrors != null && !fieldErrors.isEmpty()) {
             problem.setProperty("fieldErrors", fieldErrors);
         }
         return ResponseEntity.status(status).body(problem);
+    }
+
+    /** Uses the filter's trusted request ID, with a local fallback for non-servlet tests. */
+    private String traceId(HttpServletRequest request) {
+        Object value = request.getAttribute(RequestCorrelationFilter.ATTRIBUTE);
+        return value instanceof String id && id.matches("[0-9a-f]{32}")
+                ? id : UUID.randomUUID().toString().replace("-", "");
     }
 
     /** Public validation error representation that never includes submitted values. */

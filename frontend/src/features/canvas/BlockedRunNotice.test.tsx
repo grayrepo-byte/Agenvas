@@ -43,6 +43,18 @@ describe("BlockedRunNotice", () => {
     expect(await screen.findByText(/已达到两次修复或回合上限/)).toBeInTheDocument();
   });
 
+  it("explains a durable model-turn ceiling without implying media is still polling", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+      HttpResponse.json([{ id: "task-limit", kind: "AGENT_TURN", status: "FAILED",
+        errorCode: "MODEL_TURN_LIMIT" }]),
+    ));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-limit" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/12 回合上限/)).toBeInTheDocument();
+    expect(screen.getByText(/系统未再调用模型或自动重试/)).toBeInTheDocument();
+  });
+
   it("requires a new approval when an unsubmitted media task is stale", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
       HttpResponse.json([{ id: "task-4", kind: "IMAGE_GENERATION", status: "BLOCKED",
@@ -51,7 +63,8 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="run-4" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/重新绑定该版本并发起新 Run/)).toBeInTheDocument();
+    expect(await screen.findByText(/镜头、参考图或人工选定的关键帧版本已变化/)).toBeInTheDocument();
+    expect(screen.getByText(/重新绑定当前镜头与所需素材后发起新 Run/)).toBeInTheDocument();
     expect(screen.getByText(/仍须分别由你审批/)).toBeInTheDocument();
     expect(screen.queryByText(/UNKNOWN 核对提示/)).not.toBeInTheDocument();
   });

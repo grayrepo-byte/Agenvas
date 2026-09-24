@@ -57,6 +57,13 @@ public class AssetController {
         }
     }
 
+    /** Returns only authorized immutable media metadata, never a local object key. */
+    @GetMapping("/{assetId}")
+    public AssetResponse metadata(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID assetId) {
+        return AssetResponse.from(assets.get(principal.userId(), projectId, assetId).asset());
+    }
+
     /** Sends a bounded range without loading the media into JVM memory. */
     @GetMapping("/{assetId}/content")
     public ResponseEntity<InputStreamResource> content(
@@ -157,6 +164,20 @@ public class AssetController {
                 remaining -= count;
                 return count;
             }
+
+            @Override
+            public long skip(long count) throws IOException {
+                if (count <= 0 || remaining == 0) return 0;
+                long skipped = Math.min(count, remaining);
+                channel.position(channel.position() + skipped);
+                remaining -= skipped;
+                return skipped;
+            }
+
+            @Override
+            public int available() throws IOException {
+                return (int) Math.min(in.available(), Math.min(remaining, Integer.MAX_VALUE));
+            }
         };
     }
 
@@ -179,12 +200,12 @@ public class AssetController {
     /** Public metadata contains no filesystem path or untrusted provider URL. */
     public record AssetResponse(UUID id, UUID projectId, Asset.MediaKind mediaKind,
             String contentType, long byteSize, String sha256, Integer width,
-            Integer height, Instant createdAt) {
+            Integer height, Integer durationMs, Instant createdAt) {
 
         public static AssetResponse from(Asset asset) {
             return new AssetResponse(asset.id(), asset.projectId(), asset.mediaKind(),
                     asset.contentType(), asset.byteSize(), asset.sha256(), asset.width(),
-                    asset.height(), asset.createdAt());
+                    asset.height(), asset.durationMs(), asset.createdAt());
         }
     }
 

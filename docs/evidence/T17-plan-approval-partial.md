@@ -15,6 +15,10 @@
 - 加固后执行 `./mvnw -q -Dtest=ExecutionPlanPostgresIT test` 与完整 `./mvnw verify -q` 均成功；完整验证包含上述并发编辑测试。
 - 配置变更与真实提交前再次校验仍未覆盖；上述加固不代表 T17 已完成。
 
+2026-09-24 计划输入边界补验：`ExecutionPlanPostgresIT` 在真实 PostgreSQL 中将一个同项目、已绑定的 SCENE 版本冒充 SHOT，服务端返回 `PLAN_INVALID`；将另一个项目的真实 SHOT 版本填入计划，服务端返回不泄露资源存在性的 `RESOURCE_NOT_FOUND`。两次拒绝后 `execution_plan` 仍为 0。原有测试同时覆盖 DAG 环及批准时媒体额度超限且不多建 Task。定向 `./mvnw -q -Dit.test=ExecutionPlanPostgresIT verify` 与完整 `./mvnw -q verify` 均退出码 0，Surefire/Failsafe XML 未发现失败或错误，`git diff --check` 退出码 0。这不涵盖真实 Provider 或所有计划变更时序。
+
+2026-09-24 版本失效补验：新增 `PlanApprovalVersionPostgresIT`，在真实 PostgreSQL 中创建待批图片计划后，分别模拟服务端 Provider 配置版本及固定图片工作流版本变化。两次批准均返回 `PLAN_CONFLICT`，计划仍待批，Run 仍等待审批，且无 Approval、媒体 Task 或额度预留；恢复原版本后同一计划才生成一项 Task。既有 `ExecutionPlanPostgresIT` 还验证内容编辑后的批准冲突与纯画布布局变化后的可批准。定向 `./mvnw -q -Dit.test=PlanApprovalVersionPostgresIT verify` 和完整 `./mvnw -q verify` 均退出码 0；Surefire/Failsafe XML 未发现失败或错误。该测试模拟版本变化，未连接真实 Provider，也未演练实际部署时配置轮换。
+
 2026-09-24 审批入口补验：`PlanApprovalPanel` 新增“取消本次 Run”按钮，调用现有受会话/CSRF 保护的 Run 取消 API；请求期间禁用其余审批动作，失败保持面板并提示核查 Run 状态。组件测试确认取消不发送批准、失败后可再试。`ExecutionPlanPostgresIT` 将原 2 路并发审批扩为同时提交 20 路，核对恰好一个首次批准、其余重放均返回相同审批 ID 与三项任务；数据库仍只有一笔 Approval 和三项媒体预留。定向 PostgreSQL 测试及完整 `./mvnw --batch-mode --no-transfer-progress -q verify` 通过；前端定向组件测试 4/4，全量 42/42，类型检查、lint、构建通过（仍有主包超过 500 kB 提示）。该项不改变 OpenAPI、迁移或审批状态机；真实浏览器取消交互及真实 Provider 仍未验收。
 
 ## 显式关键帧选择

@@ -108,6 +108,7 @@ public class PlanDraftValidator {
                     shotVersionId, Artifact.Kind.SHOT, pinned);
             UUID imageArtifactId = null;
             UUID imageVersionId = null;
+            Long keyframeSelectionVersion = null;
             if (stage == ExecutionPlan.Stage.VIDEO) {
                 imageArtifactId = requiredUuid(supplied, "imageArtifactId");
                 imageVersionId = requiredUuid(supplied, "imageVersionId");
@@ -121,6 +122,7 @@ public class PlanDraftValidator {
                         || !imageVersionId.equals(selection.imageVersionId())) {
                     throw invalid("Video input does not match the selected keyframe version");
                 }
+                keyframeSelectionVersion = selection.version();
                 Task selectedSource = tasks.get(context.ownerId(), context.projectId(),
                         selection.sourceTaskId());
                 if (!context.runId().equals(selectedSource.runId())
@@ -147,12 +149,26 @@ public class PlanDraftValidator {
             taskInput.put("shotVersionId", shotVersionId.toString());
             if (stage == ExecutionPlan.Stage.IMAGE
                     && shot.content().has("selectedImageVersionId")) {
-                taskInput.put("referenceImageVersionId",
+                UUID referenceVersionId = UUID.fromString(
                         shot.content().path("selectedImageVersionId").asText());
+                ArtifactVersion reference = artifacts.requireImageVersionForTask(
+                        context.ownerId(), context.projectId(), referenceVersionId);
+                ArtifactService.ArtifactView currentReference = artifacts.get(context.ownerId(),
+                        context.projectId(), reference.artifactId());
+                if (currentReference.artifact().archivedAt() != null
+                        || !referenceVersionId.equals(currentReference.currentVersion().id())) {
+                    throw invalid("Selected reference image is no longer current");
+                }
+                ObjectNode referencePin = pinned.addObject();
+                referencePin.put("artifactId", reference.artifactId().toString());
+                referencePin.put("versionId", referenceVersionId.toString());
+                referencePin.put("artifactVersion", currentReference.artifact().version());
+                taskInput.put("referenceImageVersionId", referenceVersionId.toString());
             }
             if (imageVersionId != null) {
                 taskInput.put("imageArtifactId", imageArtifactId.toString());
                 taskInput.put("imageVersionId", imageVersionId.toString());
+                taskInput.put("keyframeSelectionVersion", keyframeSelectionVersion.longValue());
                 taskInput.put("durationMs", shot.content().path("durationMs").intValue());
             }
             taskInput.put("prompt", prompt);

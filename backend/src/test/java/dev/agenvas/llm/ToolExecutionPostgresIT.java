@@ -181,7 +181,7 @@ class ToolExecutionPostgresIT {
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(gateway.calls.get()).isEqualTo(2);
         assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("34");
+                .query(String.class).single()).isEqualTo("35");
     }
 
     @TestConfiguration

@@ -60,6 +60,14 @@ export function assetContentUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content`;
 }
 
+/** Retrieves persisted, owner-scoped metadata before constructing a video trim interval. */
+export async function getAssetMetadata(projectId: string, assetId: string): Promise<Asset> {
+  return readJson<Asset>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`,
+    "无法读取素材时长",
+  );
+}
+
 /** Uploads real image bytes with the session CSRF token; the browser supplies the multipart boundary. */
 export async function uploadImageAsset(projectId: string, file: File): Promise<Asset> {
   if (file.size > 20 * 1024 * 1024) {
@@ -237,9 +245,11 @@ export async function archiveProject(project: Project): Promise<Project> {
 export async function createArtifact(
   projectId: string,
   input: CreateArtifactRequest,
+  idempotencyKey: string,
 ): Promise<Artifact> {
   return writeJson<Artifact>(`/api/v1/projects/${projectId}/artifacts`, {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(input),
   });
 }
