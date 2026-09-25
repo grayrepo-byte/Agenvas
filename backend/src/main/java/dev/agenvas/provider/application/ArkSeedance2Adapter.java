@@ -4,13 +4,16 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
+import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
+import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
 import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
 import dev.agenvas.settings.application.CredentialCipher;
@@ -20,11 +23,20 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Single first-frame task on the fixed Seedance 2.0 mapping. */
 @Component
@@ -35,16 +47,23 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     private final AssetService assets;
     private final ProjectService projects;
     private final ArkSeedanceClient client;
+    private final ArkMediaDownloadPolicy downloads;
+    private final MediaToolRunner mediaTools;
+    private final ObjectMapper mapper;
 
     public ArkSeedance2Adapter(JdbcMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
-            ArkSeedanceClient client) {
+            ArkSeedanceClient client, ArkMediaDownloadPolicy downloads,
+            MediaToolRunner mediaTools, ObjectMapper mapper) {
         this.catalog = catalog;
         this.cipher = cipher;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
         this.client = client;
+        this.downloads = downloads;
+        this.mediaTools = mediaTools;
+        this.mapper = mapper;
     }
 
     @Override public String adapterId() { return "ARK_SEEDANCE_2_I2V"; }
@@ -95,13 +114,124 @@ public class ArkSeedance2Adapter implements MediaAdapter {
                 case "queued", "running" -> new Submission.Pending(Instant.now().plusSeconds(5));
                 case "failed", "cancelled" -> new Submission.Rejected("ARK_TASK_FAILED");
                 case "expired" -> new Submission.Blocked("ARK_TASK_EXPIRED");
-                case "succeeded" -> new Submission.Blocked("ARK_MEDIA_DOWNLOAD_NOT_READY");
+                case "succeeded" -> completed(context, state);
                 default -> new Submission.Blocked("PROVIDER_PROTOCOL_INVALID");
             };
         } catch (ArkSeedanceClient.ProtocolFailure invalid) {
             return new Submission.Blocked("PROVIDER_PROTOCOL_INVALID");
+        } catch (ArkMediaDownloadPolicy.Rejected rejected) {
+            return new Submission.Blocked(rejected.getMessage());
+        } catch (InvalidMedia invalid) {
+            return new Submission.Blocked("ARK_MEDIA_INVALID");
         }
     }
+
+    /** An expired TOS URL can only be refreshed by querying the same persisted task ID. */
+    private Submission completed(AttemptContext context, ArkSeedanceClient.TaskState state) {
+        if (state.videoUrl() == null || state.videoUrl().isBlank()) {
+            return new Submission.Blocked("ARK_RESULT_MISSING_URL");
+        }
+        URI url;
+        try {
+            url = URI.create(state.videoUrl());
+        } catch (IllegalArgumentException invalid) {
+            return new Submission.Blocked("ARK_MEDIA_URL_REJECTED");
+        }
+        try {
+            return new Submission.Completed(downloadVideo(url,
+                    context.lease().input().path("durationSeconds").asInt(-1)));
+        } catch (ArkMediaDownloadPolicy.Expired expired) {
+            ArkSeedanceClient.TaskState refreshed = client.query(
+                    credential(snapshot(context)), context.originalRequestId());
+            if (!"succeeded".equals(refreshed.status()) || refreshed.videoUrl() == null
+                    || refreshed.videoUrl().equals(state.videoUrl())) {
+                return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
+            }
+            try {
+                return new Submission.Completed(downloadVideo(URI.create(refreshed.videoUrl()),
+                        context.lease().input().path("durationSeconds").asInt(-1)));
+            } catch (IllegalArgumentException | ArkMediaDownloadPolicy.Expired invalid) {
+                return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
+            }
+        }
+    }
+
+    private MediaPayload downloadVideo(URI url, int expectedSeconds) {
+        downloads.validate(url);
+        Path directory;
+        try {
+            directory = Files.createTempDirectory("agenvas-ark-result-");
+        } catch (IOException unavailable) {
+            throw new ArkMediaDownloadPolicy.TechnicalFailure("Ark scratch unavailable");
+        }
+        Path raw = directory.resolve("result.mp4");
+        Path silent = directory.resolve("silent.mp4");
+        try {
+            try (OutputStream sink = Files.newOutputStream(raw)) {
+                downloads.download(url, sink, 500L * 1024 * 1024);
+            }
+            VideoProbe original = probe(raw, expectedSeconds);
+            Path selected = raw;
+            if (original.hasAudio()) {
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                        "-i", raw.toString(), "-map", "0:v:0", "-an", "-c:v", "copy",
+                        "-movflags", "+faststart", "-y", silent.toString()));
+                if (probe(silent, expectedSeconds).hasAudio()) {
+                    throw new InvalidMedia();
+                }
+                selected = silent;
+            }
+            InputStream file = Files.newInputStream(selected);
+            return new MediaPayload(new FilterInputStream(file) {
+                @Override public void close() throws IOException {
+                    try { super.close(); } finally { cleanup(raw, silent, directory); }
+                }
+            }, "video/mp4");
+        } catch (IOException failure) {
+            cleanup(raw, silent, directory);
+            throw new ArkMediaDownloadPolicy.TechnicalFailure("Ark scratch write failed");
+        } catch (MediaToolRunner.MediaToolException failure) {
+            cleanup(raw, silent, directory);
+            if (failure.invalidInput()) throw new InvalidMedia();
+            throw failure;
+        } catch (RuntimeException failure) {
+            cleanup(raw, silent, directory);
+            throw failure;
+        }
+    }
+
+    private VideoProbe probe(Path file, int expectedSeconds) {
+        JsonNode details = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
+                "-show_entries", "stream=codec_type:format=format_name,duration",
+                "-of", "json", file.toString())));
+        double duration = details.path("format").path("duration").asDouble(-1);
+        String format = details.path("format").path("format_name").asText();
+        boolean video = false;
+        boolean audio = false;
+        for (JsonNode stream : details.path("streams")) {
+            video |= "video".equals(stream.path("codec_type").asText());
+            audio |= "audio".equals(stream.path("codec_type").asText());
+        }
+        if (!video || !format.contains("mp4") || !Double.isFinite(duration)
+                || expectedSeconds < 4 || expectedSeconds > 15
+                || duration < expectedSeconds - 1.0 || duration > expectedSeconds + 1.5) {
+            throw new InvalidMedia();
+        }
+        return new VideoProbe(audio);
+    }
+
+    private static void cleanup(Path raw, Path silent, Path directory) {
+        try {
+            Files.deleteIfExists(raw);
+            Files.deleteIfExists(silent);
+            Files.deleteIfExists(directory);
+        } catch (IOException ignored) {
+            // Scratch cleanup is best effort after the response stream has been closed.
+        }
+    }
+
+    private record VideoProbe(boolean hasAudio) {}
+    private static final class InvalidMedia extends RuntimeException {}
 
     private Snapshot snapshot(AttemptContext context) {
         var binding = context.binding();

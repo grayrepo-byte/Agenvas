@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
+import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -51,7 +52,9 @@ public class OpenAiImage2Client {
         this.http = new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(10))
                 .callTimeout(Duration.ofMinutes(3)).proxy(Proxy.NO_PROXY)
                 .followRedirects(false).followSslRedirects(false)
-                .retryOnConnectionFailure(false).build();
+                .retryOnConnectionFailure(false)
+                .dns(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)))
+                .build();
     }
 
     public MediaPayload generate(String key, String prompt, String quality, String size) {

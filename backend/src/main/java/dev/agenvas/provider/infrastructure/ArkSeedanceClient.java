@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -47,7 +48,9 @@ public class ArkSeedanceClient {
         this.http = new OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
                 .connectTimeout(Duration.ofSeconds(10)).callTimeout(Duration.ofMinutes(2))
                 .followRedirects(false).followSslRedirects(false)
-                .retryOnConnectionFailure(false).build();
+                .retryOnConnectionFailure(false)
+                .dns(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)))
+                .build();
     }
 
     public String create(String key, String prompt, byte[] firstFramePng,

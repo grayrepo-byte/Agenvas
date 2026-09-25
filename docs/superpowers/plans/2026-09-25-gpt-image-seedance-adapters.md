@@ -38,6 +38,7 @@
 | `backend/src/main/java/dev/agenvas/provider/application/OpenAiImage2Adapter.java` | 输入端口、项目参考图读取、提交与归档交接 |
 | `backend/src/main/java/dev/agenvas/provider/infrastructure/ArkSeedanceClient.java` | 固定方舟 create/query API、任务状态和错误分类 |
 | `backend/src/main/java/dev/agenvas/provider/infrastructure/ArkMediaDownloadPolicy.java` | HTTPS allowlist、DNS/重定向和有界流式下载 |
+| `backend/src/main/java/dev/agenvas/provider/infrastructure/FixedCloudDns.java` | 两个固定云请求与结果下载共用的公网 DNS 校验 |
 | `backend/src/main/java/dev/agenvas/provider/application/ArkSeedance2Adapter.java` | 关键帧、时长、无声 MP4 和原请求核对 |
 | `backend/src/main/java/dev/agenvas/provider/application/MediaCapabilityService.java` | 注册两个固定能力与可配置参数范围 |
 | `backend/src/main/java/dev/agenvas/asset/application/AssetService.java` | 已有安全归档/媒体探测入口，必要时增加无声验证 |
@@ -160,3 +161,5 @@ if (!validPublicAddress(resolveAndPin(uri.getHost())))
 ## Self-review / handoff gate
 
 Task 1–4 覆盖固定能力配置、OpenAI 协议、Seedance 提交/核对、临时结果归档；五条 Review Focus 对应 Task 2、2、1/3、3/4、4。发布说明分别写明 GPT Image 2 与 Seedance 的本地假服务结果及“真实 Provider 调用未运行”；不因为协议测试通过就把云渠道标为 VERIFIED。
+
+执行记录（2026-09-25）：按用户要求跳过红绿灯式测试步骤，完成功能后运行回归。`backend ./mvnw verify`：67 项、0 失败；DNS 策略和过期地址新增断言后的六个相关测试类：13 项、0 失败；前端类型检查、lint、78 项测试及构建通过。两种真实云接口均未调用。

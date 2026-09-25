@@ -1,0 +1,339 @@
+package dev.agenvas.provider;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import dev.agenvas.agent.application.AgentInstanceService;
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.infrastructure.MediaToolRunner;
+import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.identity.application.AdminPrincipal;
+import dev.agenvas.identity.application.IdentityService;
+import dev.agenvas.llm.application.TrustedToolContext;
+import dev.agenvas.plan.application.ExecutionPlanService;
+import dev.agenvas.plan.application.ShotKeyframeSelectionService;
+import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
+import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
+import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+/** Seedance result download, audio removal and archive with a fake Ark API. */
+@Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@SpringBootTest(classes = {AgenvasApplication.class, ArkSeedanceArchivePostgresIT.FakeClient.class},
+        properties = "agenvas.identity.bootstrap-secret=ark-archive-integration-secret")
+class ArkSeedanceArchivePostgresIT {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    private static final String TASK_ID = "cgt-test-seedance-archive-123";
+    private static final HttpServer SERVER = startServer();
+    private static final AtomicInteger CREATES = new AtomicInteger();
+    private static final AtomicInteger QUERIES = new AtomicInteger();
+    private static final AtomicBoolean MALICIOUS_RESULT = new AtomicBoolean();
+    private static final AtomicBoolean EXPIRED_UNREFRESHABLE = new AtomicBoolean();
+    private static final AtomicBoolean FAIL_DOWNLOAD_ONCE = new AtomicBoolean();
+    private static volatile byte[] VIDEO_BYTES;
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("agenvas.credentials.master-key-base64",
+                () -> Base64.getEncoder().encodeToString(new byte[32]));
+    }
+
+    @AfterAll static void stopServer() { SERVER.stop(0); }
+
+    @Autowired private IdentityService identities;
+    @Autowired private ProjectService projects;
+    @Autowired private ArtifactService artifacts;
+    @Autowired private AgentInstanceService agents;
+    @Autowired private AgentRunService runs;
+    @Autowired private ExecutionPlanService plans;
+    @Autowired private ShotKeyframeSelectionService selections;
+    @Autowired private MediaCapabilityService catalog;
+    @Autowired private MediaExecutionWorker worker;
+    @Autowired private TaskService tasks;
+    @Autowired private AssetService assets;
+    @Autowired private MediaToolRunner mediaTools;
+    @Autowired private JdbcClient jdbc;
+    @Autowired private ObjectMapper mapper;
+
+    @Test
+    void expiredUrlRefreshesOnlyOriginalTaskThenArchivesSilentVideo() throws Exception {
+        VIDEO_BYTES = videoWithAudio();
+        var connection = catalog.createConnection("ark-it-connection", "Ark fake", "ARK",
+                null, "fake-ark-key");
+        var capability = catalog.publishCapability(connection.id(), "Seedance first frame",
+                "ARK_SEEDANCE_2_I2V");
+        catalog.setDefault(Task.Kind.VIDEO_GENERATION,
+                catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), capability.id());
+        AdminPrincipal owner = identities.setup("ark-archive-integration-secret",
+                "ark-admin", "ark-password-123");
+
+        Fixture accepted = fixture(owner.userId(), "Archived Seedance");
+        Task acceptedTask = approve(owner.userId(), accepted);
+        assertThat(acceptedTask.input().path("durationSeconds").asInt()).isEqualTo(4);
+        assertThat(worker.submitOnce("ark-submit-worker")).isEqualTo(1);
+        Task waiting = tasks.get(owner.userId(), accepted.project().id(), acceptedTask.id());
+        assertThat(waiting.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        assertThat(waiting.providerRequestId()).isEqualTo(TASK_ID);
+        assertThat(CREATES).hasValue(1);
+        jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
+                .param("id", acceptedTask.id()).update();
+        assertThat(worker.pollOnce("ark-poll-worker")).isEqualTo(1);
+        assertThat(QUERIES).hasValue(2);
+        assertThat(CREATES).hasValue(1);
+        Task done = tasks.get(owner.userId(), accepted.project().id(), acceptedTask.id());
+        assertThat(done.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(done.providerRequestId()).isEqualTo(TASK_ID);
+        var artifact = artifacts.get(owner.userId(), accepted.project().id(),
+                UUID.fromString(done.output().path("artifactId").asText()));
+        UUID assetId = UUID.fromString(artifact.currentVersion().content()
+                .path("assetId").asText());
+        Path archived = assets.get(owner.userId(), accepted.project().id(), assetId).path();
+        var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
+                "-show_entries", "stream=codec_type:format=format_name,duration",
+                "-of", "json", archived.toString())));
+        assertThat(probe.path("streams").toString()).contains("video").doesNotContain("audio");
+        assertThat(probe.path("format").path("duration").asDouble()).isBetween(3.0, 5.5);
+        assertThat(jdbc.sql("select count(*) from project_event where project_id=:id")
+                .param("id", accepted.project().id()).query(Integer.class).single())
+                .isGreaterThan(0);
+        assertThat(worker.submitOnce("ark-no-resubmit-worker")).isZero();
+        assertThat(CREATES).hasValue(1);
+
+        MALICIOUS_RESULT.set(true);
+        Fixture rejected = fixture(owner.userId(), "Malicious result URL");
+        Task rejectedTask = approve(owner.userId(), rejected);
+        assertThat(worker.submitOnce("ark-malicious-submit")).isEqualTo(1);
+        due(rejectedTask.id());
+        assertThat(worker.pollOnce("ark-malicious-poll")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), rejected.project().id(), rejectedTask.id())
+                .status()).isEqualTo(Task.Status.BLOCKED);
+        MALICIOUS_RESULT.set(false);
+
+        EXPIRED_UNREFRESHABLE.set(true);
+        Fixture expired = fixture(owner.userId(), "Expired result URL");
+        Task expiredTask = approve(owner.userId(), expired);
+        assertThat(worker.submitOnce("ark-expired-submit")).isEqualTo(1);
+        due(expiredTask.id());
+        assertThat(worker.pollOnce("ark-expired-poll")).isEqualTo(1);
+        Task expiredResult = tasks.get(owner.userId(), expired.project().id(), expiredTask.id());
+        assertThat(expiredResult.status()).isEqualTo(Task.Status.BLOCKED);
+        assertThat(expiredResult.errorCode()).isEqualTo("ARK_MEDIA_URL_EXPIRED");
+        EXPIRED_UNREFRESHABLE.set(false);
+
+        FAIL_DOWNLOAD_ONCE.set(true);
+        Fixture retry = fixture(owner.userId(), "Retry original result download");
+        Task retryTask = approve(owner.userId(), retry);
+        assertThat(worker.submitOnce("ark-retry-submit")).isEqualTo(1);
+        due(retryTask.id());
+        assertThat(worker.pollOnce("ark-retry-poll-1")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), retry.project().id(), retryTask.id())
+                .status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        due(retryTask.id());
+        assertThat(worker.pollOnce("ark-retry-poll-2")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), retry.project().id(), retryTask.id())
+                .status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(CREATES).hasValue(4);
+    }
+
+    private Fixture fixture(UUID ownerId, String name) {
+        Project project = projects.create(ownerId, name, Project.AspectRatio.LANDSCAPE_16_9);
+        ObjectNode scene = mapper.createObjectNode();
+        scene.put("name", "Studio"); scene.put("location", "Shanghai");
+        scene.put("timeOfDay", "Day"); scene.put("lighting", "Soft");
+        scene.put("style", "Minimal"); scene.putArray("referenceVersionIds");
+        UUID sceneVersion = artifacts.create(ownerId, project.id(), Artifact.Kind.SCENE,
+                "Scene", scene).currentVersion().id();
+        ObjectNode shot = mapper.createObjectNode();
+        shot.put("order", 1); shot.put("durationSeconds", 4);
+        shot.put("description", "Coffee pour"); shot.put("camera", "Close");
+        shot.put("action", "Slow pan"); shot.putArray("characterVersionIds");
+        shot.put("sceneVersionId", sceneVersion.toString());
+        var target = artifacts.create(ownerId, project.id(), Artifact.Kind.SHOT, "Shot", shot);
+        var agent = agents.create(ownerId, project.id(), "Creator", "Create",
+                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
+                        target.currentVersion().id())));
+        AgentRun queued = runs.create(ownerId, project.id(), agent.id(), "Animate keyframe",
+                "ark-" + UUID.randomUUID()).run();
+        AgentRun running = runs.transition(ownerId, project.id(), queued.id(),
+                queued.version(), AgentRun.Status.RUNNING);
+        ObjectNode imageProposal = mapper.createObjectNode();
+        imageProposal.put("stage", "IMAGE");
+        imageProposal.put("objective", "Create a keyframe before video");
+        ObjectNode frameStep = imageProposal.putArray("steps").addObject();
+        frameStep.put("stepKey", "frame-1");
+        frameStep.put("outputSlotKey", "frame-output");
+        frameStep.put("shotArtifactId", target.artifact().id().toString());
+        frameStep.put("shotVersionId", target.currentVersion().id().toString());
+        frameStep.put("prompt", "Studio keyframe");
+        frameStep.putArray("dependsOnStepKeys");
+        var imagePlan = plans.propose(new TrustedToolContext(ownerId, project.id(),
+                running.id()), imageProposal);
+        Task imageTask = plans.approve(ownerId, project.id(), imagePlan.id(),
+                imagePlan.planHash(), List.of("frame-1")).tasks().getFirst();
+        assertThat(worker.submitOnce("ark-mock-keyframe-worker")).isEqualTo(1);
+        Task imageDone = tasks.get(ownerId, project.id(), imageTask.id());
+        assertThat(imageDone.status()).isEqualTo(Task.Status.SUCCEEDED);
+        var keyframe = artifacts.get(ownerId, project.id(),
+                UUID.fromString(imageDone.output().path("artifactId").asText()));
+        selections.select(ownerId, project.id(), running.id(), target.artifact().id(),
+                target.currentVersion().id(), keyframe.artifact().id(),
+                keyframe.currentVersion().id(), null);
+        AgentRun waiting = runs.get(ownerId, project.id(), running.id());
+        AgentRun readyForVideo = runs.transition(ownerId, project.id(), running.id(),
+                waiting.version(), AgentRun.Status.RUNNING);
+        return new Fixture(project, target, keyframe, readyForVideo);
+    }
+
+    private Task approve(UUID ownerId, Fixture fixture) {
+        ObjectNode proposal = mapper.createObjectNode();
+        proposal.put("stage", "VIDEO"); proposal.put("objective", "Animate selected keyframe");
+        ObjectNode step = proposal.putArray("steps").addObject();
+        step.put("stepKey", "clip-1"); step.put("outputSlotKey", "clip-output");
+        step.put("shotArtifactId", fixture.shot().artifact().id().toString());
+        step.put("shotVersionId", fixture.shot().currentVersion().id().toString());
+        step.put("imageArtifactId", fixture.keyframe().artifact().id().toString());
+        step.put("imageVersionId", fixture.keyframe().currentVersion().id().toString());
+        step.put("prompt", "A detailed coffee pour");
+        step.putArray("dependsOnStepKeys");
+        var plan = plans.propose(new TrustedToolContext(ownerId, fixture.project().id(),
+                fixture.run().id()), proposal);
+        return plans.approve(ownerId, fixture.project().id(), plan.id(), plan.planHash(),
+                List.of("clip-1")).tasks().getFirst();
+    }
+
+    private byte[] videoWithAudio() throws Exception {
+        Path output = Files.createTempFile("ark-video-with-audio-", ".mp4");
+        try {
+            mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=16",
+                    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
+                    "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-shortest", "-y", output.toString()));
+            return Files.readAllBytes(output);
+        } finally {
+            Files.deleteIfExists(output);
+        }
+    }
+
+    private void due(UUID taskId) {
+        jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
+                .param("id", taskId).update();
+    }
+
+    private static HttpServer startServer() {
+        try {
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+                assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+                        .isEqualTo("Bearer fake-ark-key");
+                if (exchange.getRequestMethod().equals("POST")) {
+                    var body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
+                    assertThat(body.path("model").asText())
+                            .isEqualTo("doubao-seedance-2-0-260128");
+                    assertThat(body.path("duration").asInt()).isEqualTo(4);
+                    assertThat(body.path("generate_audio").booleanValue()).isFalse();
+                    assertThat(body.path("content").get(1).path("role").asText())
+                            .isEqualTo("first_frame");
+                    CREATES.incrementAndGet();
+                    respond(exchange, "{\"id\":\"" + TASK_ID + "\"}");
+                } else {
+                    assertThat(exchange.getRequestURI().getPath())
+                            .isEqualTo("/api/v3/contents/generations/tasks/" + TASK_ID);
+                    int query = QUERIES.incrementAndGet();
+                    String videoUrl = MALICIOUS_RESULT.get()
+                            ? "http://169.254.169.254/latest/meta-data"
+                            : "http://127.0.0.1:" + server.getAddress().getPort()
+                                    + (query == 1 || EXPIRED_UNREFRESHABLE.get()
+                                            ? "/expired.mp4" : "/result.mp4");
+                    respond(exchange, "{\"id\":\"" + TASK_ID + "\",\"model\":"
+                            + "\"doubao-seedance-2-0-260128\",\"status\":\"succeeded\","
+                            + "\"content\":{\"video_url\":\"" + videoUrl + "\"}}");
+                }
+            });
+            server.createContext("/expired.mp4", exchange -> {
+                exchange.sendResponseHeaders(403, -1);
+                exchange.close();
+            });
+            server.createContext("/result.mp4", exchange -> {
+                if (FAIL_DOWNLOAD_ONCE.getAndSet(false)) {
+                    exchange.sendResponseHeaders(503, -1);
+                    exchange.close();
+                    return;
+                }
+                exchange.getResponseHeaders().set("Content-Type", "video/mp4");
+                exchange.sendResponseHeaders(200, VIDEO_BYTES.length);
+                try (var output = exchange.getResponseBody()) { output.write(VIDEO_BYTES); }
+            });
+            server.start();
+            return server;
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
+    }
+
+    private static void respond(HttpExchange exchange, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+    }
+
+    @TestConfiguration
+    static class FakeClient {
+        @Bean @Primary
+        ArkSeedanceClient fakeArkSeedanceClient(ObjectMapper mapper) {
+            return new ArkSeedanceClient(mapper,
+                    URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
+        }
+
+        @Bean @Primary
+        ArkMediaDownloadPolicy fakeArkDownloadPolicy() {
+            return ArkMediaDownloadPolicy.forLoopbackTest(
+                    URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
+        }
+    }
+
+    private record Fixture(Project project, ArtifactService.ArtifactView shot,
+            ArtifactService.ArtifactView keyframe, AgentRun run) {}
+}
