@@ -1042,7 +1042,7 @@ function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean
         style={{ background: "#2563eb" }} type="target" />
       <Handle id="agent-output" isConnectable={false} position={Position.Right}
         style={{ background: "#059669" }} type="source" />
-      <article className={`artifact-node h-full overflow-auto ${selected ? "artifact-node-selected" : ""}`}>
+      <article className={`artifact-node agent-node-scroll nowheel ${selected ? "artifact-node-selected" : ""}`}>
       <NodeResizer
         isVisible={selected && !data.item.locked}
         minHeight={220}

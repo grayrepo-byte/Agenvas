@@ -134,6 +134,13 @@ button:disabled {
   box-shadow: 0 12px 36px rgba(34, 46, 56, 0.08);
 }
 
+/* Agent forms exceed their default canvas size; keep controls reachable without panning the canvas. */
+.artifact-node.agent-node-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .artifact-node-selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(48, 95, 104, 0.16), 0 12px 36px rgba(34, 46, 56, 0.1);

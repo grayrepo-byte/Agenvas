@@ -655,6 +655,7 @@ describe("ProjectWorkspacePage", () => {
     const heading = await screen.findByText("Agent Alpha");
     const card = heading.closest("article");
     expect(card).not.toBeNull();
+    expect(card).toHaveClass("agent-node-scroll", "nowheel");
     expect(within(card as HTMLElement).getByText(/明确输入（1）/)).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(new RegExp(artifactId))).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(new RegExp(versionId))).toBeInTheDocument();
