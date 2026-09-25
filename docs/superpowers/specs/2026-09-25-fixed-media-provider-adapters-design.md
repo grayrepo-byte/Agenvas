@@ -24,7 +24,7 @@ OpenAI 连接的请求目标固定为官方 Images API，管理员配置 API Key
 
 GPT Image 2 能力接受提示词、项目画幅和可选的已授权参考图片版本。无参考图时调用 Images Generations，有参考图时调用 Images Edits；参考图片字节通过计划固定的 ArtifactVersion 找到同项目 Asset 读取，不接受 Agent 给出的 URL 或本地路径。`negativePrompt` 作为普通文字并入经过审阅的提示词，不伪装成官方独立参数。适配器要求一个最终图片，校验响应 Base64、实际文件格式、像素和大小，再由统一归档服务创建不可变 Asset/ArtifactVersion。[OpenAI GPT Image 2 模型](https://developers.openai.com/api/docs/models/gpt-image-2)；[图片生成与编辑指南](https://developers.openai.com/api/docs/guides/image-generation)。
 
-Seedance 能力接受提示词、审批时固定的一个已选关键帧图片版本及镜头时长。适配器在服务端读取并校验图片，以文档支持的 Base64 图片输入提交首帧图生视频，不要求把项目素材发布为公网 URL。该模型首版只接受 4–15 秒的整数秒镜头及适配器声明的画幅；其他步骤不可选择 Seedance，并提示先调整镜头时长。不会暗中取整、生成更长片段再裁剪，或把额外费用隐藏在估算中。适配器显式请求无声 MP4；归档前验证实际容器、视频流、时长和音轨，必要时用固定 FFmpeg 参数去除音轨。超出当前导出能力的结果进入明确失败/待处理状态，不当成成功。[火山方舟创建任务 API](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh)。
+Seedance 能力接受提示词、审批时固定的一个已选关键帧图片版本及 `durationSeconds`。适配器在服务端读取并校验图片，以文档支持的 Base64 图片输入提交首帧图生视频，不要求把项目素材发布为公网 URL。该模型首版只接受 4–15 秒的整数秒镜头及适配器声明的画幅；其他步骤不可选择 Seedance，并提示先调整镜头时长。不会暗中取整、生成更长片段再裁剪，或把额外费用隐藏在估算中。适配器显式请求无声 MP4；归档前验证实际容器、视频流、时长和音轨，必要时用固定 FFmpeg 参数去除音轨。超出当前导出能力的结果进入明确失败/待处理状态，不当成成功。[火山方舟创建任务 API](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh)。
 
 审批页逐步骤展示连接、能力、模型、固定输入版本、质量或视频时长、费用来源及真实测试状态。用户改选能力或修改输入会生成新计划修订与哈希，旧确认清空。服务端在批准事务中重新验证适配器支持的范围和配置版本，再建立固定任务；Agent 不能自行填写 endpoint、Key、模型代次或审批结果。输出仍归档到原项目与步骤，后续画布只读取业务产物。
 
@@ -40,4 +40,4 @@ Seedance 提交异步生成任务，保存返回的原任务 ID 后独立轮询�
 
 基础层的连接/能力 API 增加上述固定适配器的配置 Schema 和脱敏状态；项目计划 API 复用逐步骤候选、修订与确认，不增供应商专用审批路由。同步更新 `contracts/openapi.yaml`、Java DTO、生成的 TypeScript、Flyway 迁移、主规格、ADR、检查清单及部署备份说明。已有 Mock/ComfyUI 历史任务按基础规格迁移并保留原请求核对，不因新增云渠道改变其状态。
 
-验收使用真实 PostgreSQL、OpenAI/方舟本地假 HTTP 服务和前端交互测试，覆盖：图片生成与参考图编辑、Seedance 关键帧来源和时长限制、管理员 Key 脱敏/越权、连接版本变化与逐项审批、双渠道同一项目、图片/视频响应丢失后的 UNKNOWN、原视频任务 ID 轮询、临时 URL 过期与恶意地址、媒体校验、归档失败不重提、取消晚到、旧 Worker 和 SSE 重连。模拟协议测试不等于真实 Provider 已接通。用户已选择首轮不做真实付费调用；交付说明须分别标明两个渠道的真实调用“未运行”。
+验收使用真实 PostgreSQL、OpenAI/方舟本地假 HTTP 服务和前端交互测试，覆盖：图片生成与参考图编辑、Seedance 关键帧来源及 4–15 整数秒限制、旧小数秒镜头无法静默取整、管理员 Key 脱敏/越权、连接版本变化与逐项审批、双渠道同一项目、图片/视频响应丢失后的 UNKNOWN、原视频任务 ID 轮询、临时 URL 过期与恶意地址、媒体校验、归档失败不重提、取消晚到、旧 Worker 和 SSE 重连。模拟协议测试不等于真实 Provider 已接通。用户已选择首轮不做真实付费调用；交付说明须分别标明两个渠道的真实调用“未运行”。

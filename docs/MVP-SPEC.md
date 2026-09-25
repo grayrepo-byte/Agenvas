@@ -399,7 +399,7 @@ CHARACTER：`name`、`description`、`appearance`、`referenceVersionIds`。
 
 SCENE：`name`、`location`、`timeOfDay`、`lighting`、`style`、`referenceVersionIds`。
 
-SHOT：`order`、`durationMs`、`description`、`camera`、`action`、`characterVersionIds`、`sceneVersionId`、`selectedImageVersionId`、`selectedVideoVersionId`。
+SHOT：`order`、`durationSeconds`（1–30 的整数）、`description`、`camera`、`action`、`characterVersionIds`、`sceneVersionId`、`selectedImageVersionId`、`selectedVideoVersionId`。旧 `durationMs` 内容版本只作为迁移前的不可变历史保留。
 
 生成 IMAGE / VIDEO：`assetId`、`prompt`、`negativePrompt`（可选）、`providerConfigVersion`、`workflowVersion`、`parameters`、`sourceTaskId`。用户上传参考图的 IMAGE 使用互斥分支 `sourceType: UPLOAD`、`assetId`，不伪造生成 Task/Provider 字段；详见 [ADR 0001](adr/0001-upload-image-provenance.md)。
 
@@ -711,7 +711,7 @@ Provider 层：只有对方明确支持且实测验证幂等时才复用其幂�
 
 使用两份管理员安装的固定工作流模板：`image-v1` 与 `image-to-video-v1`。映射允许的输入字段，如 prompt、seed、referenceImage、width/height、duration 参数；模板本身和允许的节点类型版本化。
 
-image-v1 必须验证参考图确实映射到图像条件输入；仅把参考图描述写进 Prompt 不算支持参考图生成。视频模板的帧数/帧率与 durationMs 映射由适配器完成，按能力取值，不由模型猜测参数单位。
+image-v1 必须验证参考图确实映射到图像条件输入；仅把参考图描述写进 Prompt 不算支持参考图生成。视频模板的帧数/帧率与 `durationSeconds` 映射由适配器完成，按能力取值，不由模型猜测参数单位。
 
 普通用户与 Agent 不能上传任意可执行工作流、安装 Custom Node 或修改服务器文件路径。
 
@@ -744,6 +744,10 @@ Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不
 ### 13.7 固定云渠道的后续交付
 
 媒体配置从单一环境变量模式迁至管理员界面的连接与能力目录，图片/视频计划逐步骤固定所选能力版本，由同一任务内核调用项目维护的固定适配器。首批云渠道为 GPT Image 2 图片生成/参考图编辑和火山方舟 Seedance 首帧图生视频；其协议、时长与 UNKNOWN 恢复边界以[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)为准。无真实调用证据时只能标记“未实测”，不能宣称已完成真实生成。普通用户与 Agent 仍无执行动态代码或任意外部 HTTP 的权限。
+
+### 13.8 整数秒业务时长
+
+新镜头内容、执行计划、Task、用量和顺序导出的用户起止点统一使用整数秒；API 字段分别使用 `durationSeconds`、`startSeconds`、`endSeconds`、`videoSeconds`，不得再接受业务小数秒。Mock 视频支持 1–30 秒，固定 ComfyUI 视频模板支持 1–5 秒整数，Seedance 当前能力支持 4–15 秒整数；不支持时提示修改镜头时长。导出总时长上限仍为 60 秒。素材探测得到的实际文件时长继续以毫秒保存，并由 FFmpeg 使用精确值校验边界；不把 5.54 秒的真实文件误记成 5 秒。历史版本、已受理任务和用量不原地改写；新内容与迁移规则见[基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)及[ADR 0003](adr/0003-integer-business-video-seconds.md)。
 
 ---
 
