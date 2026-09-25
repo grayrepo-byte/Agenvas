@@ -137,10 +137,15 @@ function PlanStepReview({ projectId, runId, plan, step, confirmed, busy, onConfi
   });
   const current = candidates.data?.find((candidate) =>
     candidate.binding.capabilityId === step.binding?.capabilityId);
+  const modelName = step.binding?.adapterId === "OPENAI_GPT_IMAGE_2" ? "gpt-image-2"
+    : step.binding?.adapterId === "ARK_SEEDANCE_2_I2V" ? "doubao-seedance-2-0-260128" : null;
   return <li className="rounded-lg border border-amber-300 bg-white p-3">
     <p className="font-medium">镜头 {step.stepKey}：{String(step.input.prompt ?? "")}</p>
     <p className="mt-1 text-xs">输入版本 {step.shotVersionId}{step.imageVersionId ? `；关键帧版本 ${step.imageVersionId}` : ""}</p>
     <p className="mt-1 text-xs">{current ? `${current.connectionName} / ${current.capabilityName}` : step.binding?.adapterId ?? "历史能力"} · {step.binding?.adapterId ?? "未绑定"} · {step.binding ? `连接 v${step.binding.connectionVersion} / 能力 v${step.binding.capabilityVersion}` : ""} · 已配置、未实测</p>
+    {modelName ? <p className="mt-1 text-xs">固定模型 {modelName}{current?.settings.quality
+      ? ` · 质量 ${current.settings.quality}` : ""}{step.kind === "VIDEO_GENERATION"
+      ? ` · ${String(step.input.durationSeconds)} 秒` : ""} · 费用来源未确认</p> : null}
     <label className="mt-2 block text-xs">生成能力
       <select value={step.binding?.capabilityId ?? ""} disabled={busy || candidates.isPending || !!candidates.error}
         onChange={(event) => onRevise(event.target.value, {})}>

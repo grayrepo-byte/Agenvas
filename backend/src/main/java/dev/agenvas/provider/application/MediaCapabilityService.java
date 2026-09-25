@@ -288,6 +288,15 @@ public class MediaCapabilityService {
         normalized.put("kind", declaration.kind().name());
         normalized.put("minimumSeconds", declaration.minimumSeconds());
         normalized.put("maximumSeconds", declaration.maximumSeconds());
+        if ("OPENAI_GPT_IMAGE_2".equals(adapterId)) {
+            normalized.put("modelId", "gpt-image-2");
+            normalized.put("outputFormat", "png");
+        } else if ("ARK_SEEDANCE_2_I2V".equals(adapterId)) {
+            normalized.put("modelId", "doubao-seedance-2-0-260128");
+            normalized.put("outputFormat", "mp4");
+            normalized.put("generateAudio", false);
+            normalized.put("requiresSelectedKeyframe", true);
+        }
         ObjectNode settings = normalized.putObject("settings");
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
         if (!source.isObject()) throw invalid("能力模板参数必须为对象");
@@ -295,6 +304,7 @@ public class MediaCapabilityService {
             case "COMFY_IMAGE_V1" -> List.of("checkpoint");
             case "COMFY_VIDEO_V1" -> List.of("diffusionModel", "textEncoder", "vae",
                     "clipVision");
+            case "OPENAI_GPT_IMAGE_2" -> List.of("quality");
             default -> List.of();
         };
         for (String field : source.propertyNames()) {
@@ -302,6 +312,14 @@ public class MediaCapabilityService {
         }
         for (String field : fields) {
             JsonNode value = source.path(field);
+            if ("quality".equals(field)) {
+                String quality = value.isMissingNode() ? "medium" : value.asText();
+                if (!List.of("low", "medium", "high").contains(quality)) {
+                    throw invalid("GPT Image 2 质量只能为 low、medium 或 high");
+                }
+                settings.put(field, quality);
+                continue;
+            }
             if (!value.isTextual() || !value.asText().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
                     || value.asText().contains("..") || !value.asText().endsWith(".safetensors")) {
                 throw invalid("ComfyUI 模板模型文件名必须为 .safetensors 文件名");
@@ -356,18 +374,26 @@ public class MediaCapabilityService {
 
     /** Candidate metadata is server-selected and contains no endpoint or credential. */
     public List<Candidate> candidates(Task.Kind kind, int durationSeconds) {
+        return candidates(kind, durationSeconds, true);
+    }
+
+    /** A selected first frame is required before offering the fixed Seedance mapping. */
+    public List<Candidate> candidates(Task.Kind kind, int durationSeconds,
+            boolean hasSelectedKeyframe) {
         Task.Kind mediaKind = requireMediaKind(kind);
         return repository.connections().stream().filter(Connection::enabled)
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
+                .filter(snapshot -> hasSelectedKeyframe
+                        || !"ARK_SEEDANCE_2_I2V".equals(snapshot.adapterId()))
                 .filter(snapshot -> registry.supports(snapshot.adapterId(),
                         new PortInput(mediaKind, durationSeconds, null)))
                 .map(snapshot -> new Candidate(binding(snapshot), snapshot.connection().name(),
                         snapshot.capability().name(), mediaKind,
                         registry.declaration(snapshot.adapterId()).minimumSeconds(),
                         registry.declaration(snapshot.adapterId()).maximumSeconds(),
-                        false)).toList();
+                        false, mapper.readTree(snapshot.specJson()).path("settings"))).toList();
     }
 
     /** Safe published catalog for model planning; duration suitability is checked per step. */
@@ -380,7 +406,8 @@ public class MediaCapabilityService {
                     var declaration = registry.declaration(snapshot.adapterId());
                     return new Candidate(binding(snapshot), snapshot.connection().name(),
                             snapshot.capability().name(), declaration.kind(),
-                            declaration.minimumSeconds(), declaration.maximumSeconds(), false);
+                            declaration.minimumSeconds(), declaration.maximumSeconds(), false,
+                            mapper.readTree(snapshot.specJson()).path("settings"));
                 }).toList();
     }
 
@@ -396,7 +423,7 @@ public class MediaCapabilityService {
 
     public record Candidate(MediaCapabilityBinding binding, String connectionName,
             String capabilityName, Task.Kind kind, int minimumSeconds,
-            int maximumSeconds, boolean realGenerationTested) {}
+            int maximumSeconds, boolean realGenerationTested, JsonNode settings) {}
 
     private MediaCapabilityBinding resolve(UUID capabilityId, Task.Kind kind,
             int durationSeconds, boolean skipDuration) {

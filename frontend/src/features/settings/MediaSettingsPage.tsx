@@ -22,9 +22,27 @@ function fixedModelFields(adapterId: string) {
 }
 
 function fixedModelSettings(adapterId: string, values: Record<string, string>) {
+  if (adapterId === "OPENAI_GPT_IMAGE_2") {
+    return { quality: values.quality ?? "medium" };
+  }
   return Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key]?.trim() ?? ""]));
 }
+
+function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <label className="text-xs">GPT Image 2 质量
+    <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="low">low</option><option value="medium">medium</option>
+      <option value="high">high</option>
+    </select>
+  </label>;
+}
+
+const adapterKind: Record<string, "IMAGE_GENERATION" | "VIDEO_GENERATION"> = {
+  MOCK_IMAGE: "IMAGE_GENERATION", MOCK_VIDEO: "VIDEO_GENERATION",
+  COMFY_IMAGE_V1: "IMAGE_GENERATION", COMFY_VIDEO_V1: "VIDEO_GENERATION",
+  OPENAI_GPT_IMAGE_2: "IMAGE_GENERATION", ARK_SEEDANCE_2_I2V: "VIDEO_GENERATION",
+};
 
 function stableCreateKey(previous: { payload: string; key: string } | null,
   payload: string): { payload: string; key: string } {
@@ -66,8 +84,7 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
       setError(errorMessage(cause));
     },
   });
-  const sameKindAdapters = availableAdapters.filter((id) => capability.kind === "IMAGE_GENERATION"
-    ? id.includes("IMAGE") : id.includes("VIDEO"));
+  const sameKindAdapters = availableAdapters.filter((id) => adapterKind[id] === capability.kind);
   return <li className="rounded-xl border border-[var(--line)] p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
@@ -97,6 +114,8 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
           ({ ...old, [key]: event.target.value }))} required maxLength={160}
           placeholder="model.safetensors" />
       </label>)}
+      {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={modelNames.quality ?? "medium"}
+        onChange={(quality) => setModelNames((old) => ({ ...old, quality }))} /> : null}
       <button className="secondary-button" type="submit" disabled={busy || save.isPending}>
         {save.isPending ? "正在保存…" : "保存能力"}
       </button>
@@ -115,7 +134,9 @@ function ConnectionCard({ connection, settings, apply }: {
   const [origin, setOrigin] = useState(connection.origin ?? "");
   const [apiKey, setApiKey] = useState("");
   const [capabilityName, setCapabilityName] = useState("");
-  const [adapterId, setAdapterId] = useState(connection.platform === "COMFYUI" ? "COMFY_IMAGE_V1" : "MOCK_IMAGE");
+  const [adapterId, setAdapterId] = useState(connection.platform === "COMFYUI" ? "COMFY_IMAGE_V1"
+    : connection.platform === "OPENAI" ? "OPENAI_GPT_IMAGE_2"
+    : connection.platform === "ARK" ? "ARK_SEEDANCE_2_I2V" : "MOCK_IMAGE");
   const [newModelNames, setNewModelNames] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -202,7 +223,9 @@ function ConnectionCard({ connection, settings, apply }: {
   const busy = save.isPending || addCapability.isPending || mutate.isPending;
   const availableAdapters = connection.platform === "MOCK"
     ? ["MOCK_IMAGE", "MOCK_VIDEO"]
-    : connection.platform === "COMFYUI" ? ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"] : [];
+    : connection.platform === "COMFYUI" ? ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"]
+    : connection.platform === "OPENAI" ? ["OPENAI_GPT_IMAGE_2"]
+    : connection.platform === "ARK" ? ["ARK_SEEDANCE_2_I2V"] : [];
 
   function submitConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -265,6 +288,8 @@ function ConnectionCard({ connection, settings, apply }: {
             ({ ...old, [key]: event.target.value }))} required maxLength={160}
             placeholder="model.safetensors" />
         </label>)}
+        {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={newModelNames.quality ?? "medium"}
+          onChange={(quality) => setNewModelNames((old) => ({ ...old, quality }))} /> : null}
         <button className="secondary-button" type="submit" disabled={busy || !connection.enabled}>{addCapability.isPending ? "正在发布…" : "发布能力"}</button>
       </form> : <p className="mt-4 text-sm text-[var(--muted)]">此平台的固定适配器尚未安装。</p>}
     </div>

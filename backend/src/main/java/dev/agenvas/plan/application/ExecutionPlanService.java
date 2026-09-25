@@ -147,7 +147,7 @@ public class ExecutionPlanService {
                 .orElseThrow(this::notFound);
         int seconds = step.kind() == Task.Kind.VIDEO_GENERATION
                 ? step.input().path("durationSeconds").asInt(-1) : 0;
-        return capabilities.candidates(step.kind(), seconds);
+        return capabilities.candidates(step.kind(), seconds, step.imageVersionId() != null);
     }
 
     /** An edit creates a fresh immutable proposal and invalidates every confirmation of the old hash. */

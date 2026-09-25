@@ -1499,13 +1499,14 @@ components:
     FixedMediaAdapterSettings:
       type: object
       additionalProperties: false
-      description: Bundled ComfyUI templates accept model file basenames only; Mock uses an empty object.
+      description: Fixed adapters accept only their declared settings; model IDs and endpoints are not editable.
       properties:
         checkpoint: {type: string, maxLength: 160}
         diffusionModel: {type: string, maxLength: 160}
         textEncoder: {type: string, maxLength: 160}
         vae: {type: string, maxLength: 160}
         clipVision: {type: string, maxLength: 160}
+        quality: {type: string, enum: [low, medium, high]}
     MediaDefault:
       type: object
       additionalProperties: false
@@ -2330,7 +2331,7 @@ components:
       type: object
       additionalProperties: false
       required: [binding, connectionName, capabilityName, kind, minimumSeconds,
-        maximumSeconds, realGenerationTested]
+        maximumSeconds, realGenerationTested, settings]
       properties:
         binding: {$ref: "#/components/schemas/MediaCapabilityBinding"}
         connectionName: {type: string}
@@ -2339,6 +2340,7 @@ components:
         minimumSeconds: {type: integer, minimum: 0}
         maximumSeconds: {type: integer, minimum: 0}
         realGenerationTested: {type: boolean}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     ExecutionPlan:
       type: object
       additionalProperties: false

@@ -119,4 +119,31 @@ describe("MediaSettingsPage", () => {
       settings: { diffusionModel: "wan.safetensors", textEncoder: "text.safetensors",
         vae: "vae.safetensors", clipVision: "vision.safetensors" } }));
   });
+
+  it("publishes only the fixed GPT Image 2 mapping with an allowed quality", async () => {
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        defaults: mockDefault, connections: [{
+          id: "openai-1", name: "OpenAI", platform: "OPENAI", enabled: true,
+          version: 0, connectionVersion: 1, origin: null, keyMask: "••••7890",
+          connectivityStatus: "NOT_CHECKED", realGenerationTested: false, capabilities: [],
+        }],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "新能力名称" }), "Portrait image");
+    expect(screen.getByRole("combobox", { name: "固定适配器" })).toHaveValue("OPENAI_GPT_IMAGE_2");
+    await user.selectOptions(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
+    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { quality: "high" } }));
+  });
 });
