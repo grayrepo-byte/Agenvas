@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.List;
 import java.util.function.Supplier;
@@ -110,6 +112,14 @@ public class AssetService {
                 .getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * 生成素材时间戳并对齐 PostgreSQL timestamptz 的微秒精度。直接用纳秒会让内存值与读回值
+     * 相差一个微秒，使"创建后返回的对象"与"随后从库读出的同一素材"不再相等。
+     */
+    private Instant now() {
+        return clock.instant().truncatedTo(ChronoUnit.MICROS);
+    }
+
     /** 图片原件与缩略图都已落盘后才在项目事件事务中创建 READY 元数据。 */
     private Asset publishImage(UUID ownerId, UUID projectId, UUID assetId,
             LocalAssetStorage.StoredImage stored, boolean discardOnFailure,
@@ -118,7 +128,7 @@ public class AssetService {
                 stored.objectKey(), stored.contentType(), stored.byteSize(),
                 stored.sha256(), stored.width(), stored.height(), null,
                 stored.thumbnailKey(), stored.thumbnailByteSize(),
-                stored.thumbnailSha256(), clock.instant());
+                stored.thumbnailSha256(), now());
         try {
             events.recordChange(ownerId, projectId, () -> {
                 if (taskOutput) {
@@ -209,7 +219,7 @@ public class AssetService {
         Asset asset = new Asset(assetId, projectId, Asset.MediaKind.VIDEO,
                 stored.objectKey(), "video/mp4", stored.byteSize(), stored.sha256(),
                 stored.width(), stored.height(), stored.durationMs(), stored.thumbnailKey(),
-                stored.thumbnailByteSize(), stored.thumbnailSha256(), clock.instant());
+                stored.thumbnailByteSize(), stored.thumbnailSha256(), now());
         try {
             events.recordChange(ownerId, projectId, () -> {
                 if (taskOutput) {
