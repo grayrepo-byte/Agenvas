@@ -18,7 +18,7 @@
 
 **本稿采用的技术决策**：Vite SPA 而不是 Next.js 全栈；Spring MVC 而不是全栈 WebFlux；模块化单体而不是微服务；PostgreSQL 持久化任务而不是第一天引入消息中间件；默认本地文件存储；REST + SSE；一个 Creator Agent 配置，多实例展示，受控串行执行。
 
-**媒体接入假设**：首个真实媒体适配器采用 ComfyUI，接入两份受信任的固定工作流，分别完成生图与图生视频。它只是可替换的推理服务，不是本产品的画布、业务模型或 Agent 内核。LLM 通过 Spring AI 接入一个经过工具调用测试的模型端点。RunningHub、其他云生图/视频接口列为后续适配器，不能混称为同一个协议。
+**媒体接入假设**：首个真实媒体适配器采用 ComfyUI，接入两份受信任的固定工作流，分别完成生图与图生视频。它只是可替换的推理服务，不是本产品的画布、业务模型或 Agent 内核。LLM 通过 Spring AI 接入一个经过工具调用测试的模型端点。2026-09-25 确认的后续交付为界面配置的媒体能力目录、统一执行内核，以及固定代码实现的 GPT Image 2 图片与火山方舟 Seedance 视频适配器；见[基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)和[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入已撤回，不作为当前实施依据。
 
 “从零”指自主实现产品和领域模型，不指重写 React、画布引擎、数据库或模型推理框架。
 
@@ -89,7 +89,7 @@
 | 设置 | LLM 端点、媒体服务配置、密钥状态、连接诊断、限额 | 不做几十家模型供应商市场 |
 | 开源交付 | Docker Compose、文档、测试、示例、Mock 模式、许可证清单 | 无强制官方账号、无远程许可证校验 |
 
-P1：RunningHub 等云适配器、S3/R2 存储实现、自定义 Agent 配置、自定义受审 Skill、MCP 白名单接入、简单音轨、项目导入、较完善的内容撤销。
+P1：界面配置的固定媒体能力与 GPT Image 2/Seedance 适配器、S3/R2 存储实现、自定义 Agent 配置、自定义受审 Skill、MCP 白名单接入、简单音轨、项目导入、较完善的内容撤销。RunningHub 类工作流平台及动态脚本当前不排期。
 
 P2：多个 Agent 并发协调、多人协作、插件市场、完整剪辑时间线、组织权限、云托管计费、移动端创作、3D、任意工作流编辑器。
 
@@ -740,6 +740,10 @@ ComfyUI 新提交以数据库已提交的 `provider_attempt.request_key` 作为�
 所有 Mock 输出必须明显标注“演示素材”，不能伪装为真实模型输出。测试支持可重复的成功、失败、超时、重复返回、晚到结果和断网场景。
 
 Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不能另写一条绕过可靠性机制的演示链路。
+
+### 13.7 固定云渠道的后续交付
+
+媒体配置从单一环境变量模式迁至管理员界面的连接与能力目录，图片/视频计划逐步骤固定所选能力版本，由同一任务内核调用项目维护的固定适配器。首批云渠道为 GPT Image 2 图片生成/参考图编辑和火山方舟 Seedance 首帧图生视频；其协议、时长与 UNKNOWN 恢复边界以[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)为准。无真实调用证据时只能标记“未实测”，不能宣称已完成真实生成。普通用户与 Agent 仍无执行动态代码或任意外部 HTTP 的权限。
 
 ---
 

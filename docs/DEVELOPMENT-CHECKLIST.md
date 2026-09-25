@@ -427,6 +427,16 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 ---
 
+## 后续媒体能力交付（2026-09-25 决策，均未完成）
+
+依据：[媒体能力基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[GPT Image 2/Seedance 固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)、[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入不在当前清单中。
+
+- [ ] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；迁移 Mock/ComfyUI 配置与历史任务来源。
+- [ ] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。
+- [ ] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收。
+- [ ] 火山方舟 Seedance 固定首帧图生视频适配器完成时长校验、异步轮询、临时结果归档、UNKNOWN 与故障恢复的本地假服务及 PostgreSQL 验收。
+- [ ] 分别记录 GPT Image 2 与 Seedance 的真实调用情况；当前决定不进行真实付费测试，未调用前保持“未实测”。
+
 ## A. 跨模块验收矩阵
 
 | 用例 | 必须结果 | 核心任务 |
