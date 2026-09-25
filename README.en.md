@@ -11,8 +11,10 @@ Install Docker Engine/Desktop with Compose. From the repository root:
 ```sh
 cp .env.example .env
 # Set random AGENVAS_DB_PASSWORD and AGENVAS_BOOTSTRAP_SECRET values in .env.
-docker compose --env-file .env -f deploy/compose.yaml up -d --build
+./deploy/update-local.sh
 ```
+
+For later local rebuilds and updates, run `./deploy/update-local.sh` from the repository root. It pulls the pinned base images, rebuilds local images, updates the Compose containers, and waits for health checks. The script uses the repository's `.env` and retains the database and asset volumes. A failed build leaves running containers in place. Base image digests are pinned, so this command does not upgrade them to newer versions.
 
 Both example values are intentionally blank; Compose refuses to start until they are set. For an older installation that used the former public defaults, changing only the database password in `.env` will break the connection: rotate the PostgreSQL account password and server configuration together during maintenance, and replace any known example bootstrap secret. Do not put real credentials in Git or logs.
 

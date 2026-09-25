@@ -35,8 +35,10 @@ Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操�
 ```sh
 cp .env.example .env
 # 编辑 .env，为数据库密码和一次性初始化密钥设置随机值。
-docker compose --env-file .env -f deploy/compose.yaml up -d --build
+./deploy/update-local.sh
 ```
+
+以后在仓库根目录运行 `./deploy/update-local.sh`，即可拉取已锁定的基础镜像、重新构建本地镜像、更新 Compose 容器并等待健康检查。脚本使用仓库根目录的 `.env`，保留数据库和素材卷；构建失败时不会替换正在运行的容器。基础镜像固定了 digest，因此此命令不会自动升级到新的基础镜像版本。
 
 这两项在 `.env.example` 中故意留空；缺失或未填写时 Compose 会拒绝启动。旧部署若使用过早期版本的公开回退值，不能只改 `.env` 中的数据库密码：应在维护窗口同步轮换 PostgreSQL 账户密码与服务端配置，并检查初始化密钥是否仍为已知示例值；不要把实际密钥写进工单、日志或 Git。
 
