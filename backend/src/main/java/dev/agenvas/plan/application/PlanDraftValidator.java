@@ -5,6 +5,8 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
@@ -36,7 +38,7 @@ public class PlanDraftValidator {
     /** 单个步骤允许的模型字段，避免模型注入执行配置或资源路径。 */
     private static final Set<String> STEP_FIELDS = Set.of("stepKey", "outputSlotKey",
             "shotArtifactId", "shotVersionId", "imageArtifactId", "imageVersionId",
-            "prompt", "negativePrompt", "dependsOnStepKeys");
+            "prompt", "negativePrompt", "dependsOnStepKeys", "capabilityId");
 
     /** 验证输入版本的类型、当前选择和 Run 可见范围。 */
     private final ArtifactService artifacts;
@@ -52,12 +54,14 @@ public class PlanDraftValidator {
     private final PlanProviderProperties provider;
     /** 仅在 ComfyUI 模式读取端点摘要，Mock 模式不实例化客户端。 */
     private final ObjectProvider<ComfyUiClient> comfyClient;
+    private final MediaCapabilityService capabilities;
 
     /** 注入产物、关键帧和工作流校验能力，不在校验器内发起媒体副作用。 */
     public PlanDraftValidator(ArtifactService artifacts,
             ShotKeyframeSelectionRepository selections, TaskService tasks, ObjectMapper mapper,
             PlanWorkflowPolicy workflows, PlanProviderProperties provider,
-            ObjectProvider<ComfyUiClient> comfyClient) {
+            ObjectProvider<ComfyUiClient> comfyClient,
+            MediaCapabilityService capabilities) {
         this.artifacts = artifacts;
         this.selections = selections;
         this.tasks = tasks;
@@ -65,6 +69,7 @@ public class PlanDraftValidator {
         this.workflows = workflows;
         this.provider = provider;
         this.comfyClient = comfyClient;
+        this.capabilities = capabilities;
     }
 
         /** 校验模型计划、固定素材版本并生成确定顺序的服务端任务草稿。 */
@@ -99,6 +104,7 @@ public class PlanDraftValidator {
         ArrayNode pinned = snapshot.putArray("inputs");
         ArrayNode chosenKeyframes = snapshot.putArray("keyframeSelections");
         int videoDurationSeconds = 0;
+        boolean needsInput = false;
         for (JsonNode supplied : suppliedSteps) {
             if (!supplied.isObject()) {
                 throw invalid("Each plan step must be an object");
@@ -121,35 +127,48 @@ public class PlanDraftValidator {
                 throw invalid("请先将镜头时长调整为 1–30 的整数秒，再生成媒体计划");
             }
             int durationSeconds = duration.intValue();
+            Task.Kind kind = stage == ExecutionPlan.Stage.IMAGE
+                    ? Task.Kind.IMAGE_GENERATION : Task.Kind.VIDEO_GENERATION;
+            UUID capabilityId = supplied.has("capabilityId")
+                    ? requiredUuid(supplied, "capabilityId")
+                    : capabilities.defaultFor(kind).capabilityId();
+            MediaCapabilityBinding binding = capabilities.resolve(capabilityId, kind,
+                    kind == Task.Kind.VIDEO_GENERATION ? durationSeconds : 0);
             UUID imageArtifactId = null;
             UUID imageVersionId = null;
             Long keyframeSelectionVersion = null;
             if (stage == ExecutionPlan.Stage.VIDEO) {
-                imageArtifactId = requiredUuid(supplied, "imageArtifactId");
-                imageVersionId = requiredUuid(supplied, "imageVersionId");
-                pinnedVersion(context, run, imageArtifactId, imageVersionId,
-                        Artifact.Kind.IMAGE, pinned);
-                ShotKeyframeSelection selection = selections.find(context.projectId(),
-                        shotArtifactId).orElseThrow(() -> invalid(
-                                "Video plan requires a human-selected keyframe for every shot"));
-                if (!shotVersionId.equals(selection.shotVersionId())
-                        || !imageArtifactId.equals(selection.imageArtifactId())
-                        || !imageVersionId.equals(selection.imageVersionId())) {
-                    throw invalid("Video input does not match the selected keyframe version");
+                if (supplied.has("imageArtifactId") != supplied.has("imageVersionId")) {
+                    throw invalid("视频关键帧产物和版本必须同时提供");
                 }
-                keyframeSelectionVersion = selection.version();
-                Task selectedSource = tasks.get(context.ownerId(), context.projectId(),
-                        selection.sourceTaskId());
-                if (!context.runId().equals(selectedSource.runId())
-                        || selectedSource.status() != Task.Status.SUCCEEDED) {
-                    throw invalid("Video keyframe was not completed in this Run");
+                if (!supplied.has("imageArtifactId")) {
+                    needsInput = true;
+                } else {
+                    imageArtifactId = requiredUuid(supplied, "imageArtifactId");
+                    imageVersionId = requiredUuid(supplied, "imageVersionId");
+                    pinnedVersion(context, run, imageArtifactId, imageVersionId,
+                            Artifact.Kind.IMAGE, pinned);
+                    ShotKeyframeSelection selection = selections.find(context.projectId(),
+                            shotArtifactId).orElseThrow(() -> invalid(
+                                    "Video plan requires a human-selected keyframe for every shot"));
+                    if (!shotVersionId.equals(selection.shotVersionId())
+                            || !imageArtifactId.equals(selection.imageArtifactId())
+                            || !imageVersionId.equals(selection.imageVersionId())) {
+                        throw invalid("Video input does not match the selected keyframe version");
+                    }
+                    keyframeSelectionVersion = selection.version();
+                    Task selectedSource = tasks.get(context.ownerId(), context.projectId(),
+                            selection.sourceTaskId());
+                    if (!context.runId().equals(selectedSource.runId())
+                            || selectedSource.status() != Task.Status.SUCCEEDED) {
+                        throw invalid("Video keyframe was not completed in this Run");
+                    }
+                    ObjectNode chosen = chosenKeyframes.addObject();
+                    chosen.put("shotArtifactId", shotArtifactId.toString());
+                    chosen.put("shotVersionId", shotVersionId.toString());
+                    chosen.put("imageVersionId", imageVersionId.toString());
+                    chosen.put("selectionVersion", selection.version());
                 }
-                ObjectNode chosen = chosenKeyframes.addObject();
-                chosen.put("shotArtifactId", shotArtifactId.toString());
-                chosen.put("shotVersionId", shotVersionId.toString());
-                chosen.put("imageVersionId", imageVersionId.toString());
-                chosen.put("selectionVersion", selection.version());
-                workflows.requireVideoDuration(durationSeconds);
                 videoDurationSeconds = Math.addExact(videoDurationSeconds, durationSeconds);
             } else if (supplied.has("imageArtifactId") || supplied.has("imageVersionId")) {
                 throw invalid("Image plan cannot choose a video input keyframe");
@@ -184,6 +203,8 @@ public class PlanDraftValidator {
                 taskInput.put("imageArtifactId", imageArtifactId.toString());
                 taskInput.put("imageVersionId", imageVersionId.toString());
                 taskInput.put("keyframeSelectionVersion", keyframeSelectionVersion.longValue());
+            }
+            if (stage == ExecutionPlan.Stage.VIDEO) {
                 taskInput.put("durationSeconds", durationSeconds);
             }
             taskInput.put("prompt", prompt);
@@ -191,13 +212,18 @@ public class PlanDraftValidator {
                 taskInput.put("negativePrompt", negativePrompt);
             }
             taskInput.put("providerConfigVersion", providerConfigVersion);
-            if (providerOriginSha256 != null) {
+            String boundOrigin = capabilities.capabilitySnapshot(binding.capabilityId())
+                    .connectionVersion().originSha256();
+            if (boundOrigin != null) {
+                taskInput.put("providerOriginSha256", boundOrigin);
+            } else if (providerOriginSha256 != null
+                    && "COMFYUI".equals(capabilities.getConnection(binding.connectionId()).platform())) {
                 taskInput.put("providerOriginSha256", providerOriginSha256);
             }
             taskInput.put("workflowVersion", workflowVersion);
             byKey.put(stepKey, new StepDraft(stepKey, outputSlotKey, shotArtifactId,
                     shotVersionId, imageArtifactId, imageVersionId,
-                    dependencies, taskInput));
+                    dependencies, taskInput, binding));
         }
         List<StepDraft> sorted = sortAcyclic(byKey);
         List<ExecutionPlan.Step> steps = new ArrayList<>();
@@ -208,10 +234,10 @@ public class PlanDraftValidator {
                             ? Task.Kind.IMAGE_GENERATION : Task.Kind.VIDEO_GENERATION,
                     step.shotArtifactId(), step.shotVersionId(),
                     step.imageArtifactId(), step.imageVersionId(),
-                    step.outputSlotKey(), step.input(), step.dependencies()));
+                    step.outputSlotKey(), step.input(), step.dependencies(), step.binding()));
         }
         ObjectNode normalized = mapper.createObjectNode();
-        normalized.put("schemaVersion", 2);
+        normalized.put("schemaVersion", 3);
         normalized.put("stage", stage.name());
         normalized.put("objective", objective);
         ArrayNode normalizedSteps = normalized.putArray("steps");
@@ -221,18 +247,20 @@ public class PlanDraftValidator {
             item.put("outputSlotKey", step.outputSlotKey());
             item.set("input", step.input().deepCopy());
             item.set("dependsOnStepKeys", mapper.valueToTree(step.dependencyKeys()));
+            item.set("binding", mapper.valueToTree(step.binding()));
         }
         ObjectNode estimate = mapper.createObjectNode();
         estimate.put("imageCount", stage == ExecutionPlan.Stage.IMAGE ? steps.size() : 0);
         estimate.put("videoCount", stage == ExecutionPlan.Stage.VIDEO ? steps.size() : 0);
         estimate.put("videoSeconds", Integer.toString(videoDurationSeconds));
-        estimate.put("costSource", "mock".equals(provider.mode())
+        estimate.put("costSource", steps.stream().allMatch(step ->
+                step.binding().adapterId().startsWith("MOCK_"))
                 ? "MOCK_UNPRICED" : "PROVIDER_UNPRICED");
         return new Draft(stage, objective, normalized, snapshot, estimate,
-                providerConfigVersion, workflowVersion, List.copyOf(steps));
+                providerConfigVersion, workflowVersion, List.copyOf(steps), needsInput);
     }
 
-        /** 审批时确认计划固定的 ComfyUI 来源仍与当前配置一致。 */
+    /** 审批时确认计划固定的 ComfyUI 来源仍与当前配置一致。 */
     public boolean providerOriginMatches(ExecutionPlan plan) {
         if (!"comfyui".equalsIgnoreCase(provider.mode())) return true;
         String origin = comfyClient.getObject().originSha256();
@@ -407,7 +435,7 @@ public class PlanDraftValidator {
      */
     public record Draft(ExecutionPlan.Stage stage, String objective, JsonNode plan,
             JsonNode inputSnapshot, JsonNode estimate, int providerConfigVersion,
-            String workflowVersion, List<ExecutionPlan.Step> steps) {}
+            String workflowVersion, List<ExecutionPlan.Step> steps, boolean needsInput) {}
 
     /** 校验阶段的临时步骤；其依赖仍用 stepKey 表示，直到排序和解析完成。
      * @param stepKey 步骤的计划内唯一键
@@ -421,5 +449,6 @@ public class PlanDraftValidator {
      */
     private record StepDraft(String stepKey, String outputSlotKey,
             UUID shotArtifactId, UUID shotVersionId, UUID imageArtifactId,
-            UUID imageVersionId, List<String> dependencies, JsonNode input) {}
+            UUID imageVersionId, List<String> dependencies, JsonNode input,
+            MediaCapabilityBinding binding) {}
 }

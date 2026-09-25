@@ -139,7 +139,7 @@ class ConfiguredStoryboardPostgresIT {
                         + "and status = 'COMPLETED'").param("runId", run.id())
                 .query(Long.class).single()).isEqualTo(4);
 
-        plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash());
+        plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int image = 0; image < 3; image++) {
             assertThat(images.runOnce("configured-image-worker")).isEqualTo(1);
         }
@@ -168,7 +168,7 @@ class ConfiguredStoryboardPostgresIT {
                 assertThat(step.imageVersionId()).isNotNull());
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .noneMatch(task -> task.kind() == Task.Kind.VIDEO_GENERATION);
-        plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash());
+        plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int video = 0; video < 3; video++) {
             assertThat(videos.runOnce("configured-video-worker")).isEqualTo(1);
         }

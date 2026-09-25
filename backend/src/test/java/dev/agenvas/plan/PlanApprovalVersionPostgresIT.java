@@ -2,8 +2,6 @@ package dev.agenvas.plan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.reset;
 
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
@@ -17,6 +15,7 @@ import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.plan.application.PlanWorkflowPolicy;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
@@ -65,11 +64,12 @@ class PlanApprovalVersionPostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
-    @MockitoSpyBean private PlanProviderProperties provider;
-    @MockitoSpyBean private PlanWorkflowPolicy workflows;
+    @Autowired private PlanProviderProperties provider;
+    @Autowired private PlanWorkflowPolicy workflows;
+    @Autowired private MediaCapabilityService capabilities;
 
     @Test
-    void changedProviderOrWorkflowVersionRejectsApprovalWithoutSideEffects() {
+    void disabledBoundConnectionRejectsApprovalWithoutSideEffects() {
         AdminPrincipal owner = identities.setup("plan-version-integration-secret",
                 "plan-version-admin", "plan-password-123");
         Project project = projects.create(owner.userId(), "Plan version project",
@@ -87,26 +87,21 @@ class PlanApprovalVersionPostgresIT {
         assertThat(plan.providerConfigVersion()).isEqualTo(provider.configVersion());
         assertThat(plan.workflowVersion()).isEqualTo(workflows.version(ExecutionPlan.Stage.IMAGE));
 
-        try {
-            doReturn(plan.providerConfigVersion() + 1).when(provider).configVersion();
-            assertRejectedWithoutSideEffects(owner.userId(), project.id(), running.id(), plan);
-            reset(provider);
+        UUID connectionId = plan.steps().getFirst().binding().connectionId();
+        var connection = capabilities.getConnection(connectionId);
+        capabilities.setConnectionEnabled(connectionId, connection.version(), false);
+        assertRejectedWithoutSideEffects(owner.userId(), project.id(), running.id(), plan);
+        capabilities.setConnectionEnabled(connectionId,
+                capabilities.getConnection(connectionId).version(), true);
 
-            doReturn("changed-image-workflow-v2").when(workflows)
-                    .version(ExecutionPlan.Stage.IMAGE);
-            assertRejectedWithoutSideEffects(owner.userId(), project.id(), running.id(), plan);
-        } finally {
-            reset(provider, workflows);
-        }
-
-        assertThat(plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash())
+        assertThat(plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList())
                 .tasks()).hasSize(1);
     }
 
     /** A stale approval remains pending and cannot reserve quota or enqueue media. */
     private void assertRejectedWithoutSideEffects(UUID ownerId, UUID projectId, UUID runId,
             ExecutionPlan plan) {
-        assertThatThrownBy(() -> plans.approve(ownerId, projectId, plan.id(), plan.planHash()))
+        assertThatThrownBy(() -> plans.approve(ownerId, projectId, plan.id(), plan.planHash(), plans.get(ownerId, projectId, plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()))
                 .isInstanceOfSatisfying(ApiProblemException.class, error ->
                         assertThat(error.code()).isEqualTo("PLAN_CONFLICT"));
         assertThat(plans.get(ownerId, projectId, plan.id()).status())

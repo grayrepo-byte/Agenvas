@@ -53,6 +53,8 @@ export type UpdateMediaConnectionRequest = components["schemas"]["UpdateMediaCon
 export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCapabilityRequest"];
 export type UpdateMediaCapabilityRequest = components["schemas"]["UpdateMediaCapabilityRequest"];
 export type SetMediaDefaultRequest = components["schemas"]["SetMediaDefaultRequest"];
+export type MediaCapabilityCandidate = components["schemas"]["MediaCapabilityCandidate"];
+export type ReviseExecutionPlanStepRequest = components["schemas"]["ReviseExecutionPlanStepRequest"];
 type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
 
@@ -460,15 +462,32 @@ export async function getExecutionPlan(projectId: string, planId: string): Promi
   );
 }
 
+export async function listMediaCapabilityCandidates(projectId: string, planId: string,
+  stepKey: string): Promise<MediaCapabilityCandidate[]> {
+  return readJson<MediaCapabilityCandidate[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/steps/${encodeURIComponent(stepKey)}/candidates`,
+    "无法读取可用媒体能力",
+  );
+}
+
+export async function reviseExecutionPlanStep(projectId: string, planId: string,
+  stepKey: string, input: ReviseExecutionPlanStepRequest): Promise<ExecutionPlan> {
+  return writeJson<ExecutionPlan>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/steps/${encodeURIComponent(stepKey)}/revise`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
 /** Confirms exactly the plan hash rendered in the approval UI. */
 export async function approveExecutionPlan(
   projectId: string,
   planId: string,
   planHash: string,
+  confirmedStepKeys: string[],
 ): Promise<ExecutionPlanApproval> {
   return writeJson<ExecutionPlanApproval>(`/api/v1/projects/${projectId}/plans/${planId}/approve`, {
     method: "POST",
-    body: JSON.stringify({ planHash }),
+    body: JSON.stringify({ planHash, confirmedStepKeys }),
   });
 }
 

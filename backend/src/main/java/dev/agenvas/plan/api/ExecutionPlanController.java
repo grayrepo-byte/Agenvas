@@ -3,7 +3,9 @@ package dev.agenvas.plan.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanService;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
 
 /** 执行计划的人审入口；模型只能提出计划，审批只能由已认证用户完成。 */
 @RestController
@@ -55,6 +58,22 @@ public class ExecutionPlanController {
         return plans.get(principal.userId(), projectId, planId);
     }
 
+    @GetMapping("/plans/{planId}/steps/{stepKey}/candidates")
+    public List<MediaCapabilityService.Candidate> candidates(
+            @AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID planId,
+            @PathVariable String stepKey) {
+        return plans.candidates(principal.userId(), projectId, planId, stepKey);
+    }
+
+    @PostMapping("/plans/{planId}/steps/{stepKey}/revise")
+    public ExecutionPlan reviseStep(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID planId,
+            @PathVariable String stepKey, @Valid @RequestBody ReviseStepRequest request) {
+        return plans.reviseStep(principal.userId(), projectId, planId, stepKey,
+                request.capabilityId(), request.inputPatch(), request.expectedPlanHash());
+    }
+
     /** 仅批准与用户所见摘要完全一致的计划。
      * @param principal 作出审批的认证用户
      * @param projectId 计划所属项目
@@ -67,7 +86,8 @@ public class ExecutionPlanController {
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID planId,
             @Valid @RequestBody ApproveRequest request) {
-        return plans.approve(principal.userId(), projectId, planId, request.planHash());
+        return plans.approve(principal.userId(), projectId, planId, request.planHash(),
+                request.confirmedStepKeys());
     }
 
     /** 拒绝待审计划，不创建媒体任务。
@@ -85,5 +105,10 @@ public class ExecutionPlanController {
     /** 审批命令；计划摘要用于阻止用户确认旧页面内容。
      * @param planHash 当前展示计划的 SHA-256 十六进制摘要
      */
-    public record ApproveRequest(@NotBlank @Pattern(regexp = "[0-9a-f]{64}") String planHash) {}
+    public record ApproveRequest(@NotBlank @Pattern(regexp = "[0-9a-f]{64}") String planHash,
+            @NotNull List<String> confirmedStepKeys) {}
+
+    public record ReviseStepRequest(
+            @NotBlank @Pattern(regexp = "[0-9a-f]{64}") String expectedPlanHash,
+            UUID capabilityId, @NotNull JsonNode inputPatch) {}
 }

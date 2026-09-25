@@ -234,7 +234,7 @@ class TaskStaleShotPostgresIT {
         ExecutionPlan imagePlan = plans.propose(new TrustedToolContext(owner.userId(),
                 plannedProject.id(), plannedRun.id()), imageDraft(plannedShots));
         var approval = plans.approve(owner.userId(), plannedProject.id(), imagePlan.id(),
-                imagePlan.planHash());
+                imagePlan.planHash(), plans.get(owner.userId(), plannedProject.id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(approval.tasks()).hasSize(3);
         var obsoleteShot = plannedShots.getFirst();
         var replacement = revise(owner.userId(), plannedProject.id(), obsoleteShot,
@@ -278,7 +278,7 @@ class TaskStaleShotPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), plannedProject.id(), fresh.id())).noneMatch(
                 item -> item.kind() == Task.Kind.IMAGE_GENERATION);
         var freshApproval = plans.approve(owner.userId(), plannedProject.id(), freshPlan.id(),
-                freshPlan.planHash());
+                freshPlan.planHash(), plans.get(owner.userId(), plannedProject.id(), freshPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(freshApproval.tasks()).hasSize(3);
         assertThat(freshApproval.tasks()).anySatisfy(item -> assertThat(item.input()
                 .path("shotVersionId").asText())
@@ -359,7 +359,7 @@ class TaskStaleShotPostgresIT {
                 referenceShot.artifact().id()).currentVersion().id())
                 .isEqualTo(referenceShot.currentVersion().id());
         assertThatThrownBy(() -> plans.approve(owner.userId(), referenceProject.id(),
-                referencePlan.id(), referencePlan.planHash()))
+                referencePlan.id(), referencePlan.planHash(), plans.get(owner.userId(), referenceProject.id(), referencePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()))
                 .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("PLAN_CONFLICT"));
         plans.reject(owner.userId(), referenceProject.id(), referencePlan.id());

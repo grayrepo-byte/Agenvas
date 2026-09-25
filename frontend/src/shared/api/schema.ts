@@ -781,6 +781,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        /** 列出与步骤输出和整数时长兼容的已发布能力 */
+        get: operations["listMediaCapabilityCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 改选一项能力或补输入并创建新的计划修订 */
+        post: operations["reviseExecutionPlanStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/plans/{planId}/reject": {
         parameters: {
             query?: never;
@@ -1803,6 +1845,27 @@ export interface components {
                 [key: string]: unknown;
             };
             dependencyKeys: string[];
+            binding: components["schemas"]["MediaCapabilityBinding"] | null;
+        };
+        MediaCapabilityBinding: {
+            /** Format: uuid */
+            connectionId: string;
+            connectionVersion: number;
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            adapterId: string;
+            mappingSha256: string;
+        };
+        MediaCapabilityCandidate: {
+            binding: components["schemas"]["MediaCapabilityBinding"];
+            connectionName: string;
+            capabilityName: string;
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            minimumSeconds: number;
+            maximumSeconds: number;
+            realGenerationTested: boolean;
         };
         ExecutionPlan: {
             /** Format: uuid */
@@ -1815,7 +1878,7 @@ export interface components {
             /** @enum {string} */
             stage: "IMAGE" | "VIDEO";
             /** @enum {string} */
-            status: "PENDING" | "APPROVED" | "REJECTED" | "STALE";
+            status: "NEEDS_INPUT" | "PENDING" | "APPROVED" | "REJECTED" | "STALE";
             objective: string;
             plan: {
                 [key: string]: unknown;
@@ -1838,6 +1901,20 @@ export interface components {
         };
         ApproveExecutionPlanRequest: {
             planHash: string;
+            confirmedStepKeys: string[];
+        };
+        ReviseExecutionPlanStepRequest: {
+            expectedPlanHash: string;
+            /** Format: uuid */
+            capabilityId?: string | null;
+            inputPatch: {
+                prompt?: string;
+                negativePrompt?: string | null;
+                /** Format: uuid */
+                imageArtifactId?: string | null;
+                /** Format: uuid */
+                imageVersionId?: string | null;
+            };
         };
         ExecutionPlanApproval: {
             /** Format: uuid */
@@ -3685,6 +3762,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExecutionPlanApproval"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMediaCapabilityCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前候选能力，无连接地址或凭证 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaCapabilityCandidate"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reviseExecutionPlanStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseExecutionPlanStepRequest"];
+            };
+        };
+        responses: {
+            /** @description 新修订，旧逐项确认全部失效 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionPlan"];
                 };
             };
             400: components["responses"]["ValidationError"];

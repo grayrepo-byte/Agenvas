@@ -2,6 +2,7 @@ package dev.agenvas.task.application;
 
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.ProviderAttempt;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +14,9 @@ public interface TaskRepository {
 
     /** 原子写入任务及已由应用层校验的同项目依赖。 */
     void create(Task task, List<UUID> dependencyIds);
+
+    /** Pin a newly created media Task to the exact approved connection and capability versions. */
+    void bindMediaTask(UUID taskId, MediaCapabilityBinding binding);
 
     /** 保存媒体任务创建时所见的产物选择，供结果归档时做并发前提检查。 */
     void createArtifactTarget(ArtifactTarget target);

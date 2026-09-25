@@ -118,7 +118,7 @@ class PlanResumeWorkerPostgresIT {
         assertThat(worker.runOnce("resume-model-worker")).isZero();
 
         plans.approve(owner.userId(), approved.project().id(), imagePlan.id(),
-                imagePlan.planHash());
+                imagePlan.planHash(), plans.get(owner.userId(), approved.project().id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(runs.get(owner.userId(), approved.project().id(), approved.run().id()).status())
                 .isEqualTo(AgentRun.Status.WAITING_TASKS);
         assertThat(worker.runOnce("resume-model-worker")).isZero();
@@ -187,7 +187,7 @@ class PlanResumeWorkerPostgresIT {
         ExecutionPlan failedPlan = plans.listByRun(owner.userId(), failed.project().id(),
                 failed.run().id()).getFirst();
         plans.approve(owner.userId(), failed.project().id(), failedPlan.id(),
-                failedPlan.planHash());
+                failedPlan.planHash(), plans.get(owner.userId(), failed.project().id(), failedPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(fixtureWorker(MockFixture.FAILURE).runOnce("failed-media-worker"))
                 .isEqualTo(1);
         assertThat(runs.get(owner.userId(), failed.project().id(), failed.run().id()).status())
@@ -207,7 +207,7 @@ class PlanResumeWorkerPostgresIT {
         ExecutionPlan unknownPlan = plans.listByRun(owner.userId(), unknown.project().id(),
                 unknown.run().id()).getFirst();
         plans.approve(owner.userId(), unknown.project().id(), unknownPlan.id(),
-                unknownPlan.planHash());
+                unknownPlan.planHash(), plans.get(owner.userId(), unknown.project().id(), unknownPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThatThrownBy(() -> fixtureWorker(MockFixture.UNKNOWN)
                 .runOnce("unknown-media-worker"))
                 .isInstanceOf(IllegalStateException.class);
@@ -256,7 +256,7 @@ class PlanResumeWorkerPostgresIT {
                 fixture.run().id()).getFirst();
         assertThat(original.path("createdIds").get(0).asText()).isEqualTo(plan.id().toString());
         ExecutionPlanService.ApprovalResult approved = plans.approve(owner.userId(),
-                fixture.project().id(), plan.id(), plan.planHash());
+                fixture.project().id(), plan.id(), plan.planHash(), plans.get(owner.userId(), fixture.project().id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(approved.tasks()).hasSize(1);
         assertThat(toolExecutor.execute(context, 0, "proposal-original")).isEqualTo(original);
         assertThatThrownBy(() -> toolExecutor.execute(context, 0, "proposal-new-id"))

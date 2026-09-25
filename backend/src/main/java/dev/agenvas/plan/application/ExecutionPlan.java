@@ -1,6 +1,7 @@
 package dev.agenvas.plan.application;
 
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +42,8 @@ public record ExecutionPlan(UUID id, UUID projectId, UUID runId, int revision,
 
     /** 审批状态变化不会修改提案正文或其摘要。 */
     public enum Status {
+        /** Waiting for the user to select a required source image before approval. */
+        NEEDS_INPUT,
         /** 等待用户审阅并决定。 */
         PENDING,
         /** 用户已批准，媒体任务与审批凭据已创建。 */
@@ -66,5 +69,6 @@ public record ExecutionPlan(UUID id, UUID projectId, UUID runId, int revision,
     public record Step(String stepKey, int ordinal, Task.Kind kind,
             UUID shotArtifactId, UUID shotVersionId,
             UUID imageArtifactId, UUID imageVersionId,
-            String outputSlotKey, JsonNode input, List<String> dependencyKeys) {}
+            String outputSlotKey, JsonNode input, List<String> dependencyKeys,
+            MediaCapabilityBinding binding) {}
 }

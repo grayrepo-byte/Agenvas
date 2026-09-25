@@ -274,6 +274,50 @@ public class MediaCapabilityService {
         return resolve(capabilityId, requireMediaKind(kind), durationSeconds, false);
     }
 
+    /** Candidate metadata is server-selected and contains no endpoint or credential. */
+    public List<Candidate> candidates(Task.Kind kind, int durationSeconds) {
+        Task.Kind mediaKind = requireMediaKind(kind);
+        return repository.connections().stream().filter(Connection::enabled)
+                .flatMap(connection -> repository.capabilities(connection.id()).stream())
+                .filter(Capability::enabled)
+                .map(capability -> repository.snapshot(capability.id()).orElseThrow())
+                .filter(snapshot -> registry.supports(snapshot.adapterId(),
+                        new PortInput(mediaKind, durationSeconds, null)))
+                .map(snapshot -> new Candidate(binding(snapshot), snapshot.connection().name(),
+                        snapshot.capability().name(), mediaKind,
+                        registry.declaration(snapshot.adapterId()).minimumSeconds(),
+                        registry.declaration(snapshot.adapterId()).maximumSeconds(),
+                        false)).toList();
+    }
+
+    /** Safe published catalog for model planning; duration suitability is checked per step. */
+    public List<Candidate> publishedCandidates() {
+        return repository.connections().stream().filter(Connection::enabled)
+                .flatMap(connection -> repository.capabilities(connection.id()).stream())
+                .filter(Capability::enabled)
+                .map(capability -> repository.snapshot(capability.id()).orElseThrow())
+                .map(snapshot -> {
+                    var declaration = registry.declaration(snapshot.adapterId());
+                    return new Candidate(binding(snapshot), snapshot.connection().name(),
+                            snapshot.capability().name(), declaration.kind(),
+                            declaration.minimumSeconds(), declaration.maximumSeconds(), false);
+                }).toList();
+    }
+
+    /** Approval only accepts the exact still-published versions frozen in the step. */
+    public boolean isCurrentBinding(MediaCapabilityBinding binding, Task.Kind kind,
+            int durationSeconds) {
+        try {
+            return binding.equals(resolve(binding.capabilityId(), kind, durationSeconds));
+        } catch (ApiProblemException invalid) {
+            return false;
+        }
+    }
+
+    public record Candidate(MediaCapabilityBinding binding, String connectionName,
+            String capabilityName, Task.Kind kind, int minimumSeconds,
+            int maximumSeconds, boolean realGenerationTested) {}
+
     private MediaCapabilityBinding resolve(UUID capabilityId, Task.Kind kind,
             int durationSeconds, boolean skipDuration) {
         Snapshot snapshot = enabledSnapshot(capabilityId);

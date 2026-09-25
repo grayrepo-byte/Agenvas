@@ -93,6 +93,7 @@ public class ToolRegistry {
                      "shotVersionId":{"type":"string","format":"uuid"},
                      "imageArtifactId":{"type":"string","format":"uuid"},
                      "imageVersionId":{"type":"string","format":"uuid"},
+                     "capabilityId":{"type":"string","format":"uuid"},
                      "prompt":{"type":"string","minLength":1,"maxLength":8000},
                      "negativePrompt":{"type":"string","minLength":1,"maxLength":8000},
                      "dependsOnStepKeys":{"type":"array","maxItems":6,"uniqueItems":true,

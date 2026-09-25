@@ -119,7 +119,7 @@ class ComfyUiOriginPreflightPostgresIT {
         assertThat(plan.steps().getFirst().input().path("providerOriginSha256").asText())
                 .isEqualTo(originalClient.originSha256());
         Task approved = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash()).tasks().getFirst();
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
 
         ComfyUiClient changedClient = new ComfyUiClient(
                 new ComfyUiProperties("http://127.0.0.1:65534"), mapper);

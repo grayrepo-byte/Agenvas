@@ -159,7 +159,7 @@ class MockStoryboardPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .noneMatch(task -> task.kind() == Task.Kind.IMAGE_GENERATION);
 
-        plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash());
+        plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int image = 0; image < 3; image++) {
             assertThat(images.runOnce("mock-storyboard-image")).isEqualTo(1);
         }
@@ -201,7 +201,7 @@ class MockStoryboardPostgresIT {
                 assertThat(step.imageVersionId()).isNotNull());
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .noneMatch(task -> task.kind() == Task.Kind.VIDEO_GENERATION);
-        plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash());
+        plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int video = 0; video < 3; video++) {
             assertThat(videos.runOnce("mock-storyboard-video")).isEqualTo(1);
         }
@@ -346,7 +346,7 @@ class MockStoryboardPostgresIT {
         assertThat(redoImagePlan.steps()).hasSize(1);
         assertThat(redoImagePlan.steps().getFirst().shotArtifactId()).isEqualTo(secondShotId);
         plans.approve(owner.userId(), project.id(), redoImagePlan.id(),
-                redoImagePlan.planHash());
+                redoImagePlan.planHash(), plans.get(owner.userId(), project.id(), redoImagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(images.runOnce("mock-redo-image")).isEqualTo(1);
         Task redoImage = tasks.listByRun(owner.userId(), project.id(), redoRun.id()).stream()
                 .filter(task -> task.kind() == Task.Kind.IMAGE_GENERATION)
@@ -364,7 +364,7 @@ class MockStoryboardPostgresIT {
         assertThat(redoVideoPlan.steps()).hasSize(1);
         assertThat(redoVideoPlan.steps().getFirst().shotArtifactId()).isEqualTo(secondShotId);
         plans.approve(owner.userId(), project.id(), redoVideoPlan.id(),
-                redoVideoPlan.planHash());
+                redoVideoPlan.planHash(), plans.get(owner.userId(), project.id(), redoVideoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(videos.runOnce("mock-redo-video")).isEqualTo(1);
         Task redoVideo = tasks.listByRun(owner.userId(), project.id(), redoRun.id()).stream()
                 .filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION)

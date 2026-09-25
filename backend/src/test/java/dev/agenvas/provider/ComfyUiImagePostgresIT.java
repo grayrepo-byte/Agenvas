@@ -187,7 +187,7 @@ class ComfyUiImagePostgresIT {
                         + "where plan_id = :planId")
                 .param("origin", "0".repeat(64)).param("planId", plan.id()).update();
         assertThatThrownBy(() -> plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash())).isInstanceOf(ApiProblemException.class);
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList())).isInstanceOf(ApiProblemException.class);
         assertThat(jdbc.sql("select count(*) from task where plan_id = :planId")
                 .param("planId", plan.id()).query(Integer.class).single()).isZero();
         jdbc.sql("update plan_step set input_json = input_json || "
@@ -195,7 +195,7 @@ class ComfyUiImagePostgresIT {
                         + "where plan_id = :planId")
                 .param("origin", client.originSha256()).param("planId", plan.id()).update();
         List<Task> approvedTasks = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash()).tasks();
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks();
         Task approved = approvedTasks.getFirst();
         Task queuedSecond = approvedTasks.get(1);
         assertThat(approved.input().path("referenceImageVersionId").asText())
@@ -330,7 +330,7 @@ class ComfyUiImagePostgresIT {
         var uncertainPlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 uncertainRun.id()), uncertainProposal);
         Task uncertainTask = plans.approve(owner.userId(), project.id(), uncertainPlan.id(),
-                uncertainPlan.planHash()).tasks().getFirst();
+                uncertainPlan.planHash(), plans.get(owner.userId(), project.id(), uncertainPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
         int acceptedBeforeLoss = SUBMISSIONS.get();
         DROP_NEXT_PROMPT_RESPONSE.set(true);
         assertThatThrownBy(() -> worker.submitOnce("response-loss-worker"))

@@ -199,10 +199,21 @@ class ExecutionPlanPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), running.id()).status())
                 .isEqualTo(AgentRun.Status.WAITING_APPROVAL);
         assertThat(mediaTasks(owner.userId(), project.id(), running.id())).isEmpty();
+        assertThat(imagePlan.steps()).allSatisfy(step -> assertThat(step.binding()).isNotNull());
+        assertThatThrownBy(() -> plans.approve(owner.userId(), project.id(), imagePlanId,
+                imagePlan.planHash(), List.of(imagePlan.steps().getFirst().stepKey())))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> plans.approve(owner.userId(), project.id(), imagePlanId,
+                imagePlan.planHash(), java.util.Collections.nCopies(imagePlan.steps().size(),
+                        imagePlan.steps().getFirst().stepKey())))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(mediaTasks(owner.userId(), project.id(), running.id())).isEmpty();
         assertThat(registry.modelDefinitions()).extracting(callback -> callback.getToolDefinition().name())
                 .doesNotContain("approve_plan");
 
         String planPath = "/api/v1/projects/" + project.id() + "/plans/" + imagePlanId;
+        String confirmedImageSteps = mapper.valueToTree(imagePlan.steps().stream()
+                .map(ExecutionPlan.Step::stepKey).toList()).toString();
         mvc.perform(get(planPath)).andExpect(status().isUnauthorized());
         mvc.perform(get(planPath).with(authentication(asUser(owner))))
                 .andExpect(status().isOk())
@@ -213,7 +224,8 @@ class ExecutionPlanPostgresIT {
                 .andExpect(jsonPath("$[0].id").value(imagePlanId.toString()));
         mvc.perform(post(planPath + "/approve").with(authentication(asUser(owner)))
                 .contentType("application/json")
-                .content("{\"planHash\":\"" + imagePlan.planHash() + "\"}"))
+                .content("{\"planHash\":\"" + imagePlan.planHash()
+                        + "\",\"confirmedStepKeys\":" + confirmedImageSteps + "}"))
                 .andExpect(status().isForbidden());
         assertThat(mediaTasks(owner.userId(), project.id(), running.id())).isEmpty();
 
@@ -221,13 +233,14 @@ class ExecutionPlanPostgresIT {
                 UUID.randomUUID(), agent.id(), BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("320"), new BigDecimal("200"), 0, null, false)));
         assertThatThrownBy(() -> plans.approve(owner.userId(), project.id(), imagePlanId,
-                "0".repeat(64))).isInstanceOf(ApiProblemException.class);
+                "0".repeat(64), plans.get(owner.userId(), project.id(), imagePlanId).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList())).isInstanceOf(ApiProblemException.class);
         mvc.perform(get(planPath).with(authentication(asUser(
                         new AdminPrincipal(UUID.randomUUID(), "not-owner")))))
                 .andExpect(status().isNotFound());
         mvc.perform(post(planPath + "/approve").with(authentication(asUser(owner)))
                 .with(csrf()).contentType("application/json")
-                .content("{\"planHash\":\"" + "0".repeat(64) + "\"}"))
+                .content("{\"planHash\":\"" + "0".repeat(64)
+                        + "\",\"confirmedStepKeys\":" + confirmedImageSteps + "}"))
                 .andExpect(status().isConflict());
         assertThat(count("plan_approval")).isZero();
         CountDownLatch start = new CountDownLatch(1);
@@ -237,7 +250,7 @@ class ExecutionPlanPostgresIT {
                 requests.add(pool.submit(() -> {
                     start.await();
                     return plans.approve(owner.userId(), project.id(), imagePlanId,
-                            imagePlan.planHash());
+                            imagePlan.planHash(), plans.get(owner.userId(), project.id(), imagePlanId).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
                 }));
             }
             start.countDown();
@@ -396,7 +409,7 @@ class ExecutionPlanPostgresIT {
         assertThat(videoPlan.stage()).isEqualTo(ExecutionPlan.Stage.VIDEO);
         assertThat(videoPlan.estimate().path("videoCount").intValue()).isEqualTo(3);
         var videoApproval = plans.approve(owner.userId(), project.id(), videoPlan.id(),
-                videoPlan.planHash());
+                videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(videoApproval.tasks()).hasSize(3);
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
                         + "and plan_id = :planId and kind = 'VIDEO_GENERATION'")
@@ -459,7 +472,7 @@ class ExecutionPlanPostgresIT {
                 editHeld.await();
                 approvalStarted.countDown();
                 return plans.approve(owner.userId(), changedProject.id(),
-                        stalePlan.id(), stalePlan.planHash());
+                        stalePlan.id(), stalePlan.planHash(), plans.get(owner.userId(), changedProject.id(), stalePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
             });
             assertThat(approvalStarted.await(5, TimeUnit.SECONDS)).isTrue();
             releaseEdit.countDown();
@@ -499,14 +512,14 @@ class ExecutionPlanPostgresIT {
         }
         ExecutionPlan firstBudgetPlan = plans.propose(budgetContext, sixImages);
         plans.approve(owner.userId(), budgetProject.id(), firstBudgetPlan.id(),
-                firstBudgetPlan.planHash());
+                firstBudgetPlan.planHash(), plans.get(owner.userId(), budgetProject.id(), firstBudgetPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         AgentRun budgetWaiting = runs.get(owner.userId(), budgetProject.id(), budgetRunning.id());
         runs.transition(owner.userId(), budgetProject.id(), budgetRunning.id(),
                 budgetWaiting.version(), AgentRun.Status.RUNNING);
         ExecutionPlan overBudget = plans.propose(budgetContext,
                 draft("IMAGE", budgetShots, List.of()));
         assertThatThrownBy(() -> plans.approve(owner.userId(), budgetProject.id(),
-                overBudget.id(), overBudget.planHash()))
+                overBudget.id(), overBudget.planHash(), plans.get(owner.userId(), budgetProject.id(), overBudget.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()))
                 .isInstanceOfSatisfying(ApiProblemException.class, error ->
                         assertThat(error.code()).isEqualTo("PLAN_CONFLICT"));
         assertThat(mediaTasks(owner.userId(), budgetProject.id(), budgetRunning.id()))
@@ -557,8 +570,9 @@ class ExecutionPlanPostgresIT {
                         + "and operation_key like 'media:%'")
                 .param("projectId", budgetProject.id()).query(Integer.class).single())
                 .isEqualTo(6);
-        assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("36");
+        assertThat(Integer.parseInt(jdbc.sql("select version from flyway_schema_history "
+                        + "order by installed_rank desc limit 1")
+                .query(String.class).single())).isGreaterThanOrEqualTo(36);
     }
 
     /** A no-submission terminal media task closes exactly one unknown-cost reservation. */

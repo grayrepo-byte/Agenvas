@@ -160,7 +160,7 @@ class ComfyUiVideoPostgresIT {
         var imagePlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 queued.id()), imageProposal);
         Task imageTask = plans.approve(owner.userId(), project.id(), imagePlan.id(),
-                imagePlan.planHash()).tasks().getFirst();
+                imagePlan.planHash(), plans.get(owner.userId(), project.id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
         assertThat(IMAGE_SUBMISSIONS).hasValue(0);
         assertThat(images.submitOnce("image-submitter")).isEqualTo(1);
         due(imageTask.id());
@@ -186,7 +186,7 @@ class ComfyUiVideoPostgresIT {
                 .isEqualTo(client.originSha256());
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);
         Task videoTask = plans.approve(owner.userId(), project.id(), videoPlan.id(),
-                videoPlan.planHash()).tasks().getFirst();
+                videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
         assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
         assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "

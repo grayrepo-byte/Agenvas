@@ -122,7 +122,7 @@ class ManualUnknownRetryPostgresIT {
         var plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(), run.id()),
                 proposal);
         Task original = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash()).tasks().getFirst();
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
         List<Task> dependents = tasks.listByRun(owner.userId(), project.id(), run.id()).stream()
                 .filter(task -> task.kind() == Task.Kind.AGENT_TURN
                         && task.status() == Task.Status.PENDING).toList();

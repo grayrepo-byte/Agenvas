@@ -1007,6 +1007,61 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/candidates:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: stepKey
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: listMediaCapabilityCandidates
+      summary: 列出与步骤输出和整数时长兼容的已发布能力
+      tags: [Plans]
+      responses:
+        "200":
+          description: 当前候选能力，无连接地址或凭证
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/MediaCapabilityCandidate"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/revise:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: stepKey
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      operationId: reviseExecutionPlanStep
+      summary: 改选一项能力或补输入并创建新的计划修订
+      tags: [Plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReviseExecutionPlanStepRequest"}
+      responses:
+        "200":
+          description: 新修订，旧逐项确认全部失效
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExecutionPlan"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/plans/{planId}/reject:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2229,7 +2284,7 @@ components:
     ExecutionPlanStep:
       type: object
       additionalProperties: false
-      required: [stepKey, ordinal, kind, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, outputSlotKey, input, dependencyKeys]
+      required: [stepKey, ordinal, kind, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, outputSlotKey, input, dependencyKeys, binding]
       properties:
         stepKey: {type: string, minLength: 1}
         ordinal: {type: integer, minimum: 0}
@@ -2243,6 +2298,34 @@ components:
         dependencyKeys:
           type: array
           items: {type: string}
+        binding:
+          oneOf:
+            - {$ref: "#/components/schemas/MediaCapabilityBinding"}
+            - {type: "null"}
+    MediaCapabilityBinding:
+      type: object
+      additionalProperties: false
+      required: [connectionId, connectionVersion, capabilityId, capabilityVersion, adapterId, mappingSha256]
+      properties:
+        connectionId: {type: string, format: uuid}
+        connectionVersion: {type: integer, minimum: 1}
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        adapterId: {type: string}
+        mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+    MediaCapabilityCandidate:
+      type: object
+      additionalProperties: false
+      required: [binding, connectionName, capabilityName, kind, minimumSeconds,
+        maximumSeconds, realGenerationTested]
+      properties:
+        binding: {$ref: "#/components/schemas/MediaCapabilityBinding"}
+        connectionName: {type: string}
+        capabilityName: {type: string}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        minimumSeconds: {type: integer, minimum: 0}
+        maximumSeconds: {type: integer, minimum: 0}
+        realGenerationTested: {type: boolean}
     ExecutionPlan:
       type: object
       additionalProperties: false
@@ -2253,7 +2336,7 @@ components:
         runId: {type: string, format: uuid}
         revision: {type: integer, minimum: 1}
         stage: {type: string, enum: [IMAGE, VIDEO]}
-        status: {type: string, enum: [PENDING, APPROVED, REJECTED, STALE]}
+        status: {type: string, enum: [NEEDS_INPUT, PENDING, APPROVED, REJECTED, STALE]}
         objective: {type: string}
         plan: {type: object, additionalProperties: true}
         inputSnapshot: {type: object, additionalProperties: true}
@@ -2270,9 +2353,27 @@ components:
     ApproveExecutionPlanRequest:
       type: object
       additionalProperties: false
-      required: [planHash]
+      required: [planHash, confirmedStepKeys]
       properties:
         planHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        confirmedStepKeys:
+          type: array
+          items: {type: string}
+    ReviseExecutionPlanStepRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedPlanHash, inputPatch]
+      properties:
+        expectedPlanHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        capabilityId: {type: [string, "null"], format: uuid}
+        inputPatch:
+          type: object
+          additionalProperties: false
+          properties:
+            prompt: {type: string}
+            negativePrompt: {type: [string, "null"]}
+            imageArtifactId: {type: [string, "null"], format: uuid}
+            imageVersionId: {type: [string, "null"], format: uuid}
     ExecutionPlanApproval:
       type: object
       additionalProperties: false

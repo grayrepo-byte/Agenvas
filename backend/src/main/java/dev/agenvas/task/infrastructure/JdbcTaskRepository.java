@@ -2,6 +2,7 @@ package dev.agenvas.task.infrastructure;
 
 import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.run.application.RunTaskCancellation;
 import dev.agenvas.run.application.RunTaskCreation;
@@ -66,6 +67,23 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 Optional.ofNullable(resultSet.getObject("completed_at", OffsetDateTime.class))
                         .map(OffsetDateTime::toInstant)
                         .orElse(null));
+    }
+
+    @Override
+    public void bindMediaTask(UUID taskId, MediaCapabilityBinding binding) {
+        int changed = jdbcClient.sql("update task set capability_id=:capabilityId,"
+                + "capability_version=:capabilityVersion,connection_id=:connectionId,"
+                + "connection_version=:connectionVersion where id=:taskId "
+                + "and kind in ('IMAGE_GENERATION','VIDEO_GENERATION') "
+                + "and capability_id is null and status in ('PENDING','READY')")
+                .param("capabilityId", binding.capabilityId())
+                .param("capabilityVersion", binding.capabilityVersion())
+                .param("connectionId", binding.connectionId())
+                .param("connectionVersion", binding.connectionVersion())
+                .param("taskId", taskId).update();
+        if (changed != 1) {
+            throw new IllegalStateException("New media Task binding was not saved once");
+        }
     }
 
     /** 所有者和项目联合授权后读取最多 100 条外部提交尝试，不读取文件或凭证。 */
