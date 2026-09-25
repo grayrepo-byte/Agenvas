@@ -41,7 +41,8 @@ function QualityChoice({ value, onChange }: { value: string; onChange: (value: s
 const adapterKind: Record<string, "IMAGE_GENERATION" | "VIDEO_GENERATION"> = {
   MOCK_IMAGE: "IMAGE_GENERATION", MOCK_VIDEO: "VIDEO_GENERATION",
   COMFY_IMAGE_V1: "IMAGE_GENERATION", COMFY_VIDEO_V1: "VIDEO_GENERATION",
-  OPENAI_GPT_IMAGE_2: "IMAGE_GENERATION", ARK_SEEDANCE_2_I2V: "VIDEO_GENERATION",
+  OPENAI_GPT_IMAGE_2: "IMAGE_GENERATION", GOOGLE_NANO_BANANA_2: "IMAGE_GENERATION",
+  ARK_SEEDANCE_2_I2V: "VIDEO_GENERATION",
 };
 
 function stableCreateKey(previous: { payload: string; key: string } | null,
@@ -136,6 +137,7 @@ function ConnectionCard({ connection, settings, apply }: {
   const [capabilityName, setCapabilityName] = useState("");
   const [adapterId, setAdapterId] = useState(connection.platform === "COMFYUI" ? "COMFY_IMAGE_V1"
     : connection.platform === "OPENAI" ? "OPENAI_GPT_IMAGE_2"
+    : connection.platform === "GOOGLE" ? "GOOGLE_NANO_BANANA_2"
     : connection.platform === "ARK" ? "ARK_SEEDANCE_2_I2V" : "MOCK_IMAGE");
   const [newModelNames, setNewModelNames] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -225,6 +227,7 @@ function ConnectionCard({ connection, settings, apply }: {
     ? ["MOCK_IMAGE", "MOCK_VIDEO"]
     : connection.platform === "COMFYUI" ? ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"]
     : connection.platform === "OPENAI" ? ["OPENAI_GPT_IMAGE_2"]
+    : connection.platform === "GOOGLE" ? ["GOOGLE_NANO_BANANA_2"]
     : connection.platform === "ARK" ? ["ARK_SEEDANCE_2_I2V"] : [];
 
   function submitConnection(event: FormEvent<HTMLFormElement>) {
@@ -251,7 +254,8 @@ function ConnectionCard({ connection, settings, apply }: {
         <input value={origin} onChange={(event) => setOrigin(event.target.value)} required
           placeholder="http://127.0.0.1:8188" />
       </label> : null}
-      {connection.platform === "OPENAI" || connection.platform === "ARK" ? <label className="text-sm">替换 API Key（留空则不修改）
+      {connection.platform === "OPENAI" || connection.platform === "ARK" ||
+        connection.platform === "GOOGLE" ? <label className="text-sm">替换 API Key（留空则不修改）
         <input type="password" autoComplete="new-password" value={apiKey}
           onChange={(event) => setApiKey(event.target.value)} />
       </label> : null}
@@ -304,7 +308,7 @@ export function MediaSettingsPage() {
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"COMFYUI" | "OPENAI" | "ARK">("COMFYUI");
+  const [platform, setPlatform] = useState<"COMFYUI" | "OPENAI" | "ARK" | "GOOGLE">("COMFYUI");
   const [origin, setOrigin] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -353,7 +357,8 @@ export function MediaSettingsPage() {
           </label>
           <label className="text-sm">平台
             <select value={platform} onChange={(event) => setPlatform(event.target.value as typeof platform)}>
-              <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option><option value="ARK">火山方舟</option>
+              <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
+              <option value="GOOGLE">Google Gemini</option><option value="ARK">火山方舟</option>
             </select>
           </label>
           {platform === "COMFYUI" ? <label className="text-sm">本机 ComfyUI 地址

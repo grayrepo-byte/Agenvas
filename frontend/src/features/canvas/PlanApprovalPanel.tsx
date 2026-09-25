@@ -138,6 +138,7 @@ function PlanStepReview({ projectId, runId, plan, step, confirmed, busy, onConfi
   const current = candidates.data?.find((candidate) =>
     candidate.binding.capabilityId === step.binding?.capabilityId);
   const modelName = step.binding?.adapterId === "OPENAI_GPT_IMAGE_2" ? "gpt-image-2"
+    : step.binding?.adapterId === "GOOGLE_NANO_BANANA_2" ? "gemini-3.1-flash-image"
     : step.binding?.adapterId === "ARK_SEEDANCE_2_I2V" ? "doubao-seedance-2-0-260128" : null;
   return <li className="rounded-lg border border-amber-300 bg-white p-3">
     <p className="font-medium">镜头 {step.stepKey}：{String(step.input.prompt ?? "")}</p>

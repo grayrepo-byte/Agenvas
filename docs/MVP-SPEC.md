@@ -745,6 +745,8 @@ Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不
 
 媒体配置从单一环境变量模式迁至管理员界面的连接与能力目录，图片/视频计划逐步骤固定所选能力版本，由同一任务内核调用项目维护的固定适配器。首批云渠道为 GPT Image 2 图片生成/参考图编辑和火山方舟 Seedance 首帧图生视频；当前实现只用本地假 HTTP 服务验证固定协议、PostgreSQL 任务链路与结果归档。Seedance 的临时视频地址限制在已审核的方舟 HTTPS 媒体域，拒绝重定向，过期时仅重查原任务 ID。其协议、时长与 UNKNOWN 恢复边界以[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)为准。两种云渠道均无真实调用证据，界面仍标记“未实测”，不能宣称已完成真实生成。普通用户与 Agent 仍无执行动态代码或任意外部 HTTP 的权限。
 
+后续固定渠道增加 Google Nano Banana 2 图片生成与单张参考图编辑，使用官方 Gemini `generateContent` 和固定模型 `gemini-3.1-flash-image`；仍复用上述审批、版本、任务与 UNKNOWN 边界。Google 真实调用状态单独记录，详见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)。
+
 ### 13.8 整数秒业务时长
 
 新镜头内容、执行计划、Task、用量和顺序导出的用户起止点统一使用整数秒；API 字段分别使用 `durationSeconds`、`startSeconds`、`endSeconds`、`videoSeconds`，不得再接受业务小数秒。Mock 视频支持 1–30 秒，固定 ComfyUI 视频模板支持 1–5 秒整数，Seedance 当前能力支持 4–15 秒整数；不支持时提示修改镜头时长。导出总时长上限仍为 60 秒。素材探测得到的实际文件时长继续以毫秒保存，并由 FFmpeg 使用精确值校验边界；不把 5.54 秒的真实文件误记成 5 秒。历史版本、已受理任务和用量不原地改写；新内容与迁移规则见[基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)及[ADR 0003](adr/0003-integer-business-video-seconds.md)。

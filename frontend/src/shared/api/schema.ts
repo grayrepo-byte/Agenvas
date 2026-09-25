@@ -1156,7 +1156,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK";
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
             enabled: boolean;
             /** Format: int64 */
             version: number;
@@ -1205,7 +1205,7 @@ export interface components {
         CreateMediaConnectionRequest: {
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK";
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
             origin?: string | null;
             apiKey?: string | null;
         };

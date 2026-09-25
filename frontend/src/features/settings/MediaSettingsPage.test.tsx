@@ -146,4 +146,31 @@ describe("MediaSettingsPage", () => {
     await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
       adapterId: "OPENAI_GPT_IMAGE_2", settings: { quality: "high" } }));
   });
+
+  it("publishes the fixed Nano Banana 2 image capability", async () => {
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        defaults: mockDefault, connections: [{
+          id: "google-1", name: "Google Gemini", platform: "GOOGLE", enabled: true,
+          version: 0, connectionVersion: 1, origin: null, keyMask: "••••7890",
+          connectivityStatus: "NOT_CHECKED", realGenerationTested: false, capabilities: [],
+        }],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/google-1/capabilities", async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "新能力名称" }), "Nano Banana 2");
+    expect(screen.getByRole("combobox", { name: "固定适配器" }))
+      .toHaveValue("GOOGLE_NANO_BANANA_2");
+    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(submitted).toEqual({ name: "Nano Banana 2",
+      adapterId: "GOOGLE_NANO_BANANA_2", settings: {} }));
+  });
 });

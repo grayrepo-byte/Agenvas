@@ -92,6 +92,8 @@ cd backend
 
 管理员可在“模型配置”页保存 OpenAI 兼容端点、模型 ID 和 API Key。保存功能需要服务端设置 `AGENVAS_CREDENTIAL_MASTER_KEY`（32 字节随机密钥的 Base64 编码，独立于数据库备份保管）；未设置时配置写入返回 503，Mock 模式仍可运行。密钥在数据库中以 AES-256-GCM 加密并保留配置旧版本，API 只返回掩码。切换到 `AGENVAS_LLM_MODE=configured` 后，活动数据库配置优先于上面的环境变量候选适配器；保存后 Agent Run 仍会阻断，直到管理员在设置页明确确认最多两次可能计费请求，并完成“工具请求 → 服务端回填 → 下一轮响应”的诊断。只有当前配置版本通过诊断才开放 Tool Calling；这不证明视觉、输出质量或任何尚未实测的真实 Provider 能力。已创建 Run 固定配置来源与版本，轮换后不会静默改用新模型继续执行。数据库模型请求固定到管理员配置的主机/端口和 Chat Completions 路径，逐次校验 DNS 结果且不跟随重定向。不要将主密钥或 API Key 写入 Git、浏览器存储或日志。若明确需要本机测试端点，可设置 `AGENVAS_LLM_ALLOW_LOOPBACK_HTTP=true`，仅允许精确的 `http://127.0.0.1` 地址；默认不允许本机例外或 HTTP。
 
+Google Nano Banana 2 图片能力也可在“媒体配置”页创建：先配置服务端 `AGENVAS_CREDENTIAL_MASTER_KEY`，再由管理员添加 `Google Gemini` 连接、填写 Google Gemini API Key、发布 `GOOGLE_NANO_BANANA_2` 能力，并在图片计划审批前选择它。固定模型为 `gemini-3.1-flash-image`，支持文字生图和单张已授权参考图；当前仅通过本地假 Google HTTP 服务及 PostgreSQL 验证，真实 Google 调用未运行。API Key 不要写入 `.env` 或聊天内容，应在管理员页面提交并独立保管主密钥。详见 [ADR 0004](docs/adr/0004-google-nano-banana-2-fixed-adapter.md)。
+
 Compose 默认使用 Mock。管理员在“媒体配置”页创建连接；同一 ComfyUI 连接可发布固定图片和视频能力，另可发布 GPT Image 2 图片及火山方舟 Seedance 2 首帧视频能力，并分别设置默认能力。图片或视频计划的每个步骤都显示已选能力，审批前可逐项改选并确认；执行时使用固定的连接与能力版本。云渠道 API Key 加密保存在服务端，界面只显示掩码；GPT Image 2 固定生成/参考图编辑接口，Seedance 固定北京方舟 4–15 整数秒、单首帧、无声 MP4，结果只从已审核的方舟媒体域下载。两种云渠道目前仅通过本地假 HTTP 服务及 PostgreSQL 测试，真实付费调用均未运行，界面显示“未实测”。ComfyUI 只接受已安装的固定模板和模型文件名，不允许上传工作流。当前界面可配置的本机 ComfyUI 地址是精确的 `http://127.0.0.1:<端口>`；容器内的 `127.0.0.1` 不是宿主机，需要可达的显式地址白名单才能部署跨容器 ComfyUI。
 
 从旧版本升级时，V40 首次启动把 V34 保存的 ComfyUI 地址登记为不可变历史连接版本，并将当前旧环境配置导入数据库一次。之后更改 `AGENVAS_PROVIDER_MODE`、地址或模型文件名不会覆盖管理员在数据库中的媒体连接、能力和默认值。已受理的旧请求仅按保存的原地址指纹与请求 ID 核对；无法唯一映射的旧任务保持 UNKNOWN 或标记 `LEGACY_UNRESOLVED`，不会自动重新提交。升级前备份数据库、资产卷和密钥，并在恢复模式核对活动请求。
@@ -117,7 +119,7 @@ docs/           MVP 规格、依赖基线与开发验收清单
 
 - 已实现单管理员身份闭环，但尚未提供账户找回、多管理员或团队能力。
 - 已有 Run 创建、读取和取消 API，受控模型回合、工具账本、后台模型回合调度、只读运行历史，以及图片/视频计划的审批。默认 Mock LLM 可推进三镜头、图片审批、关键帧选择及视频审批，批准后的 Mock 图片和视频由后台 Worker 归档。可修订单个镜头并将共享场景新版本仅重绑该镜头，基于新镜头发起限定范围的 Mock Run，重新经历图片与视频审批。另有项目级无声顺序 MP4 导出、私有下载与脱敏项目 JSON/素材元数据清单；图片/视频 Task 已记录未定价用量的预留和唯一结算。ComfyUI 生图与图生视频候选模板已接入审批 Task、原请求核对与归档，并由假 HTTP 服务＋PostgreSQL 测试；真实模型/模板兼容、完整用量结算和发布门禁尚未完成。
-- 没有真实 LLM/ComfyUI/GPT Image 2/Seedance 调用；Spring AI 聊天适配器及固定媒体适配器只经假 HTTP 端点验证协议，本地 FFmpeg 仅用于演示视频编码及媒体验证，这些都不能证明真实模型 Provider 已接通。
+- 没有真实 LLM/ComfyUI/GPT Image 2/Seedance/Nano Banana 2 调用；Spring AI 聊天适配器及固定媒体适配器只经假 HTTP 端点验证协议，本地 FFmpeg 仅用于演示视频编码及媒体验证，这些都不能证明真实模型 Provider 已接通。
 - Flyway V1–V35 覆盖身份、项目、产物版本、画布、Agent/Run/Task、事件、工具账本、执行计划/审批、镜头关键帧选择、Provider 明确拒绝记录、私有 Asset/缩略图与视频时长、项目级导出任务、ComfyUI 持久单槽调度与历史地址版本、Provider 核对重试账本、媒体用量账本、版本化加密 LLM 配置、UNKNOWN 原请求核对标识、导出提案及只读任务队列统计索引；迁移仍只增不改。V35 前的视频 Asset 未自动回填时长，需重新归档后才能提交新的顺序导出。详见 `backend/src/main/resources/db/migration/`。
 
 项目目标许可为 Apache-2.0；正式许可证、NOTICE 与第三方/模型许可证清单在 M6/T30 发布门禁完成前仍属于待办事项。安全报告边界见 [SECURITY.md](SECURITY.md)，当前支持范围与升级限制见 [0.1.0 发行说明草案](docs/release-notes/0.1.0-mvp-draft.md)。

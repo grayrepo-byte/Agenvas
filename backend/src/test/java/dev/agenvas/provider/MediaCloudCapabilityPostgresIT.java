@@ -46,17 +46,27 @@ class MediaCloudCapabilityPostgresIT {
                 null, "openai-test-secret");
         var ark = catalog.createConnection("cloud-ark-1", "Ark", "ARK",
                 null, "ark-test-secret");
+        var google = catalog.createConnection("cloud-google-1", "Google", "GOOGLE",
+                null, "google-test-secret");
         var image = catalog.publishCapability(openAi.id(), "GPT Image 2",
                 "OPENAI_GPT_IMAGE_2", mapper.readTree("{\"quality\":\"high\"}"));
+        var nanoBanana = catalog.publishCapability(google.id(), "Nano Banana 2",
+                "GOOGLE_NANO_BANANA_2");
         var video = catalog.publishCapability(ark.id(), "Seedance",
                 "ARK_SEEDANCE_2_I2V");
 
         var imageSpec = mapper.readTree(catalog.capabilitySnapshot(image.id()).specJson());
         var videoSpec = mapper.readTree(catalog.capabilitySnapshot(video.id()).specJson());
+        var googleSpec = mapper.readTree(catalog.capabilitySnapshot(nanoBanana.id()).specJson());
         assertThat(imageSpec.path("modelId").asText()).isEqualTo("gpt-image-2");
         assertThat(imageSpec.path("settings").path("quality").asText()).isEqualTo("high");
         assertThat(videoSpec.path("modelId").asText()).isEqualTo("doubao-seedance-2-0-260128");
         assertThat(videoSpec.path("generateAudio").booleanValue()).isFalse();
+        assertThat(googleSpec.path("modelId").asText()).isEqualTo("gemini-3.1-flash-image");
+        assertThat(googleSpec.path("imageSize").asText()).isEqualTo("1K");
+        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0))
+                .anyMatch(candidate -> candidate.binding().capabilityId().equals(nanoBanana.id())
+                        && !candidate.realGenerationTested());
         assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 3, true))
                 .noneMatch(candidate -> candidate.binding().capabilityId().equals(video.id()));
         assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4, false))
@@ -78,6 +88,12 @@ class MediaCloudCapabilityPostgresIT {
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin", "Bad",
                 "OPENAI", "https://example.com", "secret"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.publishCapability(google.id(), "Bad model",
+                "GOOGLE_NANO_BANANA_2", mapper.readTree("{\"modelId\":\"custom\"}")))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.createConnection("cloud-google-origin", "Bad",
+                "GOOGLE", "https://example.com", "secret"))
                 .isInstanceOf(ApiProblemException.class);
     }
 }

@@ -30,6 +30,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** Owns the media catalog; the returned binding freezes both published versions. */
 @Service
 public class MediaCapabilityService {
+    private static final String NANO_BANANA_MODEL_ID = "gemini-3.1-flash-image";
+    private static final String NANO_BANANA_IMAGE_SIZE = "1K";
 
     private final JdbcMediaCapabilityRepository repository;
     private final MediaAdapterRegistry registry;
@@ -291,6 +293,10 @@ public class MediaCapabilityService {
         if ("OPENAI_GPT_IMAGE_2".equals(adapterId)) {
             normalized.put("modelId", "gpt-image-2");
             normalized.put("outputFormat", "png");
+        } else if ("GOOGLE_NANO_BANANA_2".equals(adapterId)) {
+            normalized.put("modelId", NANO_BANANA_MODEL_ID);
+            normalized.put("outputFormat", "image");
+            normalized.put("imageSize", NANO_BANANA_IMAGE_SIZE);
         } else if ("ARK_SEEDANCE_2_I2V".equals(adapterId)) {
             normalized.put("modelId", "doubao-seedance-2-0-260128");
             normalized.put("outputFormat", "mp4");
@@ -473,7 +479,8 @@ public class MediaCapabilityService {
 
     private static String requirePlatform(String value) {
         if (!"MOCK".equals(value) && !"COMFYUI".equals(value)
-                && !"OPENAI".equals(value) && !"ARK".equals(value)) {
+                && !"OPENAI".equals(value) && !"ARK".equals(value)
+                && !"GOOGLE".equals(value)) {
             throw invalid("不支持的平台类型");
         }
         return value;
@@ -501,7 +508,8 @@ public class MediaCapabilityService {
     }
 
     private static void validateCredential(String platform, String apiKey, boolean creating) {
-        boolean cloud = "OPENAI".equals(platform) || "ARK".equals(platform);
+        boolean cloud = "OPENAI".equals(platform) || "ARK".equals(platform)
+                || "GOOGLE".equals(platform);
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid("云平台连接必须填写 API Key");
         }

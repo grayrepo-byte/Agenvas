@@ -22,6 +22,7 @@ public final class MediaAdapterRegistry {
             "COMFY_IMAGE_V1", new Declaration("COMFYUI", Task.Kind.IMAGE_GENERATION, 0, 0, true),
             "COMFY_VIDEO_V1", new Declaration("COMFYUI", Task.Kind.VIDEO_GENERATION, 1, 5, true),
             "OPENAI_GPT_IMAGE_2", new Declaration("OPENAI", Task.Kind.IMAGE_GENERATION, 0, 0, false),
+            "GOOGLE_NANO_BANANA_2", new Declaration("GOOGLE", Task.Kind.IMAGE_GENERATION, 0, 0, false),
             "ARK_SEEDANCE_2_I2V", new Declaration("ARK", Task.Kind.VIDEO_GENERATION, 4, 15, false));
 
     private final Map<String, MediaAdapter> implementations;

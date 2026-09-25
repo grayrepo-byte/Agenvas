@@ -1468,7 +1468,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
-        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK]}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
@@ -1521,7 +1521,7 @@ components:
       required: [name, platform]
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
-        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK]}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
         origin: {type: [string, "null"], maxLength: 500}
         apiKey: {type: [string, "null"], maxLength: 4096}
     UpdateMediaConnectionRequest:

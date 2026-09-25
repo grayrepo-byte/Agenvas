@@ -13,6 +13,8 @@
 - 不实现 Groovy、动态脚本、Agent 生成调用代码或 RunningHub 类工作流平台接入。将来需要时重新提案和设计；Google Nano Banana 2 等其他渠道按固定协议适配器逐个接入。
 - Seedance 能力仅对固定模型映射支持的镜头时长开放；不支持的步骤提示修改时长，不自动取整或生成较长视频后裁剪。
 
+后续 Google Nano Banana 2 的固定适配器决策见 [ADR 0004](0004-google-nano-banana-2-fixed-adapter.md)。
+
 ## 后果
 
 新增供应商仍需要编写和测试适配器，但计划、审批与画布使用稳定能力契约，无须增加供应商分支。管理员不能通过填 API 模板接入任意平台；这降低了当前交付范围，也避免把尚未验证的动态代码执行和任意平台兼容性标记为已完成。基础层及首批渠道分别见[媒体能力规格](../superpowers/specs/2026-09-25-media-capability-foundation-design.md)和[固定渠道规格](../superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)。

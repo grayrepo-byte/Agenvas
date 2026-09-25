@@ -440,6 +440,10 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 - [x] 火山方舟 Seedance 固定首帧图生视频适配器完成 4–15 整数秒、异步原任务 ID 轮询、过期 URL 重查或无法刷新时阻断、带音轨结果去音归档、恶意地址阻断、下载失败后重试与创建响应丢失 UNKNOWN 的本地假服务及 PostgreSQL 验收；无真实方舟调用。
 - [x] 分别记录真实调用状态：GPT Image 2 **未运行**；Seedance **未运行**。管理员界面保持“已配置、未实测”，不把本地假服务或 Mock 结果标记为真实生成成功。
 
+后续 Google Nano Banana 2 固定图片适配器见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)：`GOOGLE` 连接、固定 `gemini-3.1-flash-image` 模型、文字生图和单张同项目参考图、项目画幅、管理员配置及 V41 平台约束已接入。假 Google HTTP 服务与 PostgreSQL 覆盖成功归档、断线 UNKNOWN 不重提、越权参考图预检拒绝；真实 Google API 调用 **未运行**，真实模型兼容、生成效果与费用尚未验收。
+
+- [ ] 使用真实 Google Key 完成 Nano Banana 2 生图和单图编辑，并验证输出、计费及 UNKNOWN 人工处置。
+
 本轮全量检查：`backend ./mvnw verify` 为 67 项、0 失败；前端类型检查、lint、78 项测试与构建通过。全量后新增的固定云 DNS 共用校验和 Seedance 过期地址断言另经定向测试验证；本地假服务不等于真实 Provider 验收。
 
 ## A. 跨模块验收矩阵
