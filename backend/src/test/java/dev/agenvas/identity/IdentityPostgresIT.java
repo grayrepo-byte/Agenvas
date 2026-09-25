@@ -64,7 +64,7 @@ class IdentityPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("35");
+                .isEqualTo("36");
         CountDownLatch start = new CountDownLatch(1);
         List<Future<SetupOutcome>> futures = new ArrayList<>();
         try (ExecutorService executor = Executors.newFixedThreadPool(CONCURRENT_ATTEMPTS)) {

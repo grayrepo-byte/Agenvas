@@ -1217,7 +1217,7 @@ export interface components {
             /** Format: uuid */
             runId: string;
             /** @enum {string} */
-            status: "PENDING" | "APPROVED" | "REJECTED";
+            status: "PENDING" | "APPROVED" | "REJECTED" | "STALE";
             input: components["schemas"]["ExportProposalInput"];
             proposalHash: string;
             /** Format: int64 */

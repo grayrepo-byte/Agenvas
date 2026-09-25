@@ -558,7 +558,7 @@ class ExecutionPlanPostgresIT {
                 .param("projectId", budgetProject.id()).query(Integer.class).single())
                 .isEqualTo(6);
         assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("35");
+                .query(String.class).single()).isEqualTo("36");
     }
 
     /** A no-submission terminal media task closes exactly one unknown-cost reservation. */

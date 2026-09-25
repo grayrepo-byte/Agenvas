@@ -1486,7 +1486,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         runId: {type: string, format: uuid}
-        status: {type: string, enum: [PENDING, APPROVED, REJECTED]}
+        status: {type: string, enum: [PENDING, APPROVED, REJECTED, STALE]}
         input: {$ref: "#/components/schemas/ExportProposalInput"}
         proposalHash: {type: string, pattern: "^[0-9a-f]{64}$"}
         projectVersion: {type: integer, format: int64, minimum: 0}

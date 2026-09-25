@@ -29,6 +29,8 @@ public record ExportProposal(UUID id, UUID projectId, UUID runId, Status status,
         /** 用户批准，且已关联唯一导出任务。 */
         APPROVED,
         /** 用户拒绝，不能再转换为可执行提案。 */
-        REJECTED
+        REJECTED,
+        /** 升级后的旧毫秒提案已失效，必须重新生成并审批。 */
+        STALE
     }
 }
