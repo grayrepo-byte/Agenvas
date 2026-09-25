@@ -821,7 +821,9 @@ public class TaskService {
         if (!"TASK_INPUT_STALE".equals(errorCode)
                 && !"TASK_PROJECT_ARCHIVED".equals(errorCode)
                 && !"MEDIA_CAPABILITY_CHANGED".equals(errorCode)
-                && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(errorCode)) {
+                && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(errorCode)
+                && !"PROVIDER_UNSUPPORTED_INPUT".equals(errorCode)
+                && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)) {
             throw validation("不支持的提交前阻断原因。");
         }
         Instant now = clock.instant();

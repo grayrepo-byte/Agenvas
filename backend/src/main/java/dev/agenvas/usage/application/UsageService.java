@@ -145,6 +145,9 @@ public class UsageService {
                                         && !"TASK_PROJECT_ARCHIVED".equals(task.errorCode())
                                         && !"MEDIA_CAPABILITY_CHANGED".equals(task.errorCode())
                                         && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(
+                                                task.errorCode())
+                                        && !"PROVIDER_UNSUPPORTED_INPUT".equals(task.errorCode())
+                                        && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(
                                                 task.errorCode()))))
                 || task.providerRequestId() != null) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");

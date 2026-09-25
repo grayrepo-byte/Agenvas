@@ -57,6 +57,11 @@ public class MediaExecutionWorker {
             }
             UUID ownerId = tasks.ownerForWorker(task);
             AttemptContext preflight = new AttemptContext(task, binding, ownerId, null, null);
+            String preflightFailure = adapter.preflightFailure(preflight);
+            if (preflightFailure != null) {
+                tasks.blockPreSubmission(task, workerId, preflightFailure);
+                continue;
+            }
             String origin = adapter.candidateOriginSha256(preflight);
             UUID requestKey;
             try {
