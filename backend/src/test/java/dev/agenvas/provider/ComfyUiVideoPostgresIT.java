@@ -200,7 +200,7 @@ class ComfyUiVideoPostgresIT {
         videoStep.put("imageVersionId", imageVersion.toString());
         var videoPlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 queued.id()), videoProposal);
-        assertThat(videoPlan.workflowVersion()).isEqualTo(workflow.version());
+        assertThat(videoPlan.workflowVersion()).isEqualTo("media-capabilities-v1");
         assertThat(videoPlan.steps().getFirst().input().path("providerOriginSha256").asText())
                 .isEqualTo(client.originSha256());
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);

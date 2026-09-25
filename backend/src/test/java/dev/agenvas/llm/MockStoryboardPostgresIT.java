@@ -30,8 +30,7 @@ import dev.agenvas.plan.application.ShotKeyframeSelection;
 import dev.agenvas.plan.application.ShotKeyframeSelectionRepository;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.provider.application.MockImageWorker;
-import dev.agenvas.provider.application.MockVideoWorker;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
@@ -97,8 +96,7 @@ class MockStoryboardPostgresIT {
     @Autowired private ExecutionPlanService plans;
     @Autowired private ShotKeyframeSelectionService keyframes;
     @Autowired private ShotKeyframeSelectionRepository keyframeSelections;
-    @Autowired private MockImageWorker images;
-    @Autowired private MockVideoWorker videos;
+    @Autowired private MediaExecutionWorker media;
     @Autowired private TaskService tasks;
     @Autowired private ArtifactService artifacts;
     @Autowired private ShotRedoService redo;
@@ -161,7 +159,7 @@ class MockStoryboardPostgresIT {
 
         plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int image = 0; image < 3; image++) {
-            assertThat(images.runOnce("mock-storyboard-image")).isEqualTo(1);
+            assertThat(media.submitOnce("mock-storyboard-image")).isEqualTo(1);
         }
         assertThat(count(project.id(), "IMAGE")).isEqualTo(3);
         List<Task> imageTasks = tasks.listByRun(owner.userId(), project.id(), run.id())
@@ -203,7 +201,7 @@ class MockStoryboardPostgresIT {
                 .noneMatch(task -> task.kind() == Task.Kind.VIDEO_GENERATION);
         plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int video = 0; video < 3; video++) {
-            assertThat(videos.runOnce("mock-storyboard-video")).isEqualTo(1);
+            assertThat(media.submitOnce("mock-storyboard-video")).isEqualTo(1);
         }
         List<Task> videoTasks = tasks.listByRun(owner.userId(), project.id(), run.id())
                 .stream().filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION).toList();
@@ -347,7 +345,7 @@ class MockStoryboardPostgresIT {
         assertThat(redoImagePlan.steps().getFirst().shotArtifactId()).isEqualTo(secondShotId);
         plans.approve(owner.userId(), project.id(), redoImagePlan.id(),
                 redoImagePlan.planHash(), plans.get(owner.userId(), project.id(), redoImagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
-        assertThat(images.runOnce("mock-redo-image")).isEqualTo(1);
+        assertThat(media.submitOnce("mock-redo-image")).isEqualTo(1);
         Task redoImage = tasks.listByRun(owner.userId(), project.id(), redoRun.id()).stream()
                 .filter(task -> task.kind() == Task.Kind.IMAGE_GENERATION)
                 .findFirst().orElseThrow();
@@ -365,7 +363,7 @@ class MockStoryboardPostgresIT {
         assertThat(redoVideoPlan.steps().getFirst().shotArtifactId()).isEqualTo(secondShotId);
         plans.approve(owner.userId(), project.id(), redoVideoPlan.id(),
                 redoVideoPlan.planHash(), plans.get(owner.userId(), project.id(), redoVideoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
-        assertThat(videos.runOnce("mock-redo-video")).isEqualTo(1);
+        assertThat(media.submitOnce("mock-redo-video")).isEqualTo(1);
         Task redoVideo = tasks.listByRun(owner.userId(), project.id(), redoRun.id()).stream()
                 .filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION)
                 .findFirst().orElseThrow();

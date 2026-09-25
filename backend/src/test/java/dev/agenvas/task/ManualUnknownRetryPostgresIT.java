@@ -198,8 +198,8 @@ class ManualUnknownRetryPostgresIT {
                         .header("Idempotency-Key", "foreign")
                         .contentType("application/json").content(body))
                 .andExpect(status().isNotFound());
-        assertThat(taskRepository.claimDueComfyImage("replacement-submitter", Instant.now(),
-                Instant.now().plusSeconds(30))).singleElement()
+        assertThat(taskRepository.claimDueBoundMedia("replacement-submitter", 1,
+                Instant.now(), Instant.now().plusSeconds(30))).singleElement()
                 .extracting(Task::id).isEqualTo(replacement.id());
     }
 }

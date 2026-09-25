@@ -20,6 +20,7 @@ public class ComfyUiImageScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(ComfyUiImageScheduler.class);
     /** 执行单次图片提交或轮询，不持有调度器级数据库事务。 */
     private final ComfyUiImageWorker worker;
+    private final LegacyMediaImportService importer;
     /** 本实例轮询租约使用的唯一 Worker 身份。 */
     private final String pollerId = "comfy-image-poll-" + UUID.randomUUID();
     /** 本实例新提交租约使用的唯一 Worker 身份。 */
@@ -28,13 +29,16 @@ public class ComfyUiImageScheduler {
     /** 注入独立处理图片提交和查询的 Worker。
      * @param worker 图片 Provider 工作单元
      */
-    public ComfyUiImageScheduler(ComfyUiImageWorker worker) {
+    public ComfyUiImageScheduler(ComfyUiImageWorker worker,
+            LegacyMediaImportService importer) {
         this.worker = worker;
+        this.importer = importer;
     }
 
     /** 先轮询已保存的原请求；数据库槽位确认后才允许提交新任务。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
+        if (!importer.ready()) return;
         try {
             worker.pollOnce(pollerId);
             worker.submitOnce(submitterId);

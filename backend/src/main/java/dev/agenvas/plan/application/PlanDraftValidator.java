@@ -48,8 +48,6 @@ public class PlanDraftValidator {
     private final TaskService tasks;
     /** 构造规范化计划与固定输入快照。 */
     private final ObjectMapper mapper;
-    /** 提供各阶段工作流版本及视频时长约束。 */
-    private final PlanWorkflowPolicy workflows;
     /** 提供当前 Provider 模式与配置摘要。 */
     private final PlanProviderProperties provider;
     /** 仅在 ComfyUI 模式读取端点摘要，Mock 模式不实例化客户端。 */
@@ -59,14 +57,13 @@ public class PlanDraftValidator {
     /** 注入产物、关键帧和工作流校验能力，不在校验器内发起媒体副作用。 */
     public PlanDraftValidator(ArtifactService artifacts,
             ShotKeyframeSelectionRepository selections, TaskService tasks, ObjectMapper mapper,
-            PlanWorkflowPolicy workflows, PlanProviderProperties provider,
+            PlanProviderProperties provider,
             ObjectProvider<ComfyUiClient> comfyClient,
             MediaCapabilityService capabilities) {
         this.artifacts = artifacts;
         this.selections = selections;
         this.tasks = tasks;
         this.mapper = mapper;
-        this.workflows = workflows;
         this.provider = provider;
         this.comfyClient = comfyClient;
         this.capabilities = capabilities;
@@ -94,9 +91,8 @@ public class PlanDraftValidator {
         if (!redoShot.isEmpty() && suppliedSteps.size() != 1) {
             throw invalid("Scoped redo plan must contain exactly one target shot");
         }
-        String workflowVersion = workflows.version(stage);
-        String providerOriginSha256 = "comfyui".equalsIgnoreCase(provider.mode())
-                ? comfyClient.getObject().originSha256() : null;
+        // Individual pinned bindings carry the actual graph/model protocol version.
+        String workflowVersion = "media-capabilities-v1";
         Map<String, StepDraft> byKey = new HashMap<>();
         Set<String> slots = new HashSet<>();
         ObjectNode snapshot = mapper.createObjectNode();
@@ -216,9 +212,6 @@ public class PlanDraftValidator {
                     .connectionVersion().originSha256();
             if (boundOrigin != null) {
                 taskInput.put("providerOriginSha256", boundOrigin);
-            } else if (providerOriginSha256 != null
-                    && "COMFYUI".equals(capabilities.getConnection(binding.connectionId()).platform())) {
-                taskInput.put("providerOriginSha256", providerOriginSha256);
             }
             taskInput.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             byKey.put(stepKey, new StepDraft(stepKey, outputSlotKey, shotArtifactId,

@@ -65,7 +65,6 @@ class PlanApprovalVersionPostgresIT {
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
     @Autowired private PlanProviderProperties provider;
-    @Autowired private PlanWorkflowPolicy workflows;
     @Autowired private MediaCapabilityService capabilities;
 
     @Test
@@ -85,7 +84,7 @@ class PlanApprovalVersionPostgresIT {
         ExecutionPlan plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 running.id()), draft(shot));
         assertThat(plan.providerConfigVersion()).isEqualTo(provider.configVersion());
-        assertThat(plan.workflowVersion()).isEqualTo(workflows.version(ExecutionPlan.Stage.IMAGE));
+        assertThat(plan.workflowVersion()).isEqualTo("media-capabilities-v1");
 
         UUID connectionId = plan.steps().getFirst().binding().connectionId();
         var connection = capabilities.getConnection(connectionId);

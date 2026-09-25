@@ -16,13 +16,18 @@ import org.springframework.stereotype.Component;
 public class MediaExecutionScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaExecutionScheduler.class);
     private final MediaExecutionWorker worker;
+    private final LegacyMediaImportService importer;
     private final String submitterId = "media-submit-" + UUID.randomUUID();
     private final String pollerId = "media-poll-" + UUID.randomUUID();
 
-    public MediaExecutionScheduler(MediaExecutionWorker worker) { this.worker = worker; }
+    public MediaExecutionScheduler(MediaExecutionWorker worker, LegacyMediaImportService importer) {
+        this.worker = worker;
+        this.importer = importer;
+    }
 
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
+        if (!importer.ready()) return;
         try {
             worker.pollOnce(pollerId);
             worker.submitOnce(submitterId);

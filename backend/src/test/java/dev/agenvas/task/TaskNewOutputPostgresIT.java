@@ -155,7 +155,7 @@ class TaskNewOutputPostgresIT {
                 media(late.id(), "duplicate"))).isInstanceOf(RuntimeException.class);
         assertThat(countImages(project.id())).isEqualTo(2);
         assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("36");
+                .query(String.class).single()).isEqualTo("40");
     }
 
     private long countImages(UUID projectId) {

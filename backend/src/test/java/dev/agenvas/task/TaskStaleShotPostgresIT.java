@@ -18,6 +18,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.ExecutionPlan;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
@@ -67,6 +68,7 @@ class TaskStaleShotPostgresIT {
     @Autowired private ShotRedoService redo;
     @Autowired private TaskService tasks;
     @Autowired private ExecutionPlanService plans;
+    @Autowired private MediaExecutionWorker mediaWorker;
     @Autowired private AssetService assets;
     @Autowired private CanvasService canvas;
     @Autowired private ObjectMapper mapper;
@@ -239,7 +241,7 @@ class TaskStaleShotPostgresIT {
         var obsoleteShot = plannedShots.getFirst();
         var replacement = revise(owner.userId(), plannedProject.id(), obsoleteShot,
                 "Edited after approval");
-        Task obsoleteLease = tasks.claimImagesDue("planned-stale-worker", 3).stream()
+        Task obsoleteLease = tasks.claimBoundMedia("planned-stale-worker", 3).stream()
                 .filter(item -> item.input().path("shotArtifactId").asText()
                         .equals(obsoleteShot.artifact().id().toString()))
                 .findFirst().orElseThrow();
@@ -284,16 +286,17 @@ class TaskStaleShotPostgresIT {
                 .path("shotVersionId").asText())
                 .isEqualTo(replacement.currentVersion().id().toString()));
 
-        // Archiving an approved project must release every still-unsubmitted reservation.
+        // Claim the batch before archiving: each lease must fail preflight without a submission.
+        List<Task> archivedLeases = tasks.claimBoundMedia("archived-plan-worker", 3);
+        assertThat(archivedLeases).hasSize(3);
         projects.archive(owner.userId(), plannedProject.id(),
                 projects.get(owner.userId(), plannedProject.id()).version());
-        AtomicInteger archivedSubmissions = new AtomicInteger();
-        assertThat(new TaskWorker(tasks).runImagesOnce("archived-plan-worker", 3,
-                (task, requestKey) -> {
-                    archivedSubmissions.incrementAndGet();
-                    return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");
-                })).isEqualTo(3);
-        assertThat(archivedSubmissions).hasValue(0);
+        for (Task archivedLease : archivedLeases) {
+            assertThatThrownBy(() -> tasks.beginSubmission(archivedLease, "archived-plan-worker"))
+                    .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                            error -> assertThat(error.code()).isEqualTo("TASK_PROJECT_ARCHIVED"));
+            tasks.blockPreSubmission(archivedLease, "archived-plan-worker", "TASK_PROJECT_ARCHIVED");
+        }
         for (Task approvedTask : freshApproval.tasks()) {
             Task archivedTask = tasks.get(owner.userId(), plannedProject.id(), approvedTask.id());
             assertThat(archivedTask.status()).isEqualTo(Task.Status.BLOCKED);

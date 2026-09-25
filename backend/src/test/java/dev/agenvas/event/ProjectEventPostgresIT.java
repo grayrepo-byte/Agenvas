@@ -173,7 +173,7 @@ class ProjectEventPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("36");
+                .isEqualTo("40");
     }
 
     private List<ProjectEvent> concurrentAppend(UUID ownerId, UUID projectId) throws Exception {

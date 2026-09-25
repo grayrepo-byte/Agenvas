@@ -540,13 +540,16 @@ class ExecutionPlanPostgresIT {
         AgentRun claimable = runs.get(owner.userId(), budgetProject.id(), budgetRunning.id());
         runs.transition(owner.userId(), budgetProject.id(), budgetRunning.id(),
                 claimable.version(), AgentRun.Status.RUNNING);
-        Task neverSubmitted = tasks.claimImagesDue("preflight-failure-worker", 1).getFirst();
+        jdbc.sql("update task set next_action_at = now() - interval '1 day' "
+                        + "where run_id = :runId and kind = 'IMAGE_GENERATION'")
+                .param("runId", budgetRunning.id()).update();
+        Task neverSubmitted = tasks.claimBoundMedia("preflight-failure-worker", 1).getFirst();
         assertThat(neverSubmitted.runId()).isEqualTo(budgetRunning.id());
         tasks.fail(neverSubmitted, "preflight-failure-worker", "PROVIDER_CONFIG_CHANGED");
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :taskId")
                 .param("taskId", neverSubmitted.id()).query(Integer.class).single()).isZero();
         assertThat(mediaReleaseCount(neverSubmitted.id())).isEqualTo(1);
-        Task claimedButUnsent = tasks.claimImagesDue("interrupted-preflight-worker", 1)
+        Task claimedButUnsent = tasks.claimBoundMedia("interrupted-preflight-worker", 1)
                 .getFirst();
         runs.cancel(owner.userId(), budgetProject.id(), budgetRunning.id());
         assertThat(mediaReleaseCount(claimedButUnsent.id())).isZero();

@@ -191,7 +191,7 @@ class ComfyUiImagePostgresIT {
         ((tools.jackson.databind.node.ArrayNode) proposal.path("steps")).add(secondStep);
         var plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 queued.id()), proposal);
-        assertThat(plan.workflowVersion()).isEqualTo(workflow.version());
+        assertThat(plan.workflowVersion()).isEqualTo("media-capabilities-v1");
         assertThat(plan.steps()).allSatisfy(planned -> assertThat(planned.input()
                 .path("providerOriginSha256").asText()).isEqualTo(client.originSha256()));
         assertThat(SUBMISSIONS).hasValue(0);
