@@ -431,6 +431,8 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 依据：[媒体能力基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[GPT Image 2/Seedance 固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)、[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入不在当前清单中。
 
+实施顺序：[整数秒迁移计划](superpowers/plans/2026-09-25-integer-video-seconds.md) → [媒体能力基础计划](superpowers/plans/2026-09-25-media-capability-foundation.md) → [GPT Image 2/Seedance 适配器计划](superpowers/plans/2026-09-25-gpt-image-seedance-adapters.md)。计划已写成，以下交付项仍待实现与验收。
+
 - [ ] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；迁移 Mock/ComfyUI 配置与历史任务来源。
 - [ ] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。
 - [ ] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。

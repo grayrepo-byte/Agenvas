@@ -2,7 +2,7 @@
 
 日期：2026-09-25
 
-状态：待用户审阅书面规格；依赖[媒体能力基础规格](./2026-09-25-media-capability-foundation-design.md)
+状态：用户已批准（2026-09-25），待实施；依赖[媒体能力基础规格](./2026-09-25-media-capability-foundation-design.md)
 
 ## 1. 目标与边界
 
