@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.util.Base64;
@@ -38,10 +39,11 @@ class MediaCloudCapabilityPostgresIT {
     }
 
     @Autowired private MediaCapabilityService catalog;
+    @Autowired private CredentialCipher cipher;
     @Autowired private ObjectMapper mapper;
 
     @Test
-    void fixedMappingsRejectModelAndEndpointOverridesAndFilterSeedanceSteps() {
+    void fixedMappingsRejectModelOverridesAndUnsafeEndpointsAndFilterSeedanceSteps() {
         var openAi = catalog.createConnection("cloud-openai-1", "OpenAI", "OPENAI",
                 null, "openai-test-secret");
         var ark = catalog.createConnection("cloud-ark-1", "Ark", "ARK",
@@ -86,8 +88,27 @@ class MediaCloudCapabilityPostgresIT {
         assertThatThrownBy(() -> catalog.publishCapability(openAi.id(), "Bad model",
                 "OPENAI_GPT_IMAGE_2", mapper.readTree("{\"modelId\":\"custom\"}")))
                 .isInstanceOf(ApiProblemException.class);
+        var custom = catalog.createConnection("cloud-custom-origin", "Custom",
+                "OPENAI", "https://images.example.com/proxy/v1", "secret");
+        assertThat(catalog.getConnectionVersion(custom.id(), custom.currentVersion())
+                .orElseThrow().origin()).isEqualTo("https://images.example.com/proxy/v1");
+        var changed = catalog.updateConnection(custom.id(), custom.version(), "Custom",
+                true, "https://images.example.com/next/v1", null);
+        assertThat(changed.currentVersion()).isEqualTo(custom.currentVersion() + 1);
+        assertThat(catalog.getConnectionVersion(custom.id(), custom.currentVersion())
+                .orElseThrow().origin()).isEqualTo("https://images.example.com/proxy/v1");
+        var changedVersion = catalog.getConnectionVersion(changed.id(), changed.currentVersion())
+                .orElseThrow();
+        assertThat(changedVersion.keyMask()).isEqualTo("••••cret");
+        assertThat(cipher.decryptMedia(changed.id(), changedVersion.version(),
+                new CredentialCipher.Encrypted(changedVersion.credentialCiphertext(),
+                        changedVersion.credentialNonce(), changedVersion.credentialKeyVersion())))
+                .isEqualTo("secret");
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin", "Bad",
-                "OPENAI", "https://example.com", "secret"))
+                "OPENAI", "http://127.0.0.1:8080/v1", "secret"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin-2", "Bad",
+                "OPENAI", "https://user:pass@images.example.com/v1", "secret"))
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> catalog.publishCapability(google.id(), "Bad model",
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{\"modelId\":\"custom\"}")))

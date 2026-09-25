@@ -169,7 +169,8 @@ function ConnectionCard({ connection, settings, apply }: {
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
       expectedVersion: connection.version, name: name.trim(), enabled: connection.enabled,
-      origin: connection.platform === "COMFYUI" ? origin.trim() : null,
+      origin: connection.platform === "COMFYUI" || connection.platform === "OPENAI"
+        ? origin.trim() || null : null,
       apiKey: apiKey || null,
     }),
     onSuccess: (result) => {
@@ -277,6 +278,10 @@ function ConnectionCard({ connection, settings, apply }: {
         <input value={origin} onChange={(event) => setOrigin(event.target.value)} required
           placeholder="http://127.0.0.1:8188" />
       </label> : null}
+      {connection.platform === "OPENAI" ? <label className="text-sm">API Base URL（留空使用官方地址）
+        <input type="url" value={origin} onChange={(event) => setOrigin(event.target.value)}
+          maxLength={500} placeholder="https://api.openai.com/v1" />
+      </label> : null}
       {connection.platform === "OPENAI" || connection.platform === "ARK" ||
         connection.platform === "GOOGLE" ? <label className="text-sm">替换 API Key（留空则不修改）
         <input type="password" autoComplete="new-password" value={apiKey}
@@ -339,7 +344,8 @@ export function MediaSettingsPage() {
   const create = useMutation({
     mutationFn: () => {
       const payload = { name: name.trim(), platform,
-        origin: platform === "COMFYUI" ? origin.trim() : null,
+        origin: platform === "COMFYUI" || platform === "OPENAI"
+          ? origin.trim() || null : null,
         apiKey: platform === "COMFYUI" ? null : apiKey };
       connectionCreateKey.current = stableCreateKey(connectionCreateKey.current, JSON.stringify(payload));
       return createMediaConnection(payload, connectionCreateKey.current.key);
@@ -391,6 +397,10 @@ export function MediaSettingsPage() {
             <input type="password" autoComplete="new-password" value={apiKey}
               onChange={(event) => setApiKey(event.target.value)} required />
           </label>}
+          {platform === "OPENAI" ? <label className="text-sm">API Base URL（留空使用官方地址）
+            <input type="url" value={origin} onChange={(event) => setOrigin(event.target.value)}
+              maxLength={500} placeholder="https://api.openai.com/v1" />
+          </label> : null}
           {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
           <button className="primary-button w-fit" type="submit" disabled={create.isPending}>
             {create.isPending ? "正在保存…" : "添加连接"}

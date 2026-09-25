@@ -23,41 +23,42 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Fixed GPT Image 2 Images API protocol. The origin is not an administrator setting. */
+/** Fixed GPT Image 2 Images API protocol with a version-pinned API base URL. */
 @Component
 public class OpenAiImage2Client {
-    private static final URI OFFICIAL = URI.create("https://api.openai.com");
+    private static final URI OFFICIAL_BASE = URI.create("https://api.openai.com/v1/");
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-    private final URI origin;
+    private final URI testOrigin;
     private final OkHttpClient http;
     private final ObjectMapper mapper;
 
     @Autowired
     public OpenAiImage2Client(ObjectMapper mapper) {
-        this(mapper, OFFICIAL);
+        this(mapper, null);
     }
 
     /** A loopback origin is accepted only when tests explicitly construct this client. */
     public OpenAiImage2Client(ObjectMapper mapper, URI origin) {
-        if (!OFFICIAL.equals(origin) && !("http".equals(origin.getScheme())
+        if (origin != null && !("http".equals(origin.getScheme())
                 && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && (origin.getRawPath() == null || origin.getRawPath().isEmpty())
+                && (origin.getRawPath() == null || !origin.getRawPath().contains(".."))
                 && origin.getRawUserInfo() == null && origin.getRawQuery() == null
                 && origin.getRawFragment() == null)) {
-            throw new IllegalArgumentException("Unsupported fixed OpenAI API origin");
+            throw new IllegalArgumentException("Unsupported OpenAI test origin");
         }
         this.mapper = mapper;
-        this.origin = origin;
+        this.testOrigin = origin;
         this.http = new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(10))
                 .callTimeout(Duration.ofMinutes(3)).proxy(Proxy.NO_PROXY)
                 .followRedirects(false).followSslRedirects(false)
                 .retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)))
+                .dns(FixedCloudDns.checked(Dns.SYSTEM, origin != null))
                 .build();
     }
 
-    public MediaPayload generate(String key, String prompt, String quality, String size) {
+    public MediaPayload generate(String key, String prompt, String quality, String size,
+            String baseUrl) {
         ObjectNode body = mapper.createObjectNode();
         body.put("model", "gpt-image-2");
         body.put("prompt", prompt);
@@ -65,12 +66,12 @@ public class OpenAiImage2Client {
         body.put("size", size);
         body.put("n", 1);
         body.put("output_format", "png");
-        return send(key, "/v1/images/generations", "application/json",
+        return send(key, baseUrl, "images/generations", "application/json",
                 body.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     public MediaPayload edit(String key, String prompt, String quality, String size,
-            byte[] referencePng) {
+            byte[] referencePng, String baseUrl) {
         if (referencePng == null || referencePng.length == 0
                 || referencePng.length > MAX_IMAGE_BYTES) {
             throw new IllegalArgumentException("Pinned reference PNG size is invalid");
@@ -87,12 +88,18 @@ public class OpenAiImage2Client {
                 + "filename=\"reference.png\"\r\nContent-Type: image/png\r\n\r\n");
         body.writeBytes(referencePng);
         bytes(body, "\r\n--" + boundary + "--\r\n");
-        return send(key, "/v1/images/edits", "multipart/form-data; boundary=" + boundary,
+        return send(key, baseUrl, "images/edits", "multipart/form-data; boundary=" + boundary,
                 body.toByteArray());
     }
 
-    private MediaPayload send(String key, String path, String contentType, byte[] body) {
-        Request request = new Request.Builder().url(origin.resolve(path).toString())
+    private MediaPayload send(String key, String baseUrl, String path, String contentType,
+            byte[] body) {
+        URI endpoint = testOrigin == null ? apiEndpoint(baseUrl, path)
+                : (testOrigin.getRawPath() == null || testOrigin.getRawPath().isEmpty()
+                        ? testOrigin.resolve("/v1/")
+                        : URI.create(testOrigin + (testOrigin.toString().endsWith("/") ? "" : "/")))
+                        .resolve(path);
+        Request request = new Request.Builder().url(endpoint.toString())
                 .header("Authorization", "Bearer " + key)
                 .header("Accept", "application/json")
                 .post(RequestBody.create(body, MediaType.parse(contentType))).build();
@@ -132,6 +139,17 @@ public class OpenAiImage2Client {
             if (failure instanceof Rejected || failure instanceof Uncertain) throw failure;
             throw new Uncertain("OpenAI image response could not be decoded");
         }
+    }
+
+    static URI apiEndpoint(String baseUrl, String path) {
+        URI base = baseUrl == null ? OFFICIAL_BASE
+                : URI.create(baseUrl + (baseUrl.endsWith("/") ? "" : "/"));
+        if (!"https".equals(base.getScheme()) || base.getHost() == null
+                || base.getRawUserInfo() != null || base.getRawQuery() != null
+                || base.getRawFragment() != null) {
+            throw new IllegalArgumentException("Pinned OpenAI API base URL is invalid");
+        }
+        return base.resolve(path);
     }
 
     private static void field(ByteArrayOutputStream body, String boundary, String name,

@@ -107,10 +107,6 @@ public class MediaCapabilityService {
         validateCredential(current.platform(), apiKey, false);
         boolean newVersion = !java.util.Objects.equals(previous.origin(), normalizedOrigin)
                 || apiKey != null && !apiKey.isBlank();
-        if (newVersion && previous.credentialCiphertext() != null
-                && (apiKey == null || apiKey.isBlank())) {
-            throw invalid("修改连接版本时必须重新输入 API Key");
-        }
         int nextVersion = current.currentVersion() + (newVersion ? 1 : 0);
         Instant now = clock.instant();
         if (!repository.updateConnection(id, expectedVersion, requireName(name),
@@ -118,14 +114,21 @@ public class MediaCapabilityService {
             throw conflict("连接已被其他操作修改");
         }
         if (newVersion) {
-            CredentialCipher.Encrypted encrypted = apiKey == null || apiKey.isBlank()
-                    ? null : cipher.encryptMedia(id, nextVersion, apiKey);
+            String versionKey = apiKey;
+            if ((versionKey == null || versionKey.isBlank())
+                    && previous.credentialCiphertext() != null) {
+                versionKey = cipher.decryptMedia(id, previous.version(),
+                        new CredentialCipher.Encrypted(previous.credentialCiphertext(),
+                                previous.credentialNonce(), previous.credentialKeyVersion()));
+            }
+            CredentialCipher.Encrypted encrypted = versionKey == null || versionKey.isBlank()
+                    ? null : cipher.encryptMedia(id, nextVersion, versionKey);
             repository.insertConnectionVersion(id, nextVersion, normalizedOrigin,
                     normalizedOrigin == null ? null : sha256(normalizedOrigin),
                     encrypted == null ? null : encrypted.ciphertext(),
                     encrypted == null ? null : encrypted.nonce(),
                     encrypted == null ? null : encrypted.keyVersion(),
-                    encrypted == null ? null : keyMask(apiKey), now);
+                    encrypted == null ? null : keyMask(versionKey), now);
         }
         return getConnection(id);
     }
@@ -220,7 +223,8 @@ public class MediaCapabilityService {
         if (declaration.originRequired() && version.origin() == null) {
             throw invalid("该适配器需要连接地址");
         }
-        if (!declaration.originRequired() && version.origin() != null) {
+        if (!declaration.originRequired() && version.origin() != null
+                && !"OPENAI".equals(connection.platform())) {
             throw invalid("该适配器不接受连接地址");
         }
         if (!connection.platform().equals(declaration.platform())) {
@@ -509,6 +513,24 @@ public class MediaCapabilityService {
     }
 
     private static String validatedOrigin(String platform, String origin) {
+        if ("OPENAI".equals(platform)) {
+            if (origin == null || origin.isBlank()) return null;
+            try {
+                java.net.URI uri = java.net.URI.create(origin.trim());
+                String path = uri.getRawPath();
+                if (origin.length() > 500 || !"https".equals(uri.getScheme())
+                        || uri.getHost() == null || uri.getHost().isBlank()
+                        || uri.getPort() > 65535 || uri.getRawUserInfo() != null
+                        || uri.getRawQuery() != null || uri.getRawFragment() != null
+                        || path != null && (path.contains("..") || path.contains("%")
+                                || path.contains("\\") || path.contains("//"))) {
+                    throw invalid("OpenAI Base URL 必须是公开的 HTTPS API 根地址，不能包含凭证、查询或片段");
+                }
+                return uri.toASCIIString().replaceAll("/+$", "");
+            } catch (IllegalArgumentException invalidUri) {
+                throw invalid("OpenAI Base URL 无效");
+            }
+        }
         if (!"COMFYUI".equals(platform)) {
             if (origin != null && !origin.isBlank()) {
                 throw invalid("该平台使用内置固定端点，不能填写自定义地址");

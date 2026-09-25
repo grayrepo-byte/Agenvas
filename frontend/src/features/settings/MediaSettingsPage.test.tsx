@@ -46,6 +46,8 @@ describe("MediaSettingsPage", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "OPENAI");
     const key = screen.getByLabelText("API Key") as HTMLInputElement;
     await user.type(key, "provider-secret-7890");
+    await user.type(screen.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
+      "https://gateway.example.com/proxy/v1");
     await user.click(screen.getByRole("button", { name: "添加连接" }));
     expect(screen.getByRole("button", { name: "正在保存…" })).toBeDisabled();
     release?.();
@@ -53,8 +55,35 @@ describe("MediaSettingsPage", () => {
     expect(key).toHaveValue("");
     expect(document.body).not.toHaveTextContent("provider-secret-7890");
     expect(window.localStorage.getItem("mediaApiKey")).toBeNull();
-    expect(posted).toEqual([{ name: "OpenAI main", platform: "OPENAI", origin: null,
+    expect(posted).toEqual([{ name: "OpenAI main", platform: "OPENAI",
+      origin: "https://gateway.example.com/proxy/v1",
       apiKey: "provider-secret-7890" }]);
+  });
+
+  it("saves an updated OpenAI base URL on the versioned connection", async () => {
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        defaults: mockDefault, connections: [{
+          id: "openai-1", name: "OpenAI", platform: "OPENAI", enabled: true,
+          version: 2, connectionVersion: 1, origin: null, keyMask: "••••7890",
+          connectivityStatus: "NOT_CHECKED", realGenerationTested: false, capabilities: [],
+        }],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
+      "https://gateway.example.com/v1");
+    await user.click(screen.getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(submitted).toMatchObject({ expectedVersion: 2,
+      origin: "https://gateway.example.com/v1", apiKey: null }));
   });
 
   it("keeps a draft after a version conflict and reloads the server version", async () => {

@@ -82,8 +82,10 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
             return new Submission.Completed(context.lease().input().has("referenceImageVersionId")
-                    ? client.edit(key, prompt, quality, size(context), referencePng(context))
-                    : client.generate(key, prompt, quality, size(context)));
+                    ? client.edit(key, prompt, quality, size(context), referencePng(context),
+                            snapshot.connectionVersion().origin())
+                    : client.generate(key, prompt, quality, size(context),
+                            snapshot.connectionVersion().origin()));
         } catch (OpenAiImage2Client.Rejected rejected) {
             return new Submission.Rejected("OPENAI_IMAGE_REJECTED");
         } catch (OpenAiImage2Client.Uncertain uncertain) {

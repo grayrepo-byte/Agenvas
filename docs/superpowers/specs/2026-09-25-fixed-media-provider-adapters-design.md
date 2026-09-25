@@ -14,9 +14,9 @@ RunningHub 类工作流平台、Agent 生成调用代码、Groovy/动态脚本�
 
 ## 2. 固定能力与管理员配置
 
-连接版本保存服务身份、精确官方 HTTPS origin、加密凭证引用、配置摘要和版本；一个连接不被限定为单一媒体类型。首批内置能力标识为 `OPENAI_GPT_IMAGE_2` 与 `ARK_SEEDANCE_2_I2V`，另外保留 `MOCK_IMAGE`、`MOCK_VIDEO`、`COMFY_IMAGE_V1`、`COMFY_VIDEO_V1`。能力版本固定适配器代码协议版本、模型 ID、操作、输入输出端口、时长/画幅/参考图约束、并发上限、费用来源和结果核对声明。管理员只能配置已安装适配器暴露的字段；不能填任意 API 路径、请求模板、Java/Groovy 源码或未经适配器支持的模型 ID。
+连接版本保存服务身份、API 地址、加密凭证引用、配置摘要和版本；一个连接不被限定为单一媒体类型。首批内置能力标识为 `OPENAI_GPT_IMAGE_2` 与 `ARK_SEEDANCE_2_I2V`，另外保留 `MOCK_IMAGE`、`MOCK_VIDEO`、`COMFY_IMAGE_V1`、`COMFY_VIDEO_V1`。能力版本固定适配器代码协议版本、模型 ID、操作、输入输出端口、时长/画幅/参考图约束、并发上限、费用来源和结果核对声明。管理员只能配置已安装适配器暴露的字段；OpenAI 图片连接允许配置 API Base URL，不能填请求模板、Java/Groovy 源码或未经适配器支持的模型 ID。
 
-OpenAI 连接的请求目标固定为官方 Images API，管理员配置 API Key；能力模型 ID 固定为 `gpt-image-2`，可在适配器允许的 `low/medium/high` 质量和预设画幅中选择，默认 `medium`，输出 PNG。火山方舟连接的请求目标固定为中国区北京方舟 API，管理员配置 API Key；首个 Seedance 映射固定为文档中的 `doubao-seedance-2-0-260128` 首帧图生视频，输出无声 MP4。其他地区、模型代次或高级编辑操作都须增加或验证新的固定映射版本，不能靠改模型字符串绕过能力校验。两种 Key 复用服务端加密存储和历史密钥环，读取接口只显示掩码；与现有 LLM Key 分开，不发送给创作 Agent、浏览器持久存储、SSE、项目导出或日志。
+OpenAI 连接默认请求官方 `https://api.openai.com/v1`，管理员可配置自定义 HTTPS API Base URL（例如 `https://gateway.example.com/proxy/v1`）；生成和编辑分别追加 `images/generations` 与 `images/edits`。地址随连接版本固定，历史 `origin=null` 仍使用官方地址，无需数据迁移。服务端拒绝地址凭证、查询、片段及不安全路径；请求时拒绝私网 DNS 结果与重定向。管理员配置 API Key；能力模型 ID 固定为 `gpt-image-2`，可在适配器允许的 `low/medium/high` 质量和预设画幅中选择，默认 `medium`，输出 PNG。此 Base URL 决策由 2026-09-25 用户追加要求覆盖原固定官方地址约束。火山方舟连接的请求目标固定为中国区北京方舟 API，管理员配置 API Key；首个 Seedance 映射固定为文档中的 `doubao-seedance-2-0-260128` 首帧图生视频，输出无声 MP4。其他地区、模型代次或高级编辑操作都须增加或验证新的固定映射版本，不能靠改模型字符串绕过能力校验。两种 Key 复用服务端加密存储和历史密钥环，读取接口只显示掩码；与现有 LLM Key 分开，不发送给创作 Agent、浏览器持久存储、SSE、项目导出或日志。
 
 管理员保存、启停和设置默认值使用基础规格的版本化 API、expectedVersion/CAS 与幂等规则。保存凭证只检查格式和目标配置，不触发付费生成；状态显示“已配置、未实测”。连接或能力版本变化使待审批计划过期；已审批步骤仍固定原版本，尚未提交且原配置不可用时 BLOCKED，已受理任务按历史身份核对。不会静默切换默认渠道。
 

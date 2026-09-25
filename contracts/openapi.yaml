@@ -1627,7 +1627,7 @@ components:
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
-        origin: {type: [string, "null"]}
+        origin: {type: [string, "null"], description: "COMFYUI local origin or optional OPENAI HTTPS API base URL; null uses the official OpenAI /v1 base."}
         keyMask: {type: [string, "null"]}
         connectivityStatus: {type: string, enum: [NOT_CHECKED]}
         realGenerationTested: {type: boolean}
@@ -1655,7 +1655,7 @@ components:
     FixedMediaAdapterSettings:
       type: object
       additionalProperties: false
-      description: Fixed adapters accept only their declared settings; model IDs and endpoints are not editable.
+      description: Fixed adapters accept only their declared settings; model IDs are not editable. OPENAI base URL belongs to the versioned connection.
       properties:
         checkpoint: {type: string, maxLength: 160}
         diffusionModel: {type: string, maxLength: 160}
@@ -1678,7 +1678,7 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
         platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
-        origin: {type: [string, "null"], maxLength: 500}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI HTTPS API base URL."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     UpdateMediaConnectionRequest:
       type: object
@@ -1688,7 +1688,7 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
-        origin: {type: [string, "null"], maxLength: 500}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI HTTPS API base URL."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     CreateMediaCapabilityRequest:
       type: object

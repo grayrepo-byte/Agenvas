@@ -65,11 +65,11 @@ class OpenAiImage2ClientTest {
             respond(exchange, 200, result);
         });
 
-        try (var generated = client.generate("fake-secret", "ridge", "medium", "1536x1024")) {
+        try (var generated = client.generate("fake-secret", "ridge", "medium", "1536x1024", null)) {
             assertThat(generated.stream().readAllBytes()).isEqualTo(png);
         }
         try (var edited = client.edit("fake-secret", "ridge\nAvoid: clouds", "high",
-                "1024x1024", png)) {
+                "1024x1024", png, null)) {
             assertThat(edited.stream().readAllBytes()).isEqualTo(png);
         }
         assertThat(generations).hasValue(1);
@@ -83,7 +83,7 @@ class OpenAiImage2ClientTest {
             requests.incrementAndGet();
             respond(exchange, 200, "{\"data\":[{\"b64_json\":\"bad-base64!\"}]}");
         });
-        assertThatThrownBy(() -> client.generate("key", "ridge", "low", "1024x1024"))
+        assertThatThrownBy(() -> client.generate("key", "ridge", "low", "1024x1024", null))
                 .isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(requests).hasValue(1);
         server.removeContext("/v1/images/generations");
@@ -91,9 +91,50 @@ class OpenAiImage2ClientTest {
             requests.incrementAndGet();
             exchange.close();
         });
-        assertThatThrownBy(() -> client.generate("key", "ridge", "low", "1024x1024"))
+        assertThatThrownBy(() -> client.generate("key", "ridge", "low", "1024x1024", null))
                 .isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(requests).hasValue(2);
+    }
+
+    @Test
+    void customBasePathIsPreservedForImagesEndpoint() throws IOException {
+        assertThat(OpenAiImage2Client.apiEndpoint("https://gateway.example.com/proxy/v1",
+                "images/generations"))
+                .isEqualTo(URI.create("https://gateway.example.com/proxy/v1/images/generations"));
+        assertThat(OpenAiImage2Client.apiEndpoint(null, "images/edits"))
+                .isEqualTo(URI.create("https://api.openai.com/v1/images/edits"));
+        client = new OpenAiImage2Client(mapper, URI.create(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/proxy/v1"));
+        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        String result = "{\"data\":[{\"b64_json\":\""
+                + Base64.getEncoder().encodeToString(png) + "\"}]}";
+        AtomicInteger calls = new AtomicInteger();
+        server.createContext("/proxy/v1/images/generations", exchange -> {
+            calls.incrementAndGet();
+            respond(exchange, 200, result);
+        });
+        try (var generated = client.generate("fake-secret", "ridge", "medium",
+                "1024x1024", "https://unused.example/v1")) {
+            assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+        }
+        assertThat(calls).hasValue(1);
+    }
+
+    @Test
+    void redirectDoesNotForwardTheApiKey() {
+        AtomicInteger redirected = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/redirected");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        server.createContext("/redirected", exchange -> {
+            redirected.incrementAndGet();
+            exchange.close();
+        });
+        assertThatThrownBy(() -> client.generate("fake-secret", "ridge", "low",
+                "1024x1024", null)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
+        assertThat(redirected).hasValue(0);
     }
 
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
