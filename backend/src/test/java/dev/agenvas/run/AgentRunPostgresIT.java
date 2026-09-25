@@ -25,6 +25,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.MigrationVersions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -334,7 +335,7 @@ class AgentRunPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("44");
+                .isEqualTo(MigrationVersions.latest());
 
         Project httpProject = projectService.create(owner.userId(), "HTTP replay project",
                 Project.AspectRatio.LANDSCAPE_16_9);

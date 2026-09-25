@@ -22,6 +22,7 @@ import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
+import dev.agenvas.testing.MigrationVersions;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -155,7 +156,7 @@ class TaskNewOutputPostgresIT {
                 media(late.id(), "duplicate"))).isInstanceOf(RuntimeException.class);
         assertThat(countImages(project.id())).isEqualTo(2);
         assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("44");
+                .query(String.class).single()).isEqualTo(MigrationVersions.latest());
     }
 
     private long countImages(UUID projectId) {

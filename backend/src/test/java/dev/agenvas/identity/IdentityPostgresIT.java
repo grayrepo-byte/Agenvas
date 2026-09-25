@@ -8,6 +8,7 @@ import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.MigrationVersions;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -64,7 +65,7 @@ class IdentityPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("44");
+                .isEqualTo(MigrationVersions.latest());
         CountDownLatch start = new CountDownLatch(1);
         List<Future<SetupOutcome>> futures = new ArrayList<>();
         try (ExecutorService executor = Executors.newFixedThreadPool(CONCURRENT_ATTEMPTS)) {

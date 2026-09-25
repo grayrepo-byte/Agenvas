@@ -13,6 +13,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.testing.ImageAssetFixture;
+import dev.agenvas.testing.MigrationVersions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -76,7 +77,7 @@ class ArtifactPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("44");
+                .isEqualTo(MigrationVersions.latest());
         AdminPrincipal owner = identityService.setup(
                 "artifact-bootstrap-secret", "artifact-admin", "artifact-password-123");
         Project project = projectService.create(

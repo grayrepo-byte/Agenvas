@@ -26,6 +26,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.MigrationVersions;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -181,7 +182,7 @@ class ToolExecutionPostgresIT {
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(gateway.calls.get()).isEqualTo(2);
         assertThat(jdbc.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                .query(String.class).single()).isEqualTo("44");
+                .query(String.class).single()).isEqualTo(MigrationVersions.latest());
     }
 
     @TestConfiguration

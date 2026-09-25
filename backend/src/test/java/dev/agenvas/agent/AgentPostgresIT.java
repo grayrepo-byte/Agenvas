@@ -13,6 +13,7 @@ import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.MigrationVersions;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -168,7 +169,7 @@ class AgentPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("44");
+                .isEqualTo(MigrationVersions.latest());
     }
 
     private ArtifactService.ArtifactView createText(UUID ownerId, UUID projectId, String text) {
