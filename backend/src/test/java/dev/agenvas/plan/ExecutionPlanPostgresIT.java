@@ -406,7 +406,7 @@ class ExecutionPlanPostgresIT {
         assertThat(videoApproval.tasks()).allSatisfy(task -> assertThat(task.input()
                 .path("imageVersionId").asText()).isNotBlank());
         assertThat(videoApproval.tasks()).allSatisfy(task -> assertThat(task.input()
-                .path("durationMs").asInt()).isPositive());
+                .path("durationSeconds").asInt()).isPositive());
         assertThat(jdbc.sql("select count(*) from usage_ledger where project_id = :projectId "
                         + "and entry_type = 'RESERVATION' and quantity_json ->> 'videoCount' = '1'")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(3);
@@ -601,7 +601,7 @@ class ExecutionPlanPostgresIT {
         for (int index = 1; index <= 3; index++) {
             ObjectNode content = mapper.createObjectNode();
             content.put("order", index);
-            content.put("durationMs", 1_000);
+            content.put("durationSeconds", 1);
             content.put("description", "Shot " + index);
             content.put("camera", "Wide");
             content.put("action", "Move");

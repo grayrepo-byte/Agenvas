@@ -150,7 +150,7 @@ describe("manual storyboard creation", () => {
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         revisions++;
         expect(await request.json()).toEqual({ kind: "SHOT", title: "Opening",
-          content: { order: 1, durationMs: 3000, description: "Arrival",
+          content: { order: 1, durationSeconds: 3, description: "Arrival",
             camera: "Wide", action: "Walk", characterVersionIds: ["hero-v1"],
             sceneVersionId: "studio-v1" } });
         return HttpResponse.json({ id: "shot-id" }, { status: 201 });
@@ -168,6 +168,7 @@ describe("manual storyboard creation", () => {
     await user.type(within(panel).getByLabelText("描述"), "Arrival");
     await user.type(within(panel).getByLabelText("镜头语言"), "Wide");
     await user.type(within(panel).getByLabelText("动作"), "Walk");
+    expect(within(panel).getByLabelText("时长（秒）")).toHaveValue(3);
     await user.selectOptions(within(panel).getByLabelText("场景精确版本"), "studio-v1");
     await user.click(within(panel).getByRole("checkbox", { name: /hero/ }));
     await user.click(within(panel).getByRole("button", { name: "添加镜头到画布" }));

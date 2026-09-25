@@ -121,7 +121,7 @@ describe("canvas relation projection", () => {
     const shot = artifactCard("shot", "shot-v1");
     shot.artifact!.kind = "SHOT";
     shot.artifact!.currentVersion.content = {
-      order: 1, durationMs: 3000, description: "Shot", camera: "wide", action: "walk",
+      order: 1, durationSeconds: 3, description: "Shot", camera: "wide", action: "walk",
       characterVersionIds: ["character-v1"], sceneVersionId: "scene-v1",
     };
     const connect = (source: CanvasItem) => semanticConnectionRevision([source, shot], {
@@ -165,7 +165,7 @@ describe("canvas relation projection", () => {
     ]);
     shot.artifact!.kind = "SHOT";
     shot.artifact!.currentVersion.content = {
-      order: 1, durationMs: 3000, description: "Shot", camera: "wide", action: "walk",
+      order: 1, durationSeconds: 3, description: "Shot", camera: "wide", action: "walk",
       characterVersionIds: ["character-v1"], sceneVersionId: "scene-v1",
     };
     expect(semanticReferenceRemoval(shot,
@@ -174,5 +174,24 @@ describe("canvas relation projection", () => {
     });
     expect(semanticReferenceRemoval(shot,
       shot.artifact!.currentVersion.inputReferences[1]!)).toBeNull();
+  });
+
+  it("does not silently revise a selected historical millisecond shot", () => {
+    const character = artifactCard("character", "character-v2");
+    character.artifact!.kind = "CHARACTER";
+    const shot = artifactCard("shot", "shot-v1", null, [
+      { versionId: "character-v1", role: "character", order: 0, kind: "CHARACTER" },
+    ]);
+    shot.artifact!.kind = "SHOT";
+    shot.artifact!.currentVersion.content = {
+      order: 1, durationMs: 4500, description: "Shot", camera: "wide", action: "walk",
+      characterVersionIds: ["character-v1"], sceneVersionId: "scene-v1",
+    };
+    expect(semanticConnectionRevision([character, shot], {
+      source: character.id, sourceHandle: "artifact-output",
+      target: shot.id, targetHandle: "artifact-input",
+    })).toBeNull();
+    expect(semanticReferenceRemoval(shot,
+      shot.artifact!.currentVersion.inputReferences[0]!)).toBeNull();
   });
 });

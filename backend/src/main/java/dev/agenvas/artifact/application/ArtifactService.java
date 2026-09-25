@@ -30,8 +30,10 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class ArtifactService {
 
-    /** 当前写入的产物正文 Schema 版本。 */
-    private static final int SCHEMA_VERSION = 1;
+    /** 镜头时长从第二版起用整数秒；其他产物仍维持各自的第一版正文。 */
+    private static int schemaVersion(Artifact.Kind kind) {
+        return kind == Artifact.Kind.SHOT ? 2 : 1;
+    }
     /** 手工创建产物的幂等命令保留时长。 */
     private static final Duration CREATE_KEY_RETENTION = Duration.ofHours(24);
 
@@ -236,7 +238,7 @@ public class ArtifactService {
                 projectId,
                 artifactId,
                 1,
-                SCHEMA_VERSION,
+                schemaVersion(kind),
                 content.deepCopy(),
                 references,
                 createdByKind,
@@ -382,7 +384,7 @@ public class ArtifactService {
                 projectId,
                 artifactId,
                 artifacts.nextVersionNo(projectId, artifactId),
-                SCHEMA_VERSION,
+                schemaVersion(current.kind()),
                 content.deepCopy(),
                 references,
                 author,
@@ -520,7 +522,8 @@ public class ArtifactService {
         validateMediaAsset(ownerId, projectId, current.kind(), content);
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
-                artifactId, artifacts.nextVersionNo(projectId, artifactId), SCHEMA_VERSION,
+                artifactId, artifacts.nextVersionNo(projectId, artifactId),
+                schemaVersion(current.kind()),
                 content.deepCopy(), references, ArtifactVersion.CreatedByKind.TASK, runId, now);
         artifacts.appendVersion(revision);
         boolean selected = allowSelection

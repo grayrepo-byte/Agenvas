@@ -240,7 +240,7 @@ class ConfiguredStoryboardPostgresIT {
                         ObjectNode shot = shots.addObject();
                         shot.put("title", "镜头 " + index);
                         shot.put("order", index);
-                        shot.put("durationMs", 5_000);
+                        shot.put("durationSeconds", 5);
                         shot.put("description", "展示咖啡产品镜头 " + index);
                         shot.put("camera", "中景");
                         shot.put("action", "展示咖啡产品");

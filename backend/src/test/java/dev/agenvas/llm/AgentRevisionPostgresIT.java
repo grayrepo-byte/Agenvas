@@ -126,7 +126,7 @@ class AgentRevisionPostgresIT {
                 project.id(), Artifact.Kind.SCENE, "Unbound scene", sceneContent);
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 5_000);
+        shotContent.put("durationSeconds", 5);
         shotContent.put("description", "Opening");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Show product");

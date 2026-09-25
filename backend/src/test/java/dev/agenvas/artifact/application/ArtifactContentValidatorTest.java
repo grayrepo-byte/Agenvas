@@ -1,6 +1,7 @@
 package dev.agenvas.artifact.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.artifact.domain.Artifact;
@@ -15,6 +16,23 @@ class ArtifactContentValidatorTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ArtifactContentValidator validator = new ArtifactContentValidator();
+
+    @Test
+    void newShotsRequireWholeSecondsAndRejectLegacyMillisecondInput() {
+        String shot = """
+                {"order":1,"durationSeconds":5,"description":"Shot","camera":"Static",
+                 "action":"Walk","characterVersionIds":[],"sceneVersionId":"%s"}
+                """.formatted(UUID.randomUUID());
+        assertThatCode(() -> validate(Artifact.Kind.SHOT, shot)).doesNotThrowAnyException();
+        for (String invalid : new String[] {
+                shot.replace("\"durationSeconds\":5", "\"durationSeconds\":0"),
+                shot.replace("\"durationSeconds\":5", "\"durationSeconds\":31"),
+                shot.replace("\"durationSeconds\":5", "\"durationSeconds\":1.25"),
+                shot.replace("\"durationSeconds\":5", "\"durationMs\":5000")}) {
+            assertThatThrownBy(() -> validate(Artifact.Kind.SHOT, invalid))
+                    .isInstanceOf(ApiProblemException.class);
+        }
+    }
 
     @Test
     void acceptsAllSixSchemaFamilies() {
@@ -58,7 +76,7 @@ class ArtifactContentValidatorTest {
         assertThat(validate(Artifact.Kind.SHOT, """
                 {
                   "order":1,
-                  "durationMs":5000,
+                  "durationSeconds":5,
                   "description":"Coffee is poured",
                   "camera":"Slow dolly in",
                   "action":"Steam rises",
@@ -90,7 +108,7 @@ class ArtifactContentValidatorTest {
         assertThatThrownBy(() -> validate(Artifact.Kind.SHOT, """
                 {
                   "order":1,
-                  "durationMs":5000,
+                  "durationSeconds":5,
                   "description":"Shot",
                   "camera":"Static",
                   "action":"None",

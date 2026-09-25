@@ -130,7 +130,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
             ObjectNode shot = shots.addObject();
             shot.put("title", "演示镜头 " + index);
             shot.put("order", index);
-            shot.put("durationMs", 5_000);
+            shot.put("durationSeconds", 5);
             shot.put("description", "演示镜头 " + index + "：咖啡广告分镜占位内容");
             shot.put("camera", index == 1 ? "广角" : index == 2 ? "中景" : "特写");
             shot.put("action", "展示咖啡产品；非真实模型构思");

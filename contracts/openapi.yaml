@@ -1406,6 +1406,7 @@ components:
         style: {type: string}
         order: {type: integer}
         durationMs: {type: integer}
+        durationSeconds: {type: integer, minimum: 1, maximum: 30}
         camera: {type: string}
         action: {type: string}
         characterVersionIds: {type: array, items: {type: string, format: uuid}}
@@ -1631,6 +1632,15 @@ components:
         - {$ref: "./artifact-schemas/character-v1.schema.json"}
         - {$ref: "./artifact-schemas/scene-v1.schema.json"}
         - {$ref: "./artifact-schemas/shot-v1.schema.json"}
+        - {$ref: "./artifact-schemas/shot-v2.schema.json"}
+    WritableArtifactContent:
+      oneOf:
+        - {$ref: "./artifact-schemas/text-v1.schema.json"}
+        - {$ref: "./artifact-schemas/image-v1.schema.json"}
+        - {$ref: "./artifact-schemas/video-v1.schema.json"}
+        - {$ref: "./artifact-schemas/character-v1.schema.json"}
+        - {$ref: "./artifact-schemas/scene-v1.schema.json"}
+        - {$ref: "./artifact-schemas/shot-v2.schema.json"}
     ShotSceneEdit:
       type: object
       additionalProperties: false
@@ -1644,14 +1654,14 @@ components:
     ReviseShotForRedoRequest:
       type: object
       additionalProperties: false
-      required: [expectedShotVersionId, expectedShotArtifactVersion, description, camera, action]
+      required: [expectedShotVersionId, expectedShotArtifactVersion, description, camera, action, durationSeconds]
       properties:
         expectedShotVersionId: {type: string, format: uuid}
         expectedShotArtifactVersion: {type: integer, format: int64, minimum: 0}
         description: {type: string, minLength: 1, maxLength: 4000}
         camera: {type: string, minLength: 1, maxLength: 1000}
         action: {type: string, minLength: 1, maxLength: 2000}
-        durationMs: {type: integer, minimum: 100, maximum: 30000}
+        durationSeconds: {type: integer, minimum: 1, maximum: 30}
         scene: {$ref: "#/components/schemas/ShotSceneEdit"}
     ShotRedoResult:
       type: object
@@ -1670,7 +1680,7 @@ components:
       properties:
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string, minLength: 1, maxLength: 160}
-        content: {$ref: "#/components/schemas/ArtifactContent"}
+        content: {$ref: "#/components/schemas/WritableArtifactContent"}
     ReviseArtifactRequest:
       type: object
       additionalProperties: false
@@ -1678,7 +1688,7 @@ components:
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         title: {type: string, minLength: 1, maxLength: 160}
-        content: {$ref: "#/components/schemas/ArtifactContent"}
+        content: {$ref: "#/components/schemas/WritableArtifactContent"}
     SelectArtifactVersionRequest:
       type: object
       additionalProperties: false
@@ -1702,7 +1712,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         versionNo: {type: integer, minimum: 1}
-        schemaVersion: {type: integer, const: 1}
+        schemaVersion: {type: integer, enum: [1, 2]}
         content: {$ref: "#/components/schemas/ArtifactContent"}
         inputReferences:
           type: array

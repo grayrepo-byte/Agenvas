@@ -89,7 +89,7 @@ class ComfyUiOriginPreflightPostgresIT {
                 "Scene", scene).currentVersion().id();
         ObjectNode shot = mapper.createObjectNode();
         shot.put("order", 1);
-        shot.put("durationMs", 3_000);
+        shot.put("durationSeconds", 3);
         shot.put("description", "Coffee pour");
         shot.put("camera", "Close");
         shot.put("action", "Pour coffee");

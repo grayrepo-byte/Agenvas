@@ -1141,6 +1141,7 @@ export interface components {
             style?: string;
             order?: number;
             durationMs?: number;
+            durationSeconds?: number;
             camera?: string;
             action?: string;
             characterVersionIds?: string[];
@@ -1320,7 +1321,8 @@ export interface components {
         };
         /** @enum {string} */
         ArtifactKind: "TEXT" | "IMAGE" | "VIDEO" | "CHARACTER" | "SCENE" | "SHOT";
-        ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"] | components["schemas"]["character-v1.schema"] | components["schemas"]["scene-v1.schema"] | components["schemas"]["shot-v1.schema"];
+        ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"] | components["schemas"]["character-v1.schema"] | components["schemas"]["scene-v1.schema"] | components["schemas"]["shot-v1.schema"] | components["schemas"]["shot-v2.schema"];
+        WritableArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"] | components["schemas"]["character-v1.schema"] | components["schemas"]["scene-v1.schema"] | components["schemas"]["shot-v2.schema"];
         ShotSceneEdit: {
             name?: string;
             location?: string;
@@ -1336,7 +1338,7 @@ export interface components {
             description: string;
             camera: string;
             action: string;
-            durationMs?: number;
+            durationSeconds: number;
             scene?: components["schemas"]["ShotSceneEdit"];
         };
         ShotRedoResult: {
@@ -1346,13 +1348,13 @@ export interface components {
         CreateArtifactRequest: {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
-            content: components["schemas"]["ArtifactContent"];
+            content: components["schemas"]["WritableArtifactContent"];
         };
         ReviseArtifactRequest: {
             /** Format: int64 */
             expectedVersion: number;
             title?: string;
-            content: components["schemas"]["ArtifactContent"];
+            content: components["schemas"]["WritableArtifactContent"];
         };
         SelectArtifactVersionRequest: {
             /** Format: uuid */
@@ -1371,8 +1373,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             versionNo: number;
-            /** @constant */
-            schemaVersion: 1;
+            /** @enum {integer} */
+            schemaVersion: 1 | 2;
             content: components["schemas"]["ArtifactContent"];
             inputReferences: components["schemas"]["ArtifactInputReference"][];
             /** @enum {string} */
@@ -1981,6 +1983,21 @@ export interface components {
         "shot-v1.schema": {
             order: number;
             durationMs: number;
+            description: string;
+            camera: string;
+            action: string;
+            characterVersionIds: string[];
+            /** Format: uuid */
+            sceneVersionId: string;
+            /** Format: uuid */
+            selectedImageVersionId?: string | null;
+            /** Format: uuid */
+            selectedVideoVersionId?: string | null;
+        };
+        /** SHOT Artifact content v2 */
+        "shot-v2.schema": {
+            order: number;
+            durationSeconds: number;
             description: string;
             camera: string;
             action: string;

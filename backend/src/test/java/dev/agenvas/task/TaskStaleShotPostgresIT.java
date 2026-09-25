@@ -89,7 +89,7 @@ class TaskStaleShotPostgresIT {
                 "Scene", sceneContent);
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 3000);
+        shotContent.put("durationSeconds", 3);
         shotContent.put("description", "Original");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Walk");

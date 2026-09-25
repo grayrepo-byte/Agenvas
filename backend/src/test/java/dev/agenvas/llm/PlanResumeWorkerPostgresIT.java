@@ -293,7 +293,7 @@ class PlanResumeWorkerPostgresIT {
                 "Ridge", scene).currentVersion().id();
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 1_000);
+        shotContent.put("durationSeconds", 1);
         shotContent.put("description", "A sunrise");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Pan");

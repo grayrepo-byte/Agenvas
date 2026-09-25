@@ -135,7 +135,7 @@ class PlanApprovalVersionPostgresIT {
                 "Ridge", scene).currentVersion().id();
         ObjectNode content = mapper.createObjectNode();
         content.put("order", 1);
-        content.put("durationMs", 1_000);
+        content.put("durationSeconds", 1);
         content.put("description", "One shot");
         content.put("camera", "Wide");
         content.put("action", "Move");

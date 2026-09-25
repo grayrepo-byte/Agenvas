@@ -276,7 +276,7 @@ class ArtifactPostgresIT {
         return json("""
                 {
                   "order":%d,
-                  "durationMs":5000,
+                  "durationSeconds":5,
                   "description":"Coffee shot",
                   "camera":"Dolly in",
                   "action":"Pour coffee",

@@ -210,22 +210,32 @@ public class UsageService {
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
             String operationKey) {
         ObjectNode quantity = mapper.createObjectNode();
+        boolean secondsV2 = task.input().path("schemaVersion").asInt(1) >= 2;
         switch (task.kind()) {
             case IMAGE_GENERATION -> {
                 quantity.put("imageCount", 1);
                 quantity.put("videoCount", 0);
-                quantity.put("videoSeconds", "0.000");
+                quantity.put("videoSeconds", secondsV2 ? "0" : "0.000");
                 quantity.put("exportCount", 0);
             }
             case VIDEO_GENERATION -> {
-                int durationMs = task.input().path("durationMs").asInt(-1);
-                if (durationMs < 100 || durationMs > 30_000) {
-                    throw new IllegalStateException("Approved video Task lacks pinned duration");
+                String durationText;
+                if (secondsV2) {
+                    JsonNode seconds = task.input().path("durationSeconds");
+                    if (!seconds.isInt() || seconds.intValue() < 1 || seconds.intValue() > 30) {
+                        throw new IllegalStateException("Approved video Task lacks pinned duration");
+                    }
+                    durationText = Integer.toString(seconds.intValue());
+                } else {
+                    int durationMs = task.input().path("durationMs").asInt(-1);
+                    if (durationMs < 100 || durationMs > 30_000) {
+                        throw new IllegalStateException("Approved video Task lacks pinned duration");
+                    }
+                    durationText = BigDecimal.valueOf(durationMs, 3).toPlainString();
                 }
                 quantity.put("imageCount", 0);
                 quantity.put("videoCount", 1);
-                quantity.put("videoSeconds",
-                        BigDecimal.valueOf(durationMs, 3).toPlainString());
+                quantity.put("videoSeconds", durationText);
                 quantity.put("exportCount", 0);
             }
             case MEDIA_EXPORT -> {

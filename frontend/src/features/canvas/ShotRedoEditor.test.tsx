@@ -28,8 +28,8 @@ describe("ShotRedoEditor", () => {
       currentVersionId: versionId, version: 3,
       createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
       currentVersion: {
-        id: versionId, versionNo: 4, schemaVersion: 1,
-        content: { order: 2, durationMs: 5000, description: "Old shot",
+        id: versionId, versionNo: 4, schemaVersion: 2,
+        content: { order: 2, durationSeconds: 5, description: "Old shot",
           camera: "Wide", action: "Pour", characterVersionIds: [],
           sceneVersionId: crypto.randomUUID() },
         inputReferences: [], createdByKind: "USER", runId: null,
@@ -48,7 +48,7 @@ describe("ShotRedoEditor", () => {
     expect(requests[0]).toMatchObject({
       expectedShotVersionId: versionId, expectedShotArtifactVersion: 3,
       description: "New second shot", camera: "Wide", action: "Pour",
-      durationMs: 5000, scene: { timeOfDay: "黄昏" },
+      durationSeconds: 5, scene: { timeOfDay: "黄昏" },
     });
     expect(await screen.findByRole("status")).toHaveTextContent("媒体计划仍需单独审批");
   });

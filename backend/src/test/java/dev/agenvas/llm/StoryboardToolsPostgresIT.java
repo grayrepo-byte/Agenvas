@@ -181,7 +181,7 @@ class StoryboardToolsPostgresIT {
             ObjectNode shot = shots.addObject();
             shot.put("title", "Shot " + index);
             shot.put("order", index);
-            shot.put("durationMs", 1_000);
+            shot.put("durationSeconds", 1);
             shot.put("description", "Action " + index);
             shot.put("camera", "Wide");
             shot.put("action", "Walk");

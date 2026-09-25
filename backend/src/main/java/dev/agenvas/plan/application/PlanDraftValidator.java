@@ -9,7 +9,6 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.application.TaskService;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -96,10 +95,10 @@ public class PlanDraftValidator {
         Map<String, StepDraft> byKey = new HashMap<>();
         Set<String> slots = new HashSet<>();
         ObjectNode snapshot = mapper.createObjectNode();
-        snapshot.put("schemaVersion", 1);
+        snapshot.put("schemaVersion", 2);
         ArrayNode pinned = snapshot.putArray("inputs");
         ArrayNode chosenKeyframes = snapshot.putArray("keyframeSelections");
-        int videoDurationMs = 0;
+        int videoDurationSeconds = 0;
         for (JsonNode supplied : suppliedSteps) {
             if (!supplied.isObject()) {
                 throw invalid("Each plan step must be an object");
@@ -117,6 +116,11 @@ public class PlanDraftValidator {
             UUID shotVersionId = requiredUuid(supplied, "shotVersionId");
             ArtifactVersion shot = pinnedVersion(context, run, shotArtifactId,
                     shotVersionId, Artifact.Kind.SHOT, pinned);
+            JsonNode duration = shot.content().path("durationSeconds");
+            if (!duration.isInt() || duration.intValue() < 1 || duration.intValue() > 30) {
+                throw invalid("请先将镜头时长调整为 1–30 的整数秒，再生成媒体计划");
+            }
+            int durationSeconds = duration.intValue();
             UUID imageArtifactId = null;
             UUID imageVersionId = null;
             Long keyframeSelectionVersion = null;
@@ -145,9 +149,8 @@ public class PlanDraftValidator {
                 chosen.put("shotVersionId", shotVersionId.toString());
                 chosen.put("imageVersionId", imageVersionId.toString());
                 chosen.put("selectionVersion", selection.version());
-                int durationMs = shot.content().path("durationMs").intValue();
-                workflows.requireVideoDuration(durationMs);
-                videoDurationMs = Math.addExact(videoDurationMs, durationMs);
+                workflows.requireVideoDuration(durationSeconds);
+                videoDurationSeconds = Math.addExact(videoDurationSeconds, durationSeconds);
             } else if (supplied.has("imageArtifactId") || supplied.has("imageVersionId")) {
                 throw invalid("Image plan cannot choose a video input keyframe");
             }
@@ -156,6 +159,7 @@ public class PlanDraftValidator {
                     ? requiredText(supplied, "negativePrompt", 8_000) : null;
             List<String> dependencies = dependencies(supplied.path("dependsOnStepKeys"));
             ObjectNode taskInput = mapper.createObjectNode();
+            taskInput.put("schemaVersion", 2);
             taskInput.put("shotArtifactId", shotArtifactId.toString());
             taskInput.put("shotVersionId", shotVersionId.toString());
             if (stage == ExecutionPlan.Stage.IMAGE
@@ -180,7 +184,7 @@ public class PlanDraftValidator {
                 taskInput.put("imageArtifactId", imageArtifactId.toString());
                 taskInput.put("imageVersionId", imageVersionId.toString());
                 taskInput.put("keyframeSelectionVersion", keyframeSelectionVersion.longValue());
-                taskInput.put("durationMs", shot.content().path("durationMs").intValue());
+                taskInput.put("durationSeconds", durationSeconds);
             }
             taskInput.put("prompt", prompt);
             if (negativePrompt != null) {
@@ -207,7 +211,7 @@ public class PlanDraftValidator {
                     step.outputSlotKey(), step.input(), step.dependencies()));
         }
         ObjectNode normalized = mapper.createObjectNode();
-        normalized.put("schemaVersion", 1);
+        normalized.put("schemaVersion", 2);
         normalized.put("stage", stage.name());
         normalized.put("objective", objective);
         ArrayNode normalizedSteps = normalized.putArray("steps");
@@ -221,7 +225,7 @@ public class PlanDraftValidator {
         ObjectNode estimate = mapper.createObjectNode();
         estimate.put("imageCount", stage == ExecutionPlan.Stage.IMAGE ? steps.size() : 0);
         estimate.put("videoCount", stage == ExecutionPlan.Stage.VIDEO ? steps.size() : 0);
-        estimate.put("videoSeconds", BigDecimal.valueOf(videoDurationMs, 3).toPlainString());
+        estimate.put("videoSeconds", Integer.toString(videoDurationSeconds));
         estimate.put("costSource", "mock".equals(provider.mode())
                 ? "MOCK_UNPRICED" : "PROVIDER_UNPRICED");
         return new Draft(stage, objective, normalized, snapshot, estimate,

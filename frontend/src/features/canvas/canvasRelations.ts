@@ -103,6 +103,8 @@ export function semanticConnectionRevision(items: CanvasItem[], connection: Conn
   const consumer = items.find((item) => item.id === connection.target)?.artifact;
   if (!reference || !consumer || reference.id === consumer.id) return null;
   const content = consumer.currentVersion.content;
+  // A selected v1 shot needs an explicit duration edit before a new v2 revision.
+  if ("durationMs" in content) return null;
   const versionId = reference.currentVersionId;
   let next: ReviseArtifactRequest["content"];
   if ((consumer.kind === "CHARACTER" || consumer.kind === "SCENE") &&
@@ -138,6 +140,7 @@ export function semanticReferenceRemoval(item: CanvasItem,
   const artifact = item.artifact;
   if (!artifact) return null;
   const content = artifact.currentVersion.content;
+  if ("durationMs" in content) return null;
   let next: ReviseArtifactRequest["content"];
   if ((artifact.kind === "CHARACTER" || artifact.kind === "SCENE") &&
       reference.role === "referenceImage" && reference.kind === "IMAGE" &&

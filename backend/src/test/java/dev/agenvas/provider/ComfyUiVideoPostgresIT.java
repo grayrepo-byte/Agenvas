@@ -140,7 +140,7 @@ class ComfyUiVideoPostgresIT {
                 "Scene", scene).currentVersion().id();
         ObjectNode shot = mapper.createObjectNode();
         shot.put("order", 1);
-        shot.put("durationMs", 5_000);
+        shot.put("durationSeconds", 5);
         shot.put("description", "Coffee pour");
         shot.put("camera", "Close");
         shot.put("action", "Pour coffee");

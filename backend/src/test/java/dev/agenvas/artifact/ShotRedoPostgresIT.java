@@ -108,7 +108,7 @@ class ShotRedoPostgresIT {
 
         ShotRedoService.Request change = new ShotRedoService.Request(
                 second.currentVersion().id(), second.artifact().version(),
-                "New second shot", "Close-up", "Pour slowly", 4500,
+                "New second shot", "Close-up", "Pour slowly", 5,
                 new ShotRedoService.SceneEdit(null, null, "Night", null, null));
         ShotRedoService.Result result = redo.revise(owner.userId(), project.id(),
                 second.artifact().id(), change);
@@ -212,7 +212,7 @@ class ShotRedoPostgresIT {
                 return redo.revise(owner.userId(), project.id(), second.artifact().id(),
                         new ShotRedoService.Request(beforeRace.currentVersion().id(),
                                 beforeRace.artifact().version(), "Concurrent second take",
-                                "Close-up", "Pour", null, null));
+                                "Close-up", "Pour", 5, null));
             });
             var mediaFuture = executor.submit(() -> {
                 ready.countDown();
@@ -268,7 +268,7 @@ class ShotRedoPostgresIT {
             UUID videoVersionId) {
         ObjectNode content = mapper.createObjectNode();
         content.put("order", order);
-        content.put("durationMs", 5000);
+        content.put("durationSeconds", 5);
         content.put("description", "Coffee shot");
         content.put("camera", "Dolly in");
         content.put("action", "Pour coffee");

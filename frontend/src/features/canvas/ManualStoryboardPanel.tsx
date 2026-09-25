@@ -25,7 +25,7 @@ export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
   const [lighting, setLighting] = useState("");
   const [style, setStyle] = useState("");
   const [order, setOrder] = useState(1);
-  const [durationMs, setDurationMs] = useState(3000);
+  const [durationSeconds, setDurationSeconds] = useState(3);
   const [camera, setCamera] = useState("");
   const [action, setAction] = useState("");
   const [sceneVersionId, setSceneVersionId] = useState("");
@@ -77,7 +77,7 @@ export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
     onError: onSaveError,
   });
 
-  /** Client form shapes mirror the server's version-one content schema. */
+  /** Client form shapes mirror the server's current content schemas. */
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = title.trim();
@@ -91,7 +91,8 @@ export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
         referenceVersionIds: [] } };
     } else {
       if (!sceneVersionId) return;
-      input = { kind, title: name, content: { order, durationMs,
+      if (!Number.isInteger(durationSeconds) || durationSeconds < 1 || durationSeconds > 30) return;
+      input = { kind, title: name, content: { order, durationSeconds,
         description: description.trim(), camera: camera.trim(), action: action.trim(),
         characterVersionIds, sceneVersionId } };
     }
@@ -139,9 +140,9 @@ export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
           <label className="block min-w-0 flex-1 text-sm font-medium">顺序（1–6）
             <input className="mt-1 w-full" type="number" min={1} max={6} required value={order}
               onChange={(event) => setOrder(Number(event.target.value))} /></label>
-          <label className="block min-w-0 flex-1 text-sm font-medium">时长（毫秒）
-            <input className="mt-1 w-full" type="number" min={100} max={30000} required
-              value={durationMs} onChange={(event) => setDurationMs(Number(event.target.value))} /></label>
+          <label className="block min-w-0 flex-1 text-sm font-medium">时长（秒）
+            <input className="mt-1 w-full" type="number" min={1} max={30} step={1} required
+              value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))} /></label>
         </div>
         <label className="block text-sm font-medium">镜头语言<input className="mt-1 w-full"
           maxLength={1000} required value={camera} onChange={(event) => setCamera(event.target.value)} /></label>

@@ -8,13 +8,14 @@ export function ShotRedoEditor({ artifact }: { artifact: Artifact }) {
   const [description, setDescription] = useState(readText(artifact.currentVersion.content, "description"));
   const [camera, setCamera] = useState(readText(artifact.currentVersion.content, "camera"));
   const [action, setAction] = useState(readText(artifact.currentVersion.content, "action"));
-  const [durationMs, setDurationMs] = useState(readNumber(artifact.currentVersion.content, "durationMs"));
+  const [durationSeconds, setDurationSeconds] = useState(
+    readNumber(artifact.currentVersion.content, "durationSeconds"));
   const [sceneTime, setSceneTime] = useState("");
   const revise = useMutation({
     mutationFn: () => reviseShotForRedo(artifact.projectId, artifact.id, {
       expectedShotVersionId: artifact.currentVersionId,
       expectedShotArtifactVersion: artifact.version,
-      description, camera, action, durationMs,
+      description, camera, action, durationSeconds,
       ...(sceneTime.trim() ? { scene: { timeOfDay: sceneTime.trim() } } : {}),
     }),
     onSuccess: async () => {
@@ -25,7 +26,9 @@ export function ShotRedoEditor({ artifact }: { artifact: Artifact }) {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    revise.mutate();
+    if (Number.isInteger(durationSeconds) && durationSeconds >= 1 && durationSeconds <= 30) {
+      revise.mutate();
+    }
   }
 
   return <details className="nodrag nowheel mt-3 border-t border-[var(--line)] pt-2 text-xs">
@@ -38,11 +41,12 @@ export function ShotRedoEditor({ artifact }: { artifact: Artifact }) {
         required value={camera} /></label>
       <label className="block">动作<input maxLength={2000} onChange={(event) => setAction(event.target.value)}
         required value={action} /></label>
-      <label className="block">时长（毫秒）<input min={100} max={30000} onChange={(event) =>
-        setDurationMs(Number(event.target.value))} required type="number" value={durationMs} /></label>
+      <label className="block">时长（秒）<input min={1} max={30} step={1} onChange={(event) =>
+        setDurationSeconds(Number(event.target.value))} required type="number" value={durationSeconds} /></label>
       <label className="block">新场景时间（可选）<input maxLength={80}
         onChange={(event) => setSceneTime(event.target.value)} placeholder="例如：黄昏" value={sceneTime} /></label>
-      <button className="node-action" disabled={revise.isPending} type="submit">
+      <button className="node-action" disabled={revise.isPending
+        || !Number.isInteger(durationSeconds) || durationSeconds < 1 || durationSeconds > 30} type="submit">
         {revise.isPending ? "保存新版本中…" : "保存局部修改"}
       </button>
     </form>

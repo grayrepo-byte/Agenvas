@@ -102,7 +102,7 @@ public class ArtifactContentValidator {
         allowOnly(
                 content,
                 "order",
-                "durationMs",
+                "durationSeconds",
                 "description",
                 "camera",
                 "action",
@@ -111,7 +111,7 @@ public class ArtifactContentValidator {
                 "selectedImageVersionId",
                 "selectedVideoVersionId");
         requireInteger(content, "order", 1, 6);
-        requireInteger(content, "durationMs", 100, 30_000);
+        requireInteger(content, "durationSeconds", 1, 30);
         requireText(content, "description", 1, 4_000);
         requireText(content, "camera", 1, 1_000);
         requireText(content, "action", 1, 2_000);

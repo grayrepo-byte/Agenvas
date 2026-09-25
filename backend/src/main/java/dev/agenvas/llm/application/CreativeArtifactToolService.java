@@ -32,7 +32,7 @@ public class CreativeArtifactToolService {
             "name", "location", "timeOfDay", "lighting", "style", "referenceVersionIds");
     /** 镜头正文允许字段；素材关系必须指向可见的角色和场景版本。 */
     private static final Set<String> SHOT_FIELDS = Set.of(
-            "title", "order", "durationMs", "description", "camera", "action",
+            "title", "order", "durationSeconds", "description", "camera", "action",
             "characterVersionIds", "sceneVersionId");
     /** Agent 修订请求允许字段，预期版本用于保护并发编辑。 */
     private static final Set<String> REVISE_FIELDS = Set.of(
@@ -101,8 +101,8 @@ public class CreativeArtifactToolService {
             if (!order.isInt() || order.intValue() != index + 1) {
                 throw invalid("Shot order must be contiguous and start at one");
             }
-            JsonNode duration = shot.path("durationMs");
-            if (!duration.isInt() || duration.intValue() < 100 || duration.intValue() > 30_000) {
+            JsonNode duration = shot.path("durationSeconds");
+            if (!duration.isInt() || duration.intValue() < 1 || duration.intValue() > 30) {
                 throw invalid("Shot duration is out of range");
             }
             requiredText(shot, "description", 4_000);

@@ -139,7 +139,7 @@ class ExportProposalPostgresIT {
                 "Studio", sceneContent);
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 1000);
+        shotContent.put("durationSeconds", 1);
         shotContent.put("description", "Opening");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Introduce the room");
