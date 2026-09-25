@@ -48,7 +48,11 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(
         classes = AgenvasApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "agenvas.identity.bootstrap-secret=stream-integration-bootstrap-secret")
+        properties = {
+            "agenvas.identity.bootstrap-secret=stream-integration-bootstrap-secret",
+            // 生产心跳为 15 秒；这里缩短，否则每轮等待失效连接回收要花几十秒。
+            "agenvas.sse.heartbeat-interval=200ms"
+        })
 class ProjectEventStreamPostgresIT {
 
     @Container

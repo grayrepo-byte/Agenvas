@@ -49,8 +49,6 @@ public class ProjectEventHub {
     static final int MAX_PENDING_PER_SUBSCRIBER = 128;
     /** 单次项目轮询最多读取的持久化事件数。 */
     private static final int POLL_PAGE = 64;
-    /** 无事件连接的心跳间隔。 */
-    private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(15);
     /** 项目事件过期清理调度间隔。 */
     private static final Duration PRUNE_INTERVAL = Duration.ofHours(1);
     /** 单个 SSE 异步响应的最大存活时长。 */
@@ -60,6 +58,8 @@ public class ProjectEventHub {
     private final ProjectEventService events;
     /** 生成心跳及发送延迟测量的时间。 */
     private final Clock clock;
+    /** 无事件连接的心跳间隔；同时是失效连接的回收延迟上限，来自服务端配置。 */
+    private final Duration heartbeatInterval;
     /** 统计关闭连接、发送失败及事件投递延迟。 */
     private final Counter closedConnections;
     /** 客户端发送异常或已结束的响应数。 */
@@ -87,9 +87,11 @@ public class ProjectEventHub {
     private volatile Instant lastPrune;
 
     /** 注册连接、发送错误和投递延迟指标，并初始化清理调度基准时间。 */
-    public ProjectEventHub(ProjectEventService events, Clock clock, MeterRegistry meters) {
+    public ProjectEventHub(
+            ProjectEventService events, Clock clock, SseProperties sse, MeterRegistry meters) {
         this.events = events;
         this.clock = clock;
+        this.heartbeatInterval = sse.heartbeatInterval();
         this.lastPrune = clock.instant();
         Gauge.builder("agenvas.sse.connections.active", subscriberCount, AtomicInteger::get)
                 .description("Open project event SSE responses")
@@ -160,7 +162,8 @@ public class ProjectEventHub {
                     true);
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
-        Subscriber subscriber = new Subscriber(projectId, afterSequence, emitter);
+        Subscriber subscriber =
+                new Subscriber(projectId, afterSequence, emitter, heartbeatInterval);
         emitter.onCompletion(() -> close(subscriber, false));
         emitter.onTimeout(() -> close(subscriber, false));
         emitter.onError(error -> close(subscriber, false));
@@ -368,6 +371,8 @@ public class ProjectEventHub {
         private final UUID projectId;
         /** Spring MVC 管理的异步 SSE 响应。 */
         private final SseEmitter emitter;
+        /** 该连接的心跳节流间隔；跟随服务端配置，测试可缩短以加快回收验证。 */
+        private final Duration heartbeatInterval;
         /** 等待写出的事件、心跳或游标过期控制帧。 */
         private final ArrayDeque<Frame> pending = new ArrayDeque<>();
         /** 防止并发线程为同一订阅者启动多个发送循环。 */
@@ -382,10 +387,15 @@ public class ProjectEventHub {
         private boolean cursorGap;
 
         /** 初始补发游标表示客户端已处理到 afterSequence。 */
-        Subscriber(UUID projectId, long afterSequence, SseEmitter emitter) {
+        Subscriber(
+                UUID projectId,
+                long afterSequence,
+                SseEmitter emitter,
+                Duration heartbeatInterval) {
             this.projectId = projectId;
             this.queuedThrough = afterSequence;
             this.emitter = emitter;
+            this.heartbeatInterval = heartbeatInterval;
         }
 
         /** 游标只推进到已连续入队的最后序号，不能越过尚未排入的事件。 */
@@ -422,7 +432,7 @@ public class ProjectEventHub {
 
         /** 仅无游标缺口且超过间隔时入队心跳，不挤占已满队列。 */
         private synchronized boolean offerHeartbeat(Instant now) {
-            if (closed.get() || cursorGap || now.isBefore(lastHeartbeat.plus(HEARTBEAT_INTERVAL))) {
+            if (closed.get() || cursorGap || now.isBefore(lastHeartbeat.plus(heartbeatInterval))) {
                 return false;
             }
             if (pending.size() >= MAX_PENDING_PER_SUBSCRIBER) {

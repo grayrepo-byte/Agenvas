@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import dev.agenvas.event.domain.ProjectEvent;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.List;
@@ -21,6 +22,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Verifies a stalled SSE client cannot retain more than the configured event frame cap. */
 class ProjectEventHubTest {
+
+    /** 单元测试不依赖真实心跳等待，取生产默认间隔。 */
+    private static final SseProperties SSE = new SseProperties(Duration.ofSeconds(15));
 
     /** A committed hint reads durable rows immediately without waiting for the fallback tick. */
     @Test
@@ -37,7 +41,7 @@ class ProjectEventHubTest {
         });
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
-            ProjectEventHub hub = new ProjectEventHub(events, Clock.systemUTC(), meters);
+            ProjectEventHub hub = new ProjectEventHub(events, Clock.systemUTC(), SSE, meters);
             try {
                 hub.subscribe(ownerId, projectId, 0);
                 hub.onCommitted(new ProjectEventCommitted(projectId));
@@ -56,7 +60,7 @@ class ProjectEventHubTest {
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
             ProjectEventHub hub = new ProjectEventHub(mock(ProjectEventService.class),
-                    Clock.systemUTC(), meters);
+                    Clock.systemUTC(), SSE, meters);
             hub.subscribe(UUID.randomUUID(), UUID.randomUUID(), 0);
             assertThat(meters.get("agenvas.sse.connections.active").gauge().value())
                     .isEqualTo(1);
@@ -87,8 +91,8 @@ class ProjectEventHubTest {
     @Test
     void pendingFramesHaveAHardLimit() {
         UUID projectId = UUID.randomUUID();
-        ProjectEventHub.Subscriber subscriber =
-                new ProjectEventHub.Subscriber(projectId, 0, new SseEmitter());
+        ProjectEventHub.Subscriber subscriber = new ProjectEventHub.Subscriber(
+                projectId, 0, new SseEmitter(), SSE.heartbeatInterval());
         ObjectMapper mapper = new ObjectMapper();
         for (int sequence = 1; sequence <= ProjectEventHub.MAX_PENDING_PER_SUBSCRIBER; sequence++) {
             assertThat(subscriber.offerEvent(event(projectId, sequence, mapper)))
