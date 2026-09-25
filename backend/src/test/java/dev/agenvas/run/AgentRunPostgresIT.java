@@ -334,7 +334,7 @@ class AgentRunPostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .isEqualTo("40");
+                .isEqualTo("44");
 
         Project httpProject = projectService.create(owner.userId(), "HTTP replay project",
                 Project.AspectRatio.LANDSCAPE_16_9);

@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { ApiError, reviseArtifact, type Artifact,
+import { ApiError, reviseArtifact,
   type ReviseArtifactRequest } from "../../shared/api/client";
+import type { VersionedArtifact } from "./versionedArtifact";
 
 /** Edits user-authored TEXT/CHARACTER/SCENE fields while preserving exact media references. */
-export function StructuredArtifactEditor({ artifact }: { artifact: Artifact }) {
+export function StructuredArtifactEditor({ artifact }: { artifact: VersionedArtifact }) {
   const queryClient = useQueryClient();
   const content = artifact.currentVersion.content;
   const [name, setName] = useState(readText(content, "name"));

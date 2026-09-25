@@ -3,6 +3,7 @@ package dev.agenvas.artifact.infrastructure;
 import dev.agenvas.artifact.application.ArtifactRepository;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.MediaDraft;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -121,6 +122,84 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .param("createdAt", utc(artifact.createdAt()))
                 .param("updatedAt", utc(artifact.updatedAt()))
                 .update();
+    }
+
+    @Override
+    public void createMediaDraft(UUID projectId, UUID artifactId, String prompt,
+            MediaDraft.DisplayMode displayMode, Instant now) {
+        jdbcClient.sql("""
+                        insert into media_draft (
+                            project_id, artifact_id, prompt, display_mode,
+                            version, created_at, updated_at
+                        ) values (:projectId, :artifactId, :prompt, :displayMode, 0, :now, :now)
+                        """)
+                .param("projectId", projectId)
+                .param("artifactId", artifactId)
+                .param("prompt", prompt)
+                .param("displayMode", displayMode.name())
+                .param("now", utc(now))
+                .update();
+    }
+
+    @Override
+    public Optional<MediaDraft> findMediaDraft(UUID projectId, UUID artifactId) {
+        return jdbcClient.sql("""
+                        select project_id, artifact_id, prompt, input_image_version_id,
+                               duration_seconds, capability_id, display_mode,
+                               version, created_at, updated_at
+                        from media_draft
+                        where project_id = :projectId and artifact_id = :artifactId
+                        """)
+                .param("projectId", projectId)
+                .param("artifactId", artifactId)
+                .query((rs, row) -> new MediaDraft(
+                        rs.getObject("project_id", UUID.class),
+                        rs.getObject("artifact_id", UUID.class),
+                        rs.getString("prompt"),
+                        rs.getObject("input_image_version_id", UUID.class),
+                        rs.getObject("duration_seconds", Integer.class),
+                        rs.getObject("capability_id", UUID.class),
+                        MediaDraft.DisplayMode.valueOf(rs.getString("display_mode")),
+                        rs.getLong("version"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant(),
+                        rs.getObject("updated_at", OffsetDateTime.class).toInstant()))
+                .optional();
+    }
+
+    @Override
+    public boolean updateMediaDraft(MediaDraft draft, long expectedVersion) {
+        return jdbcClient.sql("""
+                        update media_draft
+                        set prompt = :prompt,
+                            input_image_version_id = :inputImageVersionId,
+                            duration_seconds = :durationSeconds,
+                            capability_id = :capabilityId,
+                            display_mode = 'DRAFT',
+                            version = version + 1, updated_at = :updatedAt
+                        where project_id = :projectId and artifact_id = :artifactId
+                          and version = :expectedVersion
+                        """)
+                .param("prompt", draft.prompt())
+                .param("inputImageVersionId", draft.inputImageVersionId(), java.sql.Types.OTHER)
+                .param("durationSeconds", draft.durationSeconds(), java.sql.Types.INTEGER)
+                .param("capabilityId", draft.capabilityId(), java.sql.Types.OTHER)
+                .param("updatedAt", utc(draft.updatedAt()))
+                .param("projectId", draft.projectId())
+                .param("artifactId", draft.artifactId())
+                .param("expectedVersion", expectedVersion)
+                .update() == 1;
+    }
+
+    @Override
+    public void setMediaDraftDisplayMode(UUID projectId, UUID artifactId,
+            MediaDraft.DisplayMode mode, Instant now) {
+        int changed = jdbcClient.sql("""
+                update media_draft set display_mode=:mode, updated_at=:now
+                where project_id=:projectId and artifact_id=:artifactId
+                """)
+                .param("mode", mode.name()).param("now", utc(now))
+                .param("projectId", projectId).param("artifactId", artifactId).update();
+        if (changed != 1) throw new IllegalStateException("Media draft missing");
     }
 
     /** 锁定指定所有者项目中的产物行，供追加版本与选择 CAS 使用。 */

@@ -115,8 +115,12 @@ public class UsageService {
     /** 在已鉴权的审批事务中，每创建一个媒体任务后写入对应预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveMediaTask(UUID ownerId, Task task, String costSource) {
-        if (task.planId() == null || task.runId() == null) {
-            throw new IllegalArgumentException("Approved media Task requires plan and Run IDs");
+        boolean agentMedia = task.planId() != null && task.runId() != null;
+        boolean directMedia = task.planId() == null && task.runId() == null
+                && (task.kind() == Task.Kind.IMAGE_GENERATION
+                        || task.kind() == Task.Kind.VIDEO_GENERATION);
+        if (!agentMedia && !directMedia) {
+            throw new IllegalArgumentException("Media reservation requires Agent plan or direct media Task");
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RESERVATION,
                 costSource, "media:" + task.id() + ":reserve"));
@@ -125,7 +129,8 @@ public class UsageService {
     /** 仅在带 fencing 校验的媒体结果同事务提交后结算。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task) {
-        if (task.planId() == null) return;
+        if (task.kind() != Task.Kind.IMAGE_GENERATION
+                && task.kind() != Task.Kind.VIDEO_GENERATION) return;
         UsageEntry reservation = ledger.findByOperationKey(
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
                 new IllegalStateException("Approved Task has no media usage reservation"));

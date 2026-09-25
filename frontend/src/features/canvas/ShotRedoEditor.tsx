@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { reviseShotForRedo, type Artifact } from "../../shared/api/client";
+import { reviseShotForRedo } from "../../shared/api/client";
+import type { VersionedArtifact } from "./versionedArtifact";
 
 /** Edits one exact shot version while leaving sibling shot references untouched. */
-export function ShotRedoEditor({ artifact }: { artifact: Artifact }) {
+export function ShotRedoEditor({ artifact }: { artifact: VersionedArtifact }) {
   const queryClient = useQueryClient();
   const [description, setDescription] = useState(readText(artifact.currentVersion.content, "description"));
   const [camera, setCamera] = useState(readText(artifact.currentVersion.content, "camera"));

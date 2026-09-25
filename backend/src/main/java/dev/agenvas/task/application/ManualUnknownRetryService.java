@@ -17,6 +17,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -134,6 +135,11 @@ public class ManualUnknownRetryService {
             if (repository.findManualReplacement(projectId, originalTaskId).isPresent()) {
                 throw conflict("该 UNKNOWN 任务已有新尝试，请刷新任务列表。");
             }
+            if (original.runId() == null && original.planId() == null
+                    && original.kind() != Task.Kind.MEDIA_EXPORT) {
+                return ProjectEventService.Change.unchanged(retryDirect(ownerId, projectId,
+                        original, expectedTaskVersion, idempotencyKey));
+            }
             if (original.version() != expectedTaskVersion
                     || original.status() != Task.Status.UNKNOWN || original.cancelRequested()
                     || original.providerRequestId() != null || original.planId() == null
@@ -155,6 +161,9 @@ public class ManualUnknownRetryService {
                     .findFirst().orElse(null);
             MediaCapabilityBinding originalBinding = repository.mediaBinding(original.id())
                     .orElse(null);
+            if (originalBinding != null && originalBinding.adapterId().startsWith("COMFY_")) {
+                throw conflict("ComfyUI 全局单槽仍被原 UNKNOWN 请求占用；请先核对原请求。");
+            }
             int durationSeconds = original.kind() == Task.Kind.VIDEO_GENERATION
                     ? original.input().path("durationSeconds").asInt(-1) : 0;
             boolean currentProvider = originalBinding == null
@@ -191,9 +200,9 @@ public class ManualUnknownRetryService {
                         || !current.currentVersionId().equals(target.expectedCurrentVersionId())) {
                     throw conflict("媒体目标版本已变化，不能沿用原批准。");
                 }
-                replacement = tasks.createMediaTask(ownerId, projectId, run.id(), plan.id(),
+                replacement = tasks.createMediaRetryTask(ownerId, projectId, run.id(), plan.id(),
                         original.stepKey(), original.kind(), original.input(), original.providerId(),
-                        original.attemptNo() + 1, dependencies, target.artifactId());
+                        original.attemptNo() + 1, dependencies, target.artifactId(), original.id());
             } else {
                 replacement = tasks.createMediaTaskForNewOutput(ownerId, projectId, run.id(),
                         plan.id(), original.stepKey(), original.kind(), original.input(),
@@ -227,6 +236,54 @@ public class ManualUnknownRetryService {
             }
             return ProjectEventService.Change.unchanged(replacement);
         }).value();
+    }
+
+    /** A direct UNKNOWN replacement keeps the old fixed input and a separate reservation. */
+    private Task retryDirect(UUID ownerId, UUID projectId, Task original,
+            long expectedTaskVersion, String idempotencyKey) {
+        if (original.version() != expectedTaskVersion
+                || original.status() != Task.Status.UNKNOWN || original.cancelRequested()
+                || original.providerRequestId() != null
+                || (original.kind() != Task.Kind.IMAGE_GENERATION
+                        && original.kind() != Task.Kind.VIDEO_GENERATION)) {
+            throw conflict("原任务状态或版本已变化，请先核对原请求。");
+        }
+        projects.requireActiveProject(ownerId, projectId);
+        MediaCapabilityBinding binding = repository.mediaBinding(original.id())
+                .orElseThrow(() -> conflict("原媒体能力不可用，不能创建新尝试。"));
+        if (binding.adapterId().startsWith("COMFY_")) {
+            throw conflict("ComfyUI 全局单槽仍被原 UNKNOWN 请求占用；请先核对原请求。");
+        }
+        int seconds = original.kind() == Task.Kind.VIDEO_GENERATION
+                ? original.input().path("durationSeconds").asInt(-1) : 0;
+        if (!mediaCapabilities.isCurrentBinding(binding, original.kind(), seconds)) {
+            throw conflict("媒体能力已变化，请创建新的草稿任务。");
+        }
+        TaskRepository.ArtifactTarget target = repository.findArtifactTarget(original.id())
+                .orElseThrow(() -> conflict("原任务缺少固定输出目标。"));
+        if (target.artifactId() == null) {
+            throw conflict("直接任务必须绑定一张媒体卡片。");
+        }
+        Artifact card = artifacts.get(ownerId, projectId, target.artifactId()).artifact();
+        if (card.archivedAt() != null) throw conflict("卡片已归档，不能新尝试。");
+        Instant now = clock.instant();
+        Task replacement = new Task(UUID.randomUUID(), projectId, null, null,
+                "retry." + original.id() + "." + (original.attemptNo() + 1),
+                original.kind(), Task.Status.READY, false, original.input().deepCopy(),
+                original.inputHash(), null, original.providerId(), null,
+                original.attemptNo() + 1, now, null, null, 0, 0, null, now, now, null);
+        repository.create(replacement, List.of());
+        repository.bindMediaTask(replacement.id(), binding);
+        repository.createArtifactTarget(new TaskRepository.ArtifactTarget(replacement.id(),
+                projectId, target.artifactId(), target.expectedCurrentVersionId(),
+                target.expectedArtifactVersion(), null));
+        usage.reserveMediaTask(ownerId, replacement, "PROVIDER_UNPRICED");
+        repository.createManualReplacement(new TaskRepository.ManualReplacement(projectId,
+                original.id(), replacement.id(), ownerId, expectedTaskVersion,
+                idempotencyKey, now));
+        events.append(ownerId, projectId, statusEvent(original, replacement.id()));
+        events.append(ownerId, projectId, statusEvent(replacement, null));
+        return replacement;
     }
 
     /** 被替换的 UNKNOWN 任务只作为审计历史；其他未替换 UNKNOWN 或失败任务仍阻止恢复 Run。 */

@@ -3,8 +3,10 @@ import { useRef, useState } from "react";
 import { createManualUnknownAttempt, listProviderAttempts, reconcileUnknownTask } from "../../shared/api/client";
 
 /** Fetches only on demand; a request key is an audit clue, never proof of acceptance. */
-export function UnknownTaskAttemptPanel({ projectId, taskId, taskVersion, planned, cancelRequested }: {
-  projectId: string; taskId: string; taskVersion: number; planned: boolean; cancelRequested: boolean;
+export function UnknownTaskAttemptPanel({ projectId, taskId, taskVersion, planned,
+  direct = false, cancelRequested }: {
+  projectId: string; taskId: string; taskVersion: number; planned: boolean;
+  direct?: boolean; cancelRequested: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
@@ -23,6 +25,7 @@ export function UnknownTaskAttemptPanel({ projectId, taskId, taskVersion, planne
         queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId, taskId] }),
         queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] }),
       ]);
     },
   });
@@ -41,6 +44,7 @@ export function UnknownTaskAttemptPanel({ projectId, taskId, taskVersion, planne
         queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] }),
       ]);
     },
   });
@@ -74,7 +78,7 @@ export function UnknownTaskAttemptPanel({ projectId, taskId, taskVersion, planne
       {reconcile.data?.outcome === "NO_EVIDENCE" ? <p role="status">原实例暂未找到该 ID；任务仍为 UNKNOWN，不能据此重新生成。</p> : null}
       {reconcile.data?.outcome === "RESUMED" ? <p role="status">已找到原请求，恢复对原 ID 的轮询；没有重新提交生成。</p> : null}
       {reconcile.error ? <p className="text-red-700" role="alert">原请求核对失败；任务仍未确认，请检查 Provider 配置或稍后重试核对。</p> : null}
-      {planned && !cancelRequested && attempts.data && !replaced && !newAttempt.data ? <div className="mt-3 rounded border border-red-300 p-2">
+      {(planned || direct) && !cancelRequested && attempts.data && !replaced && !newAttempt.data ? <div className="mt-3 rounded border border-red-300 p-2">
         <label className="flex items-start gap-2"><input checked={riskAccepted} onChange={(event) => setRiskAccepted(event.target.checked)} type="checkbox" />
           <span>我理解原请求可能已执行；创建新尝试可能重复产生费用。原任务、提交账本和用量预留仍保留，取消不代表外部停止或退款。</span>
         </label>

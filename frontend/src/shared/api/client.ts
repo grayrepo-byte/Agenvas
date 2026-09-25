@@ -12,6 +12,11 @@ export type ProjectEvent = components["schemas"]["ProjectEvent"];
 export type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
 export type UpdateProjectRequest = components["schemas"]["UpdateProjectRequest"];
 export type Artifact = components["schemas"]["Artifact"];
+export type ArtifactList = components["schemas"]["ArtifactList"];
+export type MediaDraft = components["schemas"]["MediaDraft"];
+export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
+export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
+export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
 export type Asset = components["schemas"]["Asset"];
 export type ArtifactVersionList = components["schemas"]["ArtifactVersionList"];
 export type CreateArtifactRequest = components["schemas"]["CreateArtifactRequest"];
@@ -52,6 +57,7 @@ export type CreateMediaConnectionRequest = components["schemas"]["CreateMediaCon
 export type UpdateMediaConnectionRequest = components["schemas"]["UpdateMediaConnectionRequest"];
 export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCapabilityRequest"];
 export type UpdateMediaCapabilityRequest = components["schemas"]["UpdateMediaCapabilityRequest"];
+export type UpdateMediaConcurrencyRequest = components["schemas"]["UpdateMediaConcurrencyRequest"];
 export type SetMediaDefaultRequest = components["schemas"]["SetMediaDefaultRequest"];
 export type MediaCapabilityCandidate = components["schemas"]["MediaCapabilityCandidate"];
 export type ReviseExecutionPlanStepRequest = components["schemas"]["ReviseExecutionPlanStepRequest"];
@@ -195,6 +201,14 @@ export async function updateMediaCapability(connectionId: string, capabilityId: 
   });
 }
 
+export async function updateMediaConcurrency(connectionId: string, capabilityId: string,
+  input: UpdateMediaConcurrencyRequest): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(
+    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}/concurrency`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
 export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION",
   input: SetMediaDefaultRequest): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-defaults/${kind}`, {
@@ -310,6 +324,54 @@ export async function getArtifact(projectId: string, artifactId: string): Promis
     `/api/v1/projects/${projectId}/artifacts/${artifactId}`,
     "无法读取产物",
   );
+}
+
+/** Lists project resources independently of which CanvasItems are currently visible. */
+export async function listArtifacts(projectId: string): Promise<ArtifactList> {
+  return readJson<ArtifactList>(`/api/v1/projects/${projectId}/artifacts`, "无法读取项目资源");
+}
+
+/** Loads the editable generation input independently of the selected media result. */
+export async function getMediaDraft(projectId: string, artifactId: string): Promise<MediaDraft> {
+  return readJson<MediaDraft>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/draft`,
+    "无法读取媒体草稿",
+  );
+}
+
+/** Saves the complete working draft with its own optimistic version. */
+export async function saveMediaDraft(projectId: string, artifactId: string,
+  input: SaveMediaDraftRequest): Promise<MediaDraft> {
+  return writeJson<MediaDraft>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/draft`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+/** The saved draft is fixed into a direct media Task on one explicit click. */
+export async function runMediaDraft(projectId: string, artifactId: string,
+  input: RunMediaDraftRequest, idempotencyKey: string): Promise<Task> {
+  return writeJson<Task>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/run`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input) },
+  );
+}
+
+export async function listDirectMediaTasks(projectId: string, artifactId: string): Promise<Task[]> {
+  return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run`,
+    "无法读取卡片任务");
+}
+
+export async function cancelQueuedDirectMediaTask(projectId: string, taskId: string): Promise<Task> {
+  return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/cancel-queued`,
+    { method: "POST" });
+}
+
+export async function getDirectMediaQueueStatus(projectId: string,
+  taskId: string): Promise<DirectMediaQueueStatus> {
+  return readJson<DirectMediaQueueStatus>(
+    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`, "无法读取排队状态");
 }
 
 /** Appends and selects a complete content revision with optimistic concurrency. */

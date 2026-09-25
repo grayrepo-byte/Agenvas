@@ -251,6 +251,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}/concurrency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 管理员按能力版本设置全局媒体并发上限 */
+        put: operations["updateMediaCapabilityConcurrency"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/media-defaults/{kind}": {
         parameters: {
             query?: never;
@@ -492,7 +512,8 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** 列出项目产物，包括不在画布上的媒体草稿与历史产物 */
+        get: operations["listArtifacts"];
         put?: never;
         /** 幂等创建产物及首个不可变版本 */
         post: operations["createArtifact"];
@@ -514,6 +535,88 @@ export interface paths {
         };
         /** 获取产物及当前选用版本 */
         get: operations["getArtifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        /** 读取独立于已选结果的图片或视频工作草稿 */
+        get: operations["getMediaDraft"];
+        /** 按独立版本号保存媒体工作草稿 */
+        put: operations["saveMediaDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        /** 查询此卡片最近的直接媒体任务 */
+        get: operations["listDirectMediaTasks"];
+        put?: never;
+        /** 固定已保存的媒体草稿并直接受理 USER_DIRECT Task */
+        post: operations["runMediaDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消尚未提交到 Provider 的直接媒体任务并释放预留 */
+        post: operations["cancelQueuedDirectMediaTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/tasks/{taskId}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        /** 读取直接任务的动态排队原因和前方等待数 */
+        get: operations["getDirectMediaQueueStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1161,6 +1264,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
+            /** @description COMFYUI local origin or optional OPENAI HTTPS API base URL; null uses the official OpenAI /v1 base. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -1181,10 +1285,11 @@ export interface components {
             kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
             minimumSeconds: number;
             maximumSeconds: number;
+            maxConcurrent: number;
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
-        /** @description Fixed adapters accept only their declared settings; model IDs and endpoints are not editable. */
+        /** @description Fixed adapters accept only their declared settings; model IDs are not editable. OPENAI base URL belongs to the versioned connection. */
         FixedMediaAdapterSettings: {
             checkpoint?: string;
             diffusionModel?: string;
@@ -1206,6 +1311,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
+            /** @description Required local COMFYUI origin or optional OPENAI HTTPS API base URL. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1214,6 +1320,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
+            /** @description Required local COMFYUI origin or optional OPENAI HTTPS API base URL. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1229,6 +1336,11 @@ export interface components {
             enabled: boolean;
             adapterId: string;
             settings?: components["schemas"]["FixedMediaAdapterSettings"];
+        };
+        UpdateMediaConcurrencyRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            maxConcurrent: number;
         };
         SetMediaDefaultRequest: {
             /** Format: int64 */
@@ -1600,7 +1712,48 @@ export interface components {
         CreateArtifactRequest: {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
-            content: components["schemas"]["WritableArtifactContent"];
+            /** @description IMAGE/VIDEO 可为 null，此时创建有稳定身份、独立空草稿且尚无结果版本的产物。 */
+            content: components["schemas"]["WritableArtifactContent"] | null;
+        };
+        SaveMediaDraftRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            prompt: string;
+            /** Format: uuid */
+            inputImageVersionId?: string | null;
+            durationSeconds?: number | null;
+            /** Format: uuid */
+            capabilityId?: string | null;
+        };
+        RunMediaDraftRequest: {
+            /** Format: int64 */
+            expectedDraftVersion: number;
+        };
+        DirectMediaQueueStatus: {
+            /** Format: int64 */
+            waitingAhead: number;
+            /** @enum {string} */
+            reason: "NOT_QUEUED" | "WAITING_WORKER" | "PROJECT_CAPACITY" | "CAPABILITY_CAPACITY" | "COMFY_SINGLE_SLOT";
+        };
+        MediaDraft: {
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            artifactId: string;
+            prompt: string;
+            /** Format: uuid */
+            inputImageVersionId: string | null;
+            durationSeconds: number | null;
+            /** Format: uuid */
+            capabilityId: string | null;
+            /** @enum {string} */
+            displayMode: "DRAFT" | "RESULT";
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         ReviseArtifactRequest: {
             /** Format: int64 */
@@ -1644,17 +1797,20 @@ export interface components {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
             /** Format: uuid */
-            currentVersionId: string;
+            currentVersionId: string | null;
             /** Format: int64 */
             version: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
-            currentVersion: components["schemas"]["ArtifactVersion"];
+            currentVersion: components["schemas"]["ArtifactVersion"] | null;
         };
         ArtifactVersionList: {
             items: components["schemas"]["ArtifactVersion"][];
+        };
+        ArtifactList: {
+            items: components["schemas"]["Artifact"][];
         };
         AgentBindingRequest: {
             /** Format: uuid */
@@ -2830,6 +2986,37 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    updateMediaCapabilityConcurrency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaConcurrencyRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     setMediaDefault: {
         parameters: {
             query?: never;
@@ -3282,6 +3469,30 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listArtifacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目产物列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     createArtifact: {
         parameters: {
             query?: never;
@@ -3335,6 +3546,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Artifact"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMediaDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前工作草稿 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDraft"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveMediaDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveMediaDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存的草稿 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDirectMediaTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近任务，新任务在前 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runMediaDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunMediaDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或返回同一卡片正在执行的任务；无需审批 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelQueuedDirectMediaTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消的任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDirectMediaQueueStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 排队位置仅供参考，可能随容量和取消操作变化 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectMediaQueueStatus"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

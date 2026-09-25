@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact } from "../../shared/api/client";
+import type { VersionedArtifact } from "./versionedArtifact";
 import { server } from "../../test/server";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
@@ -12,7 +12,7 @@ import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
 const now = "2026-09-24T00:00:00Z";
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
-function artifact(kind: "CHARACTER" | "SCENE" | "TEXT"): Artifact {
+function artifact(kind: "CHARACTER" | "SCENE" | "TEXT"): VersionedArtifact {
   const content = kind === "CHARACTER"
     ? { name: "Hero", description: "Lead", appearance: "Blue coat",
       referenceVersionIds: [imageVersionId] }

@@ -10,7 +10,9 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
   for (const item of items) {
     if (!item.artifact) continue;
     if (!artifactCards.has(item.artifact.id)) artifactCards.set(item.artifact.id, item);
-    versionCards.set(item.artifact.currentVersionId, item);
+    if (item.artifact.currentVersionId) {
+      versionCards.set(item.artifact.currentVersionId, item);
+    }
     if (item.groupId) {
       const grouped = outputGroups.get(item.groupId) ?? [];
       grouped.push(item);
@@ -33,7 +35,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: agentCard.id,
         targetHandle: "agent-input",
         label: historical ? "输入 · 历史版本" : "输入",
-        type: "smoothstep",
         style: { stroke: "#2563eb", strokeWidth: 2 },
       });
     }
@@ -45,7 +46,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: output.id,
         targetHandle: "artifact-input",
         label: "Agent 输出组",
-        type: "smoothstep",
         style: { stroke: "#059669", strokeWidth: 1.5 },
       });
     }
@@ -54,7 +54,7 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
   // A visible current version can name only visible exact-version inputs. Historical
   // references stay in the Artifact record; we must not draw them to a newer version.
   for (const output of items) {
-    if (!output.artifact) continue;
+    if (!output.artifact?.currentVersion) continue;
     for (const reference of output.artifact.currentVersion.inputReferences) {
       const input = versionCards.get(reference.versionId);
       if (!input || input.id === output.id) continue;
@@ -65,7 +65,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: output.id,
         targetHandle: "artifact-input",
         label: `素材引用 · ${reference.role}`,
-        type: "smoothstep",
         style: { stroke: "#64748b", strokeWidth: 1.5, strokeDasharray: "4 4" },
       });
     }
@@ -75,7 +74,7 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
 
 /** One manual Artifact → Agent gesture updates only that Agent's explicit input binding. */
 export function inputBindingsAfterConnect(source: CanvasItem, target: CanvasItem) {
-  if (!source.artifact || !target.agent || source.id === target.id) return null;
+  if (!source.artifact?.currentVersionId || !target.agent || source.id === target.id) return null;
   const bindings = new Map(target.agent.bindings.map((binding) => [binding.artifactId,
     { artifactId: binding.artifactId, selectedVersionId: binding.selectedVersionId }]));
   bindings.set(source.artifact.id, { artifactId: source.artifact.id,
@@ -101,7 +100,8 @@ export function semanticConnectionRevision(items: CanvasItem[], connection: Conn
       connection.targetHandle !== "artifact-input") return null;
   const reference = items.find((item) => item.id === connection.source)?.artifact;
   const consumer = items.find((item) => item.id === connection.target)?.artifact;
-  if (!reference || !consumer || reference.id === consumer.id) return null;
+  if (!reference?.currentVersionId || !consumer?.currentVersion ||
+      reference.id === consumer.id) return null;
   const content = consumer.currentVersion.content;
   // A selected v1 shot needs an explicit duration edit before a new v2 revision.
   if ("durationMs" in content) return null;
@@ -135,10 +135,10 @@ export function semanticConnectionRevision(items: CanvasItem[], connection: Conn
 
 /** Removes only optional schema-backed references; a SHOT scene must be replaced, not deleted. */
 export function semanticReferenceRemoval(item: CanvasItem,
-  reference: NonNullable<CanvasItem["artifact"]>["currentVersion"]["inputReferences"][number]):
+  reference: NonNullable<NonNullable<CanvasItem["artifact"]>["currentVersion"]>["inputReferences"][number]):
   ReviseArtifactRequest | null {
   const artifact = item.artifact;
-  if (!artifact) return null;
+  if (!artifact?.currentVersion) return null;
   const content = artifact.currentVersion.content;
   if ("durationMs" in content) return null;
   let next: ReviseArtifactRequest["content"];

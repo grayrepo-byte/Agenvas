@@ -39,6 +39,14 @@ public class ArtifactController {
         this.artifacts = artifacts;
     }
 
+    /** Include resources whose CanvasItem was removed so they can be placed again. */
+    @GetMapping
+    public ArtifactListResponse list(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId) {
+        return new ArtifactListResponse(artifacts.listProject(principal.userId(), projectId)
+                .stream().map(ArtifactResponse::from).toList());
+    }
+
     /** 使用 Idempotency-Key 创建首个用户版本；同键重放通过响应头标记。 */
     @PostMapping
     public ResponseEntity<ArtifactResponse> create(
@@ -119,7 +127,7 @@ public class ArtifactController {
     public record CreateArtifactRequest(
             @NotNull Artifact.Kind kind,
             @NotBlank @Size(max = 160) String title,
-            @NotNull JsonNode content) {}
+            JsonNode content) {}
 
     /**
      * 整体替换产物正文的请求；旧版本仍保留。
@@ -178,7 +186,8 @@ public class ArtifactController {
                     artifact.version(),
                     artifact.createdAt(),
                     artifact.updatedAt(),
-                    ArtifactVersionResponse.from(view.currentVersion()));
+                    view.currentVersion() == null ? null
+                            : ArtifactVersionResponse.from(view.currentVersion()));
         }
     }
 
@@ -247,4 +256,6 @@ public class ArtifactController {
      * @param items 按版本顺序返回的正文版本
      */
     public record ArtifactVersionListResponse(List<ArtifactVersionResponse> items) {}
+
+    public record ArtifactListResponse(List<ArtifactResponse> items) {}
 }

@@ -75,9 +75,8 @@ public class ProjectSnapshotService {
         AgentRun activeRun = anchor.activeRunId() == null
                 ? null
                 : runs.get(ownerId, projectId, anchor.activeRunId());
-        List<Task> activeTasks = activeRun == null
-                ? List.of()
-                : tasks.listByRun(ownerId, projectId, activeRun.id());
+        List<Task> activeTasks = new java.util.ArrayList<>(tasks.listActiveDirect(ownerId, projectId));
+        if (activeRun != null) activeTasks.addAll(tasks.listByRun(ownerId, projectId, activeRun.id()));
         List<Task> unknownTasks = tasks.listUnknown(ownerId, projectId);
         return new ProjectSnapshot(
                 project,
@@ -106,7 +105,7 @@ public class ProjectSnapshotService {
      * @param canvas 当前画布展示项
      * @param agents 项目 Agent 卡片及固定输入
      * @param activeRun 当前占用项目槽位的 Run；无活动 Run 时为空
-     * @param activeTasks 活动 Run 的执行任务
+     * @param activeTasks 活动 Run 与用户直接媒体任务
      * @param unknownTasks 需要核对或人工处理的未决任务
      * @param snapshotSeq 与上述所有数据来自同一 MVCC 快照的事件水位
      */

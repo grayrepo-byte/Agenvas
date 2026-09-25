@@ -174,6 +174,19 @@ public class JdbcMediaCapabilityRepository {
                         rs.getInt("current_version"))).optional();
     }
 
+    public int maxConcurrent(UUID capabilityId) {
+        return jdbc.sql("select max_concurrent from media_capability where id=:id")
+                .param("id", capabilityId).query(Integer.class).single();
+    }
+
+    public boolean updateMaxConcurrent(UUID capabilityId, long expectedVersion,
+            int maxConcurrent, Instant now) {
+        return jdbc.sql("update media_capability set max_concurrent=:limit, "
+                + "version=version+1,updated_at=:now where id=:id and version=:expected")
+                .param("limit", maxConcurrent).param("now", now.atOffset(ZoneOffset.UTC))
+                .param("id", capabilityId).param("expected", expectedVersion).update() == 1;
+    }
+
     public List<Capability> capabilities(UUID connectionId) {
         return jdbc.sql("select id,connection_id,name,enabled,version,current_version "
                 + "from media_capability where connection_id=:connectionId order by created_at,id")

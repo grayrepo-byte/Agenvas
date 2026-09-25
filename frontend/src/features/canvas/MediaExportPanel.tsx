@@ -16,6 +16,7 @@ import {
   type ExportProposal,
   type Task,
 } from "../../shared/api/client";
+import { hasCurrentVersion } from "./versionedArtifact";
 
 type VideoChoice = { artifactId: string; versionId: string; assetId: string; title: string };
 type SegmentDraft = VideoChoice & { startSeconds: number; endSeconds: number; sourceDurationMs: number };
@@ -28,8 +29,8 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
   const pendingKey = useRef<string | null>(null);
   const choices: VideoChoice[] = [...new Map(items.flatMap((item) => {
     const artifact = item.artifact;
-    const content = artifact?.currentVersion.content;
-    if (!artifact || artifact.kind !== "VIDEO" || !content ||
+    const content = artifact?.currentVersion?.content;
+    if (!hasCurrentVersion(artifact) || artifact.kind !== "VIDEO" || !content ||
       typeof content !== "object" || !("assetId" in content) ||
       typeof content.assetId !== "string") return [];
     return [[artifact.id, {

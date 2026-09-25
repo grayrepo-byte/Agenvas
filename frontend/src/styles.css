@@ -77,17 +77,25 @@ button:disabled {
 }
 
 .workspace-shell {
-  display: grid;
-  grid-template: 4.5rem minmax(0, 1fr) / 18rem minmax(0, 1fr);
+  --canvas: #0b0b0d;
+  --panel: #1b1b1e;
+  --ink: #f4f4f5;
+  --muted: #a1a1aa;
+  --line: rgba(255, 255, 255, 0.13);
+  --accent: #df2998;
+  display: flex;
+  flex-direction: column;
+  position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
   background: var(--canvas);
+  color-scheme: dark;
 }
 
 .workspace-header {
   display: flex;
-  grid-column: 1 / -1;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
@@ -96,17 +104,141 @@ button:disabled {
   backdrop-filter: blur(16px);
 }
 
-.workspace-sidebar {
+.workspace-drawer {
+  position: absolute;
+  z-index: 20;
+  top: 5rem;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(24rem, calc(100vw - 2rem));
   overflow-y: auto;
-  border-right: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
   background: var(--panel);
   padding: 1.25rem;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.48);
+}
+
+.workspace-drawer-heading,
+.resource-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.resource-entry {
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.65rem;
+  font-size: 0.82rem;
 }
 
 .workspace-canvas {
   position: relative;
+  flex: 1;
   min-width: 0;
   min-height: 0;
+  background: var(--canvas);
+}
+
+.workspace-create-menu {
+  position: absolute;
+  z-index: 15;
+  width: 11.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: #242427;
+  padding: 0.4rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.workspace-create-title {
+  padding: 0.35rem 0.55rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.workspace-create-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #323235;
+  padding: 0.55rem;
+  color: var(--ink);
+  text-align: left;
+  margin-top: 0.25rem;
+}
+
+.workspace-create-menu button:hover,
+.workspace-create-menu button:focus-visible {
+  background: #46464b;
+}
+
+.workspace-add-button {
+  position: absolute;
+  z-index: 10;
+  top: 1rem;
+  right: 1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid #e354ae;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.workspace-bottom-editor {
+  position: absolute;
+  z-index: 10;
+  bottom: 1rem;
+  left: 50%;
+  width: min(42rem, calc(100% - 11rem));
+  max-height: 45vh;
+  overflow: auto;
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: #1b1b1e;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.42);
+}
+
+.workspace-bottom-title {
+  font-size: 0.8rem;
+  font-weight: 650;
+  margin-bottom: 0.45rem;
+}
+
+.workspace-shell input,
+.workspace-shell textarea,
+.workspace-shell select {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: #29292d;
+  color: var(--ink);
+  padding: 0.55rem;
+}
+
+.workspace-shell .secondary-button,
+.workspace-shell .node-action {
+  border-color: var(--line);
+  background: #29292d;
+  color: var(--ink);
+}
+
+.workspace-shell .react-flow__controls button,
+.workspace-shell .react-flow__minimap {
+  border-color: var(--line);
+  background: #252529;
+  color: var(--ink);
+}
+
+.workspace-shell .react-flow__controls svg {
+  fill: var(--ink);
 }
 
 .canvas-message {
@@ -117,7 +249,7 @@ button:disabled {
   transform: translateX(-50%);
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: #242427;
   padding: 0.6rem 1rem;
   color: var(--muted);
   font-size: 0.875rem;
@@ -127,11 +259,11 @@ button:disabled {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border: 1px solid rgba(48, 95, 104, 0.24);
+  border: 1px solid var(--line);
   border-radius: 1.25rem;
-  background: rgba(255, 255, 255, 0.96);
+  background: #202023;
   padding: 1rem;
-  box-shadow: 0 12px 36px rgba(34, 46, 56, 0.08);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
 }
 
 /* Agent forms exceed their default canvas size; keep controls reachable without panning the canvas. */
@@ -143,7 +275,20 @@ button:disabled {
 
 .artifact-node-selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(48, 95, 104, 0.16), 0 12px 36px rgba(34, 46, 56, 0.1);
+  box-shadow: 0 0 0 3px rgba(223, 41, 152, 0.2), 0 12px 36px rgba(0, 0, 0, 0.32);
+}
+
+.media-draft-placeholder {
+  display: flex;
+  min-height: 7rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.75rem;
+  border: 1px dashed #56565f;
+  border-radius: 0.75rem;
+  background: #28282d;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .artifact-kind,
@@ -151,8 +296,8 @@ button:disabled {
   display: inline-flex;
   border-radius: 999px;
   padding: 0.25rem 0.55rem;
-  background: #e8f0ee;
-  color: #275860;
+  background: #343439;
+  color: #e6e6e9;
   font-size: 0.7rem;
   font-weight: 750;
   letter-spacing: 0.04em;
@@ -187,14 +332,6 @@ button:disabled {
 }
 
 @media (max-width: 1279px) {
-  .workspace-sidebar {
-    display: none;
-  }
-
-  .workspace-shell {
-    grid-template-columns: 1fr;
-  }
-
   .workspace-canvas {
     pointer-events: none;
     opacity: 0.58;

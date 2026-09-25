@@ -4,6 +4,7 @@ const supportedTypes = [
   "artifact.created",
   "artifact.version.created",
   "artifact.current_version.changed",
+  "media.draft.changed",
   "asset.ready",
   "canvas.items.changed",
   "agent.instance.changed",

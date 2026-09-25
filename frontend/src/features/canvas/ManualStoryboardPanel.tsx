@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 import { ApiError, applyCanvasCommands, createArtifact,
   type Canvas, type CanvasItem, type CreateArtifactRequest } from "../../shared/api/client";
+import { hasCurrentVersion } from "./versionedArtifact";
 
 type ManualKind = "CHARACTER" | "SCENE" | "SHOT";
 
@@ -11,12 +12,14 @@ type Props = {
   onSaveStart: () => void;
   onSaved: (canvas: Canvas) => void;
   onSaveError: (error: Error) => void;
+  initialKind?: ManualKind;
+  placement?: { x: number; y: number };
 };
 
 /** Manual structured creation remains useful in Mock mode and never starts a Run. */
 export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
-  onSaveError }: Props) {
-  const [kind, setKind] = useState<ManualKind>("SCENE");
+  onSaveError, initialKind = "SCENE", placement }: Props) {
+  const [kind, setKind] = useState<ManualKind>(initialKind);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [appearance, setAppearance] = useState("");
@@ -32,7 +35,7 @@ export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
   const [characterVersionIds, setCharacterVersionIds] = useState<string[]>([]);
   const progress = useRef<{ fingerprint: string; artifactId?: string; itemId: string;
     createKey: string } | null>(null);
-  const artifactOptions = new Map(items.flatMap((item) => item.artifact
+  const artifactOptions = new Map(items.flatMap((item) => hasCurrentVersion(item.artifact)
     ? [[item.artifact.id, item.artifact] as const] : []));
   const scenes = [...artifactOptions.values()].filter((artifact) => artifact.kind === "SCENE");
   const characters = [...artifactOptions.values()].filter(
@@ -53,7 +56,8 @@ export function ManualStoryboardPanel({ projectId, items, onSaveStart, onSaved,
       const index = items.length;
       return applyCanvasCommands(projectId, [{
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
-        x: 80 + (index % 3) * 320, y: 80 + Math.floor(index / 3) * 220,
+        x: placement?.x ?? 80 + (index % 3) * 320,
+        y: placement?.y ?? 80 + Math.floor(index / 3) * 220,
         width: input.kind === "SHOT" ? 320 : 280,
         height: input.kind === "SHOT" ? 260 : 220,
         zIndex: index, locked: false,

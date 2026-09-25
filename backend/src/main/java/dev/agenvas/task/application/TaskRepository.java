@@ -30,6 +30,24 @@ public interface TaskRepository {
     /** 读取提交前固定的输出目标；Worker 不得自行选择当前产物。 */
     Optional<ArtifactTarget> findArtifactTarget(UUID taskId);
 
+    /** A queued, executing, or unresolved request still owns this card's execution slot. */
+    Optional<Task> findOccupyingMediaTask(UUID projectId, UUID artifactId);
+
+    /** Direct requests use a project-scoped immutable command key. */
+    Optional<Task> findDirectByStepKey(UUID ownerId, UUID projectId, String stepKey);
+
+    /** Recent direct requests for one stable media Artifact, newest first. */
+    List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId);
+
+    /** All nonterminal direct work, independent of the project's AgentRun slot. */
+    List<Task> listActiveDirect(UUID ownerId, UUID projectId);
+
+    /** Advisory queue view; counts may change between refreshes. */
+    QueueStatus queueStatus(UUID taskId);
+
+    /** Cancel an unsubmitted direct task; submitted work requires provider reconciliation. */
+    boolean cancelQueuedDirect(UUID projectId, UUID taskId, Instant now);
+
     /** 按所有者和项目共同限定任务读取。 */
     Optional<Task> find(UUID ownerId, UUID projectId, UUID taskId);
 
@@ -214,6 +232,9 @@ public interface TaskRepository {
     record ArtifactTarget(UUID taskId, UUID projectId, UUID artifactId,
             UUID expectedCurrentVersionId, long expectedArtifactVersion,
             String outputSlotKey) {}
+
+    /** Queue position is advisory; a different capability or cancellation can change it. */
+    record QueueStatus(long waitingAhead, String reason) {}
 
     /** 用户明确接受一次重复费用风险后形成的不可变原任务与替代任务关联。
      * @param projectId 关系所在项目

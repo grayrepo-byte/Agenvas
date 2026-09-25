@@ -26,6 +26,8 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation {
 
+    private static final int DEFAULT_PROJECT_MEDIA_CAPACITY = 3;
+
     /** 执行参数化 SQL 和条件更新。 */
     private final JdbcClient jdbcClient;
     /** 将 JSONB 输入、输出映射为受控 JSON 树。 */
@@ -296,12 +298,12 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                             id, project_id, run_id, plan_id, step_key, kind, status,
                             input_json, input_hash, output_json, provider_id, provider_request_id,
                             attempt_no, next_action_at, lease_owner, lease_until, lease_epoch,
-                            version, error_code, created_at, updated_at, completed_at
+                            version, error_code, created_at, updated_at, completed_at, origin
                         ) values (
                             :id, :projectId, :runId, :planId, :stepKey, :kind, :status,
                             cast(:inputJson as jsonb), :inputHash, null, :providerId, null,
                             :attemptNo, :nextActionAt, null, null, :leaseEpoch,
-                            :version, null, :createdAt, :updatedAt, null
+                            :version, null, :createdAt, :updatedAt, null, :origin
                         )
                         """)
                 .param("id", task.id())
@@ -320,6 +322,9 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .param("version", task.version())
                 .param("createdAt", utc(task.createdAt()))
                 .param("updatedAt", utc(task.updatedAt()))
+                .param("origin", task.runId() == null
+                        ? (task.kind() == Task.Kind.MEDIA_EXPORT ? "PROJECT_EXPORT" : "USER_DIRECT")
+                        : "AGENT")
                 .update();
         for (UUID dependencyId : dependencyIds) {
             jdbcClient.sql("""
@@ -373,6 +378,117 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         rs.getLong("expected_artifact_version"),
                         rs.getString("output_slot_key")))
                 .optional();
+    }
+
+    @Override
+    public Optional<Task> findOccupyingMediaTask(UUID projectId, UUID artifactId) {
+        return jdbcClient.sql(selectProjection() + """
+                join task_artifact_target target on target.task_id=t.id
+                where t.project_id=:projectId and target.artifact_id=:artifactId
+                  and (t.status in ('PENDING','READY','RUNNING','SUBMITTING',
+                                    'WAITING_PROVIDER','UNKNOWN')
+                       or (t.status='BLOCKED' and t.provider_request_id is not null))
+                order by t.created_at, t.id limit 1
+                """)
+                .param("projectId", projectId).param("artifactId", artifactId)
+                .query(taskMapper).optional();
+    }
+
+    @Override
+    public Optional<Task> findDirectByStepKey(UUID ownerId, UUID projectId, String stepKey) {
+        return jdbcClient.sql(selectProjection() + """
+                join project p on p.id=t.project_id
+                where p.owner_id=:ownerId and t.project_id=:projectId
+                  and t.step_key=:stepKey and t.origin='USER_DIRECT'
+                """)
+                .param("ownerId", ownerId).param("projectId", projectId)
+                .param("stepKey", stepKey).query(taskMapper).optional();
+    }
+
+    @Override
+    public List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId) {
+        return jdbcClient.sql(selectProjection() + """
+                join project p on p.id=t.project_id
+                join task_artifact_target target on target.task_id=t.id
+                where p.owner_id=:ownerId and t.project_id=:projectId
+                  and t.origin='USER_DIRECT' and target.artifact_id=:artifactId
+                order by t.created_at desc, t.id desc limit 50
+                """)
+                .param("ownerId", ownerId).param("projectId", projectId)
+                .param("artifactId", artifactId).query(taskMapper).list();
+    }
+
+    @Override
+    public List<Task> listActiveDirect(UUID ownerId, UUID projectId) {
+        return jdbcClient.sql(selectProjection() + """
+                join project p on p.id=t.project_id
+                where p.owner_id=:ownerId and t.project_id=:projectId
+                  and t.origin='USER_DIRECT'
+                  and t.status in ('PENDING','READY','RUNNING','SUBMITTING',
+                                   'WAITING_PROVIDER','UNKNOWN','BLOCKED')
+                order by t.created_at, t.id limit 100
+                """)
+                .param("ownerId", ownerId).param("projectId", projectId)
+                .query(taskMapper).list();
+    }
+
+    @Override
+    public QueueStatus queueStatus(UUID taskId) {
+        Task task = findById(taskId).orElseThrow();
+        if (task.status() != Task.Status.READY) return new QueueStatus(0, "NOT_QUEUED");
+        long ahead = jdbcClient.sql("""
+                select count(*) from task queued
+                join task current on current.id=:taskId
+                where queued.project_id=:projectId and queued.status='READY'
+                  and queued.kind in ('IMAGE_GENERATION','VIDEO_GENERATION')
+                  and (queued.next_action_at,queued.created_at,queued.id)
+                      < (current.next_action_at,current.created_at,current.id)
+                """).param("projectId", task.projectId()).param("taskId", taskId)
+                .query(Long.class).single();
+        var limits = jdbcClient.sql("""
+                select t.capability_id,c.max_concurrent,
+                    av.adapter_id from task t
+                join media_capability c on c.id=t.capability_id
+                join media_capability_version av on av.capability_id=t.capability_id
+                    and av.version=t.capability_version
+                where t.id=:taskId
+                """).param("taskId", taskId).query((rs, row) -> new QueueLimits(
+                        rs.getObject("capability_id", UUID.class),
+                        rs.getInt("max_concurrent"), rs.getString("adapter_id"))).single();
+        long projectOccupied = occupiedCount("active.project_id=:value", task.projectId());
+        long capabilityOccupied = occupiedCount("active.capability_id=:value",
+                limits.capabilityId());
+        long comfyOccupied = jdbcClient.sql("select count(*) from task active "
+                + "join media_capability_version av on av.capability_id=active.capability_id "
+                + "and av.version=active.capability_version "
+                + "where av.adapter_id like 'COMFY_%' "
+                + occupiedMediaClause("active"))
+                .query(Long.class).single();
+        String reason = projectOccupied >= DEFAULT_PROJECT_MEDIA_CAPACITY
+                ? "PROJECT_CAPACITY" : capabilityOccupied >= limits.maxConcurrent()
+                ? "CAPABILITY_CAPACITY" : limits.adapterId().startsWith("COMFY_")
+                && comfyOccupied > 0 ? "COMFY_SINGLE_SLOT" : "WAITING_WORKER";
+        return new QueueStatus(ahead, reason);
+    }
+
+    private long occupiedCount(String filter, UUID value) {
+        return jdbcClient.sql("select count(*) from task active where " + filter
+                + occupiedMediaClause("active"))
+                .param("value", value).query(Long.class).single();
+    }
+
+    private record QueueLimits(UUID capabilityId, int maxConcurrent, String adapterId) {}
+
+    @Override
+    public boolean cancelQueuedDirect(UUID projectId, UUID taskId, Instant now) {
+        return jdbcClient.sql("""
+                update task set status='CANCELED', cancel_requested=true,
+                    completed_at=:now, updated_at=:now, version=version+1
+                where id=:taskId and project_id=:projectId and origin='USER_DIRECT'
+                  and status='READY' and provider_request_id is null
+                """)
+                .param("taskId", taskId).param("projectId", projectId)
+                .param("now", utc(now)).update() == 1;
     }
 
     /** 按所有者、项目和任务 ID 读取，避免暴露其他项目资源。 */
@@ -507,24 +623,33 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         // The same database gate coordinates fixed ComfyUI requests across app instances.
         jdbcClient.sql("select id from provider_dispatch_gate where id=1 for update")
                 .query(Integer.class).single();
-        long occupied = jdbcClient.sql("""
-                        select count(*) from task t
-                        where t.kind in ('IMAGE_GENERATION','VIDEO_GENERATION')
-                          and (t.status in ('SUBMITTING','WAITING_PROVIDER')
-                            or (t.status='RUNNING' and t.lease_until > :now)
-                            or (t.status='UNKNOWN' and not exists (
-                                select 1 from task_manual_replacement r
-                                where r.original_task_id=t.id))
-                            or (t.status='BLOCKED' and t.provider_request_id is not null))
-                        """).param("now", utc(now)).query(Long.class).single();
-        String safeAdapterClause = occupied == 0 ? "" : " and exists ("
-                + "select 1 from media_capability_version av "
-                + "where av.capability_id=task.capability_id "
-                + "and av.version=task.capability_version "
-                + "and av.adapter_id not like 'COMFY_%') ";
         return claimDueKind(workerId, limit, now, leaseUntil, null,
                 " and capability_id is not null and kind in ('IMAGE_GENERATION','VIDEO_GENERATION') "
-                        + safeAdapterClause);
+                        + " and (select count(*) from task active "
+                        + "where active.project_id=task.project_id "
+                        + occupiedMediaClause("active") + ") < "
+                        + DEFAULT_PROJECT_MEDIA_CAPACITY + " "
+                        + " and (select count(*) from task active "
+                        + "where active.capability_id=task.capability_id "
+                        + occupiedMediaClause("active") + ") < (select c.max_concurrent "
+                        + "from media_capability c where c.id=task.capability_id) "
+                        + " and (not exists (select 1 from media_capability_version av "
+                        + "where av.capability_id=task.capability_id "
+                        + "and av.version=task.capability_version "
+                        + "and av.adapter_id like 'COMFY_%') "
+                        + "or not exists (select 1 from task active "
+                        + "join media_capability_version av on av.capability_id=active.capability_id "
+                        + "and av.version=active.capability_version "
+                        + "where av.adapter_id like 'COMFY_%' "
+                        + occupiedMediaClause("active") + ")) ");
+    }
+
+    private static String occupiedMediaClause(String alias) {
+        return " and " + alias + ".kind in ('IMAGE_GENERATION','VIDEO_GENERATION') "
+                + "and (" + alias + ".status in ('SUBMITTING','WAITING_PROVIDER','UNKNOWN') "
+                + "or (" + alias + ".status='RUNNING' and " + alias + ".lease_until > now()) "
+                + "or (" + alias + ".status='BLOCKED' and " + alias
+                + ".provider_request_id is not null)) ";
     }
 
     @Override
@@ -724,16 +849,17 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         + "or (r.status = 'WAITING_TASKS' and task.status = 'READY' "
                         + "and task.input_json ->> 'resumePlanId' is not null)) "
                 : " and r.status in ('RUNNING', 'WAITING_TASKS') ";
+        String eligibility = agentTurn
+                ? " exists (select 1 from agent_run r where r.id=task.run_id " + runClause + ") "
+                : " (task.origin='USER_DIRECT' or exists (select 1 from agent_run r "
+                        + "where r.id=task.run_id " + runClause + ")) ";
         return jdbcClient.sql("""
                         with candidates as (
                             select id
                             from task
                             where cancel_requested = false
                             """ + kindClause + bindingClause + """
-                              and exists (select 1 from agent_run r
-                                  where r.id = task.run_id
-                            """ + runClause + """
-                                  )
+                              and """ + eligibility + """
                               and ((status = 'READY' and next_action_at <= :now)
                                or (status = 'RUNNING' and lease_until <= :now
                                    and provider_request_id is null))
@@ -937,8 +1063,9 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         where id = :taskId and status = 'RUNNING'
                           and lease_owner = :workerId and lease_epoch = :leaseEpoch
                           and lease_until > :now and cancel_requested = false
-                          and exists (select 1 from agent_run r where r.id = task.run_id
-                              and r.status not in ('CANCEL_REQUESTED', 'CANCELED'))
+                          and (task.origin='USER_DIRECT' or exists (
+                              select 1 from agent_run r where r.id = task.run_id
+                              and r.status not in ('CANCEL_REQUESTED', 'CANCELED')))
                         """)
                 .param("taskId", taskId)
                 .param("workerId", workerId)
@@ -1020,9 +1147,10 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         where id = :taskId and project_id = :projectId
                           and status = 'UNKNOWN' and version = :expectedVersion
                           and cancel_requested = false and provider_request_id is null
-                          and exists (select 1 from agent_run r where r.id = task.run_id
+                          and (task.origin='USER_DIRECT' or exists (
+                              select 1 from agent_run r where r.id = task.run_id
                               and r.status not in ('CANCEL_REQUESTED', 'CANCELED',
-                                  'FAILED', 'SUCCEEDED'))
+                                  'FAILED', 'SUCCEEDED')))
                           and exists (select 1 from provider_attempt pa
                               where pa.id = :attemptId and pa.task_id = task.id
                                 and pa.project_id = task.project_id

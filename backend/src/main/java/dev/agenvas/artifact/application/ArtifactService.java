@@ -2,6 +2,7 @@ package dev.agenvas.artifact.application;
 
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
@@ -120,18 +121,19 @@ public class ArtifactService {
     public CreateResult createIdempotent(UUID ownerId, UUID projectId,
             Artifact.Kind kind, String requestedTitle, JsonNode content,
             String requestedKey) {
+        JsonNode normalizedContent = content != null && content.isNull() ? null : content;
         String key = requestedKey == null ? "" : requestedKey.trim();
         if (key.isEmpty() || key.length() > 200) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     "幂等键无效", "Idempotency-Key 必须为 1 至 200 个字符。", false);
         }
         String title = validateTitle(requestedTitle);
-        if (kind == null || content == null) {
+        if (kind == null || (normalizedContent == null && !isMediaKind(kind))) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     "产物内容无效", "必须提供产物类型和完整内容。", false);
         }
         String scope = "project:" + projectId + ":create-artifact";
-        String requestHash = sha256(kind.name() + "\n" + title + "\n" + content);
+        String requestHash = sha256(kind.name() + "\n" + title + "\n" + normalizedContent);
         Instant now = clock.instant();
         if (!artifacts.reserveCreateKey(ownerId, scope, key, requestHash,
                 now.plus(CREATE_KEY_RETENTION), now)) {
@@ -151,7 +153,7 @@ public class ArtifactService {
                     ArtifactView.class), true);
         }
         return events.recordChange(ownerId, projectId, () -> {
-            ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
+            ArtifactView created = createLocked(ownerId, projectId, kind, title, normalizedContent,
                     ArtifactVersion.CreatedByKind.USER, null, false);
             if (!artifacts.completeCreateKey(ownerId, scope, key, requestHash,
                     created.artifact().id(), objectMapper.writeValueAsString(created), now)) {
@@ -208,6 +210,7 @@ public class ArtifactService {
             ArtifactVersion.CreatedByKind createdByKind,
             UUID runId,
             boolean taskOutput) {
+        if (content != null && content.isNull()) content = null;
         if (taskOutput) {
             // 已受理外部请求的晚到结果仍需归档，即使用户期间归档了项目。
             projects.get(ownerId, projectId);
@@ -215,6 +218,19 @@ public class ArtifactService {
             projects.requireActiveProject(ownerId, projectId);
         }
         String title = validateTitle(requestedTitle);
+        if (content == null && isMediaKind(kind)) {
+            if (createdByKind != ArtifactVersion.CreatedByKind.USER) {
+                throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                        "媒体正文无效", "任务与 Agent 创建的媒体产物必须包含已归档结果。", false);
+            }
+            Instant now = clock.instant();
+            Artifact empty = new Artifact(UUID.randomUUID(), projectId, kind, title,
+                    null, null, 0, now, now);
+            artifacts.createArtifact(empty);
+            artifacts.createMediaDraft(projectId, empty.id(), "",
+                    MediaDraft.DisplayMode.DRAFT, now);
+            return new ArtifactView(empty, null);
+        }
         List<ArtifactVersion.InputReference> references =
                 contentValidator.validate(kind, content);
         requireUploadAuthorship(kind, content, createdByKind);
@@ -247,6 +263,10 @@ public class ArtifactService {
         artifacts.createArtifact(artifact);
         artifacts.appendVersion(version);
         artifacts.setInitialCurrentVersion(artifactId, versionId, now);
+        if (isMediaKind(kind)) {
+            artifacts.createMediaDraft(projectId, artifactId,
+                    content.path("prompt").asText(""), MediaDraft.DisplayMode.RESULT, now);
+        }
         return new ArtifactView(
                 requireArtifact(ownerId, projectId, artifactId), version);
     }
@@ -256,10 +276,23 @@ public class ArtifactService {
     public ArtifactView get(UUID ownerId, UUID projectId, UUID artifactId) {
         projects.get(ownerId, projectId);
         Artifact artifact = requireArtifact(ownerId, projectId, artifactId);
+        if (artifact.currentVersionId() == null && isMediaKind(artifact.kind())) {
+            return new ArtifactView(artifact, null);
+        }
         ArtifactVersion current = artifacts.findVersion(
                         projectId, artifactId, artifact.currentVersionId())
                 .orElseThrow(() -> new IllegalStateException("Artifact current version is missing"));
         return new ArtifactView(artifact, current);
+    }
+
+    /** List stable project resources, including media cards removed from the canvas. */
+    @Transactional(readOnly = true)
+    public List<ArtifactView> listProject(UUID ownerId, UUID projectId) {
+        projects.get(ownerId, projectId);
+        return artifacts.listProjectArtifacts(ownerId, projectId).stream()
+                .filter(artifact -> artifact.archivedAt() == null)
+                .map(artifact -> get(ownerId, projectId, artifact.id()))
+                .toList();
     }
 
     /**
@@ -496,7 +529,16 @@ public class ArtifactService {
                     ArtifactView before = get(ownerId, projectId, artifactId);
                     ArtifactView selected = selectVersionLocked(
                             ownerId, projectId, artifactId, versionId, expectedArtifactVersion);
-                    if (before.artifact().version() == selected.artifact().version()) {
+                    if (isMediaKind(selected.artifact().kind())) {
+                        MediaDraft beforeDraft = artifacts.findMediaDraft(projectId, artifactId)
+                                .orElseThrow(() -> new IllegalStateException("Media draft missing"));
+                        if (beforeDraft.displayMode() != MediaDraft.DisplayMode.RESULT) {
+                            artifacts.setMediaDraftDisplayMode(projectId, artifactId,
+                                    MediaDraft.DisplayMode.RESULT, clock.instant());
+                        } else if (before.artifact().version() == selected.artifact().version()) {
+                            return ProjectEventService.Change.unchanged(selected);
+                        }
+                    } else if (before.artifact().version() == selected.artifact().version()) {
                         return ProjectEventService.Change.unchanged(selected);
                     }
                     return ProjectEventService.Change.changed(
@@ -529,7 +571,7 @@ public class ArtifactService {
         boolean selected = allowSelection
                 && current.archivedAt() == null
                 && current.version() == expectedArtifactVersion
-                && current.currentVersionId().equals(expectedCurrentVersionId)
+                && java.util.Objects.equals(current.currentVersionId(), expectedCurrentVersionId)
                 && artifacts.selectVersion(ownerId, projectId, artifactId,
                         expectedArtifactVersion, revision.id(), current.title(), now);
         return new TaskVersionResult(revision.id(), selected);
@@ -580,11 +622,11 @@ public class ArtifactService {
         requireEditable(current);
         ArtifactVersion target = artifacts.findVersion(projectId, artifactId, versionId)
                 .orElseThrow(this::notFound);
-        if (current.currentVersionId().equals(versionId)
+        if (java.util.Objects.equals(current.currentVersionId(), versionId)
                 && current.version() == expectedArtifactVersion) {
             return new ArtifactView(current, target);
         }
-        if (current.currentVersionId().equals(versionId)
+        if (java.util.Objects.equals(current.currentVersionId(), versionId)
                 && current.version() == expectedArtifactVersion + 1) {
             return new ArtifactView(current, target);
         }
@@ -607,7 +649,11 @@ public class ArtifactService {
     private ProjectEventService.EventDraft artifactEvent(String type, ArtifactView view) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("artifactId", view.artifact().id().toString());
-        payload.put("currentVersionId", view.currentVersion().id().toString());
+        if (view.currentVersion() == null) {
+            payload.putNull("currentVersionId");
+        } else {
+            payload.put("currentVersionId", view.currentVersion().id().toString());
+        }
         payload.put("kind", view.artifact().kind().name());
         return new ProjectEventService.EventDraft(
                 type, 1, view.artifact().id(), view.artifact().version(), payload);
@@ -714,6 +760,10 @@ public class ArtifactService {
      * @param currentVersion 当前指针所对应的完整不可变正文
      */
     public record ArtifactView(Artifact artifact, ArtifactVersion currentVersion) {}
+
+    private static boolean isMediaKind(Artifact.Kind kind) {
+        return kind == Artifact.Kind.IMAGE || kind == Artifact.Kind.VIDEO;
+    }
 
     /**
      * 手工创建结果；幂等重放使用首次保存的响应快照。

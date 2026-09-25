@@ -24,7 +24,7 @@ public class ProjectEventService {
     private static final Duration RETENTION = Duration.ofDays(30);
     /** 事件类型限定为小写点分段，避免任意文本进入协议字段。 */
     private static final Pattern EVENT_TYPE =
-            Pattern.compile("[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9]*)+");
+            Pattern.compile("[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+");
 
     /** 以项目计数行锁生成序号并保存不可变事件。 */
     private final ProjectEventRepository events;

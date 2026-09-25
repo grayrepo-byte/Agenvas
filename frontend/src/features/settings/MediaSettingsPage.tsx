@@ -3,7 +3,8 @@ import { type FormEvent, useRef, useState } from "react";
 import { Link, Navigate } from "react-router";
 import {
   ApiError, createMediaCapability, createMediaConnection, getCurrentUser,
-  getMediaSettings, setMediaDefault, updateMediaCapability, updateMediaConnection,
+  getMediaSettings, setMediaDefault, updateMediaCapability, updateMediaConcurrency,
+  updateMediaConnection,
   type MediaCapability, type MediaConnection, type MediaSettings,
 } from "../../shared/api/client";
 
@@ -70,6 +71,7 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   const [name, setName] = useState(capability.name);
   const [adapterId, setAdapterId] = useState(capability.adapterId);
   const [modelNames, setModelNames] = useState<Record<string, string>>(capability.settings);
+  const [maxConcurrent, setMaxConcurrent] = useState(capability.maxConcurrent);
   const [error, setError] = useState("");
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
@@ -77,6 +79,17 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
       enabled: capability.enabled, adapterId,
       settings: fixedModelSettings(adapterId, modelNames),
     }),
+    onSuccess: (result) => { apply(result); setError(""); },
+    onError: (cause) => {
+      if (cause instanceof ApiError && cause.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+      setError(errorMessage(cause));
+    },
+  });
+  const saveConcurrency = useMutation({
+    mutationFn: () => updateMediaConcurrency(connectionId, capability.id,
+      { expectedVersion: capability.version, maxConcurrent }),
     onSuccess: (result) => { apply(result); setError(""); },
     onError: (cause) => {
       if (cause instanceof ApiError && cause.status === 409) {
@@ -120,6 +133,16 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
       <button className="secondary-button" type="submit" disabled={busy || save.isPending}>
         {save.isPending ? "正在保存…" : "保存能力"}
       </button>
+    </form>
+    <form className="mt-3 flex items-end gap-2" onSubmit={(event) => {
+      event.preventDefault(); setError(""); saveConcurrency.mutate();
+    }}>
+      <label className="text-xs">全局并发上限
+        <input type="number" min={1} max={100} value={maxConcurrent}
+          onChange={(event) => setMaxConcurrent(Number(event.target.value))} />
+      </label>
+      <button className="secondary-button" type="submit"
+        disabled={busy || saveConcurrency.isPending}>保存并发上限</button>
     </form>
     {error ? <p className="mt-2 text-sm text-red-800" role="alert">{error}</p> : null}
   </li>;

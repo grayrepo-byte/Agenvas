@@ -139,6 +139,28 @@ public class MediaCapabilityService {
         return repository.capabilities(connectionId);
     }
 
+    public int maxConcurrent(UUID capabilityId) {
+        return repository.maxConcurrent(capabilityId);
+    }
+
+    @Transactional
+    public Capability updateConcurrency(UUID connectionId, UUID capabilityId,
+            long expectedVersion, int maxConcurrent) {
+        if (maxConcurrent < 1 || maxConcurrent > 100) {
+            throw invalid("能力全局并发上限必须在 1 至 100 之间");
+        }
+        Capability capability = repository.capability(capabilityId)
+                .orElseThrow(() -> invalid("媒体能力不存在"));
+        if (!capability.connectionId().equals(connectionId)) {
+            throw invalid("能力不属于此连接");
+        }
+        if (!repository.updateMaxConcurrent(capabilityId, expectedVersion,
+                maxConcurrent, clock.instant())) {
+            throw conflict("能力并发上限已被其他操作修改");
+        }
+        return repository.capability(capabilityId).orElseThrow();
+    }
+
     public Snapshot capabilitySnapshot(UUID capabilityId) {
         return repository.snapshot(capabilityId).orElseThrow(() ->
                 new ApiProblemException(HttpStatus.NOT_FOUND, "MEDIA_CAPABILITY_NOT_FOUND",

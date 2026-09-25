@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasItem } from "../../shared/api/client";
+import type { VersionedArtifact } from "./versionedArtifact";
 import { inputBindingsAfterConnect, inputConnectionUpdate,
   projectCanvasRelations, semanticConnectionRevision,
   semanticReferenceRemoval } from "./canvasRelations";
@@ -8,8 +9,8 @@ const createdAt = "2026-09-24T00:00:00Z";
 
 /** Typed cards mirror the API projection; no relation state is created in React Flow. */
 function artifactCard(id: string, versionId: string, groupId: string | null = null,
-  inputReferences: NonNullable<CanvasItem["artifact"]>["currentVersion"]["inputReferences"] = [],
-): CanvasItem {
+  inputReferences: VersionedArtifact["currentVersion"]["inputReferences"] = [],
+): CanvasItem & { artifact: VersionedArtifact } {
   return {
     id: `card-${id}`, subjectType: "ARTIFACT", subjectId: id,
     x: 0, y: 0, width: 280, height: 180, zIndex: 0, groupId, locked: false, version: 0,

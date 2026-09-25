@@ -39,6 +39,11 @@ describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     useCanvasStore.setState({ selectedIds: [] });
     server.use(
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [], defaults: [],
+      })),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () =>
+        HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
@@ -63,6 +68,89 @@ describe("ProjectWorkspacePage", () => {
         }),
       ),
     );
+  });
+
+  it("creates an empty image card from the canvas menu and autosaves its bottom draft", async () => {
+    const artifactId = crypto.randomUUID();
+    const itemId = crypto.randomUUID();
+    let prompt = "";
+    let draftVersion = 0;
+    let created = 0;
+    let submittedDraftVersion: number | null = null;
+    const now = "2026-09-25T00:00:00Z";
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
+      })),
+      http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json({
+        id: params.projectId, name: "Draft project", status: "ACTIVE",
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test-token",
+      })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        expect(await request.json()).toEqual({
+          kind: "IMAGE", title: "新图片", content: null,
+        });
+        created++;
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: Array<{ itemId: string }> };
+        expect(body.commands[0]?.itemId).toBeTruthy();
+        return HttpResponse.json({ items: [{
+          id: itemId, subjectType: "ARTIFACT", subjectId: artifactId,
+          x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
+          locked: false, version: 0, agent: null,
+          artifact: { id: artifactId, projectId: "project-1", kind: "IMAGE",
+            title: "新图片", currentVersionId: null, currentVersion: null,
+            version: 0, createdAt: now, updatedAt: now },
+        }] });
+      }),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/draft", () =>
+        HttpResponse.json({ projectId: "project-1", artifactId, prompt,
+          inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+          version: draftVersion, createdAt: now, updatedAt: now })),
+      http.put("/api/v1/projects/:projectId/artifacts/:artifactId/draft", async ({ request }) => {
+        const body = await request.json() as { expectedVersion: number; prompt: string };
+        expect(body.expectedVersion).toBe(draftVersion);
+        prompt = body.prompt;
+        draftVersion++;
+        return HttpResponse.json({ projectId: "project-1", artifactId, prompt,
+          inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+          version: draftVersion, createdAt: now, updatedAt: now });
+      }),
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/run", async ({ request }) => {
+        const body = await request.json() as { expectedDraftVersion: number };
+        submittedDraftVersion = body.expectedDraftVersion;
+        expect(request.headers.get("Idempotency-Key")).toBeTruthy();
+        return HttpResponse.json({ id: "direct-task", status: "READY" });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>);
+
+    await user.click(screen.getByRole("button", { name: "添加卡片" }));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getByRole("menuitem", { name: "文字" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加卡片" }));
+    await user.click(screen.getByRole("menuitem", { name: "图片" }));
+    await waitFor(() => expect(created).toBe(1));
+    fireEvent.click(await screen.findByText("新图片"));
+    const editor = await screen.findByLabelText("图片提示词");
+    await user.type(editor, "A red kite over a lake");
+    await waitFor(() => expect(prompt).toBe("A red kite over a lake"), { timeout: 3000 });
+    expect(screen.getAllByText("已保存").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(submittedDraftVersion).toBe(1));
   });
 
   it("keeps one SSE connection across snapshots and invalidates auxiliary views after a gap", async () => {
@@ -109,6 +197,7 @@ describe("ProjectWorkspacePage", () => {
         </QueryClientProvider>,
       );
       await waitFor(() => expect(sources).toHaveLength(1));
+      await userEvent.setup().click(screen.getByRole("button", { name: "导出" }));
       await waitFor(() => expect([proposalReads, exportReads]).toEqual([1, 1]));
       const current = queryClient.getQueryData<ProjectSnapshot>(["snapshot", "project-1"]);
       expect(current).toBeDefined();
@@ -209,6 +298,7 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
 
+    await user.click(screen.getByRole("button", { name: "导入素材" }));
     await user.type(screen.getByLabelText("图片标题"), "Product reference");
     await user.upload(screen.getByLabelText("参考图片"),
       new File(["real bytes checked by backend"], "reference.webp", { type: "image/webp" }));
@@ -255,6 +345,7 @@ describe("ProjectWorkspacePage", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
+    await user.click(screen.getByRole("button", { name: "导入素材" }));
     await user.type(screen.getByLabelText("图片标题"), "Broken reference");
     await user.upload(screen.getByLabelText("参考图片"),
       new File(["bad image"], "broken.webp", { type: "image/webp" }));
@@ -314,6 +405,7 @@ describe("ProjectWorkspacePage", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
+    await user.click(screen.getByRole("button", { name: "导入素材" }));
     await user.type(screen.getByLabelText("图片标题"), "Retry reference");
     await user.upload(screen.getByLabelText("参考图片"),
       new File(["bytes"], "retry.webp", { type: "image/webp" }));
@@ -360,6 +452,8 @@ describe("ProjectWorkspacePage", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
+    await user.click(screen.getByRole("button", { name: "添加卡片" }));
+    await user.click(screen.getByRole("menuitem", { name: "文字" }));
     const form = screen.getByRole("button", { name: "添加到画布" }).closest("form")!;
     await user.type(within(form).getByLabelText("标题"), "Retry note");
     await user.type(within(form).getByLabelText("内容"), "A stable note");
@@ -443,6 +537,8 @@ describe("ProjectWorkspacePage", () => {
     );
 
     expect(await screen.findByText("Existing card")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加卡片" }));
+    await user.click(screen.getByRole("menuitem", { name: "文字" }));
     const content = within(screen.getByRole("complementary")).getByLabelText("内容");
     await user.type(content, "draft");
     await user.keyboard("{Delete}");
@@ -659,8 +755,10 @@ describe("ProjectWorkspacePage", () => {
     expect(within(card as HTMLElement).getByText(/明确输入（1）/)).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(new RegExp(artifactId))).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(new RegExp(versionId))).toBeInTheDocument();
-    const name = within(card as HTMLElement).getByDisplayValue("Agent Alpha");
-    const instruction = within(card as HTMLElement).getByDisplayValue("Initial instruction");
+    fireEvent.click(heading);
+    const editorArea = await screen.findByLabelText("所选 Agent 编辑区");
+    const name = within(editorArea).getByDisplayValue("Agent Alpha");
+    const instruction = within(editorArea).getByDisplayValue("Initial instruction");
     fireEvent.change(name, { target: { value: "Agent Beta" } });
     fireEvent.change(instruction, { target: { value: "Updated instruction" } });
     fireEvent.submit(name.closest("form") as HTMLFormElement);
@@ -668,35 +766,35 @@ describe("ProjectWorkspacePage", () => {
     expect(await screen.findByText("Agent Beta")).toBeInTheDocument();
     expect(updated).toBe(true);
 
-    const taskInput = within(card as HTMLElement).getByLabelText("本次任务");
+    const taskInput = within(editorArea).getByLabelText("本次任务");
     fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
-    fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
-    expect(await within(card as HTMLElement).findByText("确认开始规划")).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText("确认开始规划")).toBeDisabled();
+    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    expect(await within(editorArea).findByText("确认开始规划")).toBeInTheDocument();
+    expect(within(editorArea).getByText("确认开始规划")).toBeDisabled();
     expect(starts).toBe(0);
     modelAvailable = true;
     fireEvent.change(taskInput, { target: { value: "规划三个镜头！" } });
     fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
-    fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
-    await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
-    expect(within(card as HTMLElement).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText(/当前模型看不到图片像素、视频帧或音频/)).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText(/Bound brief/)).toBeInTheDocument();
-    fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
+    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
+    expect(within(editorArea).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();
+    expect(within(editorArea).getByText(/当前模型看不到图片像素、视频帧或音频/)).toBeInTheDocument();
+    expect(within(editorArea).getByText(/Bound brief/)).toBeInTheDocument();
+    fireEvent.click(within(editorArea).getByText("确认开始规划"));
     await waitFor(() => expect(starts).toBe(1));
-    await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
-    fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
+    await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
+    fireEvent.click(within(editorArea).getByText("确认开始规划"));
     await waitFor(() => expect(starts).toBe(2));
     expect(idempotencyKeys[0]).toBeTruthy();
     expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
-    await waitFor(() => expect(within(card as HTMLElement).queryByText("确认开始规划")).not.toBeInTheDocument());
-    fireEvent.click(within(card as HTMLElement).getByText("检查运行范围"));
-    await waitFor(() => expect(within(card as HTMLElement).getByText("确认开始规划")).not.toBeDisabled());
-    fireEvent.click(within(card as HTMLElement).getByText("确认开始规划"));
+    await waitFor(() => expect(within(editorArea).queryByText("确认开始规划")).not.toBeInTheDocument());
+    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
+    fireEvent.click(within(editorArea).getByText("确认开始规划"));
     await waitFor(() => expect(starts).toBe(3));
     expect(idempotencyKeys[2]).not.toBe(idempotencyKeys[1]);
     expect(await screen.findByText("RUNNING")).toBeInTheDocument();
-    fireEvent.click(within(card as HTMLElement).getByText("停止"));
+    fireEvent.click(within(editorArea).getByText("停止"));
     await waitFor(() => expect(screen.getByText("空闲")).toBeInTheDocument());
     fireEvent.click(within(card as HTMLElement).getByText("查看记录"));
     expect(await within(card as HTMLElement).findByText("之前的创作")).toBeInTheDocument();
@@ -764,11 +862,12 @@ describe("ProjectWorkspacePage", () => {
       </MemoryRouter>
     </QueryClientProvider>);
     const heading = await screen.findByText("Redo agent");
-    const card = heading.closest("article") as HTMLElement;
-    await user.selectOptions(within(card).getByLabelText("运行范围"), shotId);
-    await user.type(within(card).getByLabelText("本次任务"), "只重做第二镜头");
-    fireEvent.click(within(card).getByText("检查运行范围"));
-    fireEvent.click(await within(card).findByText("确认开始规划"));
+    fireEvent.click(heading);
+    const editorArea = await screen.findByLabelText("所选 Agent 编辑区");
+    await user.selectOptions(within(editorArea).getByLabelText("运行范围"), shotId);
+    await user.type(within(editorArea).getByLabelText("本次任务"), "只重做第二镜头");
+    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    fireEvent.click(await within(editorArea).findByText("确认开始规划"));
     await waitFor(() => expect(submitted).toMatchObject({ agentId,
       redoShotArtifactId: shotId, expectedAgentVersion: 0,
       instruction: "只重做第二镜头", selectedItemIds: [agentItemId] }));

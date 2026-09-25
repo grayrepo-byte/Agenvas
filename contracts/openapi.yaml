@@ -327,6 +327,35 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}/concurrency:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: capabilityId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateMediaCapabilityConcurrency
+      summary: 管理员按能力版本设置全局媒体并发上限
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateMediaConcurrencyRequest"}
+      responses:
+        "200":
+          description: 更新后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/media-defaults/{kind}:
     parameters:
       - name: kind
@@ -633,6 +662,18 @@ paths:
   /api/v1/projects/{projectId}/artifacts:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listArtifacts
+      summary: 列出项目产物，包括不在画布上的媒体草稿与历史产物
+      tags: [Artifacts]
+      responses:
+        "200":
+          description: 项目产物列表
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ArtifactList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: createArtifact
       summary: 幂等创建产物及首个不可变版本
@@ -675,6 +716,120 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Artifact"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/draft:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    get:
+      operationId: getMediaDraft
+      summary: 读取独立于已选结果的图片或视频工作草稿
+      tags: [Artifacts]
+      responses:
+        "200":
+          description: 当前工作草稿
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaDraft"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      operationId: saveMediaDraft
+      summary: 按独立版本号保存媒体工作草稿
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveMediaDraftRequest"}
+      responses:
+        "200":
+          description: 已保存的草稿
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/run:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    get:
+      operationId: listDirectMediaTasks
+      summary: 查询此卡片最近的直接媒体任务
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 最近任务，新任务在前
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Task"}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: runMediaDraft
+      summary: 固定已保存的媒体草稿并直接受理 USER_DIRECT Task
+      tags: [Tasks]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RunMediaDraftRequest"}
+      responses:
+        "200":
+          description: 已受理或返回同一卡片正在执行的任务；无需审批
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: cancelQueuedDirectMediaTask
+      summary: 取消尚未提交到 Provider 的直接媒体任务并释放预留
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 已取消的任务
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/tasks/{taskId}/queue:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: taskId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getDirectMediaQueueStatus
+      summary: 读取直接任务的动态排队原因和前方等待数
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 排队位置仅供参考，可能随容量和取消操作变化
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DirectMediaQueueStatus"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/revisions:
@@ -1483,7 +1638,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
-        minimumSeconds, maximumSeconds, mappingSha256, settings]
+        minimumSeconds, maximumSeconds, maxConcurrent, mappingSha256, settings]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -1494,6 +1649,7 @@ components:
         kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
         minimumSeconds: {type: integer, minimum: 0}
         maximumSeconds: {type: integer, minimum: 0}
+        maxConcurrent: {type: integer, minimum: 1, maximum: 100}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     FixedMediaAdapterSettings:
@@ -1552,6 +1708,13 @@ components:
         enabled: {type: boolean}
         adapterId: {type: string, minLength: 1, maxLength: 80}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
+    UpdateMediaConcurrencyRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, maxConcurrent]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        maxConcurrent: {type: integer, minimum: 1, maximum: 100}
     SetMediaDefaultRequest:
       type: object
       additionalProperties: false
@@ -2018,7 +2181,52 @@ components:
       properties:
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string, minLength: 1, maxLength: 160}
-        content: {$ref: "#/components/schemas/WritableArtifactContent"}
+        content:
+          oneOf:
+            - {$ref: "#/components/schemas/WritableArtifactContent"}
+            - {type: "null"}
+          description: IMAGE/VIDEO 可为 null，此时创建有稳定身份、独立空草稿且尚无结果版本的产物。
+    SaveMediaDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, prompt]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        prompt: {type: string, maxLength: 20000}
+        inputImageVersionId: {type: [string, "null"], format: uuid}
+        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
+        capabilityId: {type: [string, "null"], format: uuid}
+    RunMediaDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedDraftVersion]
+      properties:
+        expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+    DirectMediaQueueStatus:
+      type: object
+      additionalProperties: false
+      required: [waitingAhead, reason]
+      properties:
+        waitingAhead: {type: integer, format: int64, minimum: 0}
+        reason:
+          type: string
+          enum: [NOT_QUEUED, WAITING_WORKER, PROJECT_CAPACITY,
+            CAPABILITY_CAPACITY, COMFY_SINGLE_SLOT]
+    MediaDraft:
+      type: object
+      additionalProperties: false
+      required: [projectId, artifactId, prompt, inputImageVersionId, durationSeconds, capabilityId, displayMode, version, createdAt, updatedAt]
+      properties:
+        projectId: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        prompt: {type: string, maxLength: 20000}
+        inputImageVersionId: {type: [string, "null"], format: uuid}
+        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
+        capabilityId: {type: [string, "null"], format: uuid}
+        displayMode: {type: string, enum: [DRAFT, RESULT]}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
     ReviseArtifactRequest:
       type: object
       additionalProperties: false
@@ -2067,11 +2275,14 @@ components:
         projectId: {type: string, format: uuid}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string, minLength: 1, maxLength: 160}
-        currentVersionId: {type: string, format: uuid}
+        currentVersionId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-        currentVersion: {$ref: "#/components/schemas/ArtifactVersion"}
+        currentVersion:
+          oneOf:
+            - {$ref: "#/components/schemas/ArtifactVersion"}
+            - {type: "null"}
     ArtifactVersionList:
       type: object
       additionalProperties: false
@@ -2080,6 +2291,14 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/ArtifactVersion"}
+    ArtifactList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/Artifact"}
     AgentBindingRequest:
       type: object
       additionalProperties: false

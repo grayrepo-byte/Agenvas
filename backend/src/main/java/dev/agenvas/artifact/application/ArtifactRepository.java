@@ -2,6 +2,7 @@ package dev.agenvas.artifact.application;
 
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.MediaDraft;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,20 @@ public interface ArtifactRepository {
 
     /** 先插入稳定产物身份，再追加首个不可变内容版本。 */
     void createArtifact(Artifact artifact);
+
+    /** Initialize editable input for an empty IMAGE or VIDEO Artifact in the creation transaction. */
+    void createMediaDraft(UUID projectId, UUID artifactId, String prompt,
+            MediaDraft.DisplayMode displayMode, Instant now);
+
+    /** Read the working draft of an authorized media Artifact. */
+    Optional<MediaDraft> findMediaDraft(UUID projectId, UUID artifactId);
+
+    /** Replace draft fields under its independent optimistic version. */
+    boolean updateMediaDraft(MediaDraft draft, long expectedVersion);
+
+    /** Change only the card face, without invalidating the saved input version. */
+    void setMediaDraftDisplayMode(UUID projectId, UUID artifactId,
+            MediaDraft.DisplayMode mode, Instant now);
 
     /** 锁定所有者范围内的产物行，为其安全分配递增版本号。 */
     Optional<Artifact> findForUpdate(UUID ownerId, UUID projectId, UUID artifactId);

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact } from "../../shared/api/client";
+import type { VersionedArtifact } from "./versionedArtifact";
 import { server } from "../../test/server";
 import { ShotRedoEditor } from "./ShotRedoEditor";
 
@@ -23,7 +23,7 @@ describe("ShotRedoEditor", () => {
         return HttpResponse.json({ shot: {}, scene: null }, { status: 201 });
       }),
     );
-    const shot: Artifact = {
+    const shot: VersionedArtifact = {
       id: shotId, projectId, kind: "SHOT", title: "Legacy shot",
       currentVersionId: versionId, version: 1,
       createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
@@ -64,7 +64,7 @@ describe("ShotRedoEditor", () => {
         return HttpResponse.json({ shot: {}, scene: {} }, { status: 201 });
       }),
     );
-    const shot: Artifact = {
+    const shot: VersionedArtifact = {
       id: shotId, projectId, kind: "SHOT", title: "Second shot",
       currentVersionId: versionId, version: 3,
       createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
