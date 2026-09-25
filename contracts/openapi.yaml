@@ -1437,12 +1437,12 @@ components:
     MediaExportSegment:
       type: object
       additionalProperties: false
-      required: [videoArtifactId, videoVersionId, startMs, endMs]
+      required: [videoArtifactId, videoVersionId, startSeconds, endSeconds]
       properties:
         videoArtifactId: {type: string, format: uuid}
         videoVersionId: {type: string, format: uuid}
-        startMs: {type: integer, minimum: 0, maximum: 60000}
-        endMs: {type: integer, minimum: 1, maximum: 60000}
+        startSeconds: {type: integer, minimum: 0, maximum: 59}
+        endSeconds: {type: integer, minimum: 1, maximum: 60}
     CreateMediaExportRequest:
       type: object
       additionalProperties: false
@@ -1453,7 +1453,7 @@ components:
           minItems: 1
           maxItems: 6
           items: {$ref: "#/components/schemas/MediaExportSegment"}
-    ExportProposalSegment:
+    ExportProposalSegmentV1:
       type: object
       additionalProperties: false
       required: [videoArtifactId, videoVersionId, assetId, assetSha256, startMs, endMs, shotArtifactId, shotVersionId]
@@ -1466,7 +1466,20 @@ components:
         endMs: {type: integer, minimum: 1, maximum: 60000}
         shotArtifactId: {type: string, format: uuid}
         shotVersionId: {type: string, format: uuid}
-    ExportProposalInput:
+    ExportProposalSegmentV2:
+      type: object
+      additionalProperties: false
+      required: [videoArtifactId, videoVersionId, assetId, assetSha256, startSeconds, endSeconds, shotArtifactId, shotVersionId]
+      properties:
+        videoArtifactId: {type: string, format: uuid}
+        videoVersionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        assetSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        startSeconds: {type: integer, minimum: 0, maximum: 59}
+        endSeconds: {type: integer, minimum: 1, maximum: 60}
+        shotArtifactId: {type: string, format: uuid}
+        shotVersionId: {type: string, format: uuid}
+    ExportProposalInputV1:
       type: object
       additionalProperties: false
       required: [schemaVersion, aspectRatio, outputFormat, segments, durationMs]
@@ -1478,8 +1491,26 @@ components:
           type: array
           minItems: 1
           maxItems: 6
-          items: {$ref: "#/components/schemas/ExportProposalSegment"}
+          items: {$ref: "#/components/schemas/ExportProposalSegmentV1"}
         durationMs: {type: integer, minimum: 1, maximum: 60000}
+    ExportProposalInputV2:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, aspectRatio, outputFormat, segments, durationSeconds]
+      properties:
+        schemaVersion: {type: integer, const: 2}
+        aspectRatio: {type: string, enum: [LANDSCAPE_16_9, PORTRAIT_9_16, SQUARE_1_1]}
+        outputFormat: {type: string, const: SILENT_MP4_720P_24FPS}
+        segments:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: {$ref: "#/components/schemas/ExportProposalSegmentV2"}
+        durationSeconds: {type: integer, minimum: 1, maximum: 60}
+    ExportProposalInput:
+      oneOf:
+        - {$ref: "#/components/schemas/ExportProposalInputV1"}
+        - {$ref: "#/components/schemas/ExportProposalInputV2"}
     ExportProposal:
       type: object
       additionalProperties: false

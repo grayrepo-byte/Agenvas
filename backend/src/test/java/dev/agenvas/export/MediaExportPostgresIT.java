@@ -106,12 +106,12 @@ class MediaExportPostgresIT {
                 "Second", blue.id());
         List<MediaExportService.SegmentRequest> ordered = List.of(
                 new MediaExportService.SegmentRequest(first.artifact().id(),
-                        first.currentVersion().id(), 0, 1000),
+                        first.currentVersion().id(), 0, 1),
                 new MediaExportService.SegmentRequest(second.artifact().id(),
-                        second.currentVersion().id(), 0, 1000));
+                        second.currentVersion().id(), 0, 1));
         assertThatThrownBy(() -> exports.preview(owner.userId(), project.id(), List.of(
                 new MediaExportService.SegmentRequest(first.artifact().id(),
-                        first.currentVersion().id(), 0, 1_001))))
+                        first.currentVersion().id(), 0, 2))))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("EXPORT_INPUT_INVALID"));
         jdbc.sql("update asset set duration_ms = null where id = :assetId")
@@ -121,8 +121,20 @@ class MediaExportPostgresIT {
                         error -> assertThat(error.code()).isEqualTo("EXPORT_INPUT_INVALID"));
         jdbc.sql("update asset set duration_ms = 1000 where id = :assetId")
                 .param("assetId", red.id()).update();
+        jdbc.sql("update asset set duration_ms = 1250 where id = :assetId")
+                .param("assetId", red.id()).update();
+        assertThat(exports.preview(owner.userId(), project.id(), ordered)
+                .inputSnapshot().path("durationSeconds").asInt()).isEqualTo(2);
+        assertThatThrownBy(() -> exports.preview(owner.userId(), project.id(), List.of(
+                new MediaExportService.SegmentRequest(first.artifact().id(),
+                        first.currentVersion().id(), 0, 2))))
+                .isInstanceOf(ApiProblemException.class);
+        jdbc.sql("update asset set duration_ms = 1000 where id = :assetId")
+                .param("assetId", red.id()).update();
         MediaExportService.ExportPreview preview = exports.preview(owner.userId(),
                 project.id(), ordered);
+        assertThat(preview.inputSnapshot().path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(preview.inputSnapshot().path("durationSeconds").asInt()).isEqualTo(2);
         assertThat(preview.projectVersion()).isEqualTo(project.version());
         assertThat(preview.inputSnapshot().path("segments")).hasSize(2);
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId")
@@ -133,6 +145,9 @@ class MediaExportPostgresIT {
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :taskId "
                         + "and entry_type = 'RESERVATION'")
                 .param("taskId", pending.id()).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
+                        + "where task_id = :taskId and entry_type = 'RESERVATION'")
+                .param("taskId", pending.id()).query(String.class).single()).isEqualTo("0");
         assertThat(pending.runId()).isNull();
         assertThat(pending.input().path("segments").get(0).path("assetId").asText())
                 .isEqualTo(red.id().toString());
@@ -142,6 +157,12 @@ class MediaExportPostgresIT {
                 .param("taskId", pending.id()).query(Integer.class).single()).isEqualTo(1);
         assertThatThrownBy(() -> exports.create(owner.userId(), project.id(),
                 "mixed-export", List.of(ordered.getLast(), ordered.getFirst())))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("IDEMPOTENCY_CONFLICT"));
+        assertThatThrownBy(() -> exports.create(owner.userId(), project.id(),
+                "mixed-export", List.of(ordered.getFirst(),
+                        new MediaExportService.SegmentRequest(second.artifact().id(),
+                                second.currentVersion().id(), 0, 2))))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("IDEMPOTENCY_CONFLICT"));
 
@@ -215,7 +236,38 @@ class MediaExportPostgresIT {
         verifyToolFailure(owner, project, ordered);
         verifyArchivedExportRecovery(owner, project, ordered, exported.path());
         verifyAspectRatioLetterboxing(owner);
+        verifyFrozenVersionOneExport(owner);
         verifyKilledProcessExportRecovery(owner);
+    }
+
+    private void verifyFrozenVersionOneExport(AdminPrincipal owner) throws IOException {
+        Project project = projects.create(owner.userId(), "Legacy export task",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        Asset source = generatedVideo(owner.userId(), project.id(), "red", "640x360", 24, 2);
+        var video = videoArtifact(owner.userId(), project.id(), "Legacy source", source.id());
+        ObjectNode frozen = mapper.createObjectNode();
+        frozen.put("schemaVersion", 1);
+        frozen.put("aspectRatio", project.aspectRatio().name());
+        frozen.put("outputFormat", "SILENT_MP4_720P_24FPS");
+        frozen.put("durationMs", 1_250);
+        ObjectNode segment = frozen.putArray("segments").addObject();
+        segment.put("videoArtifactId", video.artifact().id().toString());
+        segment.put("videoVersionId", video.currentVersion().id().toString());
+        segment.put("assetId", source.id().toString());
+        segment.put("assetSha256", source.sha256());
+        segment.put("startMs", 0);
+        segment.put("endMs", 1_250);
+        Task legacy = tasks.createProjectExport(owner.userId(), project.id(),
+                "frozen-v1-export", frozen, project.version());
+        assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
+                        + "where task_id = :taskId and entry_type = 'RESERVATION'")
+                .param("taskId", legacy.id()).query(String.class).single()).isEqualTo("0.000");
+        assertThat(worker.runOnce("legacy-export-worker")).isEqualTo(1);
+        Task completed = tasks.get(owner.userId(), project.id(), legacy.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        Asset archived = assets.get(owner.userId(), project.id(),
+                UUID.fromString(completed.output().path("assetId").asText())).asset();
+        assertThat(archived.durationMs()).isBetween(1_200, 1_400);
     }
 
     /** Portrait and square outputs retain the full source frame with black padding. */
@@ -240,7 +292,7 @@ class MediaExportPostgresIT {
         Asset source = generatedVideo(owner.userId(), project.id(), "green", "640x360", 24, 3);
         var video = videoArtifact(owner.userId(), project.id(), "Long recovery clip", source.id());
         var segment = new MediaExportService.SegmentRequest(video.artifact().id(),
-                video.currentVersion().id(), 0, 2500);
+                video.currentVersion().id(), 0, 3);
         Task queued = exports.create(owner.userId(), project.id(), "real-process-kill",
                 java.util.Collections.nCopies(6, segment));
         Path childLog = Files.createTempFile(STORAGE_ROOT, "export-process-", ".log");
@@ -350,7 +402,7 @@ class MediaExportPostgresIT {
         var video = videoArtifact(owner.userId(), project.id(), key, source.id());
         Task task = exports.create(owner.userId(), project.id(), key,
                 List.of(new MediaExportService.SegmentRequest(video.artifact().id(),
-                        video.currentVersion().id(), 0, 1000)));
+                        video.currentVersion().id(), 0, 1)));
         assertThat(worker.runOnce(key + "-worker")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), project.id(), task.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);

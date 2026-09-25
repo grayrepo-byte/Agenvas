@@ -18,7 +18,7 @@ import {
 } from "../../shared/api/client";
 
 type VideoChoice = { artifactId: string; versionId: string; assetId: string; title: string };
-type SegmentDraft = VideoChoice & { startMs: number; endMs: number; sourceDurationMs: number };
+type SegmentDraft = VideoChoice & { startSeconds: number; endSeconds: number; sourceDurationMs: number };
 
 /** Explicit sequence editor for a project-level, immutable silent export request. */
 export function MediaExportPanel({ projectId, items }: { projectId: string; items: CanvasItem[] }) {
@@ -68,8 +68,8 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
     mutationFn: () => {
       if (!pendingKey.current) pendingKey.current = crypto.randomUUID();
       return createMediaExport(projectId, pendingKey.current, {
-        segments: segments.map(({ artifactId, versionId, startMs, endMs }) => ({
-          videoArtifactId: artifactId, videoVersionId: versionId, startMs, endMs,
+        segments: segments.map(({ artifactId, versionId, startSeconds, endSeconds }) => ({
+          videoArtifactId: artifactId, videoVersionId: versionId, startSeconds, endSeconds,
         })),
       });
     },
@@ -100,11 +100,11 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
       await queryClient.invalidateQueries({ queryKey: ["export-proposals", projectId] });
     },
   });
-  const totalMs = segments.reduce((total, item) => total + item.endMs - item.startMs, 0);
-  const valid = segments.length > 0 && segments.length <= 6 && totalMs <= 60_000 &&
-    segments.every((item) => Number.isInteger(item.startMs) && Number.isInteger(item.endMs) &&
-      item.startMs >= 0 && item.endMs > item.startMs
-      && item.endMs <= item.sourceDurationMs && item.endMs <= 60_000);
+  const totalSeconds = segments.reduce((total, item) => total + item.endSeconds - item.startSeconds, 0);
+  const valid = segments.length > 0 && segments.length <= 6 && totalSeconds <= 60 &&
+    segments.every((item) => Number.isInteger(item.startSeconds) && Number.isInteger(item.endSeconds) &&
+      item.startSeconds >= 0 && item.endSeconds > item.startSeconds
+      && item.endSeconds * 1000 <= item.sourceDurationMs && item.endSeconds <= 60);
 
   function edit(update: (previous: SegmentDraft[]) => SegmentDraft[]) {
     pendingKey.current = null;
@@ -129,9 +129,10 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
         </option>)}
       </select>
       <button className="node-action" disabled={!selectedChoice || segments.length >= 6
-        || !selectedDurationMs || selectedDurationMs < 1} onClick={() => {
+        || !selectedDurationMs || selectedDurationMs < 1000} onClick={() => {
         if (selectedChoice && selectedDurationMs) edit((previous) => [...previous, {
-          ...selectedChoice, startMs: 0, endMs: Math.min(5000, selectedDurationMs),
+          ...selectedChoice, startSeconds: 0,
+          endSeconds: Math.min(5, Math.floor(selectedDurationMs / 1000)),
           sourceDurationMs: selectedDurationMs,
         }]);
       }} type="button">添加</button>
@@ -148,12 +149,12 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
         <p className="mt-1 break-all text-[var(--muted)]">版本 {segment.versionId}</p>
         <p className="mt-1 text-[var(--muted)]">片源时长 {(segment.sourceDurationMs / 1000).toFixed(3)} 秒</p>
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <label>起点（秒）<input min="0" max="59.999" step="0.001" type="number"
-            value={segment.startMs / 1000} onChange={(event) => edit((previous) => previous.map((item, at) =>
-              at === index ? { ...item, startMs: Math.round(Number(event.target.value) * 1000) } : item))} /></label>
-          <label>终点（秒）<input min="0.001" max={segment.sourceDurationMs / 1000} step="0.001" type="number"
-            value={segment.endMs / 1000} onChange={(event) => edit((previous) => previous.map((item, at) =>
-              at === index ? { ...item, endMs: Math.round(Number(event.target.value) * 1000) } : item))} /></label>
+          <label>起点（秒）<input min="0" max="59" step="1" type="number"
+            value={segment.startSeconds} onChange={(event) => edit((previous) => previous.map((item, at) =>
+              at === index ? { ...item, startSeconds: Number(event.target.value) } : item))} /></label>
+          <label>终点（秒）<input min="1" max={Math.floor(segment.sourceDurationMs / 1000)} step="1" type="number"
+            value={segment.endSeconds} onChange={(event) => edit((previous) => previous.map((item, at) =>
+              at === index ? { ...item, endSeconds: Number(event.target.value) } : item))} /></label>
         </div>
         <div className="mt-2 flex gap-2">
           <button className="node-action" disabled={index === 0} onClick={() => edit((previous) => swap(previous, index, index - 1))} type="button">上移</button>
@@ -163,7 +164,7 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
       </li>)}
     </ol>
     {segments.length > 0 ? <p className={`mt-2 text-xs ${valid ? "text-[var(--muted)]" : "text-red-700"}`}>
-      合计 {(totalMs / 1000).toFixed(3)} 秒。裁剪终点不得超过各自片源时长。
+      合计 {totalSeconds} 秒。裁剪终点不得超过各自片源时长，且必须是整数秒。
     </p> : null}
     <button className="primary-button mt-3 w-full" disabled={!valid || create.isPending}
       onClick={() => create.mutate()} type="button">{create.isPending ? "正在提交…" : "开始导出"}</button>
@@ -177,14 +178,17 @@ export function MediaExportPanel({ projectId, items }: { projectId: string; item
       {proposalsQuery.data?.map((proposal) => <li className="rounded-lg border border-[var(--line)] bg-white p-3 text-xs"
         key={proposal.id}>
         <p className="font-medium">提案 {proposal.id.slice(0, 8)} · {proposal.status === "PENDING" ? "待确认" :
-          proposal.status === "APPROVED" ? "已批准" : "已拒绝"}</p>
-        <p className="mt-1 text-[var(--muted)]">{proposal.input.aspectRatio} · 共 {(proposal.input.durationMs / 1000).toFixed(3)} 秒 · 无声 720p/24fps</p>
+          proposal.status === "APPROVED" ? "已批准" : proposal.status === "STALE" ? "已失效" : "已拒绝"}</p>
+        <p className="mt-1 text-[var(--muted)]">{proposal.input.aspectRatio} · 共 {
+          proposal.input.schemaVersion === 2 ? proposal.input.durationSeconds
+            : (proposal.input.durationMs / 1000).toFixed(3)} 秒 · 无声 720p/24fps</p>
         <p className="mt-1 break-all text-[var(--muted)]">提案校验值 {proposal.proposalHash}</p>
         <ol className="mt-2 list-inside list-decimal space-y-1">
           {proposal.input.segments.map((segment) => <li key={`${segment.shotArtifactId}-${segment.videoVersionId}`}>
             <span>镜头 {artifactTitles.get(segment.shotArtifactId) ?? segment.shotArtifactId.slice(0, 8)} ·
               视频 {artifactTitles.get(segment.videoArtifactId) ?? segment.videoArtifactId.slice(0, 8)} ·
-              {" "}{(segment.startMs / 1000).toFixed(3)}–{(segment.endMs / 1000).toFixed(3)} 秒</span>
+              {" "}{"startSeconds" in segment ? `${segment.startSeconds}–${segment.endSeconds}`
+                : `${(segment.startMs / 1000).toFixed(3)}–${(segment.endMs / 1000).toFixed(3)}`} 秒</span>
             <p className="ml-4 break-all text-[var(--muted)]">镜头版本 {segment.shotVersionId} · 视频版本 {segment.videoVersionId}</p>
           </li>)}
         </ol>

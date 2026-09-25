@@ -267,8 +267,8 @@ public final class MockStoryboardChatGateway implements ChatGateway {
                     "videoArtifactId", "videoVersionId")) {
                 segment.put(field, requiredId(mapper.valueToTree(fields.get(field))));
             }
-            segment.put("startMs", 0);
-            segment.put("endMs", 1_000);
+            segment.put("startSeconds", 0);
+            segment.put("endSeconds", 1);
         }
         if (segments.size() != expectedShots) {
             throw new IllegalStateException("Mock storyboard lacks the expected video results");

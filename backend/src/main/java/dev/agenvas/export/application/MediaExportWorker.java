@@ -132,10 +132,27 @@ public class MediaExportWorker {
                     || !source.asset().sha256().equals(segment.path("assetSha256").asText())) {
                 throw new IllegalStateException("Pinned export asset changed");
             }
-            int startMs = segment.path("startMs").asInt(-1);
-            int endMs = segment.path("endMs").asInt(-1);
-            if (startMs < 0 || endMs <= startMs || endMs > 60_000) {
-                throw new IllegalStateException("Pinned export interval is invalid");
+            int schemaVersion = lease.input().path("schemaVersion").asInt(1);
+            int startMs;
+            int endMs;
+            if (schemaVersion == 2) {
+                JsonNode start = segment.path("startSeconds");
+                JsonNode end = segment.path("endSeconds");
+                if (!start.isIntegralNumber() || !end.isIntegralNumber()
+                        || start.intValue() < 0 || end.intValue() <= start.intValue()
+                        || end.intValue() > 60) {
+                    throw new IllegalStateException("Pinned export interval is invalid");
+                }
+                startMs = Math.multiplyExact(start.intValue(), 1_000);
+                endMs = Math.multiplyExact(end.intValue(), 1_000);
+            } else if (schemaVersion == 1) {
+                startMs = segment.path("startMs").asInt(-1);
+                endMs = segment.path("endMs").asInt(-1);
+                if (startMs < 0 || endMs <= startMs || endMs > 60_000) {
+                    throw new IllegalStateException("Pinned legacy export interval is invalid");
+                }
+            } else {
+                throw new IllegalStateException("Unsupported frozen export schema version");
             }
             verifyDuration(source.path(), endMs);
             // 多个素材的探测可能超过租约时长，因此每段素材校验后续租。
@@ -144,7 +161,9 @@ public class MediaExportWorker {
             arguments.add(source.path().toString());
             if (index > 0) filter.append(';');
             filter.append('[').append(index).append(":v]trim=start=")
-                    .append(seconds(startMs)).append(":end=").append(seconds(endMs))
+                    .append(schemaVersion == 2 ? Integer.toString(startMs / 1_000) : seconds(startMs))
+                    .append(":end=")
+                    .append(schemaVersion == 2 ? Integer.toString(endMs / 1_000) : seconds(endMs))
                     .append(",setpts=PTS-STARTPTS,fps=24,scale=")
                     .append(dimensions[0]).append(':').append(dimensions[1])
                     .append(":force_original_aspect_ratio=decrease,pad=")

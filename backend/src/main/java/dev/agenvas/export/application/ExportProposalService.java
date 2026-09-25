@@ -37,7 +37,7 @@ public class ExportProposalService {
     private static final Set<String> FIELDS = Set.of("aspectRatio", "segments");
     /** 每个片段可声明的素材 ID、版本和裁剪区间字段白名单。 */
     private static final Set<String> SEGMENT_FIELDS = Set.of("shotArtifactId",
-            "shotVersionId", "videoArtifactId", "videoVersionId", "startMs", "endMs");
+            "shotVersionId", "videoArtifactId", "videoVersionId", "startSeconds", "endSeconds");
     /** 检查项目归属、活动状态和当前项目版本。 */
     private final ProjectService projects;
     /** 验证建议来自仍在运行且作用域匹配的 Agent Run。 */
@@ -124,10 +124,10 @@ public class ExportProposalService {
             shotVersionIds.add(shotVersionId);
             pin(context, currentRun, shotId, shotVersionId, Artifact.Kind.SHOT, pins);
             pin(context, currentRun, videoId, videoVersionId, Artifact.Kind.VIDEO, pins);
-            int startMs = millisecond(segment, "startMs");
-            int endMs = millisecond(segment, "endMs");
+            int startSeconds = wholeSeconds(segment, "startSeconds");
+            int endSeconds = wholeSeconds(segment, "endSeconds");
             segments.add(new MediaExportService.SegmentRequest(videoId, videoVersionId,
-                    startMs, endMs));
+                    startSeconds, endSeconds));
         }
         MediaExportService.ExportPreview preview;
         try {
@@ -299,8 +299,8 @@ public class ExportProposalService {
         }
     }
 
-    /** 读取可安全转换为 int 的整数毫秒值，范围语义由导出预览继续校验。 */
-    private int millisecond(JsonNode value, String field) {
+    /** 读取可安全转换为 int 的整数秒值，范围语义由导出预览继续校验。 */
+    private int wholeSeconds(JsonNode value, String field) {
         JsonNode selected = value.path(field);
         if (!selected.isIntegralNumber() || !selected.canConvertToInt()) {
             throw invalid("Invalid " + field);

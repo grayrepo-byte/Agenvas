@@ -188,7 +188,7 @@ class ConfiguredStoryboardPostgresIT {
                 .map(task -> new MediaExportService.SegmentRequest(
                         UUID.fromString(task.output().path("artifactId").asText()),
                         UUID.fromString(task.output().path("artifactVersionId").asText()),
-                        0, 1_000))
+                        0, 1))
                 .toList();
         Task export = exports.create(owner.userId(), project.id(),
                 "configured-storyboard-export", orderedSegments);

@@ -413,7 +413,7 @@ class TaskStaleShotPostgresIT {
             ArtifactService.ArtifactView shot, String description) {
         return redo.revise(ownerId, projectId, shot.artifact().id(),
                 new ShotRedoService.Request(shot.currentVersion().id(),
-                        shot.artifact().version(), description, "Close", "Walk", null, null))
+                        shot.artifact().version(), description, "Close", "Walk", 5, null))
                 .shot();
     }
 }

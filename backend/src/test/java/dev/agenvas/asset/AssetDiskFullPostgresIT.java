@@ -205,7 +205,7 @@ class AssetDiskFullPostgresIT {
         var video = artifacts.create(ownerId, projectId, Artifact.Kind.VIDEO,
                 "Export failure source", content);
         var segments = List.of(new MediaExportService.SegmentRequest(video.artifact().id(),
-                video.currentVersion().id(), 0, 900));
+                video.currentVersion().id(), 0, 1));
         Task export = exports.create(ownerId, projectId, "disk-full-export", segments);
         List<String> before = projectFiles(projectId);
         int readyBefore = jdbc.sql("select count(*) from asset where project_id = :projectId")

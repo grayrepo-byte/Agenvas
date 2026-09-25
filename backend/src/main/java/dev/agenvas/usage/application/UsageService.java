@@ -241,7 +241,7 @@ public class UsageService {
             case MEDIA_EXPORT -> {
                 quantity.put("imageCount", 0);
                 quantity.put("videoCount", 0);
-                quantity.put("videoSeconds", "0.000");
+                quantity.put("videoSeconds", secondsV2 ? "0" : "0.000");
                 quantity.put("exportCount", 1);
             }
             default -> throw new IllegalArgumentException("Usage requires a media or export Task");

@@ -100,20 +100,21 @@ describe("MediaExportPanel", () => {
     const reordered = screen.getAllByRole("listitem").filter((element) => element.textContent?.includes("版本"));
     expect(reordered[0]).toHaveTextContent("Second");
     expect(reordered[0]).toHaveTextContent("片源时长 1.250 秒");
+    expect(within(reordered[0]!).getByLabelText("终点（秒）")).toHaveAttribute("step", "1");
     await user.clear(within(reordered[0]!).getByLabelText("终点（秒）"));
     await user.type(within(reordered[0]!).getByLabelText("终点（秒）"), "2");
     expect(screen.getByRole("button", { name: "开始导出" })).toBeDisabled();
     await user.clear(within(reordered[0]!).getByLabelText("终点（秒）"));
-    await user.type(within(reordered[0]!).getByLabelText("终点（秒）"), "1.25");
+    await user.type(within(reordered[0]!).getByLabelText("终点（秒）"), "1");
     await user.click(screen.getByRole("button", { name: "开始导出" }));
 
     await waitFor(() => expect(submitted).toHaveLength(1));
     expect(submitted[0]).toMatchObject({
       body: { segments: [
         { videoArtifactId: second.artifact?.id, videoVersionId: second.artifact?.currentVersionId,
-          startMs: 0, endMs: 1250 },
+          startSeconds: 0, endSeconds: 1 },
         { videoArtifactId: first.artifact?.id, videoVersionId: first.artifact?.currentVersionId,
-          startMs: 0, endMs: 2000 },
+          startSeconds: 0, endSeconds: 2 },
       ] },
     });
     expect(await screen.findByRole("link", { name: "下载 MP4" })).toHaveAttribute(

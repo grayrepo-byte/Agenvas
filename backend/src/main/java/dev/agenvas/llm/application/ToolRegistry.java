@@ -147,13 +147,13 @@ public class ToolRegistry {
                "segments":{"type":"array","minItems":1,"maxItems":6,
                  "items":{"type":"object","additionalProperties":false,
                    "required":["shotArtifactId","shotVersionId","videoArtifactId",
-                     "videoVersionId","startMs","endMs"],
+                     "videoVersionId","startSeconds","endSeconds"],
                    "properties":{"shotArtifactId":{"type":"string","format":"uuid"},
                      "shotVersionId":{"type":"string","format":"uuid"},
                      "videoArtifactId":{"type":"string","format":"uuid"},
                      "videoVersionId":{"type":"string","format":"uuid"},
-                     "startMs":{"type":"integer","minimum":0,"maximum":60000},
-                     "endMs":{"type":"integer","minimum":1,"maximum":60000}}}}}}
+                     "startSeconds":{"type":"integer","minimum":0,"maximum":59},
+                     "endSeconds":{"type":"integer","minimum":1,"maximum":60}}}}}}
             """;
 
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */

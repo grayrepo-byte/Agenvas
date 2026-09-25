@@ -9,7 +9,8 @@ export function ShotRedoEditor({ artifact }: { artifact: Artifact }) {
   const [camera, setCamera] = useState(readText(artifact.currentVersion.content, "camera"));
   const [action, setAction] = useState(readText(artifact.currentVersion.content, "action"));
   const [durationSeconds, setDurationSeconds] = useState(
-    readNumber(artifact.currentVersion.content, "durationSeconds"));
+    readDurationSeconds(artifact.currentVersion.content));
+  const legacyDurationMs = readNumber(artifact.currentVersion.content, "durationMs");
   const [sceneTime, setSceneTime] = useState("");
   const revise = useMutation({
     mutationFn: () => reviseShotForRedo(artifact.projectId, artifact.id, {
@@ -34,6 +35,8 @@ export function ShotRedoEditor({ artifact }: { artifact: Artifact }) {
   return <details className="nodrag nowheel mt-3 border-t border-[var(--line)] pt-2 text-xs">
     <summary className="cursor-pointer font-semibold">修改此镜头</summary>
     <p className="mt-2 text-[var(--muted)]">只为本镜头创建新版本。填写场景时间会另建共享场景版本，并只重绑此镜头；旧图片/视频保留在历史，不自动沿用。</p>
+    {legacyDurationMs > 0 && legacyDurationMs % 1000 !== 0 ?
+      <p className="mt-2 text-amber-800">历史时长 {(legacyDurationMs / 1000).toString()} 秒，需调整为整数秒后才能保存新版本和生成计划。</p> : null}
     <form className="mt-2 space-y-2" onSubmit={submit}>
       <label className="block">描述<textarea className="mt-1 min-h-16 w-full rounded-lg border border-[var(--line)] bg-white p-2"
         maxLength={4000} onChange={(event) => setDescription(event.target.value)} required value={description} /></label>
@@ -67,4 +70,9 @@ function readNumber(content: unknown, field: string): number {
   if (typeof content !== "object" || content === null || !(field in content)) return 0;
   const value = content[field as keyof typeof content];
   return typeof value === "number" ? value : 0;
+}
+
+function readDurationSeconds(content: unknown): number {
+  const seconds = readNumber(content, "durationSeconds");
+  return seconds || readNumber(content, "durationMs") / 1000;
 }

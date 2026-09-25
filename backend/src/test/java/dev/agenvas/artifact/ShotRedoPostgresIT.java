@@ -165,6 +165,7 @@ class ShotRedoPostgresIT {
         body.put("description", "Another take");
         body.put("camera", "Wide");
         body.put("action", "Pour again");
+        body.put("durationSeconds", 5);
         mvc.perform(post(path).with(authentication(asUser(owner)))
                 .contentType("application/json").content(body.toString()))
                 .andExpect(status().isForbidden());

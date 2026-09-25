@@ -427,14 +427,14 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 ---
 
-## 后续媒体能力交付（2026-09-25 决策，均未完成）
+## 后续媒体能力交付（2026-09-25 决策，进行中）
 
 依据：[媒体能力基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[GPT Image 2/Seedance 固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)、[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入不在当前清单中。
 
 实施顺序：[整数秒迁移计划](superpowers/plans/2026-09-25-integer-video-seconds.md) → [媒体能力基础计划](superpowers/plans/2026-09-25-media-capability-foundation.md) → [GPT Image 2/Seedance 适配器计划](superpowers/plans/2026-09-25-gpt-image-seedance-adapters.md)。计划已写成，以下交付项仍待实现与验收。
 
 - [ ] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；迁移 Mock/ComfyUI 配置与历史任务来源。
-- [ ] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。
+- [x] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。V36 升级、v1 冻结任务与用量、Mock/假 ComfyUI、1.25 秒素材导出边界及前端表单有回归测试；`backend ./mvnw verify`（57 个集成测试）、前端类型检查/lint/73 个测试/构建通过，真实 Provider 未运行。
 - [ ] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。
 - [ ] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收。
 - [ ] 火山方舟 Seedance 固定首帧图生视频适配器完成时长校验、异步轮询、临时结果归档、UNKNOWN 与故障恢复的本地假服务及 PostgreSQL 验收。

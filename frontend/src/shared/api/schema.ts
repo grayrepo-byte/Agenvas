@@ -1181,13 +1181,13 @@ export interface components {
             videoArtifactId: string;
             /** Format: uuid */
             videoVersionId: string;
-            startMs: number;
-            endMs: number;
+            startSeconds: number;
+            endSeconds: number;
         };
         CreateMediaExportRequest: {
             segments: components["schemas"]["MediaExportSegment"][];
         };
-        ExportProposalSegment: {
+        ExportProposalSegmentV1: {
             /** Format: uuid */
             videoArtifactId: string;
             /** Format: uuid */
@@ -1202,16 +1202,42 @@ export interface components {
             /** Format: uuid */
             shotVersionId: string;
         };
-        ExportProposalInput: {
+        ExportProposalSegmentV2: {
+            /** Format: uuid */
+            videoArtifactId: string;
+            /** Format: uuid */
+            videoVersionId: string;
+            /** Format: uuid */
+            assetId: string;
+            assetSha256: string;
+            startSeconds: number;
+            endSeconds: number;
+            /** Format: uuid */
+            shotArtifactId: string;
+            /** Format: uuid */
+            shotVersionId: string;
+        };
+        ExportProposalInputV1: {
             /** @constant */
             schemaVersion: 1;
             /** @enum {string} */
             aspectRatio: "LANDSCAPE_16_9" | "PORTRAIT_9_16" | "SQUARE_1_1";
             /** @constant */
             outputFormat: "SILENT_MP4_720P_24FPS";
-            segments: components["schemas"]["ExportProposalSegment"][];
+            segments: components["schemas"]["ExportProposalSegmentV1"][];
             durationMs: number;
         };
+        ExportProposalInputV2: {
+            /** @constant */
+            schemaVersion: 2;
+            /** @enum {string} */
+            aspectRatio: "LANDSCAPE_16_9" | "PORTRAIT_9_16" | "SQUARE_1_1";
+            /** @constant */
+            outputFormat: "SILENT_MP4_720P_24FPS";
+            segments: components["schemas"]["ExportProposalSegmentV2"][];
+            durationSeconds: number;
+        };
+        ExportProposalInput: components["schemas"]["ExportProposalInputV1"] | components["schemas"]["ExportProposalInputV2"];
         ExportProposal: {
             /** Format: uuid */
             id: string;
