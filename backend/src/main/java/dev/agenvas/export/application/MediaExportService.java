@@ -69,8 +69,8 @@ public class MediaExportService {
                                 saved.path("videoArtifactId").asText())
                         && requested.videoVersionId().toString().equals(
                                 saved.path("videoVersionId").asText())
-                        && requested.startMs() == saved.path("startMs").asInt(-1)
-                        && requested.endMs() == saved.path("endMs").asInt(-1);
+                        && requested.startSeconds() == saved.path("startSeconds").asInt(-1)
+                        && requested.endSeconds() == saved.path("endSeconds").asInt(-1);
             }
             if (!same) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
@@ -90,20 +90,20 @@ public class MediaExportService {
         requireSegmentCount(segments);
         Project project = projects.requireActiveProject(ownerId, projectId);
         ObjectNode input = mapper.createObjectNode();
-        input.put("schemaVersion", 1);
+        input.put("schemaVersion", 2);
         input.put("aspectRatio", project.aspectRatio().name());
         input.put("outputFormat", "SILENT_MP4_720P_24FPS");
         ArrayNode pinned = input.putArray("segments");
-        long durationMs = 0;
+        int durationSeconds = 0;
         for (SegmentRequest segment : segments) {
             if (segment == null || segment.videoArtifactId() == null
-                    || segment.videoVersionId() == null || segment.startMs() < 0
-                    || segment.endMs() <= segment.startMs()
-                    || segment.endMs() > 60_000) {
+                    || segment.videoVersionId() == null || segment.startSeconds() < 0
+                    || segment.endSeconds() <= segment.startSeconds()
+                    || segment.endSeconds() > 60) {
                 throw invalid("视频版本或裁剪区间无效。");
             }
-            durationMs += segment.endMs() - segment.startMs();
-            if (durationMs > 60_000) {
+            durationSeconds += segment.endSeconds() - segment.startSeconds();
+            if (durationSeconds > 60) {
                 throw invalid("导出总时长不能超过 60 秒。");
             }
             ArtifactService.ArtifactView video = artifacts.get(ownerId, projectId,
@@ -122,7 +122,8 @@ public class MediaExportService {
             }
             Asset asset = assets.requireReadyMedia(ownerId, projectId, assetId,
                     Asset.MediaKind.VIDEO);
-            if (asset.durationMs() == null || segment.endMs() > asset.durationMs()) {
+            if (asset.durationMs() == null
+                    || Math.multiplyExact(segment.endSeconds(), 1_000) > asset.durationMs()) {
                 throw invalid("裁剪终点超过已归档视频时长，或旧素材缺少可验证时长。");
             }
             ObjectNode item = pinned.addObject();
@@ -130,10 +131,10 @@ public class MediaExportService {
             item.put("videoVersionId", segment.videoVersionId().toString());
             item.put("assetId", asset.id().toString());
             item.put("assetSha256", asset.sha256());
-            item.put("startMs", segment.startMs());
-            item.put("endMs", segment.endMs());
+            item.put("startSeconds", segment.startSeconds());
+            item.put("endSeconds", segment.endSeconds());
         }
-        input.put("durationMs", durationMs);
+        input.put("durationSeconds", durationSeconds);
         return new ExportPreview(input, project.version());
     }
 
@@ -163,11 +164,11 @@ public class MediaExportService {
     /** 一段明确指定的历史视频版本及其裁剪区间。
      * @param videoArtifactId 视频产物 ID
      * @param videoVersionId 要导出的不可变内容版本 ID
-     * @param startMs 裁剪起点，单位毫秒，包含该位置
-     * @param endMs 裁剪终点，单位毫秒，不包含该位置
+     * @param startSeconds 裁剪起点，单位整数秒，包含该位置
+     * @param endSeconds 裁剪终点，单位整数秒，不包含该位置
      */
     public record SegmentRequest(UUID videoArtifactId, UUID videoVersionId,
-            int startMs, int endMs) {}
+            int startSeconds, int endSeconds) {}
 
     /** 服务端生成的固定导出输入及校验时的项目设置版本。
      * @param inputSnapshot 含资产摘要、裁剪范围和输出规格的任务输入

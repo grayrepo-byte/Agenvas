@@ -20,8 +20,7 @@ import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.ShotKeyframeSelectionService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.provider.application.MockImageWorker;
-import dev.agenvas.provider.application.MockVideoWorker;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
@@ -94,8 +93,7 @@ class ConfiguredStoryboardPostgresIT {
     @Autowired private AgentTurnWorker turns;
     @Autowired private ExecutionPlanService plans;
     @Autowired private ShotKeyframeSelectionService keyframes;
-    @Autowired private MockImageWorker images;
-    @Autowired private MockVideoWorker videos;
+    @Autowired private MediaExecutionWorker media;
     @Autowired private TaskService tasks;
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
@@ -139,9 +137,9 @@ class ConfiguredStoryboardPostgresIT {
                         + "and status = 'COMPLETED'").param("runId", run.id())
                 .query(Long.class).single()).isEqualTo(4);
 
-        plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash());
+        plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int image = 0; image < 3; image++) {
-            assertThat(images.runOnce("configured-image-worker")).isEqualTo(1);
+            assertThat(media.submitOnce("configured-image-worker")).isEqualTo(1);
         }
         List<Task> imageTasks = tasks.listByRun(owner.userId(), project.id(), run.id())
                 .stream().filter(task -> task.kind() == Task.Kind.IMAGE_GENERATION).toList();
@@ -168,9 +166,9 @@ class ConfiguredStoryboardPostgresIT {
                 assertThat(step.imageVersionId()).isNotNull());
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .noneMatch(task -> task.kind() == Task.Kind.VIDEO_GENERATION);
-        plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash());
+        plans.approve(owner.userId(), project.id(), videoPlan.id(), videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         for (int video = 0; video < 3; video++) {
-            assertThat(videos.runOnce("configured-video-worker")).isEqualTo(1);
+            assertThat(media.submitOnce("configured-video-worker")).isEqualTo(1);
         }
         assertThat(turns.runOnce("configured-turn-worker")).isEqualTo(1);
         assertThat(CALLS).hasValue(5);
@@ -188,7 +186,7 @@ class ConfiguredStoryboardPostgresIT {
                 .map(task -> new MediaExportService.SegmentRequest(
                         UUID.fromString(task.output().path("artifactId").asText()),
                         UUID.fromString(task.output().path("artifactVersionId").asText()),
-                        0, 1_000))
+                        0, 1))
                 .toList();
         Task export = exports.create(owner.userId(), project.id(),
                 "configured-storyboard-export", orderedSegments);
@@ -240,7 +238,7 @@ class ConfiguredStoryboardPostgresIT {
                         ObjectNode shot = shots.addObject();
                         shot.put("title", "镜头 " + index);
                         shot.put("order", index);
-                        shot.put("durationMs", 5_000);
+                        shot.put("durationSeconds", 5);
                         shot.put("description", "展示咖啡产品镜头 " + index);
                         shot.put("camera", "中景");
                         shot.put("action", "展示咖啡产品");

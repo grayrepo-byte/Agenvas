@@ -18,6 +18,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.ExecutionPlan;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
@@ -67,6 +68,7 @@ class TaskStaleShotPostgresIT {
     @Autowired private ShotRedoService redo;
     @Autowired private TaskService tasks;
     @Autowired private ExecutionPlanService plans;
+    @Autowired private MediaExecutionWorker mediaWorker;
     @Autowired private AssetService assets;
     @Autowired private CanvasService canvas;
     @Autowired private ObjectMapper mapper;
@@ -89,7 +91,7 @@ class TaskStaleShotPostgresIT {
                 "Scene", sceneContent);
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 3000);
+        shotContent.put("durationSeconds", 3);
         shotContent.put("description", "Original");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Walk");
@@ -234,12 +236,12 @@ class TaskStaleShotPostgresIT {
         ExecutionPlan imagePlan = plans.propose(new TrustedToolContext(owner.userId(),
                 plannedProject.id(), plannedRun.id()), imageDraft(plannedShots));
         var approval = plans.approve(owner.userId(), plannedProject.id(), imagePlan.id(),
-                imagePlan.planHash());
+                imagePlan.planHash(), plans.get(owner.userId(), plannedProject.id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(approval.tasks()).hasSize(3);
         var obsoleteShot = plannedShots.getFirst();
         var replacement = revise(owner.userId(), plannedProject.id(), obsoleteShot,
                 "Edited after approval");
-        Task obsoleteLease = tasks.claimImagesDue("planned-stale-worker", 3).stream()
+        Task obsoleteLease = tasks.claimBoundMedia("planned-stale-worker", 3).stream()
                 .filter(item -> item.input().path("shotArtifactId").asText()
                         .equals(obsoleteShot.artifact().id().toString()))
                 .findFirst().orElseThrow();
@@ -278,22 +280,23 @@ class TaskStaleShotPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), plannedProject.id(), fresh.id())).noneMatch(
                 item -> item.kind() == Task.Kind.IMAGE_GENERATION);
         var freshApproval = plans.approve(owner.userId(), plannedProject.id(), freshPlan.id(),
-                freshPlan.planHash());
+                freshPlan.planHash(), plans.get(owner.userId(), plannedProject.id(), freshPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(freshApproval.tasks()).hasSize(3);
         assertThat(freshApproval.tasks()).anySatisfy(item -> assertThat(item.input()
                 .path("shotVersionId").asText())
                 .isEqualTo(replacement.currentVersion().id().toString()));
 
-        // Archiving an approved project must release every still-unsubmitted reservation.
+        // Claim the batch before archiving: each lease must fail preflight without a submission.
+        List<Task> archivedLeases = tasks.claimBoundMedia("archived-plan-worker", 3);
+        assertThat(archivedLeases).hasSize(3);
         projects.archive(owner.userId(), plannedProject.id(),
                 projects.get(owner.userId(), plannedProject.id()).version());
-        AtomicInteger archivedSubmissions = new AtomicInteger();
-        assertThat(new TaskWorker(tasks).runImagesOnce("archived-plan-worker", 3,
-                (task, requestKey) -> {
-                    archivedSubmissions.incrementAndGet();
-                    return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");
-                })).isEqualTo(3);
-        assertThat(archivedSubmissions).hasValue(0);
+        for (Task archivedLease : archivedLeases) {
+            assertThatThrownBy(() -> tasks.beginSubmission(archivedLease, "archived-plan-worker"))
+                    .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                            error -> assertThat(error.code()).isEqualTo("TASK_PROJECT_ARCHIVED"));
+            tasks.blockPreSubmission(archivedLease, "archived-plan-worker", "TASK_PROJECT_ARCHIVED");
+        }
         for (Task approvedTask : freshApproval.tasks()) {
             Task archivedTask = tasks.get(owner.userId(), plannedProject.id(), approvedTask.id());
             assertThat(archivedTask.status()).isEqualTo(Task.Status.BLOCKED);
@@ -359,7 +362,7 @@ class TaskStaleShotPostgresIT {
                 referenceShot.artifact().id()).currentVersion().id())
                 .isEqualTo(referenceShot.currentVersion().id());
         assertThatThrownBy(() -> plans.approve(owner.userId(), referenceProject.id(),
-                referencePlan.id(), referencePlan.planHash()))
+                referencePlan.id(), referencePlan.planHash(), plans.get(owner.userId(), referenceProject.id(), referencePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()))
                 .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("PLAN_CONFLICT"));
         plans.reject(owner.userId(), referenceProject.id(), referencePlan.id());
@@ -413,7 +416,7 @@ class TaskStaleShotPostgresIT {
             ArtifactService.ArtifactView shot, String description) {
         return redo.revise(ownerId, projectId, shot.artifact().id(),
                 new ShotRedoService.Request(shot.currentVersion().id(),
-                        shot.artifact().version(), description, "Close", "Walk", null, null))
+                        shot.artifact().version(), description, "Close", "Walk", 5, null))
                 .shot();
     }
 }

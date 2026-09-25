@@ -59,7 +59,7 @@ public class MediaExportController {
         Task task = exports.create(principal.userId(), projectId, idempotencyKey,
                 request.segments().stream().map(item -> new MediaExportService.SegmentRequest(
                         item.videoArtifactId(), item.videoVersionId(),
-                        item.startMs(), item.endMs())).toList());
+                        item.startSeconds(), item.endSeconds())).toList());
         return ResponseEntity.accepted().body(TaskResponse.from(task));
     }
 
@@ -111,13 +111,13 @@ public class MediaExportController {
     public record CreateExportRequest(
             @NotEmpty @Size(max = 6) List<@Valid Segment> segments) {}
 
-    /** 视频区间采用毫秒闭开范围，Worker 会依据归档媒体时长再次校验。
+    /** 视频区间采用整数秒闭开范围，Worker 会依据归档媒体时长再次校验。
      * @param videoArtifactId 视频产物
      * @param videoVersionId 固定的不可变视频版本
-     * @param startMs 包含的起始毫秒
-     * @param endMs 不包含的结束毫秒
+     * @param startSeconds 包含的起始秒数
+     * @param endSeconds 不包含的结束秒数
      */
     public record Segment(@NotNull UUID videoArtifactId, @NotNull UUID videoVersionId,
-            @Min(0) @Max(60_000) int startMs,
-            @Min(1) @Max(60_000) int endMs) {}
+            @NotNull @Min(0) @Max(59) Integer startSeconds,
+            @NotNull @Min(1) @Max(60) Integer endSeconds) {}
 }

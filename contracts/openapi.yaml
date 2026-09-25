@@ -209,6 +209,148 @@ paths:
           content:
             application/problem+json:
               schema: {$ref: "#/components/schemas/Problem"}
+  /api/v1/settings/media-connections:
+    get:
+      operationId: getMediaSettings
+      summary: 读取脱敏媒体连接、能力及默认值
+      tags: [Settings]
+      responses:
+        "200":
+          description: 不含密钥或加密材料的配置状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      operationId: createMediaConnection
+      summary: 幂等创建固定平台连接
+      tags: [Settings]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMediaConnectionRequest"}
+      responses:
+        "200":
+          description: 创建或同内容重放后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateMediaConnection
+      summary: 使用 expectedVersion 修改连接并保留历史版本
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateMediaConnectionRequest"}
+      responses:
+        "200":
+          description: 修改后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}/capabilities:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: createMediaCapability
+      summary: 幂等发布一个已安装的固定适配器能力
+      tags: [Settings]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMediaCapabilityRequest"}
+      responses:
+        "200":
+          description: 发布后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: capabilityId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateMediaCapability
+      summary: 使用 expectedVersion 修改能力并保留已发布版本
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateMediaCapabilityRequest"}
+      responses:
+        "200":
+          description: 修改后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-defaults/{kind}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        schema: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+    put:
+      operationId: setMediaDefault
+      summary: 使用 expectedVersion 设置图片或视频默认能力
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SetMediaDefaultRequest"}
+      responses:
+        "200":
+          description: 修改后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects:
     get:
       operationId: listProjects
@@ -865,6 +1007,61 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/candidates:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: stepKey
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      operationId: listMediaCapabilityCandidates
+      summary: 列出与步骤输出和整数时长兼容的已发布能力
+      tags: [Plans]
+      responses:
+        "200":
+          description: 当前候选能力，无连接地址或凭证
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/MediaCapabilityCandidate"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/revise:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: planId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: stepKey
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      operationId: reviseExecutionPlanStep
+      summary: 改选一项能力或补输入并创建新的计划修订
+      tags: [Plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReviseExecutionPlanStepRequest"}
+      responses:
+        "200":
+          description: 新修订，旧逐项确认全部失效
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExecutionPlan"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/plans/{planId}/reject:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1252,6 +1449,116 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
+    MediaSettings:
+      type: object
+      additionalProperties: false
+      required: [connections, defaults]
+      properties:
+        connections:
+          type: array
+          items: {$ref: "#/components/schemas/MediaConnection"}
+        defaults:
+          type: array
+          items: {$ref: "#/components/schemas/MediaDefault"}
+    MediaConnection:
+      type: object
+      additionalProperties: false
+      required: [id, name, platform, enabled, version, connectionVersion, origin,
+        keyMask, connectivityStatus, realGenerationTested, capabilities]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK]}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        connectionVersion: {type: integer, minimum: 1}
+        origin: {type: [string, "null"]}
+        keyMask: {type: [string, "null"]}
+        connectivityStatus: {type: string, enum: [NOT_CHECKED]}
+        realGenerationTested: {type: boolean}
+        capabilities:
+          type: array
+          items: {$ref: "#/components/schemas/MediaCapability"}
+    MediaCapability:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
+        minimumSeconds, maximumSeconds, mappingSha256, settings]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        capabilityVersion: {type: integer, minimum: 1}
+        adapterId: {type: string}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        minimumSeconds: {type: integer, minimum: 0}
+        maximumSeconds: {type: integer, minimum: 0}
+        mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
+    FixedMediaAdapterSettings:
+      type: object
+      additionalProperties: false
+      description: Fixed adapters accept only their declared settings; model IDs and endpoints are not editable.
+      properties:
+        checkpoint: {type: string, maxLength: 160}
+        diffusionModel: {type: string, maxLength: 160}
+        textEncoder: {type: string, maxLength: 160}
+        vae: {type: string, maxLength: 160}
+        clipVision: {type: string, maxLength: 160}
+        quality: {type: string, enum: [low, medium, high]}
+    MediaDefault:
+      type: object
+      additionalProperties: false
+      required: [kind, capabilityId, version]
+      properties:
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        capabilityId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+    CreateMediaConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, platform]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 160}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK]}
+        origin: {type: [string, "null"], maxLength: 500}
+        apiKey: {type: [string, "null"], maxLength: 4096}
+    UpdateMediaConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, enabled]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        enabled: {type: boolean}
+        origin: {type: [string, "null"], maxLength: 500}
+        apiKey: {type: [string, "null"], maxLength: 4096}
+    CreateMediaCapabilityRequest:
+      type: object
+      additionalProperties: false
+      required: [name, adapterId]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 160}
+        adapterId: {type: string, minLength: 1, maxLength: 80}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
+    UpdateMediaCapabilityRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, enabled, adapterId]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        enabled: {type: boolean}
+        adapterId: {type: string, minLength: 1, maxLength: 80}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
+    SetMediaDefaultRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, capabilityId]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        capabilityId: {type: string, format: uuid}
     SystemDiagnostics:
       type: object
       additionalProperties: false
@@ -1406,6 +1713,7 @@ components:
         style: {type: string}
         order: {type: integer}
         durationMs: {type: integer}
+        durationSeconds: {type: integer, minimum: 1, maximum: 30}
         camera: {type: string}
         action: {type: string}
         characterVersionIds: {type: array, items: {type: string, format: uuid}}
@@ -1436,12 +1744,12 @@ components:
     MediaExportSegment:
       type: object
       additionalProperties: false
-      required: [videoArtifactId, videoVersionId, startMs, endMs]
+      required: [videoArtifactId, videoVersionId, startSeconds, endSeconds]
       properties:
         videoArtifactId: {type: string, format: uuid}
         videoVersionId: {type: string, format: uuid}
-        startMs: {type: integer, minimum: 0, maximum: 60000}
-        endMs: {type: integer, minimum: 1, maximum: 60000}
+        startSeconds: {type: integer, minimum: 0, maximum: 59}
+        endSeconds: {type: integer, minimum: 1, maximum: 60}
     CreateMediaExportRequest:
       type: object
       additionalProperties: false
@@ -1452,7 +1760,7 @@ components:
           minItems: 1
           maxItems: 6
           items: {$ref: "#/components/schemas/MediaExportSegment"}
-    ExportProposalSegment:
+    ExportProposalSegmentV1:
       type: object
       additionalProperties: false
       required: [videoArtifactId, videoVersionId, assetId, assetSha256, startMs, endMs, shotArtifactId, shotVersionId]
@@ -1465,7 +1773,20 @@ components:
         endMs: {type: integer, minimum: 1, maximum: 60000}
         shotArtifactId: {type: string, format: uuid}
         shotVersionId: {type: string, format: uuid}
-    ExportProposalInput:
+    ExportProposalSegmentV2:
+      type: object
+      additionalProperties: false
+      required: [videoArtifactId, videoVersionId, assetId, assetSha256, startSeconds, endSeconds, shotArtifactId, shotVersionId]
+      properties:
+        videoArtifactId: {type: string, format: uuid}
+        videoVersionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        assetSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        startSeconds: {type: integer, minimum: 0, maximum: 59}
+        endSeconds: {type: integer, minimum: 1, maximum: 60}
+        shotArtifactId: {type: string, format: uuid}
+        shotVersionId: {type: string, format: uuid}
+    ExportProposalInputV1:
       type: object
       additionalProperties: false
       required: [schemaVersion, aspectRatio, outputFormat, segments, durationMs]
@@ -1477,8 +1798,26 @@ components:
           type: array
           minItems: 1
           maxItems: 6
-          items: {$ref: "#/components/schemas/ExportProposalSegment"}
+          items: {$ref: "#/components/schemas/ExportProposalSegmentV1"}
         durationMs: {type: integer, minimum: 1, maximum: 60000}
+    ExportProposalInputV2:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, aspectRatio, outputFormat, segments, durationSeconds]
+      properties:
+        schemaVersion: {type: integer, const: 2}
+        aspectRatio: {type: string, enum: [LANDSCAPE_16_9, PORTRAIT_9_16, SQUARE_1_1]}
+        outputFormat: {type: string, const: SILENT_MP4_720P_24FPS}
+        segments:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: {$ref: "#/components/schemas/ExportProposalSegmentV2"}
+        durationSeconds: {type: integer, minimum: 1, maximum: 60}
+    ExportProposalInput:
+      oneOf:
+        - {$ref: "#/components/schemas/ExportProposalInputV1"}
+        - {$ref: "#/components/schemas/ExportProposalInputV2"}
     ExportProposal:
       type: object
       additionalProperties: false
@@ -1486,7 +1825,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         runId: {type: string, format: uuid}
-        status: {type: string, enum: [PENDING, APPROVED, REJECTED]}
+        status: {type: string, enum: [PENDING, APPROVED, REJECTED, STALE]}
         input: {$ref: "#/components/schemas/ExportProposalInput"}
         proposalHash: {type: string, pattern: "^[0-9a-f]{64}$"}
         projectVersion: {type: integer, format: int64, minimum: 0}
@@ -1631,6 +1970,15 @@ components:
         - {$ref: "./artifact-schemas/character-v1.schema.json"}
         - {$ref: "./artifact-schemas/scene-v1.schema.json"}
         - {$ref: "./artifact-schemas/shot-v1.schema.json"}
+        - {$ref: "./artifact-schemas/shot-v2.schema.json"}
+    WritableArtifactContent:
+      oneOf:
+        - {$ref: "./artifact-schemas/text-v1.schema.json"}
+        - {$ref: "./artifact-schemas/image-v1.schema.json"}
+        - {$ref: "./artifact-schemas/video-v1.schema.json"}
+        - {$ref: "./artifact-schemas/character-v1.schema.json"}
+        - {$ref: "./artifact-schemas/scene-v1.schema.json"}
+        - {$ref: "./artifact-schemas/shot-v2.schema.json"}
     ShotSceneEdit:
       type: object
       additionalProperties: false
@@ -1644,14 +1992,14 @@ components:
     ReviseShotForRedoRequest:
       type: object
       additionalProperties: false
-      required: [expectedShotVersionId, expectedShotArtifactVersion, description, camera, action]
+      required: [expectedShotVersionId, expectedShotArtifactVersion, description, camera, action, durationSeconds]
       properties:
         expectedShotVersionId: {type: string, format: uuid}
         expectedShotArtifactVersion: {type: integer, format: int64, minimum: 0}
         description: {type: string, minLength: 1, maxLength: 4000}
         camera: {type: string, minLength: 1, maxLength: 1000}
         action: {type: string, minLength: 1, maxLength: 2000}
-        durationMs: {type: integer, minimum: 100, maximum: 30000}
+        durationSeconds: {type: integer, minimum: 1, maximum: 30}
         scene: {$ref: "#/components/schemas/ShotSceneEdit"}
     ShotRedoResult:
       type: object
@@ -1670,7 +2018,7 @@ components:
       properties:
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string, minLength: 1, maxLength: 160}
-        content: {$ref: "#/components/schemas/ArtifactContent"}
+        content: {$ref: "#/components/schemas/WritableArtifactContent"}
     ReviseArtifactRequest:
       type: object
       additionalProperties: false
@@ -1678,7 +2026,7 @@ components:
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         title: {type: string, minLength: 1, maxLength: 160}
-        content: {$ref: "#/components/schemas/ArtifactContent"}
+        content: {$ref: "#/components/schemas/WritableArtifactContent"}
     SelectArtifactVersionRequest:
       type: object
       additionalProperties: false
@@ -1702,7 +2050,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         versionNo: {type: integer, minimum: 1}
-        schemaVersion: {type: integer, const: 1}
+        schemaVersion: {type: integer, enum: [1, 2]}
         content: {$ref: "#/components/schemas/ArtifactContent"}
         inputReferences:
           type: array
@@ -1950,7 +2298,7 @@ components:
     ExecutionPlanStep:
       type: object
       additionalProperties: false
-      required: [stepKey, ordinal, kind, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, outputSlotKey, input, dependencyKeys]
+      required: [stepKey, ordinal, kind, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, outputSlotKey, input, dependencyKeys, binding]
       properties:
         stepKey: {type: string, minLength: 1}
         ordinal: {type: integer, minimum: 0}
@@ -1964,6 +2312,35 @@ components:
         dependencyKeys:
           type: array
           items: {type: string}
+        binding:
+          oneOf:
+            - {$ref: "#/components/schemas/MediaCapabilityBinding"}
+            - {type: "null"}
+    MediaCapabilityBinding:
+      type: object
+      additionalProperties: false
+      required: [connectionId, connectionVersion, capabilityId, capabilityVersion, adapterId, mappingSha256]
+      properties:
+        connectionId: {type: string, format: uuid}
+        connectionVersion: {type: integer, minimum: 1}
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        adapterId: {type: string}
+        mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+    MediaCapabilityCandidate:
+      type: object
+      additionalProperties: false
+      required: [binding, connectionName, capabilityName, kind, minimumSeconds,
+        maximumSeconds, realGenerationTested, settings]
+      properties:
+        binding: {$ref: "#/components/schemas/MediaCapabilityBinding"}
+        connectionName: {type: string}
+        capabilityName: {type: string}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        minimumSeconds: {type: integer, minimum: 0}
+        maximumSeconds: {type: integer, minimum: 0}
+        realGenerationTested: {type: boolean}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     ExecutionPlan:
       type: object
       additionalProperties: false
@@ -1974,7 +2351,7 @@ components:
         runId: {type: string, format: uuid}
         revision: {type: integer, minimum: 1}
         stage: {type: string, enum: [IMAGE, VIDEO]}
-        status: {type: string, enum: [PENDING, APPROVED, REJECTED, STALE]}
+        status: {type: string, enum: [NEEDS_INPUT, PENDING, APPROVED, REJECTED, STALE]}
         objective: {type: string}
         plan: {type: object, additionalProperties: true}
         inputSnapshot: {type: object, additionalProperties: true}
@@ -1991,9 +2368,27 @@ components:
     ApproveExecutionPlanRequest:
       type: object
       additionalProperties: false
-      required: [planHash]
+      required: [planHash, confirmedStepKeys]
       properties:
         planHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        confirmedStepKeys:
+          type: array
+          items: {type: string}
+    ReviseExecutionPlanStepRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedPlanHash, inputPatch]
+      properties:
+        expectedPlanHash: {type: string, pattern: "^[0-9a-f]{64}$"}
+        capabilityId: {type: [string, "null"], format: uuid}
+        inputPatch:
+          type: object
+          additionalProperties: false
+          properties:
+            prompt: {type: string}
+            negativePrompt: {type: [string, "null"]}
+            imageArtifactId: {type: [string, "null"], format: uuid}
+            imageVersionId: {type: [string, "null"], format: uuid}
     ExecutionPlanApproval:
       type: object
       additionalProperties: false

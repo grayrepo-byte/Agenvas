@@ -82,13 +82,23 @@ public class CredentialCipher {
 
     /** 为每个不可变配置版本使用独立随机 nonce 加密，返回的密文包含 GCM 认证标签。 */
     public Encrypted encrypt(UUID configId, int version, String secret) {
+        return encryptWithAad(configId, version, secret, "llm-provider-config");
+    }
+
+    /** Media credentials use a separate AAD namespace, preventing cross-service ciphertext reuse. */
+    public Encrypted encryptMedia(UUID connectionId, int version, String secret) {
+        return encryptWithAad(connectionId, version, secret, "media-provider-connection");
+    }
+
+    private Encrypted encryptWithAad(UUID configId, int version, String secret,
+            String namespace) {
         requireKey();
         byte[] nonce = new byte[NONCE_BYTES];
         random.nextBytes(nonce);
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, nonce));
-            cipher.updateAAD(aad(configId, version));
+            cipher.updateAAD(aad(namespace, configId, version));
             return new Encrypted(cipher.doFinal(secret.getBytes(StandardCharsets.UTF_8)),
                     nonce, keyVersion);
         } catch (GeneralSecurityException failure) {
@@ -98,6 +108,16 @@ public class CredentialCipher {
 
     /** 校验密钥版本、nonce 和 GCM 认证；配置被调换或密文损坏时拒绝返回明文。 */
     public String decrypt(UUID configId, int version, Encrypted encrypted) {
+        return decryptWithAad(configId, version, encrypted, "llm-provider-config");
+    }
+
+    /** Historical media versions remain decryptable only with their original connection/version. */
+    public String decryptMedia(UUID connectionId, int version, Encrypted encrypted) {
+        return decryptWithAad(connectionId, version, encrypted, "media-provider-connection");
+    }
+
+    private String decryptWithAad(UUID configId, int version, Encrypted encrypted,
+            String namespace) {
         requireKeyVersion(encrypted.keyVersion());
         SecretKeySpec selected = encrypted.keyVersion() == keyVersion
                 ? key : previousKeys.get(encrypted.keyVersion());
@@ -108,7 +128,7 @@ public class CredentialCipher {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, selected,
                     new GCMParameterSpec(TAG_BITS, encrypted.nonce()));
-            cipher.updateAAD(aad(configId, version));
+            cipher.updateAAD(aad(namespace, configId, version));
             return new String(cipher.doFinal(encrypted.ciphertext()), StandardCharsets.UTF_8);
         } catch (GeneralSecurityException failure) {
             throw new IllegalStateException("Credential authentication failed", failure);
@@ -126,8 +146,8 @@ public class CredentialCipher {
     }
 
     /** 将配置 ID 和版本编码为认证附加数据，防止密文跨配置或版本搬用。 */
-    private byte[] aad(UUID configId, int version) {
-        return ("agenvas:llm-provider-config:" + configId + ":" + version)
+    private byte[] aad(String namespace, UUID configId, int version) {
+        return ("agenvas:" + namespace + ":" + configId + ":" + version)
                 .getBytes(StandardCharsets.UTF_8);
     }
 

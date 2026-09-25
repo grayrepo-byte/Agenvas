@@ -139,7 +139,7 @@ class ExportProposalPostgresIT {
                 "Studio", sceneContent);
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 1000);
+        shotContent.put("durationSeconds", 1);
         shotContent.put("description", "Opening");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Introduce the room");
@@ -252,7 +252,7 @@ class ExportProposalPostgresIT {
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
         ObjectNode badRange = input.deepCopy();
-        ((ObjectNode) badRange.path("segments").get(0)).put("endMs", 70_000);
+        ((ObjectNode) badRange.path("segments").get(0)).put("endSeconds", 70);
         assertThatThrownBy(() -> proposals.propose(context, currentRun, badRange))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
@@ -277,8 +277,8 @@ class ExportProposalPostgresIT {
         segment.put("shotVersionId", shot.currentVersion().id().toString());
         segment.put("videoArtifactId", video.artifact().id().toString());
         segment.put("videoVersionId", video.currentVersion().id().toString());
-        segment.put("startMs", 0);
-        segment.put("endMs", 900);
+        segment.put("startSeconds", 0);
+        segment.put("endSeconds", 1);
         return input;
     }
 

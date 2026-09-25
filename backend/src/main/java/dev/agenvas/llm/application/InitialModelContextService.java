@@ -2,6 +2,7 @@ package dev.agenvas.llm.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import java.util.ArrayList;
@@ -56,14 +57,18 @@ public class InitialModelContextService {
     private final AgentRunService runs;
     /** 按快照中的 artifactId/versionId 重新读取并鉴权精确版本。 */
     private final ArtifactService artifacts;
+    /** Published IDs and port metadata only; never supplies endpoints or credentials to the model. */
+    private final MediaCapabilityService capabilities;
 
     /** 注入 Run 快照读取和固定产物版本解析服务。
      * @param runs 按所有者作用域读取 Run 的上下文快照
      * @param artifacts 读取快照指定的不可变产物版本
      */
-    public InitialModelContextService(AgentRunService runs, ArtifactService artifacts) {
+    public InitialModelContextService(AgentRunService runs, ArtifactService artifacts,
+            MediaCapabilityService capabilities) {
         this.runs = runs;
         this.artifacts = artifacts;
+        this.capabilities = capabilities;
     }
 
     /**
@@ -93,6 +98,20 @@ public class InitialModelContextService {
                 + required(snapshot, "aspectRatio") + ")"));
         messages.add(new UserMessage("Agent " + agentName + " instructions:\n"
                 + agentInstruction));
+        StringBuilder availableMedia = new StringBuilder("Published media capabilities (IDs are optional "
+                + "in propose_generation_plan steps; omitted IDs use the administrator default). "
+                + "Choose only a compatible kind and integer duration. The user confirms every step:\n");
+        List<MediaCapabilityService.Candidate> published = capabilities.publishedCandidates();
+        for (var candidate : published.stream().limit(40).toList()) {
+            availableMedia.append("capabilityId=").append(candidate.binding().capabilityId())
+                    .append(" kind=").append(candidate.kind())
+                    .append(" connection=").append(candidate.connectionName())
+                    .append(" capability=").append(candidate.capabilityName())
+                    .append(" durationSeconds=").append(candidate.minimumSeconds())
+                    .append("..").append(candidate.maximumSeconds()).append('\n');
+        }
+        if (published.size() > 40) availableMedia.append("Additional capabilities are omitted.\n");
+        messages.add(new UserMessage(availableMedia.toString()));
         StringBuilder boundInputs = new StringBuilder("Explicitly bound immutable inputs:\n");
         for (JsonNode binding : bindings) {
             UUID artifactId = uuid(binding, "artifactId");

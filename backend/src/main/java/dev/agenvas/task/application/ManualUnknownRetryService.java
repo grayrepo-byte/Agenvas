@@ -9,6 +9,8 @@ import dev.agenvas.plan.application.PlanDraftValidator;
 import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.plan.application.PlanWorkflowPolicy;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -42,6 +44,7 @@ public class ManualUnknownRetryService {
     private final PlanProviderProperties provider;
     /** 检查审批时的工作流版本仍可使用。 */
     private final PlanWorkflowPolicy workflows;
+    private final MediaCapabilityService mediaCapabilities;
     /** 确认项目仍可执行新尝试。 */
     private final ProjectService projects;
     /** 确认原 Run 仍等待该媒体任务，并按条件解除阻断。 */
@@ -75,6 +78,7 @@ public class ManualUnknownRetryService {
     public ManualUnknownRetryService(TaskService tasks, TaskRepository repository,
             ExecutionPlanService plans, PlanDraftValidator validator,
             PlanProviderProperties provider, PlanWorkflowPolicy workflows,
+            MediaCapabilityService mediaCapabilities,
             ProjectService projects, AgentRunService runs, ArtifactService artifacts,
             UsageService usage, ProjectEventService events, ObjectMapper mapper, Clock clock) {
         this.tasks = tasks;
@@ -83,6 +87,7 @@ public class ManualUnknownRetryService {
         this.validator = validator;
         this.provider = provider;
         this.workflows = workflows;
+        this.mediaCapabilities = mediaCapabilities;
         this.projects = projects;
         this.runs = runs;
         this.artifacts = artifacts;
@@ -143,14 +148,26 @@ public class ManualUnknownRetryService {
                 throw conflict("Run 不再等待该媒体任务。");
             }
             ExecutionPlan plan = plans.get(ownerId, projectId, original.planId());
-            if (plan.status() != ExecutionPlan.Status.APPROVED
-                    || !plan.runId().equals(run.id())
-                    || plan.steps().stream().noneMatch(step -> step.stepKey().equals(original.stepKey())
+            ExecutionPlan.Step originalStep = plan.steps().stream()
+                    .filter(step -> step.stepKey().equals(original.stepKey())
                             && step.kind() == original.kind()
                             && step.input().equals(original.input()))
-                    || plan.providerConfigVersion() != provider.configVersion()
-                    || !workflows.version(plan.stage()).equals(plan.workflowVersion())
-                    || !validator.providerOriginMatches(plan)
+                    .findFirst().orElse(null);
+            MediaCapabilityBinding originalBinding = repository.mediaBinding(original.id())
+                    .orElse(null);
+            int durationSeconds = original.kind() == Task.Kind.VIDEO_GENERATION
+                    ? original.input().path("durationSeconds").asInt(-1) : 0;
+            boolean currentProvider = originalBinding == null
+                    ? plan.providerConfigVersion() == provider.configVersion()
+                            && workflows.version(plan.stage()).equals(plan.workflowVersion())
+                            && validator.providerOriginMatches(plan)
+                    : originalStep != null && originalBinding.equals(originalStep.binding())
+                            && mediaCapabilities.isCurrentBinding(originalBinding,
+                                    original.kind(), durationSeconds);
+            if (plan.status() != ExecutionPlan.Status.APPROVED
+                    || !plan.runId().equals(run.id())
+                    || originalStep == null
+                    || !currentProvider
                     || !validator.currentInputsMatch(ownerId, projectId, plan.inputSnapshot())) {
                 throw conflict("计划、Provider 配置或输入已变化，不能沿用原批准。");
             }
@@ -182,6 +199,9 @@ public class ManualUnknownRetryService {
                         plan.id(), original.stepKey(), original.kind(), original.input(),
                         original.providerId(), original.attemptNo() + 1, dependencies,
                         target.outputSlotKey());
+            }
+            if (originalBinding != null) {
+                repository.bindMediaTask(replacement.id(), originalBinding);
             }
             usage.reserveMediaTask(ownerId, replacement,
                     plan.estimate().path("costSource").asText());

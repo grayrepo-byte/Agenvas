@@ -30,7 +30,8 @@ public class ShotRedoService {
     public Result revise(UUID ownerId, UUID projectId, UUID shotId, Request request) {
         if (request == null || request.expectedShotVersionId() == null
                 || request.description() == null || request.camera() == null
-                || request.action() == null) {
+                || request.action() == null || request.durationSeconds() == null
+                || request.durationSeconds() < 1 || request.durationSeconds() > 30) {
             throw invalid("镜头版本与完整修改内容必填。");
         }
         ArtifactService.ArtifactView shot = artifacts.get(ownerId, projectId, shotId);
@@ -46,7 +47,8 @@ public class ShotRedoService {
         newShot.put("description", request.description());
         newShot.put("camera", request.camera());
         newShot.put("action", request.action());
-        if (request.durationMs() != null) newShot.put("durationMs", request.durationMs());
+        newShot.remove("durationMs");
+        newShot.put("durationSeconds", request.durationSeconds());
 
         ArtifactService.ArtifactView revisedScene = null;
         if (request.scene() != null) {
@@ -119,11 +121,11 @@ public class ShotRedoService {
      * @param description 新镜头描述
      * @param camera 新机位说明
      * @param action 新动作说明
-     * @param durationMs 可选新时长，单位毫秒
+     * @param durationSeconds 新镜头时长，单位为整数秒；旧小数秒版本也必须显式提交
      * @param scene 可选共享场景字段补丁
      */
     public record Request(UUID expectedShotVersionId, long expectedShotArtifactVersion,
-            String description, String camera, String action, Integer durationMs,
+            String description, String camera, String action, Integer durationSeconds,
             SceneEdit scene) {}
 
     /** 共享场景的可选局部修订，应用后生成独立新版本。

@@ -52,13 +52,13 @@ public class PlanWorkflowPolicy {
     }
 
     /** 拒绝固定模板无法精确表达的镜头时长。 */
-    public void requireVideoDuration(int durationMs) {
+    public void requireVideoDuration(int durationSeconds) {
         if ("comfyui".equalsIgnoreCase(provider.mode())) {
             ComfyUiVideoWorkflow workflow = comfyVideo.getIfAvailable();
-            if (workflow == null || !workflow.supportsDuration(durationMs)) {
+            if (workflow == null || !workflow.supportsDurationSeconds(durationSeconds)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
                         "PROVIDER_UNSUPPORTED_DURATION", "视频时长不受支持",
-                        "当前固定图生视频模板只支持 1–5 秒、以 0.25 秒递增的镜头。", false);
+                        "当前固定图生视频模板只支持 1–5 整数秒的镜头。", false);
             }
         }
     }

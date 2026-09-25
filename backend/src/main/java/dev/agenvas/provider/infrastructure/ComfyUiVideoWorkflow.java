@@ -81,6 +81,21 @@ public class ComfyUiVideoWorkflow {
         return durationMs >= 1_000 && durationMs <= 5_000 && durationMs % 250 == 0;
     }
 
+    /** 新业务计划仅允许固定模板可精确表示的 1–5 整数秒。 */
+    public boolean supportsDurationSeconds(int durationSeconds) {
+        return durationSeconds >= 1 && durationSeconds <= 5;
+    }
+
+    /** 把新业务秒数转换为固定模板使用的旧毫秒协议。 */
+    public ObjectNode renderSeconds(String prompt, String negativePrompt, long seed,
+            String uploadedImageName, Project.AspectRatio ratio, int durationSeconds) {
+        if (!supportsDurationSeconds(durationSeconds)) {
+            throw new IllegalArgumentException("ComfyUI duration must be 1–5 whole seconds");
+        }
+        return render(prompt, negativePrompt, seed, uploadedImageName, ratio,
+                Math.multiplyExact(durationSeconds, 1_000));
+    }
+
     /** 深拷贝固定工作流，并将已上传的固定关键帧写入图生视频的两个图像输入。 */
     public ObjectNode render(String prompt, String negativePrompt, long seed,
             String uploadedImageName, Project.AspectRatio ratio, int durationMs) {

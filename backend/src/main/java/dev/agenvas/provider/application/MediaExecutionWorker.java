@@ -1,0 +1,187 @@
+package dev.agenvas.provider.application;
+
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaAdapter;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
+import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.provider.domain.Submission;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+/** Routes only version-pinned media work through installed fixed Java adapters. */
+@Component
+public class MediaExecutionWorker {
+
+    private final TaskService tasks;
+    private final MediaCapabilityService catalog;
+    private final MediaAdapterRegistry adapters;
+    private final AssetService assets;
+    private final ObjectMapper mapper;
+
+    public MediaExecutionWorker(TaskService tasks, MediaCapabilityService catalog,
+            MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper) {
+        this.tasks = tasks;
+        this.catalog = catalog;
+        this.adapters = adapters;
+        this.assets = assets;
+        this.mapper = mapper;
+    }
+
+    /** The claim and checkpoint are short transactions; provider traffic happens afterward. */
+    public int submitOnce(String workerId) {
+        List<Task> claimed = tasks.claimBoundMedia(workerId, 1);
+        for (Task task : claimed) {
+            MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
+            int seconds = task.kind() == Task.Kind.VIDEO_GENERATION
+                    ? task.input().path("durationSeconds").asInt(-1) : 0;
+            if (!catalog.isCurrentBinding(binding, task.kind(), seconds)) {
+                tasks.blockPreSubmission(task, workerId, "MEDIA_CAPABILITY_CHANGED");
+                continue;
+            }
+            MediaAdapter adapter;
+            try {
+                adapter = adapters.require(binding.adapterId());
+            } catch (RuntimeException unavailable) {
+                tasks.blockPreSubmission(task, workerId, "PROVIDER_UNSUPPORTED_CAPABILITY");
+                continue;
+            }
+            UUID ownerId = tasks.ownerForWorker(task);
+            AttemptContext preflight = new AttemptContext(task, binding, ownerId, null, null);
+            String preflightFailure = adapter.preflightFailure(preflight);
+            if (preflightFailure != null) {
+                tasks.blockPreSubmission(task, workerId, preflightFailure);
+                continue;
+            }
+            String origin = adapter.candidateOriginSha256(preflight);
+            UUID requestKey;
+            try {
+                requestKey = tasks.beginSubmission(task, workerId, origin, binding);
+            } catch (dev.agenvas.shared.error.ApiProblemException problem) {
+                if ("TASK_INPUT_STALE".equals(problem.code())
+                        || "TASK_PROJECT_ARCHIVED".equals(problem.code())
+                        || "MEDIA_CAPABILITY_CHANGED".equals(problem.code())) {
+                    tasks.blockPreSubmission(task, workerId, problem.code());
+                    continue;
+                }
+                throw problem;
+            }
+            AttemptContext attempt = new AttemptContext(task, binding, ownerId,
+                    requestKey.toString(), null);
+            // A network exception leaves SUBMITTING for lease expiry and UNKNOWN recovery.
+            recordSubmission(task, workerId, attempt, adapter.submit(attempt));
+        }
+        return claimed.size();
+    }
+
+    /** Accepted requests can only be queried by their persisted original request ID. */
+    public int pollOnce(String workerId) {
+        List<Task> claimed = tasks.claimBoundMediaPolls(workerId, 1);
+        for (Task task : claimed) {
+            MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
+            MediaAdapter adapter = adapters.require(binding.adapterId());
+            AttemptContext attempt = new AttemptContext(task, binding,
+                    tasks.ownerForWorker(task), null, task.providerRequestId());
+            Submission result;
+            try {
+                result = adapter.reconcile(attempt);
+            } catch (RuntimeException transientFailure) {
+                tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                continue;
+            }
+            switch (result) {
+                case Submission.Pending pending ->
+                    tasks.deferProviderPoll(task, workerId, pending.nextActionAt());
+                case Submission.Completed completed -> {
+                    ObjectNode content;
+                    try {
+                        content = archive(attempt, completed.payload());
+                    } catch (RuntimeException archiveFailure) {
+                        tasks.retryProviderPoll(task, workerId,
+                                "PROVIDER_POLL_TECHNICAL_FAILURE");
+                        continue;
+                    }
+                    tasks.succeedWithArtifact(task, workerId, content);
+                }
+                case Submission.CompletedArtifact completed ->
+                    tasks.succeedWithArtifact(task, workerId, completed.content());
+                case Submission.Rejected rejected -> tasks.fail(task, workerId, rejected.code());
+                case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
+                        blocked.code());
+                case Submission.Unknown ignored ->
+                    tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                case Submission.Accepted ignored ->
+                    tasks.deferProviderPoll(task, workerId, Instant.now().plusSeconds(5));
+            }
+        }
+        return claimed.size();
+    }
+
+    private void recordSubmission(Task task, String workerId, AttemptContext attempt,
+            Submission result) {
+        switch (result) {
+            case Submission.Accepted accepted -> tasks.waitForProvider(task, workerId,
+                    accepted.requestId(), Instant.now().plusSeconds(5));
+            case Submission.Completed completed -> tasks.succeedWithArtifact(task, workerId,
+                    archive(attempt, completed.payload()));
+            case Submission.CompletedArtifact completed ->
+                    tasks.succeedWithArtifact(task, workerId, completed.content());
+            case Submission.Rejected rejected -> tasks.rejectSubmission(task, workerId,
+                    rejected.code());
+            case Submission.Unknown ignored -> {
+                // The persisted SUBMITTING attempt becomes UNKNOWN after its lease expires.
+            }
+            case Submission.Pending ignored -> throw new IllegalStateException(
+                    "Submission cannot be pending without an accepted request ID");
+            case Submission.Blocked ignored -> throw new IllegalStateException(
+                    "Submission cannot be blocked after external submission");
+        }
+    }
+
+    /** Archive bytes by task identity before committing the immutable artifact version. */
+    private ObjectNode archive(AttemptContext attempt, MediaPayload payload) {
+        Task task = attempt.lease();
+        try (payload) {
+            Asset asset = task.kind() == Task.Kind.IMAGE_GENERATION
+                    ? assets.archiveTaskImage(attempt.ownerId(), task.projectId(), task.id(),
+                            payload::stream)
+                    : assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(),
+                            payload::stream);
+            ObjectNode content = mapper.createObjectNode();
+            content.put("assetId", asset.id().toString());
+            content.put("prompt", task.input().path("prompt").asText());
+            if (task.input().has("negativePrompt")) {
+                content.put("negativePrompt", task.input().path("negativePrompt").asText());
+            }
+            content.put("sourceTaskId", task.id().toString());
+            content.put("providerConfigVersion",
+                    task.input().path("providerConfigVersion").asInt());
+            content.put("workflowVersion", task.input().path("workflowVersion").asText());
+            if (task.kind() == Task.Kind.VIDEO_GENERATION) {
+                content.put("keyframeVersionId",
+                        task.input().path("imageVersionId").asText());
+            }
+            ObjectNode parameters = content.putObject("parameters");
+            parameters.put("adapterId", attempt.binding().adapterId());
+            parameters.put("capabilityId", attempt.binding().capabilityId().toString());
+            parameters.put("providerRequestId", attempt.originalRequestId() != null
+                    ? attempt.originalRequestId() : attempt.requestKey());
+            if (task.input().has("referenceImageVersionId")) {
+                parameters.put("referenceImageVersionId",
+                        task.input().path("referenceImageVersionId").asText());
+            }
+            return content;
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot close media response", failure);
+        }
+    }
+}

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 /** 独立推进已批准的 Mock 视频任务，不依赖浏览器连接或图片调度器。 */
 @Component
+@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "mock", matchIfMissing = true)
 @ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
         havingValue = "false", matchIfMissing = true)
 @ConditionalOnBean(MockVideoWorker.class)
@@ -21,17 +22,20 @@ public class MockVideoScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(MockVideoScheduler.class);
     /** 认领并执行一个已批准的演示视频任务。 */
     private final MockVideoWorker worker;
+    private final LegacyMediaImportService importer;
     /** 此调度器专用的持久任务租约身份。 */
     private final String workerId = "mock-video-" + UUID.randomUUID();
 
     /** 注入 Mock Worker 并为此调度器建立唯一认领身份。 */
-    public MockVideoScheduler(MockVideoWorker worker) {
+    public MockVideoScheduler(MockVideoWorker worker, LegacyMediaImportService importer) {
         this.worker = worker;
+        this.importer = importer;
     }
 
     /** 每轮最多认领一个视频任务，Worker 以租约 epoch 隔离过期执行者。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
+        if (!importer.ready()) return;
         try {
             worker.runOnce(workerId);
         } catch (RuntimeException failure) {

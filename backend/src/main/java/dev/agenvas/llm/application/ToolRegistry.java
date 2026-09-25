@@ -65,11 +65,11 @@ public class ToolRegistry {
             {"type":"object","additionalProperties":false,"required":["shots"],
              "properties":{"shots":{"type":"array","minItems":1,"maxItems":6,
                "items":{"type":"object","additionalProperties":false,
-                 "required":["title","order","durationMs","description","camera","action",
+                 "required":["title","order","durationSeconds","description","camera","action",
                    "characterVersionIds","sceneVersionId"],
                  "properties":{"title":{"type":"string","minLength":1,"maxLength":160},
                    "order":{"type":"integer","minimum":1,"maximum":6},
-                   "durationMs":{"type":"integer","minimum":100,"maximum":30000},
+                   "durationSeconds":{"type":"integer","minimum":1,"maximum":30},
                    "description":{"type":"string","minLength":1,"maxLength":4000},
                    "camera":{"type":"string","minLength":1,"maxLength":1000},
                    "action":{"type":"string","minLength":1,"maxLength":2000},
@@ -93,6 +93,7 @@ public class ToolRegistry {
                      "shotVersionId":{"type":"string","format":"uuid"},
                      "imageArtifactId":{"type":"string","format":"uuid"},
                      "imageVersionId":{"type":"string","format":"uuid"},
+                     "capabilityId":{"type":"string","format":"uuid"},
                      "prompt":{"type":"string","minLength":1,"maxLength":8000},
                      "negativePrompt":{"type":"string","minLength":1,"maxLength":8000},
                      "dependsOnStepKeys":{"type":"array","maxItems":6,"uniqueItems":true,
@@ -147,13 +148,13 @@ public class ToolRegistry {
                "segments":{"type":"array","minItems":1,"maxItems":6,
                  "items":{"type":"object","additionalProperties":false,
                    "required":["shotArtifactId","shotVersionId","videoArtifactId",
-                     "videoVersionId","startMs","endMs"],
+                     "videoVersionId","startSeconds","endSeconds"],
                    "properties":{"shotArtifactId":{"type":"string","format":"uuid"},
                      "shotVersionId":{"type":"string","format":"uuid"},
                      "videoArtifactId":{"type":"string","format":"uuid"},
                      "videoVersionId":{"type":"string","format":"uuid"},
-                     "startMs":{"type":"integer","minimum":0,"maximum":60000},
-                     "endMs":{"type":"integer","minimum":1,"maximum":60000}}}}}}
+                     "startSeconds":{"type":"integer","minimum":0,"maximum":59},
+                     "endSeconds":{"type":"integer","minimum":1,"maximum":60}}}}}}
             """;
 
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */

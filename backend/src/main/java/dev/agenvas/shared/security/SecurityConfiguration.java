@@ -50,6 +50,10 @@ public class SecurityConfiguration {
                                 "/actuator/health/liveness",
                                 "/actuator/health/readiness")
                         .permitAll()
+                        .requestMatchers("/api/v1/settings/media-connections/**",
+                                "/api/v1/settings/media-connections",
+                                "/api/v1/settings/media-defaults/**")
+                        .hasRole("ADMIN")
                         .anyRequest()
                         .authenticated())
                 .csrf(csrf -> csrf

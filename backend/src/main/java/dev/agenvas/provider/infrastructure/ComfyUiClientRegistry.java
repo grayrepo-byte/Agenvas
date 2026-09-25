@@ -47,7 +47,12 @@ public class ComfyUiClientRegistry implements ApplicationRunner {
     /** 应用启动时登记配置版本；同一版本不能被复用于不同端点来源。 */
     @Override
     public void run(ApplicationArguments arguments) {
-        if (!recoveryMode) registerActive();
+        if (!recoveryMode) {
+            Boolean imported = jdbc.sql("select completed_at is not null "
+                            + "from media_legacy_import_marker where id=1")
+                    .query(Boolean.class).single();
+            if (!imported) registerActive();
+        }
     }
 
     /** 写入当前版本的端点摘要；同版本重启保留原记录并核对其身份。 */

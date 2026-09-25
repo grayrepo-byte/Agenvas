@@ -93,7 +93,7 @@ public class ProjectExportManifestService {
                     "referenceVersionIds"};
             case SCENE -> new String[] {"name", "location", "timeOfDay", "lighting",
                     "style", "referenceVersionIds"};
-            case SHOT -> new String[] {"order", "durationMs", "description", "camera",
+            case SHOT -> new String[] {"order", "durationMs", "durationSeconds", "description", "camera",
                     "action", "characterVersionIds", "sceneVersionId",
                     "selectedImageVersionId", "selectedVideoVersionId"};
             case IMAGE -> new String[] {"assetId", "prompt", "negativePrompt",

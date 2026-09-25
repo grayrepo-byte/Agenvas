@@ -12,6 +12,7 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.plan.application.ShotKeyframeSelection;
 import dev.agenvas.plan.application.ShotKeyframeSelectionRepository;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
@@ -443,6 +444,32 @@ public class TaskService {
                 workerId, limit, now, now.plus(properties.leaseDuration())), List.of());
     }
 
+    /** Claims only version-pinned media work for the unified execution kernel. */
+    @Transactional
+    public List<Task> claimBoundMedia(String requestedWorkerId, int requestedLimit) {
+        String workerId = validateWorkerId(requestedWorkerId);
+        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
+        if (limit < 1) throw validation("claim limit 必须为正数。");
+        Instant now = clock.instant();
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueBoundMedia(workerId, limit,
+                now, now.plus(properties.leaseDuration())), List.of());
+    }
+
+    /** Polls only requests previously accepted for version-pinned media work. */
+    @Transactional
+    public List<Task> claimBoundMediaPolls(String requestedWorkerId, int requestedLimit) {
+        String workerId = validateWorkerId(requestedWorkerId);
+        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
+        if (limit < 1) throw validation("claim limit 必须为正数。");
+        Instant now = clock.instant();
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueBoundMediaPolls(workerId, limit,
+                now, now.plus(properties.leaseDuration())), List.of());
+    }
+
+    public Optional<MediaCapabilityBinding> mediaBinding(Task task) {
+        return tasks.mediaBinding(task.id());
+    }
+
     /** 只认领图片任务，防止 Mock 图片适配器消费尚未实现的视频工作。 */
     @Transactional
     public List<Task> claimImagesDue(String requestedWorkerId, int requestedLimit) {
@@ -792,7 +819,11 @@ public class TaskService {
     @Transactional
     public void blockPreSubmission(Task lease, String workerId, String errorCode) {
         if (!"TASK_INPUT_STALE".equals(errorCode)
-                && !"TASK_PROJECT_ARCHIVED".equals(errorCode)) {
+                && !"TASK_PROJECT_ARCHIVED".equals(errorCode)
+                && !"MEDIA_CAPABILITY_CHANGED".equals(errorCode)
+                && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(errorCode)
+                && !"PROVIDER_UNSUPPORTED_INPUT".equals(errorCode)
+                && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)) {
             throw validation("不支持的提交前阻断原因。");
         }
         Instant now = clock.instant();
@@ -927,6 +958,13 @@ public class TaskService {
     /** 仅当适配器确实把固定 requestKey 作为外部请求 ID 发送时，记录已校验的 Provider origin 摘要。 */
     @Transactional
     public UUID beginSubmission(Task lease, String workerId, String candidateOriginSha256) {
+        return beginSubmission(lease, workerId, candidateOriginSha256, null);
+    }
+
+    /** Version-pinned tasks recheck and lock both catalog rows in the checkpoint transaction. */
+    @Transactional
+    public UUID beginSubmission(Task lease, String workerId, String candidateOriginSha256,
+            MediaCapabilityBinding binding) {
         if (candidateOriginSha256 != null
                 && !candidateOriginSha256.matches("[0-9a-f]{64}")) {
             throw validation("Provider origin 指纹无效。");
@@ -940,6 +978,10 @@ public class TaskService {
             if (projects.get(ownerId, lease.projectId()).status() == Project.Status.ARCHIVED) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_PROJECT_ARCHIVED",
                         "项目已归档", "项目归档后不会提交新的媒体生成请求。", false);
+            }
+            if (binding != null && !tasks.lockCurrentMediaBinding(binding)) {
+                throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED",
+                        "媒体能力已变化", "连接或能力已停用、修改，请重新审阅计划。", false);
             }
             if (!pinnedMediaInputsCurrent(ownerId, lease)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_INPUT_STALE",

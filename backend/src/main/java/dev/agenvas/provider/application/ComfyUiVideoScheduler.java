@@ -23,6 +23,7 @@ public class ComfyUiVideoScheduler {
     private final ComfyUiVideoPoller poller;
     /** 可选提交器；视频模板禁用时不创建提交 Worker。 */
     private final ObjectProvider<ComfyUiVideoWorker> submitter;
+    private final LegacyMediaImportService importer;
     /** 本实例轮询认领任务时使用的唯一 Worker ID。 */
     private final String pollerId = "comfy-video-poll-" + UUID.randomUUID();
     /** 本实例提交认领任务时使用的独立 Worker ID。 */
@@ -30,14 +31,17 @@ public class ComfyUiVideoScheduler {
 
     /** 注入轮询器和按需提供的提交器，使历史核对与新提交使用不同认领身份。 */
     public ComfyUiVideoScheduler(ComfyUiVideoPoller poller,
-            ObjectProvider<ComfyUiVideoWorker> submitter) {
+            ObjectProvider<ComfyUiVideoWorker> submitter,
+            LegacyMediaImportService importer) {
         this.poller = poller;
         this.submitter = submitter;
+        this.importer = importer;
     }
 
     /** 先查询已保存请求，再尝试占用共享提交槽处理新的已批准任务。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
+        if (!importer.ready()) return;
         try {
             poller.pollOnce(pollerId);
             ComfyUiVideoWorker enabledSubmitter = submitter.getIfAvailable();

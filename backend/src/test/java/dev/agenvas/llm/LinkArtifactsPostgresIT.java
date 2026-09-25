@@ -206,7 +206,7 @@ class LinkArtifactsPostgresIT {
     private ObjectNode shotContent(UUID sceneVersionId) {
         ObjectNode content = mapper.createObjectNode();
         content.put("order", 1);
-        content.put("durationMs", 5_000);
+        content.put("durationSeconds", 5);
         content.put("description", "Opening");
         content.put("camera", "Wide");
         content.put("action", "Introduce cast");

@@ -2,6 +2,7 @@ package dev.agenvas.plan.infrastructure;
 
 import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanRepository;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.task.domain.Task;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -74,11 +75,13 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                             insert into plan_step (plan_id, project_id, step_key, ordinal, kind,
                                 shot_artifact_id, shot_version_id, image_artifact_id,
                                 image_version_id, output_slot_key, input_json,
-                                dependency_keys_json)
+                                dependency_keys_json,capability_id,capability_version,
+                                connection_id,connection_version,mapping_sha256,adapter_id)
                             values (:planId, :projectId, :stepKey, :ordinal, :kind,
                                 :shotArtifactId, :shotVersionId, :imageArtifactId,
                                 :imageVersionId, :outputSlotKey, cast(:input as jsonb),
-                                cast(:dependencies as jsonb))
+                                cast(:dependencies as jsonb),:capabilityId,:capabilityVersion,
+                                :connectionId,:connectionVersion,:mappingSha256,:adapterId)
                             """)
                     .param("planId", plan.id()).param("projectId", plan.projectId())
                     .param("stepKey", step.stepKey()).param("ordinal", step.ordinal())
@@ -90,6 +93,18 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                     .param("outputSlotKey", step.outputSlotKey())
                     .param("input", step.input().toString())
                     .param("dependencies", mapper.valueToTree(step.dependencyKeys()).toString())
+                    .param("capabilityId", step.binding() == null ? null : step.binding().capabilityId(),
+                            java.sql.Types.OTHER)
+                    .param("capabilityVersion", step.binding() == null ? null : step.binding().capabilityVersion(),
+                            java.sql.Types.INTEGER)
+                    .param("connectionId", step.binding() == null ? null : step.binding().connectionId(),
+                            java.sql.Types.OTHER)
+                    .param("connectionVersion", step.binding() == null ? null : step.binding().connectionVersion(),
+                            java.sql.Types.INTEGER)
+                    .param("mappingSha256", step.binding() == null ? null : step.binding().mappingSha256(),
+                            java.sql.Types.CHAR)
+                    .param("adapterId", step.binding() == null ? null : step.binding().adapterId(),
+                            java.sql.Types.VARCHAR)
                     .update();
         }
     }
@@ -153,7 +168,9 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                         select step_key, ordinal, kind, shot_artifact_id, shot_version_id,
                             image_artifact_id, image_version_id, output_slot_key,
                             input_json::text as input_json,
-                            dependency_keys_json::text as dependency_keys_json
+                            dependency_keys_json::text as dependency_keys_json,
+                            capability_id,capability_version,connection_id,connection_version,
+                            mapping_sha256,adapter_id
                         from plan_step where plan_id = :planId order by ordinal
                         """)
                 .param("planId", planId)
@@ -168,7 +185,15 @@ public class JdbcExecutionPlanRepository implements ExecutionPlanRepository {
                             rs.getObject("image_artifact_id", UUID.class),
                             rs.getObject("image_version_id", UUID.class),
                             rs.getString("output_slot_key"),
-                            mapper.readTree(rs.getString("input_json")), keys);
+                            mapper.readTree(rs.getString("input_json")), keys,
+                            rs.getObject("capability_id") == null ? null
+                                    : new MediaCapabilityBinding(
+                                            rs.getObject("connection_id", UUID.class),
+                                            rs.getInt("connection_version"),
+                                            rs.getObject("capability_id", UUID.class),
+                                            rs.getInt("capability_version"),
+                                            rs.getString("adapter_id"),
+                                            rs.getString("mapping_sha256")));
                 }).list();
     }
 

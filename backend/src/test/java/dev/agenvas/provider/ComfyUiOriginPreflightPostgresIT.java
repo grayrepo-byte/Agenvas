@@ -14,6 +14,8 @@ import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.ComfyUiImageWorker;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
@@ -23,6 +25,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,6 +48,7 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.provider.mode=comfyui",
         "agenvas.provider.comfyui.endpoint=http://127.0.0.1:65533",
         "agenvas.provider.comfyui.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false",
         "agenvas.provider.comfyui.image.checkpoint=test-model.safetensors"})
 class ComfyUiOriginPreflightPostgresIT {
 
@@ -71,9 +75,18 @@ class ComfyUiOriginPreflightPostgresIT {
     @Autowired private ComfyUiClientRegistry clientRegistry;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
+    @Autowired private MediaCapabilityService catalog;
+    @Autowired private MediaExecutionWorker mediaWorker;
 
     @Test
     void changedOriginCannotSubmitApprovedTaskEvenWhenNumericVersionIsUnchanged() {
+        UUID connection = catalog.createConnection("Original Comfy endpoint",
+                "http://127.0.0.1:65533").id();
+        UUID capability = catalog.publishCapability(connection, "Fixed image",
+                "COMFY_IMAGE_V1",
+                mapper.readTree("{\"checkpoint\":\"test-model.safetensors\"}")).id();
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION,
+                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability);
         var owner = identities.setup("comfy-origin-integration-secret", "origin-admin",
                 "origin-password-123");
         Project project = projects.create(owner.userId(), "Pinned origin",
@@ -89,7 +102,7 @@ class ComfyUiOriginPreflightPostgresIT {
                 "Scene", scene).currentVersion().id();
         ObjectNode shot = mapper.createObjectNode();
         shot.put("order", 1);
-        shot.put("durationMs", 3_000);
+        shot.put("durationSeconds", 3);
         shot.put("description", "Coffee pour");
         shot.put("camera", "Close");
         shot.put("action", "Pour coffee");
@@ -119,17 +132,15 @@ class ComfyUiOriginPreflightPostgresIT {
         assertThat(plan.steps().getFirst().input().path("providerOriginSha256").asText())
                 .isEqualTo(originalClient.originSha256());
         Task approved = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash()).tasks().getFirst();
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
 
-        ComfyUiClient changedClient = new ComfyUiClient(
-                new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
-        ComfyUiImageWorker changedWorker = new ComfyUiImageWorker(tasks, artifacts, assets,
-                projects, changedClient, clientRegistry, workflow,
-                new PlanProviderProperties("comfyui", 1), mapper);
-        assertThat(changedWorker.submitOnce("changed-origin-worker")).isEqualTo(1);
+        var current = catalog.getConnection(connection);
+        catalog.updateConnection(connection, current.version(), current.name(), true,
+                "http://127.0.0.1:65534", null);
+        assertThat(mediaWorker.submitOnce("changed-origin-worker")).isEqualTo(1);
         Task blocked = tasks.get(owner.userId(), project.id(), approved.id());
-        assertThat(blocked.status()).isEqualTo(Task.Status.FAILED);
-        assertThat(blocked.errorCode()).isEqualTo("PROVIDER_CONFIG_CHANGED");
+        assertThat(blocked.status()).isEqualTo(Task.Status.BLOCKED);
+        assertThat(blocked.errorCode()).isEqualTo("MEDIA_CAPABILITY_CHANGED");
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :taskId")
                 .param("taskId", approved.id()).query(Integer.class).single()).isZero();
     }

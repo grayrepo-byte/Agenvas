@@ -3,6 +3,8 @@ package dev.agenvas.plan.application;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.application.AgentRunRepository;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
@@ -21,6 +23,7 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -59,13 +62,15 @@ public class ExecutionPlanService {
     private final ObjectMapper mapper;
     /** 为计划创建、状态迁移和审批凭据提供统一时刻。 */
     private final Clock clock;
+    private final MediaCapabilityService capabilities;
 
     /** 组装计划生命周期依赖；校验器、仓储和服务分别负责规则、持久化及副作用。 */
     public ExecutionPlanService(ProjectService projects, AgentRunRepository runRepository,
             AgentRunService runs, ExecutionPlanRepository plans, PlanDraftValidator validator,
             PlanProviderProperties provider, PlanWorkflowPolicy workflows,
             TaskRepository taskRepository, TaskService tasks,
-            UsageService usage, ProjectEventService events, ObjectMapper mapper, Clock clock) {
+            UsageService usage, ProjectEventService events, ObjectMapper mapper, Clock clock,
+            MediaCapabilityService capabilities) {
         this.projects = projects;
         this.runRepository = runRepository;
         this.runs = runs;
@@ -79,6 +84,7 @@ public class ExecutionPlanService {
         this.events = events;
         this.mapper = mapper;
         this.clock = clock;
+        this.capabilities = capabilities;
     }
 
     /** 在项目事件序号锁内校验并保存模型提案，将 Run 转入等待审批且不创建媒体任务。 */
@@ -99,12 +105,11 @@ public class ExecutionPlanService {
                 provider.configVersion());
         int revision = plans.nextRevision(context.projectId(), context.runId(), draft.stage());
         String inputHash = sha256(draft.inputSnapshot().toString());
-        String planHash = sha256(draft.plan().toString() + "\n" + inputHash + "\n"
-                + draft.providerConfigVersion() + "\n" + draft.workflowVersion() + "\n"
-                + draft.estimate().toString());
+        String planHash = planHash(draft, inputHash);
         Instant now = clock.instant();
         ExecutionPlan plan = new ExecutionPlan(UUID.randomUUID(), context.projectId(),
-                context.runId(), revision, draft.stage(), ExecutionPlan.Status.PENDING,
+                context.runId(), revision, draft.stage(), draft.needsInput()
+                        ? ExecutionPlan.Status.NEEDS_INPUT : ExecutionPlan.Status.PENDING,
                 draft.objective(), draft.plan(), draft.inputSnapshot(), inputHash,
                 planHash, draft.providerConfigVersion(), draft.workflowVersion(),
                 draft.estimate(), now, now, draft.steps());
@@ -132,27 +137,138 @@ public class ExecutionPlanService {
                 .toList();
     }
 
+    /** Lists only currently published capabilities compatible with this frozen step's output and duration. */
+    @Transactional(readOnly = true)
+    public List<MediaCapabilityService.Candidate> candidates(UUID ownerId, UUID projectId,
+            UUID planId, String stepKey) {
+        ExecutionPlan plan = get(ownerId, projectId, planId);
+        ExecutionPlan.Step step = plan.steps().stream()
+                .filter(item -> item.stepKey().equals(stepKey)).findFirst()
+                .orElseThrow(this::notFound);
+        int seconds = step.kind() == Task.Kind.VIDEO_GENERATION
+                ? step.input().path("durationSeconds").asInt(-1) : 0;
+        return capabilities.candidates(step.kind(), seconds, step.imageVersionId() != null);
+    }
+
+    /** An edit creates a fresh immutable proposal and invalidates every confirmation of the old hash. */
+    @Transactional
+    public ExecutionPlan reviseStep(UUID ownerId, UUID projectId, UUID planId,
+            String stepKey, UUID capabilityId, JsonNode inputPatch, String expectedPlanHash) {
+        if (inputPatch == null || !inputPatch.isObject()) {
+            throw invalid("Step inputPatch must be an object");
+        }
+        Set<String> allowed = Set.of("prompt", "negativePrompt", "imageArtifactId",
+                "imageVersionId");
+        for (String field : inputPatch.propertyNames()) {
+            if (!allowed.contains(field)) {
+                throw invalid("Step inputPatch contains an unknown field");
+            }
+        }
+        ExecutionPlan preliminary = get(ownerId, projectId, planId);
+        return events.recordChange(ownerId, projectId, () ->
+                ProjectEventService.Change.unchanged(reviseLocked(ownerId, projectId,
+                        preliminary, stepKey, capabilityId, inputPatch, expectedPlanHash))).value();
+    }
+
+    private ExecutionPlan reviseLocked(UUID ownerId, UUID projectId,
+            ExecutionPlan preliminary, String stepKey, UUID capabilityId,
+            JsonNode inputPatch, String expectedPlanHash) {
+        AgentRun run = runRepository.findForUpdate(ownerId, projectId, preliminary.runId())
+                .orElseThrow(this::notFound);
+        ExecutionPlan old = plans.findForUpdate(projectId, preliminary.id())
+                .orElseThrow(this::notFound);
+        if ((old.status() != ExecutionPlan.Status.PENDING
+                && old.status() != ExecutionPlan.Status.NEEDS_INPUT)
+                || run.status() != AgentRun.Status.WAITING_APPROVAL
+                || !old.planHash().equals(expectedPlanHash)) {
+            throw conflict("计划已变化，请重新读取后修改");
+        }
+        ObjectNode proposed = mapper.createObjectNode();
+        proposed.put("stage", old.stage().name());
+        proposed.put("objective", old.objective());
+        var proposedSteps = proposed.putArray("steps");
+        boolean found = false;
+        for (ExecutionPlan.Step step : old.steps()) {
+            ObjectNode item = proposedSteps.addObject();
+            item.put("stepKey", step.stepKey());
+            item.put("outputSlotKey", step.outputSlotKey());
+            item.put("shotArtifactId", step.shotArtifactId().toString());
+            item.put("shotVersionId", step.shotVersionId().toString());
+            if (step.imageArtifactId() != null) {
+                item.put("imageArtifactId", step.imageArtifactId().toString());
+                item.put("imageVersionId", step.imageVersionId().toString());
+            }
+            item.put("prompt", step.input().path("prompt").asText());
+            if (step.input().has("negativePrompt")) {
+                item.put("negativePrompt", step.input().path("negativePrompt").asText());
+            }
+            item.set("dependsOnStepKeys", mapper.valueToTree(step.dependencyKeys()));
+            if (step.binding() != null) {
+                item.put("capabilityId", step.binding().capabilityId().toString());
+            }
+            if (step.stepKey().equals(stepKey)) {
+                found = true;
+                if (capabilityId != null) {
+                    item.put("capabilityId", capabilityId.toString());
+                }
+                for (String field : inputPatch.propertyNames()) {
+                    JsonNode value = inputPatch.path(field);
+                    if (value.isNull()) item.remove(field);
+                    else item.set(field, value.deepCopy());
+                }
+            }
+        }
+        if (!found) throw notFound();
+        PlanDraftValidator.Draft draft = validator.validate(
+                new TrustedToolContext(ownerId, projectId, run.id()), run, proposed,
+                provider.configVersion());
+        int revision = plans.nextRevision(projectId, run.id(), draft.stage());
+        String inputHash = sha256(draft.inputSnapshot().toString());
+        Instant now = clock.instant();
+        ExecutionPlan revised = new ExecutionPlan(UUID.randomUUID(), projectId, run.id(),
+                revision, draft.stage(), draft.needsInput()
+                        ? ExecutionPlan.Status.NEEDS_INPUT : ExecutionPlan.Status.PENDING,
+                draft.objective(), draft.plan(), draft.inputSnapshot(), inputHash,
+                planHash(draft, inputHash), draft.providerConfigVersion(),
+                draft.workflowVersion(), draft.estimate(), now, now, draft.steps());
+        if (!plans.updateStatus(projectId, old.id(), old.status(),
+                ExecutionPlan.Status.STALE, now)) {
+            throw conflict("计划已变化，请重新读取后修改");
+        }
+        plans.create(revised);
+        events.append(ownerId, projectId, planEvent("execution.plan.stale", old));
+        events.append(ownerId, projectId, planEvent("execution.plan.proposed", revised));
+        return revised;
+    }
+
     /** 校验用户确认的计划摘要，再于项目锁内原子预留额度、创建步骤任务并记录事件。 */
     @Transactional
     public ApprovalResult approve(UUID ownerId, UUID projectId, UUID planId,
-            String submittedPlanHash) {
+            String submittedPlanHash, List<String> confirmedStepKeys) {
         if (submittedPlanHash == null || !submittedPlanHash.matches("[0-9a-f]{64}")) {
             throw invalid("A valid planHash is required for approval");
         }
         ExecutionPlan preliminary = get(ownerId, projectId, planId);
         return events.recordChange(ownerId, projectId, () ->
                 ProjectEventService.Change.unchanged(approveLocked(ownerId, projectId,
-                        preliminary, submittedPlanHash))).value();
+                        preliminary, submittedPlanHash, confirmedStepKeys))).value();
     }
 
     /** 锁定 Run 和计划，重验 Provider、输入版本及预算后原子预留额度并创建依赖任务。 */
     private ApprovalResult approveLocked(UUID ownerId, UUID projectId,
-            ExecutionPlan preliminary, String submittedPlanHash) {
+            ExecutionPlan preliminary, String submittedPlanHash,
+            List<String> confirmedStepKeys) {
         AgentRun run = runRepository.findForUpdate(ownerId, projectId, preliminary.runId())
                 .orElseThrow(this::notFound);
         ExecutionPlan plan = plans.findForUpdate(projectId, preliminary.id()).orElseThrow(this::notFound);
         if (!plan.planHash().equals(submittedPlanHash)) {
             throw conflict("Plan hash changed; reload the proposal before approval");
+        }
+        Set<String> expectedSteps = plan.steps().stream()
+                .map(ExecutionPlan.Step::stepKey).collect(java.util.stream.Collectors.toSet());
+        if (confirmedStepKeys == null || confirmedStepKeys.size() != expectedSteps.size()
+                || !expectedSteps.equals(Set.copyOf(confirmedStepKeys))) {
+            throw conflict("请逐项确认所有步骤");
         }
         if (plan.status() == ExecutionPlan.Status.APPROVED) {
             UUID approvalId = plans.findApprovalId(projectId, preliminary.id()).orElseThrow();
@@ -163,7 +279,22 @@ public class ExecutionPlanService {
             throw conflict("Plan or Run is no longer waiting for approval");
         }
         projects.requireActiveProject(ownerId, projectId);
-        if (plan.providerConfigVersion() != provider.configVersion()
+        if (plan.steps().stream().allMatch(step -> step.binding() != null)) {
+            for (ExecutionPlan.Step step : plan.steps()) {
+                int seconds = step.kind() == Task.Kind.VIDEO_GENERATION
+                        ? step.input().path("durationSeconds").asInt(-1) : 0;
+                if (!capabilities.isCurrentBinding(step.binding(), step.kind(), seconds)) {
+                    throw conflict("媒体能力版本或状态已变化，请重新审阅计划");
+                }
+                String frozenOrigin = capabilities.pinnedSnapshot(step.binding())
+                        .connectionVersion().originSha256();
+                String stepOrigin = step.input().has("providerOriginSha256")
+                        ? step.input().path("providerOriginSha256").asText() : null;
+                if (!java.util.Objects.equals(frozenOrigin, stepOrigin)) {
+                    throw conflict("媒体计划的连接来源与冻结版本不一致");
+                }
+            }
+        } else if (plan.providerConfigVersion() != provider.configVersion()
                 || !workflows.version(plan.stage()).equals(plan.workflowVersion())
                 || !validator.providerOriginMatches(plan)) {
             throw conflict("Provider configuration changed; propose a fresh plan");
@@ -209,6 +340,9 @@ public class ExecutionPlanService {
             Task task = tasks.createMediaTaskForNewOutput(ownerId, projectId, run.id(), plan.id(),
                     step.stepKey(), step.kind(), step.input(), null, 1,
                     dependencies, step.outputSlotKey());
+            if (step.binding() != null) {
+                taskRepository.bindMediaTask(task.id(), step.binding());
+            }
             usage.reserveMediaTask(ownerId, task,
                     plan.estimate().path("costSource").asText());
             taskIdsByStep.put(step.stepKey(), task.id());
@@ -241,10 +375,11 @@ public class ExecutionPlanService {
             return plan;
         }
         if (plan.status() != ExecutionPlan.Status.PENDING
+                && plan.status() != ExecutionPlan.Status.NEEDS_INPUT
                 || run.status() != AgentRun.Status.WAITING_APPROVAL) {
             throw conflict("Only a pending plan can be rejected");
         }
-        if (!plans.updateStatus(projectId, preliminary.id(), ExecutionPlan.Status.PENDING,
+        if (!plans.updateStatus(projectId, preliminary.id(), plan.status(),
                 ExecutionPlan.Status.REJECTED, clock.instant())) {
             throw conflict("Plan status changed concurrently");
         }
@@ -325,6 +460,12 @@ public class ExecutionPlanService {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 unavailable", exception);
         }
+    }
+
+    private String planHash(PlanDraftValidator.Draft draft, String inputHash) {
+        return sha256(draft.plan().toString() + "\n" + inputHash + "\n"
+                + draft.providerConfigVersion() + "\n" + draft.workflowVersion() + "\n"
+                + draft.estimate().toString());
     }
 
     /** 构造计划不存在或不属于当前用户时的 404 响应。 */

@@ -1,13 +1,17 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { PlanApprovalPanel } from "./PlanApprovalPanel";
 
 describe("PlanApprovalPanel", () => {
+  beforeEach(() => {
+    server.use(http.get("/api/v1/projects/:projectId/plans/:planId/steps/:stepKey/candidates",
+      () => HttpResponse.json([])));
+  });
   it("shows the frozen scope and sends the displayed hash only after an explicit click", async () => {
     const hash = "a".repeat(64);
     const plan = {
@@ -31,7 +35,8 @@ describe("PlanApprovalPanel", () => {
       http.get("/api/v1/projects/:projectId/runs/:runId/plans", () => HttpResponse.json([plan])),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/projects/:projectId/plans/:planId/approve", async ({ request }) => {
-        expect(await request.json()).toEqual({ planHash: hash });
+        expect(await request.json()).toEqual({ planHash: hash,
+          confirmedStepKeys: ["shot-1", "shot-2", "shot-3"] });
         approvals += 1;
         return HttpResponse.json({ approvalId: "approval-1", plan: { ...plan, status: "APPROVED" },
           tasks: [1, 2, 3].map((number) => ({ id: `task-${number}`, kind: "IMAGE_GENERATION" })), replayed: false });
@@ -46,6 +51,70 @@ describe("PlanApprovalPanel", () => {
     expect(screen.getByText(/本次将创建图片任务 3 个、视频任务 0 个/)).toBeInTheDocument();
     expect(screen.getByText(/MOCK_UNPRICED/)).toBeInTheDocument();
     expect(approvals).toBe(0);
+    expect(screen.getByRole("button", { name: "确认执行此计划" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /确认镜头 shot-1/ }));
+    await user.click(screen.getByRole("checkbox", { name: /确认镜头 shot-2/ }));
+    await user.click(screen.getByRole("checkbox", { name: /确认镜头 shot-3/ }));
+    expect(screen.getByRole("button", { name: "确认执行此计划" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "确认执行此计划" }));
+    expect(approvals).toBe(1);
+  });
+
+  it("clears step confirmation and uses the new hash after a capability change", async () => {
+    const firstCapability = "00000000-0000-4000-8000-000000000102";
+    const secondCapability = "00000000-0000-4000-8000-000000000104";
+    const original = {
+      id: "plan-original", projectId: "project-1", runId: "run-1", revision: 1,
+      stage: "IMAGE", status: "PENDING", objective: "为镜头制作关键帧",
+      steps: [{ stepKey: "shot-1", kind: "IMAGE_GENERATION", shotArtifactId: "shot-1",
+        shotVersionId: "version-1", imageVersionId: null, input: { prompt: "晨光" },
+        binding: { connectionId: "mock", connectionVersion: 1, capabilityId: firstCapability,
+          capabilityVersion: 1, adapterId: "MOCK_IMAGE", mappingSha256: "a".repeat(64) } }],
+      estimate: { imageCount: 1, videoCount: 0, costSource: "MOCK_UNPRICED" },
+      workflowVersion: "mock-image-v1", providerConfigVersion: 1, planHash: "a".repeat(64),
+    };
+    const revised = { ...original, id: "plan-revised", revision: 2, planHash: "b".repeat(64),
+      steps: [{ ...original.steps[0]!, binding: {
+        ...original.steps[0]!.binding, capabilityId: secondCapability } }] };
+    let current = original;
+    let approvals = 0;
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/plans", () => HttpResponse.json([current])),
+      http.get("/api/v1/projects/:projectId/plans/:planId/steps/:stepKey/candidates", () =>
+        HttpResponse.json([firstCapability, secondCapability].map((capabilityId, index) => ({
+          binding: { ...original.steps[0]!.binding, capabilityId },
+          connectionName: "Mock", capabilityName: `图片能力 ${index + 1}`,
+          kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
+          realGenerationTested: false,
+        })))),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/projects/:projectId/plans/:planId/steps/:stepKey/revise", async ({ request }) => {
+        expect(await request.json()).toEqual({ expectedPlanHash: original.planHash,
+          capabilityId: secondCapability, inputPatch: {} });
+        current = revised;
+        return HttpResponse.json(revised);
+      }),
+      http.post("/api/v1/projects/:projectId/plans/:planId/approve", async ({ request }) => {
+        expect(await request.json()).toEqual({ planHash: revised.planHash,
+          confirmedStepKeys: ["shot-1"] });
+        approvals += 1;
+        return HttpResponse.json({ approvalId: "approval-1", plan: { ...revised, status: "APPROVED" },
+          tasks: [], replayed: false });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}>
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+    </QueryClientProvider>);
+
+    await user.click(await screen.findByRole("checkbox", { name: /确认镜头 shot-1/ }));
+    expect(screen.getByRole("button", { name: "确认执行此计划" })).toBeEnabled();
+    await user.selectOptions(screen.getByRole("combobox", { name: "生成能力" }), secondCapability);
+    await waitFor(() => expect(screen.getByText(/计划修订 2/)).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: /确认镜头 shot-1/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "确认执行此计划" })).toBeDisabled();
+    expect(approvals).toBe(0);
+    await user.click(screen.getByRole("checkbox", { name: /确认镜头 shot-1/ }));
     await user.click(screen.getByRole("button", { name: "确认执行此计划" }));
     expect(approvals).toBe(1);
   });

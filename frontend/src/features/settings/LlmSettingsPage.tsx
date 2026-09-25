@@ -130,13 +130,14 @@ export function LlmSettingsPage() {
         ) : null}
         <section className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--panel)] p-6">
           <h2 className="text-xl font-semibold">媒体服务配置</h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">媒体端点和固定模板目前由部署管理员通过服务端环境变量设置；此处只显示配置状态，不执行网络探测或付费生成。</p>
+          <p className="mt-2 text-sm text-[var(--muted)]">媒体连接、固定能力和默认值可在独立设置页管理；此处保留旧运行模式的诊断状态，不执行付费生成。</p>
           {mediaStatus.isPending ? <p className="mt-4 text-sm">正在读取媒体状态…</p> : null}
           {mediaStatus.isError ? <p className="mt-4 text-sm text-red-800" role="alert">媒体配置状态读取失败，请刷新页面重试。</p> : null}
           {mediaStatus.data ? <p className="mt-4 text-sm">
             {mediaStatus.data.mediaMode === "MOCK" ? "Mock 模式" : "ComfyUI 模式"} · 图片{mediaStatus.data.imageConfigured ? "已配置" : "未配置"} · 视频{mediaStatus.data.videoConfigured ? "已配置" : "未配置"}
           </p> : null}
           <Link className="mt-4 inline-block text-sm underline" to="/settings/general">查看系统诊断</Link>
+          <Link className="ml-4 mt-4 inline-block text-sm underline" to="/settings/media">管理媒体连接</Link>
         </section>
       </div>
     </main>

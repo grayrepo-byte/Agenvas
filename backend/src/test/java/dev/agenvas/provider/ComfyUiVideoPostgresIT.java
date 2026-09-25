@@ -21,6 +21,8 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.ComfyUiImageWorker;
 import dev.agenvas.provider.application.ComfyUiVideoWorker;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.application.ComfyUiVideoPoller;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
@@ -67,6 +69,7 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=comfyui",
         "agenvas.provider.comfyui.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false",
         "agenvas.provider.comfyui.image.checkpoint=test-image.safetensors",
         "agenvas.provider.comfyui.video.enabled=true",
         "agenvas.provider.comfyui.video.scheduler-enabled=false",
@@ -117,6 +120,8 @@ class ComfyUiVideoPostgresIT {
     @Autowired private MediaToolRunner mediaTools;
     @Autowired private ComfyUiImageWorker images;
     @Autowired private ComfyUiVideoWorker videos;
+    @Autowired private MediaCapabilityService catalog;
+    @Autowired private MediaExecutionWorker mediaWorker;
     @Autowired private ComfyUiVideoWorkflow workflow;
     @Autowired private ComfyUiClient client;
     @Autowired private JdbcClient jdbc;
@@ -125,6 +130,20 @@ class ComfyUiVideoPostgresIT {
     @Test
     void approvedSelectedKeyframeReachesFixedWanGraphAndOriginalPromptArchivesMp4()
             throws Exception {
+        UUID connection = catalog.createConnection("Comfy image and video",
+                "http://127.0.0.1:" + SERVER.getAddress().getPort()).id();
+        UUID imageCapability = catalog.publishCapability(connection, "Fixed image",
+                "COMFY_IMAGE_V1",
+                mapper.readTree("{\"checkpoint\":\"test-image.safetensors\"}")).id();
+        UUID videoCapability = catalog.publishCapability(connection, "Fixed video",
+                "COMFY_VIDEO_V1", mapper.readTree("{\"diffusionModel\":\"test-wan.safetensors\","
+                        + "\"textEncoder\":\"test-text.safetensors\","
+                        + "\"vae\":\"test-vae.safetensors\","
+                        + "\"clipVision\":\"test-vision.safetensors\"}")).id();
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION,
+                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), imageCapability);
+        catalog.setDefault(Task.Kind.VIDEO_GENERATION,
+                catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), videoCapability);
         AdminPrincipal owner = identities.setup("comfy-video-integration-secret", "video-admin",
                 "video-password-123");
         Project project = projects.create(owner.userId(), "I2V candidate",
@@ -140,7 +159,7 @@ class ComfyUiVideoPostgresIT {
                 "Scene", scene).currentVersion().id();
         ObjectNode shot = mapper.createObjectNode();
         shot.put("order", 1);
-        shot.put("durationMs", 5_000);
+        shot.put("durationSeconds", 5);
         shot.put("description", "Coffee pour");
         shot.put("camera", "Close");
         shot.put("action", "Pour coffee");
@@ -160,11 +179,11 @@ class ComfyUiVideoPostgresIT {
         var imagePlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 queued.id()), imageProposal);
         Task imageTask = plans.approve(owner.userId(), project.id(), imagePlan.id(),
-                imagePlan.planHash()).tasks().getFirst();
+                imagePlan.planHash(), plans.get(owner.userId(), project.id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
         assertThat(IMAGE_SUBMISSIONS).hasValue(0);
-        assertThat(images.submitOnce("image-submitter")).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce("image-submitter")).isEqualTo(1);
         due(imageTask.id());
-        assertThat(images.pollOnce("image-poller")).isEqualTo(1);
+        assertThat(mediaWorker.pollOnce("image-poller")).isEqualTo(1);
         Task imageDone = tasks.get(owner.userId(), project.id(), imageTask.id());
         assertThat(imageDone.status()).isEqualTo(Task.Status.SUCCEEDED);
         UUID imageId = UUID.fromString(imageDone.output().path("artifactId").asText());
@@ -181,14 +200,19 @@ class ComfyUiVideoPostgresIT {
         videoStep.put("imageVersionId", imageVersion.toString());
         var videoPlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 queued.id()), videoProposal);
-        assertThat(videoPlan.workflowVersion()).isEqualTo(workflow.version());
+        assertThat(videoPlan.workflowVersion()).isEqualTo("media-capabilities-v1");
         assertThat(videoPlan.steps().getFirst().input().path("providerOriginSha256").asText())
                 .isEqualTo(client.originSha256());
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);
         Task videoTask = plans.approve(owner.userId(), project.id(), videoPlan.id(),
-                videoPlan.planHash()).tasks().getFirst();
+                videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
+        assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
+        assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
+                        + "where task_id = :taskId and entry_type = 'RESERVATION'")
+                .param("taskId", videoTask.id()).query(String.class).single()).isEqualTo("5");
         VIDEO_BYTES.set(realMp4());
-        assertThat(videos.submitOnce("video-submitter")).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce("video-submitter")).isEqualTo(1);
         assertThat(VIDEO_SUBMISSIONS).hasValue(1);
         JsonNode graph = VIDEO_GRAPH.get();
         assertThat(graph.path("1").path("inputs").path("image").asText())
@@ -213,7 +237,10 @@ class ComfyUiVideoPostgresIT {
         assertThat(jdbc.sql("select candidate_origin_sha256 from provider_attempt where task_id = :id")
                 .param("id", videoTask.id()).query(String.class).single())
                 .hasSize(64);
-        assertThat(videos.submitOnce("another-submitter")).isZero();
+        assertThat(mediaWorker.submitOnce("another-submitter")).isZero();
+        var oldConnection = catalog.getConnection(connection);
+        catalog.updateConnection(connection, oldConnection.version(), oldConnection.name(), true,
+                "http://127.0.0.1:65534", null);
         ComfyUiClient rotatedClient = new ComfyUiClient(
                 new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
         ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(jdbc, mapper,
@@ -231,11 +258,11 @@ class ComfyUiVideoPostgresIT {
                 projects, rotatedClient, rotatedPoller, rotatedWorkflow,
                 new PlanProviderProperties("comfyui", 2));
         due(videoTask.id());
-        assertThat(rotatedVideo.pollOnce("video-poller")).isEqualTo(1);
+        assertThat(mediaWorker.pollOnce("video-poller")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status())
                 .isEqualTo(Task.Status.WAITING_PROVIDER);
         due(videoTask.id());
-        assertThat(rotatedVideo.pollOnce("video-poller")).isEqualTo(1);
+        assertThat(mediaWorker.pollOnce("video-poller")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), project.id(), videoTask.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(ComfyUiVideoWorkflow.supportsHistoricalVersion(workflow.version())).isTrue();

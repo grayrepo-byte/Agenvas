@@ -5,6 +5,8 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
@@ -46,7 +48,7 @@ public class ShotRedoController {
         ShotRedoService.Result result = redo.revise(principal.userId(), projectId, shotId,
                 new ShotRedoService.Request(request.expectedShotVersionId(),
                         request.expectedShotArtifactVersion(), request.description(),
-                        request.camera(), request.action(), request.durationMs(),
+                        request.camera(), request.action(), request.durationSeconds(),
                         request.scene() == null ? null : new ShotRedoService.SceneEdit(
                                 request.scene().name(), request.scene().location(),
                                 request.scene().timeOfDay(), request.scene().lighting(),
@@ -63,7 +65,7 @@ public class ShotRedoController {
      * @param description 新镜头描述
      * @param camera 新镜头机位描述
      * @param action 新镜头动作描述
-     * @param durationMs 镜头时长；为空时保留领域默认行为
+     * @param durationSeconds 镜头时长，必须是 1–30 的整数秒
      * @param scene 可选场景编辑；为空时继续引用现有场景
      */
     public record Request(@NotNull UUID expectedShotVersionId,
@@ -71,7 +73,7 @@ public class ShotRedoController {
             @NotBlank @Size(max = 4000) String description,
             @NotBlank @Size(max = 1000) String camera,
             @NotBlank @Size(max = 2000) String action,
-            Integer durationMs,
+            @NotNull @Min(1) @Max(30) Integer durationSeconds,
             @Valid SceneEdit scene) {}
 
     /** 场景修订字段；各字段为空时沿用当前选中场景版本中的值。

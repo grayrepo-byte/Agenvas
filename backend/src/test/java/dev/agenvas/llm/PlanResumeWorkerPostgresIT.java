@@ -21,13 +21,14 @@ import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.plan.application.ShotKeyframeSelectionService;
-import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.provider.application.MockImageWorker;
-import dev.agenvas.provider.application.MockProviderProperties;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.domain.GenerationGateway;
+import dev.agenvas.provider.domain.GenerationRequest;
+import dev.agenvas.provider.domain.GenerationResult;
 import dev.agenvas.provider.domain.MockFixture;
+import dev.agenvas.provider.infrastructure.MockGenerationGateway;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -36,6 +37,7 @@ import dev.agenvas.task.domain.Task;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -92,9 +94,8 @@ class PlanResumeWorkerPostgresIT {
     @Autowired private ShotKeyframeSelectionService keyframes;
     @Autowired private TaskService tasks;
     @Autowired private AgentTurnWorker worker;
-    @Autowired private MockImageWorker imageWorker;
-    @Autowired private GenerationGateway generationGateway;
-    @Autowired private PlanProviderProperties providerProperties;
+    @Autowired private MediaExecutionWorker mediaWorker;
+    @Autowired private FixtureGateway generationGateway;
     @Autowired private FakeGateway gateway;
     @Autowired private ObjectMapper mapper;
     @Autowired private JdbcClient jdbc;
@@ -118,14 +119,14 @@ class PlanResumeWorkerPostgresIT {
         assertThat(worker.runOnce("resume-model-worker")).isZero();
 
         plans.approve(owner.userId(), approved.project().id(), imagePlan.id(),
-                imagePlan.planHash());
+                imagePlan.planHash(), plans.get(owner.userId(), approved.project().id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(runs.get(owner.userId(), approved.project().id(), approved.run().id()).status())
                 .isEqualTo(AgentRun.Status.WAITING_TASKS);
         assertThat(worker.runOnce("resume-model-worker")).isZero();
         Task media = tasks.listByRun(owner.userId(), approved.project().id(),
                 approved.run().id()).stream()
                 .filter(task -> task.kind() == Task.Kind.IMAGE_GENERATION).findFirst().orElseThrow();
-        assertThat(imageWorker.runOnce("resume-media-worker")).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce("resume-media-worker")).isEqualTo(1);
         Task resume = tasks.listByRun(owner.userId(), approved.project().id(),
                 approved.run().id()).stream()
                 .filter(task -> task.kind() == Task.Kind.AGENT_TURN
@@ -187,8 +188,9 @@ class PlanResumeWorkerPostgresIT {
         ExecutionPlan failedPlan = plans.listByRun(owner.userId(), failed.project().id(),
                 failed.run().id()).getFirst();
         plans.approve(owner.userId(), failed.project().id(), failedPlan.id(),
-                failedPlan.planHash());
-        assertThat(fixtureWorker(MockFixture.FAILURE).runOnce("failed-media-worker"))
+                failedPlan.planHash(), plans.get(owner.userId(), failed.project().id(), failedPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
+        generationGateway.setFixture(failed.project().id(), MockFixture.FAILURE);
+        assertThat(mediaWorker.submitOnce("failed-media-worker"))
                 .isEqualTo(1);
         assertThat(runs.get(owner.userId(), failed.project().id(), failed.run().id()).status())
                 .isEqualTo(AgentRun.Status.BLOCKED);
@@ -207,9 +209,9 @@ class PlanResumeWorkerPostgresIT {
         ExecutionPlan unknownPlan = plans.listByRun(owner.userId(), unknown.project().id(),
                 unknown.run().id()).getFirst();
         plans.approve(owner.userId(), unknown.project().id(), unknownPlan.id(),
-                unknownPlan.planHash());
-        assertThatThrownBy(() -> fixtureWorker(MockFixture.UNKNOWN)
-                .runOnce("unknown-media-worker"))
+                unknownPlan.planHash(), plans.get(owner.userId(), unknown.project().id(), unknownPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
+        generationGateway.setFixture(unknown.project().id(), MockFixture.UNKNOWN);
+        assertThatThrownBy(() -> mediaWorker.submitOnce("unknown-media-worker"))
                 .isInstanceOf(IllegalStateException.class);
         Task ambiguous = tasks.listByRun(owner.userId(), unknown.project().id(),
                 unknown.run().id()).stream()
@@ -256,7 +258,7 @@ class PlanResumeWorkerPostgresIT {
                 fixture.run().id()).getFirst();
         assertThat(original.path("createdIds").get(0).asText()).isEqualTo(plan.id().toString());
         ExecutionPlanService.ApprovalResult approved = plans.approve(owner.userId(),
-                fixture.project().id(), plan.id(), plan.planHash());
+                fixture.project().id(), plan.id(), plan.planHash(), plans.get(owner.userId(), fixture.project().id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList());
         assertThat(approved.tasks()).hasSize(1);
         assertThat(toolExecutor.execute(context, 0, "proposal-original")).isEqualTo(original);
         assertThatThrownBy(() -> toolExecutor.execute(context, 0, "proposal-new-id"))
@@ -293,7 +295,7 @@ class PlanResumeWorkerPostgresIT {
                 "Ridge", scene).currentVersion().id();
         ObjectNode shotContent = mapper.createObjectNode();
         shotContent.put("order", 1);
-        shotContent.put("durationMs", 1_000);
+        shotContent.put("durationSeconds", 1);
         shotContent.put("description", "A sunrise");
         shotContent.put("camera", "Wide");
         shotContent.put("action", "Pan");
@@ -307,11 +309,6 @@ class PlanResumeWorkerPostgresIT {
         AgentRun run = runs.create(ownerId, project.id(), agent.id(),
                 "Make an image then report", key).run();
         return new Fixture(project, shot, run);
-    }
-
-    private MockImageWorker fixtureWorker(MockFixture fixture) {
-        return new MockImageWorker(tasks, assetFiles, generationGateway,
-                new MockProviderProperties(fixture), providerProperties, mapper);
     }
 
     private ObjectNode draft(ArtifactService.ArtifactView shot) {
@@ -344,6 +341,28 @@ class PlanResumeWorkerPostgresIT {
         @Primary
         FakeGateway fakeGateway() {
             return new FakeGateway();
+        }
+
+        @Bean
+        @Primary
+        FixtureGateway fixtureGateway() {
+            return new FixtureGateway();
+        }
+    }
+
+    static class FixtureGateway implements GenerationGateway {
+        private final MockGenerationGateway delegate = new MockGenerationGateway();
+        private final Map<UUID, MockFixture> fixtures = new ConcurrentHashMap<>();
+
+        void setFixture(UUID projectId, MockFixture fixture) {
+            fixtures.put(projectId, fixture);
+        }
+
+        @Override
+        public GenerationResult submit(GenerationRequest request) {
+            return delegate.submit(new GenerationRequest(request.projectId(),
+                    request.requestKey(), fixtures.getOrDefault(request.projectId(),
+                            request.fixture())));
         }
     }
 

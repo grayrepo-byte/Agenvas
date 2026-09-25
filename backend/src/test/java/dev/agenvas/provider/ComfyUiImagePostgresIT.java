@@ -18,6 +18,9 @@ import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.ComfyUiImageWorker;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.provider.application.ComfyUiUnknownTaskReconciler;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
@@ -66,6 +69,7 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=comfyui",
         "agenvas.provider.comfyui.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false",
         "agenvas.provider.comfyui.image.checkpoint=test-model.safetensors"})
 class ComfyUiImagePostgresIT {
 
@@ -104,6 +108,9 @@ class ComfyUiImagePostgresIT {
     @Autowired private ExecutionPlanService plans;
     @Autowired private TaskService tasks;
     @Autowired private ComfyUiImageWorker worker;
+    @Autowired private MediaCapabilityService catalog;
+    @Autowired private MediaExecutionWorker mediaWorker;
+    @Autowired private ComfyUiUnknownTaskReconciler reconciler;
     @Autowired private ComfyUiImageWorkflow workflow;
     @Autowired private ComfyUiClient client;
     @Autowired private ComfyUiClientRegistry clientRegistry;
@@ -112,6 +119,12 @@ class ComfyUiImagePostgresIT {
 
     @Test
     void approvedReferenceImageReachesFixedSamplerThenArchivesOriginalPrompt() throws Exception {
+        UUID connection = catalog.createConnection("Comfy fake endpoint",
+                "http://127.0.0.1:" + SERVER.getAddress().getPort()).id();
+        UUID capability = catalog.publishCapability(connection, "Fixed image", "COMFY_IMAGE_V1",
+                mapper.readTree("{\"checkpoint\":\"test-model.safetensors\"}")).id();
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION,
+                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability);
         AdminPrincipal owner = identities.setup("comfy-image-integration-secret",
                 "comfy-admin", "comfy-password-123");
         Project project = projects.create(owner.userId(), "Comfy fake",
@@ -137,7 +150,7 @@ class ComfyUiImagePostgresIT {
                 "Scene", scene).currentVersion().id();
         ObjectNode shot = mapper.createObjectNode();
         shot.put("order", 1);
-        shot.put("durationMs", 3000);
+        shot.put("durationSeconds", 3);
         shot.put("description", "Coffee pour");
         shot.put("camera", "Close");
         shot.put("action", "Pour coffee");
@@ -178,7 +191,7 @@ class ComfyUiImagePostgresIT {
         ((tools.jackson.databind.node.ArrayNode) proposal.path("steps")).add(secondStep);
         var plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 queued.id()), proposal);
-        assertThat(plan.workflowVersion()).isEqualTo(workflow.version());
+        assertThat(plan.workflowVersion()).isEqualTo("media-capabilities-v1");
         assertThat(plan.steps()).allSatisfy(planned -> assertThat(planned.input()
                 .path("providerOriginSha256").asText()).isEqualTo(client.originSha256()));
         assertThat(SUBMISSIONS).hasValue(0);
@@ -187,7 +200,7 @@ class ComfyUiImagePostgresIT {
                         + "where plan_id = :planId")
                 .param("origin", "0".repeat(64)).param("planId", plan.id()).update();
         assertThatThrownBy(() -> plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash())).isInstanceOf(ApiProblemException.class);
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList())).isInstanceOf(ApiProblemException.class);
         assertThat(jdbc.sql("select count(*) from task where plan_id = :planId")
                 .param("planId", plan.id()).query(Integer.class).single()).isZero();
         jdbc.sql("update plan_step set input_json = input_json || "
@@ -195,7 +208,7 @@ class ComfyUiImagePostgresIT {
                         + "where plan_id = :planId")
                 .param("origin", client.originSha256()).param("planId", plan.id()).update();
         List<Task> approvedTasks = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash()).tasks();
+                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks();
         Task approved = approvedTasks.getFirst();
         Task queuedSecond = approvedTasks.get(1);
         assertThat(approved.input().path("referenceImageVersionId").asText())
@@ -204,11 +217,11 @@ class ComfyUiImagePostgresIT {
         try (var pool = Executors.newFixedThreadPool(2)) {
             Future<Integer> first = pool.submit(() -> {
                 start.await();
-                return worker.submitOnce("comfy-submitter-1");
+                return mediaWorker.submitOnce("comfy-submitter-1");
             });
             Future<Integer> competing = pool.submit(() -> {
                 start.await();
-                return worker.submitOnce("comfy-submitter-2");
+                return mediaWorker.submitOnce("comfy-submitter-2");
             });
             start.countDown();
             assertThat(first.get() + competing.get()).isEqualTo(1);
@@ -234,15 +247,15 @@ class ComfyUiImagePostgresIT {
                 .param("id", approved.id()).query(String.class).single())
                 .isEqualTo(client.originSha256());
         assertThat(clientRegistry.forOriginal(1, client.originSha256())).contains(client);
-        assertThat(worker.submitOnce("other-app-instance")).isZero();
+        assertThat(mediaWorker.submitOnce("other-app-instance")).isZero();
         assertThat(tasks.get(owner.userId(), project.id(), queuedSecond.id()).status())
                 .isEqualTo(Task.Status.READY);
         due(approved.id());
-        assertThat(worker.pollOnce("comfy-poller")).isEqualTo(1);
+        assertThat(mediaWorker.pollOnce("comfy-poller")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), approved.id()).status())
                 .isEqualTo(Task.Status.WAITING_PROVIDER);
         due(approved.id());
-        assertThat(worker.pollOnce("comfy-poller")).isEqualTo(1);
+        assertThat(mediaWorker.pollOnce("comfy-poller")).isEqualTo(1);
         Task archiveFailed = tasks.get(owner.userId(), project.id(), approved.id());
         assertThat(archiveFailed.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(archiveFailed.providerRequestId()).isEqualTo(FIRST_PROMPT_ID.get().toString());
@@ -254,8 +267,8 @@ class ComfyUiImagePostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
         due(approved.id());
-        assertThat(worker.submitOnce("other-app-instance")).isZero();
-        assertThat(worker.pollOnce("recovered-poller")).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce("other-app-instance")).isZero();
+        assertThat(mediaWorker.pollOnce("recovered-poller")).isEqualTo(1);
         Task complete = tasks.get(owner.userId(), project.id(), approved.id());
         assertThat(complete.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(complete.output().path("selected").booleanValue()).isTrue();
@@ -268,7 +281,7 @@ class ComfyUiImagePostgresIT {
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(2);
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
                 .param("id", approved.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(worker.submitOnce("other-app-instance")).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce("other-app-instance")).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(2);
         assertThat(SUBMITTED_GRAPH.get().path("6").path("inputs")
                 .path("denoise").doubleValue()).isEqualTo(1.0);
@@ -291,7 +304,7 @@ class ComfyUiImagePostgresIT {
         ComfyUiImageWorker rotated = new ComfyUiImageWorker(tasks, artifacts, assets,
                 projects, differentOrigin, rotatedRegistry, rotatedWorkflow,
                 new PlanProviderProperties("comfyui", 2), mapper);
-        assertThat(rotated.pollOnce("rotated-origin-poller")).isEqualTo(1);
+        assertThat(mediaWorker.pollOnce("rotated-origin-poller")).isEqualTo(1);
         Task completedOld = tasks.get(owner.userId(), project.id(), queuedSecond.id());
         assertThat(completedOld.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(ComfyUiImageWorkflow.supportsHistoricalVersion(workflow.version())).isTrue();
@@ -330,10 +343,10 @@ class ComfyUiImagePostgresIT {
         var uncertainPlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
                 uncertainRun.id()), uncertainProposal);
         Task uncertainTask = plans.approve(owner.userId(), project.id(), uncertainPlan.id(),
-                uncertainPlan.planHash()).tasks().getFirst();
+                uncertainPlan.planHash(), plans.get(owner.userId(), project.id(), uncertainPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
         int acceptedBeforeLoss = SUBMISSIONS.get();
         DROP_NEXT_PROMPT_RESPONSE.set(true);
-        assertThatThrownBy(() -> worker.submitOnce("response-loss-worker"))
+        assertThatThrownBy(() -> mediaWorker.submitOnce("response-loss-worker"))
                 .isInstanceOf(RuntimeException.class);
         assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
         assertThat(tasks.get(owner.userId(), project.id(), uncertainTask.id()).status())
@@ -353,10 +366,15 @@ class ComfyUiImagePostgresIT {
                     assertThat(attempt.status().name()).isEqualTo("UNKNOWN");
                     assertThat(attempt.providerRequestId()).isNull();
                 });
-        assertThat(worker.submitOnce("post-loss-worker")).isZero();
+        assertThat(mediaWorker.submitOnce("post-loss-worker")).isZero();
         assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
                 .param("id", uncertainTask.id()).query(Integer.class).single()).isEqualTo(1);
+        assertThat(reconciler.reconcile(owner.userId(), project.id(), uncertainTask.id()).outcome())
+                .isEqualTo(dev.agenvas.task.application.UnknownTaskReconciler.Outcome.RESUMED);
+        assertThat(tasks.get(owner.userId(), project.id(), uncertainTask.id())
+                .providerRequestId()).isEqualTo(LAST_PROMPT_ID.get().toString());
+        assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
     }
 
     private void due(UUID taskId) {
@@ -394,7 +412,10 @@ class ComfyUiImagePostgresIT {
                 if (exchange.getRequestURI().getPath()
                         .equals("/history/" + SECOND_PROMPT_ID.get())) {
                     QUERIES.incrementAndGet();
-                    respond(exchange, 200, "{\"" + SECOND_PROMPT_ID.get() + "\":{\"status\":{"
+                    respond(exchange, 200, "{\"" + SECOND_PROMPT_ID.get() + "\":{"
+                            + "\"prompt\":[0,\"" + SECOND_PROMPT_ID.get()
+                            + "\",{},{\"client_id\":\"" + SECOND_PROMPT_ID.get() + "\"}],"
+                            + "\"status\":{"
                             + "\"completed\":true,\"status_str\":\"success\"},"
                             + "\"outputs\":{\"8\":{\"images\":[{\"filename\":\"render.png\","
                             + "\"type\":\"output\",\"subfolder\":\"\"}]}}}}");

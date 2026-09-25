@@ -47,6 +47,13 @@ class ComfyUiVideoWorkflowTest {
         ComfyUiVideoWorkflow workflow = new ComfyUiVideoWorkflow(models(), mapper);
         assertThat(workflow.supportsDuration(5_000)).isTrue();
         assertThat(workflow.supportsDuration(5_100)).isFalse();
+        assertThat(workflow.supportsDurationSeconds(1)).isTrue();
+        assertThat(workflow.supportsDurationSeconds(5)).isTrue();
+        assertThat(workflow.supportsDurationSeconds(0)).isFalse();
+        assertThat(workflow.supportsDurationSeconds(6)).isFalse();
+        assertThat(workflow.renderSeconds("prompt", null, 1, "input.png",
+                Project.AspectRatio.LANDSCAPE_16_9, 5)
+                .path("9").path("inputs").path("length").asInt()).isEqualTo(81);
         assertThatThrownBy(() -> workflow.render("prompt", null, 1, "../other.png",
                 Project.AspectRatio.LANDSCAPE_16_9, 5_000))
                 .isInstanceOf(IllegalArgumentException.class);

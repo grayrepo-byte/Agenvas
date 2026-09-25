@@ -175,6 +175,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取脱敏媒体连接、能力及默认值 */
+        get: operations["getMediaSettings"];
+        put?: never;
+        /** 幂等创建固定平台连接 */
+        post: operations["createMediaConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 使用 expectedVersion 修改连接并保留历史版本 */
+        put: operations["updateMediaConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等发布一个已安装的固定适配器能力 */
+        post: operations["createMediaCapability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 使用 expectedVersion 修改能力并保留已发布版本 */
+        put: operations["updateMediaCapability"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-defaults/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 使用 expectedVersion 设置图片或视频默认能力 */
+        put: operations["setMediaDefault"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -686,6 +781,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        /** 列出与步骤输出和整数时长兼容的已发布能力 */
+        get: operations["listMediaCapabilityCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 改选一项能力或补输入并创建新的计划修订 */
+        post: operations["reviseExecutionPlanStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/plans/{planId}/reject": {
         parameters: {
             query?: never;
@@ -1010,6 +1147,95 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MediaSettings: {
+            connections: components["schemas"]["MediaConnection"][];
+            defaults: components["schemas"]["MediaDefault"][];
+        };
+        MediaConnection: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK";
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            connectionVersion: number;
+            origin: string | null;
+            keyMask: string | null;
+            /** @enum {string} */
+            connectivityStatus: "NOT_CHECKED";
+            realGenerationTested: boolean;
+            capabilities: components["schemas"]["MediaCapability"][];
+        };
+        MediaCapability: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            capabilityVersion: number;
+            adapterId: string;
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            minimumSeconds: number;
+            maximumSeconds: number;
+            mappingSha256: string;
+            settings: components["schemas"]["FixedMediaAdapterSettings"];
+        };
+        /** @description Fixed adapters accept only their declared settings; model IDs and endpoints are not editable. */
+        FixedMediaAdapterSettings: {
+            checkpoint?: string;
+            diffusionModel?: string;
+            textEncoder?: string;
+            vae?: string;
+            clipVision?: string;
+            /** @enum {string} */
+            quality?: "low" | "medium" | "high";
+        };
+        MediaDefault: {
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            /** Format: uuid */
+            capabilityId: string;
+            /** Format: int64 */
+            version: number;
+        };
+        CreateMediaConnectionRequest: {
+            name: string;
+            /** @enum {string} */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK";
+            origin?: string | null;
+            apiKey?: string | null;
+        };
+        UpdateMediaConnectionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            enabled: boolean;
+            origin?: string | null;
+            apiKey?: string | null;
+        };
+        CreateMediaCapabilityRequest: {
+            name: string;
+            adapterId: string;
+            settings?: components["schemas"]["FixedMediaAdapterSettings"];
+        };
+        UpdateMediaCapabilityRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            enabled: boolean;
+            adapterId: string;
+            settings?: components["schemas"]["FixedMediaAdapterSettings"];
+        };
+        SetMediaDefaultRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            /** Format: uuid */
+            capabilityId: string;
+        };
         SystemDiagnostics: {
             /** Format: date-time */
             checkedAt: string;
@@ -1141,6 +1367,7 @@ export interface components {
             style?: string;
             order?: number;
             durationMs?: number;
+            durationSeconds?: number;
             camera?: string;
             action?: string;
             characterVersionIds?: string[];
@@ -1180,13 +1407,13 @@ export interface components {
             videoArtifactId: string;
             /** Format: uuid */
             videoVersionId: string;
-            startMs: number;
-            endMs: number;
+            startSeconds: number;
+            endSeconds: number;
         };
         CreateMediaExportRequest: {
             segments: components["schemas"]["MediaExportSegment"][];
         };
-        ExportProposalSegment: {
+        ExportProposalSegmentV1: {
             /** Format: uuid */
             videoArtifactId: string;
             /** Format: uuid */
@@ -1201,23 +1428,49 @@ export interface components {
             /** Format: uuid */
             shotVersionId: string;
         };
-        ExportProposalInput: {
+        ExportProposalSegmentV2: {
+            /** Format: uuid */
+            videoArtifactId: string;
+            /** Format: uuid */
+            videoVersionId: string;
+            /** Format: uuid */
+            assetId: string;
+            assetSha256: string;
+            startSeconds: number;
+            endSeconds: number;
+            /** Format: uuid */
+            shotArtifactId: string;
+            /** Format: uuid */
+            shotVersionId: string;
+        };
+        ExportProposalInputV1: {
             /** @constant */
             schemaVersion: 1;
             /** @enum {string} */
             aspectRatio: "LANDSCAPE_16_9" | "PORTRAIT_9_16" | "SQUARE_1_1";
             /** @constant */
             outputFormat: "SILENT_MP4_720P_24FPS";
-            segments: components["schemas"]["ExportProposalSegment"][];
+            segments: components["schemas"]["ExportProposalSegmentV1"][];
             durationMs: number;
         };
+        ExportProposalInputV2: {
+            /** @constant */
+            schemaVersion: 2;
+            /** @enum {string} */
+            aspectRatio: "LANDSCAPE_16_9" | "PORTRAIT_9_16" | "SQUARE_1_1";
+            /** @constant */
+            outputFormat: "SILENT_MP4_720P_24FPS";
+            segments: components["schemas"]["ExportProposalSegmentV2"][];
+            durationSeconds: number;
+        };
+        ExportProposalInput: components["schemas"]["ExportProposalInputV1"] | components["schemas"]["ExportProposalInputV2"];
         ExportProposal: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             runId: string;
             /** @enum {string} */
-            status: "PENDING" | "APPROVED" | "REJECTED";
+            status: "PENDING" | "APPROVED" | "REJECTED" | "STALE";
             input: components["schemas"]["ExportProposalInput"];
             proposalHash: string;
             /** Format: int64 */
@@ -1320,7 +1573,8 @@ export interface components {
         };
         /** @enum {string} */
         ArtifactKind: "TEXT" | "IMAGE" | "VIDEO" | "CHARACTER" | "SCENE" | "SHOT";
-        ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"] | components["schemas"]["character-v1.schema"] | components["schemas"]["scene-v1.schema"] | components["schemas"]["shot-v1.schema"];
+        ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"] | components["schemas"]["character-v1.schema"] | components["schemas"]["scene-v1.schema"] | components["schemas"]["shot-v1.schema"] | components["schemas"]["shot-v2.schema"];
+        WritableArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"] | components["schemas"]["character-v1.schema"] | components["schemas"]["scene-v1.schema"] | components["schemas"]["shot-v2.schema"];
         ShotSceneEdit: {
             name?: string;
             location?: string;
@@ -1336,7 +1590,7 @@ export interface components {
             description: string;
             camera: string;
             action: string;
-            durationMs?: number;
+            durationSeconds: number;
             scene?: components["schemas"]["ShotSceneEdit"];
         };
         ShotRedoResult: {
@@ -1346,13 +1600,13 @@ export interface components {
         CreateArtifactRequest: {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
-            content: components["schemas"]["ArtifactContent"];
+            content: components["schemas"]["WritableArtifactContent"];
         };
         ReviseArtifactRequest: {
             /** Format: int64 */
             expectedVersion: number;
             title?: string;
-            content: components["schemas"]["ArtifactContent"];
+            content: components["schemas"]["WritableArtifactContent"];
         };
         SelectArtifactVersionRequest: {
             /** Format: uuid */
@@ -1371,8 +1625,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             versionNo: number;
-            /** @constant */
-            schemaVersion: 1;
+            /** @enum {integer} */
+            schemaVersion: 1 | 2;
             content: components["schemas"]["ArtifactContent"];
             inputReferences: components["schemas"]["ArtifactInputReference"][];
             /** @enum {string} */
@@ -1604,6 +1858,28 @@ export interface components {
                 [key: string]: unknown;
             };
             dependencyKeys: string[];
+            binding: components["schemas"]["MediaCapabilityBinding"] | null;
+        };
+        MediaCapabilityBinding: {
+            /** Format: uuid */
+            connectionId: string;
+            connectionVersion: number;
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            adapterId: string;
+            mappingSha256: string;
+        };
+        MediaCapabilityCandidate: {
+            binding: components["schemas"]["MediaCapabilityBinding"];
+            connectionName: string;
+            capabilityName: string;
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            minimumSeconds: number;
+            maximumSeconds: number;
+            realGenerationTested: boolean;
+            settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
         ExecutionPlan: {
             /** Format: uuid */
@@ -1616,7 +1892,7 @@ export interface components {
             /** @enum {string} */
             stage: "IMAGE" | "VIDEO";
             /** @enum {string} */
-            status: "PENDING" | "APPROVED" | "REJECTED" | "STALE";
+            status: "NEEDS_INPUT" | "PENDING" | "APPROVED" | "REJECTED" | "STALE";
             objective: string;
             plan: {
                 [key: string]: unknown;
@@ -1639,6 +1915,20 @@ export interface components {
         };
         ApproveExecutionPlanRequest: {
             planHash: string;
+            confirmedStepKeys: string[];
+        };
+        ReviseExecutionPlanStepRequest: {
+            expectedPlanHash: string;
+            /** Format: uuid */
+            capabilityId?: string | null;
+            inputPatch: {
+                prompt?: string;
+                negativePrompt?: string | null;
+                /** Format: uuid */
+                imageArtifactId?: string | null;
+                /** Format: uuid */
+                imageVersionId?: string | null;
+            };
         };
         ExecutionPlanApproval: {
             /** Format: uuid */
@@ -1981,6 +2271,21 @@ export interface components {
         "shot-v1.schema": {
             order: number;
             durationMs: number;
+            description: string;
+            camera: string;
+            action: string;
+            characterVersionIds: string[];
+            /** Format: uuid */
+            sceneVersionId: string;
+            /** Format: uuid */
+            selectedImageVersionId?: string | null;
+            /** Format: uuid */
+            selectedVideoVersionId?: string | null;
+        };
+        /** SHOT Artifact content v2 */
+        "shot-v2.schema": {
+            order: number;
+            durationSeconds: number;
             description: string;
             camera: string;
             action: string;
@@ -2381,6 +2686,177 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getMediaSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 不含密钥或加密材料的配置状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMediaConnection: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMediaConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 创建或同内容重放后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMediaConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createMediaCapability: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMediaCapabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description 发布后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMediaCapability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaCapabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    setMediaDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaDefaultRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     listProjects: {
@@ -3300,6 +3776,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExecutionPlanApproval"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMediaCapabilityCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前候选能力，无连接地址或凭证 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaCapabilityCandidate"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reviseExecutionPlanStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                planId: string;
+                stepKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseExecutionPlanStepRequest"];
+            };
+        };
+        responses: {
+            /** @description 新修订，旧逐项确认全部失效 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionPlan"];
                 };
             };
             400: components["responses"]["ValidationError"];

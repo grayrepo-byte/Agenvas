@@ -427,18 +427,20 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 ---
 
-## 后续媒体能力交付（2026-09-25 决策，均未完成）
+## 后续媒体能力交付（2026-09-25 决策，进行中）
 
 依据：[媒体能力基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[GPT Image 2/Seedance 固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)、[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入不在当前清单中。
 
-实施顺序：[整数秒迁移计划](superpowers/plans/2026-09-25-integer-video-seconds.md) → [媒体能力基础计划](superpowers/plans/2026-09-25-media-capability-foundation.md) → [GPT Image 2/Seedance 适配器计划](superpowers/plans/2026-09-25-gpt-image-seedance-adapters.md)。计划已写成，以下交付项仍待实现与验收。
+实施顺序：[整数秒迁移计划](superpowers/plans/2026-09-25-integer-video-seconds.md) → [媒体能力基础计划](superpowers/plans/2026-09-25-media-capability-foundation.md) → [GPT Image 2/Seedance 适配器计划](superpowers/plans/2026-09-25-gpt-image-seedance-adapters.md)。以下交付项按实际检查结果更新。
 
-- [ ] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；迁移 Mock/ComfyUI 配置与历史任务来源。
-- [ ] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。
-- [ ] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。
-- [ ] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收。
-- [ ] 火山方舟 Seedance 固定首帧图生视频适配器完成时长校验、异步轮询、临时结果归档、UNKNOWN 与故障恢复的本地假服务及 PostgreSQL 验收。
-- [ ] 分别记录 GPT Image 2 与 Seedance 的真实调用情况；当前决定不进行真实付费测试，未调用前保持“未实测”。
+- [x] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；V40 一次性导入 Mock/ComfyUI 配置与可精确匹配的历史任务来源，无法匹配的旧请求保持阻断或待核对。PostgreSQL 迁移及目录集成测试通过；未进行真实 ComfyUI 调用。
+- [x] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。V36 升级、v1 冻结任务与用量、Mock/假 ComfyUI、1.25 秒素材导出边界及前端表单有回归测试；`backend ./mvnw verify`（57 个集成测试）、前端类型检查/lint/73 个测试/构建通过，真实 Provider 未运行。
+- [x] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。`backend ./mvnw verify`（63 项、0 失败）、前端类型检查/lint/77 项测试/构建通过；ComfyUI 使用本地假服务，真实 Provider 未运行。
+- [x] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收；跨项目参考图在网络前拒绝，响应丢失保持 UNKNOWN，不自动重提。仅为模拟协议验证，真实 OpenAI 调用未运行。
+- [x] 火山方舟 Seedance 固定首帧图生视频适配器完成 4–15 整数秒、异步原任务 ID 轮询、过期 URL 重查或无法刷新时阻断、带音轨结果去音归档、恶意地址阻断、下载失败后重试与创建响应丢失 UNKNOWN 的本地假服务及 PostgreSQL 验收；无真实方舟调用。
+- [x] 分别记录真实调用状态：GPT Image 2 **未运行**；Seedance **未运行**。管理员界面保持“已配置、未实测”，不把本地假服务或 Mock 结果标记为真实生成成功。
+
+本轮全量检查：`backend ./mvnw verify` 为 67 项、0 失败；前端类型检查、lint、78 项测试与构建通过。全量后新增的固定云 DNS 共用校验和 Seedance 过期地址断言另经定向测试验证；本地假服务不等于真实 Provider 验收。
 
 ## A. 跨模块验收矩阵
 
