@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# 一键运行单元测试：前端 Vitest + 后端 Maven Surefire。
+# 一键运行测试：前端 Vitest + 后端 Maven verify。
 #
 # 用法:
-#   ./run-tests.sh              # 前端 + 后端单元测试（并行）
+#   ./run-tests.sh              # 前端单元测试 + 后端 verify（单元 + 集成），并行
 #   ./run-tests.sh frontend     # 只跑前端
 #   ./run-tests.sh backend      # 只跑后端
-#   ./run-tests.sh --all        # 后端额外包含集成测试（*IT，需要 Docker 与 ffmpeg）
+#   ./run-tests.sh --unit       # 后端只跑单元测试，跳过 *IT（快，无需 Docker）
 #   ./run-tests.sh --help
 #
 # 退出码: 0 = 所选范围全部通过; 1 = 至少一端失败; 2 = 参数错误。
@@ -30,11 +30,12 @@ else
   C_BOLD=''
 fi
 
+# 按标记取注释块，不用行号，之后改动注释也不会错位。
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '/^# 用法:/,/^# 退出码:/p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-WITH_IT=0
+FULL_VERIFY=1
 SEL_FRONTEND=0
 SEL_BACKEND=0
 ANY_SELECTED=0
@@ -49,8 +50,8 @@ while [ $# -gt 0 ]; do
       SEL_BACKEND=1
       ANY_SELECTED=1
       ;;
-    --all | --it)
-      WITH_IT=1
+    --unit)
+      FULL_VERIFY=0
       ;;
     -h | --help)
       usage
@@ -87,6 +88,12 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+# 给每一行加标签并立刻刷出去。两端并行时输出会交错，标签让来源可辨；
+# fflush() 保证行到即出，不会攒在管道缓冲里。
+prefix_lines() {
+  awk -v tag="$1" '{ printf "[%s] %s\n", tag, $0; fflush() }'
+}
+
 # 前端测试命令：优先项目约定的 pnpm，pnpm 版本切换不可用时退回本地 Vitest 二进制，
 # 并打印告警而不是静默改变测试入口。
 frontend_command() {
@@ -99,15 +106,15 @@ frontend_command() {
     pnpm test
   else
     echo "警告: pnpm 在本机不可用（packageManager 版本切换失败），改用 frontend/node_modules/.bin/vitest。" >&2
-    echo "修复方式: pnpm i -g pnpm@12.5.1 --allow-build=pnpm" >&2
+    echo "修复方式: pnpm approve-builds -g 后重装，或补跑 pnpm 包内的 install.js" >&2
     ./node_modules/.bin/vitest run
   fi
 }
 
-# 后端单元测试走 surefire（*Test）；--all 走 verify，额外跑 Testcontainers 的 *IT。
+# 默认走 verify，连同 Testcontainers 的 *IT 一起跑；--unit 退回到 surefire 的 *Test。
 backend_command() {
   cd "$BACKEND_DIR" || return 1
-  if [ "$WITH_IT" -eq 1 ]; then
+  if [ "$FULL_VERIFY" -eq 1 ]; then
     ./mvnw --batch-mode --no-transfer-progress verify
   else
     ./mvnw --batch-mode --no-transfer-progress test
@@ -116,20 +123,44 @@ backend_command() {
 
 started_at=$(date +%s)
 
-echo "${C_BOLD}运行范围${C_RESET}: $([ "$RUN_FRONTEND" -eq 1 ] && echo -n '前端 ')$([ "$RUN_BACKEND" -eq 1 ] && echo -n '后端 ')$([ "$WITH_IT" -eq 1 ] && echo -n '(含集成测试)')"
+echo "${C_BOLD}运行范围${C_RESET}"
+if [ "$RUN_FRONTEND" -eq 1 ]; then
+  echo "  前端  Vitest 单元测试"
+fi
+if [ "$RUN_BACKEND" -eq 1 ]; then
+  if [ "$FULL_VERIFY" -eq 1 ]; then
+    echo "  后端  Maven verify（单元测试 + 集成测试 *IT，需要 Docker 与 ffmpeg）"
+  else
+    echo "  后端  Maven test（仅单元测试）"
+  fi
+fi
 echo
 
 if [ "$RUN_FRONTEND" -eq 1 ]; then
-  printf '  %s启动前端单元测试%s (Vitest)\n' "$C_YELLOW" "$C_RESET"
-  ( frontend_command ) >"$FRONTEND_LOG" 2>&1 &
+  printf '  %s启动前端测试%s (Vitest)\n' "$C_YELLOW" "$C_RESET"
+  # tee 留完整日志，prefix_lines 实时打到终端；PIPESTATUS[0] 取回测试本身的退出码，
+  # 而不是管道末端 awk 的。
+  (
+    frontend_command 2>&1 | tee "$FRONTEND_LOG" | prefix_lines 前端
+    exit "${PIPESTATUS[0]}"
+  ) &
   FE_PID=$!
 fi
 
 if [ "$RUN_BACKEND" -eq 1 ]; then
-  printf '  %s启动后端单元测试%s (Maven Surefire)\n' "$C_YELLOW" "$C_RESET"
-  ( backend_command ) >"$BACKEND_LOG" 2>&1 &
+  if [ "$FULL_VERIFY" -eq 1 ]; then
+    printf '  %s启动后端测试%s (Maven verify)\n' "$C_YELLOW" "$C_RESET"
+  else
+    printf '  %s启动后端测试%s (Maven test)\n' "$C_YELLOW" "$C_RESET"
+  fi
+  (
+    backend_command 2>&1 | tee "$BACKEND_LOG" | prefix_lines 后端
+    exit "${PIPESTATUS[0]}"
+  ) &
   BE_PID=$!
 fi
+
+echo
 
 FE_RC=0
 BE_RC=0
