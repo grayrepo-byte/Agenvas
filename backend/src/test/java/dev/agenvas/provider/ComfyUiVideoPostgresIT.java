@@ -187,6 +187,11 @@ class ComfyUiVideoPostgresIT {
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);
         Task videoTask = plans.approve(owner.userId(), project.id(), videoPlan.id(),
                 videoPlan.planHash()).tasks().getFirst();
+        assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
+        assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
+                        + "where task_id = :taskId and entry_type = 'RESERVATION'")
+                .param("taskId", videoTask.id()).query(String.class).single()).isEqualTo("5");
         VIDEO_BYTES.set(realMp4());
         assertThat(videos.submitOnce("video-submitter")).isEqualTo(1);
         assertThat(VIDEO_SUBMISSIONS).hasValue(1);

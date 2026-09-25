@@ -327,7 +327,7 @@ class MockStoryboardPostgresIT {
         ShotRedoService.Result revision = redo.revise(owner.userId(), project.id(),
                 secondShotId, new ShotRedoService.Request(oldSecondShot.currentVersion().id(),
                         oldSecondShot.artifact().version(), "只修改第二镜头", "特写", "缓慢倒入咖啡",
-                        null, new ShotRedoService.SceneEdit(null, null, "黄昏", null, null)));
+                        5, new ShotRedoService.SceneEdit(null, null, "黄昏", null, null)));
         assertThat(revision.scene()).isNotNull();
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
                 "越过绑定重做第二镜头", "mock-unbound-redo", agent.version(), secondShotId))
@@ -416,7 +416,7 @@ class MockStoryboardPostgresIT {
                 secondShotId, new ShotRedoService.Request(
                         completedSecondShot.currentVersion().id(),
                         completedSecondShot.artifact().version(),
-                        "用户再次修改第二镜头", "特写", "重新安排动作", null, null));
+                        "用户再次修改第二镜头", "特写", "重新安排动作", 5, null));
         ObjectNode lateVideoContent = ((ObjectNode) artifacts.get(owner.userId(), project.id(),
                 UUID.fromString(redoVideo.output().path("artifactId").asText()))
                 .currentVersion().content()).deepCopy();

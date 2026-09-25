@@ -15,6 +15,7 @@ import dev.agenvas.task.domain.Task;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -113,9 +114,10 @@ public class MockVideoWorker {
         if (input.asset().mediaKind() != Asset.MediaKind.IMAGE) {
             throw new IllegalStateException("Pinned video input is not an archived image");
         }
-        int durationMs = shot.content().path("durationMs").asInt();
-        if (durationMs < 100 || durationMs > 30_000) {
-            throw new IllegalStateException("Pinned shot duration is invalid");
+        Duration duration = VideoDuration.fromFrozenTask(task.input());
+        if (task.input().path("schemaVersion").asInt(1) == 2
+                && shot.content().path("durationSeconds").asInt(-1) != duration.toSeconds()) {
+            throw new IllegalStateException("Pinned shot duration differs from approved Task");
         }
         Path rendered;
         try {
@@ -124,7 +126,9 @@ public class MockVideoWorker {
             throw new IllegalStateException("Cannot create demo video output", exception);
         }
         try {
-            String seconds = String.format(Locale.ROOT, "%.3f", durationMs / 1_000.0);
+            String seconds = task.input().path("schemaVersion").asInt(1) == 2
+                    ? Long.toString(duration.toSeconds())
+                    : String.format(Locale.ROOT, "%.3f", duration.toMillis() / 1_000.0);
             mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                     "-loop", "1", "-framerate", "24", "-i", input.path().toString(),
                     "-t", seconds,

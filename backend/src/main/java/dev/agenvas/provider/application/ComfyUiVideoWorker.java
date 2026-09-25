@@ -18,6 +18,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -103,16 +104,23 @@ public class ComfyUiVideoWorker {
     private TaskWorker.WaitingProvider submit(Task task, UUID requestKey) {
         UUID ownerId = tasks.ownerForWorker(task);
         Project.AspectRatio ratio = projects.get(ownerId, task.projectId()).aspectRatio();
-        int durationMs = task.input().path("durationMs").asInt(-1);
-        if (!workflow.supportsDuration(durationMs)) {
+        Duration duration = VideoDuration.fromFrozenTask(task.input());
+        boolean wholeSeconds = task.input().path("schemaVersion").asInt(1) == 2;
+        if (wholeSeconds && !workflow.supportsDurationSeconds(Math.toIntExact(duration.toSeconds()))
+                || !wholeSeconds && !workflow.supportsDuration(Math.toIntExact(duration.toMillis()))) {
             throw new IllegalStateException("Approved shot duration exceeds fixed I2V capability");
         }
         byte[] input = pinnedKeyframe(ownerId, task, ratio);
         String uploaded = client.uploadImage(requestKey, input, "png");
         long seed = requestKey.getMostSignificantBits() & Long.MAX_VALUE;
-        UUID promptId = client.submit(workflow.render(task.input().path("prompt").asText(),
-                task.input().path("negativePrompt").asText(""), seed, uploaded, ratio,
-                durationMs), requestKey);
+        var graph = wholeSeconds
+                ? workflow.renderSeconds(task.input().path("prompt").asText(),
+                        task.input().path("negativePrompt").asText(""), seed, uploaded, ratio,
+                        Math.toIntExact(duration.toSeconds()))
+                : workflow.render(task.input().path("prompt").asText(),
+                        task.input().path("negativePrompt").asText(""), seed, uploaded, ratio,
+                        Math.toIntExact(duration.toMillis()));
+        UUID promptId = client.submit(graph, requestKey);
         return new TaskWorker.WaitingProvider(promptId.toString(), Instant.now().plusSeconds(5));
     }
 
