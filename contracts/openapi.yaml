@@ -209,6 +209,148 @@ paths:
           content:
             application/problem+json:
               schema: {$ref: "#/components/schemas/Problem"}
+  /api/v1/settings/media-connections:
+    get:
+      operationId: getMediaSettings
+      summary: 读取脱敏媒体连接、能力及默认值
+      tags: [Settings]
+      responses:
+        "200":
+          description: 不含密钥或加密材料的配置状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      operationId: createMediaConnection
+      summary: 幂等创建固定平台连接
+      tags: [Settings]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMediaConnectionRequest"}
+      responses:
+        "200":
+          description: 创建或同内容重放后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateMediaConnection
+      summary: 使用 expectedVersion 修改连接并保留历史版本
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateMediaConnectionRequest"}
+      responses:
+        "200":
+          description: 修改后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}/capabilities:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: createMediaCapability
+      summary: 幂等发布一个已安装的固定适配器能力
+      tags: [Settings]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMediaCapabilityRequest"}
+      responses:
+        "200":
+          description: 发布后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}:
+    parameters:
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: capabilityId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateMediaCapability
+      summary: 使用 expectedVersion 修改能力并保留已发布版本
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateMediaCapabilityRequest"}
+      responses:
+        "200":
+          description: 修改后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-defaults/{kind}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        schema: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+    put:
+      operationId: setMediaDefault
+      summary: 使用 expectedVersion 设置图片或视频默认能力
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SetMediaDefaultRequest"}
+      responses:
+        "200":
+          description: 修改后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects:
     get:
       operationId: listProjects
@@ -1252,6 +1394,102 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
+    MediaSettings:
+      type: object
+      additionalProperties: false
+      required: [connections, defaults]
+      properties:
+        connections:
+          type: array
+          items: {$ref: "#/components/schemas/MediaConnection"}
+        defaults:
+          type: array
+          items: {$ref: "#/components/schemas/MediaDefault"}
+    MediaConnection:
+      type: object
+      additionalProperties: false
+      required: [id, name, platform, enabled, version, connectionVersion, origin,
+        keyMask, connectivityStatus, realGenerationTested, capabilities]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK]}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        connectionVersion: {type: integer, minimum: 1}
+        origin: {type: [string, "null"]}
+        keyMask: {type: [string, "null"]}
+        connectivityStatus: {type: string, enum: [NOT_CHECKED]}
+        realGenerationTested: {type: boolean}
+        capabilities:
+          type: array
+          items: {$ref: "#/components/schemas/MediaCapability"}
+    MediaCapability:
+      type: object
+      additionalProperties: false
+      required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
+        minimumSeconds, maximumSeconds, mappingSha256]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        capabilityVersion: {type: integer, minimum: 1}
+        adapterId: {type: string}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        minimumSeconds: {type: integer, minimum: 0}
+        maximumSeconds: {type: integer, minimum: 0}
+        mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+    MediaDefault:
+      type: object
+      additionalProperties: false
+      required: [kind, capabilityId, version]
+      properties:
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        capabilityId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+    CreateMediaConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, platform]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 160}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK]}
+        origin: {type: [string, "null"], maxLength: 500}
+        apiKey: {type: [string, "null"], maxLength: 4096}
+    UpdateMediaConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, enabled]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        enabled: {type: boolean}
+        origin: {type: [string, "null"], maxLength: 500}
+        apiKey: {type: [string, "null"], maxLength: 4096}
+    CreateMediaCapabilityRequest:
+      type: object
+      additionalProperties: false
+      required: [name, adapterId]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 160}
+        adapterId: {type: string, minLength: 1, maxLength: 80}
+    UpdateMediaCapabilityRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, enabled, adapterId]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        enabled: {type: boolean}
+        adapterId: {type: string, minLength: 1, maxLength: 80}
+    SetMediaDefaultRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, capabilityId]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        capabilityId: {type: string, format: uuid}
     SystemDiagnostics:
       type: object
       additionalProperties: false

@@ -1,0 +1,316 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useRef, useState } from "react";
+import { Link, Navigate } from "react-router";
+import {
+  ApiError, createMediaCapability, createMediaConnection, getCurrentUser,
+  getMediaSettings, setMediaDefault, updateMediaCapability, updateMediaConnection,
+  type MediaCapability, type MediaConnection, type MediaSettings,
+} from "../../shared/api/client";
+
+const settingsKey = ["settings", "media"] as const;
+
+function stableCreateKey(previous: { payload: string; key: string } | null,
+  payload: string): { payload: string; key: string } {
+  return previous?.payload === payload ? previous
+    : { payload, key: crypto.randomUUID() };
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof ApiError ? cause.message : "保存失败，请重试。";
+}
+
+function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
+  availableAdapters, busy, apply, act }: {
+  connectionId: string;
+  capability: MediaCapability;
+  isDefault: boolean;
+  connectionEnabled: boolean;
+  availableAdapters: string[];
+  busy: boolean;
+  apply: (value: MediaSettings) => void;
+  act: (type: "capability" | "default", capability: MediaCapability) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(capability.name);
+  const [adapterId, setAdapterId] = useState(capability.adapterId);
+  const [error, setError] = useState("");
+  const save = useMutation({
+    mutationFn: () => updateMediaCapability(connectionId, capability.id, {
+      expectedVersion: capability.version, name: name.trim(),
+      enabled: capability.enabled, adapterId,
+    }),
+    onSuccess: (result) => { apply(result); setError(""); },
+    onError: (cause) => {
+      if (cause instanceof ApiError && cause.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+      setError(errorMessage(cause));
+    },
+  });
+  const sameKindAdapters = availableAdapters.filter((id) => capability.kind === "IMAGE_GENERATION"
+    ? id.includes("IMAGE") : id.includes("VIDEO"));
+  return <li className="rounded-xl border border-[var(--line)] p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p className="font-medium">{capability.name}{isDefault ? " · 默认" : ""}</p>
+        <p className="text-xs text-[var(--muted)]">{capability.kind === "IMAGE_GENERATION" ? "图片" : "视频"} · {capability.adapterId} · v{capability.capabilityVersion} · {capability.enabled ? "已启用" : "已停用"}</p>
+      </div>
+      <div className="flex gap-2">
+        <button className="secondary-button" type="button" disabled={busy || save.isPending || !connectionEnabled || !capability.enabled || isDefault}
+          onClick={() => act("default", capability)}>设为默认</button>
+        <button className="secondary-button" type="button" disabled={busy || save.isPending}
+          onClick={() => act("capability", capability)}>{capability.enabled ? "停用" : "启用"}</button>
+      </div>
+    </div>
+    <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(event) => {
+      event.preventDefault(); setError(""); save.mutate();
+    }}>
+      <label className="text-xs">能力名称
+        <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} />
+      </label>
+      <label className="text-xs">固定适配器
+        <select value={adapterId} onChange={(event) => setAdapterId(event.target.value)}>
+          {sameKindAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
+        </select>
+      </label>
+      <button className="secondary-button" type="submit" disabled={busy || save.isPending}>
+        {save.isPending ? "正在保存…" : "保存能力"}
+      </button>
+    </form>
+    {error ? <p className="mt-2 text-sm text-red-800" role="alert">{error}</p> : null}
+  </li>;
+}
+
+function ConnectionCard({ connection, settings, apply }: {
+  connection: MediaConnection;
+  settings: MediaSettings;
+  apply: (value: MediaSettings) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(connection.name);
+  const [origin, setOrigin] = useState(connection.origin ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [capabilityName, setCapabilityName] = useState("");
+  const [adapterId, setAdapterId] = useState(connection.platform === "COMFYUI" ? "COMFY_IMAGE_V1" : "MOCK_IMAGE");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const capabilityCreateKey = useRef<{ payload: string; key: string } | null>(null);
+  const save = useMutation({
+    mutationFn: () => updateMediaConnection(connection.id, {
+      expectedVersion: connection.version, name: name.trim(), enabled: connection.enabled,
+      origin: connection.platform === "COMFYUI" ? origin.trim() : null,
+      apiKey: apiKey || null,
+    }),
+    onSuccess: (result) => {
+      apply(result);
+      setApiKey("");
+      setError("");
+      setNotice("连接已保存，生成接口未实测。");
+    },
+    onError: (cause) => {
+      setNotice("");
+      if (cause instanceof ApiError && cause.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+      setError(cause instanceof ApiError && cause.status === 409
+        ? "配置已被其他管理员修改，已刷新版本；请核对当前草稿后重试。"
+        : errorMessage(cause));
+    },
+  });
+  const addCapability = useMutation({
+    mutationFn: () => {
+      const payload = { name: capabilityName.trim(), adapterId };
+      capabilityCreateKey.current = stableCreateKey(capabilityCreateKey.current, JSON.stringify(payload));
+      return createMediaCapability(connection.id, payload, capabilityCreateKey.current.key);
+    },
+    onSuccess: (result) => {
+      capabilityCreateKey.current = null;
+      apply(result);
+      setCapabilityName("");
+      setError("");
+      setNotice("能力已发布，生成接口未实测。");
+    },
+    onError: (cause) => {
+      if (cause instanceof ApiError && cause.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+      setError(errorMessage(cause));
+    },
+  });
+  const mutate = useMutation({
+    mutationFn: (action: { type: "connection" | "capability" | "default"; capability?: MediaCapability }) => {
+      if (action.type === "connection") {
+        return updateMediaConnection(connection.id, {
+          expectedVersion: connection.version, name: connection.name,
+          enabled: !connection.enabled, origin: connection.origin, apiKey: null,
+        });
+      }
+      const capability = action.capability;
+      if (!capability) throw new Error("请选择能力");
+      if (action.type === "capability") {
+        return updateMediaCapability(connection.id, capability.id, {
+          expectedVersion: capability.version, name: capability.name,
+          enabled: !capability.enabled, adapterId: capability.adapterId,
+        });
+      }
+      const current = settings.defaults.find((item) => item.kind === capability.kind);
+      if (!current) throw new Error("找不到默认能力版本");
+      return setMediaDefault(capability.kind, {
+        expectedVersion: current.version, capabilityId: capability.id,
+      });
+    },
+    onSuccess: (result) => {
+      apply(result);
+      setError("");
+      setNotice("配置已保存，生成接口未实测。");
+    },
+    onError: (cause) => {
+      if (cause instanceof ApiError && cause.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+      setError(errorMessage(cause));
+    },
+  });
+  const busy = save.isPending || addCapability.isPending || mutate.isPending;
+  const availableAdapters = connection.platform === "MOCK"
+    ? ["MOCK_IMAGE", "MOCK_VIDEO"]
+    : connection.platform === "COMFYUI" ? ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"] : [];
+
+  function submitConnection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    save.mutate();
+  }
+
+  return <section className="rounded-3xl border border-[var(--line)] bg-[var(--panel)] p-6">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 className="text-xl font-semibold">{connection.name}</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">{connection.platform} · 连接版本 {connection.connectionVersion} · {connection.enabled ? "已启用" : "已停用"}</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">{connection.keyMask ? `密钥 ${connection.keyMask} · ` : ""}已配置、未实测</p>
+      </div>
+      <button className="secondary-button" type="button" disabled={busy}
+        onClick={() => mutate.mutate({ type: "connection" })}>{connection.enabled ? "停用连接" : "启用连接"}</button>
+    </div>
+    <form className="mt-5 grid gap-3" onSubmit={submitConnection}>
+      <label className="text-sm">连接名称
+        <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} />
+      </label>
+      {connection.platform === "COMFYUI" ? <label className="text-sm">本机 ComfyUI 地址
+        <input value={origin} onChange={(event) => setOrigin(event.target.value)} required
+          placeholder="http://127.0.0.1:8188" />
+      </label> : null}
+      {connection.platform === "OPENAI" || connection.platform === "ARK" ? <label className="text-sm">替换 API Key（留空则不修改）
+        <input type="password" autoComplete="new-password" value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)} />
+      </label> : null}
+      <button className="secondary-button w-fit" type="submit" disabled={busy}>{save.isPending ? "正在保存…" : "保存连接"}</button>
+    </form>
+    <div className="mt-6 border-t border-[var(--line)] pt-5">
+      <h3 className="font-semibold">已发布能力</h3>
+      {connection.capabilities.length === 0 ? <p className="mt-2 text-sm text-[var(--muted)]">尚无能力</p> : null}
+      <ul className="mt-3 space-y-3">
+        {connection.capabilities.map((capability) => {
+          const isDefault = settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id);
+          return <CapabilityRow key={capability.id} connectionId={connection.id}
+            capability={capability} isDefault={isDefault}
+            connectionEnabled={connection.enabled} availableAdapters={availableAdapters}
+            busy={busy} apply={apply}
+            act={(type, selected) => mutate.mutate({ type, capability: selected })} />;
+        })}
+      </ul>
+      {availableAdapters.length > 0 ? <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
+        event.preventDefault();
+        setError("");
+        addCapability.mutate();
+      }}>
+        <label className="text-sm">新能力名称
+          <input value={capabilityName} onChange={(event) => setCapabilityName(event.target.value)} required />
+        </label>
+        <label className="text-sm">固定适配器
+          <select value={adapterId} onChange={(event) => setAdapterId(event.target.value)}>
+            {availableAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
+          </select>
+        </label>
+        <button className="secondary-button" type="submit" disabled={busy || !connection.enabled}>{addCapability.isPending ? "正在发布…" : "发布能力"}</button>
+      </form> : <p className="mt-4 text-sm text-[var(--muted)]">此平台的固定适配器尚未安装。</p>}
+    </div>
+    {error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
+    {notice ? <p className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-800" role="status">{notice}</p> : null}
+  </section>;
+}
+
+export function MediaSettingsPage() {
+  const queryClient = useQueryClient();
+  const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
+  const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
+    enabled: currentUser.isSuccess, retry: false });
+  const [name, setName] = useState("");
+  const [platform, setPlatform] = useState<"COMFYUI" | "OPENAI" | "ARK">("COMFYUI");
+  const [origin, setOrigin] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [error, setError] = useState("");
+  const connectionCreateKey = useRef<{ payload: string; key: string } | null>(null);
+  const create = useMutation({
+    mutationFn: () => {
+      const payload = { name: name.trim(), platform,
+        origin: platform === "COMFYUI" ? origin.trim() : null,
+        apiKey: platform === "COMFYUI" ? null : apiKey };
+      connectionCreateKey.current = stableCreateKey(connectionCreateKey.current, JSON.stringify(payload));
+      return createMediaConnection(payload, connectionCreateKey.current.key);
+    },
+    onSuccess: (result) => {
+      connectionCreateKey.current = null;
+      queryClient.setQueryData(settingsKey, result);
+      setName(""); setOrigin(""); setApiKey(""); setError("");
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  });
+
+  if (currentUser.isError || (settings.error instanceof ApiError && settings.error.status === 401)) {
+    return <Navigate to="/login" replace />;
+  }
+  return <main className="min-h-screen bg-[var(--canvas)] p-8 text-[var(--ink)]">
+    <div className="mx-auto max-w-4xl">
+      <Link className="text-sm underline" to="/settings/llm">返回设置</Link>
+      <h1 className="mt-6 text-3xl font-semibold">媒体连接与能力</h1>
+      <p className="mt-3 text-sm text-[var(--muted)]">一个连接可发布多条图片和视频能力。默认值只影响新计划；已批准任务保留原版本。</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">保存配置不会调用付费生成接口，未实测的能力保持“已配置、未实测”。</p>
+      {currentUser.isPending || settings.isPending ? <p className="mt-8">正在读取媒体配置…</p> : null}
+      {settings.error instanceof ApiError && settings.error.status === 403 ? <p role="alert" className="mt-8">只有管理员可以查看媒体配置。</p> : null}
+      {settings.isError && !(settings.error instanceof ApiError && [401, 403].includes(settings.error.status))
+        ? <p role="alert" className="mt-8">读取失败，请刷新后重试。</p> : null}
+      {settings.data ? <>
+        {settings.data.connections.length === 0 ? <p className="mt-8">尚无媒体连接</p> : null}
+        <div className="mt-8 grid gap-5">
+          {settings.data.connections.map((connection) => <ConnectionCard key={connection.id}
+            connection={connection} settings={settings.data}
+            apply={(result) => queryClient.setQueryData(settingsKey, result)} />)}
+        </div>
+        <form className="mt-8 grid gap-4 rounded-3xl border border-[var(--line)] bg-[var(--panel)] p-6"
+          onSubmit={(event) => { event.preventDefault(); setError(""); create.mutate(); }}>
+          <h2 className="text-xl font-semibold">添加连接</h2>
+          <label className="text-sm">连接名称
+            <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} />
+          </label>
+          <label className="text-sm">平台
+            <select value={platform} onChange={(event) => setPlatform(event.target.value as typeof platform)}>
+              <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option><option value="ARK">火山方舟</option>
+            </select>
+          </label>
+          {platform === "COMFYUI" ? <label className="text-sm">本机 ComfyUI 地址
+            <input value={origin} onChange={(event) => setOrigin(event.target.value)}
+              required placeholder="http://127.0.0.1:8188" />
+          </label> : <label className="text-sm">API Key
+            <input type="password" autoComplete="new-password" value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)} required />
+          </label>}
+          {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
+          <button className="primary-button w-fit" type="submit" disabled={create.isPending}>
+            {create.isPending ? "正在保存…" : "添加连接"}
+          </button>
+        </form>
+      </> : null}
+    </div>
+  </main>;
+}

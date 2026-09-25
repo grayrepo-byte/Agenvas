@@ -175,6 +175,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取脱敏媒体连接、能力及默认值 */
+        get: operations["getMediaSettings"];
+        put?: never;
+        /** 幂等创建固定平台连接 */
+        post: operations["createMediaConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 使用 expectedVersion 修改连接并保留历史版本 */
+        put: operations["updateMediaConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等发布一个已安装的固定适配器能力 */
+        post: operations["createMediaCapability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 使用 expectedVersion 修改能力并保留已发布版本 */
+        put: operations["updateMediaCapability"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-defaults/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 使用 expectedVersion 设置图片或视频默认能力 */
+        put: operations["setMediaDefault"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -1010,6 +1105,82 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MediaSettings: {
+            connections: components["schemas"]["MediaConnection"][];
+            defaults: components["schemas"]["MediaDefault"][];
+        };
+        MediaConnection: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK";
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            connectionVersion: number;
+            origin: string | null;
+            keyMask: string | null;
+            /** @enum {string} */
+            connectivityStatus: "NOT_CHECKED";
+            realGenerationTested: boolean;
+            capabilities: components["schemas"]["MediaCapability"][];
+        };
+        MediaCapability: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            capabilityVersion: number;
+            adapterId: string;
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            minimumSeconds: number;
+            maximumSeconds: number;
+            mappingSha256: string;
+        };
+        MediaDefault: {
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            /** Format: uuid */
+            capabilityId: string;
+            /** Format: int64 */
+            version: number;
+        };
+        CreateMediaConnectionRequest: {
+            name: string;
+            /** @enum {string} */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK";
+            origin?: string | null;
+            apiKey?: string | null;
+        };
+        UpdateMediaConnectionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            enabled: boolean;
+            origin?: string | null;
+            apiKey?: string | null;
+        };
+        CreateMediaCapabilityRequest: {
+            name: string;
+            adapterId: string;
+        };
+        UpdateMediaCapabilityRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            enabled: boolean;
+            adapterId: string;
+        };
+        SetMediaDefaultRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            /** Format: uuid */
+            capabilityId: string;
+        };
         SystemDiagnostics: {
             /** Format: date-time */
             checkedAt: string;
@@ -2424,6 +2595,177 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getMediaSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 不含密钥或加密材料的配置状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMediaConnection: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMediaConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 创建或同内容重放后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMediaConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createMediaCapability: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMediaCapabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description 发布后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMediaCapability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaCapabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    setMediaDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaDefaultRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     listProjects: {

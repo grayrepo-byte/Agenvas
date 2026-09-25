@@ -45,6 +45,14 @@ export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
 export type ReplaceLlmSettingsRequest = components["schemas"]["ReplaceLlmSettingsRequest"];
 export type DiagnoseLlmRequest = components["schemas"]["DiagnoseLlmRequest"];
+export type MediaSettings = components["schemas"]["MediaSettings"];
+export type MediaConnection = components["schemas"]["MediaConnection"];
+export type MediaCapability = components["schemas"]["MediaCapability"];
+export type CreateMediaConnectionRequest = components["schemas"]["CreateMediaConnectionRequest"];
+export type UpdateMediaConnectionRequest = components["schemas"]["UpdateMediaConnectionRequest"];
+export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCapabilityRequest"];
+export type UpdateMediaCapabilityRequest = components["schemas"]["UpdateMediaCapabilityRequest"];
+export type SetMediaDefaultRequest = components["schemas"]["SetMediaDefaultRequest"];
 type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
 
@@ -150,6 +158,46 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 /** Reads only masked administrator LLM configuration metadata. */
 export async function getLlmSettings(): Promise<LlmSettings> {
   return readJson<LlmSettings>("/api/v1/settings/llm", "无法读取模型配置");
+}
+
+/** Media settings expose only public connection and capability metadata. */
+export async function getMediaSettings(): Promise<MediaSettings> {
+  return readJson<MediaSettings>("/api/v1/settings/media-connections", "无法读取媒体配置");
+}
+
+export async function createMediaConnection(input: CreateMediaConnectionRequest,
+  idempotencyKey: string): Promise<MediaSettings> {
+  return writeJson<MediaSettings>("/api/v1/settings/media-connections", {
+    method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input),
+  });
+}
+
+export async function updateMediaConnection(connectionId: string,
+  input: UpdateMediaConnectionRequest): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+
+export async function createMediaCapability(connectionId: string,
+  input: CreateMediaCapabilityRequest, idempotencyKey: string): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities`, {
+    method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input),
+  });
+}
+
+export async function updateMediaCapability(connectionId: string, capabilityId: string,
+  input: UpdateMediaCapabilityRequest): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+
+export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION",
+  input: SetMediaDefaultRequest): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(`/api/v1/settings/media-defaults/${kind}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
 }
 
 /** Reads only local, non-billable installation checks and aggregate Task statuses. */

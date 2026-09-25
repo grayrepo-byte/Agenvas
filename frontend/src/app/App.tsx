@@ -14,6 +14,8 @@ const ProjectWorkspacePage = lazy(() => import("../features/canvas/ProjectWorksp
   .then((module) => ({ default: module.ProjectWorkspacePage })));
 const LlmSettingsPage = lazy(() => import("../features/settings/LlmSettingsPage")
   .then((module) => ({ default: module.LlmSettingsPage })));
+const MediaSettingsPage = lazy(() => import("../features/settings/MediaSettingsPage")
+  .then((module) => ({ default: module.MediaSettingsPage })));
 const SystemDiagnosticsPage = lazy(() => import("../features/settings/SystemDiagnosticsPage")
   .then((module) => ({ default: module.SystemDiagnosticsPage })));
 
@@ -30,6 +32,7 @@ export function App() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/settings/llm" element={<LlmSettingsPage />} />
           <Route path="/settings/providers" element={<LlmSettingsPage />} />
+          <Route path="/settings/media" element={<MediaSettingsPage />} />
           <Route path="/settings/general" element={<SystemDiagnosticsPage />} />
           <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
           <Route path="/" element={<Navigate to="/setup" replace />} />

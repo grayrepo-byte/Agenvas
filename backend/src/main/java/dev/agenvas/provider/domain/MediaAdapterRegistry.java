@@ -13,14 +13,14 @@ import org.springframework.stereotype.Component;
 @Component
 public final class MediaAdapterRegistry {
 
-    public record Declaration(Task.Kind kind, int minimumSeconds, int maximumSeconds,
-            boolean originRequired) {}
+    public record Declaration(String platform, Task.Kind kind, int minimumSeconds,
+            int maximumSeconds, boolean originRequired) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.of(
-            "MOCK_IMAGE", new Declaration(Task.Kind.IMAGE_GENERATION, 0, 0, false),
-            "MOCK_VIDEO", new Declaration(Task.Kind.VIDEO_GENERATION, 1, 30, false),
-            "COMFY_IMAGE_V1", new Declaration(Task.Kind.IMAGE_GENERATION, 0, 0, true),
-            "COMFY_VIDEO_V1", new Declaration(Task.Kind.VIDEO_GENERATION, 1, 5, true));
+            "MOCK_IMAGE", new Declaration("MOCK", Task.Kind.IMAGE_GENERATION, 0, 0, false),
+            "MOCK_VIDEO", new Declaration("MOCK", Task.Kind.VIDEO_GENERATION, 1, 30, false),
+            "COMFY_IMAGE_V1", new Declaration("COMFYUI", Task.Kind.IMAGE_GENERATION, 0, 0, true),
+            "COMFY_VIDEO_V1", new Declaration("COMFYUI", Task.Kind.VIDEO_GENERATION, 1, 5, true));
 
     private final Map<String, MediaAdapter> implementations;
 
