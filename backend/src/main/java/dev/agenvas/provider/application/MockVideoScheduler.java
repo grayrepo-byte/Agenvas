@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 /** 独立推进已批准的 Mock 视频任务，不依赖浏览器连接或图片调度器。 */
 @Component
+@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "mock", matchIfMissing = true)
 @ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
         havingValue = "false", matchIfMissing = true)
 @ConditionalOnBean(MockVideoWorker.class)

@@ -286,6 +286,13 @@ public class ExecutionPlanService {
                 if (!capabilities.isCurrentBinding(step.binding(), step.kind(), seconds)) {
                     throw conflict("媒体能力版本或状态已变化，请重新审阅计划");
                 }
+                String frozenOrigin = capabilities.pinnedSnapshot(step.binding())
+                        .connectionVersion().originSha256();
+                String stepOrigin = step.input().has("providerOriginSha256")
+                        ? step.input().path("providerOriginSha256").asText() : null;
+                if (!java.util.Objects.equals(frozenOrigin, stepOrigin)) {
+                    throw conflict("媒体计划的连接来源与冻结版本不一致");
+                }
             }
         } else if (plan.providerConfigVersion() != provider.configVersion()
                 || !workflows.version(plan.stage()).equals(plan.workflowVersion())

@@ -142,7 +142,10 @@ public class UsageService {
                         && task.status() != Task.Status.FAILED
                         && (task.status() != Task.Status.BLOCKED
                                 || (!"TASK_INPUT_STALE".equals(task.errorCode())
-                                        && !"TASK_PROJECT_ARCHIVED".equals(task.errorCode()))))
+                                        && !"TASK_PROJECT_ARCHIVED".equals(task.errorCode())
+                                        && !"MEDIA_CAPABILITY_CHANGED".equals(task.errorCode())
+                                        && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(
+                                                task.errorCode()))))
                 || task.providerRequestId() != null) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");
         }

@@ -18,6 +18,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
@@ -37,6 +38,7 @@ class MediaCapabilityPostgresIT {
     }
 
     @Autowired private MediaCapabilityService catalog;
+    @Autowired private ObjectMapper mapper;
 
     @AfterEach
     void restoreMockDefaults() {
@@ -56,8 +58,10 @@ class MediaCapabilityPostgresIT {
                 .isEqualTo("MOCK_VIDEO");
 
         UUID comfyConnection = catalog.createConnection("Local ComfyUI", "http://127.0.0.1:8188").id();
-        UUID comfyImage = catalog.publishCapability(comfyConnection, "Image", "COMFY_IMAGE_V1").id();
-        UUID comfyVideo = catalog.publishCapability(comfyConnection, "Video", "COMFY_VIDEO_V1").id();
+        UUID comfyImage = catalog.publishCapability(comfyConnection, "Image", "COMFY_IMAGE_V1",
+                imageSettings()).id();
+        UUID comfyVideo = catalog.publishCapability(comfyConnection, "Video", "COMFY_VIDEO_V1",
+                videoSettings()).id();
         assertThat(catalog.resolve(comfyImage, Task.Kind.IMAGE_GENERATION, 3).connectionId())
                 .isEqualTo(comfyConnection);
         assertThat(catalog.resolve(comfyVideo, Task.Kind.VIDEO_GENERATION, 5).connectionId())
@@ -70,8 +74,10 @@ class MediaCapabilityPostgresIT {
     void defaultsUseCasAndDisablingRetainsHistoricalVersions() {
         UUID first = catalog.createConnection("First ComfyUI", "http://127.0.0.1:8288").id();
         UUID second = catalog.createConnection("Second ComfyUI", "http://127.0.0.1:8388").id();
-        UUID image = catalog.publishCapability(first, "Image", "COMFY_IMAGE_V1").id();
-        UUID video = catalog.publishCapability(second, "Video", "COMFY_VIDEO_V1").id();
+        UUID image = catalog.publishCapability(first, "Image", "COMFY_IMAGE_V1",
+                imageSettings()).id();
+        UUID video = catalog.publishCapability(second, "Video", "COMFY_VIDEO_V1",
+                videoSettings()).id();
 
         long imageVersion = catalog.defaultVersion(Task.Kind.IMAGE_GENERATION);
         catalog.setDefault(Task.Kind.IMAGE_GENERATION, imageVersion, image);
@@ -96,5 +102,15 @@ class MediaCapabilityPostgresIT {
         assertThatThrownBy(() -> catalog.publishCapability(connection, "Arbitrary", "DYNAMIC_SCRIPT"))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("PROVIDER_UNSUPPORTED_CAPABILITY"));
+    }
+
+    private tools.jackson.databind.JsonNode imageSettings() {
+        return mapper.readTree("{\"checkpoint\":\"image.safetensors\"}");
+    }
+
+    private tools.jackson.databind.JsonNode videoSettings() {
+        return mapper.readTree("{\"diffusionModel\":\"video.safetensors\","
+                + "\"textEncoder\":\"text.safetensors\",\"vae\":\"vae.safetensors\","
+                + "\"clipVision\":\"vision.safetensors\"}");
     }
 }

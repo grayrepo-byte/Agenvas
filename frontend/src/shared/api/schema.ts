@@ -1182,6 +1182,15 @@ export interface components {
             minimumSeconds: number;
             maximumSeconds: number;
             mappingSha256: string;
+            settings: components["schemas"]["FixedMediaAdapterSettings"];
+        };
+        /** @description Bundled ComfyUI templates accept model file basenames only; Mock uses an empty object. */
+        FixedMediaAdapterSettings: {
+            checkpoint?: string;
+            diffusionModel?: string;
+            textEncoder?: string;
+            vae?: string;
+            clipVision?: string;
         };
         MediaDefault: {
             /** @enum {string} */
@@ -1209,6 +1218,7 @@ export interface components {
         CreateMediaCapabilityRequest: {
             name: string;
             adapterId: string;
+            settings?: components["schemas"]["FixedMediaAdapterSettings"];
         };
         UpdateMediaCapabilityRequest: {
             /** Format: int64 */
@@ -1216,6 +1226,7 @@ export interface components {
             name: string;
             enabled: boolean;
             adapterId: string;
+            settings?: components["schemas"]["FixedMediaAdapterSettings"];
         };
         SetMediaDefaultRequest: {
             /** Format: int64 */

@@ -16,9 +16,12 @@ import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -38,7 +41,8 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=media-revision-integration-secret",
-        "agenvas.llm.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false"})
 class MediaPlanRevisionPostgresIT {
 
     @Container
@@ -60,6 +64,8 @@ class MediaPlanRevisionPostgresIT {
     @Autowired private MediaCapabilityService capabilities;
     @Autowired private InitialModelContextService initialContext;
     @Autowired private JdbcClient jdbc;
+    @Autowired private TaskService tasks;
+    @Autowired private MediaExecutionWorker mediaWorker;
     @Autowired private ObjectMapper mapper;
 
     @Test
@@ -106,6 +112,13 @@ class MediaPlanRevisionPostgresIT {
                 original.planHash(), List.of("shot-1"))).isInstanceOf(ApiProblemException.class);
         assertThat(jdbc.sql("select count(*) from task where plan_id=:id")
                 .param("id", revised.id()).query(Integer.class).single()).isZero();
+        var approved = plans.approve(owner.userId(), project.id(), revised.id(),
+                revised.planHash(), List.of("shot-1"));
+        assertThat(tasks.mediaBinding(approved.tasks().getFirst())).contains(
+                revised.steps().getFirst().binding());
+        assertThat(mediaWorker.submitOnce("bound-mock-test")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), project.id(), approved.tasks().getFirst().id())
+                .status()).isEqualTo(Task.Status.SUCCEEDED);
 
         Project videoProject = projects.create(owner.userId(), "Video needs input",
                 Project.AspectRatio.LANDSCAPE_16_9);
@@ -122,6 +135,29 @@ class MediaPlanRevisionPostgresIT {
                 missing.planHash(), List.of("shot-1"))).isInstanceOf(ApiProblemException.class);
         assertThat(jdbc.sql("select count(*) from task where plan_id=:id")
                 .param("id", missing.id()).query(Integer.class).single()).isZero();
+
+        Project blockedProject = projects.create(owner.userId(), "Disabled before submission",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        var blockedShot = shot(owner.userId(), blockedProject.id());
+        AgentRun blockedRun = running(owner, blockedProject, blockedShot, "blocked-run");
+        UUID blockedCapability = capabilities.publishCapability(mockConnection,
+                "Temporary image", "MOCK_IMAGE").id();
+        ObjectNode blockedDraft = draft("IMAGE", blockedShot);
+        ((ObjectNode) blockedDraft.path("steps").get(0))
+                .put("capabilityId", blockedCapability.toString());
+        ExecutionPlan blockedPlan = plans.propose(new TrustedToolContext(owner.userId(),
+                blockedProject.id(), blockedRun.id()), blockedDraft);
+        Task blockedTask = plans.approve(owner.userId(), blockedProject.id(),
+                blockedPlan.id(), blockedPlan.planHash(), List.of("shot-1"))
+                .tasks().getFirst();
+        var published = capabilities.capabilitySnapshot(blockedCapability).capability();
+        capabilities.updateCapability(mockConnection, blockedCapability,
+                published.version(), published.name(), false, "MOCK_IMAGE");
+        assertThat(mediaWorker.submitOnce("disabled-media-test")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), blockedProject.id(), blockedTask.id()).status())
+                .isEqualTo(Task.Status.BLOCKED);
+        assertThat(jdbc.sql("select count(*) from provider_attempt where task_id=:id")
+                .param("id", blockedTask.id()).query(Integer.class).single()).isZero();
     }
 
     private AgentRun running(AdminPrincipal owner, Project project,

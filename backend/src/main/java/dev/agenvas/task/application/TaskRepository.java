@@ -18,6 +18,12 @@ public interface TaskRepository {
     /** Pin a newly created media Task to the exact approved connection and capability versions. */
     void bindMediaTask(UUID taskId, MediaCapabilityBinding binding);
 
+    /** Read the exact approved identity; null indicates a pre-migration legacy task. */
+    Optional<MediaCapabilityBinding> mediaBinding(UUID taskId);
+
+    /** Serialize the final pre-submission check with admin updates of both catalog rows. */
+    boolean lockCurrentMediaBinding(MediaCapabilityBinding binding);
+
     /** 保存媒体任务创建时所见的产物选择，供结果归档时做并发前提检查。 */
     void createArtifactTarget(ArtifactTarget target);
 
@@ -67,6 +73,12 @@ public interface TaskRepository {
 
     /** 使用 SKIP LOCKED 原子认领到期的非 Agent 任务，避免多个 Worker 重复领取。 */
     List<Task> claimDue(String workerId, int limit, Instant now, Instant leaseUntil);
+
+    /** Claim only new media tasks pinned to a published fixed adapter. */
+    List<Task> claimDueBoundMedia(String workerId, int limit, Instant now, Instant leaseUntil);
+
+    /** Poll only accepted requests from bound media tasks. */
+    List<Task> claimDueBoundMediaPolls(String workerId, int limit, Instant now, Instant leaseUntil);
 
     /** 仅认领 Mock 图片适配器能处理的到期图片任务。 */
     List<Task> claimDueImages(String workerId, int limit, Instant now, Instant leaseUntil);

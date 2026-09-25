@@ -20,7 +20,8 @@ public class JdbcMediaCapabilityRepository {
     public record Capability(UUID id, UUID connectionId, String name, boolean enabled,
             long version, int currentVersion) {}
     public record Snapshot(Connection connection, Capability capability,
-            ConnectionVersion connectionVersion, String adapterId, String mappingSha256) {}
+            ConnectionVersion connectionVersion, String adapterId, String mappingSha256,
+            String specJson) {}
     public record CreateKey(String payloadSha256, UUID entityId) {}
 
     private final JdbcClient jdbc;
@@ -213,7 +214,8 @@ public class JdbcMediaCapabilityRepository {
                 + "v.credential_ciphertext,v.credential_nonce,v.credential_key_version,v.key_mask,"
                 + "a.id as capability_id,a.name as capability_name,a.enabled as capability_enabled,"
                 + "a.version as capability_version,a.current_version as capability_revision,"
-                + "av.adapter_id,av.mapping_sha256 from media_capability a "
+                + "av.adapter_id,av.mapping_sha256,av.spec_json::text as spec_json "
+                + "from media_capability a "
                 + "join media_provider_connection c on c.id=a.connection_id "
                 + "join media_provider_connection_version v "
                 + "on v.connection_id=c.id and v.version=c.current_version "
@@ -238,8 +240,46 @@ public class JdbcMediaCapabilityRepository {
                             (Integer) rs.getObject("credential_key_version"),
                             rs.getString("key_mask"));
                     return new Snapshot(connection, capability, version,
-                            rs.getString("adapter_id"), rs.getString("mapping_sha256"));
+                            rs.getString("adapter_id"), rs.getString("mapping_sha256"),
+                            rs.getString("spec_json"));
                 }).optional();
+    }
+
+    /** Read exactly the immutable versions approved for a task, including old origins. */
+    public Optional<Snapshot> snapshotAt(UUID capabilityId, int capabilityVersion,
+            UUID connectionId, int connectionVersion) {
+        return jdbc.sql("select c.name as connection_name,c.platform,c.enabled as connection_enabled,"
+                + "c.version as connection_row_version,v.origin,v.origin_sha256,"
+                + "v.credential_ciphertext,v.credential_nonce,v.credential_key_version,v.key_mask,"
+                + "a.name as capability_name,a.enabled as capability_enabled,"
+                + "a.version as capability_row_version,av.adapter_id,av.mapping_sha256,"
+                + "av.spec_json::text as spec_json from media_capability a "
+                + "join media_provider_connection c on c.id=a.connection_id "
+                + "join media_provider_connection_version v on v.connection_id=c.id "
+                + "and v.version=:connectionVersion "
+                + "join media_capability_version av on av.capability_id=a.id "
+                + "and av.version=:capabilityVersion "
+                + "where a.id=:capabilityId and c.id=:connectionId")
+                .param("capabilityId", capabilityId)
+                .param("capabilityVersion", capabilityVersion)
+                .param("connectionId", connectionId)
+                .param("connectionVersion", connectionVersion)
+                .query((rs, row) -> new Snapshot(
+                        new Connection(connectionId, rs.getString("connection_name"),
+                                rs.getString("platform"), rs.getBoolean("connection_enabled"),
+                                rs.getLong("connection_row_version"), connectionVersion),
+                        new Capability(capabilityId, connectionId,
+                                rs.getString("capability_name"),
+                                rs.getBoolean("capability_enabled"),
+                                rs.getLong("capability_row_version"), capabilityVersion),
+                        new ConnectionVersion(connectionId, connectionVersion,
+                                rs.getString("origin"), rs.getString("origin_sha256"),
+                                rs.getBytes("credential_ciphertext"),
+                                rs.getBytes("credential_nonce"),
+                                (Integer) rs.getObject("credential_key_version"),
+                                rs.getString("key_mask")),
+                        rs.getString("adapter_id"), rs.getString("mapping_sha256"),
+                        rs.getString("spec_json"))).optional();
     }
 
     public long defaultVersion(String kind) {

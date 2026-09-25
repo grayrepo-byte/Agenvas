@@ -220,7 +220,7 @@ public class PlanDraftValidator {
                     && "COMFYUI".equals(capabilities.getConnection(binding.connectionId()).platform())) {
                 taskInput.put("providerOriginSha256", providerOriginSha256);
             }
-            taskInput.put("workflowVersion", workflowVersion);
+            taskInput.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             byKey.put(stepKey, new StepDraft(stepKey, outputSlotKey, shotArtifactId,
                     shotVersionId, imageArtifactId, imageVersionId,
                     dependencies, taskInput, binding));

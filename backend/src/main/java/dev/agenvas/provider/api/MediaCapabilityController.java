@@ -26,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Administrator catalog API. All views are explicit allowlists without encrypted columns. */
 @RestController
@@ -34,10 +36,13 @@ public class MediaCapabilityController {
 
     private final MediaCapabilityService catalog;
     private final MediaAdapterRegistry adapters;
+    private final ObjectMapper mapper;
 
-    public MediaCapabilityController(MediaCapabilityService catalog, MediaAdapterRegistry adapters) {
+    public MediaCapabilityController(MediaCapabilityService catalog,
+            MediaAdapterRegistry adapters, ObjectMapper mapper) {
         this.catalog = catalog;
         this.adapters = adapters;
+        this.mapper = mapper;
     }
 
     @GetMapping("/media-connections")
@@ -77,7 +82,7 @@ public class MediaCapabilityController {
             @Valid @RequestBody CreateCapabilityRequest request) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         catalog.publishCapability(idempotencyKey, connectionId, request.name(),
-                request.adapterId());
+                request.adapterId(), request.settings());
         return response();
     }
 
@@ -88,7 +93,7 @@ public class MediaCapabilityController {
             @Valid @RequestBody UpdateCapabilityRequest request) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         catalog.updateCapability(connectionId, capabilityId, request.expectedVersion(),
-                request.name(), request.enabled(), request.adapterId());
+                request.name(), request.enabled(), request.adapterId(), request.settings());
         return response();
     }
 
@@ -124,10 +129,12 @@ public class MediaCapabilityController {
     private CapabilityView view(Capability capability) {
         var snapshot = catalog.capabilitySnapshot(capability.id());
         var declaration = adapters.declaration(snapshot.adapterId());
+        JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
         return new CapabilityView(capability.id(), capability.name(), capability.enabled(),
                 capability.version(), capability.currentVersion(), snapshot.adapterId(),
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
-                snapshot.mappingSha256());
+                snapshot.mappingSha256(), settings.isMissingNode()
+                        ? mapper.createObjectNode() : settings);
     }
 
     public record CreateConnectionRequest(@NotBlank @Size(max = 160) String name,
@@ -136,10 +143,10 @@ public class MediaCapabilityController {
             @NotBlank @Size(max = 160) String name, boolean enabled,
             String origin, String apiKey) {}
     public record CreateCapabilityRequest(@NotBlank @Size(max = 160) String name,
-            @NotBlank String adapterId) {}
+            @NotBlank String adapterId, JsonNode settings) {}
     public record UpdateCapabilityRequest(@Min(0) long expectedVersion,
             @NotBlank @Size(max = 160) String name, boolean enabled,
-            @NotBlank String adapterId) {}
+            @NotBlank String adapterId, JsonNode settings) {}
     public record SetDefaultRequest(@Min(0) long expectedVersion, UUID capabilityId) {}
     public record MediaSettingsResponse(List<ConnectionView> connections,
             List<DefaultView> defaults) {}
@@ -149,6 +156,7 @@ public class MediaCapabilityController {
             List<CapabilityView> capabilities) {}
     public record CapabilityView(UUID id, String name, boolean enabled, long version,
             int capabilityVersion, String adapterId, Task.Kind kind,
-            int minimumSeconds, int maximumSeconds, String mappingSha256) {}
+            int minimumSeconds, int maximumSeconds, String mappingSha256,
+            JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
 }

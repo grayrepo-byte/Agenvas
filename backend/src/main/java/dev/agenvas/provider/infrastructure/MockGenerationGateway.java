@@ -5,12 +5,10 @@ import dev.agenvas.provider.domain.GenerationRequest;
 import dev.agenvas.provider.domain.GenerationResult;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /** 本地 Mock 图片适配器；返回值明确标记模拟，不调用真实媒体 Provider。 */
 @Component
-@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "mock", matchIfMissing = true)
 public class MockGenerationGateway implements GenerationGateway {
 
     /** 按固定 fixture 返回确定性结果，不发起外部网络请求。

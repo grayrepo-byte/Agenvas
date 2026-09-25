@@ -122,12 +122,17 @@ class MediaCapabilitySettingsPostgresIT {
         mvc.perform(post("/api/v1/settings/media-connections/" + comfyId + "/capabilities")
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-image-1")
                         .contentType("application/json")
-                        .content("{\"name\":\"Image\",\"adapterId\":\"COMFY_IMAGE_V1\"}"))
+                        .content("{\"name\":\"Image\",\"adapterId\":\"COMFY_IMAGE_V1\","
+                                + "\"settings\":{\"checkpoint\":\"image.safetensors\"}}"))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/settings/media-connections/" + comfyId + "/capabilities")
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-video-1")
                         .contentType("application/json")
-                        .content("{\"name\":\"Video\",\"adapterId\":\"COMFY_VIDEO_V1\"}"))
+                        .content("{\"name\":\"Video\",\"adapterId\":\"COMFY_VIDEO_V1\","
+                                + "\"settings\":{\"diffusionModel\":\"video.safetensors\","
+                                + "\"textEncoder\":\"text.safetensors\","
+                                + "\"vae\":\"vae.safetensors\","
+                                + "\"clipVision\":\"vision.safetensors\"}}"))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/v1/settings/media-connections").with(adminAuth))
                 .andExpect(status().isOk())

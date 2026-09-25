@@ -87,4 +87,36 @@ describe("MediaSettingsPage", () => {
     expect(name).toHaveValue("My draft");
     await waitFor(() => expect(reads).toBeGreaterThan(1));
   });
+
+  it("publishes fixed ComfyUI video model filenames from the settings form", async () => {
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        defaults: mockDefault, connections: [{
+          id: "comfy-1", name: "ComfyUI", platform: "COMFYUI", enabled: true,
+          version: 0, connectionVersion: 1, origin: "http://127.0.0.1:8188",
+          keyMask: null, connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
+          capabilities: [],
+        }],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/comfy-1/capabilities", async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "新能力名称" }), "Wan video");
+    await user.selectOptions(screen.getByRole("combobox", { name: "固定适配器" }), "COMFY_VIDEO_V1");
+    await user.type(screen.getByRole("textbox", { name: "视频扩散模型文件名" }), "wan.safetensors");
+    await user.type(screen.getByRole("textbox", { name: "文本编码器文件名" }), "text.safetensors");
+    await user.type(screen.getByRole("textbox", { name: "VAE 文件名" }), "vae.safetensors");
+    await user.type(screen.getByRole("textbox", { name: "CLIP Vision 文件名" }), "vision.safetensors");
+    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(submitted).toEqual({ name: "Wan video", adapterId: "COMFY_VIDEO_V1",
+      settings: { diffusionModel: "wan.safetensors", textEncoder: "text.safetensors",
+        vae: "vae.safetensors", clipVision: "vision.safetensors" } }));
+  });
 });

@@ -86,6 +86,41 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         }
     }
 
+    @Override
+    public Optional<MediaCapabilityBinding> mediaBinding(UUID taskId) {
+        return jdbcClient.sql("select t.connection_id,t.connection_version,t.capability_id,"
+                + "t.capability_version,v.adapter_id,v.mapping_sha256 from task t "
+                + "join media_capability_version v on v.capability_id=t.capability_id "
+                + "and v.version=t.capability_version where t.id=:id")
+                .param("id", taskId).query((rs, row) -> new MediaCapabilityBinding(
+                        rs.getObject("connection_id", UUID.class),
+                        rs.getInt("connection_version"),
+                        rs.getObject("capability_id", UUID.class),
+                        rs.getInt("capability_version"), rs.getString("adapter_id"),
+                        rs.getString("mapping_sha256"))).optional();
+    }
+
+    @Override
+    public boolean lockCurrentMediaBinding(MediaCapabilityBinding binding) {
+        return jdbcClient.sql("select a.id from media_capability a "
+                + "join media_provider_connection c on c.id=a.connection_id "
+                + "join media_capability_version av on av.capability_id=a.id "
+                + "and av.version=a.current_version "
+                + "where a.id=:capabilityId and c.id=:connectionId "
+                + "and a.enabled=true and c.enabled=true "
+                + "and a.current_version=:capabilityVersion "
+                + "and c.current_version=:connectionVersion "
+                + "and av.adapter_id=:adapterId and av.mapping_sha256=:mappingSha256 "
+                + "for share of a,c")
+                .param("capabilityId", binding.capabilityId())
+                .param("connectionId", binding.connectionId())
+                .param("capabilityVersion", binding.capabilityVersion())
+                .param("connectionVersion", binding.connectionVersion())
+                .param("adapterId", binding.adapterId())
+                .param("mappingSha256", binding.mappingSha256())
+                .query(UUID.class).optional().isPresent();
+    }
+
     /** 所有者和项目联合授权后读取最多 100 条外部提交尝试，不读取文件或凭证。 */
     @Override
     public List<ProviderAttempt> listProviderAttempts(UUID ownerId, UUID projectId, UUID taskId) {
@@ -466,11 +501,45 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return claimDueKind(workerId, limit, now, leaseUntil, null);
     }
 
+    @Override
+    public List<Task> claimDueBoundMedia(String workerId, int limit, Instant now,
+            Instant leaseUntil) {
+        // The same database gate coordinates fixed ComfyUI requests across app instances.
+        jdbcClient.sql("select id from provider_dispatch_gate where id=1 for update")
+                .query(Integer.class).single();
+        long occupied = jdbcClient.sql("""
+                        select count(*) from task t
+                        where t.kind in ('IMAGE_GENERATION','VIDEO_GENERATION')
+                          and (t.status in ('SUBMITTING','WAITING_PROVIDER')
+                            or (t.status='RUNNING' and t.lease_until > :now)
+                            or (t.status='UNKNOWN' and not exists (
+                                select 1 from task_manual_replacement r
+                                where r.original_task_id=t.id))
+                            or (t.status='BLOCKED' and t.provider_request_id is not null))
+                        """).param("now", utc(now)).query(Long.class).single();
+        String safeAdapterClause = occupied == 0 ? "" : " and exists ("
+                + "select 1 from media_capability_version av "
+                + "where av.capability_id=task.capability_id "
+                + "and av.version=task.capability_version "
+                + "and av.adapter_id not like 'COMFY_%') ";
+        return claimDueKind(workerId, limit, now, leaseUntil, null,
+                " and capability_id is not null and kind in ('IMAGE_GENERATION','VIDEO_GENERATION') "
+                        + safeAdapterClause);
+    }
+
+    @Override
+    public List<Task> claimDueBoundMediaPolls(String workerId, int limit, Instant now,
+            Instant leaseUntil) {
+        return claimProviderPolls(workerId, limit, now, leaseUntil, null,
+                " and capability_id is not null ");
+    }
+
     /** 仅认领 Mock 图片适配器可处理的到期图片任务。 */
     @Override
     public List<Task> claimDueImages(
             String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.IMAGE_GENERATION);
+        return claimDueKind(workerId, limit, now, leaseUntil,
+                Task.Kind.IMAGE_GENERATION, " and capability_id is null ");
     }
 
     /** 通过数据库单槽门禁认领一个 ComfyUI 图片任务。 */
@@ -503,7 +572,8 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         """)
                 .param("now", utc(now)).query(Long.class).single();
         return occupied == 0
-                ? claimDueKind(workerId, 1, now, leaseUntil, kind)
+                ? claimDueKind(workerId, 1, now, leaseUntil, kind,
+                        " and capability_id is null ")
                 : List.of();
     }
 
@@ -511,7 +581,8 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
     @Override
     public List<Task> claimDueVideos(
             String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.VIDEO_GENERATION);
+        return claimDueKind(workerId, limit, now, leaseUntil,
+                Task.Kind.VIDEO_GENERATION, " and capability_id is null ");
     }
 
     /** 认领持有已确认 provider_request_id 的图片或视频查询任务，不会选新提交。 */
@@ -526,7 +597,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
     public List<Task> claimDueComfyImagePolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimProviderPolls(workerId, limit, now, leaseUntil,
-                Task.Kind.IMAGE_GENERATION);
+                Task.Kind.IMAGE_GENERATION, " and capability_id is null ");
     }
 
     /** 限定 ComfyUI 视频轮询器只接管视频任务。 */
@@ -534,19 +605,24 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
     public List<Task> claimDueComfyVideoPolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimProviderPolls(workerId, limit, now, leaseUntil,
-                Task.Kind.VIDEO_GENERATION);
+                Task.Kind.VIDEO_GENERATION, " and capability_id is null ");
     }
 
     /** 只按既有请求 ID 选取等待或租约过期的任务，并递增 fencing epoch。 */
     private List<Task> claimProviderPolls(String workerId, int limit, Instant now,
             Instant leaseUntil, Task.Kind onlyKind) {
+        return claimProviderPolls(workerId, limit, now, leaseUntil, onlyKind, "");
+    }
+
+    private List<Task> claimProviderPolls(String workerId, int limit, Instant now,
+            Instant leaseUntil, Task.Kind onlyKind, String bindingClause) {
         String kindClause = onlyKind == null
                 ? " kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION') "
                 : " kind = '" + onlyKind.name() + "' ";
         return jdbcClient.sql("""
                         with candidates as (
                             select id from task
-                            where """ + kindClause + """
+                            where """ + kindClause + bindingClause + """
                               and provider_request_id is not null
                               and ((status = 'WAITING_PROVIDER' and next_action_at <= :now)
                                 or (status = 'RUNNING' and lease_until <= :now))
@@ -633,6 +709,11 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
     /** 模型与媒体使用互斥认领域；认领时递增 epoch 并返回更新后完整任务行。 */
     private List<Task> claimDueKind(String workerId, int limit, Instant now,
             Instant leaseUntil, Task.Kind onlyKind) {
+        return claimDueKind(workerId, limit, now, leaseUntil, onlyKind, "");
+    }
+
+    private List<Task> claimDueKind(String workerId, int limit, Instant now,
+            Instant leaseUntil, Task.Kind onlyKind, String bindingClause) {
         boolean agentTurn = onlyKind == Task.Kind.AGENT_TURN;
         String kindClause = onlyKind == null ? " and kind <> 'AGENT_TURN' "
                 : " and kind = '" + onlyKind.name() + "' ";
@@ -648,7 +729,7 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                             select id
                             from task
                             where cancel_requested = false
-                            """ + kindClause + """
+                            """ + kindClause + bindingClause + """
                               and exists (select 1 from agent_run r
                                   where r.id = task.run_id
                             """ + runClause + """
@@ -870,10 +951,12 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         jdbcClient.sql("""
                         insert into provider_attempt (id, project_id, task_id, lease_epoch,
                             status, request_key, candidate_request_id,
-                            candidate_origin_sha256, created_at, updated_at)
+                            candidate_origin_sha256, connection_id, connection_version,
+                            capability_id, capability_version, created_at, updated_at)
                         select :attemptId, project_id, id, :leaseEpoch, 'SUBMITTING',
                             :requestKey, :candidateRequestId, :candidateOriginSha256,
-                            :now, :now from task where id = :taskId
+                            connection_id, connection_version, capability_id,
+                            capability_version, :now, :now from task where id = :taskId
                         """)
                 .param("attemptId", attemptId)
                 .param("taskId", taskId)

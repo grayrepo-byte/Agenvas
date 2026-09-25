@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
         havingValue = "false", matchIfMissing = true)
 @ConditionalOnBean(MockImageWorker.class)
+@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "mock", matchIfMissing = true)
 @ConditionalOnProperty(prefix = "agenvas.provider.mock", name = "scheduler-enabled",
         havingValue = "true", matchIfMissing = true)
 public class MockImageScheduler {

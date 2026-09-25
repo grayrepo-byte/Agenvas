@@ -20,14 +20,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.UUID;
 import javax.imageio.ImageIO;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** 通过持久化提交账本执行已审批图片任务，并把明确标注的演示图归档为真实本地资产。 */
 @Component
-@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "mock", matchIfMissing = true)
 public class MockImageWorker {
 
     /** 管理任务认领、提交检查点和带 fencing 的成功回写。 */
@@ -71,13 +69,13 @@ public class MockImageWorker {
             /** 使用已持久化的请求键执行本地演示生成。 */
             @Override
             public TaskWorker.Outcome execute(Task task, UUID requestKey) {
-                return submit(task, requestKey);
+                return executeBound(task, requestKey);
             }
         });
     }
 
     /** 以已提交的请求键生成结果，只接受同步完成的 Mock 响应。 */
-    private TaskWorker.Outcome submit(Task task, UUID requestKey) {
+    TaskWorker.Outcome executeBound(Task task, UUID requestKey) {
         GenerationResult result = gateway.submit(new GenerationRequest(task.projectId(),
                 requestKey.toString(), properties.fixture()));
         return switch (result.status()) {
@@ -104,7 +102,7 @@ public class MockImageWorker {
         if (task.input().has("negativePrompt")) {
             content.put("negativePrompt", task.input().path("negativePrompt").asText());
         }
-        content.put("providerConfigVersion", provider.configVersion());
+        content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
         content.put("workflowVersion", task.input().path("workflowVersion").asText());
         content.put("sourceTaskId", task.id().toString());
         ObjectNode parameters = content.putObject("parameters");

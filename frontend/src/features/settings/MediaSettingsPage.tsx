@@ -8,6 +8,23 @@ import {
 } from "../../shared/api/client";
 
 const settingsKey = ["settings", "media"] as const;
+const comfyImageFields = [{ key: "checkpoint", label: "图片 checkpoint 文件名" }] as const;
+const comfyVideoFields = [
+  { key: "diffusionModel", label: "视频扩散模型文件名" },
+  { key: "textEncoder", label: "文本编码器文件名" },
+  { key: "vae", label: "VAE 文件名" },
+  { key: "clipVision", label: "CLIP Vision 文件名" },
+] as const;
+
+function fixedModelFields(adapterId: string) {
+  return adapterId === "COMFY_IMAGE_V1" ? comfyImageFields
+    : adapterId === "COMFY_VIDEO_V1" ? comfyVideoFields : [];
+}
+
+function fixedModelSettings(adapterId: string, values: Record<string, string>) {
+  return Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
+    [key, values[key]?.trim() ?? ""]));
+}
 
 function stableCreateKey(previous: { payload: string; key: string } | null,
   payload: string): { payload: string; key: string } {
@@ -33,11 +50,13 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   const queryClient = useQueryClient();
   const [name, setName] = useState(capability.name);
   const [adapterId, setAdapterId] = useState(capability.adapterId);
+  const [modelNames, setModelNames] = useState<Record<string, string>>(capability.settings);
   const [error, setError] = useState("");
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
       expectedVersion: capability.version, name: name.trim(),
       enabled: capability.enabled, adapterId,
+      settings: fixedModelSettings(adapterId, modelNames),
     }),
     onSuccess: (result) => { apply(result); setError(""); },
     onError: (cause) => {
@@ -73,6 +92,11 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
           {sameKindAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
         </select>
       </label>
+      {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="text-xs">{label}
+        <input value={modelNames[key] ?? ""} onChange={(event) => setModelNames((old) =>
+          ({ ...old, [key]: event.target.value }))} required maxLength={160}
+          placeholder="model.safetensors" />
+      </label>)}
       <button className="secondary-button" type="submit" disabled={busy || save.isPending}>
         {save.isPending ? "正在保存…" : "保存能力"}
       </button>
@@ -92,6 +116,7 @@ function ConnectionCard({ connection, settings, apply }: {
   const [apiKey, setApiKey] = useState("");
   const [capabilityName, setCapabilityName] = useState("");
   const [adapterId, setAdapterId] = useState(connection.platform === "COMFYUI" ? "COMFY_IMAGE_V1" : "MOCK_IMAGE");
+  const [newModelNames, setNewModelNames] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const capabilityCreateKey = useRef<{ payload: string; key: string } | null>(null);
@@ -119,7 +144,8 @@ function ConnectionCard({ connection, settings, apply }: {
   });
   const addCapability = useMutation({
     mutationFn: () => {
-      const payload = { name: capabilityName.trim(), adapterId };
+      const payload = { name: capabilityName.trim(), adapterId,
+        settings: fixedModelSettings(adapterId, newModelNames) };
       capabilityCreateKey.current = stableCreateKey(capabilityCreateKey.current, JSON.stringify(payload));
       return createMediaCapability(connection.id, payload, capabilityCreateKey.current.key);
     },
@@ -127,6 +153,7 @@ function ConnectionCard({ connection, settings, apply }: {
       capabilityCreateKey.current = null;
       apply(result);
       setCapabilityName("");
+      setNewModelNames({});
       setError("");
       setNotice("能力已发布，生成接口未实测。");
     },
@@ -151,6 +178,7 @@ function ConnectionCard({ connection, settings, apply }: {
         return updateMediaCapability(connection.id, capability.id, {
           expectedVersion: capability.version, name: capability.name,
           enabled: !capability.enabled, adapterId: capability.adapterId,
+          settings: capability.settings,
         });
       }
       const current = settings.defaults.find((item) => item.kind === capability.kind);
@@ -232,6 +260,11 @@ function ConnectionCard({ connection, settings, apply }: {
             {availableAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
           </select>
         </label>
+        {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="text-sm">{label}
+          <input value={newModelNames[key] ?? ""} onChange={(event) => setNewModelNames((old) =>
+            ({ ...old, [key]: event.target.value }))} required maxLength={160}
+            placeholder="model.safetensors" />
+        </label>)}
         <button className="secondary-button" type="submit" disabled={busy || !connection.enabled}>{addCapability.isPending ? "正在发布…" : "发布能力"}</button>
       </form> : <p className="mt-4 text-sm text-[var(--muted)]">此平台的固定适配器尚未安装。</p>}
     </div>

@@ -1483,7 +1483,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
-        minimumSeconds, maximumSeconds, mappingSha256]
+        minimumSeconds, maximumSeconds, mappingSha256, settings]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -1495,6 +1495,17 @@ components:
         minimumSeconds: {type: integer, minimum: 0}
         maximumSeconds: {type: integer, minimum: 0}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
+    FixedMediaAdapterSettings:
+      type: object
+      additionalProperties: false
+      description: Bundled ComfyUI templates accept model file basenames only; Mock uses an empty object.
+      properties:
+        checkpoint: {type: string, maxLength: 160}
+        diffusionModel: {type: string, maxLength: 160}
+        textEncoder: {type: string, maxLength: 160}
+        vae: {type: string, maxLength: 160}
+        clipVision: {type: string, maxLength: 160}
     MediaDefault:
       type: object
       additionalProperties: false
@@ -1529,6 +1540,7 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
         adapterId: {type: string, minLength: 1, maxLength: 80}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     UpdateMediaCapabilityRequest:
       type: object
       additionalProperties: false
@@ -1538,6 +1550,7 @@ components:
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
         adapterId: {type: string, minLength: 1, maxLength: 80}
+        settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     SetMediaDefaultRequest:
       type: object
       additionalProperties: false

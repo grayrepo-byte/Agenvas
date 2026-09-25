@@ -23,6 +23,9 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Owns the media catalog; the returned binding freezes both published versions. */
 @Service
@@ -32,13 +35,16 @@ public class MediaCapabilityService {
     private final MediaAdapterRegistry registry;
     private final CredentialCipher cipher;
     private final Clock clock;
+    private final ObjectMapper mapper;
 
     public MediaCapabilityService(JdbcMediaCapabilityRepository repository,
-            MediaAdapterRegistry registry, CredentialCipher cipher, Clock clock) {
+            MediaAdapterRegistry registry, CredentialCipher cipher, Clock clock,
+            ObjectMapper mapper) {
         this.repository = repository;
         this.registry = registry;
         this.cipher = cipher;
         this.clock = clock;
+        this.mapper = mapper;
     }
 
     @Transactional
@@ -139,18 +145,34 @@ public class MediaCapabilityService {
 
     @Transactional
     public Capability publishCapability(UUID connectionId, String name, String adapterId) {
-        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId);
+        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId,
+                null);
+    }
+
+    @Transactional
+    public Capability publishCapability(UUID connectionId, String name, String adapterId,
+            JsonNode settings) {
+        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId,
+                settings);
     }
 
     @Transactional
     public Capability publishCapability(String idempotencyKey, UUID connectionId,
             String name, String adapterId) {
+        return publishCapability(idempotencyKey, connectionId, name, adapterId, null);
+    }
+
+    @Transactional
+    public Capability publishCapability(String idempotencyKey, UUID connectionId,
+            String name, String adapterId, JsonNode settings) {
         if (idempotencyKey == null || idempotencyKey.isBlank()
                 || idempotencyKey.length() > 160) {
             throw invalid("必须提供有效的 Idempotency-Key");
         }
         String normalizedName = requireName(name);
-        String hash = sha256(connectionId + "\u0000" + normalizedName + "\u0000" + adapterId);
+        String spec = spec(adapterId, settings);
+        String hash = sha256(connectionId + "\u0000" + normalizedName + "\u0000"
+                + adapterId + "\u0000" + spec);
         UUID id = UUID.randomUUID();
         if (!repository.claimCapabilityCreateKey(idempotencyKey, hash, id, clock.instant())) {
             var previous = repository.capabilityCreateKey(idempotencyKey).orElseThrow();
@@ -159,11 +181,11 @@ public class MediaCapabilityService {
             }
             return repository.capability(previous.entityId()).orElseThrow();
         }
-        return publishCapabilityWithId(id, connectionId, normalizedName, adapterId);
+        return publishCapabilityWithId(id, connectionId, normalizedName, adapterId, settings);
     }
 
     private Capability publishCapabilityWithId(UUID id, UUID connectionId,
-            String name, String adapterId) {
+            String name, String adapterId, JsonNode settings) {
         Connection connection = getConnection(connectionId);
         MediaAdapterRegistry.Declaration declaration = registry.declaration(adapterId);
         if (!connection.enabled()) {
@@ -180,17 +202,23 @@ public class MediaCapabilityService {
         if (!connection.platform().equals(declaration.platform())) {
             throw invalid("适配器与平台连接不匹配");
         }
-        String spec = "{\"schemaVersion\":1,\"kind\":\"" + declaration.kind().name()
-                + "\",\"minimumSeconds\":" + declaration.minimumSeconds()
-                + ",\"maximumSeconds\":" + declaration.maximumSeconds() + "}";
+        String spec = spec(adapterId, settings);
         repository.insertCapability(id, connectionId, requireName(name), adapterId,
-                sha256(adapterId + ":v1"), spec, clock.instant());
+                sha256(adapterId + ":v1:" + spec), spec, clock.instant());
         return repository.capability(id).orElseThrow();
     }
 
     @Transactional
     public Capability updateCapability(UUID connectionId, UUID capabilityId,
             long expectedVersion, String name, boolean enabled, String adapterId) {
+        return updateCapability(connectionId, capabilityId, expectedVersion, name,
+                enabled, adapterId, null);
+    }
+
+    @Transactional
+    public Capability updateCapability(UUID connectionId, UUID capabilityId,
+            long expectedVersion, String name, boolean enabled, String adapterId,
+            JsonNode settings) {
         Snapshot current = capabilitySnapshot(capabilityId);
         if (!current.connection().id().equals(connectionId)) {
             throw invalid("能力不属于此连接");
@@ -205,7 +233,17 @@ public class MediaCapabilityService {
         if (registry.declaration(current.adapterId()).kind() != replacement.kind()) {
             throw invalid("能力的输出类型不可变；请发布新能力");
         }
-        boolean newVersion = !current.adapterId().equals(adapterId);
+        JsonNode effectiveSettings = settings == null && current.adapterId().equals(adapterId)
+                ? mapper.readTree(current.specJson()).path("settings") : settings;
+        if (effectiveSettings != null && effectiveSettings.isMissingNode()) {
+            effectiveSettings = mapper.createObjectNode();
+        }
+        String spec = spec(adapterId, effectiveSettings);
+        JsonNode oldSettings = mapper.readTree(current.specJson()).path("settings");
+        JsonNode newSettings = mapper.readTree(spec).path("settings");
+        boolean newVersion = !current.adapterId().equals(adapterId)
+                || !newSettings.equals(oldSettings.isMissingNode()
+                        ? mapper.createObjectNode() : oldSettings);
         int nextVersion = current.capability().currentVersion() + (newVersion ? 1 : 0);
         Instant now = clock.instant();
         if (!repository.updateCapability(capabilityId, expectedVersion, requireName(name),
@@ -213,10 +251,8 @@ public class MediaCapabilityService {
             throw conflict("能力已被其他操作修改");
         }
         if (newVersion) {
-            MediaAdapterRegistry.Declaration declaration = replacement;
             repository.insertCapabilityVersion(capabilityId, nextVersion, adapterId,
-                    sha256(adapterId + ":v1"), "{\"schemaVersion\":1,\"kind\":\""
-                            + declaration.kind().name() + "\"}", now);
+                    sha256(adapterId + ":v1:" + spec), spec, now);
         }
         return repository.capability(capabilityId).orElseThrow();
     }
@@ -229,6 +265,50 @@ public class MediaCapabilityService {
 
     public Optional<ConnectionVersion> getConnectionVersion(UUID connectionId, int version) {
         return repository.connectionVersion(connectionId, version);
+    }
+
+    /** Internal historical snapshot; never serialize this record into API or model output. */
+    public Snapshot pinnedSnapshot(MediaCapabilityBinding binding) {
+        Snapshot snapshot = repository.snapshotAt(binding.capabilityId(),
+                binding.capabilityVersion(), binding.connectionId(),
+                binding.connectionVersion()).orElseThrow(() ->
+                new IllegalStateException("Pinned media capability version is missing"));
+        if (!binding.adapterId().equals(snapshot.adapterId())
+                || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
+            throw new IllegalStateException("Pinned media adapter identity differs from history");
+        }
+        return snapshot;
+    }
+
+    /** Only fixed model file basenames are editable; graph structure remains bundled Java code. */
+    private String spec(String adapterId, JsonNode suppliedSettings) {
+        var declaration = registry.declaration(adapterId);
+        ObjectNode normalized = mapper.createObjectNode();
+        normalized.put("schemaVersion", 1);
+        normalized.put("kind", declaration.kind().name());
+        normalized.put("minimumSeconds", declaration.minimumSeconds());
+        normalized.put("maximumSeconds", declaration.maximumSeconds());
+        ObjectNode settings = normalized.putObject("settings");
+        JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
+        if (!source.isObject()) throw invalid("能力模板参数必须为对象");
+        List<String> fields = switch (adapterId) {
+            case "COMFY_IMAGE_V1" -> List.of("checkpoint");
+            case "COMFY_VIDEO_V1" -> List.of("diffusionModel", "textEncoder", "vae",
+                    "clipVision");
+            default -> List.of();
+        };
+        for (String field : source.propertyNames()) {
+            if (!fields.contains(field)) throw invalid("能力模板包含不允许的参数");
+        }
+        for (String field : fields) {
+            JsonNode value = source.path(field);
+            if (!value.isTextual() || !value.asText().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
+                    || value.asText().contains("..") || !value.asText().endsWith(".safetensors")) {
+                throw invalid("ComfyUI 模板模型文件名必须为 .safetensors 文件名");
+            }
+            settings.put(field, value.asText());
+        }
+        return normalized.toString();
     }
 
     @Transactional
