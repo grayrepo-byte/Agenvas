@@ -7,3 +7,10 @@
 实际检查：OpenAPI 类型重新生成无额外差异；`tsc --noEmit` 与 `eslint . --max-warnings=0` 返回 0；Vitest 20 个文件、84 项测试全部通过；Next.js 16.3.6/Turbopack 生产构建返回 0 并生成静态 catch-all 页面。静态预览对 `/setup` 和未知项目 UUID 路径均返回同一页面壳，引用的 `/_next/static` JavaScript 可读取。
 
 生产形态另用 `deploy/docker/frontend.Dockerfile` 在锁定的 Node 24.21.0 Alpine 镜像中执行冻结安装、OpenAPI 生成和 Next 构建，最终复制 `out/` 到锁定的 Nginx 1.28.0 镜像；构建返回 0。临时容器中 `nginx -t` 通过，`/login`、未知项目 UUID 深链和静态 JavaScript 均返回 200。Chrome 153 无头访问该 Nginx `/login`，完成客户端水合并出现登录按钮及“自托管模式”文案。该检查未运行完整 Compose 业务路径或后端全量测试；本轮没有修改后端、OpenAPI 合约或数据库迁移。
+
+## 2026-09-26 迁移残留清理
+
+- `vitest.config.ts` 去掉 `@vitejs/plugin-react`，只保留 `environment: jsdom`、`setupFiles` 与 `restoreMocks`；JSX 由 Vite 内置的 esbuild 按 `tsconfig.json` 的 `jsx: "react-jsx"` 转换。该包已从 `devDependencies` 与 lockfile 移除。
+- Next.js 官方 Vitest 指南的示例配置包含该插件，其主要作用是 watch 期的 React Fast Refresh；本项目只在 Vitest 中转换 JSX，不依赖该刷新能力，因此移除有据可依；未来若需要在浏览器态做 HMR 再评估恢复。
+- 删除已废弃的 Vite 构建产物 `frontend/dist/`（此前由 Docker 与性能运行器读取，已在上文改为读取 Next.js `out/`）。该目录未纳入版本库，删除不影响仓库内容；`out/` 由 `pnpm build` 重新生成，删除后 `next build` 仍返回 0。
+- 实际检查：Vitest 34 个文件、212 项通过；`tsc --noEmit`、`eslint . --max-warnings=0`、`next build` 返回 0；`pnpm install --frozen-lockfile` 通过 supply-chain 校验，锁文件仍可用于 Docker 冻结安装。未运行后端测试与 Compose 全链路。
