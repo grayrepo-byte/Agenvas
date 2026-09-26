@@ -1,10 +1,10 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.Proxy;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -30,6 +30,8 @@ public class GoogleNanoBananaClient {
     public static final String DEFAULT_MODEL = "gemini-3.1-flash-image";
     private static final String IMAGE_SIZE = "1K";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    /** 单次读取上限；工厂要求显式传入，不能漏成 0（0 表示不限）。 */
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration CALL_TIMEOUT = Duration.ofMinutes(3);
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -41,12 +43,8 @@ public class GoogleNanoBananaClient {
         this.mapper = mapper;
         // 配置层已把端点限定为 HTTPS 公网或字面 127.0.0.1；这里放行回环，域名解析
         // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
-        this.http = new OkHttpClient.Builder().connectTimeout(CONNECT_TIMEOUT)
-                .callTimeout(CALL_TIMEOUT).proxy(Proxy.NO_PROXY)
-                .followRedirects(false).followSslRedirects(false)
-                .retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(Dns.SYSTEM, true))
-                .build();
+        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
+                CONNECT_TIMEOUT, READ_TIMEOUT, CALL_TIMEOUT);
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,

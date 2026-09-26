@@ -1,7 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
-import java.net.Proxy;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -45,12 +45,9 @@ public class ArkSeedanceClient {
         }
         this.mapper = mapper;
         this.origin = origin;
-        this.http = new OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
-                .connectTimeout(Duration.ofSeconds(10)).callTimeout(Duration.ofMinutes(2))
-                .followRedirects(false).followSslRedirects(false)
-                .retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)))
-                .build();
+        this.http = PinnedHttpClients.pinned(
+                FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)),
+                Duration.ofSeconds(10), Duration.ofSeconds(10), Duration.ofMinutes(2));
     }
 
     public String create(String key, String prompt, byte[] firstFramePng,

@@ -1,9 +1,9 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.Proxy;
 import java.net.URI;
 import java.time.Duration;
 import okhttp3.Dns;
@@ -41,11 +41,8 @@ public class ArkMediaDownloadPolicy {
             throw new IllegalArgumentException("Ark result origin is not fixed");
         }
         this.origin = origin;
-        this.http = new OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
-                .connectTimeout(Duration.ofSeconds(10)).readTimeout(Duration.ofMinutes(2))
-                .callTimeout(Duration.ofMinutes(3)).followRedirects(false)
-                .followSslRedirects(false).retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(resolver, loopbackTest)).build();
+        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(resolver, loopbackTest),
+                Duration.ofSeconds(10), Duration.ofMinutes(2), Duration.ofMinutes(3));
     }
 
     /** Rejects a URL before the HTTP client can resolve or follow anything from it. */

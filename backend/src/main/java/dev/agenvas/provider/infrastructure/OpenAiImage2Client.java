@@ -1,18 +1,17 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.Proxy;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.UUID;
 import okhttp3.Dns;
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -39,12 +38,8 @@ public class OpenAiImage2Client {
         this.mapper = mapper;
         // 配置层已把端点限定为 HTTPS 公网或字面 127.0.0.1；这里放行回环，域名解析
         // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
-        this.http = new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(10))
-                .callTimeout(Duration.ofMinutes(3)).proxy(Proxy.NO_PROXY)
-                .followRedirects(false).followSslRedirects(false)
-                .retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(Dns.SYSTEM, true))
-                .build();
+        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
+                Duration.ofSeconds(10), Duration.ofSeconds(10), Duration.ofMinutes(3));
     }
 
     public MediaPayload generate(String key, String model, String prompt, String quality,
@@ -56,8 +51,9 @@ public class OpenAiImage2Client {
         body.put("size", size);
         body.put("n", 1);
         body.put("output_format", "png");
-        return send(key, baseUrl, "images/generations", "application/json",
-                body.toString().getBytes(StandardCharsets.UTF_8));
+        return send(key, baseUrl, "images/generations",
+                RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
+                        MediaType.parse("application/json")));
     }
 
     public MediaPayload edit(String key, String model, String prompt, String quality, String size,
@@ -66,29 +62,25 @@ public class OpenAiImage2Client {
                 || referencePng.length > MAX_IMAGE_BYTES) {
             throw new IllegalArgumentException("Pinned reference PNG size is invalid");
         }
-        String boundary = "agenvas-" + UUID.randomUUID();
-        ByteArrayOutputStream body = new ByteArrayOutputStream();
-        field(body, boundary, "model", model);
-        field(body, boundary, "prompt", prompt);
-        field(body, boundary, "quality", quality);
-        field(body, boundary, "size", size);
-        field(body, boundary, "n", "1");
-        field(body, boundary, "output_format", "png");
-        bytes(body, "--" + boundary + "\r\nContent-Disposition: form-data; name=\"image\"; "
-                + "filename=\"reference.png\"\r\nContent-Type: image/png\r\n\r\n");
-        body.writeBytes(referencePng);
-        bytes(body, "\r\n--" + boundary + "--\r\n");
-        return send(key, baseUrl, "images/edits", "multipart/form-data; boundary=" + boundary,
-                body.toByteArray());
+        RequestBody body = new MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("model", model)
+                .addFormDataPart("prompt", prompt)
+                .addFormDataPart("quality", quality)
+                .addFormDataPart("size", size)
+                .addFormDataPart("n", "1")
+                .addFormDataPart("output_format", "png")
+                .addFormDataPart("image", "reference.png",
+                        RequestBody.create(referencePng, MediaType.parse("image/png")))
+                .build();
+        return send(key, baseUrl, "images/edits", body);
     }
 
-    private MediaPayload send(String key, String baseUrl, String path, String contentType,
-            byte[] body) {
+    private MediaPayload send(String key, String baseUrl, String path, RequestBody body) {
         URI endpoint = apiEndpoint(baseUrl, path);
         Request request = new Request.Builder().url(endpoint.toString())
                 .header("Authorization", "Bearer " + key)
                 .header("Accept", "application/json")
-                .post(RequestBody.create(body, MediaType.parse(contentType))).build();
+                .post(body).build();
         try (Response response = http.newCall(request).execute()) {
             if (response.body() == null) throw new Uncertain("OpenAI response has no body");
             try (InputStream input = response.body().byteStream()) {
@@ -138,16 +130,6 @@ public class OpenAiImage2Client {
             throw new IllegalArgumentException("Pinned OpenAI API base URL is invalid");
         }
         return base.resolve(path);
-    }
-
-    private static void field(ByteArrayOutputStream body, String boundary, String name,
-            String value) {
-        bytes(body, "--" + boundary + "\r\nContent-Disposition: form-data; name=\""
-                + name + "\"\r\n\r\n" + value + "\r\n");
-    }
-
-    private static void bytes(ByteArrayOutputStream body, String value) {
-        body.writeBytes(value.getBytes(StandardCharsets.UTF_8));
     }
 
     public static final class Rejected extends RuntimeException {

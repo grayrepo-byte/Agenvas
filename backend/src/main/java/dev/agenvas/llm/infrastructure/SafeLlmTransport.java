@@ -1,9 +1,9 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.settings.application.LlmEndpointPolicy;
+import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.Proxy;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
@@ -41,30 +41,21 @@ final class SafeLlmTransport {
         this.base = HttpUrl.get(endpoint);
         String path = base.encodedPath().replaceAll("/+$", "");
         this.completionPath = path + "/chat/completions";
-        this.client = new OkHttpClient.Builder()
-                .proxy(Proxy.NO_PROXY)
-                .dns(host -> {
-                    if (!host.equalsIgnoreCase(base.host())) {
-                        throw new UnknownHostException("LLM host changed");
-                    }
-                    List<InetAddress> addresses = resolver.lookup(host);
-                    if (addresses.isEmpty()) throw new UnknownHostException("LLM DNS returned no addresses");
-                    try {
-                        for (InetAddress address : addresses) {
-                            policy.requireAllowedAddress(host, address);
-                        }
-                    } catch (RuntimeException unsafe) {
-                        throw new UnknownHostException("LLM DNS returned a blocked address");
-                    }
-                    return addresses;
-                })
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .retryOnConnectionFailure(false)
-                .connectTimeout(Duration.ofSeconds(10))
-                .readTimeout(Duration.ofSeconds(45))
-                .callTimeout(Duration.ofSeconds(60))
-                .build();
+        this.client = PinnedHttpClients.pinned(host -> {
+            if (!host.equalsIgnoreCase(base.host())) {
+                throw new UnknownHostException("LLM host changed");
+            }
+            List<InetAddress> addresses = resolver.lookup(host);
+            if (addresses.isEmpty()) throw new UnknownHostException("LLM DNS returned no addresses");
+            try {
+                for (InetAddress address : addresses) {
+                    policy.requireAllowedAddress(host, address);
+                }
+            } catch (RuntimeException unsafe) {
+                throw new UnknownHostException("LLM DNS returned a blocked address");
+            }
+            return addresses;
+        }, Duration.ofSeconds(10), Duration.ofSeconds(45), Duration.ofSeconds(60));
     }
 
     /** 为 Spring AI 安装拦截器，将请求转交给禁用重定向和自动重试的专用客户端。
