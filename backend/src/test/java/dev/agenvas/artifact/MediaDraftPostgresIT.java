@@ -135,7 +135,8 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isOk());
         JsonNode edited = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(edited.path("displayMode").asText()).isEqualTo("DRAFT");
+        assertThat(edited.path("displayMode").asText()).isEqualTo("RESULT");
+        assertThat(edited.path("prompt").asText()).isEqualTo("Second concept");
         var selectedResponse = mvc.perform(post(base + "/artifacts/" + artifactId + "/select-version")
                 .with(auth).with(csrf()).contentType("application/json")
                 .content("{\"versionId\":\"" + image.path("currentVersionId").asText()
@@ -153,6 +154,29 @@ class MediaDraftPostgresIT {
                                 + ",\"prompt\":\"Next concept\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(retainedResult.path("displayMode").asText()).isEqualTo("RESULT");
+        JsonNode reloadedResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(reloadedResult.path("displayMode").asText()).isEqualTo("RESULT");
+        assertThat(reloadedResult.path("prompt").asText()).isEqualTo("Next concept");
+        assertThat(reloadedResult.path("version").asLong())
+                .isEqualTo(retainedResult.path("version").asLong());
+
+        // Only an explicit run switches the card face; the previous result stays selected.
+        JsonNode nextRun = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
+                        .header("Idempotency-Key", "direct-image-next-concept")
+                        .contentType("application/json").content("{\"expectedDraftVersion\":"
+                                + reloadedResult.path("version").asLong() + "}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode runningDraft = mapper.readTree(mvc.perform(get(draftPath).with(auth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(runningDraft.path("displayMode").asText()).isEqualTo("DRAFT");
+        JsonNode retainedImage = mapper.readTree(mvc.perform(get(base + "/artifacts/" + artifactId)
+                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString());
+        assertThat(retainedImage.path("currentVersionId").asText())
+                .isEqualTo(image.path("currentVersionId").asText());
+        mvc.perform(post(base + "/tasks/" + nextRun.path("id").asText() + "/cancel-queued")
+                .with(auth).with(csrf())).andExpect(status().isOk());
 
         JsonNode video = mapper.readTree(mvc.perform(post(base + "/artifacts")
                         .with(auth).with(csrf()).contentType("application/json")

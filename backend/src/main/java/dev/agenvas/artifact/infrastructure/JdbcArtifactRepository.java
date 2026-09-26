@@ -166,6 +166,7 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .optional();
     }
 
+    /** 草稿编辑不改变卡片展示；只有运行受理或结果选用流程切换展示模式。 */
     @Override
     public boolean updateMediaDraft(MediaDraft draft, long expectedVersion) {
         return jdbcClient.sql("""
@@ -174,7 +175,6 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                             input_image_version_id = :inputImageVersionId,
                             duration_seconds = :durationSeconds,
                             capability_id = :capabilityId,
-                            display_mode = 'DRAFT',
                             version = version + 1, updated_at = :updatedAt
                         where project_id = :projectId and artifact_id = :artifactId
                           and version = :expectedVersion

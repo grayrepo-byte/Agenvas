@@ -36,7 +36,7 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 ## 前端直接依赖
 
-运行依赖：Next.js 16.3.6、React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5。
+运行依赖：Next.js 16.3.6、React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5、Phosphor React 2.1.10（画布线性图标，MIT）。
 
 构建与测试：Next.js/Turbopack 16.3.6、TypeScript 5.9.3、Tailwind CSS/PostCSS 4.3.3、Vitest 5.0.1、Testing Library React 16.3.3、MSW 2.15.0、openapi-typescript 7.13.0、ESLint 10.11.0、typescript-eslint 8.70.1、静态预览 `serve` 14.2.5。`@vitejs/plugin-react` 仅供 Vitest 的 JSX 转换使用，不再承担应用开发或生产构建。
 

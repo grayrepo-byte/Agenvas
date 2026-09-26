@@ -1,0 +1,93 @@
+/* Beautiful UI Loading State adaptation; see beautiful-ui-LICENSE.txt. */
+.canvas-loading-state {
+  --canvas-loader-surface: #191919;
+  --canvas-loader-border: #353535;
+  --canvas-loader-ink: #f4f4f5;
+  --canvas-loader-muted: #a1a1aa;
+  --canvas-loader-cell-size: 4px;
+  --canvas-loader-cell-gap: 1.5px;
+  --canvas-loader-wave-duration: 650ms;
+  --canvas-loader-shimmer-duration: 1.4s;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--canvas-loader-border);
+  border-radius: 10px;
+  background: var(--canvas-loader-surface);
+  color: var(--canvas-loader-ink);
+}
+
+.canvas-loading-state--compact {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.canvas-loading-state__grid {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(3, var(--canvas-loader-cell-size));
+  gap: var(--canvas-loader-cell-gap);
+}
+
+.canvas-loading-state__pixel {
+  width: var(--canvas-loader-cell-size);
+  height: var(--canvas-loader-cell-size);
+  border-radius: 1px;
+  background: var(--canvas-loader-ink);
+  opacity: 0.15;
+  animation: canvas-loader-pixel-on var(--canvas-loader-wave-duration) ease-in-out infinite;
+}
+
+.canvas-loading-state__label {
+  min-width: 0;
+  overflow: hidden;
+  background-image: linear-gradient(90deg, var(--canvas-loader-muted) 35%, var(--canvas-loader-ink) 50%, var(--canvas-loader-muted) 65%);
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: canvas-loader-shimmer var(--canvas-loader-shimmer-duration) linear infinite;
+}
+
+.canvas-loading-state__elapsed {
+  flex: none;
+  color: var(--canvas-loader-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes canvas-loader-pixel-on {
+  0%, 100% { opacity: 0.15; }
+  18%, 42% { opacity: 1; }
+  62% { opacity: 0.15; }
+}
+
+@keyframes canvas-loader-shimmer {
+  from { background-position: 150% center; }
+  to { background-position: -50% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-loading-state__pixel {
+    animation: none;
+    opacity: 0.55;
+  }
+
+  .canvas-loading-state__label {
+    animation: none;
+    background-image: none;
+    color: var(--canvas-loader-ink);
+  }
+}

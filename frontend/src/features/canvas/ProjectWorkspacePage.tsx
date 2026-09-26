@@ -22,14 +22,11 @@ import { Link, Navigate, useParams } from "react-router";
 import {
   ApiError,
   applyCanvasCommands,
-  assetContentUrl,
-  assetThumbnailUrl,
   cancelRun,
   createAgent,
   createArtifact,
   createRun,
   getCurrentUser,
-  getMediaDraft,
   getProject,
   getProjectSnapshot,
   getRunPreflight,
@@ -58,6 +55,9 @@ import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
 import { hasCurrentVersion } from "./versionedArtifact";
 import { MediaDraftEditor } from "./MediaDraftEditor";
+import { MediaCanvasCard } from "./MediaCanvasCard";
+import { MediaCardUpload } from "./MediaCardUpload";
+import { Plus, TextT, X } from "@phosphor-icons/react";
 import { inputConnectionUpdate, projectCanvasRelations,
   semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
 
@@ -73,7 +73,9 @@ const CREATION_MENU_WIDTH = 184;
 const CREATION_MENU_HEIGHT = 330;
 const CREATION_MENU_MARGIN = 12;
 const DEFAULT_CARD_WIDTH = 280;
-const DEFAULT_MEDIA_CARD_HEIGHT = 240;
+const DEFAULT_MEDIA_CARD_HEIGHT = 300;
+const DEFAULT_IMAGE_CARD_WIDTH = 225;
+const DEFAULT_VIDEO_CARD_WIDTH = 534;
 const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string }> = [
   { kind: "TEXT", label: "文字" }, { kind: "IMAGE", label: "图片" },
   { kind: "VIDEO", label: "视频" }, { kind: "CHARACTER", label: "角色" },
@@ -89,6 +91,8 @@ type CanvasNodeData = {
   onResizeEnd: (itemId: string, layout: LayoutPatch) => void;
   onRemove: (item: CanvasItem) => void;
   onToggleLocked: (item: CanvasItem) => void;
+  onInspect: (item: CanvasItem) => void;
+  onUpload: (item: CanvasItem) => void;
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
   onRemoveReference: (item: CanvasItem,
     reference: ArtifactInputReference) => void;
@@ -131,6 +135,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [creationPoint, setCreationPoint] = useState<CreationPoint | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [inspectingId, setInspectingId] = useState<string | null>(null);
+  const [uploadingItem, setUploadingItem] = useState<CanvasItem | null>(null);
   const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; artifactId?: string } | null>(null);
@@ -278,6 +284,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     onSuccess: (saved, item) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       clearDraft(item.id);
+      setInspectingId(null);
       setSaveState("saved");
     },
     onError: setSaveError,
@@ -405,7 +412,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const index = canvas.data?.items.length ?? 0;
       const saved = await applyCanvasCommands(projectId, [{
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
-        x: point.x, y: point.y, width: DEFAULT_CARD_WIDTH,
+        x: point.x, y: point.y, width: kind === "IMAGE" ? DEFAULT_IMAGE_CARD_WIDTH : DEFAULT_VIDEO_CARD_WIDTH,
         height: DEFAULT_MEDIA_CARD_HEIGHT, zIndex: index, locked: false,
       }]);
       return { saved, itemId: pending.itemId };
@@ -650,6 +657,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     [removeReferenceMutate],
   );
 
+  const handleInspect = useCallback((item: CanvasItem) => {
+    setToolsKind(null); setResourcesOpen(false); setUploadingItem(null); setInspectingId(item.id);
+  }, []);
+  const handleUpload = useCallback((item: CanvasItem) => {
+    // Each opening has a distinct identity, so an older upload cannot close a newer session.
+    setToolsKind(null); setResourcesOpen(false); setInspectingId(null); setUploadingItem({ ...item });
+  }, []);
+
   const nodes = useMemo<CanvasNode[]>(
     () =>
       (canvas.data?.items ?? [])
@@ -686,6 +701,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onResizeEnd: handleResizeEnd,
               onRemove: handleRemove,
               onToggleLocked: handleToggleLocked,
+              onInspect: handleInspect,
+              onUpload: handleUpload,
               onUpdateAgent: handleUpdateAgent,
               onRemoveReference: handleRemoveReference,
               updatingAgent: editAgent.isPending,
@@ -700,6 +717,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleRemove,
       handleResizeEnd,
       handleToggleLocked,
+      handleInspect,
+      handleUpload,
       handleUpdateAgent,
       handleRemoveReference,
       projectId,
@@ -796,6 +815,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   function chooseCreationKind(kind: CreationKind) {
     const point = creationMenu?.point;
     if (!point) return;
+    setInspectingId(null); setUploadingItem(null);
     setCreationMenu(null);
     setResourcesOpen(false);
     setCreationPoint(point);
@@ -827,13 +847,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
         <div className="flex items-center gap-3">
           <button className="secondary-button" onClick={() => {
-            setToolsKind(null); setResourcesOpen(true);
+            setToolsKind(null); setInspectingId(null); setUploadingItem(null); setResourcesOpen(true);
           }} type="button">资源</button>
           <button className="secondary-button" onClick={() => {
-            setResourcesOpen(false); setToolsKind("UPLOAD");
+            setResourcesOpen(false); setInspectingId(null); setUploadingItem(null); setToolsKind("UPLOAD");
           }} type="button">导入素材</button>
           <button className="secondary-button" onClick={() => {
-            setResourcesOpen(false); setToolsKind("EXPORT");
+            setResourcesOpen(false); setInspectingId(null); setUploadingItem(null); setToolsKind("EXPORT");
           }} type="button">导出</button>
           <span className="text-xs text-[var(--muted)]" role="status">
             {eventStatus === "live" ? "实时同步" :
@@ -983,6 +1003,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {canvas.error ? <div className="canvas-message"><WorkspaceError error={canvas.error} /></div> : null}
         {canvas.data && canvas.data.items.length === 0 ? <div className="canvas-message">双击空白画布或点击“+”添加第一张卡片。</div> : null}
         <ReactFlow<CanvasNode>
+          colorMode="dark"
           connectionLineType={ConnectionLineType.Bezier}
           deleteKeyCode={null}
           edges={relationEdges}
@@ -1002,14 +1023,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onSelectionChange={handleSelectionChange}
           selectionOnDrag
         >
-          <Background color="#44464d" gap={20} size={1.2} />
+          <Background color="#454545" gap={20} size={1.1} />
           <MiniMap pannable zoomable />
           <Controls position="bottom-right" />
         </ReactFlow>
         <button aria-label="添加卡片" className="workspace-add-button" onClick={() => {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        }} type="button">+</button>
+        }} type="button"><Plus size={22} /></button>
         {creationMenu ? <div className="workspace-create-menu" role="menu"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y }}>
@@ -1023,11 +1044,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <WorkspaceError error={removeReference.error} /></div> : null}
         {connectInput.error && !toolsKind ? <div className="canvas-message">
           <WorkspaceError error={connectInput.error} /></div> : null}
+        {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
+          <div className="canvas-message"><WorkspaceError error={(removeItem.error ?? toggleLocked.error)!} /></div> : null}
         {selectedItems.length === 1 && selectedItems[0]?.artifact ?
-          <div className="workspace-bottom-editor" aria-label="所选卡片编辑区">
+          <div className={`workspace-bottom-editor ${selectedItems[0].artifact.kind === "IMAGE" || selectedItems[0].artifact.kind === "VIDEO" ? "workspace-media-editor" : ""}`} aria-label="所选卡片编辑区">
             <button aria-label="关闭编辑区" className="workspace-bottom-close"
-              onClick={() => setSelectedIds([])} type="button">×</button>
-            <div className="workspace-bottom-title">{selectedItems[0].artifact.title} · 编辑</div>
+              onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
+            {selectedItems[0].artifact.kind !== "IMAGE" && selectedItems[0].artifact.kind !== "VIDEO" ?
+              <div className="workspace-bottom-title">{selectedItems[0].artifact.title} · 编辑</div> : null}
             {selectedItems[0].artifact.kind === "IMAGE" ||
               selectedItems[0].artifact.kind === "VIDEO" ?
               <MediaDraftEditor key={selectedItems[0].artifact.id}
@@ -1045,13 +1069,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {selectedItems.length === 1 && selectedItems[0]?.agent ?
           <div className="workspace-bottom-editor" aria-label="所选 Agent 编辑区">
             <button aria-label="关闭编辑区" className="workspace-bottom-close"
-              onClick={() => setSelectedIds([])} type="button">×</button>
+              onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
             <div className="workspace-bottom-title">{selectedItems[0].agent.name} · 编辑</div>
             <div id="workspace-agent-bottom-editor" />
           </div> : null}
         {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
           <button aria-label="关闭编辑区" className="workspace-bottom-close"
-            onClick={() => setSelectedIds([])} type="button">×</button>
+            onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
           <span>{selectedItems.length} 张卡片已选中</span>
           <button className="node-action" disabled={alignSelected.isPending}
             onClick={() => alignSelected.mutate()} type="button">左对齐</button>
@@ -1061,31 +1085,59 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             onClick={() => clearBindings.mutate()} type="button">清空 Agent 输入</button>
         </div> : null}
       </section>
+      {inspectingId && selectedItems.some((item) => item.id === inspectingId) ? (() => {
+        const item = selectedItems.find((candidate) => candidate.id === inspectingId);
+        if (!item?.artifact) return null;
+        return <aside className="workspace-drawer media-inspector" aria-label="卡片详情">
+          <div className="workspace-drawer-heading"><h2>{item.artifact.title}</h2>
+            <button className="node-action" aria-label="关闭卡片详情" type="button" onClick={() => setInspectingId(null)}><X size={16} /></button></div>
+          <p className="mt-3 text-xs text-[var(--muted)]">{item.artifact.kind === "IMAGE" ? "图片" : "视频"} · {item.artifact.currentVersion ? `v${item.artifact.currentVersion.versionNo}` : "暂无结果"}</p>
+          <ArtifactVersionHistory artifact={item.artifact} />
+          {item.artifact.currentVersion?.inputReferences.length ? <div className="mt-4 text-xs">
+            <h3>素材引用</h3><ul className="mt-2 space-y-2">
+              {item.artifact.currentVersion.inputReferences.map((reference) =>
+                <li className="break-all text-[var(--muted)]" key={`${reference.role}:${reference.order}:${reference.versionId}`}>
+                  {reference.role} · {reference.kind} · {reference.versionId}
+                </li>)}
+            </ul>
+          </div> : null}
+          <div className="mt-5 flex gap-2">
+            <button className="node-action" type="button" disabled={toggleLocked.isPending} onClick={() => handleToggleLocked(item)}>{toggleLocked.isPending ? "保存中…" : item.locked ? "解锁" : "锁定"}</button>
+            <button className="node-action" type="button" disabled={removeItem.isPending} onClick={() => handleRemove(item)}>{removeItem.isPending ? "移除中…" : "移除卡片"}</button>
+          </div>
+          {removeItem.error ? <WorkspaceError error={removeItem.error} /> : null}
+          {toggleLocked.error ? <WorkspaceError error={toggleLocked.error} /> : null}
+          <p className="mt-3 text-xs text-[var(--muted)]">移除卡片后，内容和历史版本仍保留在项目资源中。</p>
+        </aside>;
+      })() : null}
+      {uploadingItem?.artifact ? <aside className="workspace-drawer" aria-label="上传到图片卡片">
+        <div className="workspace-drawer-heading"><h2>上传图片</h2>
+          <button className="node-action" type="button" aria-label="关闭图片上传" onClick={() => setUploadingItem(null)}><X size={16} /></button></div>
+        <MediaCardUpload key={`${uploadingItem.id}:${uploadingItem.artifact.version}`} artifact={uploadingItem.artifact}
+          onDone={() => setUploadingItem((current) => current === uploadingItem ? null : current)} />
+      </aside> : null}
       <div className="workspace-narrow-warning">画布编辑需要至少 1280px 宽度；当前仅提供只读预览。</div>
     </main>
   );
 }
 
 const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProps<CanvasNode>) {
-  const mediaArtifact = data.item.artifact &&
-    (data.item.artifact.kind === "IMAGE" || data.item.artifact.kind === "VIDEO")
-    ? data.item.artifact : null;
-  const mediaDraft = useQuery({
-    queryKey: ["media-draft", data.projectId, mediaArtifact?.id],
-    queryFn: () => getMediaDraft(data.projectId, mediaArtifact!.id),
-    enabled: mediaArtifact !== null,
-  });
-  if (data.item.agent) {
-    return <AgentCard data={data} selected={selected} />;
-  }
+  if (data.item.agent) return <AgentCard data={data} selected={selected} />;
   const artifact = data.item.artifact;
   const content = artifact?.currentVersion?.content;
-  const showDraft = mediaArtifact !== null &&
-    (artifact?.currentVersionId === null || mediaDraft.data?.displayMode === "DRAFT");
-  const text = showDraft ? mediaDraft.data?.prompt || "尚未填写提示词"
-    : content ? contentPreview(content) : "内容不可用";
-  const imageAssetId = artifact?.kind === "IMAGE" && !showDraft ? mediaAssetId(content) : null;
-  const videoAssetId = artifact?.kind === "VIDEO" && !showDraft ? mediaAssetId(content) : null;
+  const text = content ? contentPreview(content) : "";
+  if (artifact && (artifact.kind === "IMAGE" || artifact.kind === "VIDEO")) {
+    return <>
+      <Handle id="artifact-input" position={Position.Left} type="target" />
+      <Handle id="artifact-output" position={Position.Right} type="source" />
+      <MediaCanvasCard artifact={artifact} selected={selected} locked={data.item.locked}
+        onInspect={() => data.onInspect(data.item)} onUpload={() => data.onUpload(data.item)}
+        onEdit={() => document.querySelector<HTMLTextAreaElement>(".media-draft-editor textarea")?.focus()}>
+        <NodeResizer isVisible={selected && !data.item.locked} minHeight={120} minWidth={120}
+          onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
+      </MediaCanvasCard>
+    </>;
+  }
   return (
     <>
       <Handle id="artifact-input" position={Position.Left}
@@ -1106,29 +1158,8 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
         </div>
         <span className="text-xs text-[var(--muted)]">v{artifact?.currentVersion?.versionNo ?? 0}</span>
       </div>
-      {artifact?.kind === "IMAGE" ? (
-        <>
-          {showDraft ? <div className="media-draft-placeholder">图片草稿 · 等待运行</div> :
-          <ArtifactImagePreview
-            key={imageAssetId ?? artifact.currentVersion?.id ?? artifact.id}
-            assetId={imageAssetId}
-            projectId={artifact.projectId}
-            title={artifact.title}
-            demo={isDemoMedia(content)}
-          />}
-          <p className="mt-2 line-clamp-1 text-xs text-[var(--muted)]" title={text}>{text}</p>
-        </>
-      ) : artifact?.kind === "VIDEO" ? (
-        <>
-          {showDraft ? <div className="media-draft-placeholder">视频草稿 · 等待运行</div> :
-          <ArtifactVideoPreview key={videoAssetId ?? artifact.currentVersion?.id ?? artifact.id}
-            assetId={videoAssetId} projectId={artifact.projectId}
-            title={artifact.title} demo={isDemoMedia(content)} />}
-          <p className="mt-2 line-clamp-1 text-xs text-[var(--muted)]" title={text}>{text}</p>
-        </>
-      ) : (
-        <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[var(--muted)]">{text}</p>
-      )}
+      {artifact?.kind === "TEXT" && !text.trim() ? <div className="text-card-empty"><TextT size={44} /><span>双击编辑文字</span></div>
+        : <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[var(--muted)]">{text}</p>}
       {artifact ? <ArtifactVersionHistory artifact={artifact} /> : null}
       {hasCurrentVersion(artifact) && artifact.currentVersion.inputReferences.length > 0 ? (
         <details className="nodrag nowheel mt-3 text-xs text-[var(--muted)]">
@@ -1156,69 +1187,6 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     </>
   );
 });
-
-/** Precomputed thumbnail only; the original file is fetched only on explicit click. */
-function ArtifactImagePreview({ assetId, projectId, title, demo }: {
-  assetId: string | null;
-  projectId: string;
-  title: string;
-  demo: boolean;
-}) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <div className="nodrag nowheel mt-3">
-      <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
-        {assetId && !failed ? (
-          <img
-            alt={`${title} 的预览`}
-            className="h-full w-full object-contain"
-            decoding="async"
-            draggable={false}
-            loading="lazy"
-            onError={() => setFailed(true)}
-            src={assetThumbnailUrl(projectId, assetId)}
-          />
-        ) : (
-          <span className="px-3 text-center text-xs text-[var(--muted)]">
-            {assetId ? "预览暂不可用" : "图片素材尚未归档"}
-          </span>
-        )}
-        {demo ? <span className="absolute left-2 top-2 rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">演示素材</span> : null}
-      </div>
-      {assetId ? (
-        <a className="mt-1 inline-block text-xs text-[var(--accent)] underline" href={assetContentUrl(projectId, assetId)} rel="noopener noreferrer" target="_blank">打开原图</a>
-      ) : null}
-    </div>
-  );
-}
-
-/** Video loads only after an explicit user action; the card otherwise uses its poster. */
-function ArtifactVideoPreview({ assetId, projectId, title, demo }: {
-  assetId: string | null;
-  projectId: string;
-  title: string;
-  demo: boolean;
-}) {
-  const [playing, setPlaying] = useState(false);
-  const [posterFailed, setPosterFailed] = useState(false);
-  return <div className="nodrag nowheel mt-3">
-    <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
-      {assetId && playing ? <video aria-label={`${title} 的视频`} className="h-full w-full"
-        controls preload="metadata" src={assetContentUrl(projectId, assetId)} /> :
-        assetId && !posterFailed ? <img alt={`${title} 的视频封面`} className="h-full w-full object-contain"
-          decoding="async" draggable={false} loading="lazy"
-          onError={() => setPosterFailed(true)} src={assetThumbnailUrl(projectId, assetId)} /> :
-          <span className="text-xs text-[var(--muted)]">视频封面暂不可用</span>}
-      {demo ? <span className="absolute left-2 top-2 rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">演示视频</span> : null}
-    </div>
-    {assetId ? <div className="mt-2 flex gap-3 text-xs">
-      <button className="text-[var(--accent)] underline" onClick={() => setPlaying(true)}
-        type="button">播放视频</button>
-      <a className="text-[var(--accent)] underline" href={assetContentUrl(projectId, assetId)}
-        rel="noopener noreferrer" target="_blank">打开视频文件</a>
-    </div> : null}
-  </div>;
-}
 
 function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean }) {
   const queryClient = useQueryClient();
@@ -1480,21 +1448,6 @@ function contentPreview(content: unknown): string {
   if ("description" in content && typeof content.description === "string") return content.description;
   if ("prompt" in content && typeof content.prompt === "string") return content.prompt;
   return JSON.stringify(content);
-}
-
-function mediaAssetId(content: unknown): string | null {
-  if (typeof content !== "object" || content === null || !("assetId" in content)) return null;
-  const candidate = content.assetId;
-  return typeof candidate === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)
-    ? candidate : null;
-}
-
-function isDemoMedia(content: unknown): boolean {
-  if (typeof content !== "object" || content === null || !("parameters" in content)) return false;
-  const parameters = content.parameters;
-  return typeof parameters === "object" && parameters !== null &&
-    "mock" in parameters && parameters.mock === true;
 }
 
 function SaveBadge({ state }: { state: "saved" | "saving" | "failed" | "conflict" }) {
