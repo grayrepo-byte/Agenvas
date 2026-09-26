@@ -111,6 +111,10 @@ class OpenAiImage2PostgresIT {
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(EDITS).hasValue(1);
         assertThat(GENERATIONS).hasValue(0);
+        assertThat(jdbc.sql("select status from call_log where task_id=:task")
+                .param("task", editTask.id()).query(String.class).single()).isEqualTo("SUCCEEDED");
+        assertThat(jdbc.sql("select model from call_log where task_id=:task")
+                .param("task", editTask.id()).query(String.class).single()).isEqualTo("gpt-image-2");
         assertThat(artifacts.get(owner.userId(), edited.project().id(),
                 UUID.fromString(completed.output().path("artifactId").asText()))
                 .currentVersion().content().path("assetId").asText()).isNotBlank();
@@ -127,6 +131,10 @@ class OpenAiImage2PostgresIT {
         assertThat(tasks.recoverExpiredSubmissions(1)).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), generated.project().id(), uncertain.id()).status())
                 .isEqualTo(Task.Status.UNKNOWN);
+        assertThat(jdbc.sql("select status from call_log where task_id=:task")
+                .param("task", uncertain.id()).query(String.class).single()).isEqualTo("UNKNOWN");
+        assertThat(jdbc.sql("select count(*) from call_log where task_id=:task")
+                .param("task", uncertain.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(worker.submitOnce("openai-second-worker")).isZero();
         assertThat(GENERATIONS).hasValue(1);
 

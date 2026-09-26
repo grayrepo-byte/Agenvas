@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +20,9 @@ function showCard(shownArtifact: Artifact = artifact) {
   const onUpload = vi.fn();
   const onInspect = vi.fn();
   const onEdit = vi.fn();
-  render(<QueryClientProvider client={createQueryClient()}>
+  const client = createQueryClient();
+  client.setDefaultOptions({ queries: { retry: false } });
+  render(<QueryClientProvider client={client}>
     <MediaCanvasCard artifact={shownArtifact} selected locked={false} onEdit={onEdit}
       onUpload={onUpload} onInspect={onInspect}>{null}</MediaCanvasCard>
   </QueryClientProvider>);
@@ -50,6 +52,29 @@ describe("MediaCanvasCard", () => {
     expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "卡片详情" }));
     expect(onInspect).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the full preview available when original dimensions fail and allows retry", async () => {
+    let metadataFailed = true;
+    server.use(
+      http.get("/api/v1/projects/project-1/artifacts/image-1/draft", () => HttpResponse.json({
+        projectId: artifact.projectId, artifactId: artifact.id, displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => metadataFailed
+        ? HttpResponse.json({ detail: "Unavailable" }, { status: 503 })
+        : HttpResponse.json({ id: "image-asset", width: 2400, height: 1600 })),
+    );
+    showCard({ ...artifact, currentVersionId: "image-version", currentVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "image-asset" },
+      inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("图片尺寸读取失败");
+    expect(screen.getByRole("img", { name: "湖边 的预览" })).toHaveAttribute("src",
+      "/api/v1/projects/project-1/assets/image-asset/thumbnail");
+    metadataFailed = false;
+    fireEvent.click(screen.getByRole("button", { name: "重试尺寸" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("img", { name: "湖边 的预览" })).toBeInTheDocument();
   });
 
   it("shows a real running task as a loader without a fabricated percentage", async () => {

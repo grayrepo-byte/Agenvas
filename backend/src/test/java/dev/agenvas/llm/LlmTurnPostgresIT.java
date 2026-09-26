@@ -125,6 +125,12 @@ class LlmTurnPostgresIT {
         assertThat(rounds.call(owner.userId(), project.id(), run.id(), 0,
                 messages, List.of(tool), Map.of("projectId", project.id()))).isEqualTo(response);
         assertThat(gateway.calls.get()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from call_log where run_id=:run and operation='CHAT'")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select status from call_log where run_id=:run")
+                .param("run", run.id()).query(String.class).single()).isEqualTo("SUCCEEDED");
+        assertThat(jdbc.sql("select trace_id from call_log where run_id=:run")
+                .param("run", run.id()).query(String.class).single()).matches("[0-9a-f]{32}");
         gateway.configSource = "other-source";
         assertThatThrownBy(() -> rounds.call(owner.userId(), project.id(), run.id(), 1,
                 messages, List.of(tool), Map.of()))
@@ -179,6 +185,7 @@ class LlmTurnPostgresIT {
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(org.slf4j.MDC.get("traceId")).matches("[0-9a-f]{32}");
             calls.incrementAndGet();
             AssistantMessage output = AssistantMessage.builder().content("")
                     .properties(Map.of("providerProtocol", "opaque-protocol"))

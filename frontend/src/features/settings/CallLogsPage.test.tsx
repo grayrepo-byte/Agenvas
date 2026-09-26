@@ -1,0 +1,203 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createQueryClient } from "../../app/queryClient";
+import type { CallLog, CallLogPage, Task } from "../../shared/api/client";
+import { server } from "../../test/server";
+import { CallLogsPage } from "./CallLogsPage";
+
+const PROJECT_ID = "b567877f-f57e-477a-a941-c61241542738";
+const TASK_ID = "f23290b2-e6f1-4864-8dce-fca53d0203cb";
+const LOG: CallLog = {
+  id: "call-1", projectId: PROJECT_ID, projectTitle: "审计测试项目", taskId: null, runId: "run-1",
+  kind: "IMAGE", operation: "SUBMIT", status: "SUCCEEDED", taskStatus: "SUCCEEDED",
+  provider: "test-provider", model: "test-model", traceId: "trace-123", providerRequestId: "provider-request-789", errorCode: null,
+  startedAt: "2026-09-26T01:00:00Z", respondedAt: "2026-09-26T01:00:02.125Z", durationMs: 2125, historical: false, mock: true,
+};
+const TASK: Task = {
+  id: TASK_ID, projectId: PROJECT_ID, runId: null, planId: null, stepKey: "direct-image", kind: "IMAGE_GENERATION", status: "UNKNOWN",
+  cancelRequested: false, input: {}, attemptNo: 1, nextActionAt: "2026-09-26T01:00:00Z", version: 7,
+  createdAt: "2026-09-26T01:00:00Z", updatedAt: "2026-09-26T01:00:00Z",
+};
+function page(items: CallLog[] = [LOG], overrides: Partial<CallLogPage> = {}): CallLogPage {
+  return { items, page: 0, size: 20, totalElements: items.length, totalPages: items.length ? 1 : 0, ...overrides };
+}
+function showPage(path = "/settings/calls") {
+  const client = createQueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes>
+    <Route path="/settings/calls" element={<CallLogsPage />} />
+    <Route path="/login" element={<h1>登录页</h1>} />
+    <Route path="/projects/:projectId" element={<h1>项目画布</h1>} />
+  </Routes></MemoryRouter></QueryClientProvider>);
+  return client;
+}
+
+describe("CallLogsPage", () => {
+  beforeEach(() => server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" }))));
+
+  it("shows separate start/response time and duration, and expands actual correlation IDs", async () => {
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())));
+    showPage();
+    expect(await screen.findByText("test-model")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "调用时间" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "响应时间" })).toBeInTheDocument();
+    expect(document.querySelector(`time[datetime="${LOG.respondedAt}"]`)).toBeInTheDocument();
+    expect(screen.getByText(`${LOG.durationMs?.toLocaleString()} ms`)).toBeInTheDocument();
+    expect(screen.getByText("Mock 模拟调用")).toBeInTheDocument();
+    expect(screen.queryByText(LOG.traceId!)).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
+    expect(screen.getByText("trace-123")).toBeInTheDocument();
+    expect(screen.getByText("provider-request-789")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "审计测试项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
+    expect(screen.queryByRole("button", { name: "明确风险后创建新尝试" })).not.toBeInTheDocument();
+  });
+
+  it("sends applied filters and pagination to the server, resetting page when filters change", async () => {
+    const requests: URLSearchParams[] = [];
+    server.use(http.get("/api/v1/call-logs", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(params);
+      return HttpResponse.json(page([LOG], { page: Number(params.get("page")), totalElements: 21, totalPages: 2 }));
+    }));
+    const user = userEvent.setup();
+    showPage(`/settings/calls?projectId=${PROJECT_ID}`);
+    await screen.findByText("test-model");
+    expect(requests[0]?.get("projectId")).toBe(PROJECT_ID);
+    expect(requests[0]?.get("size")).toBe("20");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByText("第 2 页 / 共 2 页 · 每页 20 条");
+    expect(requests.at(-1)?.get("page")).toBe("1");
+    await user.selectOptions(screen.getByLabelText("调用类型"), "VIDEO");
+    await user.selectOptions(screen.getByLabelText("调用状态"), "UNKNOWN");
+    await user.type(screen.getByLabelText("Trace ID"), "trace-filter");
+    fireEvent.change(screen.getByLabelText("开始时间"), { target: { value: "2026-09-25T08:00:00" } });
+    fireEvent.change(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T09:00:00" } });
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    await waitFor(() => expect(requests.at(-1)?.get("traceId")).toBe("trace-filter"));
+    expect(Object.fromEntries(requests.at(-1)!)).toEqual({ projectId: PROJECT_ID, kind: "VIDEO", status: "UNKNOWN", traceId: "trace-filter",
+      from: new Date("2026-09-25T08:00:00").toISOString(), to: new Date("2026-09-26T09:00:00").toISOString(), page: "0", size: "20" });
+    await user.click(screen.getByRole("button", { name: "清空筛选" }));
+    await waitFor(() => expect(Object.fromEntries(requests.at(-1)!)).toEqual({ page: "0", size: "20" }));
+  });
+
+  it("rejects an inverted date range before issuing another read", async () => {
+    const reads = vi.fn();
+    server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
+    showPage();
+    await screen.findByText("test-model");
+    fireEvent.change(screen.getByLabelText("开始时间"), { target: { value: "2026-09-27T08:00:00" } });
+    fireEvent.change(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T08:00:00" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: "筛选日志" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("结束时间不能早于开始时间");
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps historical unavailable timing and IDs distinct from zero and live running states", async () => {
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([
+      { ...LOG, id: "legacy", historical: true, mock: false, operation: "LEGACY", status: "UNKNOWN", respondedAt: null, durationMs: null, traceId: null, providerRequestId: null },
+      { ...LOG, id: "running", status: "RUNNING", respondedAt: null, durationMs: null },
+    ]))));
+    showPage();
+    expect(await screen.findByText("历史记录")).toBeInTheDocument();
+    expect(screen.getByText("等待响应")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("待核对")).toBeInTheDocument();
+    expect(screen.queryByText("0 ms")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 legacy" }));
+    expect(screen.getByText(/历史记录只保留当时已保存的信息/)).toBeInTheDocument();
+    expect(screen.queryByText("trace-123")).not.toBeInTheDocument();
+  });
+
+  it("shows loading, retries a failed read, and preserves data when refreshing fails", async () => {
+    let respond: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { respond = resolve; });
+    let failed = true;
+    server.use(http.get("/api/v1/call-logs", async () => {
+      await started;
+      return failed ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 }) : HttpResponse.json(page());
+    }));
+    showPage();
+    expect(await screen.findByText("正在读取调用日志")).toBeInTheDocument();
+    respond?.();
+    expect(await screen.findByRole("alert")).toHaveTextContent("读取调用日志失败");
+    failed = false;
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "重试读取日志" }));
+    expect(await screen.findByText("test-model")).toBeInTheDocument();
+    failed = true;
+    await user.click(screen.getByRole("button", { name: "刷新日志" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("保留上次读取的记录");
+    expect(screen.getByText("test-model")).toBeInTheDocument();
+  });
+
+  it("renders an empty page without a next page", async () => {
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([]))));
+    showPage();
+    expect(await screen.findByText("没有匹配的调用记录")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+  });
+
+  it.each([400, 401, 403])("handles invalid filters and unauthorized audit responses (%s)", async (status) => {
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json({ title: "Denied", status }, { status })));
+    showPage();
+    if (status === 401) expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
+    else if (status === 400) expect(await screen.findByRole("alert")).toHaveTextContent("筛选条件无效");
+    else expect(await screen.findByRole("alert")).toHaveTextContent("无权查看调用日志");
+    expect(screen.queryByText("test-model")).not.toBeInTheDocument();
+  });
+
+  it("loads UNKNOWN task/attempts only on demand and retains explicit direct-task risk acknowledgement", async () => {
+    const taskReads = vi.fn();
+    const attemptReads = vi.fn();
+    const logReads = vi.fn();
+    const created = vi.fn();
+    server.use(
+      http.get("/api/v1/call-logs", () => { logReads(); return HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }])); }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => { taskReads(); return HttpResponse.json(TASK); }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/attempts`, () => {
+        attemptReads();
+        return HttpResponse.json([{ id: "attempt", taskId: TASK_ID, status: "UNKNOWN", requestKey: "original-request-key",
+          reconcilable: false, providerRequestId: null, replacementTaskId: null, createdAt: LOG.startedAt, updatedAt: LOG.startedAt }]);
+      }),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/new-attempt`, async ({ request }) => {
+        created();
+        expect(await request.json()).toEqual({ expectedTaskVersion: 7, riskAcknowledgement: "ACCEPT_POSSIBLE_DUPLICATE_COST" });
+        return HttpResponse.json({ ...TASK, id: "new-task", status: "READY" });
+      }),
+    );
+    showPage();
+    await screen.findByText("test-model");
+    expect(taskReads).not.toHaveBeenCalled();
+    expect(attemptReads).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
+    const ledgerButton = await screen.findByRole("button", { name: "查看提交账本并处理重试" });
+    expect(taskReads).toHaveBeenCalledTimes(1);
+    expect(attemptReads).not.toHaveBeenCalled();
+    await user.click(ledgerButton);
+    const newAttempt = await screen.findByRole("button", { name: "明确风险后创建新尝试" });
+    expect(newAttempt).toBeDisabled();
+    expect(created).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(newAttempt);
+    await waitFor(() => expect(taskReads).toHaveBeenCalledTimes(2));
+    expect(logReads).toHaveBeenCalledTimes(2);
+    expect(created).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("region", { name: "关联任务" })).getByRole("link", { name: "前往项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
+  });
+
+  it("uses the latest task state and offers no UNKNOWN recovery after the task resumed", async () => {
+    server.use(
+      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }]))),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => HttpResponse.json({ ...TASK, status: "WAITING_PROVIDER" })),
+    );
+    showPage();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
+    expect(await screen.findByText("当前状态：等待外部结果")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看提交账本并处理重试" })).not.toBeInTheDocument();
+  });
+});

@@ -105,6 +105,17 @@ public class ConfiguredChatGateway implements ChatGateway {
                 adapter.modelId(), properties.toolCallingVerified() && adapter.toolCalling());
     }
 
+    /** Resolve the immutable version used by the run without constructing a client or exposing its endpoint. */
+    @Override
+    public ModelDetails modelDetailsFor(ConfigIdentity expected) {
+        LlmProviderConfig config = pinnedConfig(expected);
+        if (config != null) {
+            return new ModelDetails(true, "OpenAI-compatible", config.modelId(),
+                    config.toolCallingVerified());
+        }
+        return modelDetails();
+    }
+
     /** 验证工具调用能力并复用同版本客户端；版本变化时重建并丢弃旧客户端。 */
     private SpringAiChatGateway requireConfigured(LlmProviderConfig config) {
         if (config != null) {

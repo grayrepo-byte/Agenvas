@@ -1,0 +1,49 @@
+# T07 节点选中与图片比例修正
+
+日期：2026-09-26
+
+## 行为变化
+
+- 媒体和内容节点共用的 `ArtifactCardFrame` 移除覆盖 React Flow 坐标变换的固定位置样式，工具栏位于对应节点上方，随节点移动及视口平移、缩放更新位置；空选和多选不显示单节点工具栏。
+- Artifact 与 Agent 节点未选中时不绘制外边框；选中时使用贴合卡片圆角、不占内部空间的白色外圈。缩放控制器的框线与八个控制点均透明，保留边缘和角落的拖动热区及缩放光标，不影响连线端点。
+- 图片预览继承节点圆角，移除卡片边框所占的内距。保留 `object-fit: contain`，完整展示图片，不裁切去填充旧节点矩形。
+- 节点依据当前显示 Asset 的原始宽高调整自身比例，保留长边大小。切换横图、竖图或选用版本后重新投影；空态与尺寸不可用时保留原尺寸。结果图片的手动缩放锁定比例。
+- 预览与布局复用相同的草稿/结果及素材判定；按素材去重查询原始元数据，尺寸读取失败可重试。未选用的历史结果不参与当前节点尺寸计算。
+- 读取图片与 DOM 测量不自动写入布局。拖动、缩放、对齐复用尺寸逻辑并使用既有 CAS 命令保存；极长图的短边按存储约束归一化，刷新时通过原图比例和长边恢复显示尺寸。失败保留草稿，对齐成功仅清理此次提交的节点草稿。
+
+## 涉及文件
+
+- `frontend/src/features/canvas/ArtifactCardFrame.tsx`、对应 CSS 与测试：工具栏定位和共享节点表面。
+- `frontend/src/features/canvas/AgentChatCard.css`、`frontend/src/styles.css`：Agent 选中状态、缩放控制器、媒体边缘及尺寸失败提示。
+- `frontend/src/features/canvas/imageNodeLayout.ts`、`mediaDisplay.ts`、`useImageNodeRatios.ts`：尺寸计算、展示素材判定与查询复用。
+- `frontend/src/features/canvas/ProjectWorkspacePage.tsx`、`MediaCanvasCard.tsx` 及相关测试：节点投影、布局保存、比例缩放与失败重试。
+- `docs/MVP-SPEC.md`、`docs/DEVELOPMENT-CHECKLIST.md`、`design-qa.md`：同步用户确认的交互要求及验收限制。
+
+没有修改后端、API 合约、数据库迁移或依赖。
+
+## 实际检查
+
+以下命令在 `frontend` 执行；没有运行全量测试。
+
+| 检查 | 结果 |
+| --- | --- |
+| `corepack pnpm exec vitest run src/features/canvas/ArtifactCardFrame.test.tsx` | 2 项通过；使用真实 React Flow 验证节点移动、视口平移/缩放、切换选中、空选和多选 |
+| `corepack pnpm exec vitest run src/features/canvas/imageNodeLayout.test.ts src/features/canvas/ProjectWorkspaceImageLayout.test.tsx src/features/canvas/ProjectWorkspacePage.test.tsx src/features/canvas/MediaCanvasCard.test.tsx` | 4 个文件、38 项通过；覆盖原图比例、切换结果、空态、尺寸重试、共享素材查询、缩放、对齐、保存刷新与冲突保留 |
+| `corepack pnpm exec vitest run src/features/canvas/MediaCanvasCard.test.tsx src/features/canvas/ContentCanvasCard.test.tsx src/features/canvas/AgentChatCard.test.tsx` | 修改共享表面后 3 个文件、29 项通过；其中媒体测试随后随比例修改扩充，并在上一组重新通过 |
+| `corepack pnpm lint` | 通过，零 warning |
+| `corepack pnpm build` | 通过，包含路由类型生成、TypeScript 检查和 Next.js 静态构建 |
+| `git diff --check` | 通过 |
+
+去除重复执行的媒体测试后，以上定向覆盖共 7 个测试文件、62 项测试。
+
+后续按用户要求隐藏八个缩放控制点，仅调整共享样式与规格描述。重新运行 `corepack pnpm exec vitest run src/features/canvas/AgentChatCard.test.tsx src/features/canvas/ProjectWorkspaceImageLayout.test.tsx`，2 个文件、21 项通过；`git diff --check` 通过。透明热区保留既有缩放交互，未增加只校验 CSS 实现细节的测试。
+
+## 未验证限制
+
+本轮内置浏览器访问 `http://localhost:5173/projects` 返回 `net::ERR_BLOCKED_BY_CLIENT`，没有完成截图、真实拖拽或边缘贴合的视觉验收；坐标和组件测试不替代该验收。待验项目记录于根目录 `design-qa.md`。本轮未调用真实媒体 Provider。
+
+后续排查确认：本地 5173 端口仍有服务监听；内置浏览器访问同一地址再次被拒绝，标签停留在 `about:blank`，该空白页可以成功截图。因此此次阻断发生在页面导航阶段，没有证据表明是截图权限不足。页面错误日志为空，当天 Codex 应用日志未发现匹配此地址或错误码的详细记录，具体客户端拦截原因尚不明确；未修改权限或绕过浏览器限制。
+
+再次核对运行部署后更正：本项目当前 Docker Web 入口为 `http://localhost:8088`（`agenvas-web-1`，Compose 路径指向本仓库），5173 实际是 Next.js 迁移前遗留的 Vite 进程。Chrome 访问 5173 同样被拒绝，但访问正确的 8088 成功加载 Agenvas 登录页并成功截图，因此此前使用了错误的服务地址，不能据此判断当前项目不可访问或截图权限不足。5173 的具体客户端拦截规则仍未定位；正确地址无需修改浏览器权限即可访问。此次只验证到登录页，画布的交互与截图验收仍待登录后完成。
+
+用户随后指定 Chrome“日常”实例及 `127.0.0.1:8088` 项目页，已使用其现有登录会话打开 Docker 画布并截图，确认该部署仍展示旧节点样式。按用户要求停止遗留 Vite 后，以 `corepack pnpm dev --hostname 127.0.0.1` 启动当前 Next.js，地址为 `http://127.0.0.1:5173`；Docker 部署未重启。Chrome 已加载当前工作区的项目画布并截图：选中图片完整展示，外圈贴合圆角且无白色缩放点；通过拖动画布空白处平移视口，确认工具栏保持在图片节点上方。该检查没有运行生成、改动媒体或保存节点布局；未覆盖所有比例、真实尺寸拖拽及锁定状态的视觉回归。

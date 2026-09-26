@@ -85,14 +85,15 @@ public class ApiExceptionHandler {
     }
 
     /** 将无效 JSON 和缺少必需请求头映射为客户端校验错误。 */
-    @ExceptionHandler({HttpMessageNotReadableException.class, ServletRequestBindingException.class})
+    @ExceptionHandler({HttpMessageNotReadableException.class, ServletRequestBindingException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class})
     ResponseEntity<ProblemDetail> handleUnreadableRequest(
             Exception exception, HttpServletRequest request) {
         return build(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
                 "请求参数无效",
-                "请求正文或必需请求头缺失。",
+                "请求正文、参数格式或必需请求头无效。",
                 false,
                 request,
                 null);

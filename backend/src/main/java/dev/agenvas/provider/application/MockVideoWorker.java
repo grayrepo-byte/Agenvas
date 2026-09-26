@@ -9,6 +9,7 @@ import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.GenerationRequest;
 import dev.agenvas.provider.domain.GenerationResult;
+import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
@@ -49,8 +50,8 @@ public class MockVideoWorker {
     /** 组装演示视频 Worker 的任务、素材和固定媒体工具依赖。 */
     public MockVideoWorker(TaskService tasks, ArtifactService artifacts, AssetService assets,
             MediaToolRunner mediaTools, GenerationGateway gateway,
-            MockProviderProperties fixture, PlanProviderProperties provider, ObjectMapper mapper) {
-        this.worker = new TaskWorker(tasks);
+            MockProviderProperties fixture, PlanProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
+        this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
         this.assets = assets;

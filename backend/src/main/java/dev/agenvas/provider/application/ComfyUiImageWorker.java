@@ -11,6 +11,7 @@ import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
+import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
@@ -58,8 +59,8 @@ public class ComfyUiImageWorker {
     public ComfyUiImageWorker(TaskService tasks, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ComfyUiClient client,
             ComfyUiClientRegistry clientRegistry, ComfyUiImageWorkflow workflow,
-            PlanProviderProperties provider, ObjectMapper mapper) {
-        this.worker = new TaskWorker(tasks);
+            PlanProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
+        this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
         this.assets = assets;

@@ -1,5 +1,7 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.audit.application.CallLogService;
+import dev.agenvas.audit.domain.CallLog;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.provider.domain.AttemptContext;
@@ -23,13 +25,15 @@ import tools.jackson.databind.node.ObjectNode;
 public class MediaExecutionWorker {
 
     private final TaskService tasks;
+    private final CallLogService callLogs;
     private final MediaCapabilityService catalog;
     private final MediaAdapterRegistry adapters;
     private final AssetService assets;
     private final ObjectMapper mapper;
 
     public MediaExecutionWorker(TaskService tasks, MediaCapabilityService catalog,
-            MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper) {
+            MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper, CallLogService callLogs) {
+        this.callLogs = callLogs;
         this.tasks = tasks;
         this.catalog = catalog;
         this.adapters = adapters;
@@ -78,7 +82,9 @@ public class MediaExecutionWorker {
             AttemptContext attempt = new AttemptContext(task, binding, ownerId,
                     requestKey.toString(), null);
             // A network exception leaves SUBMITTING for lease expiry and UNKNOWN recovery.
-            recordSubmission(task, workerId, attempt, adapter.submit(attempt));
+            Submission result = callLogs.record(descriptor(task, binding, CallLog.Operation.SUBMIT),
+                    () -> adapter.submit(attempt), resultValue -> callOutcome(resultValue, null));
+            recordSubmission(task, workerId, attempt, result);
         }
         return claimed.size();
     }
@@ -93,7 +99,8 @@ public class MediaExecutionWorker {
                     tasks.ownerForWorker(task), null, task.providerRequestId());
             Submission result;
             try {
-                result = adapter.reconcile(attempt);
+                result = callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
+                        () -> adapter.reconcile(attempt), resultValue -> callOutcome(resultValue, task.providerRequestId()));
             } catch (RuntimeException transientFailure) {
                 tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
                 continue;
@@ -124,6 +131,33 @@ public class MediaExecutionWorker {
             }
         }
         return claimed.size();
+    }
+
+    private CallLogService.CallDescriptor descriptor(Task task, MediaCapabilityBinding binding,
+            CallLog.Operation operation) {
+        var snapshot = catalog.pinnedSnapshot(binding);
+        var spec = mapper.readTree(snapshot.specJson());
+        String model = spec.path("settings").path("model").asText("");
+        if (model.isEmpty()) model = spec.path("modelId").asText(null);
+        if (model == null) model = spec.path("settings").path("checkpoint").asText(null);
+        if (model == null) model = spec.path("settings").path("diffusionModel").asText(null);
+        boolean mock = "MOCK".equals(snapshot.connection().platform());
+        return new CallLogService.CallDescriptor(task.projectId(), task.id(), task.runId(), null,
+                task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
+                operation, binding.adapterId(), model, mock);
+    }
+
+    private CallLogService.CallOutcome callOutcome(Submission result, String originalRequestId) {
+        return switch (result) {
+            case Submission.Accepted accepted -> CallLogService.CallOutcome.succeeded(accepted.requestId());
+            case Submission.Rejected rejected -> new CallLogService.CallOutcome(
+                    CallLog.Status.FAILED, originalRequestId, rejected.code());
+            case Submission.Blocked blocked -> new CallLogService.CallOutcome(
+                    CallLog.Status.FAILED, originalRequestId, blocked.code());
+            case Submission.Unknown unknown -> new CallLogService.CallOutcome(
+                    CallLog.Status.UNKNOWN, originalRequestId, unknown.code());
+            default -> CallLogService.CallOutcome.succeeded(originalRequestId);
+        };
     }
 
     private void recordSubmission(Task task, String workerId, AttemptContext attempt,

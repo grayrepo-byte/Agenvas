@@ -6,6 +6,7 @@ import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
+import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
@@ -34,8 +35,8 @@ public class ComfyUiVideoPoller {
 
     /** 初始化独立轮询 Worker，不依赖是否装配视频提交组件。 */
     public ComfyUiVideoPoller(TaskService tasks, AssetService assets,
-            ComfyUiClientRegistry clientRegistry, ObjectMapper mapper) {
-        this.worker = new TaskWorker(tasks);
+            ComfyUiClientRegistry clientRegistry, ObjectMapper mapper, CallLogService callLogs) {
+        this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.assets = assets;
         this.clientRegistry = clientRegistry;

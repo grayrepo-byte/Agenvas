@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
+import type { Agent, AgentRun, AgentConversation, CreateRunRequest, ExecutionPlan, RunPreflight } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { AgentChatCard, type AgentChatCardData } from "./AgentChatCard";
 import { useCanvasStore } from "./canvasStore";
@@ -45,6 +45,17 @@ function run(overrides: Partial<AgentRun> = {}): AgentRun {
 function conversation(overrides: Partial<AgentConversation> = {}): AgentConversation {
   return { id: CONVERSATION_ID, projectId: PROJECT_ID, agentInstanceId: AGENT_ID,
     title: "当前创作会话", version: 0, turnCount: 0, createdAt: NOW, updatedAt: NOW, ...overrides };
+}
+/** A PENDING plan is what makes the approval card appear; an empty list hides it. */
+function pendingPlan(runId: string): ExecutionPlan {
+  return { id: "plan-active", projectId: PROJECT_ID, runId, revision: 1, stage: "IMAGE",
+    status: "PENDING", objective: "等待审批的镜头图片计划", plan: {}, inputSnapshot: {},
+    inputSnapshotHash: "b".repeat(64), planHash: "a".repeat(64), providerConfigVersion: 1,
+    workflowVersion: "mock-image-v1", estimate: { imageCount: 1, videoCount: 0, costSource: "MOCK_UNPRICED" },
+    createdAt: NOW, updatedAt: NOW,
+    steps: [{ stepKey: "image-1", ordinal: 0, kind: "IMAGE_GENERATION", shotArtifactId: "shot-1",
+      shotVersionId: "shot-version-1", imageArtifactId: null, imageVersionId: null,
+      outputSlotKey: "shot-1", input: { prompt: "第一镜关键帧" }, dependencyKeys: [], binding: null }] };
 }
 let storedConversations: AgentConversation[];
 let storedRuns: AgentRun[];
@@ -458,13 +469,20 @@ describe("AgentChatCard", () => {
     const selected = conversation({ id: "conversation-other", title: "另一会话" });
     storedConversations = [selected, conversation()]; currentConversationId = selected.id;
     storedRuns = [active];
+    server.use(
+      http.get(`${RUNS_URL}/:runId/plans`, () => HttpResponse.json([pendingPlan(active.id)])),
+      http.get(`/api/v1/projects/${PROJECT_ID}/plans/:planId/steps/:stepKey/candidates`, () => HttpResponse.json([])),
+    );
     mountCard(active);
     const user = userEvent.setup();
     expect(await screen.findByRole("button", { name: "返回运行会话" })).toBeEnabled();
     expect(screen.queryByRole("region", { name: "待审批执行计划" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "返回运行会话" }));
-    expect(await screen.findByRole("region", { name: "待审批执行计划" })).toBeInTheDocument();
+    const approval = await screen.findByRole("region", { name: "待审批执行计划" });
+    expect(within(approval).getByText("等待审批的镜头图片计划")).toBeInTheDocument();
+    expect(within(approval).getByText("已确认 0 / 1")).toBeInTheDocument();
+    expect(within(approval).getByRole("button", { name: "确认执行此计划" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "返回运行会话" })).not.toBeInTheDocument();
   });

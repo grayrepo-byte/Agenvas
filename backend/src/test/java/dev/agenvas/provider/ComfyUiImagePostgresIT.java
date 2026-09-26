@@ -99,6 +99,9 @@ class ComfyUiImagePostgresIT {
         SERVER.stop(0);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
@@ -303,7 +306,7 @@ class ComfyUiImagePostgresIT {
         assertThat(rotatedWorkflow.version()).isNotEqualTo(workflow.version());
         ComfyUiImageWorker rotated = new ComfyUiImageWorker(tasks, artifacts, assets,
                 projects, differentOrigin, rotatedRegistry, rotatedWorkflow,
-                new PlanProviderProperties("comfyui", 2), mapper);
+                new PlanProviderProperties("comfyui", 2), mapper, callLogs);
         assertThat(mediaWorker.pollOnce("rotated-origin-poller")).isEqualTo(1);
         Task completedOld = tasks.get(owner.userId(), project.id(), queuedSecond.id());
         assertThat(completedOld.status()).isEqualTo(Task.Status.SUCCEEDED);

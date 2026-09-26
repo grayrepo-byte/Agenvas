@@ -9,6 +9,51 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/call-logs:
+    get:
+      operationId: listCallLogs
+      summary: 分页读取管理员本人项目的调用审计元数据
+      description: |
+        按 startedAt、id 倒序稳定排序。仅返回当前管理员自己的项目，不包含请求或响应正文、密钥和 endpoint。
+        UNKNOWN 筛选同时匹配调用结果未知及当前 Task 状态 UNKNOWN，便于核对历史请求。
+        historical=true 是旧检查点投影，startedAt 为原检查点时间；traceId、respondedAt、durationMs 不可追溯时为 null，不据此推算响应时间。
+      tags: [Audit]
+      parameters:
+        - name: projectId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: kind
+          in: query
+          schema: {type: string, enum: [LLM, IMAGE, VIDEO]}
+        - name: status
+          in: query
+          schema: {type: string, enum: [RUNNING, SUCCEEDED, FAILED, UNKNOWN]}
+        - name: traceId
+          in: query
+          schema: {type: string, pattern: '^[0-9a-f]{32}$'}
+        - name: from
+          in: query
+          description: 调用开始时间下界（包含）
+          schema: {type: string, format: date-time}
+        - name: to
+          in: query
+          description: 调用开始时间上界（包含），不得早于 from
+          schema: {type: string, format: date-time}
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: size
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: 调用日志页，越权或不存在的 projectId 返回空页
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallLogPage"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/auth/setup-status:
     get:
       operationId: getSetupStatus
@@ -1733,6 +1778,52 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
+    CallLogPage:
+      type: object
+      required: [items, page, size, totalElements, totalPages]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/CallLog"}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1, maximum: 100}
+        totalElements: {type: integer, format: int64, minimum: 0}
+        totalPages: {type: integer, format: int64, minimum: 0}
+    CallLog:
+      type: object
+      required: [id, projectId, projectTitle, taskId, runId, kind, operation, status, taskStatus, provider, model, traceId, providerRequestId, errorCode, startedAt, respondedAt, durationMs, historical, mock]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        projectTitle: {type: string}
+        taskId: {type: [string, "null"], format: uuid}
+        runId: {type: [string, "null"], format: uuid}
+        kind: {type: string, enum: [LLM, IMAGE, VIDEO]}
+        operation: {type: string, enum: [CHAT, SUBMIT, POLL, LEGACY]}
+        status:
+          type: string
+          enum: [RUNNING, SUCCEEDED, FAILED, UNKNOWN]
+          description: 单次调用结果；异步受理或轮询返回等待也表示本次调用成功，不表示任务已生成完成。
+        taskStatus:
+          type: [string, "null"]
+          enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED, null]
+        provider: {type: [string, "null"]}
+        model: {type: [string, "null"]}
+        traceId: {type: [string, "null"]}
+        providerRequestId: {type: [string, "null"]}
+        errorCode: {type: [string, "null"]}
+        startedAt: {type: string, format: date-time}
+        respondedAt:
+          type: [string, "null"]
+          format: date-time
+          description: 本次受控模型或媒体适配器返回或抛出的时间；适配器内部可能包含下载和媒体处理，不是底层 HTTP 首字节时间。
+        durationMs:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          description: 适配器调用的单调时钟耗时，不含后置审计写入或 Worker 的结果提交；旧适配器内部处理和 Mock 渲染计入其中。
+        historical: {type: boolean}
+        mock: {type: boolean}
     MediaSettings:
       type: object
       additionalProperties: false

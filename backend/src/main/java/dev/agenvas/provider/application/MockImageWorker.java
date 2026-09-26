@@ -6,6 +6,7 @@ import dev.agenvas.plan.application.PlanProviderProperties;
 import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.GenerationRequest;
 import dev.agenvas.provider.domain.GenerationResult;
+import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
@@ -46,8 +47,8 @@ public class MockImageWorker {
     /** 装配图片演示 Worker 所需的任务、资产和本地生成服务。 */
     public MockImageWorker(TaskService tasks, AssetService assets, GenerationGateway gateway,
             MockProviderProperties properties, PlanProviderProperties provider,
-            ObjectMapper mapper) {
-        this.worker = new TaskWorker(tasks);
+            ObjectMapper mapper, CallLogService callLogs) {
+        this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.assets = assets;
         this.gateway = gateway;

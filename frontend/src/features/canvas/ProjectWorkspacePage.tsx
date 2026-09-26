@@ -40,13 +40,9 @@ import {
 } from "../../shared/api/client";
 import { useCanvasStore } from "./canvasStore";
 import { subscribeProjectEvents, type EventSyncStatus } from "./projectEvents";
-import { PlanApprovalPanel } from "./PlanApprovalPanel";
-import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
 import { MediaExportPanel } from "./MediaExportPanel";
 import { ShotRedoEditor } from "./ShotRedoEditor";
 import { AgentChatCard, AGENT_CHAT_WIDTH, AGENT_CHAT_HEIGHT, AGENT_CHAT_MIN_WIDTH, AGENT_CHAT_MIN_HEIGHT } from "./AgentChatCard";
-import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
-import { BlockedRunNotice } from "./BlockedRunNotice";
 import { ManualStoryboardPanel } from "./ManualStoryboardPanel";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
@@ -58,6 +54,8 @@ import { MediaCardUpload } from "./MediaCardUpload";
 import { Plus, X } from "@phosphor-icons/react";
 import { inputConnectionUpdate, projectCanvasRelations,
   semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
+import { CANVAS_MAX_SIZE, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
+import { useImageNodeRatios } from "./useImageNodeRatios";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type ArtifactInputReference = NonNullable<
@@ -67,6 +65,7 @@ type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "CHARACTER" | "SCENE" | "SHOT" 
 type DrawerKind = CreationKind | "UPLOAD" | "EXPORT" | "ALIGN";
 type CreationPoint = { x: number; y: number };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
+type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
 const CREATION_MENU_WIDTH = 184;
 const CREATION_MENU_HEIGHT = 330;
 const CREATION_MENU_MARGIN = 12;
@@ -104,6 +103,7 @@ type CanvasNodeData = {
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
   updatingAgent: boolean;
   updateAgentError: Error | null;
+  imageAspectRatio: number | undefined;
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
@@ -176,6 +176,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryFn: () => listCanvasItems(projectId),
     enabled: snapshot.isSuccess,
   });
+  const imageRatios = useImageNodeRatios(canvas.data?.items);
+  const effectiveNodeSize = useCallback((item: CanvasItem, patch?: Partial<LayoutPatch>) => {
+    const draft = useCanvasStore.getState().drafts[item.id];
+    return projectImageNodeSize({
+      width: Math.max(patch?.width ?? draft?.width ?? item.width, item.agent ? AGENT_CHAT_MIN_WIDTH : 0),
+      height: Math.max(patch?.height ?? draft?.height ?? item.height, item.agent ? AGENT_CHAT_MIN_HEIGHT : 0),
+    }, imageRatios[item.id]);
+  }, [imageRatios]);
   const resources = useQuery({
     queryKey: ["artifacts", projectId],
     queryFn: () => listArtifacts(projectId),
@@ -189,6 +197,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         if (event.type.startsWith("artifact.") || event.type === "canvas.items.changed" ||
             event.type === "agent.instance.changed") {
           void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
+          if (event.type === "agent.instance.changed") {
+            void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
+          }
           if (event.type.startsWith("artifact.")) {
             void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
           }
@@ -272,8 +283,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         expectedVersion: item.version,
         x: patch.x ?? draft?.x ?? item.x,
         y: patch.y ?? draft?.y ?? item.y,
-        width: patch.width ?? draft?.width ?? item.width,
-        height: patch.height ?? draft?.height ?? item.height,
+        ...persistableNodeSize(effectiveNodeSize(item, patch)),
         zIndex: item.zIndex,
         groupId: item.groupId,
       };
@@ -586,42 +596,43 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     onError: setSaveError,
   });
   const alignSelected = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const selected = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
-      const targetX = Math.min(...selected.map((item) => drafts[item.id]?.x ?? item.x));
-      const commands: CanvasCommand[] = selected.map((item) => ({
-        type: "UPDATE_LAYOUT",
-        itemId: item.id,
-        expectedVersion: item.version,
-        x: targetX,
-        y: drafts[item.id]?.y ?? item.y,
-        width: drafts[item.id]?.width ?? item.width,
-        height: drafts[item.id]?.height ?? item.height,
-        zIndex: item.zIndex,
-        groupId: item.groupId,
-      }));
-      return applyCanvasCommands(projectId, commands);
+      const layoutDrafts = useCanvasStore.getState().drafts;
+      const targetX = Math.min(...selected.map((item) => layoutDrafts[item.id]?.x ?? item.x));
+      const commands: CanvasCommand[] = selected.map((item) => {
+        const layout = { x: targetX, y: layoutDrafts[item.id]?.y ?? item.y, ...effectiveNodeSize(item) };
+        updateDraft(item.id, layout);
+        return { type: "UPDATE_LAYOUT", itemId: item.id, expectedVersion: item.version,
+          ...layout, ...persistableNodeSize(layout), zIndex: item.zIndex, groupId: item.groupId };
+      });
+      return { saved: await applyCanvasCommands(projectId, commands), itemIds: selected.map((item) => item.id) };
     },
     onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
+    onSuccess: ({ saved, itemIds }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
-      selectedIds.forEach(clearDraft);
+      itemIds.forEach(clearDraft);
       setSaveState("saved");
     },
     onError: setSaveError,
   });
   const restoreResource = useMutation({
-    mutationFn: async (artifactId: string) => {
+    mutationFn: async (resource: RestorableResource) => {
       const rect = canvasElement.current?.getBoundingClientRect();
       const point = rect && flow.current
         ? flow.current.screenToFlowPosition({ x: rect.left + rect.width / 2,
           y: rect.top + rect.height / 2 }) : { x: 80, y: 80 };
       const itemId = crypto.randomUUID();
-      const saved = await applyCanvasCommands(projectId, [{
-        type: "PLACE_ARTIFACT", itemId, artifactId, x: point.x, y: point.y,
-        width: DEFAULT_CARD_WIDTH, height: DEFAULT_MEDIA_CARD_HEIGHT,
+      const placement = {
+        itemId, x: point.x, y: point.y,
         zIndex: canvas.data?.items.length ?? 0, locked: false,
-      }]);
+      };
+      const command: CanvasCommand = resource.subjectType === "AGENT"
+        ? { ...placement, type: "PLACE_AGENT", agentId: resource.subjectId,
+          width: AGENT_CHAT_WIDTH, height: AGENT_CHAT_HEIGHT }
+        : { ...placement, type: "PLACE_ARTIFACT", artifactId: resource.subjectId,
+          width: DEFAULT_CARD_WIDTH, height: DEFAULT_MEDIA_CARD_HEIGHT };
+      const saved = await applyCanvasCommands(projectId, [command]);
       return { saved, itemId };
     },
     onMutate: () => setSaveState("saving"),
@@ -644,10 +655,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     (itemId: string, layout: LayoutPatch) => {
       const item = canvas.data?.items.find((candidate) => candidate.id === itemId);
       if (!item) return;
-      updateDraft(itemId, layout);
-      saveLayoutMutate({ item, patch: layout });
+      const effectiveLayout = { ...layout, ...effectiveNodeSize(item, layout) };
+      updateDraft(itemId, effectiveLayout);
+      saveLayoutMutate({ item, patch: effectiveLayout });
     },
-    [canvas.data?.items, saveLayoutMutate, updateDraft],
+    [canvas.data?.items, effectiveNodeSize, saveLayoutMutate, updateDraft],
   );
   const handleRemove = useCallback(
     (item: CanvasItem) => removeItemMutate(item),
@@ -688,8 +700,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         .filter((item) => item.artifact !== null || item.agent !== null)
         .map((item) => {
           const draft = drafts[item.id];
-          const width = Math.max(draft?.width ?? item.width, item.agent ? AGENT_CHAT_MIN_WIDTH : 0);
-          const height = Math.max(draft?.height ?? item.height, item.agent ? AGENT_CHAT_MIN_HEIGHT : 0);
+          const { width, height } = effectiveNodeSize(item, draft);
           return {
             id: item.id,
             type: "canvasCard",
@@ -726,6 +737,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onUpdateAgent: handleUpdateAgent,
               updatingAgent: editAgent.isPending,
               updateAgentError: editAgent.error,
+              imageAspectRatio: imageRatios[item.id],
             },
           };
         }),
@@ -734,6 +746,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       drafts,
       editAgent.isPending,
       editAgent.error,
+      effectiveNodeSize,
       handleRemove,
       handleResizeEnd,
       handleShowOutputs,
@@ -741,6 +754,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleInspect,
       handleUpload,
       handleUpdateAgent,
+      imageRatios,
       projectId,
       selectedIds,
       snapshot.data?.activeRun,
@@ -754,7 +768,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       for (const change of changes) {
         if (change.type === "position" && change.position) {
           updateDraft(change.id, change.position);
-        } else if (change.type === "dimensions" && change.dimensions) {
+        } else if (change.type === "dimensions" && change.dimensions && change.resizing) {
+          // DOM measurements reflect the current projection; only a resize gesture is a draft.
           updateDraft(change.id, change.dimensions);
         }
       }
@@ -850,10 +865,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     selectedItems.filter((item) => item.agent !== null).length === 1 &&
     selectedItems.some((item) => item.artifact !== null);
   const canClearBindings = selectedItems.filter((item) => item.agent !== null).length === 1;
-  const activeRunOnCanvas = Boolean(snapshot.data?.activeRun && canvas.data?.items.some((item) =>
-    item.agent?.id === snapshot.data?.activeRun?.agentInstanceId));
-  const unknownTasks = (snapshot.data?.unknownTasks ?? []).filter((task) =>
-    !activeRunOnCanvas || task.runId !== snapshot.data?.activeRun?.id);
+  const projectResources = [
+    ...(resources.data?.items ?? []).map((artifact) => ({
+      subjectType: "ARTIFACT" as const, subjectId: artifact.id,
+      label: `${artifact.title} · ${artifact.kind} · ${artifact.currentVersionId ? "有结果" : "草稿"}`,
+    })),
+    ...(snapshot.data?.agents ?? []).map((agent) => ({
+      subjectType: "AGENT" as const, subjectId: agent.id, label: `${agent.name} · Agent`,
+    })),
+  ];
 
   if (currentUser.isError) return <Navigate to="/login" replace />;
 
@@ -886,41 +906,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       </header>
 
-      {!activeRunOnCanvas && snapshot.data?.activeRun?.status === "BLOCKED" ?
-        <BlockedRunNotice projectId={projectId} runId={snapshot.data.activeRun.id} /> : null}
-
-      {unknownTasks.length > 0 ? (
-        <div className="col-span-full border-b border-amber-300 bg-amber-50 px-6 py-3 text-sm text-amber-950" role="alert">
-          <p>{unknownTasks.length} 个任务的外部提交结果未知：可能已开始执行并产生费用。系统不会自动重复提交；取消运行也不表示外部任务已停止或退款。请先核对原请求。</p>
-          <details className="mt-2">
-            <summary className="cursor-pointer font-medium">查看待核对任务</summary>
-            <ul className="mt-2 space-y-2">
-              {unknownTasks.map((task) => <li className="break-all rounded border border-amber-300 p-2" key={task.id}>
-                <span className="font-medium">{task.kind} · {task.stepKey} · 第 {task.attemptNo} 次尝试</span>
-                <span className="block">任务 ID：{task.id}</span>
-                {task.providerRequestId ? <span className="block">原 Provider 请求 ID：{task.providerRequestId}</span> :
-                  <span className="block">原 Provider 请求 ID 未保存；不能据此判断外部未受理。</span>}
-                {task.errorCode ? <span className="block">状态码：{task.errorCode}</span> : null}
-                <span className="block">最近更新：<time dateTime={task.updatedAt}>{new Date(task.updatedAt).toLocaleString()}</time></span>
-                {task.cancelRequested ? <span className="block">本系统已请求停止后续编排。</span> : null}
-                <UnknownTaskAttemptPanel projectId={projectId} taskId={task.id} taskVersion={task.version}
-                  planned={task.planId !== null}
-                  direct={task.kind === "IMAGE_GENERATION" || task.kind === "VIDEO_GENERATION"}
-                  cancelRequested={task.cancelRequested} />
-              </li>)}
-            </ul>
-          </details>
-        </div>
-      ) : null}
-
-      {!activeRunOnCanvas && snapshot.data?.activeRun?.status === "WAITING_APPROVAL" ? (
-        <PlanApprovalPanel projectId={projectId} runId={snapshot.data.activeRun.id} />
-      ) : null}
-
-      {!activeRunOnCanvas && snapshot.data?.activeRun?.status === "WAITING_TASKS" ? (
-        <KeyframeSelectionPanel projectId={projectId} runId={snapshot.data.activeRun.id} />
-      ) : null}
-
       {(toolsKind || resourcesOpen) ? <aside className="workspace-drawer" aria-label={resourcesOpen ? "项目资源" : "创建与工具"}>
         <div className="workspace-drawer-heading">
           <h2 className="font-semibold">{resourcesOpen ? "项目资源" : "创建与工具"}</h2>
@@ -935,15 +920,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {resources.isPending ? <p className="mt-3 text-sm">正在读取资源…</p> : null}
           {resources.error ? <WorkspaceError error={resources.error} /> : null}
           <ul className="mt-3 space-y-2">
-            {(resources.data?.items ?? []).filter((artifact) =>
-              `${artifact.title} ${artifact.kind}`.toLowerCase()
-                .includes(resourceSearch.trim().toLowerCase())).map((artifact) => {
+            {projectResources.filter((resource) => resource.label.toLowerCase()
+              .includes(resourceSearch.trim().toLowerCase())).map((resource) => {
               const placed = canvas.data?.items.some((item) =>
-                item.artifact?.id === artifact.id);
-              return <li className="resource-entry" key={artifact.id}>
-                <span>{artifact.title} · {artifact.kind} · {artifact.currentVersionId ? "有结果" : "草稿"}</span>
+                item.subjectType === resource.subjectType && item.subjectId === resource.subjectId);
+              return <li className="resource-entry" key={`${resource.subjectType}:${resource.subjectId}`}>
+                <span>{resource.label}</span>
                 <button className="node-action" disabled={placed || restoreResource.isPending}
-                  onClick={() => restoreResource.mutate(artifact.id)} type="button">
+                  onClick={() => restoreResource.mutate(resource)} type="button">
                   {placed ? "已在画布" : "放回画布"}</button>
               </li>;
             })}
@@ -1037,7 +1021,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onConnect={(connection) => connectInput.mutate(connection)}
           onNodeDragStop={(_, node) => {
             const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
-            if (item) saveLayout.mutate({ item, patch: { x: node.position.x, y: node.position.y } });
+            if (item) {
+              const patch = { x: node.position.x, y: node.position.y, ...effectiveNodeSize(item) };
+              updateDraft(item.id, patch);
+              saveLayout.mutate({ item, patch });
+            }
           }}
           onNodeClick={(_, node) => setSelectedIds([node.id])}
           onNodesChange={handleNodesChange}
@@ -1153,7 +1141,11 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     artifact, selected, locked: data.item.locked,
     onInspect: () => data.onInspect(data.item), onEdit: focusArtifactEditor,
     children: <NodeResizer isVisible={selected && !data.item.locked}
-      minHeight={MIN_ARTIFACT_CARD_SIZE} minWidth={MIN_ARTIFACT_CARD_SIZE}
+      {...(data.imageAspectRatio === undefined
+        ? { minHeight: MIN_ARTIFACT_CARD_SIZE, minWidth: MIN_ARTIFACT_CARD_SIZE,
+          maxWidth: CANVAS_MAX_SIZE, maxHeight: CANVAS_MAX_SIZE }
+        : imageNodeResizeBounds(data.imageAspectRatio))}
+      keepAspectRatio={data.imageAspectRatio !== undefined}
       onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />,
   };
   return (

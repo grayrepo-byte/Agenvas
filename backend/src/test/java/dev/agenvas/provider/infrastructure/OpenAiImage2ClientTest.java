@@ -278,6 +278,31 @@ class OpenAiImage2ClientTest {
         }
     }
 
+    @Test
+    void protocolFailureLogsNeverIncludeResponseBodyEndpointOrCredential() {
+        String privateBody = "private-response-marker";
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"private\":\"" + privateBody + "\",\"data\":[]}"));
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OpenAiImage2Client.class);
+        var captured = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        captured.start();
+        logger.addAppender(captured);
+        String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        try {
+            assertThatThrownBy(() -> client.generate("private-key-marker", OpenAiImage2Client.DEFAULT_MODEL,
+                    "private-prompt-marker", "medium", "1024x1024", endpoint))
+                    .isInstanceOf(OpenAiImage2Client.Uncertain.class);
+            assertThat(captured.list).isNotEmpty().allSatisfy(event -> {
+                assertThat(event.getFormattedMessage()).doesNotContain(privateBody, endpoint,
+                        "private-key-marker", "private-prompt-marker");
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+        } finally {
+            logger.detachAppender(captured);
+            captured.stop();
+        }
+    }
+
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");

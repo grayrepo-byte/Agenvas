@@ -14,6 +14,7 @@ function showShell(path = "/projects") {
     <Route path="/projects" element={<PageShell title="项目"><p>项目内容</p><input aria-label="临时草稿" defaultValue="" /></PageShell>} />
     <Route path="/settings/llm" element={<PageShell title="模型设置"><p>模型内容</p></PageShell>} />
     <Route path="/settings/media" element={<PageShell title="媒体配置"><p>媒体内容</p></PageShell>} />
+    <Route path="/settings/calls" element={<PageShell title="调用日志"><p>调用记录内容</p></PageShell>} />
     <Route path="/login" element={<h1>登录页</h1>} />
   </Routes></MemoryRouter></QueryClientProvider>);
   return client;
@@ -34,6 +35,9 @@ describe("PageShell", () => {
     expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("link", { name: "媒体配置" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "跳至页面内容" })).toHaveAttribute("href", "#page-content");
+    fireEvent.click(screen.getByRole("link", { name: "调用日志" }));
+    expect(await screen.findByText("调用记录内容")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "调用日志" })).toHaveAttribute("aria-current", "page");
   });
 
   it("keeps a failed session read recoverable without pretending the user is logged out", async () => {

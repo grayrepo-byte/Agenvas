@@ -4,13 +4,15 @@
   position: relative;
   width: 100%;
   height: 100%;
-  border: 1.5px solid #b7b7b7;
+  border: 0;
+  padding: 0;
   border-radius: 14px;
   background: #262626;
   color: #ededed;
 }
 
-.artifact-canvas-card.is-selected { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
+/* An outer shadow follows the card radius without taking space from the preview. */
+.artifact-canvas-card.is-selected { box-shadow: 0 0 0 2px #fff; }
 .artifact-card-caption {
   position: absolute;
   top: -24px;

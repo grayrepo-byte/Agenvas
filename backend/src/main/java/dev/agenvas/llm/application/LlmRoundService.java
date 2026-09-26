@@ -1,5 +1,7 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.audit.application.CallLogService;
+import dev.agenvas.audit.domain.CallLog;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,6 +21,7 @@ public class LlmRoundService {
 
     /** 使用 Run 钉住的配置调用模型，且关闭自动工具执行。 */
     private final ChatGateway gateway;
+    private final CallLogService callLogs;
     /** 将模型可见消息与完整响应转换为版本化持久化协议。 */
     private final LlmProtocolCodec codec;
     /** 保存请求与响应检查点，并支持已完成回合的重放。 */
@@ -34,7 +37,8 @@ public class LlmRoundService {
      */
     public LlmRoundService(ChatGateway gateway,
             LlmProtocolCodec codec, LlmTurnCheckpointService checkpoints,
-            AgentRunRepository runs) {
+            AgentRunRepository runs, CallLogService callLogs) {
+        this.callLogs = callLogs;
         this.gateway = gateway;
         this.codec = codec;
         this.checkpoints = checkpoints;
@@ -75,7 +79,14 @@ public class LlmRoundService {
         if (turn.status() == LlmTurn.Status.RESPONDED) {
             return turn.response();
         }
-        ChatGateway.Exchange exchange = gateway.call(messages, tools, trustedContext, selected);
+        ChatGateway.ModelDetails model = gateway.modelDetailsFor(selected);
+        boolean mock = "mock".equals(selected.source());
+        CallLogService.CallDescriptor descriptor = new CallLogService.CallDescriptor(
+                projectId, null, runId, stepIndex, CallLog.Kind.LLM, CallLog.Operation.CHAT,
+                mock ? "mock" : model.providerAdapter(), model.modelId(), mock);
+        ChatGateway.Exchange exchange = callLogs.record(descriptor,
+                () -> gateway.call(messages, tools, trustedContext, selected),
+                ignored -> CallLogService.CallOutcome.succeeded(null));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");
         }

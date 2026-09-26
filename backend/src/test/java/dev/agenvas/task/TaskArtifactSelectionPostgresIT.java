@@ -53,6 +53,9 @@ class TaskArtifactSelectionPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
@@ -91,7 +94,7 @@ class TaskArtifactSelectionPostgresIT {
 
         Task first = createMedia(owner.userId(), project.id(), run.id(), image.artifact().id(),
                 "first", List.of());
-        new TaskWorker(tasks).runOnce("worker-first", 1,
+        new TaskWorker(tasks, callLogs).runOnce("worker-first", 1,
                 claimed -> new TaskWorker.GeneratedArtifact(media(claimed.id(), "first result")));
         ArtifactService.ArtifactView selected = artifacts.get(owner.userId(), project.id(),
                 image.artifact().id());

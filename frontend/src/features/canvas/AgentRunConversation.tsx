@@ -76,12 +76,12 @@ export function AgentRunConversation({ projectId, run, active }: {
       {plans.data.map((plan) => <p key={plan.id}>{plan.stage === "IMAGE" ? "图片" : "视频"}计划 · 第 {plan.revision} 版 · {plan.status} · {plan.steps.length} 个步骤</p>)}
     </details> : null}
     {!active && plans.error ? <div className="agent-chat-error" role="alert">审批记录读取失败。<button className="node-action" onClick={() => void plans.refetch()} type="button">重试审批记录</button></div> : null}
-    {active && run.status === "WAITING_APPROVAL" ? <PlanApprovalPanel projectId={projectId} runId={run.id} presentation="chat" /> : null}
-    {active && run.status === "WAITING_TASKS" ? <KeyframeSelectionPanel projectId={projectId} runId={run.id} presentation="chat" /> : null}
-    {active && run.status === "BLOCKED" ? <BlockedRunNotice projectId={projectId} runId={run.id} presentation="chat" /> : null}
+    {active && run.status === "WAITING_APPROVAL" ? <PlanApprovalPanel projectId={projectId} runId={run.id} /> : null}
+    {active && run.status === "WAITING_TASKS" ? <KeyframeSelectionPanel projectId={projectId} runId={run.id} /> : null}
+    {active && run.status === "BLOCKED" ? <BlockedRunNotice projectId={projectId} runId={run.id} /> : null}
     {unknownTasks.map((task) => <UnknownTaskAttemptPanel key={task.id} projectId={projectId} taskId={task.id}
       taskVersion={task.version} planned={Boolean(task.planId)} direct={task.kind === "IMAGE_GENERATION" || task.kind === "VIDEO_GENERATION"}
-      cancelRequested={task.cancelRequested} presentation="chat" />)}
+      cancelRequested={task.cancelRequested} />)}
     <div className="agent-chat-run-status" role="status">
       {active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}
       {run.status === "CANCELED" || run.status === "CANCEL_REQUESTED" ? <p>仅停止本系统后续编排；外部任务可能继续执行并产生费用。</p> : null}

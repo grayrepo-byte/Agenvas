@@ -60,6 +60,9 @@ class TaskRecoveryPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ProjectSnapshotService snapshots;
@@ -140,7 +143,7 @@ class TaskRecoveryPostgresIT {
 
         Task accepted = create(owner.userId(), project.id(), run.id(), "accepted", List.of());
         AtomicBoolean checkpointSeen = new AtomicBoolean(false);
-        new TaskWorker(tasks).runOnce("worker-accepted", 1, claimed -> {
+        new TaskWorker(tasks, callLogs).runOnce("worker-accepted", 1, claimed -> {
             checkpointSeen.set(tasks.get(owner.userId(), project.id(), claimed.id()).status()
                     == Task.Status.SUBMITTING);
             return new TaskWorker.WaitingProvider("external-123", Instant.now().plusSeconds(60));

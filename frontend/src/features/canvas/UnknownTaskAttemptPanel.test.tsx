@@ -7,7 +7,7 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
 
-describe.each([undefined, "chat"] as const)("UnknownTaskAttemptPanel (%s)", (presentation) => {
+describe("UnknownTaskAttemptPanel", () => {
   it("requires an explicit duplicate-cost acknowledgement before a new attempt", async () => {
     const user = userEvent.setup();
     let created = 0;
@@ -31,7 +31,7 @@ describe.each([undefined, "chat"] as const)("UnknownTaskAttemptPanel (%s)", (pre
       }),
     );
     render(<QueryClientProvider client={createQueryClient()}>
-      <UnknownTaskAttemptPanel presentation={presentation} projectId="project-1" taskId="task-risk" taskVersion={7}
+      <UnknownTaskAttemptPanel projectId="project-1" taskId="task-risk" taskVersion={7}
         planned cancelRequested={false} />
     </QueryClientProvider>);
     await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
@@ -67,7 +67,7 @@ describe.each([undefined, "chat"] as const)("UnknownTaskAttemptPanel (%s)", (pre
       }),
     );
     render(<QueryClientProvider client={createQueryClient()}>
-      <UnknownTaskAttemptPanel presentation={presentation} projectId="project-1" taskId="task-1" taskVersion={2} planned cancelRequested={false} />
+      <UnknownTaskAttemptPanel projectId="project-1" taskId="task-1" taskVersion={2} planned cancelRequested={false} />
     </QueryClientProvider>);
     expect(lookups).toBe(0);
     await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
@@ -87,7 +87,7 @@ describe.each([undefined, "chat"] as const)("UnknownTaskAttemptPanel (%s)", (pre
         createdAt: "2026-09-24T00:00:00Z", updatedAt: "2026-09-24T00:00:00Z" }]),
     ));
     const { unmount } = render(<QueryClientProvider client={createQueryClient()}>
-      <UnknownTaskAttemptPanel presentation={presentation} projectId="project-1" taskId="task-1" taskVersion={2} planned cancelRequested={false} />
+      <UnknownTaskAttemptPanel projectId="project-1" taskId="task-1" taskVersion={2} planned cancelRequested={false} />
     </QueryClientProvider>);
     await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     expect(await screen.findByText(/提交关联键/)).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe.each([undefined, "chat"] as const)("UnknownTaskAttemptPanel (%s)", (pre
     ));
     unmount();
     render(<QueryClientProvider client={createQueryClient()}>
-      <UnknownTaskAttemptPanel presentation={presentation} projectId="project-1" taskId="task-2" taskVersion={2} planned cancelRequested />
+      <UnknownTaskAttemptPanel projectId="project-1" taskId="task-2" taskVersion={2} planned cancelRequested />
     </QueryClientProvider>);
     await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     expect(await screen.findByText(/可核对的候选 Provider ID/)).toBeInTheDocument();

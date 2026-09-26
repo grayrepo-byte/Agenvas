@@ -3,12 +3,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowsOutSimple, ArrowClockwise, CaretDown, Crop, Cube, DownloadSimple,
   Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush, Play, Scissors,
   SlidersHorizontal, Smiley, Sun, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
-import { assetContentUrl, assetThumbnailUrl, getMediaDraft, listDirectMediaTasks,
+import { assetContentUrl, assetThumbnailUrl, listDirectMediaTasks,
   type Artifact, type Task } from "../../shared/api/client";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
-import { readContentText } from "./artifactContent";
 import { isMediaTaskRunning, latestMediaTask, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
+import { assetMetadataQueryOptions, displayedMediaAssetId, isMediaDraftDisplayed, mediaDraftQueryOptions } from "./mediaDisplay";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   PENDING: "等待生成", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
@@ -32,9 +32,8 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const draft = useQuery({ queryKey: ["media-draft", artifact.projectId, artifact.id],
-    queryFn: () => getMediaDraft(artifact.projectId, artifact.id) });
-  const showDraft = artifact.currentVersionId === null || draft.data?.displayMode === "DRAFT";
+  const draft = useQuery(mediaDraftQueryOptions(artifact));
+  const showDraft = isMediaDraftDisplayed(artifact, draft.data);
   const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, artifact.id],
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id), enabled: showDraft,
     refetchInterval: (query) => query.state.data?.some(isMediaTaskRunning)
@@ -42,11 +41,12 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
   const latest = latestMediaTask(tasks.data);
   const busy = showDraft && latest && isMediaTaskRunning(latest);
   const status = showDraft && latest ? TASK_LABELS[latest.status] : undefined;
-  const assetId = showDraft ? null : readContentText(artifact.currentVersion?.content, "assetId") || null;
+  const assetId = displayedMediaAssetId(artifact, draft.data);
   const content = artifact.currentVersion?.content;
   const parameters = content && typeof content === "object" && "parameters" in content ? content.parameters : null;
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
   const isImage = artifact.kind === "IMAGE";
+  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage ? assetId : null));
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -84,7 +84,11 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
           aria-label={isImage ? "下载图片" : "下载视频"}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
-      {assetId ? <MediaPreview key={assetId} assetId={assetId} artifact={artifact} demo={demo} />
+      {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact} demo={demo} />
+        {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
+          {metadata.data ? "图片尺寸刷新失败，请重试" : "图片尺寸读取失败，暂按原卡片尺寸显示"}
+          <button type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
+            {metadata.isFetching ? "正在重试…" : "重试尺寸"}</button></p> : null}</>
         : <div className="media-card-empty">
           {busy ? <CanvasLoadingState label={status ?? "正在生成"} /> : <>
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />

@@ -309,7 +309,16 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
             run={run} active={ownRun?.id === run.id} />)}
           {reviewInstruction ? <AgentChatMessage role="user" label="待发送">{reviewInstruction}</AgentChatMessage> : null}
       {reviewInstruction !== null ? (
-        <AgentChatApproval title="运行前确认" description="确认本次任务的模型、输入与使用限额。">
+        <AgentChatApproval title="运行前确认" description="确认本次任务的模型、输入与使用限额。" className="agent-chat-panel"
+          footer={preflight.data && !preflight.isFetching && !preflight.isError ? <div className="agent-chat-panel-actions">
+            <button className="agent-chat-panel-secondary" disabled={start.isPending} onClick={() => setReview(null)} type="button">返回修改</button>
+            <button className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
+              preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
+              !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
+              !redoBound || preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null} onClick={confirmRun} type="button">
+              {start.isPending ? "启动中…" : "确认开始规划"}
+            </button>
+          </div> : undefined}>
           {preflight.isPending || preflight.isFetching ? <p className="mt-2">正在核对模型与输入…</p> : null}
           {preflight.error ? <ChatError error={preflight.error} /> : null}
           {preflight.data && !preflight.isFetching && !preflight.isError ? (
@@ -339,13 +348,6 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
               </details>
               {!preflight.data.toolCalling && preflight.data.modelAvailable ?
                 <p className="mt-1 text-red-700">当前模型未确认支持工具调用，无法运行。</p> : null}
-              <button className="node-action mt-2" disabled={Boolean(data.activeRun) || start.isPending ||
-                preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
-                !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
-                !redoBound || preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null} onClick={confirmRun} type="button">
-                {start.isPending ? "启动中…" : "确认开始规划"}
-              </button>
-              <button className="node-action" disabled={start.isPending} onClick={() => setReview(null)} type="button">返回修改</button>
             </>
           ) : null}
         </AgentChatApproval>

@@ -93,6 +93,9 @@ class ExecutionPlanPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
@@ -305,7 +308,7 @@ class ExecutionPlanPostgresIT {
 
         AtomicReference<Task> completedLease = new AtomicReference<>();
         AtomicReference<ObjectNode> completedContent = new AtomicReference<>();
-        TaskWorker worker = new TaskWorker(tasks);
+        TaskWorker worker = new TaskWorker(tasks, callLogs);
         while (mediaTasks(owner.userId(), project.id(), running.id()).stream()
                 .filter(task -> imagePlanId.equals(task.planId()))
                 .anyMatch(task -> task.status() != Task.Status.SUCCEEDED)) {

@@ -9,6 +9,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
+import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
@@ -55,8 +56,8 @@ public class ComfyUiVideoWorker {
     public ComfyUiVideoWorker(TaskService tasks, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ComfyUiClient client,
             ComfyUiVideoPoller poller, ComfyUiVideoWorkflow workflow,
-            PlanProviderProperties provider) {
-        this.worker = new TaskWorker(tasks);
+            PlanProviderProperties provider, CallLogService callLogs) {
+        this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
         this.assets = assets;

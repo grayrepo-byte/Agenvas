@@ -87,6 +87,9 @@ class MockStoryboardPostgresIT {
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
@@ -477,7 +480,7 @@ class MockStoryboardPostgresIT {
         assertThat(artifacts.get(owner.userId(), project.id(), secondShotId)
                 .currentVersion().id()).isEqualTo(laterEdit.shot().currentVersion().id());
         AtomicInteger unexpectedSubmissions = new AtomicInteger();
-        assertThat(new dev.agenvas.task.application.TaskWorker(tasks).runVideosOnce(
+        assertThat(new dev.agenvas.task.application.TaskWorker(tasks, callLogs).runVideosOnce(
                 "keyframe-stale-worker", 1, (task, requestKey) -> {
                     unexpectedSubmissions.incrementAndGet();
                     return new dev.agenvas.task.application.TaskWorker.Failed("UNEXPECTED_SUBMISSION");

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Images } from "@phosphor-icons/react";
+import { AgentChatApproval } from "./AgentChatPrimitives";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import "./AgentChatPanels.css";
 import {
@@ -13,10 +13,9 @@ import {
 } from "../../shared/api/client";
 
 /** Lists completed image outputs so the user can explicitly choose each shot's stage-B input. */
-export function KeyframeSelectionPanel({ projectId, runId, presentation = "panel" }: {
-  projectId: string; runId: string; presentation?: "panel" | "chat";
+export function KeyframeSelectionPanel({ projectId, runId }: {
+  projectId: string; runId: string;
 }) {
-  const isChat = presentation === "chat";
   const tasks = useQuery({
     queryKey: ["run-tasks", projectId, runId],
     queryFn: () => listRunTasks(projectId, runId),
@@ -24,29 +23,25 @@ export function KeyframeSelectionPanel({ projectId, runId, presentation = "panel
   const images = tasks.data?.filter((task) => task.kind === "IMAGE_GENERATION" &&
     task.status === "SUCCEEDED" && typeof task.output?.artifactId === "string" &&
     typeof task.output?.artifactVersionId === "string") ?? [];
-  if (tasks.isPending) return isChat ? <div className="agent-chat-panel"><CanvasLoadingState compact label="正在读取关键帧结果…" /></div>
-    : <p className="border-b px-6 py-3 text-sm" role="status">正在读取关键帧结果…</p>;
-  if (tasks.error) return isChat ? <div className="agent-chat-panel"><p role="alert">无法读取关键帧结果：{tasks.error.message}</p>
-    <button className="agent-chat-panel-text-button" disabled={tasks.isFetching} onClick={() => void tasks.refetch()} type="button">重新读取关键帧</button></div>
-    : <p className="border-b px-6 py-3 text-sm text-red-800" role="alert">无法读取关键帧结果：{tasks.error.message}</p>;
+  if (tasks.isPending) return <div className="agent-chat-panel"><CanvasLoadingState compact label="正在读取关键帧结果…" /></div>;
+  if (tasks.error) return <div className="agent-chat-panel"><p role="alert">无法读取关键帧结果：{tasks.error.message}</p>
+    <button className="agent-chat-panel-text-button" disabled={tasks.isFetching} onClick={() => void tasks.refetch()} type="button">重新读取关键帧</button></div>;
   // Once stage B has tasks, its pinned keyframes are immutable for this Run.
   if (tasks.data?.some((task) => task.kind === "VIDEO_GENERATION")) return null;
   if (images.length === 0) return null;
 
-  return <section aria-label="选择镜头关键帧" className={isChat ? "agent-chat-panel agent-chat-keyframes"
-    : "col-span-full border-b border-sky-200 bg-sky-50 px-6 py-4 text-sm"}>
-    <h2 className={isChat ? "agent-chat-panel-notice-title" : "font-semibold"}>{isChat ? <Images aria-hidden="true" /> : null}选择镜头关键帧</h2>
-    <p className={isChat ? "agent-chat-panel-description" : "mt-1 text-[var(--muted)]"}>视频计划只会使用你明确选定的图片版本。{isChat ? "Mock 只产生演示素材。" : "当前是已归档的演示图片，非 AI 生成。"}</p>
-    <ul className={isChat ? "agent-chat-keyframe-list" : "mt-3 space-y-2"}>
-      {images.map((task) => <KeyframeChoice key={task.id} projectId={projectId} runId={runId} task={task} presentation={presentation} />)}
+  return <AgentChatApproval title="选择镜头关键帧"
+    description="视频计划只会使用你明确选定的图片版本。Mock 只产生演示素材。"
+    className="agent-chat-panel agent-chat-keyframes">
+    <ul className="agent-chat-keyframe-list">
+      {images.map((task) => <KeyframeChoice key={task.id} projectId={projectId} runId={runId} task={task} />)}
     </ul>
-  </section>;
+  </AgentChatApproval>;
 }
 
-function KeyframeChoice({ projectId, runId, task, presentation }: {
-  projectId: string; runId: string; task: Task; presentation: "panel" | "chat";
+function KeyframeChoice({ projectId, runId, task }: {
+  projectId: string; runId: string; task: Task;
 }) {
-  const isChat = presentation === "chat";
   const queryClient = useQueryClient();
   const shotId = String(task.input.shotArtifactId ?? "");
   const shotVersionId = String(task.input.shotVersionId ?? "");
@@ -82,16 +77,16 @@ function KeyframeChoice({ projectId, runId, task, presentation }: {
   const assetId = typeof content === "object" && content !== null && "assetId" in content &&
     typeof content.assetId === "string" ? content.assetId : null;
 
-  return <li className={isChat ? "agent-chat-keyframe-choice" : "rounded-lg border border-sky-200 bg-white p-3"}
+  return <li className="agent-chat-keyframe-choice"
     data-selected={selected || undefined}>
     {assetId ?
-      <img alt={`镜头 ${shotId} 的${isChat ? "" : "演示"}关键帧`} className={isChat ? "agent-chat-keyframe-thumbnail" : "mb-2 h-36 w-auto rounded object-contain"}
+      <img alt={`镜头 ${shotId} 的关键帧`} className="agent-chat-keyframe-thumbnail"
         decoding="async" loading="lazy"
         src={assetThumbnailUrl(projectId, assetId)} /> : null}
-    <div className={isChat ? "agent-chat-keyframe-details" : undefined}>
+    <div className="agent-chat-keyframe-details">
       <p className="font-medium">镜头 {shotId} · 图片版本 {imageVersionId}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">来源任务 {task.id} · 提示词 {String(task.input.prompt ?? "")}</p>
-      <button className={isChat ? "agent-chat-panel-secondary" : "secondary-button mt-2"} disabled={!canChoose || selected || choose.isPending}
+      <button className="agent-chat-panel-secondary" disabled={!canChoose || selected || choose.isPending}
         onClick={() => choose.mutate()} type="button">
         {selected ? "已选为关键帧" : choose.isPending ? "正在保存选择…" : "选为此镜头关键帧"}
       </button>

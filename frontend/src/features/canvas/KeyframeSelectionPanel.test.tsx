@@ -7,7 +7,7 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
 
-describe.each([undefined, "chat"] as const)("KeyframeSelectionPanel (%s)", (presentation) => {
+describe("KeyframeSelectionPanel", () => {
   it("requires an explicit click before persisting a completed image version", async () => {
     let saved = 0;
     server.use(
@@ -35,7 +35,7 @@ describe.each([undefined, "chat"] as const)("KeyframeSelectionPanel (%s)", (pres
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <KeyframeSelectionPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <KeyframeSelectionPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
     expect(await screen.findByText(/图片版本 image-version-1/)).toBeInTheDocument();
     expect(saved).toBe(0);
@@ -53,7 +53,7 @@ describe.each([undefined, "chat"] as const)("KeyframeSelectionPanel (%s)", (pres
         input: { imageVersionId: "image-version-1" }, output: null },
     ])));
     render(<QueryClientProvider client={createQueryClient()}>
-      <KeyframeSelectionPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <KeyframeSelectionPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
     expect(await screen.findByText("正在读取关键帧结果…")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("正在读取关键帧结果…")).not.toBeInTheDocument());

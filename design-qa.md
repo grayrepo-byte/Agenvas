@@ -70,3 +70,41 @@ Other nodes visual result: blocked
 - 待补验：桌面及窄屏登录/初始化、侧栏折叠、长项目名和分页、能力参数展开、保存冲突和重试、系统状态长文案、改密等待态，以及页面跳转后的焦点与滚动。组件测试与静态构建不替代这些视觉检查。
 
 Outside-canvas visual result: blocked
+
+## 节点选中与图片比例修正（2026-09-26）
+
+- 根据用户补充，工具栏绑定对应节点上方；图片完整显示，节点按图片比例调整自身尺寸，不采用 cover 裁切。
+- 移除 Artifact 与 Agent 未选中的外边框；选中使用贴合卡片圆角且不占内部空间的外圈。缩放边线和八个控制点透明，保留边缘与角落的拖动热区及缩放光标，不影响连线端点；预览继承卡片圆角。
+- 本轮内置浏览器打开 `http://localhost:5173/projects` 仍返回 `net::ERR_BLOCKED_BY_CLIENT`，未获得实际画布截图。React Flow 坐标回归与布局单元测试不能替代截图验收。
+- 进一步排查：失败标签停留在 `about:blank`，空白页截图成功，本地端口仍在监听。可确认页面导航被拦截，尚无截图权限不足的证据；浏览器及应用日志未提供具体拦截原因。
+- 待补验：横图、竖图和方图切换后的节点尺寸，缩略图完整性及边缘贴合，拖动/缩放/对齐/刷新后的比例，视口缩放与节点贴边时的工具栏，以及选中/未选中和锁定节点的外观。
+
+Node-selection visual result: blocked
+
+### 访问地址更正
+
+当前运行的 Docker Web 入口为 `http://localhost:8088`，5173 为迁移前遗留 Vite 服务。按用户建议使用 Chrome 访问 8088 后，已成功加载并截图 Agenvas 登录页；先前访问错误端口的失败不能用于判断整个本地项目无法访问。截图权限正常，未修改浏览器权限。画布视觉检查尚待完成登录，并确认运行前端包含当前工作区改动；登录页截图不作为节点交互验收证据。
+
+### 本地前端重新启动后的实测
+
+按用户要求停止旧 Vite，使用当前 Next.js 在 `127.0.0.1:5173` 启动开发前端。Chrome“日常”实例使用已有 `127.0.0.1` 登录会话成功打开项目画布，完成选中图片和视口平移截图：节点无白色缩放点，图片完整显示、选中外圈贴合圆角，工具栏随视口平移且位于节点上方。Docker 的 8088 服务保持运行。当前基础截图验证已完成，其他图片比例、节点尺寸拖拽、锁定与窄屏回归仍未验证；节点靠近画布上边缘时工具栏会被裁切，当前未增加贴边避让。
+
+Node-selection visual result: partial — selected image and viewport pan verified in local Next.js preview.
+
+## 调用日志与历史提示迁移（2026-09-26）
+
+- 复用现有 Beautiful UI 黑色侧栏、面板、状态标签和像素加载器，增加 `/settings/calls`；调用日志入口只放在黑色侧栏导航，画布不放任何入口。
+- 使用独立 Mock 后端、PostgreSQL 和当前静态构建，在 Chrome `localhost:15173` 实测。截图确认日志页深色层级、过滤表单、调用表格和展开详情可读；日志 5 条（4 条真实 Mock 调用加 1 条明确的历史 fixture）。
+- 实际操作通过：展开调用时间/响应/耗时/Trace ID，筛选 UNKNOWN，展开历史提交账本，前往仍含 UNKNOWN 的项目确认无常驻黄条、无空审批横幅，再从侧栏导航回到当前项目过滤的日志。控制台 warning/error 为空。
+- 历史缺失信息显示“未记录”，不伪造追踪值；未在浏览器触发新尝试或真实 Provider，未验收窄屏与大量记录。用户 Docker 部署未变。
+
+Call-audit visual result: desktop workflow verified in isolated Mock environment.
+
+## 审批归档位置与调用日志入口归位（2026-09-26）
+
+- 用户确认：审批提示按 Beautiful UI 的 Approval Card 只放在 Agent 对话框内，画布不再承载审批；调用日志入口只放在菜单栏（侧栏导航），画布不放入口。
+- 收口上一轮遗留：`PlanApprovalPanel` 在无待审计划时不再渲染空审批卡；`BlockedRunNotice` 与 `UnknownTaskAttemptPanel` 去掉已无调用方的 `presentation="panel"` 分支，只保留对话内呈现；`AgentChatCard` 的“返回运行会话”用例补上 PENDING 计划夹具，断言审批卡片出现在对话内且未确认时主按钮禁用。
+- 定向验证：`AgentChatCard`、`BlockedRunNotice`、`UnknownTaskAttemptPanel`、`AgentRunConversation`、`CallLogsPage`、`PlanApprovalPanel`、`KeyframeSelectionPanel`、`ProjectWorkspacePage`、`ProjectWorkspaceImageLayout`、`MediaCanvasCard`、`ArtifactCardFrame`、`imageNodeLayout`、`App`、`PageShell` 共 14 个文件、98 项通过；ESLint、TypeScript 通过。未运行全量测试。
+- 未取得浏览器截图：审批卡在真实滚动区内的长内容、360px 宽度下的换行与按钮换行仍未做视觉验收；组件测试不替代该结论。
+
+Approval placement visual result: blocked

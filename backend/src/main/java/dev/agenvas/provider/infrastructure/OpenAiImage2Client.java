@@ -33,7 +33,6 @@ public class OpenAiImage2Client {
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiImage2Client.class);
     /** 诊断预览的最大字符数，避免把整张 base64 写进日志。 */
-    private static final int PREVIEW_CHARS = 200;
     /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
     public static final String DEFAULT_MODEL = "gpt-image-2";
     private static final URI OFFICIAL_BASE = URI.create("https://api.openai.com/v1/");
@@ -122,8 +121,7 @@ public class OpenAiImage2Client {
                 if (status != 200) throw new Uncertain("OpenAI submission status uncertain");
                 JsonNode data = mapper.readTree(bytes).path("data");
                 if (!data.isArray() || data.size() != 1) {
-                    LOGGER.warn("OpenAI image result shape is invalid (status={}, preview={})",
-                            status, preview(bytes));
+                    LOGGER.warn("OpenAI image result shape is invalid status={} code=PROVIDER_PROTOCOL_INVALID", status);
                     throw new Uncertain("OpenAI image result shape is invalid");
                 }
                 JsonNode item = data.path(0);
@@ -135,28 +133,20 @@ public class OpenAiImage2Client {
                 if (item.path("url").isTextual()) {
                     return download(item.path("url").asText());
                 }
-                LOGGER.warn("OpenAI image item has neither b64_json nor url (status={}, "
-                        + "preview={})", status, preview(bytes));
+                LOGGER.warn("OpenAI image result payload missing status={} code=PROVIDER_PROTOCOL_INVALID", status);
                 throw new Uncertain("OpenAI image result shape is invalid");
             }
         } catch (IOException failure) {
-            LOGGER.warn("OpenAI image response was lost", failure);
+            LOGGER.warn("OpenAI image response was lost code=PROVIDER_RESPONSE_LOST");
             throw new Uncertain("OpenAI image response was lost");
         } catch (RuntimeException failure) {
             if (failure instanceof Rejected || failure instanceof Uncertain) {
-                LOGGER.warn("OpenAI image call did not complete: {}", failure.getMessage());
+                LOGGER.warn("OpenAI image call did not complete code=PROVIDER_CALL_INCOMPLETE");
                 throw failure;
             }
-            LOGGER.warn("OpenAI image response could not be decoded", failure);
+            LOGGER.warn("OpenAI image response could not be decoded code=PROVIDER_PROTOCOL_INVALID");
             throw new Uncertain("OpenAI image response could not be decoded");
         }
-    }
-
-    /** 只截断预览响应的开头，用于判断形状；不记录完整 body。 */
-    private static String preview(byte[] body) {
-        String text = new String(body, StandardCharsets.UTF_8);
-        return text.length() <= PREVIEW_CHARS ? text
-                : text.substring(0, PREVIEW_CHARS) + "...";
     }
 
     private static byte[] decodeInline(String encoded) {
@@ -178,28 +168,24 @@ public class OpenAiImage2Client {
         try {
             url = URI.create(rawUrl);
         } catch (IllegalArgumentException malformed) {
-            LOGGER.warn("OpenAI image result URL is malformed: {}",
-                    preview(rawUrl.getBytes(StandardCharsets.UTF_8)));
+            LOGGER.warn("OpenAI image result URL is malformed code=PROVIDER_RESULT_URL_INVALID");
             throw new Uncertain("OpenAI image result URL is malformed");
         }
         if (url.getHost() == null || !("https".equalsIgnoreCase(url.getScheme())
                 || "http".equalsIgnoreCase(url.getScheme()))) {
-            LOGGER.warn("OpenAI image result URL is unsupported: scheme={} host={}",
-                    url.getScheme(), url.getHost());
+            LOGGER.warn("OpenAI image result URL is unsupported code=PROVIDER_RESULT_URL_INVALID");
             throw new Uncertain("OpenAI image result URL is unsupported");
         }
         for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
             try {
                 return fetch(url);
             } catch (IOException transientFailure) {
-                LOGGER.warn("OpenAI image download attempt {}/{} failed for host {}: {}",
-                        attempt, DOWNLOAD_ATTEMPTS, url.getHost(),
-                        transientFailure.getClass().getSimpleName());
+                LOGGER.warn("OpenAI image download attempt {}/{} failed code=PROVIDER_DOWNLOAD_FAILED",
+                        attempt, DOWNLOAD_ATTEMPTS);
                 if (attempt < DOWNLOAD_ATTEMPTS) pause();
             }
         }
-        throw new Uncertain("OpenAI image result could not be downloaded from "
-                + url.getHost());
+        throw new Uncertain("OpenAI image result could not be downloaded");
     }
 
     /** 单次下载；已生成的结果没有重发语义，所以非 200 直接判失败而不重试。 */
@@ -207,15 +193,15 @@ public class OpenAiImage2Client {
         Request request = new Request.Builder().url(url.toString()).get().build();
         try (Response response = downloads.newCall(request).execute()) {
             if (response.code() != 200 || response.body() == null) {
-                LOGGER.warn("OpenAI image result URL returned HTTP {} for host {}",
-                        response.code(), url.getHost());
+                LOGGER.warn("OpenAI image result download returned HTTP {} code=PROVIDER_DOWNLOAD_FAILED",
+                        response.code());
                 throw new Uncertain("OpenAI image result URL is unavailable");
             }
             try (InputStream input = response.body().byteStream()) {
                 byte[] image = input.readNBytes(MAX_IMAGE_BYTES + 1);
                 if (image.length > MAX_IMAGE_BYTES) {
-                    LOGGER.warn("OpenAI image result from host {} exceeds {} bytes",
-                            url.getHost(), MAX_IMAGE_BYTES);
+                    LOGGER.warn("OpenAI image result exceeds {} bytes code=PROVIDER_RESULT_TOO_LARGE",
+                            MAX_IMAGE_BYTES);
                     throw new Uncertain("OpenAI image result exceeds bound");
                 }
                 return new MediaPayload(new ByteArrayInputStream(image),

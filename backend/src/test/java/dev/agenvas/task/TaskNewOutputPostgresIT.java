@@ -56,6 +56,9 @@ class TaskNewOutputPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
@@ -99,7 +102,7 @@ class TaskNewOutputPostgresIT {
                 run.id(), planId, "shot-1-image", Task.Kind.IMAGE_GENERATION,
                 mapper.createObjectNode(), null, 1, List.of(), "shot-1-keyframe");
         assertThat(countImages(project.id())).isZero();
-        new TaskWorker(tasks).runOnce("output-worker", 1,
+        new TaskWorker(tasks, callLogs).runOnce("output-worker", 1,
                 lease -> new TaskWorker.GeneratedArtifact(media(lease.id(), "first")));
         Task succeeded = tasks.get(owner.userId(), project.id(), first.id());
         UUID artifactId = UUID.fromString(succeeded.output().path("artifactId").asText());

@@ -63,6 +63,12 @@ public interface ChatGateway {
         return new ModelDetails(false, null, null, false);
     }
 
+    /** Audit metadata follows the exact pinned configuration, never a newer active model. */
+    default ModelDetails modelDetailsFor(ConfigIdentity expected) {
+        return configIdentity().equals(expected) ? modelDetails()
+                : new ModelDetails(false, null, null, false);
+    }
+
     /**
      * 一次调用结果及所用配置版本。
      *

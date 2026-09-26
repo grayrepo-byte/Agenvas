@@ -60,6 +60,9 @@ class TaskStaleShotPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
@@ -112,7 +115,7 @@ class TaskStaleShotPostgresIT {
                 List.of(), "old-image-output");
         var revised = revise(owner.userId(), project.id(), shot, "Changed");
         AtomicInteger submissions = new AtomicInteger();
-        new TaskWorker(tasks).runImagesOnce("stale-worker", 1, (task, requestKey) -> {
+        new TaskWorker(tasks, callLogs).runImagesOnce("stale-worker", 1, (task, requestKey) -> {
             submissions.incrementAndGet();
             return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");
         });
@@ -172,7 +175,7 @@ class TaskStaleShotPostgresIT {
         completed.put("workflowVersion", "image-v1");
         completed.putObject("parameters");
         completed.put("sourceTaskId", async.id().toString());
-        assertThat(new TaskWorker(tasks).runProviderPollsOnce("async-poller", 1, poll -> {
+        assertThat(new TaskWorker(tasks, callLogs).runProviderPollsOnce("async-poller", 1, poll -> {
             assertThat(poll.providerRequestId()).isEqualTo(externalPromptId.toString());
             return new TaskWorker.PollGenerated(completed);
         })).isEqualTo(1);
@@ -206,7 +209,7 @@ class TaskStaleShotPostgresIT {
         canceledOutput.put("sourceTaskId", canceledAwaiting.id().toString());
         canceledOutput.put("assetId", ImageAssetFixture.archive(assets, owner.userId(),
                 project.id()).toString());
-        assertThat(new TaskWorker(tasks).runProviderPollsOnce("canceled-poller", 1,
+        assertThat(new TaskWorker(tasks, callLogs).runProviderPollsOnce("canceled-poller", 1,
                 poll -> new TaskWorker.PollGenerated(canceledOutput))).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), canceledAwaiting.id()).status())
                 .isEqualTo(Task.Status.CANCELED);
@@ -377,7 +380,7 @@ class TaskStaleShotPostgresIT {
         assertThat(tasks.succeedWithArtifact(referenceLease, "reference-submitter",
                 referenceLateContent).selected()).isFalse();
         AtomicInteger referenceSubmissions = new AtomicInteger();
-        assertThat(new TaskWorker(tasks).runImagesOnce("reference-stale-worker", 1,
+        assertThat(new TaskWorker(tasks, callLogs).runImagesOnce("reference-stale-worker", 1,
                 (task, requestKey) -> {
                     referenceSubmissions.incrementAndGet();
                     return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");

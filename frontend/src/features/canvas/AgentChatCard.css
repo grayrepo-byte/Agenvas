@@ -5,10 +5,10 @@
   --chat-border: #353535;
   --chat-muted: #a0a0a0;
   display: flex; flex-direction: column; width: 100%; height: 100%;
-  border: 1px solid #494949; border-radius: 18px; background: var(--chat-bg);
+  border: 0; border-radius: 18px; background: var(--chat-bg);
   color: #ededed; box-shadow: 0 8px 28px #0005; font-size: 13px; line-height: 1.6;
 }
-.agent-chat-card--selected { border-color: #c9c9c9; box-shadow: 0 0 0 1px #ffffff35, 0 12px 32px #0006; }
+.agent-chat-card--selected { box-shadow: 0 0 0 2px #fff, 0 12px 32px #0006; }
 .agent-chat-header { display: flex; align-items: center; gap: 9px; padding: 14px 14px 10px; min-width: 0; }
 .agent-chat-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; background: #303030; border: 1px solid #414141; border-radius: 11px; }
 .agent-chat-heading { flex: 1; min-width: 0; }

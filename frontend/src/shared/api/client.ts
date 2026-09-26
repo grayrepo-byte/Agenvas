@@ -51,6 +51,9 @@ export type ExportProposalApproval = components["schemas"]["ExportProposalApprov
 export type UsageEntry = components["schemas"]["UsageEntry"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
+export type CallLog = components["schemas"]["CallLog"];
+export type CallLogPage = components["schemas"]["CallLogPage"];
+export type CallLogFilters = NonNullable<paths["/api/v1/call-logs"]["get"]["parameters"]["query"]>;
 export type ReplaceLlmSettingsRequest = components["schemas"]["ReplaceLlmSettingsRequest"];
 export type DiagnoseLlmRequest = components["schemas"]["DiagnoseLlmRequest"];
 export type MediaSettings = components["schemas"]["MediaSettings"];
@@ -68,6 +71,15 @@ type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
 
 let csrfToken: CsrfToken | undefined;
+
+/** Reads a server-filtered audit page; this never contacts a model or media Provider. */
+export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, "无法读取调用日志");
+}
 
 /** Same-origin private URLs retain session authorization without storing any media key. */
 export function assetThumbnailUrl(projectId: string, assetId: string): string {

@@ -57,6 +57,9 @@ class TaskLeasePostgresIT {
     }
 
     @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
+    @Autowired
     private IdentityService identityService;
 
     @Autowired
@@ -117,7 +120,7 @@ class TaskLeasePostgresIT {
 
         Task networkTask = create(owner.userId(), project.id(), run.id(), "network", List.of());
         AtomicBoolean transactionSeen = new AtomicBoolean(true);
-        TaskWorker worker = new TaskWorker(taskService);
+        TaskWorker worker = new TaskWorker(taskService, callLogs);
         assertThat(worker.runOnce("worker-network", 1, claimed -> {
                     transactionSeen.set(TransactionSynchronizationManager.isActualTransactionActive());
                     assertThat(jdbcClient.sql("select 1").query(Integer.class).single()).isEqualTo(1);

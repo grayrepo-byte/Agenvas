@@ -1,4 +1,4 @@
-import { CaretDown, Check, Clock, MinusCircle, Question, Robot, ShieldCheck,
+import { CaretDown, Check, Clock, MinusCircle, Question, Robot,
   User, WarningCircle, type Icon } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
@@ -12,7 +12,6 @@ import "./AgentChatPrimitives.css";
  */
 const CHAT_ICON_SIZE = 14;
 const TASK_ICON_SIZE = 15;
-const APPROVAL_ICON_SIZE = 18;
 const MESSAGE_ROLE_LABELS = { user: "你", assistant: "Agent" } as const;
 type TaskStatus = "running" | "pending" | "completed" | "failed" | "unknown" | "canceled";
 const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
@@ -74,10 +73,11 @@ export function AgentChatTaskRow({ label, status, detail }: {
 }
 
 /** The caller owns every approval action and supplies its complete review content. */
-export function AgentChatApproval({ title, description, children, className }: {
+export function AgentChatApproval({ title, description, children, footer, className }: {
   title: string;
   description?: string;
   children: ReactNode;
+  footer?: ReactNode;
   className?: string;
 }) {
   const titleId = useId();
@@ -85,12 +85,12 @@ export function AgentChatApproval({ title, description, children, className }: {
   return <section className={`agent-chat-approval nodrag nowheel${className ? ` ${className}` : ""}`}
     aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}>
     <div className="agent-chat-approval__heading">
-      <span className="agent-chat-approval__icon" aria-hidden="true"><ShieldCheck size={APPROVAL_ICON_SIZE} /></span>
       <div className="agent-chat-approval__heading-copy">
         <h4 id={titleId}>{title}</h4>
         {description ? <p id={descriptionId}>{description}</p> : null}
       </div>
     </div>
     <div className="agent-chat-approval__content">{children}</div>
+    {footer ? <footer className="agent-chat-approval__footer">{footer}</footer> : null}
   </section>;
 }

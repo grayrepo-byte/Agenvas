@@ -6,14 +6,14 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
-describe.each([undefined, "chat"] as const)("BlockedRunNotice (%s)", (presentation) => {
+describe("BlockedRunNotice", () => {
   it("explains pinned model capability failure without showing private inputs", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
       HttpResponse.json([{ id: "task-1", kind: "AGENT_TURN", status: "FAILED",
         errorCode: "LLM_CONFIG_UNAVAILABLE", input: { secret: "private-model-prompt" } }]),
     ));
     render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice presentation={presentation} projectId="project-1" runId="run-1" />
+      <BlockedRunNotice projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
     expect(await screen.findByText(/固定的模型配置或工具调用能力不可用/)).toBeInTheDocument();
     expect(screen.getByText(/不会擅自切换到另一个模型/)).toBeInTheDocument();
@@ -26,7 +26,7 @@ describe.each([undefined, "chat"] as const)("BlockedRunNotice (%s)", (presentati
         errorCode: "PROVIDER_SUBMISSION_UNKNOWN" }]),
     ));
     render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice presentation={presentation} projectId="project-1" runId="run-2" />
+      <BlockedRunNotice projectId="project-1" runId="run-2" />
     </QueryClientProvider>);
     expect(await screen.findByText(/UNKNOWN 核对提示/)).toBeInTheDocument();
     expect(screen.queryByText(/固定的模型配置或工具调用能力不可用/)).not.toBeInTheDocument();
@@ -38,7 +38,7 @@ describe.each([undefined, "chat"] as const)("BlockedRunNotice (%s)", (presentati
         errorCode: "MODEL_OUTPUT_INVALID" }]),
     ));
     render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice presentation={presentation} projectId="project-1" runId="run-3" />
+      <BlockedRunNotice projectId="project-1" runId="run-3" />
     </QueryClientProvider>);
     expect(await screen.findByText(/已达到两次修复或回合上限/)).toBeInTheDocument();
   });
@@ -49,7 +49,7 @@ describe.each([undefined, "chat"] as const)("BlockedRunNotice (%s)", (presentati
         errorCode: "MODEL_TURN_LIMIT" }]),
     ));
     render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice presentation={presentation} projectId="project-1" runId="run-limit" />
+      <BlockedRunNotice projectId="project-1" runId="run-limit" />
     </QueryClientProvider>);
     expect(await screen.findByText(/12 回合上限/)).toBeInTheDocument();
     expect(screen.getByText(/系统未再调用模型或自动重试/)).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe.each([undefined, "chat"] as const)("BlockedRunNotice (%s)", (presentati
         errorCode: "TASK_INPUT_STALE" }]),
     ));
     render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice presentation={presentation} projectId="project-1" runId="run-4" />
+      <BlockedRunNotice projectId="project-1" runId="run-4" />
     </QueryClientProvider>);
     expect(await screen.findByText(/镜头、参考图或人工选定的关键帧版本已变化/)).toBeInTheDocument();
     expect(screen.getByText(/重新绑定当前镜头与所需素材后发起新 Run/)).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe.each([undefined, "chat"] as const)("BlockedRunNotice (%s)", (presentati
         errorCode: "TASK_PROJECT_ARCHIVED" }]),
     ));
     render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice presentation={presentation} projectId="project-1" runId="run-5" />
+      <BlockedRunNotice projectId="project-1" runId="run-5" />
     </QueryClientProvider>);
     expect(await screen.findByText(/项目已归档，尚未提交的媒体任务已阻断/)).toBeInTheDocument();
     expect(screen.getByText(/已受理的外部请求仍会核对/)).toBeInTheDocument();

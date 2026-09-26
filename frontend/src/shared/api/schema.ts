@@ -4,6 +4,28 @@
  */
 
 export interface paths {
+    "/api/v1/call-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页读取管理员本人项目的调用审计元数据
+         * @description 按 startedAt、id 倒序稳定排序。仅返回当前管理员自己的项目，不包含请求或响应正文、密钥和 endpoint。
+         *     UNKNOWN 筛选同时匹配调用结果未知及当前 Task 状态 UNKNOWN，便于核对历史请求。
+         *     historical=true 是旧检查点投影，startedAt 为原检查点时间；traceId、respondedAt、durationMs 不可追溯时为 null，不据此推算响应时间。
+         */
+        get: operations["listCallLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/setup-status": {
         parameters: {
             query?: never;
@@ -1339,6 +1361,56 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CallLogPage: {
+            items: components["schemas"]["CallLog"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            totalElements: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        CallLog: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            projectTitle: string;
+            /** Format: uuid */
+            taskId: string | null;
+            /** Format: uuid */
+            runId: string | null;
+            /** @enum {string} */
+            kind: "LLM" | "IMAGE" | "VIDEO";
+            /** @enum {string} */
+            operation: "CHAT" | "SUBMIT" | "POLL" | "LEGACY";
+            /**
+             * @description 单次调用结果；异步受理或轮询返回等待也表示本次调用成功，不表示任务已生成完成。
+             * @enum {string}
+             */
+            status: "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
+            /** @enum {string|null} */
+            taskStatus: "PENDING" | "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED" | null;
+            provider: string | null;
+            model: string | null;
+            traceId: string | null;
+            providerRequestId: string | null;
+            errorCode: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description 本次受控模型或媒体适配器返回或抛出的时间；适配器内部可能包含下载和媒体处理，不是底层 HTTP 首字节时间。
+             */
+            respondedAt: string | null;
+            /**
+             * Format: int64
+             * @description 适配器调用的单调时钟耗时，不含后置审计写入或 Worker 的结果提交；旧适配器内部处理和 Mock 渲染计入其中。
+             */
+            durationMs: number | null;
+            historical: boolean;
+            mock: boolean;
+        };
         MediaSettings: {
             connections: components["schemas"]["MediaConnection"][];
             defaults: components["schemas"]["MediaDefault"][];
@@ -2738,6 +2810,40 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listCallLogs: {
+        parameters: {
+            query?: {
+                projectId?: string;
+                kind?: "LLM" | "IMAGE" | "VIDEO";
+                status?: "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
+                traceId?: string;
+                /** @description 调用开始时间下界（包含） */
+                from?: string;
+                /** @description 调用开始时间上界（包含），不得早于 from */
+                to?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 调用日志页，越权或不存在的 projectId 返回空页 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallLogPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     getSetupStatus: {
         parameters: {
             query?: never;

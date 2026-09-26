@@ -7,11 +7,25 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { PlanApprovalPanel } from "./PlanApprovalPanel";
 
-describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentation) => {
+describe("PlanApprovalPanel", () => {
   beforeEach(() => {
     server.use(http.get("/api/v1/projects/:projectId/plans/:planId/steps/:stepKey/candidates",
       () => HttpResponse.json([])));
   });
+  it("hides an empty chat approval card while keeping real read failures visible", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/plans", () => HttpResponse.json([])));
+    const client = createQueryClient();
+    render(<QueryClientProvider client={client}>
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+    </QueryClientProvider>);
+    await waitFor(() => expect(client.getQueryState(["plans", "project-1", "run-1"])?.status).toBe("success"));
+    expect(screen.queryByRole("region", { name: "待审批执行计划" })).not.toBeInTheDocument();
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/plans", () =>
+      HttpResponse.json({ code: "PLAN_UNAVAILABLE", detail: "无法读取" }, { status: 503 })));
+    await client.invalidateQueries({ queryKey: ["plans", "project-1", "run-1"] });
+    expect(await screen.findByRole("alert")).toHaveTextContent("计划读取失败");
+  });
+
   it("shows the frozen scope and sends the displayed hash only after an explicit click", async () => {
     const hash = "a".repeat(64);
     const plan = {
@@ -44,7 +58,7 @@ describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentat
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     expect(await screen.findByText("为三个镜头制作关键帧")).toBeInTheDocument();
@@ -104,7 +118,7 @@ describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentat
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     await user.click(await screen.findByRole("checkbox", { name: /确认镜头 shot-1/ }));
@@ -137,7 +151,7 @@ describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentat
       }),
     );
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     expect(await screen.findByText(/本次将创建图片任务 0 个、视频任务 1 个/)).toBeInTheDocument();
@@ -172,7 +186,7 @@ describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentat
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     await user.click(await screen.findByRole("button", { name: "取消本次 Run" }));
@@ -197,7 +211,7 @@ describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentat
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     await user.click(await screen.findByRole("button", { name: "取消本次 Run" }));

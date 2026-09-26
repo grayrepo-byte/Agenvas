@@ -1,5 +1,7 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.audit.application.CallLogService;
+import dev.agenvas.audit.domain.CallLog;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.time.Instant;
@@ -12,6 +14,7 @@ public class TaskWorker {
 
     /** 负责短事务认领、提交前检查点和带 fencing 的结果写入。 */
     private final TaskService tasks;
+    private final CallLogService callLogs;
 
     /** 注入持久化认领和带租约状态转换服务。
      * @param tasks 管理任务认领、提交检查点和完成结果
@@ -19,7 +22,8 @@ public class TaskWorker {
     /** 注入持久化任务认领和租约状态转换服务。
      * @param tasks 负责认领任务、保存提交检查点及条件提交结果
      */
-    public TaskWorker(TaskService tasks) {
+    public TaskWorker(TaskService tasks, CallLogService callLogs) {
+        this.callLogs = callLogs;
         this.tasks = tasks;
     }
 
@@ -39,7 +43,11 @@ public class TaskWorker {
             if (media && beginOrFailStale(task, workerId, null) == null) {
                 continue;
             }
-            persistOutcome(task, workerId, media, handler.execute(task));
+            Outcome outcome = media
+                    ? callLogs.record(descriptor(task, CallLog.Operation.SUBMIT),
+                            () -> handler.execute(task), this::callOutcome)
+                    : handler.execute(task);
+            persistOutcome(task, workerId, media, outcome);
         }
         return claimed.size();
     }
@@ -89,7 +97,9 @@ public class TaskWorker {
             if (requestKey == null) {
                 continue;
             }
-            persistOutcome(task, workerId, true, handler.execute(task, requestKey));
+            Outcome outcome = callLogs.record(descriptor(task, CallLog.Operation.SUBMIT),
+                    () -> handler.execute(task, requestKey), this::callOutcome);
+            persistOutcome(task, workerId, true, outcome);
         }
         return claimed.size();
     }
@@ -139,7 +149,9 @@ public class TaskWorker {
             if (requestKey == null) {
                 continue;
             }
-            persistOutcome(task, workerId, true, handler.execute(task, requestKey));
+            Outcome outcome = callLogs.record(descriptor(task, CallLog.Operation.SUBMIT),
+                    () -> handler.execute(task, requestKey), this::callOutcome);
+            persistOutcome(task, workerId, true, outcome);
         }
         return claimed.size();
     }
@@ -194,7 +206,8 @@ public class TaskWorker {
         for (Task task : claimed) {
             PollResult outcome;
             try {
-                outcome = handler.query(task);
+                outcome = callLogs.record(descriptor(task, CallLog.Operation.POLL),
+                        () -> handler.query(task), result -> pollOutcome(result, task.providerRequestId()));
             } catch (RuntimeException failure) {
                 tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
                 continue;
@@ -210,6 +223,31 @@ public class TaskWorker {
             }
         }
         return claimed.size();
+    }
+
+    private CallLogService.CallDescriptor descriptor(Task task, CallLog.Operation operation) {
+        String workflow = task.input().path("workflowVersion").asText("");
+        boolean mock = workflow.startsWith("mock-");
+        String provider = mock ? "mock" : workflow.startsWith("comfyui-") ? "comfyui" : null;
+        return new CallLogService.CallDescriptor(task.projectId(), task.id(), task.runId(), null,
+                task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
+                operation, provider, null, mock);
+    }
+
+    private CallLogService.CallOutcome callOutcome(Outcome result) {
+        return switch (result) {
+            case Failed failed -> new CallLogService.CallOutcome(CallLog.Status.FAILED, null, failed.errorCode());
+            case WaitingProvider waiting -> CallLogService.CallOutcome.succeeded(waiting.providerRequestId());
+            default -> CallLogService.CallOutcome.succeeded(null);
+        };
+    }
+
+    private CallLogService.CallOutcome pollOutcome(PollResult result, String requestId) {
+        return switch (result) {
+            case PollFailed failed -> new CallLogService.CallOutcome(CallLog.Status.FAILED, requestId, failed.errorCode());
+            case PollBlocked blocked -> new CallLogService.CallOutcome(CallLog.Status.FAILED, requestId, blocked.errorCode());
+            default -> CallLogService.CallOutcome.succeeded(requestId);
+        };
     }
 
     /**

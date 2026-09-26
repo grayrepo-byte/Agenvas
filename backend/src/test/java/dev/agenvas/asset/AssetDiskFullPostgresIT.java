@@ -74,6 +74,9 @@ class AssetDiskFullPostgresIT {
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
@@ -112,7 +115,7 @@ class AssetDiskFullPostgresIT {
 
         byte[] image = png();
         storage.failNextIngestWrite();
-        TaskWorker worker = new TaskWorker(tasks);
+        TaskWorker worker = new TaskWorker(tasks, callLogs);
         assertThat(worker.runProviderPollsOnce("disk-poller", 1, poll ->
                 generated(owner.userId(), project.id(), poll, image))).isEqualTo(1);
         Task afterFailure = tasks.get(owner.userId(), project.id(), task.id());

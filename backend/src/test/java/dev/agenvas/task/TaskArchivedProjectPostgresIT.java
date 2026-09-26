@@ -63,6 +63,9 @@ class TaskArchivedProjectPostgresIT {
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
@@ -109,7 +112,7 @@ class TaskArchivedProjectPostgresIT {
                 projects.get(owner.userId(), project.id()).version());
         assertThat(archived.status()).isEqualTo(Project.Status.ARCHIVED);
         AtomicInteger newSubmissions = new AtomicInteger();
-        assertThat(new TaskWorker(tasks).runImagesOnce("archive-new-worker", 1,
+        assertThat(new TaskWorker(tasks, callLogs).runImagesOnce("archive-new-worker", 1,
                 (claimed, key) -> {
                     newSubmissions.incrementAndGet();
                     return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");

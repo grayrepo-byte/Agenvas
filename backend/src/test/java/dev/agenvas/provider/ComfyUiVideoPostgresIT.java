@@ -108,6 +108,9 @@ class ComfyUiVideoPostgresIT {
         SERVER.stop(0);
     }
 
+    @Autowired
+    private dev.agenvas.audit.application.CallLogService callLogs;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
@@ -253,10 +256,10 @@ class ComfyUiVideoPostgresIT {
                         "test-vision.safetensors"), mapper);
         assertThat(rotatedWorkflow.version()).isNotEqualTo(workflow.version());
         ComfyUiVideoPoller rotatedPoller = new ComfyUiVideoPoller(tasks, assets,
-                rotatedRegistry, mapper);
+                rotatedRegistry, mapper, callLogs);
         ComfyUiVideoWorker rotatedVideo = new ComfyUiVideoWorker(tasks, artifacts, assets,
                 projects, rotatedClient, rotatedPoller, rotatedWorkflow,
-                new PlanProviderProperties("comfyui", 2));
+                new PlanProviderProperties("comfyui", 2), callLogs);
         due(videoTask.id());
         assertThat(mediaWorker.pollOnce("video-poller")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status())
