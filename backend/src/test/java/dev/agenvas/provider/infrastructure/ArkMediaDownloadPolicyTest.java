@@ -69,12 +69,23 @@ class ArkMediaDownloadPolicyTest {
                 "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/a.mp4"),
                 new ByteArrayOutputStream(), 1024))
                 .isInstanceOf(ArkMediaDownloadPolicy.TechnicalFailure.class);
-        for (String address : List.of("10.0.0.2", "100.64.1.2", "192.0.2.3",
-                "198.18.1.2", "203.0.113.4", "::1", "fc00::1")) {
+        for (String address : List.of("100.64.1.2", "192.0.2.3", "203.0.113.4",
+                "::1", "169.254.169.254")) {
             Dns answer = hostname -> List.of(InetAddress.getByName(address));
             assertThatThrownBy(() -> FixedCloudDns.checked(answer, false)
                     .lookup("api.openai.com"))
                     .isInstanceOf(UnknownHostException.class);
+        }
+    }
+
+    /** Private and proxy fake-ip answers are reachable targets for a self-hosted deployment. */
+    @Test void acceptsPrivateAndFakeIpAnswers() throws Exception {
+        for (String address : List.of("10.0.0.2", "192.168.1.50", "198.18.1.2",
+                "fc00::1", "2001:2::59")) {
+            Dns answer = hostname -> List.of(InetAddress.getByName(address));
+            assertThat(FixedCloudDns.checked(answer, false).lookup("api.openai.com"))
+                    .as("self-hosted address %s", address)
+                    .hasSize(1);
         }
     }
 

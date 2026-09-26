@@ -1,6 +1,7 @@
 package dev.agenvas.settings.application;
 
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.security.EndpointAddressRules;
 import java.net.InetAddress;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -76,9 +77,11 @@ public class LlmEndpointPolicy {
                     && (bytes[2] & 0xff) == 0 && (bytes[3] & 0xff) == 1) return;
             throw invalid();
         }
+        // 私网与代理 fake-ip 段按部署者意图放行：自托管常把模型服务放在内网。
+        // 云元数据属于 link-local，不在放行之列，继续由下面的检查拦下。
+        if (EndpointAddressRules.allowsSelfHosted(address)) return;
         if (address.isAnyLocalAddress() || address.isLoopbackAddress()
-                || address.isLinkLocalAddress() || address.isSiteLocalAddress()
-                || address.isMulticastAddress()) throw invalid();
+                || address.isLinkLocalAddress() || address.isMulticastAddress()) throw invalid();
         byte[] bytes = address.getAddress();
         if (address instanceof Inet4Address) {
             int first = bytes[0] & 0xff;
@@ -88,7 +91,6 @@ public class LlmEndpointPolicy {
                     || (first == 192 && second == 0 && third == 0)
                     || (first == 192 && second == 0 && third == 2)
                     || (first == 192 && second == 88 && third == 99)
-                    || (first == 198 && (second == 18 || second == 19))
                     || (first == 198 && second == 51 && third == 100)
                     || (first == 203 && second == 0 && third == 113)
                     || (first == 168 && second == 63 && third == 129
@@ -102,7 +104,6 @@ public class LlmEndpointPolicy {
             int fourth = bytes[3] & 0xff;
             if ((first & 0xe0) != 0x20
                     || (first == 0x20 && second == 0x01 && third == 0x0d && fourth == 0xb8)
-                    || (first == 0x20 && second == 0x01 && third == 0 && fourth == 0)
                     || (first == 0x20 && second == 0x02)) throw invalid();
             return;
         }
