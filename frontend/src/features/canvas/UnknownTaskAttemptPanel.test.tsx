@@ -34,7 +34,7 @@ describe("UnknownTaskAttemptPanel", () => {
       <UnknownTaskAttemptPanel projectId="project-1" taskId="task-risk" taskVersion={7}
         planned cancelRequested={false} />
     </QueryClientProvider>);
-    await user.click(screen.getByRole("button", { name: "查看提交账本" }));
+    await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     const button = await screen.findByRole("button", { name: "明确风险后创建新尝试" });
     expect(button).toBeDisabled();
     expect(created).toBe(0);
@@ -70,7 +70,7 @@ describe("UnknownTaskAttemptPanel", () => {
       <UnknownTaskAttemptPanel projectId="project-1" taskId="task-1" taskVersion={2} planned cancelRequested={false} />
     </QueryClientProvider>);
     expect(lookups).toBe(0);
-    await user.click(screen.getByRole("button", { name: "查看提交账本" }));
+    await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     expect(await screen.findByText(/可核对的候选 Provider ID/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "查询原 Provider 请求" }));
     expect(await screen.findByRole("status")).toHaveTextContent("任务仍为 UNKNOWN");
@@ -89,7 +89,7 @@ describe("UnknownTaskAttemptPanel", () => {
     const { unmount } = render(<QueryClientProvider client={createQueryClient()}>
       <UnknownTaskAttemptPanel projectId="project-1" taskId="task-1" taskVersion={2} planned cancelRequested={false} />
     </QueryClientProvider>);
-    await user.click(screen.getByRole("button", { name: "查看提交账本" }));
+    await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     expect(await screen.findByText(/提交关联键/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查询原 Provider 请求" })).not.toBeInTheDocument();
     server.use(http.get("/api/v1/projects/:projectId/tasks/:taskId/attempts", () =>
@@ -104,7 +104,7 @@ describe("UnknownTaskAttemptPanel", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <UnknownTaskAttemptPanel projectId="project-1" taskId="task-2" taskVersion={2} planned cancelRequested />
     </QueryClientProvider>);
-    await user.click(screen.getByRole("button", { name: "查看提交账本" }));
+    await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     expect(await screen.findByText(/可核对的候选 Provider ID/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查询原 Provider 请求" })).not.toBeInTheDocument();
   });

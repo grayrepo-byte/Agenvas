@@ -52,7 +52,7 @@ export function UnknownTaskAttemptPanel({ projectId, taskId, taskVersion, planne
 
   return <div className="mt-2">
     <button aria-expanded={open} className="underline" onClick={() => setOpen(!open)} type="button">
-      {open ? "收起提交账本" : "查看提交账本"}
+      {open ? "收起提交账本" : "查看提交账本并处理重试"}
     </button>
     {open ? <div className="mt-2">
       <p>关联键用于在原 Provider 实例人工核对；它不能证明请求已受理，也不能作为安全重试许可。自动核对只查询原 ID，不会新建生成。</p>

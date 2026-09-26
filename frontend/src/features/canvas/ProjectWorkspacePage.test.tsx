@@ -656,11 +656,57 @@ describe("ProjectWorkspacePage", () => {
     expect(attemptReads).toBe(0);
     const user = userEvent.setup();
     await user.click(screen.getByText("查看待核对任务"));
-    await user.click(screen.getByRole("button", { name: "查看提交账本" }));
+    await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
     expect(await screen.findByText(/提交关联键：e6422a3f/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("不能证明请求已受理");
     expect(screen.getByRole("alert")).not.toHaveTextContent("not for UI");
     expect(attemptReads).toBe(1);
+  });
+
+  /** 直接媒体任务没有 planId，重试入口只能靠 kind 判定；漏判时按钮不渲染，用户无从重跑。 */
+  it("offers a manual retry for a direct media task with no plan", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+      ),
+      http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
+        HttpResponse.json({
+          project: { id: params.projectId, name: "Direct retry", aspectRatio: "LANDSCAPE_16_9",
+            status: "ACTIVE", version: 0, createdAt: "2026-09-23T00:00:00Z",
+            updatedAt: "2026-09-23T00:00:00Z", archivedAt: null },
+          canvas: { items: [] }, agents: [], activeRun: null, activeTasks: [],
+          unknownTasks: [{ id: "task-direct", kind: "IMAGE_GENERATION", stepKey: "draft-1",
+            attemptNo: 1, status: "UNKNOWN", cancelRequested: false, planId: null, runId: null,
+            providerRequestId: null, errorCode: "PROVIDER_SUBMISSION_UNKNOWN", version: 3,
+            updatedAt: "2026-09-23T00:00:00Z", input: {} }],
+          snapshotSeq: 1,
+        }),
+      ),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Direct retry" }),
+      ),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] }),
+      ),
+      http.get("/api/v1/projects/:projectId/tasks/:taskId/attempts", () =>
+        HttpResponse.json([{ id: "attempt-1", taskId: "task-direct", status: "UNKNOWN",
+          requestKey: "e6422a3f-c91d-4874-b684-118fd6be068a", reconcilable: false,
+          providerRequestId: null,
+          createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z" }]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("查看待核对任务"));
+    await user.click(screen.getByRole("button", { name: "查看提交账本并处理重试" }));
+    expect(await screen.findByRole("button", { name: "明确风险后创建新尝试" }))
+        .toBeInTheDocument();
   });
 
   it("shows exact Agent bindings and saves editable card configuration", async () => {

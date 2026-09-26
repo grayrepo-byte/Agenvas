@@ -436,10 +436,10 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 - [x] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；V40 一次性导入 Mock/ComfyUI 配置与可精确匹配的历史任务来源，无法匹配的旧请求保持阻断或待核对。PostgreSQL 迁移及目录集成测试通过；未进行真实 ComfyUI 调用。
 - [x] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。V36 升级、v1 冻结任务与用量、Mock/假 ComfyUI、1.25 秒素材导出边界及前端表单有回归测试；`backend ./mvnw verify`（57 个集成测试）、前端类型检查/lint/73 个测试/构建通过，真实 Provider 未运行。
 - [x] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。`backend ./mvnw verify`（63 项、0 失败）、前端类型检查/lint/77 项测试/构建通过；ComfyUI 使用本地假服务，真实 Provider 未运行。
-- [x] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收；跨项目参考图在网络前拒绝，响应丢失保持 UNKNOWN，不自动重提。仅为模拟协议验证，真实 OpenAI 调用未运行。
+- [x] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收；跨项目参考图在网络前拒绝，响应丢失保持 UNKNOWN，不自动重提。真实渠道已跑通文字生图并对齐了同步生成所需的读超时与租约，见 `docs/evidence/T21-openai-image-sync-result.md`；参考图编辑（`images/edits`）仍只有本地假服务验证。
 - [x] OpenAI 图片连接可选自定义 HTTPS API Base URL；历史空地址仍走官方 `/v1`，已批准任务固定连接版本，拒绝不安全地址、私网 DNS 和重定向。自定义公开网关的真实生成未运行。
 - [x] 火山方舟 Seedance 固定首帧图生视频适配器完成 4–15 整数秒、异步原任务 ID 轮询、过期 URL 重查或无法刷新时阻断、带音轨结果去音归档、恶意地址阻断、下载失败后重试与创建响应丢失 UNKNOWN 的本地假服务及 PostgreSQL 验收；无真实方舟调用。
-- [x] 分别记录真实调用状态：GPT Image 2 **未运行**；Seedance **未运行**。管理员界面保持“已配置、未实测”，不把本地假服务或 Mock 结果标记为真实生成成功。
+- [x] 分别记录真实调用状态：GPT Image 2 **已运行**，经第三方中转站（grsai，模型 `gpt-image-2.5`）完成一次真实文字生图并归档 Asset，生成耗时约 35 秒；此为兼容中转站而非 OpenAI 官方端点。Seedance **未运行**。管理员界面保持“已配置、未实测”，不把本地假服务或 Mock 结果标记为真实生成成功。
 
 后续 Google Nano Banana 2 固定图片适配器见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)：`GOOGLE` 连接、固定 `gemini-3.1-flash-image` 模型、文字生图和单张同项目参考图、项目画幅、管理员配置及 V41 平台约束已接入。假 Google HTTP 服务与 PostgreSQL 覆盖成功归档、断线 UNKNOWN 不重提、越权参考图预检拒绝；真实 Google API 调用 **未运行**，真实模型兼容、生成效果与费用尚未验收。
 

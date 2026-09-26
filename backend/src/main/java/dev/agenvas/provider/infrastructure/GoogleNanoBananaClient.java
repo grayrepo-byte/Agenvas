@@ -30,8 +30,12 @@ public class GoogleNanoBananaClient {
     public static final String DEFAULT_MODEL = "gemini-3.1-flash-image";
     private static final String IMAGE_SIZE = "1K";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
-    /** 单次读取上限；工厂要求显式传入，不能漏成 0（0 表示不限）。 */
-    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
+    /**
+     * 单次读取上限；工厂要求显式传入，不能漏成 0（0 表示不限）。
+     * 与 OpenAI 图片一样是同步生成，首字节要数十秒才到，读超时必须覆盖整次生成，
+     * 否则客户端会先超时并把已生成的结果判成 UNKNOWN。
+     */
+    private static final Duration READ_TIMEOUT = Duration.ofMinutes(3);
     private static final Duration CALL_TIMEOUT = Duration.ofMinutes(3);
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;

@@ -862,7 +862,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <span className="block">最近更新：<time dateTime={task.updatedAt}>{new Date(task.updatedAt).toLocaleString()}</time></span>
                 {task.cancelRequested ? <span className="block">本系统已请求停止后续编排。</span> : null}
                 <UnknownTaskAttemptPanel projectId={projectId} taskId={task.id} taskVersion={task.version}
-                  planned={task.planId !== null} cancelRequested={task.cancelRequested} />
+                  planned={task.planId !== null}
+                  direct={task.kind === "IMAGE_GENERATION" || task.kind === "VIDEO_GENERATION"}
+                  cancelRequested={task.cancelRequested} />
               </li>)}
             </ul>
           </details>

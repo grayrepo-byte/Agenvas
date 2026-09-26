@@ -18,6 +18,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Local fake API checks; no OpenAI request or paid generation occurs. */
 class OpenAiImage2ClientTest {
+    /** 模拟慢生成：高于旧版 10 秒读超时，用于证明新配置会等待而不是超时。 */
+    private static final long SLOW_GENERATION_DELAY_MS = 11_000;
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
     private OpenAiImage2Client client;
@@ -249,6 +251,31 @@ class OpenAiImage2ClientTest {
                 "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1"))
                 .isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(downloads).hasValue(2);
+    }
+
+    /**
+     * 同步生成要数十秒才回第一个字节。读超时若短于生成耗时，客户端会先超时、把已经生成好的
+     * 结果判成 UNKNOWN，所以这里必须能等下去。延迟取 11 秒 —— 高于曾经写死的 10 秒读超时，
+     * 低于现在的 3 分钟；把读超时改回 10 秒时此用例立即失败。
+     */
+    @Test
+    void slowGenerationIsWaitedForInsteadOfTimedOut() throws IOException {
+        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        int port = server.getAddress().getPort();
+        server.createContext("/v1/images/generations", exchange -> {
+            try {
+                Thread.sleep(SLOW_GENERATION_DELAY_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            respond(exchange, 200, "{\"data\":[{\"b64_json\":\""
+                    + Base64.getEncoder().encodeToString(png) + "\"}]}");
+        });
+
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1")) {
+            assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+        }
     }
 
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {

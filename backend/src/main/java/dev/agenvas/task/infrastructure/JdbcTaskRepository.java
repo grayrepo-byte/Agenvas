@@ -388,6 +388,9 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                   and (t.status in ('PENDING','READY','RUNNING','SUBMITTING',
                                     'WAITING_PROVIDER','UNKNOWN')
                        or (t.status='BLOCKED' and t.provider_request_id is not null))
+                  -- 已由「新建尝试」处理过的原任务不再占用卡片，否则卡片会被永久占住。
+                  and not exists (select 1 from task_manual_replacement r
+                                  where r.original_task_id = t.id)
                 order by t.created_at, t.id limit 1
                 """)
                 .param("projectId", projectId).param("artifactId", artifactId)
@@ -412,6 +415,10 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 join task_artifact_target target on target.task_id=t.id
                 where p.owner_id=:ownerId and t.project_id=:projectId
                   and t.origin='USER_DIRECT' and target.artifact_id=:artifactId
+                  -- 卡片只呈现仍有效的任务：已被「新建尝试」取代的原任务仍可在
+                  -- 项目的待核对任务列表里核对，但不再决定卡片是否可再次运行。
+                  and not exists (select 1 from task_manual_replacement r
+                                  where r.original_task_id = t.id)
                 order by t.created_at desc, t.id desc limit 50
                 """)
                 .param("ownerId", ownerId).param("projectId", projectId)
