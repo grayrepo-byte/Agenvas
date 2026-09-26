@@ -4,7 +4,7 @@
 
 Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操作卡片存在于画布中，在明确的权限、审批、版本和恢复边界内生成三镜头短片。
 
-当前仓库已完成 M0–M2 的基础链路，并实现可运行的 Mock 三镜头、分阶段审批、媒体归档、局部重做与无声导出纵向切片：Vite/React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、项目与不可变内容版本、持久画布、Creator Agent、租约与 fencing epoch 任务、事务事件及可补发 SSE。真实 LLM/ComfyUI 接口和生产发布门禁仍未验收，不能把当前版本视为稳定 MVP 成品；逐项状态以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
+当前仓库已完成 M0–M2 的基础链路，并实现可运行的 Mock 三镜头、分阶段审批、媒体归档、局部重做与无声导出纵向切片：Next.js 静态导出的 React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、项目与不可变内容版本、持久画布、Creator Agent、租约与 fencing epoch 任务、事务事件及可补发 SSE。真实 LLM/ComfyUI 接口和生产发布门禁仍未验收，不能把当前版本视为稳定 MVP 成品；逐项状态以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
 
 ## 已实现的最小纵向切片
 
@@ -80,6 +80,8 @@ corepack pnpm typecheck
 corepack pnpm lint
 corepack pnpm test
 corepack pnpm build
+# 本地页面服务仍使用 5173，并把 /api 代理到 localhost:8080
+corepack pnpm dev
 ```
 
 后端要求 JDK 21；运行时需要 PostgreSQL：
@@ -90,7 +92,7 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-本地 Vite 会把 `/api` 代理到 `http://localhost:8080`。默认数据库连接为 `jdbc:postgresql://localhost:5432/agenvas`，可通过 `AGENVAS_DB_URL`、`AGENVAS_DB_USER` 和 `AGENVAS_DB_PASSWORD` 覆盖；启动后端还必须提供至少 24 字符的 `AGENVAS_BOOTSTRAP_SECRET`。默认 `AGENVAS_LLM_MODE=mock` 运行无外部账户的确定性演示流程；演示视频还需要本机 FFmpeg/FFprobe（自动尝试 `/usr/bin`、Homebrew 路径，可用 `AGENVAS_MEDIA_TOOLS_FFMPEG` 和 `AGENVAS_MEDIA_TOOLS_FFPROBE` 指定绝对路径）。候选真实聊天接入需由部署者同时设置 `AGENVAS_LLM_MODE=configured`、`AGENVAS_LLM_CHAT_ADAPTER=openai`、`AGENVAS_LLM_MODEL`、`AGENVAS_LLM_API_KEY`，可选 `AGENVAS_LLM_BASE_URL`（默认官方 HTTPS 地址）及递增的 `AGENVAS_LLM_CONFIG_VERSION`。具体端点完成真实工具请求→回填→下一轮响应测试后，才设置 `AGENVAS_LLM_TOOL_CALLING_VERIFIED=true` 允许 Agent 运行；默认 false 会阻止把仅有适配器支持误报为模型能力。凭证仅进入服务端运行环境，不要写入仓库或前端配置；端点安全与发布门禁仍需实际验证。
+本地 Next.js 开发服务只负责页面，并把 `/api` 代理到 `http://localhost:8080`；生产构建使用静态导出，不运行 Next.js 服务端。默认数据库连接为 `jdbc:postgresql://localhost:5432/agenvas`，可通过 `AGENVAS_DB_URL`、`AGENVAS_DB_USER` 和 `AGENVAS_DB_PASSWORD` 覆盖；启动后端还必须提供至少 24 字符的 `AGENVAS_BOOTSTRAP_SECRET`。默认 `AGENVAS_LLM_MODE=mock` 运行无外部账户的确定性演示流程；演示视频还需要本机 FFmpeg/FFprobe（自动尝试 `/usr/bin`、Homebrew 路径，可用 `AGENVAS_MEDIA_TOOLS_FFMPEG` 和 `AGENVAS_MEDIA_TOOLS_FFPROBE` 指定绝对路径）。候选真实聊天接入需由部署者同时设置 `AGENVAS_LLM_MODE=configured`、`AGENVAS_LLM_CHAT_ADAPTER=openai`、`AGENVAS_LLM_MODEL`、`AGENVAS_LLM_API_KEY`，可选 `AGENVAS_LLM_BASE_URL`（默认官方 HTTPS 地址）及递增的 `AGENVAS_LLM_CONFIG_VERSION`。具体端点完成真实工具请求→回填→下一轮响应测试后，才设置 `AGENVAS_LLM_TOOL_CALLING_VERIFIED=true` 允许 Agent 运行；默认 false 会阻止把仅有适配器支持误报为模型能力。凭证仅进入服务端运行环境，不要写入仓库或前端配置；端点安全与发布门禁仍需实际验证。
 
 管理员可在“模型配置”页保存 OpenAI 兼容端点、模型 ID 和 API Key。保存功能需要服务端设置 `AGENVAS_CREDENTIAL_MASTER_KEY`（32 字节随机密钥的 Base64 编码，独立于数据库备份保管）；未设置时配置写入返回 503，Mock 模式仍可运行。密钥在数据库中以 AES-256-GCM 加密并保留配置旧版本，API 只返回掩码。切换到 `AGENVAS_LLM_MODE=configured` 后，活动数据库配置优先于上面的环境变量候选适配器；保存后 Agent Run 仍会阻断，直到管理员在设置页明确确认最多两次可能计费请求，并完成“工具请求 → 服务端回填 → 下一轮响应”的诊断。只有当前配置版本通过诊断才开放 Tool Calling；这不证明视觉、输出质量或任何尚未实测的真实 Provider 能力。已创建 Run 固定配置来源与版本，轮换后不会静默改用新模型继续执行。数据库模型请求固定到管理员配置的主机/端口和 Chat Completions 路径，逐次校验 DNS 结果且不跟随重定向。不要将主密钥或 API Key 写入 Git、浏览器存储或日志。若明确需要本机测试端点，可设置 `AGENVAS_LLM_ALLOW_LOOPBACK_HTTP=true`，仅允许精确的 `http://127.0.0.1` 地址；默认不允许本机例外或 HTTP。
 
@@ -105,7 +107,7 @@ Compose 默认使用 Mock。管理员在“媒体配置”页创建连接；同�
 ## 仓库结构
 
 ```text
-frontend/       Vite + React + TypeScript SPA
+frontend/       Next.js 静态导出 + React + TypeScript SPA
 backend/        Java 21 / Spring Boot 4 模块化单体
 contracts/      权威 OpenAPI 与后续事件/Artifact Schema
 configs/        版本化 Agent、Skill 与受信媒体工作流配置

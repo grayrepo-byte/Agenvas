@@ -1,6 +1,6 @@
 # Agenvas 依赖基线
 
-**基线日期：2026-09-24｜适用版本：0.1.0-SNAPSHOT**
+**基线日期：2026-09-26｜适用版本：0.1.0-SNAPSHOT**
 
 本文件记录已经在当前项目解析、编译或构建验证的直接依赖。它是 `MVP-SPEC.md` 第 4.4 节所要求的 M0 基线，不表示后续业务模块或真实 Provider 已经实现。
 
@@ -36,11 +36,11 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 ## 前端直接依赖
 
-运行依赖：React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5。
+运行依赖：Next.js 16.3.6、React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5。
 
-构建与测试：Vite 8.3.0、TypeScript 5.9.3、Tailwind CSS 4.3.3、Vitest 5.0.1、Testing Library React 16.3.3、MSW 2.15.0、openapi-typescript 7.13.0、ESLint 10.11.0、typescript-eslint 8.70.1。
+构建与测试：Next.js/Turbopack 16.3.6、TypeScript 5.9.3、Tailwind CSS/PostCSS 4.3.3、Vitest 5.0.1、Testing Library React 16.3.3、MSW 2.15.0、openapi-typescript 7.13.0、ESLint 10.11.0、typescript-eslint 8.70.1、静态预览 `serve` 14.2.5。`@vitejs/plugin-react` 仅供 Vitest 的 JSX 转换使用，不再承担应用开发或生产构建。
 
-没有采用当时最新的 TypeScript 7.0.2，因为 `typescript-eslint` 8.70.1 的正式兼容范围小于 6.1；选择 5.9.3 是经过 peer dependency 核对的稳定组合。React Router 保持规格要求的 7.x，不升级到 8.x。
+没有采用当时最新的 TypeScript 7.0.2，因为 `typescript-eslint` 8.70.1 的正式兼容范围小于 6.1；选择 5.9.3 是经过 peer dependency 核对的稳定组合。Next.js 固定到 2026-09-22 安全更新后的 16.3.6；React Router 暂时保持 7.x，以支持静态壳内构建时未知的项目 UUID 路径。
 
 精确解析结果与完整传递依赖见 `frontend/pnpm-lock.yaml` 和 Maven effective dependency tree；生成的 API 类型来自 `contracts/openapi.yaml`。
 

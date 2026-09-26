@@ -28,6 +28,8 @@
 - [x] 前端 stable 依赖锁定，Node/pnpm engines 一致，类型检查与生产构建可执行。
 - [x] 不含 SNAPSHOT/RC/动态 latest，不重复引入 ORM/工具执行循环。
 
+2026-09-26 前端构建迁移补验：按 [ADR 0009](adr/0009-nextjs-static-frontend.md)迁为 Next.js 16.3.6 静态导出，生产仍由 Nginx 托管且不增加 Node 运行时、Next.js API、Server Action 或 SSR 数据访问；client-only catch-all 保留原 URL 和 React Router 行为。OpenAPI 类型生成、TypeScript、ESLint、20 个文件/84 项 Vitest、Next 生产构建、Node 24 容器冻结安装/构建、Nginx 配置及 `/login`、未知项目 UUID 深链、Chrome 登录页水合均通过，见 [迁移证据](evidence/T01-nextjs-static-frontend.md)。
+
 ### T02 默认三服务与 Mock 模式
 
 依赖：T01。

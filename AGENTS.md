@@ -22,7 +22,7 @@
 
 ## 3. 固定技术决策
 
-前端：Vite + React + TypeScript，React Flow，TanStack Query，Zustand，React Router，Tailwind/shadcn。
+前端：Next.js 16 静态导出 + React + TypeScript，React Flow，TanStack Query，Zustand，React Router，Tailwind/shadcn。Next.js 仅承担页面构建；禁止 Route Handler、Server Action、SSR 数据访问或 Node BFF，业务 API 仍全部由 Spring Boot 提供。
 
 后端：Java 21，Spring Boot 4.0 系列与 Spring AI 2.0.1，Spring MVC，Spring Security，Spring Session JDBC，MyBatis-Plus Boot 4 starter，PostgreSQL 17，Flyway。
 
@@ -32,7 +32,7 @@
 
 精确依赖以经过构建和集成测试的 `docs/dependency-baseline.md` 为准。不自动升级大版本，不引入预览依赖，不抄不同 Spring AI 版本的内部 API。
 
-未经决策禁止增加 Next.js BFF、微服务、Redis/MQ、Kubernetes、向量数据库、第二套 ORM、完整剪辑器或多 Agent 并发协调。
+未经决策禁止增加 Next.js BFF/服务端业务逻辑、微服务、Redis/MQ、Kubernetes、向量数据库、第二套 ORM、完整剪辑器或多 Agent 并发协调。
 
 ## 4. 核心模型不可混淆
 
