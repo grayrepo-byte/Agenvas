@@ -965,7 +965,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}
           {imagePartialStage ? <p className="mt-2 text-xs text-amber-900" role="status">{imagePartialStage === "artifact"
             ? "图片和产物已创建，但画布放置未完成；保留当前标题与文件重试会继续放置。"
-            : "图片已归档，但产物创建未完成；保留当前标题与文件重试会复用已确认的上传。"}若请求结果不明，请先刷新并核对，避免重复创建。</p> : null}
+            : "图片已归档，但产物创建未完成；保留当前标题与文件重试会复用已确认的上传。"}若请求结果不明，请先刷新确认，避免重复创建。</p> : null}
         </div> : null}
         {toolsKind === "AGENT" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-base font-semibold">添加 Creator Agent</h2>

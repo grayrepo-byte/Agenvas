@@ -106,20 +106,8 @@ class TaskRecoveryPostgresIT {
                     assertThat(attempt.providerRequestId()).isNull();
                 });
         var mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
-        String attemptsPath = "/api/v1/projects/" + project.id()
-                + "/tasks/" + submission.id() + "/attempts";
         var authenticated = authentication(new UsernamePasswordAuthenticationToken(
                 owner, null, List.of()));
-        mvc.perform(get(attemptsPath).with(authenticated))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].status").value("UNKNOWN"))
-                .andExpect(jsonPath("$[0].requestKey").value(requestKey.toString()))
-                .andExpect(jsonPath("$[0].reconcilable").value(false))
-                .andExpect(jsonPath("$[0].candidateRequestId").doesNotExist())
-                .andExpect(jsonPath("$[0].candidateOriginSha256").doesNotExist())
-                .andExpect(jsonPath("$[0].providerRequestId").doesNotExist())
-                .andExpect(jsonPath("$[0].leaseEpoch").doesNotExist());
-        mvc.perform(get(attemptsPath)).andExpect(status().isUnauthorized());
         String diagnostics = mvc.perform(get("/api/v1/settings/diagnostics")
                         .with(authenticated))
                 .andExpect(status().isOk())
@@ -128,9 +116,6 @@ class TaskRecoveryPostgresIT {
                 .andReturn().getResponse().getContentAsString();
         assertThat(diagnostics).doesNotContain(submission.id().toString(),
                 requestKey.toString(), project.id().toString());
-        mvc.perform(get("/api/v1/projects/" + UUID.randomUUID()
-                        + "/tasks/" + submission.id() + "/attempts")
-                .with(authenticated)).andExpect(status().isNotFound());
         assertThatThrownBy(() -> tasks.rejectSubmission(lease, "worker-submission",
                 "LATE_REJECTION"))
                 .isInstanceOf(ApiProblemException.class);

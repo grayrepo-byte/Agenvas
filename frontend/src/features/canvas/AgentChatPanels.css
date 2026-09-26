@@ -40,7 +40,7 @@
   accent-color: #df2998;
   padding: 0;
 }
-.agent-chat-panel-primary, .agent-chat-panel-secondary, .agent-chat-panel-danger {
+.agent-chat-panel-primary, .agent-chat-panel-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -55,8 +55,6 @@
 .agent-chat-panel-primary:hover:enabled { background: #f143ac; }
 .agent-chat-panel-secondary { border-color: #414148; background: #29292d; color: #e4e4e8; }
 .agent-chat-panel-secondary:hover:enabled { background: #36363c; }
-.agent-chat-panel-danger { border-color: #74404b; background: #44232b; color: #f7b6c3; }
-.agent-chat-panel-danger:hover:enabled { background: #5d303b; }
 .agent-chat-panel-text-button { border: 0; padding: 5px 0; background: transparent; color: #b4b4bd; text-decoration: underline; text-underline-offset: 3px; }
 .agent-chat-panel-text-button:hover:enabled { color: #f1f1f4; }
 .agent-chat-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
@@ -94,18 +92,11 @@
 .agent-chat-unknown { border: 1px solid #514132; border-radius: 12px; padding: 13px; background: #241f1b; color: #c7b7a7; }
 .agent-chat-unknown .agent-chat-panel-notice-title { color: #e8c79d; }
 .agent-chat-unknown > .agent-chat-panel-secondary { margin-top: 10px; border-color: #544738; background: #332a22; color: #e2ceb6; }
-.agent-chat-unknown-ledger { display: grid; gap: 10px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #483b2e; font-size: 11px; }
-.agent-chat-unknown-ledger ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
-.agent-chat-attempt { padding: 10px; border: 1px solid #494037; border-radius: 8px; background: #1b1816; color: #a99c8f; font-size: 10px; overflow-wrap: anywhere; }
-.agent-chat-attempt > .font-medium { display: inline-block; margin-bottom: 4px; color: #dfc299; font-size: 10px; }
-.agent-chat-unknown-risk { border: 1px solid #63383f; border-radius: 9px; background: #2b1c20; padding: 11px; color: #dab3bc; }
-.agent-chat-unknown-risk .agent-chat-panel-danger { margin-top: 11px; }
-
 @media (max-width: 520px) {
   .agent-chat-panel-actions .agent-chat-panel-text-button { margin-left: 0; }
   .agent-chat-keyframe-thumbnail { width: 56px; height: 70px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-chat-panel-primary, .agent-chat-panel-secondary, .agent-chat-panel-danger { transition: none; }
+  .agent-chat-panel-primary, .agent-chat-panel-secondary { transition: none; }
 }

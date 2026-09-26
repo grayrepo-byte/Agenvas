@@ -35,8 +35,8 @@ export function SystemDiagnosticsPage() {
           <StatusCard title="文本模型" icon={<Cpu size={20} aria-hidden />} tone={snapshot.llmMode === "MOCK" ? "neutral" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? "success" : "warning"} badge={snapshot.llmMode === "MOCK" ? "Mock" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? "协议已验证" : "待验证"} value={`${modeLabel(snapshot.llmMode)} · ${snapshot.llmConfigured ? "已配置" : "未配置"}${snapshot.llmMode === "CONFIGURED" ? ` · ${snapshot.llmToolCallingVerified ? "工具协议已验证" : "工具协议未验证"}` : ""}`} description="显示已保存的配置与工具协议验证结果。" />
           <StatusCard title="媒体服务" icon={<Plugs size={20} aria-hidden />} tone={snapshot.mediaMode === "MOCK" ? "neutral" : snapshot.imageConfigured && snapshot.videoConfigured ? "success" : "warning"} badge={snapshot.mediaMode === "MOCK" ? "Mock" : "配置状态"} value={`${modeLabel(snapshot.mediaMode)} · 图片${snapshot.imageConfigured ? "已配置" : "未配置"} · 视频${snapshot.videoConfigured ? "已配置" : "未配置"}`} description="已配置不代表已完成真实生成测试。" />
         </div>
-        <Panel title="近七天任务异常" description="仅显示失败、待核对或阻断任务的数量和最近更新时间；不展示素材、路径或原始错误。">
-          {snapshot.recentErrors.length === 0 ? <EmptyState icon={<CheckCircle size={28} aria-hidden />} title="暂无异常任务记录。" description="最近七天没有记录到失败、待核对或阻断任务。" /> :
+        <Panel title="近七天任务异常" description="仅显示失败、未知或阻断任务的数量和最近更新时间；不展示素材、路径或原始错误。">
+          {snapshot.recentErrors.length === 0 ? <EmptyState icon={<CheckCircle size={28} aria-hidden />} title="暂无异常任务记录。" description="最近七天没有记录到失败、未知或阻断任务。" /> :
             <ul className="diagnostics-errors">{snapshot.recentErrors.map((item) => <li key={item.status}><StatusBadge tone={item.status === "FAILED" ? "danger" : "warning"}>{errorLabel(item.status)}：{item.count} 项</StatusBadge><time dateTime={item.lastAt}>最近更新 {new Date(item.lastAt).toLocaleString()}</time></li>)}</ul>}
         </Panel>
       </> : null}
@@ -59,5 +59,5 @@ function modeLabel(mode: string): string {
 }
 
 function errorLabel(status: string): string {
-  return { FAILED: "失败", UNKNOWN: "待核对", BLOCKED: "已阻断" }[status] ?? "异常";
+  return { FAILED: "失败", UNKNOWN: "未知", BLOCKED: "已阻断" }[status] ?? "异常";
 }

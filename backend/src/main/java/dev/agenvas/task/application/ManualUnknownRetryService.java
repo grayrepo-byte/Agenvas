@@ -26,12 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 用户明确接受潜在重复费用后，为无法核对的外部提交建立可审计的新尝试。 */
+/** 为结果未知的任务建立可审计的新替代尝试，原任务与提交记录始终保留。 */
 @Service
 public class ManualUnknownRetryService {
-
-    /** 创建替代任务所需的精确风险确认值，不能由模型代填。 */
-    public static final String RISK_ACKNOWLEDGEMENT = "ACCEPT_POSSIBLE_DUPLICATE_COST";
 
     /** 读取原任务，并通过统一任务规则创建替代媒体任务。 */
     private final TaskService tasks;
@@ -99,26 +96,24 @@ public class ManualUnknownRetryService {
     }
 
     /**
-     * 用户确认可能重复收费后，在同一项目事务中创建一次新的媒体任务与独立用量预留。
+     * 用户发起重试后，在同一项目事务中创建一次新的媒体任务与独立用量预留。
      * 必须重新核验原 UNKNOWN 任务、已审批计划、Provider/工作流版本、固定输入和预算；
      * 只把尚未执行的 PENDING 下游任务改为依赖新任务，原 UNKNOWN 记录始终保留。
      *
-     * @param ownerId 经认证且实际批准风险的用户 ID
+     * @param ownerId 经认证的用户 ID
      * @param projectId 原任务和计划所属项目
-     * @param originalTaskId 状态仍为 UNKNOWN、没有可查询原请求 ID 的媒体任务
-     * @param expectedTaskVersion 用户确认时看到的原任务版本
-     * @param acknowledgement 必须精确等于风险确认常量
-     * @param idempotencyKey 同一人工重试命令的客户端键；相同键不能用于别的任务或版本
+     * @param originalTaskId 状态仍为 UNKNOWN 的媒体任务
+     * @param expectedTaskVersion 用户读取到的原任务版本
+     * @param idempotencyKey 同一重试命令的客户端键；相同键不能用于别的任务或版本
      * @return 新建或同键重放得到的替代任务
      */
     @Transactional
     public Task create(UUID ownerId, UUID projectId, UUID originalTaskId,
-            long expectedTaskVersion, String acknowledgement, String idempotencyKey) {
-        if (!RISK_ACKNOWLEDGEMENT.equals(acknowledgement)
-                || idempotencyKey == null || idempotencyKey.isBlank()
+            long expectedTaskVersion, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()
                 || idempotencyKey.length() > 120 || expectedTaskVersion < 0) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "确认信息无效", "必须明确接受可能重复收费，并提供版本与幂等键。", false);
+                    "重试请求无效", "请提供有效的任务版本与幂等键。", false);
         }
         return events.recordChange(ownerId, projectId, () -> {
             Task original = tasks.get(ownerId, projectId, originalTaskId);
@@ -145,7 +140,7 @@ public class ManualUnknownRetryService {
                     || original.providerRequestId() != null || original.planId() == null
                     || (original.kind() != Task.Kind.IMAGE_GENERATION
                             && original.kind() != Task.Kind.VIDEO_GENERATION)) {
-                throw conflict("原任务状态或版本已变化，请重新核对后确认。");
+                throw conflict("原任务状态或版本已变化，请刷新后重试。");
             }
             projects.requireActiveProject(ownerId, projectId);
             AgentRun run = runs.get(ownerId, projectId, original.runId());
@@ -161,9 +156,6 @@ public class ManualUnknownRetryService {
                     .findFirst().orElse(null);
             MediaCapabilityBinding originalBinding = repository.mediaBinding(original.id())
                     .orElse(null);
-            if (originalBinding != null && originalBinding.adapterId().startsWith("COMFY_")) {
-                throw conflict("ComfyUI 全局单槽仍被原 UNKNOWN 请求占用；请先核对原请求。");
-            }
             int durationSeconds = original.kind() == Task.Kind.VIDEO_GENERATION
                     ? original.input().path("durationSeconds").asInt(-1) : 0;
             boolean currentProvider = originalBinding == null
@@ -246,14 +238,11 @@ public class ManualUnknownRetryService {
                 || original.providerRequestId() != null
                 || (original.kind() != Task.Kind.IMAGE_GENERATION
                         && original.kind() != Task.Kind.VIDEO_GENERATION)) {
-            throw conflict("原任务状态或版本已变化，请先核对原请求。");
+            throw conflict("原任务状态或版本已变化，请刷新后重试。");
         }
         projects.requireActiveProject(ownerId, projectId);
         MediaCapabilityBinding binding = repository.mediaBinding(original.id())
                 .orElseThrow(() -> conflict("原媒体能力不可用，不能创建新尝试。"));
-        if (binding.adapterId().startsWith("COMFY_")) {
-            throw conflict("ComfyUI 全局单槽仍被原 UNKNOWN 请求占用；请先核对原请求。");
-        }
         int seconds = original.kind() == Task.Kind.VIDEO_GENERATION
                 ? original.input().path("durationSeconds").asInt(-1) : 0;
         if (!mediaCapabilities.isCurrentBinding(binding, original.kind(), seconds)) {

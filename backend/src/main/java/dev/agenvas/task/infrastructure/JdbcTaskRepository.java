@@ -415,8 +415,8 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 join task_artifact_target target on target.task_id=t.id
                 where p.owner_id=:ownerId and t.project_id=:projectId
                   and t.origin='USER_DIRECT' and target.artifact_id=:artifactId
-                  -- 卡片只呈现仍有效的任务：已被「新建尝试」取代的原任务仍可在
-                  -- 项目的待核对任务列表里核对，但不再决定卡片是否可再次运行。
+                  -- 卡片只呈现仍有效的任务：已被「重试」取代的原任务不再决定
+                  -- 卡片是否可再次运行。
                   and not exists (select 1 from task_manual_replacement r
                                   where r.original_task_id = t.id)
                 order by t.created_at desc, t.id desc limit 50
@@ -651,9 +651,16 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                         + occupiedMediaClause("active") + ")) ");
     }
 
+    /**
+     * 活动媒体任务的占用条件：提交中、等待外部结果、未确认和已受理的阻断任务都占用名额。
+     * UNKNOWN 一旦被人工重试取代就让出名额给替代任务，否则原任务会永久阻塞该项目与能力。
+     */
     private static String occupiedMediaClause(String alias) {
         return " and " + alias + ".kind in ('IMAGE_GENERATION','VIDEO_GENERATION') "
-                + "and (" + alias + ".status in ('SUBMITTING','WAITING_PROVIDER','UNKNOWN') "
+                + "and (" + alias + ".status in ('SUBMITTING','WAITING_PROVIDER') "
+                + "or (" + alias + ".status='UNKNOWN' and not exists (select 1 from "
+                + "task_manual_replacement replacement where replacement.original_task_id="
+                + alias + ".id)) "
                 + "or (" + alias + ".status='RUNNING' and " + alias + ".lease_until > now()) "
                 + "or (" + alias + ".status='BLOCKED' and " + alias
                 + ".provider_request_id is not null)) ";
@@ -686,7 +693,11 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
         return claimDueComfy(workerId, now, leaseUntil, Task.Kind.VIDEO_GENERATION);
     }
 
-    /** 锁定全局派发门禁；任一 ComfyUI 请求仍活动或状态未知时不提交新请求。 */
+    /**
+     * 锁定全局派发门禁；任一 ComfyUI 请求仍活动或未被取代的 UNKNOWN 时不提交新请求。
+     * 这里比 {@link #occupiedMediaClause} 更保守（已受理的 RUNNING 也计入），但“已被替代的
+     * UNKNOWN 不占名额”这条规则必须与它保持一致，否则重试后的替代任务会被原任务永久阻塞。
+     */
     private List<Task> claimDueComfy(String workerId, Instant now, Instant leaseUntil,
             Task.Kind kind) {
         jdbcClient.sql("select id from provider_dispatch_gate where id = 1 for update")
@@ -1139,56 +1150,6 @@ public class JdbcTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .update();
         if (attemptChanged != 1) {
             throw new IllegalStateException("Missing provider attempt for submission acknowledgement");
-        }
-        return true;
-    }
-
-    /** 仅当任务版本、UNKNOWN 状态、原候选 ID 和 origin 摘要都匹配时恢复同一请求。 */
-    @Override
-    public boolean recoverUnknownSubmission(UUID projectId, UUID taskId, long expectedVersion,
-            UUID attemptId, UUID candidateRequestId, String candidateOriginSha256, Instant now) {
-        int changed = jdbcClient.sql("""
-                        update task set status = 'WAITING_PROVIDER',
-                            provider_request_id = :requestId, next_action_at = :now,
-                            error_code = null, updated_at = :now, version = version + 1
-                        where id = :taskId and project_id = :projectId
-                          and status = 'UNKNOWN' and version = :expectedVersion
-                          and cancel_requested = false and provider_request_id is null
-                          and (task.origin='USER_DIRECT' or exists (
-                              select 1 from agent_run r where r.id = task.run_id
-                              and r.status not in ('CANCEL_REQUESTED', 'CANCELED',
-                                  'FAILED', 'SUCCEEDED')))
-                          and exists (select 1 from provider_attempt pa
-                              where pa.id = :attemptId and pa.task_id = task.id
-                                and pa.project_id = task.project_id
-                                and pa.lease_epoch = task.lease_epoch
-                                and pa.status = 'UNKNOWN'
-                                and pa.candidate_request_id = :candidateRequestId
-                                and pa.candidate_origin_sha256 = :candidateOriginSha256)
-                        """)
-                .param("taskId", taskId).param("projectId", projectId)
-                .param("expectedVersion", expectedVersion)
-                .param("attemptId", attemptId)
-                .param("candidateRequestId", candidateRequestId)
-                .param("candidateOriginSha256", candidateOriginSha256)
-                .param("requestId", candidateRequestId.toString())
-                .param("now", utc(now)).update();
-        if (changed == 0) return false;
-        int attemptChanged = jdbcClient.sql("""
-                        update provider_attempt set status = 'ACCEPTED',
-                            provider_request_id = :requestId, updated_at = :now
-                        where id = :attemptId and project_id = :projectId
-                          and task_id = :taskId and status = 'UNKNOWN'
-                          and candidate_request_id = :candidateRequestId
-                          and candidate_origin_sha256 = :candidateOriginSha256
-                        """)
-                .param("attemptId", attemptId).param("projectId", projectId)
-                .param("taskId", taskId).param("candidateRequestId", candidateRequestId)
-                .param("candidateOriginSha256", candidateOriginSha256)
-                .param("requestId", candidateRequestId.toString())
-                .param("now", utc(now)).update();
-        if (attemptChanged != 1) {
-            throw new IllegalStateException("Original provider attempt disappeared during recovery");
         }
         return true;
     }

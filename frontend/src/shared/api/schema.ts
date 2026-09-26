@@ -1119,26 +1119,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/tasks/{taskId}/attempts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                taskId: string;
-            };
-            cookie?: never;
-        };
-        /** 查看一个任务的外部提交账本，用于人工核对原请求 */
-        get: operations["listProviderAttempts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/projects/{projectId}/tasks/{taskId}/new-attempt": {
         parameters: {
             query?: never;
@@ -1151,28 +1131,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 明确接受原请求可能仍在执行及重复费用后，为 UNKNOWN 创建独立新尝试 */
+        /** 为结果未知的任务创建独立的新尝试 */
         post: operations["createManualUnknownAttempt"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/tasks/{taskId}/reconcile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                taskId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 仅查询 UNKNOWN 的原 ComfyUI prompt，不重新提交生成 */
-        post: operations["reconcileUnknownTask"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2386,46 +2346,6 @@ export interface components {
         ManualUnknownAttemptRequest: {
             /** Format: int64 */
             expectedTaskVersion: number;
-            /** @enum {string} */
-            riskAcknowledgement: "ACCEPT_POSSIBLE_DUPLICATE_COST";
-        };
-        ProviderAttempt: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            taskId: string;
-            /** @enum {string} */
-            status: "SUBMITTING" | "ACCEPTED" | "UNKNOWN" | "REJECTED";
-            /**
-             * Format: uuid
-             * @description 提交前生成的随机关联键，不是幂等保证或已受理证明
-             */
-            requestKey: string;
-            /**
-             * Format: uuid
-             * @description 仅新协议明确把关联键作为 Provider 查询 ID 发出时有值；旧 attempt 为空，仍不是已受理证明
-             */
-            candidateRequestId?: string | null;
-            /** @description 仅表示账本具有候选 ID 与提交时 endpoint 指纹；仍须验证当前配置与原 Provider 响应 */
-            reconcilable: boolean;
-            providerRequestId?: string | null;
-            /**
-             * Format: uuid
-             * @description 用户明确接受重复费用后创建的新尝试；原 UNKNOWN 仍保留
-             */
-            replacementTaskId?: string | null;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        ReconciliationResult: {
-            /** @enum {string} */
-            outcome: "NO_EVIDENCE" | "RESUMED";
-            /** Format: uuid */
-            taskId: string;
-            taskStatus: components["schemas"]["TaskStatus"];
-            providerRequestId?: string | null;
         };
         Task: {
             /** Format: uuid */
@@ -4782,31 +4702,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    listProviderAttempts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                taskId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 最近最多 100 条提交尝试；requestKey 不表示外部已经受理 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProviderAttempt"][];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-        };
-    };
     createManualUnknownAttempt: {
         parameters: {
             query?: never;
@@ -4825,7 +4720,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 新尝试；同幂等键重放返回相同任务，原 UNKNOWN 和用量预留仍保留 */
+            /** @description 新尝试；同幂等键重放返回相同任务，原任务和用量预留仍保留 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4838,33 +4733,6 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-        };
-    };
-    reconcileUnknownTask: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                taskId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 找到并恢复原请求，或没有找到证据且保持 UNKNOWN */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReconciliationResult"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            502: components["responses"]["ProviderFailure"];
         };
     };
     reviseShotForRedo: {

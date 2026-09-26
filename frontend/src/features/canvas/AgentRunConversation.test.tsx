@@ -132,13 +132,13 @@ describe("AgentRunConversation", () => {
     expect(screen.getByText(/MODEL_TURN_LIMIT_REACHED/)).toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-failed").getByText("失败")).toBeInTheDocument();
     expect(taskSummary("生成视频 · shot-canceled").getByText("已取消")).toBeInTheDocument();
-    expect(taskSummary("生成图片 · shot-unknown").getByText("待核对")).toBeInTheDocument();
+    expect(taskSummary("生成图片 · shot-unknown").getByText("未知")).toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-unknown").queryByText("失败")).not.toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-unknown").queryByText("已完成")).not.toBeInTheDocument();
     expect(taskSummary("导出视频 · export").getByText("已完成")).toBeInTheDocument();
     expect(taskSummary("归档素材 · ingest").getByText("等待中")).toBeInTheDocument();
-    expect(screen.getByText("请求结果待核实")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看提交账本并处理重试" })).toBeInTheDocument();
+    expect(screen.getByText("结果未知")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     expect(screen.getByText("仅停止本系统后续编排；外部任务可能继续执行并产生费用。")).toBeInTheDocument();
   });
 

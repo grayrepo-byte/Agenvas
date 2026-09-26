@@ -29,7 +29,7 @@ public class ComfyUiVideoScheduler {
     /** 本实例提交认领任务时使用的独立 Worker ID。 */
     private final String submitterId = "comfy-video-submit-" + UUID.randomUUID();
 
-    /** 注入轮询器和按需提供的提交器，使历史核对与新提交使用不同认领身份。 */
+    /** 注入轮询器和按需提供的提交器，使原请求轮询与新提交使用不同认领身份。 */
     public ComfyUiVideoScheduler(ComfyUiVideoPoller poller,
             ObjectProvider<ComfyUiVideoWorker> submitter,
             LegacyMediaImportService importer) {

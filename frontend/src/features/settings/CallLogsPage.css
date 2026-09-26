@@ -24,7 +24,6 @@
 .call-log-metadata dd { margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
 .call-log-task { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .call-log-task h3 { font-size: 13px; font-weight: 550; margin: 0 0 12px; }
-.call-log-task .agent-chat-unknown { margin-top: 16px; }
 .call-log-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
 @media (max-width: 1080px) {
   .call-log-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }

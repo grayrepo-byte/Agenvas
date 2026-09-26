@@ -13,7 +13,7 @@ import { assetMetadataQueryOptions, displayedMediaAssetId, isMediaDraftDisplayed
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   PENDING: "等待生成", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
   WAITING_PROVIDER: "正在生成", FAILED: "生成失败", CANCELED: "已取消",
-  UNKNOWN: "结果待核对", BLOCKED: "任务已阻断", SUCCEEDED: "生成结果已保存至历史",
+  UNKNOWN: "结果未知", BLOCKED: "任务已阻断", SUCCEEDED: "生成结果已保存至历史",
 };
 const EXTENSIONS = [
   { label: "三视图", icon: Cube }, { label: "图层分离", icon: Stack },
@@ -95,7 +95,7 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
               : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
               {latest?.errorCode ? <small>{latest.errorCode}</small> : null}
-              {latest?.status === "UNKNOWN" ? <small>请在编辑区核对原请求</small> : null}
+              {latest?.status === "UNKNOWN" ? <small>可在编辑区重试</small> : null}
             </div> : null}
             {latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
               <button className="media-upload-button nodrag" type="button" onClick={onEdit}>

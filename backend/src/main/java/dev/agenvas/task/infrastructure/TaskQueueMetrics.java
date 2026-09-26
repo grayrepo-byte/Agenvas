@@ -98,7 +98,7 @@ public class TaskQueueMetrics {
 
     /** 来自同一 SQL 语句的已提交数据库快照。
      * @param ready 到期或未到期 READY 任务总数
-     * @param unknown 需人工或 Provider 核对的任务数
+     * @param unknown 需人工重试的结果未知任务数
      * @param blocked 等待恢复条件满足的任务数
      * @param oldestReadyAgeSeconds 最老到期 READY 任务等待秒数
      */

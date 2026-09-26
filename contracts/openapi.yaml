@@ -1493,27 +1493,6 @@ paths:
               schema: {$ref: "#/components/schemas/Task"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/tasks/{taskId}/attempts:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: taskId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: listProviderAttempts
-      summary: 查看一个任务的外部提交账本，用于人工核对原请求
-      tags: [Tasks]
-      responses:
-        "200":
-          description: 最近最多 100 条提交尝试；requestKey 不表示外部已经受理
-          content:
-            application/json:
-              schema:
-                type: array
-                items: {$ref: "#/components/schemas/ProviderAttempt"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/tasks/{taskId}/new-attempt:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1523,7 +1502,7 @@ paths:
         schema: {type: string, format: uuid}
     post:
       operationId: createManualUnknownAttempt
-      summary: 明确接受原请求可能仍在执行及重复费用后，为 UNKNOWN 创建独立新尝试
+      summary: 为结果未知的任务创建独立的新尝试
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -1537,7 +1516,7 @@ paths:
             schema: {$ref: "#/components/schemas/ManualUnknownAttemptRequest"}
       responses:
         "200":
-          description: 新尝试；同幂等键重放返回相同任务，原 UNKNOWN 和用量预留仍保留
+          description: 新尝试；同幂等键重放返回相同任务，原任务和用量预留仍保留
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Task"}
@@ -1545,27 +1524,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/tasks/{taskId}/reconcile:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: taskId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: reconcileUnknownTask
-      summary: 仅查询 UNKNOWN 的原 ComfyUI prompt，不重新提交生成
-      tags: [Tasks]
-      responses:
-        "200":
-          description: 找到并恢复原请求，或没有找到证据且保持 UNKNOWN
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ReconciliationResult"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-        "502": {$ref: "#/components/responses/ProviderFailure"}
   /api/v1/projects/{projectId}/shots/{shotId}/revisions:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2960,47 +2918,9 @@ components:
     ManualUnknownAttemptRequest:
       type: object
       additionalProperties: false
-      required: [expectedTaskVersion, riskAcknowledgement]
+      required: [expectedTaskVersion]
       properties:
         expectedTaskVersion: {type: integer, format: int64, minimum: 0}
-        riskAcknowledgement:
-          type: string
-          enum: [ACCEPT_POSSIBLE_DUPLICATE_COST]
-    ProviderAttempt:
-      type: object
-      additionalProperties: false
-      required: [id, taskId, status, requestKey, reconcilable, createdAt, updatedAt]
-      properties:
-        id: {type: string, format: uuid}
-        taskId: {type: string, format: uuid}
-        status: {type: string, enum: [SUBMITTING, ACCEPTED, UNKNOWN, REJECTED]}
-        requestKey:
-          type: string
-          format: uuid
-          description: 提交前生成的随机关联键，不是幂等保证或已受理证明
-        candidateRequestId:
-          type: [string, "null"]
-          format: uuid
-          description: 仅新协议明确把关联键作为 Provider 查询 ID 发出时有值；旧 attempt 为空，仍不是已受理证明
-        reconcilable:
-          type: boolean
-          description: 仅表示账本具有候选 ID 与提交时 endpoint 指纹；仍须验证当前配置与原 Provider 响应
-        providerRequestId: {type: [string, "null"]}
-        replacementTaskId:
-          type: [string, "null"]
-          format: uuid
-          description: 用户明确接受重复费用后创建的新尝试；原 UNKNOWN 仍保留
-        createdAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
-    ReconciliationResult:
-      type: object
-      additionalProperties: false
-      required: [outcome, taskId, taskStatus]
-      properties:
-        outcome: {type: string, enum: [NO_EVIDENCE, RESUMED]}
-        taskId: {type: string, format: uuid}
-        taskStatus: {$ref: "#/components/schemas/TaskStatus"}
-        providerRequestId: {type: [string, "null"]}
     Task:
       type: object
       additionalProperties: false

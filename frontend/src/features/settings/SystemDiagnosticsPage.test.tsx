@@ -28,7 +28,7 @@ describe("SystemDiagnosticsPage", () => {
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><SystemDiagnosticsPage /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText("路径检查异常")).toBeInTheDocument();
     expect(screen.getByText(/工具协议未验证/)).toBeInTheDocument();
-    expect(screen.getByText(/待核对：2 项/)).toBeInTheDocument();
+    expect(screen.getByText(/未知：2 项/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("apiKey");
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新状态" }));
     expect(requests).toHaveBeenCalledTimes(2);

@@ -2,7 +2,7 @@ import { ArrowUp, CaretDown, Check, CheckCircle, Coins, Cube, ImageSquare, Plus,
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
-import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
+import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { readContentText } from "./artifactContent";
 import { ApiError, assetThumbnailUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
@@ -18,7 +18,7 @@ const MAX_VIDEO_SECONDS = 30;
 const CONFLICT_STATUS = 409;
 const TASK_LABELS: Record<Task["status"], string> = {
   PENDING: "等待执行", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
-  WAITING_PROVIDER: "正在生成", UNKNOWN: "结果待核实", BLOCKED: "任务受阻",
+  WAITING_PROVIDER: "正在生成", UNKNOWN: "结果未知", BLOCKED: "任务受阻",
   SUCCEEDED: "生成完成", FAILED: "生成失败", CANCELED: "已取消",
 };
 const QUEUE_LABELS = {
@@ -390,7 +390,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
       </div>
       <span className="media-draft-cost" title="预计费用未知"><Coins size={16} /><span>费用未知</span></span>
       <button className="media-draft-run" type="button" disabled={!canRun}
-        aria-label={run.isPending ? "正在提交运行" : "运行"} title={occupied ? "此卡片已有任务，请等待完成或先核对结果" : "运行"}
+        aria-label={run.isPending ? "正在提交运行" : "运行"} title={occupied ? "此卡片已有任务，请等待完成或先重试" : "运行"}
         onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></button>
     </div>
     <div className="media-draft-feedback">
@@ -419,12 +419,10 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
         {queue.error && latestTask.status === "READY" ? <span role="alert">暂时无法读取排位，任务仍在排队。</span> : null}
         {latestTask.status === "READY" ? <button className="media-draft-text-action" type="button"
           disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? "取消中…" : "取消排队"}</button> : null}
-        {latestTask.status === "UNKNOWN" ? <span>请先核对原请求，避免重复生成。</span> : null}
       </div> : null}
       {cancel.error ? <p role="alert">取消失败：{cancel.error.message}</p> : null}
-      {latestTask?.status === "UNKNOWN" ? <UnknownTaskAttemptPanel
-        projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version}
-        planned={false} direct cancelRequested={latestTask.cancelRequested} /> : null}
+      {latestTask?.status === "UNKNOWN" ? <UnknownTaskRetryPanel
+        projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} /> : null}
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === CONFLICT_STATUS
         ? "草稿有冲突；本地输入已保留。重新读取版本后可再保存。" : error.message}</span>
         <button className="media-draft-text-action" onClick={() => void retry()} type="button">

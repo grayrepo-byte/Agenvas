@@ -32,7 +32,7 @@ public class MockImageScheduler {
         this.importer = importer;
     }
 
-    /** 处理 Worker 限定的任务批次；提交结果不明确时保留 UNKNOWN 等待核对。 */
+    /** 处理 Worker 限定的任务批次；提交结果不明确时保留 UNKNOWN 等待人工重试。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
         if (!importer.ready()) return;

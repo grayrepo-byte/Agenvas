@@ -3,15 +3,10 @@ package dev.agenvas.task.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.ManualUnknownRetryService;
-import dev.agenvas.task.application.UnknownTaskReconciler;
 import dev.agenvas.task.domain.Task;
-import dev.agenvas.task.domain.ProviderAttempt;
-import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,23 +17,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
-/** 按认证所有者暴露任务状态、原请求核对和人工新尝试；Worker 租约只在服务端使用。 */
+/** 按认证所有者暴露任务状态和人工重试；Worker 租约只在服务端使用。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}")
 public class TaskController {
 
-    /** 在所有者和项目范围内读取任务及外部提交账本。 */
+    /** 在所有者和项目范围内读取任务。 */
     private final TaskService tasks;
-    /** Provider 可选的只读原请求核对器；未配置时保留 UNKNOWN。 */
-    private final ObjectProvider<UnknownTaskReconciler> reconciler;
-    /** 处理用户明确确认风险后的独立新尝试。 */
+    /** 为用户发起的独立新尝试创建替代任务。 */
     private final ManualUnknownRetryService retries;
 
-    /** 注入任务查询、可选原请求核对和人工重试服务。 */
-    public TaskController(TaskService tasks, ObjectProvider<UnknownTaskReconciler> reconciler,
-            ManualUnknownRetryService retries) {
+    /** 注入任务查询和人工重试服务。 */
+    public TaskController(TaskService tasks, ManualUnknownRetryService retries) {
         this.tasks = tasks;
-        this.reconciler = reconciler;
         this.retries = retries;
     }
 
@@ -51,90 +42,20 @@ public class TaskController {
         return TaskResponse.from(tasks.get(principal.userId(), projectId, taskId));
     }
 
-    /** 只向任务所有者暴露外部提交尝试摘要；Provider origin 摘要和 Worker 凭证不进入响应。 */
-    @GetMapping("/tasks/{taskId}/attempts")
-    public List<ProviderAttemptResponse> attempts(
-            @AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId,
-            @PathVariable UUID taskId) {
-        UUID replacementId = tasks.replacementTaskId(principal.userId(), projectId, taskId);
-        return tasks.listProviderAttempts(principal.userId(), projectId, taskId).stream()
-                .map(attempt -> ProviderAttemptResponse.from(attempt, replacementId)).toList();
-    }
-
-    /** 对 UNKNOWN 任务只查询原 Provider 请求；查询不到也不会新建或重提生成任务。 */
-    @PostMapping("/tasks/{taskId}/reconcile")
-    public ReconciliationResponse reconcile(@AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId, @PathVariable UUID taskId) {
-        UnknownTaskReconciler available = reconciler.getIfAvailable();
-        if (available == null) {
-            throw new ApiProblemException(HttpStatus.CONFLICT,
-                    "PROVIDER_RECONCILIATION_UNAVAILABLE", "当前 Provider 不支持核对",
-                    "请保留 UNKNOWN 并人工核对，系统不会重新提交生成请求。", false);
-        }
-        UnknownTaskReconciler.Result result = available.reconcile(principal.userId(),
-                projectId, taskId);
-        return new ReconciliationResponse(result.outcome(), result.task().id(),
-                result.task().status(), result.task().providerRequestId());
-    }
-
-    /** 用户显式确认可能重复收费后，使用幂等键创建一次独立预留的新媒体任务。 */
+    /** 为 UNKNOWN 任务创建一次独立预留的新媒体任务；同幂等键重放返回原新任务。 */
     @PostMapping("/tasks/{taskId}/new-attempt")
     public TaskResponse newAttempt(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID taskId,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @RequestBody NewAttemptRequest request) {
         return TaskResponse.from(retries.create(principal.userId(), projectId, taskId,
-                request.expectedTaskVersion(), request.riskAcknowledgement(), idempotencyKey));
+                request.expectedTaskVersion(), idempotencyKey));
     }
 
-    /** 请求必须带用户核对过的任务版本和精确风险确认值。
+    /** 请求必须带用户读取到的任务版本，防止对已变化的 UNKNOWN 任务重复重试。
      * @param expectedTaskVersion 用户读取到的 UNKNOWN 任务版本
-     * @param riskAcknowledgement 与服务端要求值完全一致的重复费用确认
      */
-    public record NewAttemptRequest(long expectedTaskVersion, String riskAcknowledgement) {}
-
-    /** 原请求核对结果仅返回结论、任务状态及已确认的请求 ID，不返回任务输入或 Provider 历史。
-     * @param outcome 原 Provider 请求核对出的受限结论
-     * @param taskId 原任务 ID
-     * @param taskStatus 核对后持久化的任务状态
-     * @param providerRequestId 已确认的原 Provider 请求 ID；未确认时为空
-     */
-    public record ReconciliationResponse(UnknownTaskReconciler.Outcome outcome,
-            UUID taskId, Task.Status taskStatus, String providerRequestId) {}
-
-    /** 提交尝试的对外投影；省略私有 Provider origin 摘要及 Worker 信息。
-     * @param id 提交尝试记录 ID
-     * @param taskId 所属任务 ID
-     * @param status 外部提交尝试状态
-     * @param requestKey 本系统生成的幂等请求键
-     * @param candidateRequestId 尚待核对的候选 Provider 请求 ID
-     * @param reconcilable 是否具备安全执行原请求核对的证据
-     * @param providerRequestId 已确认受理后的 Provider 请求 ID
-     * @param replacementTaskId 用户人工重试后替代此任务的 ID
-     * @param createdAt 尝试记录创建时间
-     * @param updatedAt 尝试状态更新时间
-     */
-    public record ProviderAttemptResponse(UUID id, UUID taskId, ProviderAttempt.Status status,
-            UUID requestKey, UUID candidateRequestId, boolean reconcilable,
-            String providerRequestId, UUID replacementTaskId,
-            Instant createdAt, Instant updatedAt) {
-        /** 只有 UNKNOWN、有候选 ID、固定 origin 且尚未替换时才标记可核对。
-         * @param attempt 持久化的外部提交尝试
-         * @param replacementTaskId 已替代原任务的人工重试任务；没有替代时为空
-         * @return 满足所有恢复条件时为 true
-         */
-        public static ProviderAttemptResponse from(ProviderAttempt attempt, UUID replacementTaskId) {
-            return new ProviderAttemptResponse(attempt.id(), attempt.taskId(), attempt.status(),
-                    attempt.requestKey(), attempt.candidateRequestId(),
-                    attempt.status() == ProviderAttempt.Status.UNKNOWN
-                            && attempt.candidateRequestId() != null
-                            && attempt.candidateOriginSha256() != null
-                            && replacementTaskId == null,
-                    attempt.providerRequestId(), replacementTaskId,
-                    attempt.createdAt(), attempt.updatedAt());
-        }
-    }
+    public record NewAttemptRequest(long expectedTaskVersion) {}
 
     /** 返回同一 Run 的活动与已完成任务，供恢复视图和关键帧选择使用。 */
     @GetMapping("/runs/{runId}/tasks")

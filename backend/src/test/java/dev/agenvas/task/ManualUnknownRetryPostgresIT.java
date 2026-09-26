@@ -134,7 +134,7 @@ class ManualUnknownRetryPostgresIT {
                 AgentRun.Status.BLOCKED);
         Task unknown = tasks.get(owner.userId(), project.id(), original.id());
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(),
-                unknown.version(), "", "retry-1"))
+                unknown.version(), ""))
                 .isInstanceOf(ApiProblemException.class);
         Task replacement;
         CountDownLatch start = new CountDownLatch(1);
@@ -142,14 +142,12 @@ class ManualUnknownRetryPostgresIT {
             Future<Task> first = pool.submit(() -> {
                 start.await();
                 return retries.create(owner.userId(), project.id(), unknown.id(),
-                        unknown.version(), ManualUnknownRetryService.RISK_ACKNOWLEDGEMENT,
-                        "retry-1");
+                        unknown.version(), "retry-1");
             });
             Future<Task> duplicate = pool.submit(() -> {
                 start.await();
                 return retries.create(owner.userId(), project.id(), unknown.id(),
-                        unknown.version(), ManualUnknownRetryService.RISK_ACKNOWLEDGEMENT,
-                        "retry-1");
+                        unknown.version(), "retry-1");
             });
             start.countDown();
             replacement = first.get();
@@ -170,10 +168,10 @@ class ManualUnknownRetryPostgresIT {
                 .param("old", unknown.id()).param("new", replacement.id())
                 .query(Long.class).single()).isGreaterThanOrEqualTo(2L);
         assertThat(retries.create(owner.userId(), project.id(), unknown.id(), unknown.version(),
-                ManualUnknownRetryService.RISK_ACKNOWLEDGEMENT, "retry-1").id())
+                "retry-1").id())
                 .isEqualTo(replacement.id());
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(),
-                unknown.version(), ManualUnknownRetryService.RISK_ACKNOWLEDGEMENT, "retry-2"))
+                unknown.version(), "retry-2"))
                 .isInstanceOf(ApiProblemException.class);
         assertThat(jdbc.sql("select count(*) from task where plan_id = :id and step_key = 'frame-1'")
                 .param("id", plan.id()).query(Long.class).single()).isEqualTo(2L);
@@ -183,8 +181,7 @@ class ManualUnknownRetryPostgresIT {
                 List.of()));
         String path = "/api/v1/projects/" + project.id() + "/tasks/" + unknown.id()
                 + "/new-attempt";
-        String body = "{\"expectedTaskVersion\":" + unknown.version()
-                + ",\"riskAcknowledgement\":\"ACCEPT_POSSIBLE_DUPLICATE_COST\"}";
+        String body = "{\"expectedTaskVersion\":" + unknown.version() + "}";
         mvc.perform(post(path).with(authenticated).header("Idempotency-Key", "retry-1")
                         .contentType("application/json").content(body))
                 .andExpect(status().isForbidden());
@@ -198,6 +195,9 @@ class ManualUnknownRetryPostgresIT {
                         .header("Idempotency-Key", "foreign")
                         .contentType("application/json").content(body))
                 .andExpect(status().isNotFound());
+        // 切到 ComfyUI 适配器后，认领要走全局单槽判定：原 UNKNOWN 已被重试取代，必须让出名额，
+        // 否则替代任务会被它永久阻塞（这也是移除“必须核对”硬拒绝的前提）。
+        jdbc.sql("update media_capability_version set adapter_id = 'COMFY_IMAGE_V1'").update();
         assertThat(taskRepository.claimDueBoundMedia("replacement-submitter", 1,
                 Instant.now(), Instant.now().plusSeconds(30))).singleElement()
                 .extracting(Task::id).isEqualTo(replacement.id());

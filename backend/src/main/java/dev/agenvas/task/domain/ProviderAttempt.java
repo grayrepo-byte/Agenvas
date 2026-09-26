@@ -20,7 +20,7 @@ public record ProviderAttempt(UUID id, UUID taskId, Status status, UUID requestK
         UUID candidateRequestId, String candidateOriginSha256, String providerRequestId,
         Instant createdAt, Instant updatedAt) {
 
-    /** 提交尝试状态；未知仅表示需核对，不代表可以重新生成。 */
+    /** 提交尝试状态；未知表示提交结果不明，重试须由用户显式发起。 */
     public enum Status {
         /** 提交前检查点已保存，尚无可确认的受理结果。 */
         SUBMITTING,

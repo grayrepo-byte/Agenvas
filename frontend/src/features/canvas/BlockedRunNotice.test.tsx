@@ -28,7 +28,7 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="run-2" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/UNKNOWN 核对提示/)).toBeInTheDocument();
+    expect(await screen.findByText(/结果未知的任务/)).toBeInTheDocument();
     expect(screen.queryByText(/固定的模型配置或工具调用能力不可用/)).not.toBeInTheDocument();
   });
 
@@ -66,7 +66,7 @@ describe("BlockedRunNotice", () => {
     expect(await screen.findByText(/镜头、参考图或人工选定的关键帧版本已变化/)).toBeInTheDocument();
     expect(screen.getByText(/重新绑定当前镜头与所需素材后发起新 Run/)).toBeInTheDocument();
     expect(screen.getByText(/仍须分别由你审批/)).toBeInTheDocument();
-    expect(screen.queryByText(/UNKNOWN 核对提示/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/结果未知的任务/)).not.toBeInTheDocument();
   });
 
   it("explains archived-project media blocking without claiming accepted work was canceled", async () => {

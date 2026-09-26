@@ -173,10 +173,6 @@ public interface TaskRepository {
     boolean acknowledgeSubmission(UUID taskId, String workerId, long leaseEpoch,
             String providerRequestId, Instant nextActionAt, Instant now);
 
-    /** 仅向版本未变的 UNKNOWN 任务附加经 Provider 核实的原请求 ID。 */
-    boolean recoverUnknownSubmission(UUID projectId, UUID taskId, long expectedVersion,
-            UUID attemptId, UUID candidateRequestId, String candidateOriginSha256, Instant now);
-
     /** 释放当前轮询租约并保留原请求 ID，安排下一次查询。 */
     boolean deferProviderPoll(UUID taskId, String workerId, long leaseEpoch,
             Instant nextActionAt, Instant now);

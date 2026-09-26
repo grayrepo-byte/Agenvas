@@ -40,9 +40,7 @@ export type ExecutionPlanApproval = components["schemas"]["ExecutionPlanApproval
 export type ShotKeyframeSelection = components["schemas"]["ShotKeyframeSelection"];
 export type SelectShotKeyframeRequest = components["schemas"]["SelectShotKeyframeRequest"];
 export type Task = components["schemas"]["Task"];
-export type ProviderAttempt = components["schemas"]["ProviderAttempt"];
 export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAttemptRequest"];
-export type ReconciliationResult = components["schemas"]["ReconciliationResult"];
 export type ReviseShotForRedoRequest = components["schemas"]["ReviseShotForRedoRequest"];
 export type ShotRedoResult = components["schemas"]["ShotRedoResult"];
 export type CreateMediaExportRequest = components["schemas"]["CreateMediaExportRequest"];
@@ -625,20 +623,7 @@ export async function getTask(projectId: string, taskId: string): Promise<Task> 
   return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, "无法读取任务状态");
 }
 
-/** Reads owner-scoped pre-network submission checkpoints for manual reconciliation. */
-export async function listProviderAttempts(projectId: string, taskId: string): Promise<ProviderAttempt[]> {
-  return readJson<ProviderAttempt[]>(
-    `/api/v1/projects/${projectId}/tasks/${taskId}/attempts`, "无法读取提交账本");
-}
-
-/** Read-only provider lookup that can resume the original task but never resubmit generation. */
-export async function reconcileUnknownTask(projectId: string, taskId: string): Promise<ReconciliationResult> {
-  return writeJson<ReconciliationResult>(`/api/v1/projects/${projectId}/tasks/${taskId}/reconcile`, {
-    method: "POST",
-  });
-}
-
-/** Starts a separately reserved attempt only after the user accepts duplicate-cost risk. */
+/** Starts a separately reserved attempt for a task whose result is unknown. */
 export async function createManualUnknownAttempt(projectId: string, taskId: string,
   key: string, request: ManualUnknownAttemptRequest): Promise<Task> {
   return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/new-attempt`, {

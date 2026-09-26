@@ -94,58 +94,6 @@ class ComfyUiClientTest {
     }
 
     @Test
-    void reconcilesOnlyHistoryOrQueueEntriesWithTheOriginalClientIdentity() {
-        UUID promptId = UUID.randomUUID();
-        AtomicInteger historyReads = new AtomicInteger();
-        server.createContext("/history/", exchange -> {
-            if (historyReads.incrementAndGet() == 1) {
-                respond(exchange, 200, "{}");
-            } else {
-                respond(exchange, 200, "{\"" + promptId + "\":{\"prompt\":[0,\""
-                        + promptId + "\",{}, {\"client_id\":\"" + promptId + "\"}]}}");
-            }
-        });
-        server.createContext("/queue", exchange -> respond(exchange, 200,
-                "{\"queue_running\":[],\"queue_pending\":[[0,\"" + promptId
-                        + "\",{}, {\"client_id\":\"" + promptId + "\"}]]}"));
-        assertThat(client.originalPromptExists(promptId)).isTrue();
-        assertThat(client.originalPromptExists(promptId)).isTrue();
-        assertThat(historyReads).hasValue(2);
-    }
-
-    @Test
-    void missingOriginalIsNotEvidenceOfRejectionAndMismatchedClientIsBlocked() {
-        UUID promptId = UUID.randomUUID();
-        server.createContext("/history/", exchange -> respond(exchange, 200, "{}"));
-        server.createContext("/queue", exchange -> respond(exchange, 200,
-                "{\"queue_running\":[],\"queue_pending\":[]}"));
-        assertThat(client.originalPromptExists(promptId)).isFalse();
-        server.removeContext("/queue");
-        server.createContext("/queue", exchange -> respond(exchange, 200,
-                "{\"queue_running\":[[0,\"" + promptId
-                        + "\",{}, {\"client_id\":\"" + UUID.randomUUID()
-                        + "\"}]],\"queue_pending\":[]}"));
-        assertThatThrownBy(() -> client.originalPromptExists(promptId))
-                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-    }
-
-    @Test
-    void historyWithoutMatchingClientIdentityCannotResurrectAnUnknownTask() {
-        UUID promptId = UUID.randomUUID();
-        AtomicInteger queueReads = new AtomicInteger();
-        server.createContext("/history/", exchange -> respond(exchange, 200,
-                "{\"" + promptId + "\":{\"prompt\":[0,\"" + promptId
-                        + "\",{}, {\"client_id\":\"foreign\"}]}}"));
-        server.createContext("/queue", exchange -> {
-            queueReads.incrementAndGet();
-            respond(exchange, 200, "{\"queue_running\":[],\"queue_pending\":[]}");
-        });
-        assertThatThrownBy(() -> client.originalPromptExists(promptId))
-                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-        assertThat(queueReads).hasValue(0);
-    }
-
-    @Test
     void uploadsServerNamedImageAndStreamsOneSanitizedOutput() throws IOException {
         UUID requestId = UUID.randomUUID();
         server.createContext("/upload/image", exchange -> {

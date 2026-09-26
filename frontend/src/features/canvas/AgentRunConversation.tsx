@@ -7,7 +7,7 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import { PlanApprovalPanel } from "./PlanApprovalPanel";
 import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
 import { BlockedRunNotice } from "./BlockedRunNotice";
-import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
+import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   QUEUED: "等待开始", RUNNING: "正在处理", WAITING_APPROVAL: "等待你的审批",
@@ -79,9 +79,8 @@ export function AgentRunConversation({ projectId, run, active }: {
     {active && run.status === "WAITING_APPROVAL" ? <PlanApprovalPanel projectId={projectId} runId={run.id} /> : null}
     {active && run.status === "WAITING_TASKS" ? <KeyframeSelectionPanel projectId={projectId} runId={run.id} /> : null}
     {active && run.status === "BLOCKED" ? <BlockedRunNotice projectId={projectId} runId={run.id} /> : null}
-    {unknownTasks.map((task) => <UnknownTaskAttemptPanel key={task.id} projectId={projectId} taskId={task.id}
-      taskVersion={task.version} planned={Boolean(task.planId)} direct={task.kind === "IMAGE_GENERATION" || task.kind === "VIDEO_GENERATION"}
-      cancelRequested={task.cancelRequested} />)}
+    {unknownTasks.map((task) => <UnknownTaskRetryPanel key={task.id} projectId={projectId} taskId={task.id}
+      taskVersion={task.version} />)}
     <div className="agent-chat-run-status" role="status">
       {active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}
       {run.status === "CANCELED" || run.status === "CANCEL_REQUESTED" ? <p>仅停止本系统后续编排；外部任务可能继续执行并产生费用。</p> : null}

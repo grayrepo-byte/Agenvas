@@ -362,7 +362,7 @@ public class TaskService {
         return tasks.listActiveDirect(ownerId, projectId);
     }
 
-    /** 对任务重新鉴权后读取外部提交尝试历史；包括用于核对 UNKNOWN 的原请求标识。 */
+    /** 对任务重新鉴权后读取外部提交尝试历史，用于验证提交不重复与诊断。 */
     @Transactional(readOnly = true)
     public List<ProviderAttempt> listProviderAttempts(UUID ownerId, UUID projectId, UUID taskId) {
         get(ownerId, projectId, taskId);
@@ -383,83 +383,13 @@ public class TaskService {
         return matching.size() == 1 ? Optional.of(matching.getFirst()) : Optional.empty();
     }
 
-    /** 查询人工承担重复请求风险后创建的替代任务；原 UNKNOWN 任务仍保留在历史中。 */
+    /** 查询人工重试创建的替代任务；原 UNKNOWN 任务仍保留在历史中。 */
     @Transactional(readOnly = true)
     public UUID replacementTaskId(UUID ownerId, UUID projectId, UUID taskId) {
         get(ownerId, projectId, taskId);
         return tasks.findManualReplacement(projectId, taskId)
                 .map(TaskRepository.ManualReplacement::replacementTaskId).orElse(null);
     }
-
-    /**
-     * 仅允许对一个未取消、未替换且恰有一次可查询提交尝试的 UNKNOWN 媒体任务进行原请求核对。
-     * 候选请求 ID 必须等于预先保存的 requestKey，避免用任意外部请求嫁接任务。
-     */
-    @Transactional(readOnly = true)
-    public ReconciliationCandidate reconciliationCandidate(UUID ownerId, UUID projectId,
-            UUID taskId) {
-        Task task = get(ownerId, projectId, taskId);
-        if (task.status() != Task.Status.UNKNOWN || task.cancelRequested()
-                || task.providerRequestId() != null
-                || tasks.findManualReplacement(projectId, taskId).isPresent()
-                || (task.kind() != Task.Kind.IMAGE_GENERATION
-                        && task.kind() != Task.Kind.VIDEO_GENERATION)) {
-            throw reconciliationConflict();
-        }
-        List<ProviderAttempt> candidates = tasks.listProviderAttempts(ownerId, projectId, taskId)
-                .stream().filter(attempt -> attempt.status() == ProviderAttempt.Status.UNKNOWN
-                        && attempt.candidateRequestId() != null
-                        && attempt.candidateOriginSha256() != null
-                        && attempt.candidateRequestId().equals(attempt.requestKey()))
-                .toList();
-        if (candidates.size() != 1) throw reconciliationConflict();
-        return new ReconciliationCandidate(task, candidates.getFirst());
-    }
-
-    /**
-     * 根据只读 Provider 核对结果，以任务版本和尝试 ID 条件恢复原请求的轮询。
-     * 不创建新的提交尝试；只有固定媒体输入仍有效且无其他失败任务时才恢复被阻断的 Run。
-     */
-    @Transactional
-    public Task resumeVerifiedOriginal(UUID ownerId, UUID projectId, UUID taskId,
-            long expectedVersion, UUID attemptId, UUID candidateRequestId,
-            String candidateOriginSha256) {
-        Instant now = clock.instant();
-        return events.recordChange(ownerId, projectId, () -> {
-            Task current = get(ownerId, projectId, taskId);
-            if (current.status() == Task.Status.WAITING_PROVIDER
-                    && candidateRequestId.toString().equals(current.providerRequestId())) {
-                return ProjectEventService.Change.unchanged(current);
-            }
-            if (!tasks.recoverUnknownSubmission(projectId, taskId, expectedVersion,
-                    attemptId, candidateRequestId, candidateOriginSha256, now)) {
-                throw reconciliationConflict();
-            }
-            Task updated = tasks.findById(taskId).orElseThrow(this::notFound);
-            AgentRun run = updated.runId() == null ? null
-                    : runs.get(ownerId, projectId, updated.runId());
-            if (run != null && run.status() == AgentRun.Status.BLOCKED
-                    && pinnedMediaInputsCurrent(ownerId, updated)
-                    && tasks.listByRun(ownerId, projectId, run.id()).stream()
-                            .noneMatch(item -> item.status() == Task.Status.UNKNOWN
-                                    || item.status() == Task.Status.BLOCKED
-                                    || item.status() == Task.Status.FAILED
-                                    || item.status() == Task.Status.CANCELED)) {
-                AgentRun running = runs.transition(ownerId, projectId, run.id(),
-                        run.version(), AgentRun.Status.RUNNING);
-                runs.transition(ownerId, projectId, run.id(), running.version(),
-                        AgentRun.Status.WAITING_TASKS);
-            }
-            events.append(ownerId, projectId, taskEvent(updated, true));
-            return ProjectEventService.Change.unchanged(updated);
-        }).value();
-    }
-
-    /** 跨只读 Provider 查询与条件恢复事务传递的原任务和提交尝试快照。
-     * @param task 查询时的任务状态快照
-     * @param attempt 已保存的 Provider 请求尝试；用于核对原请求而非重新提交
-     */
-    public record ReconciliationCandidate(Task task, ProviderAttempt attempt) {}
 
     /** 读取近期尚未核对的 UNKNOWN 任务，不依赖 Run 的活动槽位。 */
     @Transactional(readOnly = true)
@@ -1311,12 +1241,6 @@ public class TaskService {
                 "Task 租约已失效",
                 "当前 Worker 或 leaseEpoch 已过期，结果未写入。",
                 false);
-    }
-
-    /** 原任务或提交记录变化、缺少可核对 ID 时返回恢复冲突，不创建新外部请求。 */
-    private ApiProblemException reconciliationConflict() {
-        return new ApiProblemException(HttpStatus.CONFLICT, "TASK_RECONCILIATION_CONFLICT",
-                "无法恢复原 Provider 请求", "任务或提交记录已变化，或没有可核对的原请求 ID。", false);
     }
 
     /** 将任务命令的输入校验失败映射为稳定的 HTTP 400 错误。 */

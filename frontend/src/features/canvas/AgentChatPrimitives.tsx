@@ -16,7 +16,7 @@ const MESSAGE_ROLE_LABELS = { user: "你", assistant: "Agent" } as const;
 type TaskStatus = "running" | "pending" | "completed" | "failed" | "unknown" | "canceled";
 const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   running: "运行中", pending: "等待中", completed: "已完成", failed: "失败",
-  unknown: "待核对", canceled: "已取消",
+  unknown: "未知", canceled: "已取消",
 };
 const TASK_STATUS_ICONS: Record<Exclude<TaskStatus, "running">, Icon> = {
   pending: Clock, completed: Check, failed: WarningCircle, unknown: Question, canceled: MinusCircle,

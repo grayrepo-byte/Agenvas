@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowSquareOut, ArrowsClockwise, CaretDown, ListMagnifyingGlass } from "@phosphor-icons/react";
 import { Fragment, useId, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
@@ -6,7 +6,6 @@ import { ApiError, getCurrentUser, getTask, listCallLogs, type CallLog, type Cal
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
-import { UnknownTaskAttemptPanel } from "../canvas/UnknownTaskAttemptPanel";
 import "./CallLogsPage.css";
 
 const PAGE_SIZE = 20;
@@ -18,12 +17,12 @@ const MILLISECONDS_PER_MINUTE = 60_000;
 const LOCAL_DATE_TIME_LENGTH = 19;
 const TABLE_COLUMN_COUNT = 7;
 const KIND_LABELS: Record<CallLog["kind"], string> = { LLM: "文本模型", IMAGE: "图片", VIDEO: "视频" };
-const STATUS_LABELS: Record<CallLog["status"], string> = { RUNNING: "调用中", SUCCEEDED: "成功", FAILED: "失败", UNKNOWN: "待核对" };
+const STATUS_LABELS: Record<CallLog["status"], string> = { RUNNING: "调用中", SUCCEEDED: "成功", FAILED: "失败", UNKNOWN: "未知" };
 const OPERATION_LABELS: Record<CallLog["operation"], string> = { CHAT: "模型对话", SUBMIT: "提交生成", POLL: "查询结果", LEGACY: "历史任务" };
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
 const TASK_STATUS_LABELS: Record<Task["status"], string> = {
   PENDING: "等待依赖", READY: "排队中", SUBMITTING: "提交中", RUNNING: "运行中", WAITING_PROVIDER: "等待外部结果",
-  SUCCEEDED: "已完成", FAILED: "失败", UNKNOWN: "待核对", BLOCKED: "已阻断", CANCELED: "已取消",
+  SUCCEEDED: "已完成", FAILED: "失败", UNKNOWN: "未知", BLOCKED: "已阻断", CANCELED: "已取消",
 };
 
 function readFilters(params: URLSearchParams): CallLogFilters {
@@ -42,7 +41,7 @@ function readFilters(params: URLSearchParams): CallLogFilters {
   };
 }
 
-/** A read-only audit list; recovery actions remain explicit inside the selected task's details. */
+/** A read-only audit list; recovery stays inside the owning Agent conversation or media card. */
 export function CallLogsPage() {
   const [params, setParams] = useSearchParams();
   const filters = readFilters(params);
@@ -61,11 +60,11 @@ export function CallLogsPage() {
     setParams(next);
   };
 
-  return <PageShell title="调用日志" description="查看模型与媒体调用的时间、结果和关联记录。刷新日志不会发起生成。" actions={
+  return <PageShell title="调用日志" description="查看模型与媒体调用的时间、结果和关联记录。本页只读，刷新和查看都不会发起生成或改变任务状态。" actions={
     <button className="secondary-button" type="button" disabled={logs.isFetching || !currentUser.isSuccess}
       onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? "正在刷新…" : "刷新日志"}</button>
   }><div className="ui-stack">
-    <Panel title="筛选记录" description="时间按当前设备时区显示；筛选按调用开始时间匹配。待核对也包含关联任务尚未核实的记录。">
+    <Panel title="筛选记录" description="时间按当前设备时区显示；筛选按调用开始时间匹配。未知包含调用结果未记录与关联任务尚未核实的记录。">
       <CallLogFilterForm key={params.toString()} filters={filters} onApply={setParams} />
     </Panel>
     {logs.isPending && currentUser.isSuccess ? <LoadingState label="正在读取调用日志" /> : null}
@@ -165,8 +164,8 @@ function CallLogDetails({ log }: { log: CallLog }) {
   </>;
 }
 
+/** Reads the related task for context only; this page never performs recovery. */
 function CallLogTask({ projectId, taskId }: { projectId: string; taskId: string }) {
-  const queryClient = useQueryClient();
   const task = useQuery({ queryKey: ["call-log-task", projectId, taskId], queryFn: () => getTask(projectId, taskId), retry: false });
   const forbidden = task.error instanceof ApiError && task.error.status === FORBIDDEN_STATUS;
   if (task.error instanceof ApiError && task.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
@@ -174,21 +173,13 @@ function CallLogTask({ projectId, taskId }: { projectId: string; taskId: string 
     <h3>关联任务</h3>
     {task.isPending ? <LoadingState compact label="正在读取关联任务" /> : null}
     {task.isError ? <Notice tone="danger" title={forbidden ? "无权查看关联任务" : "读取关联任务失败"}>
-      <p>重新读取当前任务状态后才能处理待核对请求。</p>
+      <p>无法读取关联任务的当前状态。需要重试时，请在所属 Agent 对话或媒体卡片上处理。</p>
       <button className="secondary-button" type="button" disabled={task.isFetching} onClick={() => void task.refetch()}>重试读取任务</button>
     </Notice> : null}
-    {task.data && !task.isError ? <>
-      <div className="ui-toolbar"><span className="ui-muted">当前状态：{TASK_STATUS_LABELS[task.data.status]}</span>
-        <Link className="secondary-button" to={`/projects/${encodeURIComponent(projectId)}`}>前往项目<ArrowSquareOut size={14} aria-hidden /></Link></div>
-      {task.data.status === "UNKNOWN" ? <UnknownTaskAttemptPanel projectId={projectId} taskId={taskId} taskVersion={task.data.version}
-        planned={Boolean(task.data.planId)} direct={task.data.kind === "IMAGE_GENERATION" || task.data.kind === "VIDEO_GENERATION"}
-        cancelRequested={task.data.cancelRequested} onChanged={async () => {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["call-logs"] }),
-            queryClient.invalidateQueries({ queryKey: ["call-log-task", projectId, taskId] }),
-          ]);
-        }} /> : null}
-    </> : null}
+    {task.data && !task.isError ? <div className="ui-toolbar">
+      <span className="ui-muted">当前状态：{TASK_STATUS_LABELS[task.data.status]}</span>
+      <Link className="secondary-button" to={`/projects/${encodeURIComponent(projectId)}`}>前往项目<ArrowSquareOut size={14} aria-hidden /></Link>
+    </div> : null}
   </section>;
 }
 

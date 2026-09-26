@@ -52,7 +52,7 @@ describe("CallLogsPage", () => {
     expect(screen.getByText("trace-123")).toBeInTheDocument();
     expect(screen.getByText("provider-request-789")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "审计测试项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
-    expect(screen.queryByRole("button", { name: "明确风险后创建新尝试" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 
   it("sends applied filters and pagination to the server, resetting page when filters change", async () => {
@@ -103,7 +103,7 @@ describe("CallLogsPage", () => {
     showPage();
     expect(await screen.findByText("历史记录")).toBeInTheDocument();
     expect(screen.getByText("等待响应")).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText("待核对")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("未知")).toBeInTheDocument();
     expect(screen.queryByText("0 ms")).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 legacy" }));
     expect(screen.getByText(/历史记录只保留当时已保存的信息/)).toBeInTheDocument();
@@ -149,48 +149,27 @@ describe("CallLogsPage", () => {
     expect(screen.queryByText("test-model")).not.toBeInTheDocument();
   });
 
-  it("loads UNKNOWN task/attempts only on demand and retains explicit direct-task risk acknowledgement", async () => {
-    const taskReads = vi.fn();
+  it("shows the related task as read-only and never offers UNKNOWN recovery", async () => {
     const attemptReads = vi.fn();
-    const logReads = vi.fn();
     const created = vi.fn();
     server.use(
-      http.get("/api/v1/call-logs", () => { logReads(); return HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }])); }),
-      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => { taskReads(); return HttpResponse.json(TASK); }),
-      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/attempts`, () => {
-        attemptReads();
-        return HttpResponse.json([{ id: "attempt", taskId: TASK_ID, status: "UNKNOWN", requestKey: "original-request-key",
-          reconcilable: false, providerRequestId: null, replacementTaskId: null, createdAt: LOG.startedAt, updatedAt: LOG.startedAt }]);
-      }),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/new-attempt`, async ({ request }) => {
-        created();
-        expect(await request.json()).toEqual({ expectedTaskVersion: 7, riskAcknowledgement: "ACCEPT_POSSIBLE_DUPLICATE_COST" });
-        return HttpResponse.json({ ...TASK, id: "new-task", status: "READY" });
-      }),
+      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }]))),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => HttpResponse.json(TASK)),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/attempts`, () => { attemptReads(); return HttpResponse.json([]); }),
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/new-attempt`, () => { created(); return HttpResponse.json({ ...TASK, id: "new-task", status: "READY" }); }),
     );
     showPage();
-    await screen.findByText("test-model");
-    expect(taskReads).not.toHaveBeenCalled();
-    expect(attemptReads).not.toHaveBeenCalled();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
-    const ledgerButton = await screen.findByRole("button", { name: "查看提交账本并处理重试" });
-    expect(taskReads).toHaveBeenCalledTimes(1);
+    await user.click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
+    const related = await screen.findByRole("region", { name: "关联任务" });
+    expect(await within(related).findByText("当前状态：未知")).toBeInTheDocument();
+    expect(within(related).getByRole("link", { name: "前往项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
     expect(attemptReads).not.toHaveBeenCalled();
-    await user.click(ledgerButton);
-    const newAttempt = await screen.findByRole("button", { name: "明确风险后创建新尝试" });
-    expect(newAttempt).toBeDisabled();
     expect(created).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(newAttempt);
-    await waitFor(() => expect(taskReads).toHaveBeenCalledTimes(2));
-    expect(logReads).toHaveBeenCalledTimes(2);
-    expect(created).toHaveBeenCalledTimes(1);
-    expect(within(screen.getByRole("region", { name: "关联任务" })).getByRole("link", { name: "前往项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
   });
 
-  it("uses the latest task state and offers no UNKNOWN recovery after the task resumed", async () => {
+  it("reads the related task's latest state instead of the logged status", async () => {
     server.use(
       http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }]))),
       http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => HttpResponse.json({ ...TASK, status: "WAITING_PROVIDER" })),
@@ -198,6 +177,6 @@ describe("CallLogsPage", () => {
     showPage();
     await userEvent.setup().click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
     expect(await screen.findByText("当前状态：等待外部结果")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "查看提交账本并处理重试" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 });

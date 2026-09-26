@@ -50,6 +50,6 @@ function switchOnFailure(code: string | null | undefined): string {
     case "AGENT_TURN_FAILED":
       return "模型回合未能完成，可能是无效输出或服务故障。已停止后续编排；可展开 Agent 运行记录查看任务状态。";
     default:
-      return "请检查下方 UNKNOWN 核对提示或展开 Agent 运行记录确认受阻任务；取消 Run 不代表外部已停止或退款。";
+      return "请检查下方结果未知的任务或展开 Agent 运行记录确认受阻任务；取消 Run 不代表外部已停止或退款。";
   }
 }

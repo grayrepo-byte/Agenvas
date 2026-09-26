@@ -66,7 +66,7 @@ public class ComfyUiClient {
                 }).build();
     }
 
-    /** 对管理员固定的规范化 origin 计算摘要，供请求核对；不接收浏览器 URL。 */
+    /** 对管理员固定的规范化 origin 计算摘要，供轮询校验；不接收浏览器 URL。 */
     public String originSha256() {
         try {
             byte[] bytes = origin.toString().getBytes(StandardCharsets.UTF_8);
@@ -102,52 +102,6 @@ public class ComfyUiClient {
     public JsonNode history(UUID promptId) {
         if (promptId == null) throw new IllegalArgumentException("promptId is required");
         return json("GET", "/history/" + promptId, null);
-    }
-
-    /** 仅在 history 和 queue 中查找预先提交的 prompt ID；查无结果仍不证明提交失败。 */
-    public boolean originalPromptExists(UUID promptId) {
-        if (promptId == null) throw new IllegalArgumentException("promptId is required");
-        JsonNode history = history(promptId);
-        if (!history.isObject()) {
-            throw new ProtocolFailure("ComfyUI history was not an object");
-        }
-        if (history.has(promptId.toString())) {
-            requireOriginalIdentity(history.path(promptId.toString()).path("prompt"), promptId);
-            return true;
-        }
-        if (!history.isEmpty()) {
-            throw new ProtocolFailure("ComfyUI returned history for a different prompt");
-        }
-        JsonNode queue = json("GET", "/queue", null);
-        if (!queue.isObject() || !queue.path("queue_running").isArray()
-                || !queue.path("queue_pending").isArray()) {
-            throw new ProtocolFailure("ComfyUI queue was malformed");
-        }
-        return queueContainsOriginal(queue.path("queue_running"), promptId)
-                | queueContainsOriginal(queue.path("queue_pending"), promptId);
-    }
-
-    /** 校验队列每条记录结构，并按 prompt_id 与 client_id 双重匹配原请求。 */
-    private boolean queueContainsOriginal(JsonNode entries, UUID promptId) {
-        boolean found = false;
-        for (JsonNode entry : entries) {
-            if (!entry.isArray()) {
-                throw new ProtocolFailure("ComfyUI queue entry was malformed");
-            }
-            if (promptId.toString().equals(entry.path(1).asText())) {
-                requireOriginalIdentity(entry, promptId);
-                found = true;
-            }
-        }
-        return found;
-    }
-
-    /** 确认队列或历史记录中的 prompt_id、client_id 都等于本地 requestKey。 */
-    private void requireOriginalIdentity(JsonNode entry, UUID promptId) {
-        if (!entry.isArray() || !promptId.toString().equals(entry.path(1).asText())
-                || !promptId.toString().equals(entry.path(3).path("client_id").asText())) {
-            throw new ProtocolFailure("ComfyUI prompt identity did not match the saved request");
-        }
     }
 
     /** 查询已保存 prompt ID，并只解析固定模板声明的图片输出节点。 */
@@ -341,7 +295,7 @@ public class ComfyUiClient {
         public ProtocolFailure(String message, Throwable cause) { super(message, cause); }
     }
 
-    /** 提交时网络结果不确定；任务可能已被 ComfyUI 接受，必须先核对原 prompt。 */
+    /** 提交时网络结果不确定；任务可能已被 ComfyUI 接受，因此不能当作安全失败。 */
     public static class TransportFailure extends RuntimeException {
         /**
          * @param message 不暴露远端正文的错误摘要

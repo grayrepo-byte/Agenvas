@@ -108,3 +108,11 @@ Call-audit visual result: desktop workflow verified in isolated Mock environment
 - 未取得浏览器截图：审批卡在真实滚动区内的长内容、360px 宽度下的换行与按钮换行仍未做视觉验收；组件测试不替代该结论。
 
 Approval placement visual result: blocked
+
+## 调用日志改为只读（2026-09-26）
+
+- 用户指出日志里的“待核对”没有可处理的地方，且认为不需要处理。核实确认：该状态是查询时对写回失败调用行的投影，全部历史记录会永久显示；LLM 调用记录没有关联任务 ID，展开后没有任何入口。
+- 决定：日志页保持纯只读审计，调用结果与关联任务的状态标签均改为“未知”，详情只保留关联任务的当前状态与“前往项目”链接；UNKNOWN 核对与显式风险新尝试只在所属 Agent 对话和媒体卡片编辑区进行。管理端系统诊断页的同一状态标签与说明文案同步改为“未知”。
+- 代价：卡片移出画布期间不再有全局 UNKNOWN 入口，用户明确接受。定向 `CallLogsPage` 11 项测试、改动文件 ESLint 与 `tsc --noEmit` 通过；本轮未做浏览器视觉验收。
+
+Read-only call-audit result: pending — component tests only.

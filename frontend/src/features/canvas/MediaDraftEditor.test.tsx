@@ -176,12 +176,11 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
-  it("keeps UNKNOWN blocked and offers the original-request investigation controls", async () => {
+  it("keeps UNKNOWN blocked and offers a single retry control", async () => {
     setup({ tasks: [task("UNKNOWN")] });
     await screen.findByLabelText("图片提示词");
-    expect(await screen.findByText("结果待核实")).toBeVisible();
-    expect(screen.getByText("请先核对原请求，避免重复生成。")).toBeVisible();
-    expect(screen.getByRole("button", { name: "查看提交账本并处理重试" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
+    expect(screen.getAllByText("结果未知").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 

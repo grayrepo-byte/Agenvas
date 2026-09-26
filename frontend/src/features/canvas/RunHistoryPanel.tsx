@@ -55,7 +55,7 @@ export function RunHistoryPanel({ projectId, agentId }: { projectId: string; age
             </li>)}</ul>
             {tasks.data.some((task) => task.kind === "IMAGE_GENERATION" ||
               task.kind === "VIDEO_GENERATION") ? <p className="mt-2 text-[var(--muted)]">
-              已受理任务的查询或归档技术重试只核对原 Provider 请求，不会因下载失败重新生成。若内容不满意，需要基于当前版本发起新 Run 并重新审批媒体计划；这属于可能产生额外成本的新生成尝试。UNKNOWN 请先核对原请求，不把未知状态当作可安全重做。
+              已受理任务的查询或归档技术重试只针对原 Provider 请求，不会因下载失败重新生成。若内容不满意，需要基于当前版本发起新 Run 并重新审批媒体计划；这属于可能产生额外成本的新生成尝试。UNKNOWN 需要在卡片上显式重试，系统不会自动重做。
             </p> : null}
           </div> : null}
         </div> : null}

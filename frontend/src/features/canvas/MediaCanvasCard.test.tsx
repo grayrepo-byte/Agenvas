@@ -87,13 +87,13 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
-  it("shows UNKNOWN as a reconciliation state instead of a running animation", async () => {
+  it("shows UNKNOWN as an explicit retry state instead of a running animation", async () => {
     server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
       { id: "task-1", status: "UNKNOWN", errorCode: "SUBMISSION_UNKNOWN" },
     ])));
     showCard();
-    expect(await screen.findByText("结果待核对")).toBeInTheDocument();
-    expect(screen.getByText("请在编辑区核对原请求")).toBeInTheDocument();
+    expect(await screen.findByText("结果未知")).toBeInTheDocument();
+    expect(screen.getByText("可在编辑区重试")).toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
   });
 

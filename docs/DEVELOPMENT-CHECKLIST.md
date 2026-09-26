@@ -129,7 +129,7 @@
 
 - [ ] 浏览器验证 Agent 卡片中的对话/历史/设置、输入绑定和输出入口；同会话多次发送各创建一条有序 Run 并共享该会话上下文，新建会话才开始空记忆；输入/配置/会话变化后旧确认失效。
 - [ ] 浏览器验证持久化公开回复与动作的刷新恢复、历史查看和空态/错误；不展示私有消息，不混入其他会话或虚构回复。
-- [ ] 浏览器验证计划审批、关键帧、阻断和 UNKNOWN 均可在所属对话处理；移除 Agent 卡片后实际审批仍有全局入口，UNKNOWN 从调用日志接管，同项目活动 Run 和取消边界不变。
+- [ ] 浏览器验证计划审批、关键帧、阻断和 UNKNOWN 均可在所属对话处理；移除 Agent 卡片后实际审批仍有全局入口，调用日志保持只读、不提供 UNKNOWN 恢复，同项目活动 Run 和取消边界不变。
 
 **M1 门禁**：不依赖真实 AI，即可手工完整操作一个三镜头项目并刷新恢复。
 
@@ -191,14 +191,16 @@
 
 2026-09-26 展示位置调整：画布不再常驻 UNKNOWN 横幅，历史/待核对调用及账本核对入口集中到 `/settings/calls`；所属 Agent 对话内的当次任务状态和风险确认保留。此调整不修改任务状态、名额与额度，也不自动重提请求。
 
+2026-09-26 产品决策变更：移除“核对原请求”能力与重复成本确认，UNKNOWN 改为卡片或所属对话上的单次显式重试。后端删除 `reconcile` 与 `attempts` 端点、`UnknownTaskReconciler` 及 ComfyUI 候选核对链，`new-attempt` 只接受 `expectedTaskVersion`；`ManualUnknownRetryService` 对 ComfyUI 的单槽硬拒绝一并移除，因为单槽门禁本就把“已被替代的 UNKNOWN”排除在占用之外。原 UNKNOWN 任务与提交记录仍完整保留，自被替代起不再占用媒体并发名额。规格 §12.7、AGENTS §6、ADR 0005/0006 与 OpenAPI 已同步；系统层崩溃恢复不自动重提的行为未变。
+
 - [x] SUBMITTING 崩溃不会自动重提。
 - [x] 取消后晚到结果不自动替换当前版本或唤醒下游。
 - [x] 显示可能的外部成本，不伪装成退款或确定失败。
-- [x] UNKNOWN 列表逐项展示任务 ID、尝试次数、已保存的原请求 ID 或缺失警告、错误码，不展示私有输入；保留人工核对线索。
-- [x] 按项目权限读取单任务的提交关联键、attempt 状态与原 Provider 请求 ID，页面按需展开且不暴露工作线程信息。
+- [ ] UNKNOWN 列表逐项展示任务 ID、尝试次数、已保存的原请求 ID 或缺失警告、错误码，不展示私有输入；保留人工核对线索。（2026-09-26 产品决策移除核对能力与该列表 UI，本项作废。）
+- [ ] 按项目权限读取单任务的提交关联键、attempt 状态与原 Provider 请求 ID，页面按需展开且不暴露工作线程信息。（同上，`/attempts` 端点已移除。）
 - [x] 新 ComfyUI 请求使用提交前持久化的关联键作为候选 prompt_id，并拒绝不一致回执；不把该 ID 当幂等保证。
-- [x] 新 ComfyUI UNKNOWN 仅在候选 ID、原 endpoint 指纹、工作流配置及 Provider 返回的 prompt/client ID 全部匹配时恢复原请求轮询；空查询、旧 attempt、配置漂移和取消不自动重提。
-- [x] UNKNOWN 可核对原请求；不能核对时仅在明确提示潜在重复成本后新建尝试，原 attempt 保留。新尝试、独立用量预留与待执行依赖重连已通过 PostgreSQL 并发测试；真实 ComfyUI 联调暂缓。
+- [ ] 新 ComfyUI UNKNOWN 仅在候选 ID、原 endpoint 指纹、工作流配置及 Provider 返回的 prompt/client ID 全部匹配时恢复原请求轮询；空查询、旧 attempt、配置漂移和取消不自动重提。（2026-09-26 产品决策移除“核对原请求”，本项作废。）
+- [x] 重试可为 UNKNOWN 任务新建尝试，原 attempt 保留；新尝试、独立用量预留与待执行依赖重连已通过 PostgreSQL 并发测试；真实 ComfyUI 联调暂缓。2026-09-26 起不再要求显式的重复成本确认，改为界面上的单次重试；ComfyUI 的原单槽硬拒绝同时移除，被替代的原任务不再占用名额。
 - [x] 实际中断进程并重启，验证提交 checkpoint 与租约恢复不重复提交。
 - [x] 进程中断期间的 SSE 客户端重连在浏览器端到端验证（隔离 Compose 中 stop/start server，页面自动恢复并接收新 Run 事件；见 `docs/evidence/T12-browser-process-reconnect.md`）。
 
@@ -238,7 +240,7 @@
 
 交付：说明、角色、场景、镜头创建及输出布局。
 
-进展补充：活动 Run 进入 BLOCKED 时，画布只读取同项目持久 Task 的稳定错误码，明确解释固定模型配置/工具能力不可用、历史密钥缺失或模型结构修复耗尽；媒体 UNKNOWN 从所属对话或调用日志进入核对，不展示模型输入或私有内容。结构或计划领域校验失败时，同轮工具事务回滚，并在持久化模型回合内最多修复两次；真实 Provider 效果仍未验证。见 `docs/evidence/T16-structured-repair.md`。首轮模型规则与运行前确认面板现明确声明当前不传像素/帧/音频、不能声称已分析视觉内容，也不能把媒体计划冒充已归档结果；Mock＋PostgreSQL 与前端测试见 `docs/evidence/T16-media-capability-boundary.md`，真实模型遵循情况尚未验证。
+进展补充：活动 Run 进入 BLOCKED 时，画布只读取同项目持久 Task 的稳定错误码，明确解释固定模型配置/工具能力不可用、历史密钥缺失或模型结构修复耗尽；媒体 UNKNOWN 在所属对话或媒体卡片上显式重试，不展示模型输入或私有内容。结构或计划领域校验失败时，同轮工具事务回滚，并在持久化模型回合内最多修复两次；真实 Provider 效果仍未验证。见 `docs/evidence/T16-structured-repair.md`。首轮模型规则与运行前确认面板现明确声明当前不传像素/帧/音频、不能声称已分析视觉内容，也不能把媒体计划冒充已归档结果；Mock＋PostgreSQL 与前端测试见 `docs/evidence/T16-media-capability-boundary.md`，真实模型遵循情况尚未验证。
 
 - [ ] 一句指令创建三个有合法引用和顺序的镜头。
 - [ ] 模型不支持某能力时明确提示，不伪装成已看图或已生成。
@@ -321,7 +323,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 2026-09-26 画布外界面补充：登录/初始化、项目列表、LLM 与媒体设置、系统诊断/改密统一为 Beautiful UI 黑色主题，复用导航、表单、状态和现有像素加载器；项目搜索明确仅覆盖已加载数据，保留真实游标分页。后台刷新保留草稿，冲突提供显式重载；付费诊断仍需逐次确认。定向测试、构建结果与浏览器限制见 [画布外页面证据](evidence/T21-outside-canvas-beautiful-ui.md)，没有新增后端/合约/迁移或完成真实 Provider 验收。
 
-- [ ] Key 轮换后旧任务仍能按原配置核对，或明确报认证阻断。
+- [ ] Key 轮换后旧任务仍能按原配置查询，或明确报认证阻断。
 - [ ] 无 Key 泄露到日志、SSE、导出或浏览器持久存储。
 - [x] 端点地址策略放行私网与代理 fake-ip 段（`EndpointAddressRules`），云元数据与非路由地址仍拒绝，理由见 ADR 0007；重定向/DNS 等 SSRF 测试通过（精确管理员端点、ComfyUI 双路由重定向目标零请求、LLM 模拟恶意 DNS；真实网络基础设施仍未演练）。
 
@@ -351,7 +353,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 交付：受信任 image-to-video-v1、参数能力、图像版本固定、进度与归档。
 
-阶段性 Mock 视频、固定关键帧版本、任务键 MP4 归档恢复和前端手动播放证据见 `docs/evidence/T23-mock-video-partial.md`。另有默认关闭的 Wan 2.1 `image-to-video-v1` 候选接入、选定图片上传、帧数/画幅映射、原 prompt 核对和假 ComfyUI＋PostgreSQL 闭环，见 `docs/evidence/T23-comfyui-video-candidate.md`；尚无真实模型兼容测试，以下真实 Provider 验收项仍未完成。
+阶段性 Mock 视频、固定关键帧版本、任务键 MP4 归档恢复和前端手动播放证据见 `docs/evidence/T23-mock-video-partial.md`。另有默认关闭的 Wan 2.1 `image-to-video-v1` 候选接入、选定图片上传、帧数/画幅映射、原 prompt 查询和假 ComfyUI＋PostgreSQL 闭环，见 `docs/evidence/T23-comfyui-video-candidate.md`；尚无真实模型兼容测试，以下真实 Provider 验收项仍未完成。
 
 - [ ] 真实参考关键帧进入视频输入，不只验证文生视频替代路径。
 - [ ] 时长/画幅/分辨率映射与模板能力一致。
@@ -420,6 +422,8 @@ Prompt 版本补充：新 Run 的策略快照固定系统 Prompt v2；历史无�
 
 2026-09-26 入口与呈现收口：调用日志不再在画布放入口，只从侧栏菜单进入，进入后按当前项目筛选；审批提示按 Beautiful UI Approval Card 只留在所属 Agent 对话内，画布不承载审批。无待审计划时不再绘制空审批卡；`BlockedRunNotice` 与 `UnknownTaskAttemptPanel` 去掉已无调用方的 `panel` 呈现分支。定向 14 个前端文件、98 项通过，未运行全量测试，浏览器视觉与长内容滚动仍未验收。
 
+2026-09-26 日志只读回退：核实调用日志的“待核对”实为查询时对写回失败调用行的投影——关联任务一旦不在运行中或提交中（含全部历史记录），该标签就永久显示；而 LLM 调用记录没有关联任务 ID，展开后没有任何可操作入口。日志页因此移除 UNKNOWN 核对与风险新尝试，只保留关联任务的当前状态与“前往项目”链接；调用结果与关联任务的状态标签、以及管理端系统诊断页的同一标签与说明文案，均改为“未知”。恢复动作仍只在所属 Agent 对话与媒体卡片编辑区。同步更新 MVP-SPEC、ADR 0005 与调用日志证据。代价：卡片移出画布期间不再有全局 UNKNOWN 入口，由用户接受。
+
 HTTP 关联补验：服务端生成的请求 ID 同时进入响应头、ProblemDetail 与 ECS 结构化日志；客户端伪造值被忽略，请求线程 MDC 会清理。真实 Tomcat＋PostgreSQL 和单测见 `docs/evidence/T28-request-correlation.md`。后台任务与异步 SSE 后续发送尚未补齐全量关联；此关联测试本身不测性能。
 
 本机隔离性能补验：真实 Chrome＋PostgreSQL 在 M1 业务项目上测项目列表/快照各 100 次、Run 受理及场景写入到画布可见各 30 次；首次事件 p95 超过 1 秒，改为事务提交后提示共享事件读取、保留 1 秒持久补发后复测四项本机目标均满足。方法、样本和限制见 `docs/evidence/T28-api-and-event-latency.md`；高并发、长期内存和任务队列目标仍待验。
@@ -466,7 +470,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 实施顺序：[整数秒迁移计划](superpowers/plans/2026-09-25-integer-video-seconds.md) → [媒体能力基础计划](superpowers/plans/2026-09-25-media-capability-foundation.md) → [GPT Image 2/Seedance 适配器计划](superpowers/plans/2026-09-25-gpt-image-seedance-adapters.md)。以下交付项按实际检查结果更新。
 
-- [x] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；V40 一次性导入 Mock/ComfyUI 配置与可精确匹配的历史任务来源，无法匹配的旧请求保持阻断或待核对。PostgreSQL 迁移及目录集成测试通过；未进行真实 ComfyUI 调用。
+- [x] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；V40 一次性导入 Mock/ComfyUI 配置与可精确匹配的历史任务来源，无法匹配的旧请求保持阻断或未知。PostgreSQL 迁移及目录集成测试通过；未进行真实 ComfyUI 调用。
 - [x] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一新镜头、计划、Task、用量和导出区间的整数秒字段；保留素材探测毫秒精度，验证旧整数/小数镜头与已受理任务迁移。V36 升级、v1 冻结任务与用量、Mock/假 ComfyUI、1.25 秒素材导出边界及前端表单有回归测试；`backend ./mvnw verify`（57 个集成测试）、前端类型检查/lint/73 个测试/构建通过，真实 Provider 未运行。
 - [x] 图片/视频计划逐步骤展示、改选并确认固定能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。`backend ./mvnw verify`（63 项、0 失败）、前端类型检查/lint/77 项测试/构建通过；ComfyUI 使用本地假服务，真实 Provider 未运行。
 - [x] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端计划链路验收；跨项目参考图在网络前拒绝，响应丢失保持 UNKNOWN，不自动重提。真实渠道已跑通文字生图并对齐了同步生成所需的读超时与租约，见 `docs/evidence/T21-openai-image-sync-result.md`；参考图编辑（`images/edits`）仍只有本地假服务验证。
@@ -484,7 +488,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 依据：[ADR 0005](adr/0005-canvas-interaction-redesign.md)、[ADR 0006](adr/0006-direct-media-task-boundary.md)、[领域词汇](../CONTEXT.md)和 `docs/MVP-SPEC.md` 第 6.9 节。以下均为新目标，不能用现有 Agent 三镜头生成验收代替。
 
-实施进展：深色画布、七类菜单、底部编辑、资源抽屉、媒体草稿、直接 Task、数据库并发认领、单实例有界并行派发、队列状态与能力上限配置已进入代码。PostgreSQL 集成测试覆盖空版本媒体卡片、草稿 CAS、独立任务、Mock 结果版本、精确视频输入、项目并发上限和能力全局上限；调度器单测覆盖三个并行提交槽。前端交互测试覆盖菜单和编辑区。当前能力目录没有已知价格字段，因此直接运行展示费用未知、账本记未知金额；金额预留需在价格配置落地后补验。ComfyUI 原 UNKNOWN 占用全局单槽时，明确风险新尝试会被拒绝，须先核对原请求。浏览器端到端、真实 Provider、跨 Worker 故障注入和完整容量矩阵仍待验收，因此下列综合验收项暂不勾选。
+实施进展：深色画布、七类菜单、底部编辑、资源抽屉、媒体草稿、直接 Task、数据库并发认领、单实例有界并行派发、队列状态与能力上限配置已进入代码。PostgreSQL 集成测试覆盖空版本媒体卡片、草稿 CAS、独立任务、Mock 结果版本、精确视频输入、项目并发上限和能力全局上限；调度器单测覆盖三个并行提交槽。前端交互测试覆盖菜单和编辑区。当前能力目录没有已知价格字段，因此直接运行展示费用未知、账本记未知金额；金额预留需在价格配置落地后补验。ComfyUI 原 UNKNOWN 占用全局单槽，用户重试后原任务被替代即让出名额。浏览器端到端、真实 Provider、跨 Worker 故障注入和完整容量矩阵仍待验收，因此下列综合验收项暂不勾选。
 
 - [ ] 工作区改为深色点状全画布；取消左侧创建栏；空白双击与悬浮“+”打开同一七类菜单，键盘可达，边缘避让，新卡片精确落在交互位置；右下角缩放控件可用。
 - [ ] 单选 Artifact 显示按类型切换的底部编辑区，空选隐藏，多选显示批量操作；文字、角色、场景和镜头字段与现有业务 Schema 对齐。Agent 使用卡片内对话/历史/设置，配置指令与本次运行指令分开；每次确认发送为独立 Run。
@@ -504,7 +508,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 | 重复创建 Run | 返回同一 Run | T09 |
 | 同 key 不同参数 | 409，未产生额外副作用 | T09、T17 |
 | 并发批准 | 一组任务、一笔预留 | T17 |
-| Provider 收到请求后断网 | 原任务核对或 UNKNOWN | T13、T20、T23 |
+| Provider 收到请求后断网 | 转 UNKNOWN，用户显式重试 | T13、T20、T23 |
 | 租约失效后旧 Worker 返回 | 不覆盖新状态 | T10 |
 | 生成完成但归档失败 | 不重复生成 | T19–T23 |
 | 取消后任务晚到 | 历史保留，不触发下游 | T13、T22–T25 |

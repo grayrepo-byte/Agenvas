@@ -30,7 +30,7 @@ public class ProjectSnapshotService {
     private final AgentInstanceService agents;
     /** 按项目锚点读取活动 Run。 */
     private final AgentRunService runs;
-    /** 读取活动 Run 任务和待核对 UNKNOWN 任务。 */
+    /** 读取活动 Run 任务和结果未知的任务。 */
     private final TaskService tasks;
 
     /** 注入快照所需的项目、画布、Agent、Run 和任务读取边界。
@@ -106,7 +106,7 @@ public class ProjectSnapshotService {
      * @param agents 项目 Agent 卡片及固定输入
      * @param activeRun 当前占用项目槽位的 Run；无活动 Run 时为空
      * @param activeTasks 活动 Run 与用户直接媒体任务
-     * @param unknownTasks 需要核对或人工处理的未决任务
+     * @param unknownTasks 结果未知、需要人工处理的未决任务
      * @param snapshotSeq 与上述所有数据来自同一 MVCC 快照的事件水位
      */
     public record ProjectSnapshot(

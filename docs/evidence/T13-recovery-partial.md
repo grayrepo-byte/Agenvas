@@ -1,5 +1,7 @@
 # T13 取消、UNKNOWN 与恢复分类：阶段证据
 
+> 2026-09-26 注：本文提到的“原请求核对”与“明确风险后的新尝试流程”已由产品决策移除，UNKNOWN 现在只提供一次显式重试。其余恢复行为（不自动重发、晚到结果只归档、UNKNOWN 可见性）不变。
+
 本切片尚未完成 T13，也未满足 M2 门禁。当前覆盖持久任务提交未知、取消晚到结果、Mock 内容的 ArtifactVersion CAS 选用，以及新 ComfyUI attempt 在假 HTTP 服务下的原请求核对；没有真实 ComfyUI/GPU 调用或明确风险后的新尝试流程。
 
 变更行为：Flyway V11 增加 `cancel_requested`、提交前的 `provider_attempt` 和 `task_late_result`。内置 TaskWorker 对图片/视频 Task 先持久化 `SUBMITTING` 与 attempt，再调用处理器；确认后保存原 requestId，租约过期的提交由定时扫描转为 `UNKNOWN`，不会回到 READY 或自动重发。Task 创建、提交 checkpoint、确认、完成和恢复状态与项目事件同事务写入。Run 取消先设置任务取消标志，未提交任务变 CANCELED；已运行任务的晚到输出只写入历史，不唤醒下游，失联的已取消本地工作在租约过期后结束。项目快照独立列出最近 100 个 UNKNOWN，即使 Run 已取消、活动槽位已释放仍可见。画布提示可能发生外部费用、不会自动重试，且取消不代表退款。

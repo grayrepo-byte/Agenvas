@@ -20,7 +20,6 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.ComfyUiImageWorker;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
-import dev.agenvas.provider.application.ComfyUiUnknownTaskReconciler;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
@@ -113,7 +112,6 @@ class ComfyUiImagePostgresIT {
     @Autowired private ComfyUiImageWorker worker;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker mediaWorker;
-    @Autowired private ComfyUiUnknownTaskReconciler reconciler;
     @Autowired private ComfyUiImageWorkflow workflow;
     @Autowired private ComfyUiClient client;
     @Autowired private ComfyUiClientRegistry clientRegistry;
@@ -373,11 +371,6 @@ class ComfyUiImagePostgresIT {
         assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
                 .param("id", uncertainTask.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(reconciler.reconcile(owner.userId(), project.id(), uncertainTask.id()).outcome())
-                .isEqualTo(dev.agenvas.task.application.UnknownTaskReconciler.Outcome.RESUMED);
-        assertThat(tasks.get(owner.userId(), project.id(), uncertainTask.id())
-                .providerRequestId()).isEqualTo(LAST_PROMPT_ID.get().toString());
-        assertThat(SUBMISSIONS).hasValue(acceptedBeforeLoss + 1);
     }
 
     private void due(UUID taskId) {
