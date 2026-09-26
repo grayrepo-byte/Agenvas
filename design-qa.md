@@ -60,3 +60,13 @@ Conversation visual result: blocked
 - 待浏览器补验：1736×944 与 1280px 宽度下六类 Artifact、长正文滚动、顶部操作与底部关闭按钮、缩放/最小尺寸、首帧历史版本弹层、真实播放失败重试、冲突后草稿和键盘焦点。不能以组件测试代替这些视觉结论。
 
 Other nodes visual result: blocked
+
+## 画布外页面增量（2026-09-26）
+
+- 视觉基准：[Beautiful UI](https://www.beautifului.dev/) 黑色主题；本轮实际打开并查看 Sidebar 示例，读取 SidebarNav / ContextCards / RecordsTable 源码；像素加载动画直接复用已改编的 LoadingState。共享模块保留 MIT 归属。
+- 实现范围：`/login`、`/setup`、`/projects`、`/settings/providers`（含 `/settings/llm` 别名）、`/settings/media` 与 `/settings/general`。深色分层面板、细边框、紧凑状态行和粉色主操作沿用画布视觉体系。
+- 桌面使用 224px 可折叠侧栏；640px 以下改为顶部导航。项目双列卡片与设置表单随视口收为单列。共享键盘焦点样式、跳转正文链接与减少动态效果规则。
+- 本次确认本地 5173 端口监听后，内置浏览器打开 `http://localhost:5173/login` 仍报 `net::ERR_BLOCKED_BY_CLIENT`。未取得实现截图，未进行像素对比、真实键盘/指针或控制台验收。
+- 待补验：桌面及窄屏登录/初始化、侧栏折叠、长项目名和分页、能力参数展开、保存冲突和重试、系统状态长文案、改密等待态，以及页面跳转后的焦点与滚动。组件测试与静态构建不替代这些视觉检查。
+
+Outside-canvas visual result: blocked

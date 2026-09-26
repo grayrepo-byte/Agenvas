@@ -1,7 +1,13 @@
+import { Key } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { ApiError, changePassword } from "../../shared/api/client";
+import { LoadingState } from "../../shared/ui/LoadingState";
+import { Notice, Panel } from "../../shared/ui/PagePrimitives";
 
-/** Changes the administrator password without persisting either secret in browser storage. */
+const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MAX_LENGTH = 128;
+
+/** Credentials stay in form memory and are cleared after every server response. */
 export function PasswordChangeSection() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -33,27 +39,28 @@ export function PasswordChangeSection() {
     }
   }
 
-  return <section className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--panel)] p-6">
-    <h2 className="text-xl font-semibold">修改管理员密码</h2>
-    <p className="mt-2 text-sm text-[var(--muted)]">修改成功后，其他已登录会话会失效；当前会话继续有效。</p>
-    <form className="mt-5 space-y-4" onSubmit={(event) => { void submit(event); }}>
-      <label className="block text-sm font-medium">当前密码
-        <input autoComplete="current-password" type="password" required maxLength={128}
-          value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-      </label>
-      <label className="block text-sm font-medium">新密码
-        <input autoComplete="new-password" type="password" required minLength={12} maxLength={128}
-          value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-      </label>
-      <label className="block text-sm font-medium">确认新密码
-        <input autoComplete="new-password" type="password" required minLength={12} maxLength={128}
-          value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
-      </label>
-      {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
-      {saved ? <p className="rounded-xl bg-green-50 p-3 text-sm text-green-800" role="status">密码已修改，其他会话已失效。</p> : null}
-      <button className="primary-button" type="submit" disabled={saving}>
-        {saving ? "正在修改…" : "修改密码"}
-      </button>
+  return <Panel title="修改管理员密码" description="修改成功后，其他已登录会话会失效；当前会话继续有效。">
+    <form className="ui-form" onSubmit={(event) => { void submit(event); }} aria-busy={saving}>
+      <div className="ui-stack password-fields">
+        <label className="ui-field">当前密码
+          <input autoComplete="current-password" type="password" required maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setSaved(false); }} />
+        </label>
+        <div className="ui-form-grid">
+          <label className="ui-field">新密码
+            <input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setSaved(false); }} aria-describedby="password-length-hint" />
+          </label>
+          <label className="ui-field">确认新密码
+            <input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setSaved(false); }} />
+          </label>
+        </div>
+        <p className="ui-muted" id="password-length-hint">密码长度为 {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} 个字符。</p>
+      </div>
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+      {saved ? <Notice tone="success">密码已修改，其他会话已失效。</Notice> : null}
+      <div className="ui-form-actions">
+        {saving ? <LoadingState compact label="正在修改密码…" /> : <span className="ui-muted">提交完成后，密码输入会自动清空。</span>}
+        <button className="primary-button" type="submit" disabled={saving}><Key size={16} aria-hidden />{saving ? "正在修改…" : "修改密码"}</button>
+      </div>
     </form>
-  </section>;
+  </Panel>;
 }

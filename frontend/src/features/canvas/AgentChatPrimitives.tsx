@@ -1,7 +1,7 @@
 import { CaretDown, Check, Clock, MinusCircle, Question, Robot, ShieldCheck,
   User, WarningCircle, type Icon } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import "./AgentChatPrimitives.css";
 
 /**

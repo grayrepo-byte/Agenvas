@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { AgentChatApproval } from "./AgentChatPrimitives";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import "./AgentChatPanels.css";
 import {
   approveExecutionPlan,

@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 
 const TEST_NOW = "2026-09-26T10:00:00.000Z";
 const ONE_SECOND_MS = 1_000;

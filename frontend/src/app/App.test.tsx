@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { server } from "../test/server";
 import { App } from "./App";
 
+// Lazy route imports also transform the icon package on a cold test worker.
+const ROUTE_LOAD_TIMEOUT_MS = 5_000;
+
 /** Real router smoke tests prove lazy screens still resolve at their public paths. */
 describe("App routes", () => {
   afterEach(() => window.history.replaceState({}, "", "/"));
@@ -11,7 +14,7 @@ describe("App routes", () => {
   it("loads the login screen without requesting project data", async () => {
     window.history.replaceState({}, "", "/login");
     render(<App />);
-    expect(await screen.findByRole("button", { name: "登录" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "登录" }, { timeout: ROUTE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
     expect(screen.getByText("自托管模式 · Provider 状态登录后可查看")).toBeInTheDocument();
   });
 

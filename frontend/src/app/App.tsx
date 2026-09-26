@@ -2,6 +2,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { createQueryClient } from "./queryClient";
+import { LoadingState } from "../shared/ui/LoadingState";
+import "../shared/ui/PageTheme.css";
 
 /** Each route loads only its own screen; React Flow stays out of auth and list bundles. */
 const SetupPage = lazy(() => import("../features/auth/SetupPage")
@@ -25,7 +27,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Suspense fallback={<main className="min-h-screen bg-[var(--canvas)] p-8" role="status">正在加载页面…</main>}>
+        <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label="正在加载页面" /></main>}>
           <Routes>
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />

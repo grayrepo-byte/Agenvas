@@ -7,7 +7,7 @@ import { ApiError, cancelRun, createRun, getRunPreflight, listAgentConversations
 import { useCanvasStore } from "./canvasStore";
 import { AgentChatApproval, AgentChatMessage } from "./AgentChatPrimitives";
 import { AgentRunConversation, RUN_STATUS_LABELS } from "./AgentRunConversation";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import "./AgentChatCard.css";
 
 export const AGENT_CHAT_WIDTH = 460;

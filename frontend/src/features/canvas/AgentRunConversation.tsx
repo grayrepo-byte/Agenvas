@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { listExecutionPlans, listRunActions, listRunTasks,
   type AgentRun, type Task } from "../../shared/api/client";
 import { AgentChatMessage, AgentChatTaskRow } from "./AgentChatPrimitives";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { PlanApprovalPanel } from "./PlanApprovalPanel";
 import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
 import { BlockedRunNotice } from "./BlockedRunNotice";

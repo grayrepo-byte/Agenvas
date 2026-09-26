@@ -1,7 +1,7 @@
 import { ArrowUp, CheckCircle } from "@phosphor-icons/react";
 import type { FormEventHandler, ReactNode } from "react";
 import { ApiError } from "../../shared/api/client";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import type { ArtifactRevisionStatus } from "./useArtifactRevision";
 import "./ContentArtifactEditor.css";
 

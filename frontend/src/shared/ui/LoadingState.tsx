@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import "./CanvasLoadingState.css";
+import "./LoadingState.css";
 
 /**
  * Adapted from Beautiful UI's MIT-licensed Loading State (Drive variant).
@@ -20,7 +20,7 @@ const CHEVRON_DELAYS = Array.from({ length: GRID_CELLS }, (_, index) => {
   return (column + Math.abs(row - GRID_CENTER_ROW)) * WAVE_STAGGER_MS;
 });
 
-type CanvasLoadingStateProps = {
+type LoadingStateProps = {
   label: string;
   /** Server-provided task start time. Omit when the actual start is unknown. */
   startedAt?: string;
@@ -33,7 +33,7 @@ function elapsedLabel(elapsedMs: number) {
   return `${Math.floor(seconds / SECONDS_PER_MINUTE)}m ${seconds % SECONDS_PER_MINUTE}s`;
 }
 
-export function CanvasLoadingState({ label, startedAt, compact = false }: CanvasLoadingStateProps) {
+export function LoadingState({ label, startedAt, compact = false }: LoadingStateProps) {
   const parsedStart = startedAt === undefined ? Number.NaN : Date.parse(startedAt);
   const startTime = Number.isFinite(parsedStart) ? parsedStart : undefined;
   const [now, setNow] = useState(() => Date.now());

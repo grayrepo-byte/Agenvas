@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useRef, useState } from "react";
+import { ImageSquare, PlugsConnected, Plus, SlidersHorizontal, VideoCamera } from "@phosphor-icons/react";
 import { Link, Navigate } from "react-router";
 import {
   ApiError, createMediaCapability, createMediaConnection, getCurrentUser,
@@ -7,8 +8,26 @@ import {
   updateMediaConnection,
   type MediaCapability, type MediaConnection, type MediaSettings,
 } from "../../shared/api/client";
+import { PageShell } from "../../shared/ui/PageShell";
+import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
+import { LoadingState } from "../../shared/ui/LoadingState";
+import "./MediaSettingsPage.css";
 
 const settingsKey = ["settings", "media"] as const;
+const NAME_LIMIT = 160;
+const ORIGIN_LIMIT = 500;
+const MIN_CONCURRENT = 1;
+const MAX_CONCURRENT = 100;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
+const HTTP_CONFLICT = 409;
+const platformAdapters: Record<MediaConnection["platform"], string[]> = {
+  MOCK: ["MOCK_IMAGE", "MOCK_VIDEO"],
+  COMFYUI: ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"],
+  OPENAI: ["OPENAI_GPT_IMAGE_2"],
+  GOOGLE: ["GOOGLE_NANO_BANANA_2"],
+  ARK: ["ARK_SEEDANCE_2_I2V"],
+};
 const comfyImageFields = [{ key: "checkpoint", label: "图片 checkpoint 文件名" }] as const;
 const comfyVideoFields = [
   { key: "diffusionModel", label: "视频扩散模型文件名" },
@@ -35,12 +54,53 @@ function fixedModelSettings(adapterId: string, values: Record<string, string>) {
 }
 
 function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return <label className="text-xs">GPT Image 2 质量
+  return <label className="ui-field">GPT Image 2 质量
     <select value={value} onChange={(event) => onChange(event.target.value)}>
       <option value="low">low</option><option value="medium">medium</option>
       <option value="high">high</option>
     </select>
   </label>;
+}
+
+function FixedModelFields({ adapterId, values, onChange }: {
+  adapterId: string;
+  values: Record<string, string>;
+  onChange: (value: Record<string, string>) => void;
+}) {
+  return <>
+    {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="ui-field">{label}
+      <input value={values[key] ?? ""} onChange={(event) => onChange({ ...values, [key]: event.target.value })}
+        required={key !== "model"} maxLength={NAME_LIMIT}
+        placeholder={key === "model" ? "留空使用内置默认" : "model.safetensors"} />
+    </label>)}
+    {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={values.quality ?? "medium"}
+      onChange={(quality) => onChange({ ...values, quality })} /> : null}
+  </>;
+}
+
+function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApiKeyChange, creating = false }: {
+  platform: MediaConnection["platform"];
+  origin: string;
+  apiKey: string;
+  onOriginChange: (value: string) => void;
+  onApiKeyChange: (value: string) => void;
+  creating?: boolean;
+}) {
+  return <>
+    {platform === "COMFYUI" ? <label className="ui-field">本机 ComfyUI 地址
+      <input value={origin} onChange={(event) => onOriginChange(event.target.value)}
+        required placeholder="http://127.0.0.1:8188" />
+    </label> : null}
+    {platform === "OPENAI" ? <label className="ui-field">API Base URL（留空使用官方地址）
+      <input type="url" value={origin} onChange={(event) => onOriginChange(event.target.value)}
+        maxLength={ORIGIN_LIMIT} placeholder="https://api.openai.com/v1" />
+    </label> : null}
+    {platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" ? <label className="ui-field">
+      {creating ? "API Key" : "替换 API Key（留空则不修改）"}
+      <input type="password" autoComplete="new-password" value={apiKey}
+        onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
+    </label> : null}
+  </>;
 }
 
 const adapterKind: Record<string, "IMAGE_GENERATION" | "VIDEO_GENERATION"> = {
@@ -60,6 +120,21 @@ function errorMessage(cause: unknown): string {
   return cause instanceof ApiError ? cause.message : "保存失败，请重试。";
 }
 
+/** Keep a draft's CAS token until its own save or an explicit reload accepts a new baseline. */
+function useConfigurationBaseline<T extends { version: number }>(current: T) {
+  const [baseline, acceptBaseline] = useState(current);
+  return { baseline, acceptBaseline, isStale: current.version > baseline.version };
+}
+
+function ConfigurationUpdatedNotice({ scope, disabled, onReload }: {
+  scope: string; disabled: boolean; onReload: () => void;
+}) {
+  return <Notice tone="warning" title="配置已有新版本">
+    <p>当前草稿已保留。载入最新版本将替换{scope}的未保存内容。</p>
+    <button className="secondary-button" type="button" disabled={disabled} onClick={onReload}>载入最新版本</button>
+  </Notice>;
+}
+
 function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   availableAdapters, busy, apply, act }: {
   connectionId: string;
@@ -72,6 +147,7 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   act: (type: "capability" | "default", capability: MediaCapability) => void;
 }) {
   const queryClient = useQueryClient();
+  const { baseline, acceptBaseline, isStale } = useConfigurationBaseline(capability);
   const [name, setName] = useState(capability.name);
   const [adapterId, setAdapterId] = useState(capability.adapterId);
   const [modelNames, setModelNames] = useState<Record<string, string>>(capability.settings);
@@ -79,13 +155,23 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   const [error, setError] = useState("");
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
-      expectedVersion: capability.version, name: name.trim(),
-      enabled: capability.enabled, adapterId,
+      expectedVersion: baseline.version, name: name.trim(),
+      enabled: baseline.enabled, adapterId,
       settings: fixedModelSettings(adapterId, modelNames),
     }),
-    onSuccess: (result) => { apply(result); setError(""); },
+    onSuccess: (result) => {
+      const saved = result.connections.find((item) => item.id === connectionId)
+        ?.capabilities.find((item) => item.id === capability.id);
+      if (saved) {
+        acceptBaseline(saved);
+        setName(saved.name);
+        setAdapterId(saved.adapterId);
+        setModelNames(saved.settings);
+      }
+      apply(result); setError("");
+    },
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === 409) {
+      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
       setError(errorMessage(cause));
@@ -93,62 +179,100 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   });
   const saveConcurrency = useMutation({
     mutationFn: () => updateMediaConcurrency(connectionId, capability.id,
-      { expectedVersion: capability.version, maxConcurrent }),
-    onSuccess: (result) => { apply(result); setError(""); },
+      { expectedVersion: baseline.version, maxConcurrent }),
+    onSuccess: (result) => {
+      const saved = result.connections.find((item) => item.id === connectionId)
+        ?.capabilities.find((item) => item.id === capability.id);
+      if (saved) {
+        acceptBaseline(saved);
+        setMaxConcurrent(saved.maxConcurrent);
+      }
+      apply(result); setError("");
+    },
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === 409) {
+      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
       setError(errorMessage(cause));
     },
   });
   const sameKindAdapters = availableAdapters.filter((id) => adapterKind[id] === capability.kind);
-  return <li className="rounded-xl border border-[var(--line)] p-3">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div>
-        <p className="font-medium">{capability.name}{isDefault ? " · 默认" : ""}</p>
-        <p className="text-xs text-[var(--muted)]">{capability.kind === "IMAGE_GENERATION" ? "图片" : "视频"} · {capability.adapterId} · v{capability.capabilityVersion} · {capability.enabled ? "已启用" : "已停用"}</p>
+  const rowBusy = busy || save.isPending || saveConcurrency.isPending;
+  function loadLatest() {
+    acceptBaseline(capability);
+    setName(capability.name);
+    setAdapterId(capability.adapterId);
+    setModelNames(capability.settings);
+    setMaxConcurrent(capability.maxConcurrent);
+    setError("");
+  }
+  const CapabilityIcon = capability.kind === "IMAGE_GENERATION" ? ImageSquare : VideoCamera;
+  return <li className="media-capability-row">
+    <div className="media-capability-heading">
+      <span className="media-settings-icon"><CapabilityIcon size={20} /></span>
+      <div className="media-capability-title">
+        <div className="ui-toolbar">
+          <h4>{capability.name}</h4>
+          {isDefault ? <StatusBadge tone="success">默认</StatusBadge> : null}
+          <StatusBadge tone={capability.enabled ? "neutral" : "warning"}>
+            {capability.enabled ? "已启用" : "已停用"}
+          </StatusBadge>
+        </div>
+        <p className="ui-muted">{capability.kind === "IMAGE_GENERATION" ? "图片" : "视频"} · {capability.adapterId} · v{capability.capabilityVersion}</p>
+        <p className="ui-muted">全局并发 {capability.maxConcurrent}
+          {capability.kind === "VIDEO_GENERATION" ? ` · ${capability.minimumSeconds}–${capability.maximumSeconds} 秒` : ""}
+          {capability.settings.quality ? ` · ${capability.settings.quality}` : ""}
+        </p>
       </div>
-      <div className="flex gap-2">
-        <button className="secondary-button" type="button" disabled={busy || save.isPending || !connectionEnabled || !capability.enabled || isDefault}
+      <div className="ui-toolbar media-capability-actions">
+        <button className="secondary-button" type="button" disabled={rowBusy || !connectionEnabled || !capability.enabled || isDefault}
           onClick={() => act("default", capability)}>设为默认</button>
-        <button className="secondary-button" type="button" disabled={busy || save.isPending}
+        <button className="ghost-button" type="button" disabled={rowBusy}
           onClick={() => act("capability", capability)}>{capability.enabled ? "停用" : "启用"}</button>
       </div>
     </div>
-    <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(event) => {
-      event.preventDefault(); setError(""); save.mutate();
-    }}>
-      <label className="text-xs">能力名称
-        <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} />
-      </label>
-      <label className="text-xs">固定适配器
-        <select value={adapterId} onChange={(event) => setAdapterId(event.target.value)}>
-          {sameKindAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
-        </select>
-      </label>
-      {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="text-xs">{label}
-        <input value={modelNames[key] ?? ""} onChange={(event) => setModelNames((old) =>
-          ({ ...old, [key]: event.target.value }))} required={key !== "model"} maxLength={160}
-          placeholder={key === "model" ? "留空使用内置默认" : "model.safetensors"} />
-      </label>)}
-      {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={modelNames.quality ?? "medium"}
-        onChange={(quality) => setModelNames((old) => ({ ...old, quality }))} /> : null}
-      <button className="secondary-button" type="submit" disabled={busy || save.isPending}>
-        {save.isPending ? "正在保存…" : "保存能力"}
-      </button>
-    </form>
-    <form className="mt-3 flex items-end gap-2" onSubmit={(event) => {
-      event.preventDefault(); setError(""); saveConcurrency.mutate();
-    }}>
-      <label className="text-xs">全局并发上限
-        <input type="number" min={1} max={100} value={maxConcurrent}
-          onChange={(event) => setMaxConcurrent(Number(event.target.value))} />
-      </label>
-      <button className="secondary-button" type="submit"
-        disabled={busy || saveConcurrency.isPending}>保存并发上限</button>
-    </form>
-    {error ? <p className="mt-2 text-sm text-red-800" role="alert">{error}</p> : null}
+    <details className="media-settings-details">
+      <summary><SlidersHorizontal size={15} />编辑能力参数</summary>
+      <div className="media-settings-details-body ui-stack">
+        <form className="ui-form" onSubmit={(event) => {
+          event.preventDefault();
+          if (isStale || rowBusy) return;
+          setError(""); save.mutate();
+        }}>
+          <fieldset className="ui-form-grid media-settings-fieldset" disabled={rowBusy}>
+            <label className="ui-field">能力名称
+              <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={NAME_LIMIT} />
+            </label>
+            <label className="ui-field">固定适配器
+              <select value={adapterId} onChange={(event) => setAdapterId(event.target.value)}>
+                {sameKindAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
+              </select>
+            </label>
+            <FixedModelFields adapterId={adapterId} values={modelNames} onChange={setModelNames} />
+          </fieldset>
+          <div className="ui-form-actions">
+            <button className="secondary-button" type="submit" disabled={rowBusy || isStale}>
+              {save.isPending ? "正在保存…" : "保存能力"}
+            </button>
+          </div>
+        </form>
+        <form className="media-concurrency-form" onSubmit={(event) => {
+          event.preventDefault();
+          if (isStale || rowBusy) return;
+          setError(""); saveConcurrency.mutate();
+        }}>
+          <label className="ui-field">全局并发上限
+            <input type="number" min={MIN_CONCURRENT} max={MAX_CONCURRENT} value={maxConcurrent}
+              disabled={rowBusy} onChange={(event) => setMaxConcurrent(Number(event.target.value))} />
+          </label>
+          <button className="secondary-button" type="submit" disabled={rowBusy || isStale}>
+            {saveConcurrency.isPending ? "正在保存…" : "保存并发上限"}
+          </button>
+        </form>
+      </div>
+    </details>
+    {isStale ? <ConfigurationUpdatedNotice scope="能力参数与并发上限" disabled={rowBusy} onReload={loadLatest} /> : null}
+    {error ? <Notice tone="danger">{error}</Notice> : null}
   </li>;
 }
 
@@ -158,26 +282,30 @@ function ConnectionCard({ connection, settings, apply }: {
   apply: (value: MediaSettings) => void;
 }) {
   const queryClient = useQueryClient();
+  const { baseline, acceptBaseline, isStale } = useConfigurationBaseline(connection);
   const [name, setName] = useState(connection.name);
   const [origin, setOrigin] = useState(connection.origin ?? "");
   const [apiKey, setApiKey] = useState("");
   const [capabilityName, setCapabilityName] = useState("");
-  const [adapterId, setAdapterId] = useState(connection.platform === "COMFYUI" ? "COMFY_IMAGE_V1"
-    : connection.platform === "OPENAI" ? "OPENAI_GPT_IMAGE_2"
-    : connection.platform === "GOOGLE" ? "GOOGLE_NANO_BANANA_2"
-    : connection.platform === "ARK" ? "ARK_SEEDANCE_2_I2V" : "MOCK_IMAGE");
+  const [adapterId, setAdapterId] = useState(platformAdapters[connection.platform][0] ?? "");
   const [newModelNames, setNewModelNames] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const capabilityCreateKey = useRef<{ payload: string; key: string } | null>(null);
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
-      expectedVersion: connection.version, name: name.trim(), enabled: connection.enabled,
+      expectedVersion: baseline.version, name: name.trim(), enabled: baseline.enabled,
       origin: connection.platform === "COMFYUI" || connection.platform === "OPENAI"
         ? origin.trim() || null : null,
       apiKey: apiKey || null,
     }),
     onSuccess: (result) => {
+      const saved = result.connections.find((item) => item.id === connection.id);
+      if (saved) {
+        acceptBaseline(saved);
+        setName(saved.name);
+        setOrigin(saved.origin ?? "");
+      }
       apply(result);
       setApiKey("");
       setError("");
@@ -185,11 +313,11 @@ function ConnectionCard({ connection, settings, apply }: {
     },
     onError: (cause) => {
       setNotice("");
-      if (cause instanceof ApiError && cause.status === 409) {
+      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
-      setError(cause instanceof ApiError && cause.status === 409
-        ? "配置已被其他管理员修改，已刷新版本；请核对当前草稿后重试。"
+      setError(cause instanceof ApiError && cause.status === HTTP_CONFLICT
+        ? "配置已被其他管理员修改，已请求刷新；当前草稿已保留。"
         : errorMessage(cause));
     },
   });
@@ -209,7 +337,7 @@ function ConnectionCard({ connection, settings, apply }: {
       setNotice("能力已发布，生成接口未实测。");
     },
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === 409) {
+      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
       setError(errorMessage(cause));
@@ -244,59 +372,59 @@ function ConnectionCard({ connection, settings, apply }: {
       setNotice("配置已保存，生成接口未实测。");
     },
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === 409) {
+      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
       setError(errorMessage(cause));
     },
   });
   const busy = save.isPending || addCapability.isPending || mutate.isPending;
-  const availableAdapters = connection.platform === "MOCK"
-    ? ["MOCK_IMAGE", "MOCK_VIDEO"]
-    : connection.platform === "COMFYUI" ? ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"]
-    : connection.platform === "OPENAI" ? ["OPENAI_GPT_IMAGE_2"]
-    : connection.platform === "GOOGLE" ? ["GOOGLE_NANO_BANANA_2"]
-    : connection.platform === "ARK" ? ["ARK_SEEDANCE_2_I2V"] : [];
+  const availableAdapters = platformAdapters[connection.platform];
+
+  function loadLatest() {
+    acceptBaseline(connection);
+    setName(connection.name);
+    setOrigin(connection.origin ?? "");
+    setApiKey("");
+    setError("");
+    setNotice("");
+  }
 
   function submitConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isStale || busy) return;
     setError("");
     save.mutate();
   }
 
-  return <section className="rounded-3xl border border-[var(--line)] bg-[var(--panel)] p-6">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 className="text-xl font-semibold">{connection.name}</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">{connection.platform} · 连接版本 {connection.connectionVersion} · {connection.enabled ? "已启用" : "已停用"}</p>
-        <p className="mt-1 text-sm text-[var(--muted)]">{connection.keyMask ? `密钥 ${connection.keyMask} · ` : ""}已配置、未实测</p>
-      </div>
-      <button className="secondary-button" type="button" disabled={busy}
+  return <Panel className="media-connection-card"
+    title={connection.name}
+    description={<span>{connection.platform} · 连接版本 {connection.connectionVersion}</span>}
+    actions={<div className="ui-toolbar">
+      <StatusBadge tone={connection.enabled ? "success" : "warning"}>{connection.enabled ? "已启用" : "已停用"}</StatusBadge>
+      <button className="ghost-button" type="button" disabled={busy}
         onClick={() => mutate.mutate({ type: "connection" })}>{connection.enabled ? "停用连接" : "启用连接"}</button>
-    </div>
-    <form className="mt-5 grid gap-3" onSubmit={submitConnection}>
-      <label className="text-sm">连接名称
-        <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} />
-      </label>
-      {connection.platform === "COMFYUI" ? <label className="text-sm">本机 ComfyUI 地址
-        <input value={origin} onChange={(event) => setOrigin(event.target.value)} required
-          placeholder="http://127.0.0.1:8188" />
-      </label> : null}
-      {connection.platform === "OPENAI" ? <label className="text-sm">API Base URL（留空使用官方地址）
-        <input type="url" value={origin} onChange={(event) => setOrigin(event.target.value)}
-          maxLength={500} placeholder="https://api.openai.com/v1" />
-      </label> : null}
-      {connection.platform === "OPENAI" || connection.platform === "ARK" ||
-        connection.platform === "GOOGLE" ? <label className="text-sm">替换 API Key（留空则不修改）
-        <input type="password" autoComplete="new-password" value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)} />
-      </label> : null}
-      <button className="secondary-button w-fit" type="submit" disabled={busy}>{save.isPending ? "正在保存…" : "保存连接"}</button>
+    </div>}>
+    <p className="media-connection-status ui-muted">{connection.keyMask ? `密钥 ${connection.keyMask} · ` : ""}已配置、未实测</p>
+    <form className="ui-form" onSubmit={submitConnection}>
+      <fieldset className="ui-form-grid media-settings-fieldset" disabled={busy}>
+        <label className="ui-field">连接名称
+          <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={NAME_LIMIT} />
+        </label>
+        <ConnectionCredentials platform={connection.platform} origin={origin} apiKey={apiKey}
+          onOriginChange={setOrigin} onApiKeyChange={setApiKey} />
+      </fieldset>
+      <div className="ui-form-actions">
+        <button className="secondary-button" type="submit" disabled={busy || isStale}>{save.isPending ? "正在保存…" : "保存连接"}</button>
+      </div>
     </form>
-    <div className="mt-6 border-t border-[var(--line)] pt-5">
-      <h3 className="font-semibold">已发布能力</h3>
-      {connection.capabilities.length === 0 ? <p className="mt-2 text-sm text-[var(--muted)]">尚无能力</p> : null}
-      <ul className="mt-3 space-y-3">
+    {isStale ? <ConfigurationUpdatedNotice scope="连接配置" disabled={busy} onReload={loadLatest} /> : null}
+    <section className="media-capabilities" aria-label={`${connection.name} 的能力`}>
+      <div className="media-section-heading">
+        <h3>已发布能力</h3><StatusBadge>{connection.capabilities.length}</StatusBadge>
+      </div>
+      {connection.capabilities.length === 0 ? <p className="media-capability-empty ui-muted">尚无能力，发布后即可在画布中选择。</p> : null}
+      <ul className="media-capabilities-list">
         {connection.capabilities.map((capability) => {
           const isDefault = settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id);
           return <CapabilityRow key={capability.id} connectionId={connection.id}
@@ -306,32 +434,34 @@ function ConnectionCard({ connection, settings, apply }: {
             act={(type, selected) => mutate.mutate({ type, capability: selected })} />;
         })}
       </ul>
-      {availableAdapters.length > 0 ? <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
+      {availableAdapters.length > 0 ? <form className="ui-form media-publish-form" onSubmit={(event) => {
         event.preventDefault();
         setError("");
         addCapability.mutate();
       }}>
-        <label className="text-sm">新能力名称
-          <input value={capabilityName} onChange={(event) => setCapabilityName(event.target.value)} required />
-        </label>
-        <label className="text-sm">固定适配器
-          <select value={adapterId} onChange={(event) => setAdapterId(event.target.value)}>
-            {availableAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
-          </select>
-        </label>
-        {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="text-sm">{label}
-          <input value={newModelNames[key] ?? ""} onChange={(event) => setNewModelNames((old) =>
-            ({ ...old, [key]: event.target.value }))} required={key !== "model"} maxLength={160}
-            placeholder={key === "model" ? "留空使用内置默认" : "model.safetensors"} />
-        </label>)}
-        {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={newModelNames.quality ?? "medium"}
-          onChange={(quality) => setNewModelNames((old) => ({ ...old, quality }))} /> : null}
-        <button className="secondary-button" type="submit" disabled={busy || !connection.enabled}>{addCapability.isPending ? "正在发布…" : "发布能力"}</button>
-      </form> : <p className="mt-4 text-sm text-[var(--muted)]">此平台的固定适配器尚未安装。</p>}
-    </div>
-    {error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
-    {notice ? <p className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-800" role="status">{notice}</p> : null}
-  </section>;
+        <h4>发布新能力</h4>
+        <fieldset className="ui-form-grid media-settings-fieldset" disabled={busy || !connection.enabled}>
+          <label className="ui-field">新能力名称
+            <input value={capabilityName} onChange={(event) => setCapabilityName(event.target.value)} required maxLength={NAME_LIMIT} />
+          </label>
+          <label className="ui-field">固定适配器
+            <select value={adapterId} onChange={(event) => setAdapterId(event.target.value)}>
+              {availableAdapters.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select>
+          </label>
+          <FixedModelFields adapterId={adapterId} values={newModelNames} onChange={setNewModelNames} />
+        </fieldset>
+        <div className="ui-form-actions">
+          <button className="secondary-button" type="submit" disabled={busy || !connection.enabled}>
+            <Plus size={15} />{addCapability.isPending ? "正在发布…" : "发布能力"}
+          </button>
+          {!connection.enabled ? <p className="ui-muted">启用连接后可发布新能力。</p> : null}
+        </div>
+      </form> : <p className="ui-muted">此平台的固定适配器尚未安装。</p>}
+    </section>
+    {error ? <Notice tone="danger">{error}</Notice> : null}
+    {notice ? <Notice tone="success">{notice}</Notice> : null}
+  </Panel>;
 }
 
 export function MediaSettingsPage() {
@@ -362,55 +492,61 @@ export function MediaSettingsPage() {
     onError: (cause) => setError(errorMessage(cause)),
   });
 
-  if (currentUser.isError || (settings.error instanceof ApiError && settings.error.status === 401)) {
+  if (settings.error instanceof ApiError && settings.error.status === HTTP_UNAUTHORIZED) {
     return <Navigate to="/login" replace />;
   }
-  return <main className="min-h-screen bg-[var(--canvas)] p-8 text-[var(--ink)]">
-    <div className="mx-auto max-w-4xl">
-      <Link className="text-sm underline" to="/settings/llm">返回设置</Link>
-      <h1 className="mt-6 text-3xl font-semibold">媒体连接与能力</h1>
-      <p className="mt-3 text-sm text-[var(--muted)]">一个连接可发布多条图片和视频能力。默认值只影响新计划；已批准任务保留原版本。</p>
-      <p className="mt-2 text-sm text-[var(--muted)]">保存配置不会调用付费生成接口，未实测的能力保持“已配置、未实测”。</p>
-      {currentUser.isPending || settings.isPending ? <p className="mt-8">正在读取媒体配置…</p> : null}
-      {settings.error instanceof ApiError && settings.error.status === 403 ? <p role="alert" className="mt-8">只有管理员可以查看媒体配置。</p> : null}
-      {settings.isError && !(settings.error instanceof ApiError && [401, 403].includes(settings.error.status))
-        ? <p role="alert" className="mt-8">读取失败，请刷新后重试。</p> : null}
+  return <PageShell title="媒体连接与能力"
+    description="管理图片与视频模型，让创作使用合适的生成能力。"
+    actions={<Link className="secondary-button" to="/settings/llm">LLM 设置</Link>}>
+    <div className="media-settings-page ui-stack">
+      <Notice title="配置与生成彼此独立">
+        默认能力只影响新计划，已批准任务保留原版本。保存配置不会调用付费生成接口，未实测的能力保持“已配置、未实测”。
+      </Notice>
+      {currentUser.isSuccess && settings.isPending ? <LoadingState label="正在读取媒体配置…" /> : null}
+      {settings.error instanceof ApiError && settings.error.status === HTTP_FORBIDDEN
+        ? <Notice tone="warning" title="需要管理员权限">只有管理员可以查看媒体配置。</Notice> : null}
+      {settings.isError && !(settings.error instanceof ApiError && [HTTP_UNAUTHORIZED, HTTP_FORBIDDEN].includes(settings.error.status))
+        ? <Notice tone="danger" title="读取失败">
+          <p>读取失败，请刷新后重试。</p>
+          <button className="secondary-button" type="button" onClick={() => { void settings.refetch(); }}
+            disabled={settings.isFetching}>{settings.isFetching ? "正在重试…" : "重新读取"}</button>
+        </Notice> : null}
       {settings.data ? <>
-        {settings.data.connections.length === 0 ? <p className="mt-8">尚无媒体连接</p> : null}
-        <div className="mt-8 grid gap-5">
+        <div className="media-section-heading">
+          <h2>媒体连接</h2><StatusBadge>{settings.data.connections.length} 个连接</StatusBadge>
+        </div>
+        {settings.data.connections.length === 0
+          ? <EmptyState icon={<PlugsConnected size={30} />} title="尚无媒体连接"
+            description="添加一个连接，再发布图片或视频能力。" /> : null}
+        <div className="ui-stack">
           {settings.data.connections.map((connection) => <ConnectionCard key={connection.id}
             connection={connection} settings={settings.data}
             apply={(result) => queryClient.setQueryData(settingsKey, result)} />)}
         </div>
-        <form className="mt-8 grid gap-4 rounded-3xl border border-[var(--line)] bg-[var(--panel)] p-6"
-          onSubmit={(event) => { event.preventDefault(); setError(""); create.mutate(); }}>
-          <h2 className="text-xl font-semibold">添加连接</h2>
-          <label className="text-sm">连接名称
-            <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} />
-          </label>
-          <label className="text-sm">平台
-            <select value={platform} onChange={(event) => setPlatform(event.target.value as typeof platform)}>
-              <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
-              <option value="GOOGLE">Google Gemini</option><option value="ARK">火山方舟</option>
-            </select>
-          </label>
-          {platform === "COMFYUI" ? <label className="text-sm">本机 ComfyUI 地址
-            <input value={origin} onChange={(event) => setOrigin(event.target.value)}
-              required placeholder="http://127.0.0.1:8188" />
-          </label> : <label className="text-sm">API Key
-            <input type="password" autoComplete="new-password" value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)} required />
-          </label>}
-          {platform === "OPENAI" ? <label className="text-sm">API Base URL（留空使用官方地址）
-            <input type="url" value={origin} onChange={(event) => setOrigin(event.target.value)}
-              maxLength={500} placeholder="https://api.openai.com/v1" />
-          </label> : null}
-          {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
-          <button className="primary-button w-fit" type="submit" disabled={create.isPending}>
-            {create.isPending ? "正在保存…" : "添加连接"}
-          </button>
-        </form>
+        <Panel title="添加连接" description="配置本机 ComfyUI，或连接已支持的云端生成平台。">
+          <form className="ui-form" onSubmit={(event) => { event.preventDefault(); setError(""); create.mutate(); }}>
+            <fieldset className="ui-form-grid media-settings-fieldset" disabled={create.isPending}>
+              <label className="ui-field">连接名称
+                <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={NAME_LIMIT} />
+              </label>
+              <label className="ui-field">平台
+                <select value={platform} onChange={(event) => setPlatform(event.target.value as typeof platform)}>
+                  <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
+                  <option value="GOOGLE">Google Gemini</option><option value="ARK">火山方舟</option>
+                </select>
+              </label>
+              <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}
+                onOriginChange={setOrigin} onApiKeyChange={setApiKey} creating />
+            </fieldset>
+            {error ? <Notice tone="danger">{error}</Notice> : null}
+            <div className="ui-form-actions">
+              <button className="primary-button" type="submit" disabled={create.isPending}>
+                <Plus size={16} />{create.isPending ? "正在保存…" : "添加连接"}
+              </button>
+            </div>
+          </form>
+        </Panel>
       </> : null}
     </div>
-  </main>;
+  </PageShell>;
 }

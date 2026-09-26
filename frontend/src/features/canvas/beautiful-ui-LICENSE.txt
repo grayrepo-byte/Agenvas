@@ -1,4 +1,4 @@
-CanvasLoadingState.tsx and CanvasLoadingState.css adapt the Drive loader,
+shared/ui/LoadingState.tsx and shared/ui/LoadingState.css adapt the Drive loader,
 pixel-on keyframes and shimmer from Beautiful UI by Shane Levine.
 
 Component source:

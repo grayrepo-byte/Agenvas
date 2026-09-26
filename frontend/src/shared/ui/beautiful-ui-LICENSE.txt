@@ -1,0 +1,35 @@
+Shared non-canvas UI adapts the dark sidebar row hierarchy/collapse motion,
+context-card surfaces, records status chips and pixel loader from Beautiful UI.
+https://www.beautifului.dev/
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/SidebarNav.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ContextCards.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/RecordsTable.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/LoadingState.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/app/globals.css
+
+Adaptations: application routes and real session lifecycle; Phosphor icons;
+scoped black tokens, native accessible controls, responsive navigation and
+reduced-motion styles. No demo data, simulated tasks, or private reasoning.
+The loader is shared with canvas consumers without changing their behavior.
+
+MIT License
+
+Copyright (c) 2026 Shane Levine
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

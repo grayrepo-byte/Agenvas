@@ -313,6 +313,8 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 设置页补充：`/settings/providers` 已合并现有管理员 LLM 设置与媒体配置状态；媒体端点/模板仍通过服务端环境变量安装，页面不提供在线编辑，也不把配置齐全误称为真实连通或模板兼容，见 `docs/evidence/T28-system-diagnostics-partial.md`。固定 ComfyUI origin、LLM 逐次 DNS 校验及提交/下载重定向拒绝的本地假服务测试见 `docs/evidence/T21-outbound-ssrf.md`；不代表生产网络层隔离已演练。
 
+2026-09-26 画布外界面补充：登录/初始化、项目列表、LLM 与媒体设置、系统诊断/改密统一为 Beautiful UI 黑色主题，复用导航、表单、状态和现有像素加载器；项目搜索明确仅覆盖已加载数据，保留真实游标分页。后台刷新保留草稿，冲突提供显式重载；付费诊断仍需逐次确认。定向测试、构建结果与浏览器限制见 [画布外页面证据](evidence/T21-outside-canvas-beautiful-ui.md)，没有新增后端/合约/迁移或完成真实 Provider 验收。
+
 - [ ] Key 轮换后旧任务仍能按原配置核对，或明确报认证阻断。
 - [ ] 无 Key 泄露到日志、SSE、导出或浏览器持久存储。
 - [x] 端点地址策略放行私网与代理 fake-ip 段（`EndpointAddressRules`），云元数据与非路由地址仍拒绝，理由见 ADR 0007；重定向/DNS 等 SSRF 测试通过（精确管理员端点、ComfyUI 双路由重定向目标零请求、LLM 模拟恶意 DNS；真实网络基础设施仍未演练）。

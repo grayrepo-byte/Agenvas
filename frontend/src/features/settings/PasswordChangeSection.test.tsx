@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -69,4 +69,37 @@ describe("PasswordChangeSection", () => {
     expect(next).toHaveValue("");
     expect(confirm).toHaveValue("");
   });
+
+  it("disables credential edits and duplicate submissions until the response arrives", async () => {
+    let finish: (() => void) | undefined;
+    const submitted = vi.fn();
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/auth/change-password", async () => {
+        submitted();
+        await new Promise<void>((resolve) => { finish = resolve; });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    render(<PasswordChangeSection />);
+    const user = userEvent.setup();
+    const current = screen.getByLabelText("当前密码");
+    const next = screen.getByLabelText("新密码");
+    const confirm = screen.getByLabelText("确认新密码");
+    await user.type(current, "old-password-123");
+    await user.type(next, "replacement-123");
+    await user.type(confirm, "replacement-123");
+    await user.click(screen.getByRole("button", { name: "修改密码" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("正在修改密码");
+    expect(current).toBeDisabled();
+    expect(next).toBeDisabled();
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在修改…" })).toBeDisabled();
+    expect(submitted).toHaveBeenCalledOnce();
+    await act(async () => { finish?.(); });
+    expect(await screen.findByText("密码已修改，其他会话已失效。")).toBeInTheDocument();
+    expect(current).toBeEnabled();
+    expect(current).toHaveValue("");
+  });
+
 });

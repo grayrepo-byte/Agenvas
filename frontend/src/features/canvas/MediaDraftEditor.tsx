@@ -1,7 +1,7 @@
 import { ArrowUp, CaretDown, Check, CheckCircle, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, WarningCircle, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import { CanvasLoadingState } from "./CanvasLoadingState";
+import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
 import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { readContentText } from "./artifactContent";
