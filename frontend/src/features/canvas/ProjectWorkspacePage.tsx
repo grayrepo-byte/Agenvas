@@ -6,6 +6,8 @@ import {
   NodeResizer,
   ReactFlow,
   type Connection,
+  type Edge,
+  type EdgeChange,
   type Node,
   type NodeChange,
   type NodeProps,
@@ -51,15 +53,13 @@ import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCardUpload } from "./MediaCardUpload";
 import { Plus, X } from "@phosphor-icons/react";
 import { CanvasHandle } from "./CanvasHandle";
-import { inputConnectionUpdate, isCanvasConnectionValid, projectCanvasRelations,
-  semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
+import { canvasRelationRemoval, inputConnectionUpdate, isCanvasConnectionValid,
+  projectCanvasRelations, semanticConnectionRevision, semanticReferenceRemoval,
+  type ArtifactInputReference, type CanvasRelationRemoval } from "./canvasRelations";
 import { CANVAS_MAX_SIZE, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
 import { useImageNodeRatios } from "./useImageNodeRatios";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
-type ArtifactInputReference = NonNullable<
-  NonNullable<CanvasItem["artifact"]>["currentVersion"]
->["inputReferences"][number];
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "CHARACTER" | "SCENE" | "SHOT" | "AGENT";
 type DrawerKind = CreationKind | "UPLOAD" | "EXPORT" | "ALIGN";
 type CreationPoint = { x: number; y: number };
@@ -75,6 +75,8 @@ const DEFAULT_VIDEO_CARD_WIDTH = 534;
 const MIN_ARTIFACT_CARD_SIZE = 120;
 /** Drop tolerance around a hidden target handle, in flow units: it keeps the same feel on screen at any zoom. */
 const CANVAS_CONNECTION_RADIUS = 80;
+/** Delete and Backspace both delete the selected cards and relation lines; React Flow ignores both while typing in a field. */
+const CANVAS_DELETE_KEY_CODES = ["Backspace", "Delete"];
 const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
   TEXT: "文字", IMAGE: "图片", VIDEO: "视频", CHARACTER: "角色", SCENE: "场景", SHOT: "镜头",
 };
@@ -596,6 +598,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
     onError: setSaveError,
   });
+  const removeInputBinding = useMutation({
+    mutationFn: async ({ agent, bindingId }: Extract<CanvasRelationRemoval, { kind: "inputBinding" }>) => {
+      await updateAgent(projectId, agent.id, {
+        expectedVersion: agent.version,
+        name: agent.name,
+        instruction: agent.instruction,
+        bindings: agent.bindings.filter((binding) => binding.id !== bindingId)
+          .map(({ artifactId, selectedVersionId }) => ({ artifactId, selectedVersionId })),
+      });
+      return listCanvasItems(projectId);
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      setSaveState("saved");
+    },
+    onError: setSaveError,
+  });
   const alignSelected = useMutation({
     mutationFn: async () => {
       const selected = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
@@ -651,6 +671,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const toggleLockedMutate = toggleLocked.mutate;
   const editAgentMutate = editAgent.mutate;
   const removeReferenceMutate = removeReference.mutate;
+  const removeInputBindingMutate = removeInputBinding.mutate;
 
   const handleResizeEnd = useCallback(
     (itemId: string, layout: LayoutPatch) => {
@@ -680,6 +701,28 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       reference: ArtifactInputReference) =>
       removeReferenceMutate({ item, reference }),
     [removeReferenceMutate],
+  );
+  /**
+   * Keyboard deletion hands every gesture to the application services and makes React Flow drop its own
+   * local removal, so a card or line only disappears from the canvas once the server projection says so.
+   */
+  const handleBeforeDelete = useCallback(
+    async ({ nodes: deletedNodes, edges: deletedEdges }: { nodes: CanvasNode[]; edges: Edge[] }) => {
+      // 移除卡片不动内容：Artifact 与它参与的关系都还在，所以级联到被删卡片的关系线不跟着删。
+      const deletedIds = new Set(deletedNodes.map((node) => node.id));
+      const relations = deletedEdges.filter((edge) =>
+        !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
+      for (const node of deletedNodes) removeItemMutate(node.data.item);
+      for (const edge of relations) {
+        const removal = canvasRelationRemoval(canvas.data?.items ?? [], edge);
+        if (removal?.kind === "inputBinding") removeInputBindingMutate(removal);
+        else if (removal?.kind === "reference") {
+          removeReferenceMutate({ item: removal.item, reference: removal.reference });
+        }
+      }
+      return false;
+    },
+    [canvas.data?.items, removeInputBindingMutate, removeItemMutate, removeReferenceMutate],
   );
 
   const handleInspect = useCallback((item: CanvasItem) => {
@@ -761,8 +804,26 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       snapshot.data?.activeRun,
     ],
   );
-  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? []),
-    [canvas.data?.items]);
+  /**
+   * Relation lines are projected from server data, but React Flow only applies selection changes itself for
+   * uncontrolled edges: with a controlled `edges` prop it reports them through `onEdgesChange` and expects
+   * them back on the prop. Selection is therefore the only locally owned part of a line.
+   */
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
+  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [])
+    .map((edge) => selectedEdgeIds.includes(edge.id) ? { ...edge, selected: true } : edge),
+    [canvas.data?.items, selectedEdgeIds]);
+  const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
+    setSelectedEdgeIds((current) => {
+      const next = new Set(current);
+      for (const change of changes) {
+        if (change.type !== "select") continue;
+        if (change.selected) next.add(change.id);
+        else next.delete(change.id);
+      }
+      return [...next];
+    });
+  }, []);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -986,6 +1047,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <h2 className="text-sm font-semibold">选择与对齐</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Shift 或拖出选框选择多张卡片。</p>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入，落在另一张 Artifact 上可建立图片→角色/场景、角色/场景→镜头的精确版本引用，并为目标产物创建新版本（场景→镜头会替换原场景引用）。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是输入、绿线是输出组、灰虚线是素材引用；连线不会触发生成。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中蓝线或灰虚线按 Delete 或退格删除对应的输入绑定或素材引用。绿线由 Agent 输出组决定、必填场景引用只能替换，两者都不能单独删除。</p>
           <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
           <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">把已选 Artifact 绑定到 Agent</button>
           <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">清空已选 Agent 输入</button>
@@ -1014,7 +1076,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
           connectionRadius={CANVAS_CONNECTION_RADIUS}
-          deleteKeyCode={null}
+          deleteKeyCode={CANVAS_DELETE_KEY_CODES}
           edges={relationEdges}
           fitView
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
@@ -1022,6 +1084,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           nodes={nodes}
           nodeTypes={nodeTypes}
           nodesConnectable
+          onBeforeDelete={handleBeforeDelete}
           onConnect={(connection) => connectInput.mutate(connection)}
           onNodeDragStop={(_, node) => {
             const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
@@ -1039,6 +1102,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             setSelectedIds([node.id]);
             window.requestAnimationFrame(focusArtifactEditor);
           }}
+          onEdgesChange={handleEdgesChange}
           onInit={(instance) => { flow.current = instance; }}
           onSelectionChange={handleSelectionChange}
           selectionOnDrag

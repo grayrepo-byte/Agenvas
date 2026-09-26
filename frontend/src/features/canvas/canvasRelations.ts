@@ -1,5 +1,9 @@
 import type { Connection, Edge } from "@xyflow/react";
-import type { CanvasItem, ReviseArtifactRequest } from "../../shared/api/client";
+import type { Agent, CanvasItem, ReviseArtifactRequest } from "../../shared/api/client";
+
+/** One entry of the immutable exact-version reference list a content version carries. */
+export type ArtifactInputReference =
+  NonNullable<NonNullable<CanvasItem["artifact"]>["currentVersion"]>["inputReferences"][number];
 
 /** Visual relationships are projections, never execution dependencies or generation commands. */
 export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
@@ -35,7 +39,7 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: agentCard.id,
         targetHandle: "agent-input",
         label: historical ? "输入 · 历史版本" : "输入",
-        style: { stroke: "#2563eb", strokeWidth: 2 },
+        className: "relation-edge relation-edge--input-binding",
       });
     }
     for (const output of outputGroups.get(agent.outputGroupId) ?? []) {
@@ -46,7 +50,10 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: output.id,
         targetHandle: "artifact-input",
         label: "Agent 输出组",
-        style: { stroke: "#059669", strokeWidth: 1.5 },
+        className: "relation-edge relation-edge--agent-output",
+        // 输出组成员资格由 Agent 的输出组决定，没有可单独删除的关系记录，因此不给选中与删除手势。
+        deletable: false,
+        selectable: false,
       });
     }
   }
@@ -65,7 +72,7 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: output.id,
         targetHandle: "artifact-input",
         label: `素材引用 · ${reference.role}`,
-        style: { stroke: "#64748b", strokeWidth: 1.5, strokeDasharray: "4 4" },
+        className: "relation-edge relation-edge--reference",
       });
     }
   }
@@ -148,10 +155,46 @@ export function isCanvasConnectionValid(items: CanvasItem[], connection: Connect
   return false;
 }
 
+/** What a user may remove behind a projected edge, or `null` when the edge is not an editable relation. */
+export type CanvasRelationRemoval =
+  | { kind: "inputBinding"; agent: Agent; bindingId: string }
+  | { kind: "reference"; item: CanvasItem; reference: ArtifactInputReference };
+
+/**
+ * Resolves the relation a selected edge stands for, so deleting a line writes through the same
+ * application services a card action would use. Agent output-group membership has no relation
+ * record, and a required scene reference can only be replaced, so both return `null`.
+ */
+export function canvasRelationRemoval(items: CanvasItem[],
+  edge: Edge): CanvasRelationRemoval | null {
+  if (edge.sourceHandle !== "artifact-output") return null;
+  if (edge.targetHandle === "agent-input") {
+    const source = items.find((item) => item.id === edge.source)?.artifact;
+    const target = items.find((item) => item.id === edge.target);
+    const binding = source
+      ? target?.agent?.bindings.find((candidate) => candidate.artifactId === source.id)
+      : undefined;
+    return target?.agent && binding
+      ? { kind: "inputBinding", agent: target.agent, bindingId: binding.id }
+      : null;
+  }
+  if (edge.targetHandle !== "artifact-input") return null;
+  // The projection draws one edge per visible reference and a consumer names a version at most once,
+  // so the source's current version id identifies the clicked edge. semanticReferenceRemoval then
+  // re-checks role, order and the required-scene rule before anything is written.
+  const versionId = items.find((item) => item.id === edge.source)?.artifact?.currentVersionId;
+  const consumer = items.find((item) => item.id === edge.target);
+  if (!versionId || !consumer?.artifact?.currentVersion) return null;
+  const reference = consumer.artifact.currentVersion.inputReferences
+    .find((candidate) => candidate.versionId === versionId);
+  return reference && semanticReferenceRemoval(consumer, reference)
+    ? { kind: "reference", item: consumer, reference }
+    : null;
+}
+
 /** Removes only optional schema-backed references; a SHOT scene must be replaced, not deleted. */
 export function semanticReferenceRemoval(item: CanvasItem,
-  reference: NonNullable<NonNullable<CanvasItem["artifact"]>["currentVersion"]>["inputReferences"][number]):
-  ReviseArtifactRequest | null {
+  reference: ArtifactInputReference): ReviseArtifactRequest | null {
   const artifact = item.artifact;
   if (!artifact?.currentVersion) return null;
   const content = artifact.currentVersion.content;

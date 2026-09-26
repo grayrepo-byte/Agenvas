@@ -344,6 +344,33 @@ button:disabled {
   stroke: var(--accent);
 }
 
+/* 关系线：颜色与线型由关系类型决定（className 由 projectCanvasRelations 给出），
+   选中态在 CSS 里提亮加粗，因此这些样式不能再写成内联 style——内联会压过选中态。 */
+.workspace-shell .relation-edge .react-flow__edge-path {
+  stroke-width: 2;
+}
+
+.workspace-shell .relation-edge--input-binding .react-flow__edge-path {
+  stroke: #2563eb;
+}
+
+.workspace-shell .relation-edge--agent-output .react-flow__edge-path {
+  stroke: #059669;
+  stroke-width: 1.5;
+}
+
+.workspace-shell .relation-edge--reference .react-flow__edge-path {
+  stroke: #64748b;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.workspace-shell .relation-edge.selected .react-flow__edge-path {
+  stroke: #fff;
+  stroke-width: 3.5;
+  stroke-dasharray: none;
+}
+
 /* Keep resize hit areas interactive; the card owns the only visible selection outline. */
 .workspace-shell .react-flow__resize-control.line { border: 0; background: transparent; }
 .workspace-shell .react-flow__resize-control.handle { border-color: transparent; background: transparent; }

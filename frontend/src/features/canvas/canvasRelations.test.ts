@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasItem } from "../../shared/api/client";
 import type { VersionedArtifact } from "./versionedArtifact";
-import { inputBindingsAfterConnect, inputConnectionUpdate, isCanvasConnectionValid,
-  projectCanvasRelations, semanticConnectionRevision,
+import { canvasRelationRemoval, inputBindingsAfterConnect, inputConnectionUpdate,
+  isCanvasConnectionValid, projectCanvasRelations, semanticConnectionRevision,
   semanticReferenceRemoval } from "./canvasRelations";
 
 const createdAt = "2026-09-24T00:00:00Z";
@@ -58,6 +58,15 @@ describe("canvas relation projection", () => {
       ["card-artifact-a", "card-artifact-b", "素材引用 · source"],
     ]);
     expect(new Set(edges.map((edge) => edge.id)).size).toBe(3);
+    expect(edges.map((edge) => edge.className)).toEqual([
+      "relation-edge relation-edge--input-binding",
+      "relation-edge relation-edge--agent-output",
+      "relation-edge relation-edge--reference",
+    ]);
+    // Output-group membership is derived from the Agent, so that line offers no selection or deletion.
+    expect(edges[1]).toMatchObject({ deletable: false, selectable: false });
+    expect(edges[0]?.deletable).toBeUndefined();
+    expect(edges[2]?.selectable).toBeUndefined();
   });
 
   it("labels historical bindings and never misdraws a historical reference to current content", () => {
@@ -250,5 +259,62 @@ describe("canvas connection validity", () => {
       source: image.id, sourceHandle: "artifact-output",
       target: character.id, targetHandle: "artifact-input",
     })).toBe(true);
+  });
+});
+
+describe("canvas relation removal", () => {
+  it("resolves a selected input line to the Agent binding it stands for", () => {
+    const input = artifactCard("artifact-a", "version-a");
+    const agent = agentCard();
+    const edges = projectCanvasRelations([input, agent]);
+    expect(edges).toHaveLength(1);
+    expect(canvasRelationRemoval([input, agent], edges[0]!)).toEqual({
+      kind: "inputBinding", agent: agent.agent, bindingId: "binding-a",
+    });
+  });
+
+  it("resolves a reference line to the exact reference the consumer may drop", () => {
+    const image = artifactCard("image", "image-v2");
+    image.artifact!.kind = "IMAGE";
+    const character = artifactCard("character", "character-v2", null, [
+      { versionId: "image-v2", role: "referenceImage", order: 0, kind: "IMAGE" },
+    ]);
+    character.artifact!.kind = "CHARACTER";
+    character.artifact!.currentVersion.content = {
+      name: "Hero", description: "Lead", appearance: "Blue coat",
+      referenceVersionIds: ["image-v2"],
+    };
+    const edges = projectCanvasRelations([image, character]);
+    expect(edges).toHaveLength(1);
+    expect(canvasRelationRemoval([image, character], edges[0]!)).toEqual({
+      kind: "reference", item: character,
+      reference: { versionId: "image-v2", role: "referenceImage", order: 0, kind: "IMAGE" },
+    });
+  });
+
+  it("refuses the derived output line, a required scene reference and unknown handle pairs", () => {
+    const scene = artifactCard("scene", "scene-v1");
+    scene.artifact!.kind = "SCENE";
+    const shot = artifactCard("shot", "shot-v1", null, [
+      { versionId: "scene-v1", role: "scene", order: 0, kind: "SCENE" },
+    ]);
+    shot.artifact!.kind = "SHOT";
+    shot.artifact!.currentVersion.content = {
+      order: 1, durationSeconds: 3, description: "Shot", camera: "wide", action: "walk",
+      characterVersionIds: [], sceneVersionId: "scene-v1",
+    };
+    const output = artifactCard("artifact-b", "version-b", "output-group-1");
+    const items = [scene, shot, output, agentCard()];
+    const edges = new Map(projectCanvasRelations(items).map((edge) => [edge.id, edge]));
+    expect(canvasRelationRemoval(items, edges.get(`output:card-agent:${output.id}`)!)).toBeNull();
+    expect(canvasRelationRemoval(items,
+      edges.get(`reference:${shot.id}:scene:0:scene-v1`)!)).toBeNull();
+    expect(canvasRelationRemoval(items, {
+      id: "unknown", source: scene.id, target: shot.id,
+      sourceHandle: "artifact-output", targetHandle: "missing-handle",
+    })).toBeNull();
+    // A line whose exact version is no longer on the canvas has nothing left to remove.
+    expect(canvasRelationRemoval([scene],
+      edges.get(`reference:${shot.id}:scene:0:scene-v1`)!)).toBeNull();
   });
 });
