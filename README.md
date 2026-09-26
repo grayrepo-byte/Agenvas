@@ -44,6 +44,8 @@ cp .env.example .env
 
 需要并行运行隔离验收实例时，可设置 `COMPOSE_PROJECT_NAME`、`AGENVAS_API_PORT` 和 `AGENVAS_WEB_PORT`。它们分别控制 Compose 项目/卷命名与仅绑定本机的 API、Web 端口；默认仍是 8080/8088。隔离实例也应使用独立的数据库密码与 bootstrap secret。
 
+PostgreSQL 端口同样仅绑定本机映射，默认 5432，可用 `AGENVAS_DB_PORT` 改（宿主机已占用 5432 时必须改，否则 Compose 启动会报端口冲突）。它只为用本地客户端连库排查而存在：server 走 Compose 内部网络访问数据库，不经过这个映射。
+
 Compose 默认限制 PostgreSQL/server/web 分别使用 768 MiB/1 CPU、1536 MiB/2 CPU、256 MiB/0.5 CPU，并为各服务的 JSON 日志保留最多 3 个 10 MiB 文件。可在 `.env` 中用 `AGENVAS_*_MEMORY_LIMIT`、`AGENVAS_*_CPUS` 按实际机器容量调整；内存上限不是容量性能已验收的证明。server 停机等待最多 45 秒，应用优雅停机阶段为 30 秒；已提交的外部请求仍须按 Provider attempt 核对，不会因为等待期结束就安全重试。
 
 打开 <http://127.0.0.1:8088/setup>，输入 `.env` 中的 `AGENVAS_BOOTSTRAP_SECRET` 创建管理员，然后在 `/login` 登录。也可以检查反代后的 API：

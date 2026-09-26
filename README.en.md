@@ -28,6 +28,8 @@ docker compose --env-file .env -f deploy/compose.yaml down
 
 Do not add `--volumes` unless you intentionally want to delete that Compose project's data. For an isolated acceptance instance, set a distinct `COMPOSE_PROJECT_NAME`, `AGENVAS_API_PORT`, and `AGENVAS_WEB_PORT`, plus separate passwords and bootstrap secret.
 
+PostgreSQL is also published on loopback only, defaulting to 5432 and overridable with `AGENVAS_DB_PORT` (raise it if 5432 is already taken on the host, otherwise Compose fails with a port conflict). It exists solely so a local client can inspect the database while debugging; the server reaches the database over the Compose network and does not use this mapping.
+
 Compose defaults cap PostgreSQL/server/web at 768 MiB/1 CPU, 1536 MiB/2 CPUs, and 256 MiB/0.5 CPU respectively, with three 10 MiB JSON log files per service. Adjust `AGENVAS_*_MEMORY_LIMIT` and `AGENVAS_*_CPUS` in `.env` after measuring your host. The server has a 45-second container stop grace period and a 30-second Spring shutdown phase; neither makes an uncertain external submission safe to retry without checking its Provider attempt.
 
 ## What the current build can do

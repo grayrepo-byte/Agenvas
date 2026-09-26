@@ -17,6 +17,10 @@ services:
       retries: 12
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # 仅绑定本机，供用本地客户端连库排查。server 走 Compose 内部网络，不依赖这个映射；
+    # 默认 5432 在宿主机已被占用时，在 .env 里改 AGENVAS_DB_PORT。
+    ports:
+      - "127.0.0.1:${AGENVAS_DB_PORT:-5432}:5432"
     mem_limit: ${AGENVAS_POSTGRES_MEMORY_LIMIT:-768m}
     cpus: ${AGENVAS_POSTGRES_CPUS:-1.0}
     logging:
