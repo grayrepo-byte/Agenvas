@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, type RequestHandler } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -154,7 +154,7 @@ describe("MediaDraftEditor", () => {
   });
 
   it("runs the saved default draft and invalidates the actual snapshot, canvas and draft caches", async () => {
-    const { client, setTasks } = setup({ settings: { connections: [], defaults: [] } });
+    const { client, setTasks } = setup();
     const invalidation = vi.spyOn(client, "invalidateQueries");
     let submitted: unknown;
     server.use(http.post(`${BASE}/run`, async ({ request }) => {
@@ -203,7 +203,9 @@ describe("MediaDraftEditor", () => {
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
         id: "reference-image", title: "海边灯塔", currentVersionId: "image-v2" }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
-        { id: "image-v1", versionNo: 1 }, { id: "image-v2", versionNo: 2 },
+        { id: "image-v1", versionNo: 1, content: { assetId: "asset-old-frame" } },
+        { id: "image-v2", versionNo: 2, content: { assetId: "asset-new-frame" } },
+        { id: "image-empty", versionNo: 3, content: { prompt: "not generated yet" } },
       ] })),
     ] });
     const user = userEvent.setup();
@@ -211,14 +213,192 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
     await screen.findByRole("option", { name: "海边灯塔 · v1" });
+    expect(screen.queryByRole("option", { name: /v3/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "使用 海边灯塔 · v1" })).toBeVisible();
     await user.selectOptions(screen.getByRole("combobox", { name: "输入图片版本" }), "image-v1");
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    expect(screen.getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("min", "2");
+    expect(screen.getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("max", "10");
     await user.type(screen.getByRole("spinbutton", { name: "时长（秒）" }), "4");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: "image-v1", durationSeconds: 4 }));
     expect(screen.getByText("海边灯塔 · v1")).toBeVisible();
+    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧缩略图" })).toHaveAttribute("src",
+      `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/thumbnail`);
+    expect(screen.queryByRole("img", { name: /v2/ })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "替换视频首帧" }));
+    await user.click(screen.getByRole("button", { name: "使用 海边灯塔 · v2" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: "image-v2", durationSeconds: 4 }));
+    expect(screen.getByRole("img", { name: "海边灯塔 · v2 首帧缩略图" })).toHaveAttribute("src",
+      `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/thumbnail`);
+    await user.click(screen.getByRole("button", { name: "清除视频首帧" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: null, durationSeconds: 4 }));
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+  });
+
+  it("retains an unavailable pinned video frame without silently using the current version", async () => {
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-gone", durationSeconds: 4 }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+        id: "reference-image", title: "新首帧", currentVersionId: "image-v2" }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
+        { id: "image-gone", versionNo: 1, content: {} },
+        { id: "image-v2", versionNo: 2, content: { assetId: "asset-current-frame" } },
+      ] })),
+    ] });
+    const user = userEvent.setup();
+    expect(await screen.findByText(/无法确认已固定的首帧版本/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
+    expect(screen.getByRole("combobox", { name: "输入图片版本" })).toHaveValue("image-gone");
+    expect(screen.queryByRole("button", { name: /使用 新首帧 · v1/ })).not.toBeInTheDocument();
+    expect(saves).toHaveLength(0);
+  });
+
+  it("retries video image-history failures and restores the exact old thumbnail", async () => {
+    let attempts = 0;
+    setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-v1", durationSeconds: 4 }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+        id: "reference-image", title: "海边灯塔", currentVersionId: "image-v2" }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => {
+        attempts += 1;
+        return attempts === 1 ? HttpResponse.json({ code: "TEMPORARY", detail: "暂不可用" }, { status: 503 })
+          : HttpResponse.json({ items: [
+            { id: "image-v1", versionNo: 1, content: { assetId: "asset-old-frame" } },
+            { id: "image-v2", versionNo: 2, content: { assetId: "asset-new-frame" } },
+          ] });
+      }),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("视频提示词");
+    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
+    expect(await screen.findByText("无法读取图片版本。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "重试读取图片" }));
+    expect(await screen.findByRole("option", { name: "海边灯塔 · v1" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧缩略图" })).toHaveAttribute("src",
+      `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/thumbnail`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("shows the empty video-reference state without offering image drafts as usable frames", async () => {
+    setup({ kind: "VIDEO", handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+        id: "reference-draft", title: "尚未生成", currentVersionId: null }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-draft/versions`, () => HttpResponse.json({ items: [
+        { id: "draft-v1", versionNo: 1, content: { assetId: "" } },
+      ] })),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("视频提示词");
+    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
+    expect(await screen.findByText("暂无已生成或上传的图片，请先添加图片。")).toBeVisible();
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+  });
+
+  it("blocks unconfigured models and retries an unavailable configuration before enabling run", async () => {
+    let configured = false;
+    let failed = false;
+    const { client } = setup({ handlers: [http.get("/api/v1/settings/media-connections", () => failed
+      ? HttpResponse.json({ code: "TEMPORARY", detail: "配置读取失败" }, { status: 503 })
+      : HttpResponse.json(configured ? settings : { connections: [], defaults: [] }))] });
+    const user = userEvent.setup();
+    await screen.findByText("尚未配置默认模型，请选择可用模型或先在媒体设置中配置。");
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    configured = true;
+    failed = true;
+    await client.invalidateQueries({ queryKey: ["media-settings"] });
+    expect(await screen.findByText("无法读取模型配置。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    failed = false;
+    await user.click(screen.getByRole("button", { name: "重试读取模型" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("adopts a refreshed draft CAS version after running while preserving subsequent local edits", async () => {
+    let remoteVersion = 0;
+    const saved: SaveMediaDraftRequest[] = [];
+    setup({ handlers: [
+      http.get(`${BASE}/draft`, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
+      http.post(`${BASE}/run`, () => {
+        remoteVersion = 4;
+        return HttpResponse.json(task("SUCCEEDED"));
+      }),
+      http.put(`${BASE}/draft`, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest;
+        saved.push(input);
+        return HttpResponse.json({ ...initialDraft, ...input, version: input.expectedVersion + 1 });
+      }),
+    ] });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.type(screen.getByLabelText("图片提示词"), " in the rain");
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ expectedVersion: 4, prompt: `${initialDraft.prompt} in the rain` });
+  });
+
+  it("ignores a stale background response that arrives after a newer save was acknowledged", async () => {
+    let reads = 0;
+    let releaseStale: (() => void) | undefined;
+    const saved: SaveMediaDraftRequest[] = [];
+    const { client } = setup({ handlers: [
+      http.get(`${BASE}/draft`, async () => {
+        reads += 1;
+        if (reads === 1) return HttpResponse.json(initialDraft);
+        await new Promise<void>((resolve) => { releaseStale = resolve; });
+        return HttpResponse.json(initialDraft);
+      }),
+      http.put(`${BASE}/draft`, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest;
+        saved.push(input);
+        return HttpResponse.json({ ...initialDraft, ...input, version: input.expectedVersion + 1 });
+      }),
+    ] });
+    const user = userEvent.setup();
+    const prompt = await screen.findByLabelText("图片提示词");
+    const slowRefresh = client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, ARTIFACT_ID] });
+    await waitFor(() => expect(releaseStale).toBeDefined());
+    await user.clear(prompt);
+    await user.type(prompt, "Newer saved prompt");
+    await waitFor(() => expect(saved).toHaveLength(1));
+    await screen.findByText("已保存");
+    await act(async () => { releaseStale?.(); await slowRefresh; });
+    expect(prompt).toHaveValue("Newer saved prompt");
+    await user.type(prompt, " and next edit");
+    await waitFor(() => expect(saved).toHaveLength(2));
+    expect(saved[1]).toMatchObject({ expectedVersion: 1, prompt: "Newer saved prompt and next edit" });
+  });
+
+  it("retries a lost run response with its original key and payload after the server draft advances", async () => {
+    const keys: (string | null)[] = [];
+    const payloads: unknown[] = [];
+    let remoteVersion = 0;
+    const { client } = setup({ handlers: [
+      http.get(`${BASE}/draft`, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
+      http.post(`${BASE}/run`, async ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key"));
+        payloads.push(await request.json());
+        remoteVersion = 1;
+        return keys.length === 1 ? HttpResponse.error() : HttpResponse.json(task("READY"));
+      }),
+    ] });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("运行失败：");
+    await act(async () => { await client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, ARTIFACT_ID] }); });
+    expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, ARTIFACT_ID])?.version).toBe(1);
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(keys).toHaveLength(2));
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(payloads).toEqual([{ expectedDraftVersion: 0 }, { expectedDraftVersion: 0 }]);
   });
 
   it("retries a failed initial draft read", async () => {

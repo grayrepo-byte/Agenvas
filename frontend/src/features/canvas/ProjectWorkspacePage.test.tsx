@@ -50,8 +50,16 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/runs/:runId/actions", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/runs/:runId/plans", () => HttpResponse.json([])),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
-        connections: [], defaults: [],
+        connections: [{ id: "mock", name: "Mock", platform: "MOCK", enabled: true,
+          version: 0, connectionVersion: 1, origin: null, keyMask: null,
+          connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
+          capabilities: [{ id: "mock-image", name: "Mock 图片", enabled: true,
+            version: 0, capabilityVersion: 1, adapterId: "MOCK_IMAGE",
+            kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
+            maxConcurrent: 2, mappingSha256: "a".repeat(64), settings: {} }] }],
+        defaults: [{ kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 0 }],
       })),
+      http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({ items: [], nextCursor: null })),
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () =>
         HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
@@ -213,12 +221,14 @@ describe("ProjectWorkspacePage", () => {
     );
 
     const user = userEvent.setup();
-    fireEvent.click(await screen.findByText("Hero"));
+    fireEvent.doubleClick(await screen.findByRole("article", { name: "Hero · 角色" }));
     expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("名称")).toHaveFocus());
+    screen.getByLabelText("名称").blur();
     await user.keyboard("{Escape}");
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Hero"));
+    fireEvent.click(screen.getByRole("article", { name: "Hero · 角色" }));
     expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
@@ -1155,7 +1165,9 @@ describe("ProjectWorkspacePage", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByText("素材引用（1 个精确版本）"));
+    fireEvent.click(await screen.findByRole("article", { name: "Hero · 角色" }));
+    fireEvent.click(await screen.findByRole("button", { name: "卡片详情" }));
+    expect(screen.getByText("素材引用（1 个精确版本）")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "移除引用" }));
     expect(await screen.findByText("请刷新后重试。")).toBeInTheDocument();
     expect(screen.getByText("素材引用（1 个精确版本）")).toBeInTheDocument();
@@ -1164,6 +1176,6 @@ describe("ProjectWorkspacePage", () => {
     await waitFor(() => expect(screen.queryByText("素材引用（1 个精确版本）"))
       .not.toBeInTheDocument());
     expect(revisions).toBe(2);
-    expect(screen.getByText("已保存")).toBeInTheDocument();
+    expect(screen.getAllByText("已保存").length).toBeGreaterThan(0);
   });
 });

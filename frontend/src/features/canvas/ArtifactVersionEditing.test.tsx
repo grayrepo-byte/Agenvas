@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -29,13 +29,29 @@ function artifact(kind: "CHARACTER" | "SCENE" | "TEXT"): VersionedArtifact {
   };
 }
 
+function updatedArtifact(base: VersionedArtifact, content: VersionedArtifact["currentVersion"]["content"]): VersionedArtifact {
+  return { ...base, version: base.version + 1, currentVersionId: "version-3", currentVersion: {
+    ...base.currentVersion, id: "version-3", versionNo: 3, content,
+  } };
+}
+
 function renderComponent(element: React.ReactNode) {
   const client = createQueryClient();
-  render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
-  return client;
+  const rendered = render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
+  return { client, rerender: (next: React.ReactNode) => rendered.rerender(<QueryClientProvider client={client}>{next}</QueryClientProvider>) };
 }
 
 describe("Artifact version editing", () => {
+  it.each(["TEXT", "CHARACTER", "SCENE"] as const)("opens %s fields directly and exposes a focusable canvas editing target", (kind) => {
+    renderComponent(<StructuredArtifactEditor artifact={artifact(kind)} />);
+    const field = screen.getByLabelText(kind === "TEXT" ? "内容" : "名称");
+    expect(field).toBeVisible();
+    expect(field).toHaveAttribute("data-content-editor-focus", "true");
+    field.focus();
+    expect(field).toHaveFocus();
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
+  });
+
   it("revises manual text content without overwriting its previous version", async () => {
     let revisions = 0;
     server.use(
@@ -47,12 +63,11 @@ describe("Artifact version editing", () => {
           revisions++;
           expect(await request.json()).toEqual({ expectedVersion: 4, title: "Draft",
             content: { format: "MARKDOWN", text: "Revised" } });
-          return HttpResponse.json(artifact("TEXT"), { status: 201 });
+          return HttpResponse.json(updatedArtifact(artifact("TEXT"), { format: "MARKDOWN", text: "Revised" }), { status: 201 });
         }),
     );
     renderComponent(<StructuredArtifactEditor artifact={artifact("TEXT")} />);
     const user = userEvent.setup();
-    await user.click(screen.getByText("修改文字内容"));
     await user.selectOptions(screen.getByLabelText("格式"), "MARKDOWN");
     await user.clear(screen.getByLabelText("内容"));
     await user.type(screen.getByLabelText("内容"), "Revised");
@@ -72,12 +87,11 @@ describe("Artifact version editing", () => {
           expect(await request.json()).toEqual({ expectedVersion: 4, title: "Hero",
             content: { name: "Hero", description: "Lead revised", appearance: "Blue coat",
               referenceVersionIds: [imageVersionId] } });
-          return HttpResponse.json(artifact("CHARACTER"), { status: 201 });
+          return HttpResponse.json(updatedArtifact(artifact("CHARACTER"), { name: "Hero", description: "Lead revised", appearance: "Blue coat", referenceVersionIds: [imageVersionId] }), { status: 201 });
         }),
     );
     renderComponent(<StructuredArtifactEditor artifact={artifact("CHARACTER")} />);
     const user = userEvent.setup();
-    await user.click(screen.getByText("修改角色说明"));
     await user.clear(screen.getByLabelText("描述"));
     await user.type(screen.getByLabelText("描述"), "Lead revised");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
@@ -97,7 +111,6 @@ describe("Artifact version editing", () => {
     );
     renderComponent(<StructuredArtifactEditor artifact={artifact("SCENE")} />);
     const user = userEvent.setup();
-    await user.click(screen.getByText("修改场景说明"));
     await user.clear(screen.getByLabelText("时间"));
     await user.type(screen.getByLabelText("时间"), "Evening");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
@@ -105,6 +118,78 @@ describe("Artifact version editing", () => {
       .toBeInTheDocument();
     expect(screen.getByLabelText("时间")).toHaveValue("Evening");
     expect(screen.queryByText("新版本已保存。")).not.toBeInTheDocument();
+  });
+
+  it("keeps a dirty text draft and its original CAS when a newer artifact arrives, until an explicit reload", async () => {
+    const initial = artifact("TEXT");
+    const latest = updatedArtifact(initial, { format: "PLAIN_TEXT", text: "Remote revision" });
+    const requests: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId", () => HttpResponse.json(latest)),
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({ title: "冲突", detail: "版本已变化", code: "ARTIFACT_VERSION_CONFLICT" },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } });
+      }),
+    );
+    const editor = renderComponent(<StructuredArtifactEditor artifact={initial} />);
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("内容"));
+    await user.type(screen.getByLabelText("内容"), "Local draft");
+    editor.rerender(<StructuredArtifactEditor artifact={latest} />);
+    expect(screen.getByLabelText("内容")).toHaveValue("Local draft");
+    expect(screen.getByText("v2")).toBeInTheDocument();
+    expect(screen.getByText(/载入最新版本会替换这里未保存的修改/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "保存新版本" }));
+    await screen.findByRole("alert");
+    expect(requests).toEqual([{ expectedVersion: 4, title: "Draft", content: { format: "PLAIN_TEXT", text: "Local draft" } }]);
+    expect(screen.getByLabelText("内容")).toHaveValue("Local draft");
+    await user.click(screen.getByRole("button", { name: "载入最新版本" }));
+    await waitFor(() => expect(screen.getByLabelText("内容")).toHaveValue("Remote revision"));
+    expect(screen.getByText("v3")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
+  });
+
+  it("blocks duplicate submission while saving and retains text after a failed response", async () => {
+    let attempts = 0;
+    let finish: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async () => {
+        attempts++; await gate;
+        return HttpResponse.json({ title: "暂时失败", detail: "保存暂不可用" },
+          { status: 503, headers: { "Content-Type": "application/problem+json" } });
+      }),
+    );
+    renderComponent(<StructuredArtifactEditor artifact={artifact("TEXT")} />);
+    const user = userEvent.setup();
+    const input = screen.getByLabelText("内容");
+    await user.clear(input); await user.type(input, "Keep my text");
+    await user.click(screen.getByRole("button", { name: "保存新版本" }));
+    await waitFor(() => expect(attempts).toBe(1));
+    expect(input).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存中…" })).toBeDisabled();
+    if (!(input instanceof HTMLTextAreaElement) || !input.form) throw new Error("Missing editor form");
+    fireEvent.submit(input.form);
+    expect(attempts).toBe(1);
+    if (!finish) throw new Error("Missing save gate");
+    finish();
+    expect(await screen.findByRole("alert")).toHaveTextContent("保存暂不可用 输入已保留。");
+    expect(input).toHaveValue("Keep my text");
+    expect(input).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeEnabled();
+  });
+
+  it("accepts a newer server version automatically when there is no local edit", async () => {
+    const initial = artifact("TEXT");
+    const editor = renderComponent(<StructuredArtifactEditor artifact={initial} />);
+    editor.rerender(<StructuredArtifactEditor artifact={updatedArtifact(initial, { format: "MARKDOWN", text: "New server text" })} />);
+    await waitFor(() => expect(screen.getByLabelText("内容")).toHaveValue("New server text"));
+    expect(screen.getByLabelText("格式")).toHaveValue("MARKDOWN");
+    expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument();
   });
 
   it("loads history on demand and selects a past exact version with artifact CAS", async () => {

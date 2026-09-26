@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowsOutSimple, ArrowClockwise, CaretDown, Crop, Cube, DownloadSimple,
   Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush, Play, Scissors,
-  SlidersHorizontal, Smiley, Sun, UploadSimple, VideoCamera } from "@phosphor-icons/react";
+  SlidersHorizontal, Smiley, Sun, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
 import { assetContentUrl, assetThumbnailUrl, getMediaDraft, listDirectMediaTasks,
   type Artifact, type Task } from "../../shared/api/client";
 import { CanvasLoadingState } from "./CanvasLoadingState";
@@ -87,7 +87,7 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
           </div>
         </> : null}
         <button type="button" onClick={onEdit} title="编辑工作草稿，点击运行生成新版本">
-          <ArrowClockwise size={17} />重新生成</button>
+          <ArrowClockwise size={17} />{assetId ? "重新生成" : "编辑草稿"}</button>
         <button type="button" onClick={onInspect} aria-label="卡片详情"><SlidersHorizontal size={17} /></button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
           aria-label={isImage ? "下载图片" : "下载视频"}><DownloadSimple size={19} /></a> : null}
@@ -106,14 +106,18 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
               {latest?.errorCode ? <small>{latest.errorCode}</small> : null}
               {latest?.status === "UNKNOWN" ? <small>请在编辑区核对原请求</small> : null}
             </div> : null}
-            {isImage ? <button className="media-upload-button nodrag" type="button" onClick={onUpload}>
+            {latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
+              <button className="media-upload-button nodrag" type="button" onClick={onEdit}>
+                <SlidersHorizontal size={15} />查看任务</button>
+              : isImage ? <button className="media-upload-button nodrag" type="button" onClick={onUpload}>
               <UploadSimple size={15} />上传图片</button>
               : <button className="media-upload-button nodrag" type="button" onClick={onEdit}>
                 <Play size={15} />生成视频</button>}
           </>}
           {draft.error ? <p className="media-card-error" role="alert">草稿读取失败
             <button type="button" className="nodrag" onClick={() => void draft.refetch()}>重试</button></p> : null}
-          {tasks.error ? <p className="media-card-error" role="alert">任务状态暂不可用</p> : null}
+          {tasks.error ? <p className="media-card-error" role="alert">任务状态暂不可用
+            <button type="button" className="nodrag" onClick={() => void tasks.refetch()}>重试状态</button></p> : null}
         </div>}
     </article>
   </>;
@@ -123,20 +127,42 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
 function MediaPreview({ artifact, assetId, demo }: { artifact: Artifact; assetId: string; demo: boolean }) {
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [playbackFailed, setPlaybackFailed] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [playbackAttempt, setPlaybackAttempt] = useState(0);
   const video = artifact.kind === "VIDEO";
+
+  function startPlayback() {
+    setPlaybackFailed(false);
+    setBuffering(true);
+    setPlaybackAttempt((attempt) => attempt + 1);
+    setPlaying(true);
+  }
+
   return <div className="media-card-preview">
-    {video && playing ? <video className="nodrag nowheel" aria-label={`${artifact.title} 的视频`}
-      controls preload="metadata" src={assetContentUrl(artifact.projectId, assetId)} />
+    {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={`${artifact.title} 的视频`}
+      controls autoPlay playsInline preload="metadata" src={assetContentUrl(artifact.projectId, assetId)}
+      onCanPlay={() => setBuffering(false)} onPlaying={() => setBuffering(false)} onWaiting={() => setBuffering(true)}
+      onError={() => { setPlaybackFailed(true); setBuffering(false); }} />
       : !failed ? <img alt={`${artifact.title} 的${video ? "视频封面" : "预览"}`}
         decoding="async" draggable={false} loading="lazy" onError={() => setFailed(true)}
         src={assetThumbnailUrl(artifact.projectId, assetId)} />
-        : <div className="media-card-empty"><ImageIcon size={36} /><span>预览暂不可用</span>
+        : <div className="media-card-empty">{video ? <VideoCamera size={36} /> : <ImageIcon size={36} />}<span>{video ? "视频封面暂不可用" : "预览暂不可用"}</span>
           <button className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>重试预览</button></div>}
+    {video && playing && buffering ? <div className="media-playback-loading">
+      <CanvasLoadingState compact label="正在加载视频" />
+    </div> : null}
+    {video && playbackFailed ? <div className="media-playback-error nodrag nowheel nopan" role="alert">
+      <VideoCamera size={28} /><p>视频播放失败</p><span>请重试播放，或打开原视频文件。</span>
+      <button type="button" className="media-upload-button" onClick={startPlayback}><ArrowClockwise size={15} />重试播放</button>
+    </div> : null}
+    {video && playing ? <button type="button" className="media-stop-preview nodrag" aria-label="关闭视频预览"
+      title="关闭视频预览" onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></button> : null}
     {demo ? <span className="media-demo-badge">{video ? "演示视频" : "演示素材"}</span> : null}
     <a className="media-expand-button nodrag" href={assetContentUrl(artifact.projectId, assetId)}
       aria-label={video ? "打开视频文件" : "打开原图"} title={video ? "打开视频文件" : "打开原图"}
       rel="noopener noreferrer" target="_blank"><ArrowsOutSimple size={19} /><span className="sr-only">{video ? "打开视频文件" : "打开原图"}</span></a>
     {video && !playing ? <button className="media-play-button nodrag" type="button"
-      aria-label="播放视频" onClick={() => setPlaying(true)}><Play size={28} weight="fill" /><span className="sr-only">播放视频</span></button> : null}
+      aria-label="播放视频" onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">播放视频</span></button> : null}
   </div>;
 }

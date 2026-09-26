@@ -1,0 +1,71 @@
+/* Beautiful UI content-bar/source-chip hierarchy, using the canvas media palette. */
+.content-canvas-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1.5px solid #b7b7b7;
+  border-radius: 14px;
+  background: #262626;
+  color: #ededed;
+}
+
+.content-canvas-card.is-selected { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
+
+.content-card-caption {
+  position: absolute;
+  top: -24px;
+  left: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  color: #b8b8b8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-card-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid #ffffff0e;
+  color: #c9c9c9;
+}
+
+.content-card-bar > svg { flex-shrink: 0; color: #9a9a9a; }
+.content-card-bar h3 { min-width: 0; margin: 0; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.content-card-duration { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: #aaa; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.content-card-duration svg { flex-shrink: 0; }
+
+.content-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  overscroll-behavior: contain;
+  scrollbar-color: #555 transparent;
+  scrollbar-width: thin;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.content-card-body:focus-visible { outline: 1px solid #a3a3a3; outline-offset: -3px; border-radius: 6px; }
+.content-card-body dl { display: flex; flex-direction: column; gap: 14px; margin: 0; }
+.content-card-field dt { margin-bottom: 4px; color: #939393; font-size: 10px; font-weight: 500; }
+.content-card-field dd, .content-card-text { margin: 0; overflow-wrap: anywhere; color: #dedede; font-size: 13px; font-weight: 400; line-height: 1.75; white-space: pre-wrap; }
+.content-card-sources { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; min-width: 0; overflow: hidden; padding: 8px 12px 11px; }
+.content-card-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid #ffffff0d; border-radius: 999px; background: #303030; color: #b7b7b7; font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.content-card-chip svg { color: #8f8f8f; }
+.content-card-locked { flex-shrink: 0; margin-left: auto; color: #a5a5a5; }
+
+.content-card-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 0; padding: 12px; color: #929292; font-size: 11px; text-align: center; }
+.content-card-empty > svg { flex-shrink: 0; color: #606060; }
+.content-card-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px; border: 1px solid #454545; border-radius: 999px; background: #333; color: #f3f3f3; font-size: 12px; cursor: pointer; }
+.content-card-empty button:hover { background: #424242; }
+.content-card-empty button:focus-visible, .content-card-toolbar button:focus-visible { outline: 2px solid #eee; outline-offset: 2px; }

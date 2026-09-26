@@ -50,3 +50,13 @@ Agent chat visual result: blocked
 - 浏览器补验应覆盖连续发送、刷新恢复、新会话空记忆、旧会话续聊、长记录加载，以及提交延迟期间切换会话。
 
 Conversation visual result: blocked
+
+## 其他媒体与内容节点增量（2026-09-26）
+
+- 视觉基准：原始 1736×944 图稿与现有 MediaCanvasCard；Beautiful UI 的 ContextCards、SelectionActions、PromptBar、ChatComposer、TaskRows MIT 源码已实际读取并保留归属。
+- 文字、角色、场景、镜头统一黑色 14px 圆角内容表面、选中工具栏、可滚动正文、类型/版本/引用标签；底部编辑器约 680×275px，固定头尾、内部滚动。已有卡片尺寸保留。
+- 视频沿用纯媒体表面，首帧弹层以真实归档缩略图展示精确版本；点击后才加载视频，等待与播放错误独立展示，支持重试及返回封面。
+- 本次已确认本地 5173 端口监听，再通过内置浏览器访问 `http://localhost:5173`，仍返回 `net::ERR_BLOCKED_BY_CLIENT`。未取得实现截图；未检查真实视频解码、控制台或指针交互。
+- 待浏览器补验：1736×944 与 1280px 宽度下六类 Artifact、长正文滚动、顶部操作与底部关闭按钮、缩放/最小尺寸、首帧历史版本弹层、真实播放失败重试、冲突后草稿和键盘焦点。不能以组件测试代替这些视觉结论。
+
+Other nodes visual result: blocked

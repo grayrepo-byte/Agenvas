@@ -33,6 +33,7 @@ import {
   updateAgent,
   type Agent,
   type AgentRun,
+  type Artifact,
   type CanvasCommand,
   type CanvasItem,
   type ProjectSnapshot,
@@ -52,8 +53,9 @@ import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
 import { hasCurrentVersion } from "./versionedArtifact";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { MediaCanvasCard } from "./MediaCanvasCard";
+import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCardUpload } from "./MediaCardUpload";
-import { Plus, TextT, X } from "@phosphor-icons/react";
+import { Plus, X } from "@phosphor-icons/react";
 import { inputConnectionUpdate, projectCanvasRelations,
   semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
 
@@ -72,6 +74,14 @@ const DEFAULT_CARD_WIDTH = 280;
 const DEFAULT_MEDIA_CARD_HEIGHT = 300;
 const DEFAULT_IMAGE_CARD_WIDTH = 225;
 const DEFAULT_VIDEO_CARD_WIDTH = 534;
+const MIN_ARTIFACT_CARD_SIZE = 120;
+const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
+  TEXT: "文字", IMAGE: "图片", VIDEO: "视频", CHARACTER: "角色", SCENE: "场景", SHOT: "镜头",
+};
+
+function focusArtifactEditor() {
+  document.querySelector<HTMLElement>(".workspace-bottom-editor [data-content-editor-focus], .workspace-bottom-editor .media-draft-prompt")?.focus();
+}
 const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string }> = [
   { kind: "TEXT", label: "文字" }, { kind: "IMAGE", label: "图片" },
   { kind: "VIDEO", label: "视频" }, { kind: "CHARACTER", label: "角色" },
@@ -92,11 +102,8 @@ type CanvasNodeData = {
   onInspect: (item: CanvasItem) => void;
   onUpload: (item: CanvasItem) => void;
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
-  onRemoveReference: (item: CanvasItem,
-    reference: ArtifactInputReference) => void;
   updatingAgent: boolean;
   updateAgentError: Error | null;
-  removingReference: boolean;
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
@@ -717,10 +724,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onInspect: handleInspect,
               onUpload: handleUpload,
               onUpdateAgent: handleUpdateAgent,
-              onRemoveReference: handleRemoveReference,
               updatingAgent: editAgent.isPending,
               updateAgentError: editAgent.error,
-              removingReference: removeReference.isPending,
             },
           };
         }),
@@ -736,9 +741,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleInspect,
       handleUpload,
       handleUpdateAgent,
-      handleRemoveReference,
       projectId,
-      removeReference.isPending,
       selectedIds,
       snapshot.data?.activeRun,
     ],
@@ -1038,6 +1041,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }}
           onNodeClick={(_, node) => setSelectedIds([node.id])}
           onNodesChange={handleNodesChange}
+          onNodeDoubleClick={(event, node) => {
+            if (!node.data.item.artifact || (event.target instanceof Element &&
+              event.target.closest("button, a, input, textarea, select, summary"))) return;
+            setSelectedIds([node.id]);
+            window.requestAnimationFrame(focusArtifactEditor);
+          }}
           onInit={(instance) => { flow.current = instance; }}
           onSelectionChange={handleSelectionChange}
           selectionOnDrag
@@ -1059,18 +1068,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div> : null}
         {addBlankMedia.error ? <div className="canvas-message" role="alert">
           <WorkspaceError error={addBlankMedia.error} /></div> : null}
-        {removeReference.error && !toolsKind ? <div className="canvas-message">
+        {removeReference.error && !toolsKind && !inspectingId ? <div className="canvas-message">
           <WorkspaceError error={removeReference.error} /></div> : null}
         {connectInput.error && !toolsKind ? <div className="canvas-message">
           <WorkspaceError error={connectInput.error} /></div> : null}
         {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
           <div className="canvas-message"><WorkspaceError error={(removeItem.error ?? toggleLocked.error)!} /></div> : null}
         {selectedItems.length === 1 && selectedItems[0]?.artifact ?
-          <div className={`workspace-bottom-editor ${selectedItems[0].artifact.kind === "IMAGE" || selectedItems[0].artifact.kind === "VIDEO" ? "workspace-media-editor" : ""}`} aria-label="所选卡片编辑区">
+          <div className="workspace-bottom-editor workspace-media-editor" aria-label="所选卡片编辑区">
             <button aria-label="关闭编辑区" className="workspace-bottom-close"
               onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
-            {selectedItems[0].artifact.kind !== "IMAGE" && selectedItems[0].artifact.kind !== "VIDEO" ?
-              <div className="workspace-bottom-title">{selectedItems[0].artifact.title} · 编辑</div> : null}
             {selectedItems[0].artifact.kind === "IMAGE" ||
               selectedItems[0].artifact.kind === "VIDEO" ?
               <MediaDraftEditor key={selectedItems[0].artifact.id}
@@ -1078,11 +1085,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             {hasCurrentVersion(selectedItems[0].artifact) &&
               (["TEXT", "CHARACTER", "SCENE"] as const).some((kind) =>
                 kind === selectedItems[0]?.artifact?.kind) ?
-              <StructuredArtifactEditor key={selectedItems[0].artifact.currentVersionId}
+              <StructuredArtifactEditor key={selectedItems[0].artifact.id}
                 artifact={selectedItems[0].artifact} /> : null}
             {hasCurrentVersion(selectedItems[0].artifact) &&
               selectedItems[0].artifact.kind === "SHOT" ?
-              <ShotRedoEditor key={selectedItems[0].artifact.currentVersionId}
+              <ShotRedoEditor key={selectedItems[0].artifact.id}
                 artifact={selectedItems[0].artifact} /> : null}
           </div> : null}
         {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
@@ -1103,13 +1110,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         return <aside className="workspace-drawer media-inspector" aria-label="卡片详情">
           <div className="workspace-drawer-heading"><h2>{item.artifact.title}</h2>
             <button className="node-action" aria-label="关闭卡片详情" type="button" onClick={() => setInspectingId(null)}><X size={16} /></button></div>
-          <p className="mt-3 text-xs text-[var(--muted)]">{item.artifact.kind === "IMAGE" ? "图片" : "视频"} · {item.artifact.currentVersion ? `v${item.artifact.currentVersion.versionNo}` : "暂无结果"}</p>
+          <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {item.artifact.currentVersion ? `v${item.artifact.currentVersion.versionNo}` : "暂无结果"}</p>
           <ArtifactVersionHistory artifact={item.artifact} />
           {item.artifact.currentVersion?.inputReferences.length ? <div className="mt-4 text-xs">
-            <h3>素材引用</h3><ul className="mt-2 space-y-2">
+            <h3>素材引用（{item.artifact.currentVersion.inputReferences.length} 个精确版本）</h3><ul className="mt-2 space-y-2">
               {item.artifact.currentVersion.inputReferences.map((reference) =>
                 <li className="break-all text-[var(--muted)]" key={`${reference.role}:${reference.order}:${reference.versionId}`}>
-                  {reference.role} · {reference.kind} · {reference.versionId}
+                  {reference.role} · {ARTIFACT_LABELS[reference.kind]} · {reference.versionId}
+                  {semanticReferenceRemoval(item, reference) ? <button className="node-action mt-2"
+                    disabled={removeReference.isPending} onClick={() => handleRemoveReference(item, reference)} type="button">
+                    {removeReference.isPending ? "保存中…" : "移除引用"}
+                  </button> : null}
                 </li>)}
             </ul>
           </div> : null}
@@ -1119,6 +1130,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div>
           {removeItem.error ? <WorkspaceError error={removeItem.error} /> : null}
           {toggleLocked.error ? <WorkspaceError error={toggleLocked.error} /> : null}
+          {removeReference.error ? <WorkspaceError error={removeReference.error} /> : null}
           <p className="mt-3 text-xs text-[var(--muted)]">移除卡片后，内容和历史版本仍保留在项目资源中。</p>
         </aside>;
       })() : null}
@@ -1136,66 +1148,29 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProps<CanvasNode>) {
   if (data.item.agent) return <AgentChatCard data={data} selected={selected} />;
   const artifact = data.item.artifact;
-  const content = artifact?.currentVersion?.content;
-  const text = content ? contentPreview(content) : "";
+  if (!artifact) return null;
   if (artifact && (artifact.kind === "IMAGE" || artifact.kind === "VIDEO")) {
     return <>
       <Handle id="artifact-input" position={Position.Left} type="target" />
       <Handle id="artifact-output" position={Position.Right} type="source" />
       <MediaCanvasCard artifact={artifact} selected={selected} locked={data.item.locked}
         onInspect={() => data.onInspect(data.item)} onUpload={() => data.onUpload(data.item)}
-        onEdit={() => document.querySelector<HTMLTextAreaElement>(".media-draft-editor textarea")?.focus()}>
-        <NodeResizer isVisible={selected && !data.item.locked} minHeight={120} minWidth={120}
+        onEdit={focusArtifactEditor}>
+        <NodeResizer isVisible={selected && !data.item.locked} minHeight={MIN_ARTIFACT_CARD_SIZE} minWidth={MIN_ARTIFACT_CARD_SIZE}
           onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
       </MediaCanvasCard>
     </>;
   }
   return (
     <>
-      <Handle id="artifact-input" position={Position.Left}
-        style={{ background: "#64748b" }} type="target" />
-      <Handle id="artifact-output" position={Position.Right}
-        style={{ background: "#2563eb" }} type="source" />
-      <article className={`artifact-node ${selected ? "artifact-node-selected" : ""}`}>
-      <NodeResizer
-        isVisible={selected && !data.item.locked}
-        minHeight={80}
-        minWidth={120}
-        onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)}
-      />
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <span className="artifact-kind">{artifact?.kind ?? data.item.subjectType}</span>
-          <h3 className="mt-2 font-semibold">{artifact?.title ?? "未知卡片"}</h3>
-        </div>
-        <span className="text-xs text-[var(--muted)]">v{artifact?.currentVersion?.versionNo ?? 0}</span>
-      </div>
-      {artifact?.kind === "TEXT" && !text.trim() ? <div className="text-card-empty"><TextT size={44} /><span>双击编辑文字</span></div>
-        : <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-5 text-[var(--muted)]">{text}</p>}
-      {artifact ? <ArtifactVersionHistory artifact={artifact} /> : null}
-      {hasCurrentVersion(artifact) && artifact.currentVersion.inputReferences.length > 0 ? (
-        <details className="nodrag nowheel mt-3 text-xs text-[var(--muted)]">
-          <summary className="cursor-pointer">素材引用（{artifact.currentVersion.inputReferences.length} 个精确版本）</summary>
-          <ul className="mt-2 space-y-1">
-            {artifact.currentVersion.inputReferences.map((reference) => (
-              <li className="break-all" key={`${reference.role}:${reference.order}:${reference.versionId}`}>
-                {reference.role} · {reference.kind} · {reference.versionId}
-                {semanticReferenceRemoval(data.item, reference) ? (
-                  <button className="node-action ml-2" disabled={data.removingReference}
-                    onClick={() => data.onRemoveReference(data.item, reference)} type="button">
-                    {data.removingReference ? "保存中…" : "移除引用"}
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      <div className="nodrag mt-4 flex gap-2">
-        <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? "解锁" : "锁定"}</button>
-        <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">移除卡片</button>
-      </div>
-      </article>
+      <Handle id="artifact-input" position={Position.Left} type="target" />
+      <Handle id="artifact-output" position={Position.Right} type="source" />
+      <ContentCanvasCard artifact={artifact} selected={selected} locked={data.item.locked}
+        onInspect={() => data.onInspect(data.item)} onEdit={focusArtifactEditor}>
+        <NodeResizer isVisible={selected && !data.item.locked}
+          minHeight={MIN_ARTIFACT_CARD_SIZE} minWidth={MIN_ARTIFACT_CARD_SIZE}
+          onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
+      </ContentCanvasCard>
     </>
   );
 });
@@ -1208,14 +1183,6 @@ function selectedArtifactBindings(items: CanvasItem[], selectedIds: string[]) {
     if (!selectedIds.includes(item.id) || !hasCurrentVersion(item.artifact)) return [];
     return [{ artifactId: item.artifact.id, selectedVersionId: item.artifact.currentVersionId }];
   });
-}
-
-function contentPreview(content: unknown): string {
-  if (typeof content !== "object" || content === null) return "";
-  if ("text" in content && typeof content.text === "string") return content.text;
-  if ("description" in content && typeof content.description === "string") return content.description;
-  if ("prompt" in content && typeof content.prompt === "string") return content.prompt;
-  return JSON.stringify(content);
 }
 
 function SaveBadge({ state }: { state: "saved" | "saving" | "failed" | "conflict" }) {
