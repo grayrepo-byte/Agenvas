@@ -3,7 +3,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: [".next", "dist", "out", "src/shared/api/schema.ts"] },
+  { ignores: ["dist", "src/shared/api/schema.ts"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

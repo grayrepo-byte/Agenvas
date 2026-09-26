@@ -18,7 +18,7 @@ RUN apk upgrade --no-cache \
     && chown -R nginx:nginx /tmp/nginx /usr/share/nginx/html
 
 COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
-COPY --from=build --chown=nginx:nginx /workspace/frontend/out /usr/share/nginx/html
+COPY --from=build --chown=nginx:nginx /workspace/frontend/dist /usr/share/nginx/html
 
 USER nginx
 EXPOSE 8080

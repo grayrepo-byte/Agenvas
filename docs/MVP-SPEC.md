@@ -16,7 +16,7 @@
 
 **本稿采用的产品假设**：桌面 Web 优先；自托管个人创作者优先；首版单管理员、不开公共注册；先完成三镜头短片这一条创作闭环；同一项目同一时间只允许一个活动 Agent Run。多用户协作、收费 SaaS 和任意插件运行不属于本版。
 
-**本稿采用的技术决策**：Next.js 静态导出的客户端 SPA，而不是 Next.js 全栈或 SSR；Spring MVC 而不是全栈 WebFlux；模块化单体而不是微服务；PostgreSQL 持久化任务而不是第一天引入消息中间件；默认本地文件存储；REST + SSE；一个 Creator Agent 配置，多实例展示，受控串行执行。
+**本稿采用的技术决策**：Vite 构建的客户端 SPA，而不是 SSR 或服务端渲染框架；Spring MVC 而不是全栈 WebFlux；模块化单体而不是微服务；PostgreSQL 持久化任务而不是第一天引入消息中间件；默认本地文件存储；REST + SSE；一个 Creator Agent 配置，多实例展示，受控串行执行。
 
 **媒体接入假设**：首个真实媒体适配器采用 ComfyUI，接入两份受信任的固定工作流，分别完成生图与图生视频。它只是可替换的推理服务，不是本产品的画布、业务模型或 Agent 内核。LLM 通过 Spring AI 接入一个经过工具调用测试的模型端点。2026-09-25 确认的后续交付为界面配置的媒体能力目录、统一执行内核，以及固定代码实现的 GPT Image 2 图片与火山方舟 Seedance 视频适配器；见[基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)和[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入已撤回，不作为当前实施依据。
 
@@ -137,12 +137,12 @@ PostgreSQL 保存业务状态与执行状态；文件存储保存媒体字节。
 
 | 项目 | 选型 | 使用约定 |
 |---|---|---|
-| 应用形态 | Next.js 16 + React 客户端 SPA | `output: "export"`；全部业务 API 直接访问 Spring Boot；不建 Node BFF、Route Handler 或 Server Action |
+| 应用形态 | React 19 客户端 SPA | Vite 静态构建；全部业务 API 直接访问 Spring Boot；不建 Node BFF、SSR 或服务端逻辑 |
 | 语言 | TypeScript | strict；禁用无约束 any；外部输入按 unknown 校验 |
 | React | 19.x 稳定系列 | M0 锁定精确版本；不能混用预览版 |
-| 构建工具 | Next.js 16.3.6 / Turbopack | 生产构建只输出静态文件；M0 根据依赖 engines 锁定精确版本 |
+| 构建工具 | Vite 8.3.0 | 生产构建只输出静态文件到 `dist`；根据依赖 engines 锁定精确版本 |
 | 画布 | @xyflow/react 12.x | 仅使用开源核心；业务能力自主实现 |
-| 路由 | React Router 7.x，Next.js optional catch-all 静态壳 | 保留任意项目 UUID 的客户端路由与刷新兼容；不使用 Next.js 动态服务端路由 |
+| 路由 | React Router 7.x | 处理任意项目 UUID 的客户端路由、直达与刷新兼容 |
 | 服务端数据 | TanStack Query 5.x | 统一管理已持久化实体和请求状态 |
 | 交互状态 | Zustand 5.x | 仅放选择、视口、拖拽草稿、待提交命令等 |
 | UI | Tailwind CSS 4.x + shadcn/ui / Radix | 引入的组件代码纳入仓库管理，不复制 Pro 示例 |
@@ -152,7 +152,7 @@ PostgreSQL 保存业务状态与执行状态；文件存储保存媒体字节。
 | 包管理 | pnpm，精确 packageManager | 只保留 pnpm-lock.yaml |
 | 构建运行时 | Node.js 24 LTS | 本次官方页面列出 24.21.0；构建镜像锁定精确 tag/digest [S11] |
 
-选择 Next.js 静态导出是 2026-09-26 确认的前端迁移决策：P0 仍是登录后的高交互编辑器，不依赖 SEO、SSR 或服务端 React 功能，独立 Java 后端继续承载业务、鉴权和数据访问。迁移只替换页面构建入口，React Router 暂时负责运行时 URL 解析，以保持构建时未知的项目 UUID 可直接访问；详见 [ADR 0009](adr/0009-nextjs-static-frontend.md)。
+前端采用 Vite 构建的客户端 SPA：P0 仍是登录后的高交互编辑器，不依赖 SEO、SSR 或服务端 React 功能，独立 Java 后端继续承载业务、鉴权和数据访问。React Router 负责运行时 URL 解析，以保持构建时未知的项目 UUID 可直接访问。前端构建曾于 2026-09-26 短暂迁至 Next.js 静态导出并同日回退，理由见 [ADR 0011](adr/0011-revert-to-vite.md)。
 
 React Flow 官方说明其库保持 MIT 开源，Pro 提供额外示例与支持；不能把核心库的 MIT 许可理解成所有 Pro 素材都可直接复制。[S09]
 
@@ -184,7 +184,7 @@ Spring MVC 支持异步响应和 SSE，本项目不因为需要流式进度就�
 
 默认部署只有三个服务：`web`、`server`、`postgres`。媒体服务是外接推理能力，Mock 模式不需要它。
 
-- web：Next.js 静态导出文件 + Nginx 反向代理；没有 Node 生产运行时。
+- web：Vite 静态构建文件 + Nginx 反向代理；没有 Node 生产运行时。
 - server：一个 Spring Boot 应用，内部包含受限的 Agent、任务和媒体处理执行器。
 - postgres：业务库、会话、任务、事件。
 - 文件：server 的持久卷；通过 StorageGateway 隔离；P1 实现 S3/R2。
@@ -1310,7 +1310,7 @@ UNKNOWN 任务新出现、数据库连接池饱和、事件明显积压、磁盘
 
 ### 25.1 仓库与运行方式
 
-本地开发：前端 Next.js（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；默认 Mock Provider。
+本地开发：前端 Vite（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；默认 Mock Provider。
 
 自托管：Docker Compose 三服务。真实 ComfyUI 与模型服务可在另一台机器，不打包大模型权重到主应用镜像。
 
@@ -1520,7 +1520,7 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 
 ## 32. 关键 ADR 摘要
 
-**ADR-001：客户端 SPA + Java API。** 构建工具最初为 Vite，后由 [ADR 0009](adr/0009-nextjs-static-frontend.md) 将页面构建迁为 Next.js 静态导出；放弃 SSR，减少运行时与鉴权边界。
+**ADR-001：客户端 SPA + Java API。** 构建工具为 Vite；页面构建曾于 2026-09-26 短暂迁至 Next.js 静态导出（[ADR 0009](adr/0009-nextjs-static-frontend.md)），同日回退（[ADR 0011](adr/0011-revert-to-vite.md)）；放弃 SSR，减少运行时与鉴权边界。
 
 **ADR-002：模块化单体。** 减少部署与分布式一致性复杂度。代价是未来水平拆 Worker 时需要共享存储和限流协调。
 
@@ -1555,7 +1555,6 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 - [S09] React Flow Pro：开源核心与 Pro 的区分。https://reactflow.dev/pro
 - [S10] React Flow Performance：组件与订阅性能。https://reactflow.dev/learn/advanced-use/performance
 - [S11] Node.js Releases：LTS 与版本状态。https://nodejs.org/en/about/previous-releases
-- [S12] Next.js 从现有 React SPA 迁移指南：静态导出、catch-all 页面和 client-only 入口。https://nextjs.org/docs/app/guides/migrating/from-create-react-app
 - [S13] springdoc-openapi：与 Spring Boot 版本匹配。https://springdoc.org/
 - [S14] PostgreSQL Versioning Policy：支持版本与维护策略。https://www.postgresql.org/support/versioning/
 - [S15] ComfyUI 自托管服务路由：提交、查询、文件与中断。https://docs.comfy.org/development/comfyui-server/comms_routes

@@ -6,8 +6,6 @@
 **/node_modules
 **/target
 frontend/dist
-frontend/.next
-frontend/out
 frontend/coverage
 docs
 !docs/evaluation/creator-v1-cases.json

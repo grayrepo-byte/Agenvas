@@ -30,6 +30,8 @@
 
 2026-09-26 前端构建迁移补验：按 [ADR 0009](adr/0009-nextjs-static-frontend.md)迁为 Next.js 16.3.6 静态导出，生产仍由 Nginx 托管且不增加 Node 运行时、Next.js API、Server Action 或 SSR 数据访问；client-only catch-all 保留原 URL 和 React Router 行为。OpenAPI 类型生成、TypeScript、ESLint、20 个文件/84 项 Vitest、Next 生产构建、Node 24 容器冻结安装/构建、Nginx 配置及 `/login`、未知项目 UUID 深链、Chrome 登录页水合均通过，见 [迁移证据](evidence/T01-nextjs-static-frontend.md)。
 
+2026-09-26 前端构建回退：按 [ADR 0011](adr/0011-revert-to-vite.md) 撤销 [ADR 0009](adr/0009-nextjs-static-frontend.md) 的 Next.js 静态导出迁移，恢复 `index.html`、`src/main.tsx` 与 `vite.config.ts` 入口，构建产物由 `out` 回到 `dist` 并同步 Dockerfile、`.dockerignore` 与 e2e 脚本；`@vitejs/plugin-react` 随 dev server 一并恢复以提供 Fast Refresh。`pnpm install --frozen-lockfile`、TypeScript、ESLint、34 个文件/212 项 Vitest、Vite 生产构建，以及 dev server 的 `/api` 代理与未知项目 UUID 深链均通过，见 [回退证据](evidence/T01-vite-rollback.md)。未运行后端测试、容器镜像构建与浏览器视觉验收。
+
 ### T02 默认三服务与 Mock 模式
 
 依赖：T01。

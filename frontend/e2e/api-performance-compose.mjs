@@ -71,7 +71,7 @@ try {
     command("docker", ["build", "-t", localImageTags[0], "-f", serverRuntimeDockerfile,
       fileURLToPath(new URL("../../backend/target/", import.meta.url))], env, { capture: true });
     command("docker", ["build", "-t", localImageTags[1], "-f", webRuntimeDockerfile,
-      fileURLToPath(new URL("../out/", import.meta.url))], env, { capture: true });
+      fileURLToPath(new URL("../dist/", import.meta.url))], env, { capture: true });
     command("docker", [...compose, "up", "--no-build", "-d"], env, { capture: true });
   } else {
     command("docker", [...compose, "up", "--build", "-d"], env, { capture: true });

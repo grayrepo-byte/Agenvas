@@ -36,11 +36,11 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 ## 前端直接依赖
 
-运行依赖：Next.js 16.3.6、React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5、Phosphor React 2.1.10（画布线性图标，MIT）。
+运行依赖：React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5、Phosphor React 2.1.10（画布线性图标，MIT）。
 
-构建与测试：Next.js/Turbopack 16.3.6、TypeScript 5.9.3、Tailwind CSS/PostCSS 4.3.3、Vitest 5.0.1、Testing Library React 16.3.3、MSW 2.15.0、openapi-typescript 7.13.0、ESLint 10.11.0、typescript-eslint 8.70.1、静态预览 `serve` 14.2.5。Vitest 直接使用 Vite 内置的 esbuild 转换 JSX，依据 `tsconfig.json` 的 `jsx: "react-jsx"`；`@vitejs/plugin-react` 已从 devDependencies 移除，其原先唯一的 JSX 转换职责由该配置承担。
+构建与测试：Vite 8.3.0、`@vitejs/plugin-react` 6.1.1、TypeScript 5.9.3、Tailwind CSS + `@tailwindcss/vite` 4.3.3、Vitest 5.0.1、Testing Library React 16.3.3、MSW 2.15.0、openapi-typescript 7.13.0、ESLint 10.11.0、typescript-eslint 8.70.1。Vitest 通过 `vite.config.ts` 复用同一插件，并按 `tsconfig.json` 的 `jsx: "react-jsx"` 转换测试文件；`@vitejs/plugin-react` 同时为 Vite dev server 提供 React Fast Refresh。Tailwind 走 `@tailwindcss/vite` 插件，不再需要 `postcss.config.mjs`。
 
-没有采用当时最新的 TypeScript 7.0.2，因为 `typescript-eslint` 8.70.1 的正式兼容范围小于 6.1；选择 5.9.3 是经过 peer dependency 核对的稳定组合。Next.js 固定到 2026-09-22 安全更新后的 16.3.6；React Router 暂时保持 7.x，以支持静态壳内构建时未知的项目 UUID 路径。
+没有采用当时最新的 TypeScript 7.0.2，因为 `typescript-eslint` 8.70.1 的正式兼容范围小于 6.1；选择 5.9.3 是经过 peer dependency 核对的稳定组合。React Router 保持 7.x，以支持构建时未知的项目 UUID 路径。
 
 精确解析结果与完整传递依赖见 `frontend/pnpm-lock.yaml` 和 Maven effective dependency tree；生成的 API 类型来自 `contracts/openapi.yaml`。
 

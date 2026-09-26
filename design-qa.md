@@ -87,9 +87,9 @@ Node-selection visual result: blocked
 
 ### 本地前端重新启动后的实测
 
-按用户要求停止旧 Vite，使用当前 Next.js 在 `127.0.0.1:5173` 启动开发前端。Chrome“日常”实例使用已有 `127.0.0.1` 登录会话成功打开项目画布，完成选中图片和视口平移截图：节点无白色缩放点，图片完整显示、选中外圈贴合圆角，工具栏随视口平移且位于节点上方。Docker 的 8088 服务保持运行。当前基础截图验证已完成，其他图片比例、节点尺寸拖拽、锁定与窄屏回归仍未验证；节点靠近画布上边缘时工具栏会被裁切，当前未增加贴边避让。
+按用户要求停止旧 Vite，使用当时的 Next.js dev server 在 `127.0.0.1:5173` 启动开发前端（该构建于同日回退到 Vite，见 [ADR 0011](docs/adr/0011-revert-to-vite.md)；本节结论属 UI 层，不受构建器影响）。Chrome“日常”实例使用已有 `127.0.0.1` 登录会话成功打开项目画布，完成选中图片和视口平移截图：节点无白色缩放点，图片完整显示、选中外圈贴合圆角，工具栏随视口平移且位于节点上方。Docker 的 8088 服务保持运行。当前基础截图验证已完成，其他图片比例、节点尺寸拖拽、锁定与窄屏回归仍未验证；节点靠近画布上边缘时工具栏会被裁切，当前未增加贴边避让。
 
-Node-selection visual result: partial — selected image and viewport pan verified in local Next.js preview.
+Node-selection visual result: partial — selected image and viewport pan verified in local dev preview.
 
 ## 调用日志与历史提示迁移（2026-09-26）
 

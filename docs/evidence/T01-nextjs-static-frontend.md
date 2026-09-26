@@ -1,5 +1,7 @@
 # T01 Next.js 静态前端迁移证据
 
+> **本文档记录的迁移已于同日回退。** 按 [ADR 0011](../adr/0011-revert-to-vite.md)，前端构建恢复为 Vite；下方内容保留为当时的历史验证记录，不再描述当前实现。回退的验证见 [T01 前端构建回退到 Vite 证据](T01-vite-rollback.md)。
+
 2026-09-26。前端从 Vite 应用入口迁为 Next.js 16.3.6 App Router 静态导出。`src/app/[[...slug]]` 只导出一个 client-only SPA 壳，生产 `out/` 继续由既有 Nginx 提供；页面仍通过同源 `/api/v1` 访问 Spring Boot。未新增 Route Handler、Server Action、SSR 数据获取、Next.js API 或 Node 生产进程。React Router 暂时保留，以支持构建时未知的 `/projects/:projectId` UUID 深链。
 
 测试配置从 `vite.config.ts` 拆到 `vitest.config.ts`，Tailwind 从 Vite 插件改为 PostCSS 插件。Docker 与本地性能运行器从旧 `dist/` 改读 Next.js `out/`。开发阶段不启用 `output: "export"`，因此任意深链由 Next dev 正常解析；仅开发期 rewrite `/api` 到 `http://localhost:8080`，实测 `/login` 返回 200，代理的 `/api/v1/auth/setup-status` 返回现有 Spring Boot 响应 200。生产构建阶段启用静态导出，不包含该 rewrite。

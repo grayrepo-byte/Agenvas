@@ -50,7 +50,7 @@ Compose remains in Mock mode by default. Candidate-provider testing can set `AGE
 
 The frontend requires Node 24 and pnpm 12.5.1; the backend requires JDK 21, PostgreSQL 17, and FFmpeg/FFprobe for video operations.
 
-The frontend uses Next.js as a statically exported, client-only page build. It has no Route Handlers, Server Actions, SSR data access, or production Node server; Spring Boot remains the only business backend.
+The frontend is a Vite-built, client-only page bundle. It has no SSR data access, server actions, or production Node server; Spring Boot remains the only business backend.
 
 ```sh
 cd frontend
