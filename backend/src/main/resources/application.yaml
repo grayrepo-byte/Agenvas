@@ -85,6 +85,10 @@ agenvas:
     scheduler-enabled: ${AGENVAS_LLM_SCHEDULER_ENABLED:true}
   identity:
     bootstrap-secret: ${AGENVAS_BOOTSTRAP_SECRET}
+  task:
+    # 租约必须覆盖整次同步 Provider 调用：GPT Image 单次生成就要 30-40 秒，
+    # 短于调用耗时的租约会让已生成的结果在写回时被恢复扫描判为 UNKNOWN 并丢弃。
+    lease-duration: ${AGENVAS_TASK_LEASE_DURATION:PT30M}
   provider:
     mode: ${AGENVAS_PROVIDER_MODE:mock}
     config-version: ${AGENVAS_PROVIDER_CONFIG_VERSION:1}

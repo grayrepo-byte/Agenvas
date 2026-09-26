@@ -42,16 +42,38 @@ public final class PinnedHttpClients {
      */
     public static OkHttpClient pinned(Dns dns, Duration connectTimeout, Duration readTimeout,
             Duration callTimeout) {
+        return base(dns, connectTimeout, readTimeout, callTimeout)
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build();
+    }
+
+    /**
+     * 与 {@link #pinned} 同源，但允许跟随重定向。
+     *
+     * <p>仅用于下载已经生成好的媒体结果：中转站与 CDN 普遍用 302/307 把结果跳到实际
+     * 对象存储，禁掉重定向会让正常结果下载失败。这类请求是幂等 GET、不携带凭证，
+     * 跟随跳转不改变请求性质。生成、提交、模型补全等计费调用必须继续用 {@link #pinned}。
+     *
+     * @return 禁止代理与自动重试、但跟随重定向的客户端
+     */
+    public static OkHttpClient pinnedFollowingRedirects(Dns dns, Duration connectTimeout,
+            Duration readTimeout, Duration callTimeout) {
+        return base(dns, connectTimeout, readTimeout, callTimeout)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build();
+    }
+
+    private static OkHttpClient.Builder base(Dns dns, Duration connectTimeout,
+            Duration readTimeout, Duration callTimeout) {
         return new OkHttpClient.Builder()
                 .proxy(Proxy.NO_PROXY)
                 .dns(dns)
                 .addNetworkInterceptor(DROP_RETRY_AFTER)
-                .followRedirects(false)
-                .followSslRedirects(false)
                 .retryOnConnectionFailure(false)
                 .connectTimeout(connectTimeout)
                 .readTimeout(readTimeout)
-                .callTimeout(callTimeout)
-                .build();
+                .callTimeout(callTimeout);
     }
 }

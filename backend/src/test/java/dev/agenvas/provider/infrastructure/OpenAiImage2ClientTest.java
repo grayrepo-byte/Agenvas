@@ -154,6 +154,103 @@ class OpenAiImage2ClientTest {
         assertThat(redirected).hasValue(0);
     }
 
+    /** 中转站只回结果 URL（官方 API 回 b64_json），客户端必须去下载它，且不带凭证过去。 */
+    @Test
+    void urlResultIsDownloadedWithoutForwardingTheApiKey() throws IOException {
+        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        int port = server.getAddress().getPort();
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"http://127.0.0.1:" + port + "/result.png\"}]}"));
+        server.createContext("/result.png", exchange -> {
+            downloads.incrementAndGet();
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            exchange.getResponseHeaders().set("Content-Type", "image/png");
+            exchange.sendResponseHeaders(200, png.length);
+            try (var output = exchange.getResponseBody()) { output.write(png); }
+        });
+
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1")) {
+            assertThat(generated.declaredContentType()).isEqualTo("image/png");
+            assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+        }
+        assertThat(downloads).hasValue(1);
+    }
+
+    @Test
+    void resultUrlWithAnUnsupportedSchemeIsRejected() {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"file:///etc/hosts\"}]}"));
+        assertThatThrownBy(() -> client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOf(OpenAiImage2Client.Uncertain.class);
+    }
+
+    /** 中转站常把结果 302/307 跳到实际对象存储；下载必须跟随，否则正常结果会被判失败。 */
+    @Test
+    void downloadedResultFollowsRedirects() throws IOException {
+        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        int port = server.getAddress().getPort();
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"http://127.0.0.1:" + port + "/jump\"}]}"));
+        server.createContext("/jump", exchange -> {
+            exchange.getResponseHeaders().set("Location",
+                    "http://127.0.0.1:" + port + "/stored.png");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        server.createContext("/stored.png", exchange -> {
+            downloads.incrementAndGet();
+            exchange.getResponseHeaders().set("Content-Type", "image/png");
+            exchange.sendResponseHeaders(200, png.length);
+            try (var output = exchange.getResponseBody()) { output.write(png); }
+        });
+
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1")) {
+            assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+        }
+        assertThat(downloads).hasValue(1);
+    }
+
+    /** 中转站给什么格式就归档什么：客户端不按图片格式预判；非 200 判失败且不重试。 */
+    @Test
+    void downloadedBytesAreReturnedAsIsAndUnavailableUrlsAreNotRetried() throws IOException {
+        byte[] opaque = new byte[] {1, 2, 3, 4, 5, 6, 7, 8};
+        int port = server.getAddress().getPort();
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"http://127.0.0.1:" + port + "/opaque\"}]}"));
+        server.createContext("/opaque", exchange -> {
+            downloads.incrementAndGet();
+            exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+            exchange.sendResponseHeaders(200, opaque.length);
+            try (var output = exchange.getResponseBody()) { output.write(opaque); }
+        });
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1")) {
+            assertThat(generated.declaredContentType()).isEqualTo("application/octet-stream");
+            assertThat(generated.stream().readAllBytes()).isEqualTo(opaque);
+        }
+        assertThat(downloads).hasValue(1);
+
+        server.removeContext("/opaque");
+        server.createContext("/missing.png", exchange -> {
+            downloads.incrementAndGet();
+            respond(exchange, 404, "{}");
+        });
+        server.removeContext("/v1/images/generations");
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"http://127.0.0.1:" + port + "/missing.png\"}]}"));
+        assertThatThrownBy(() -> client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1"))
+                .isInstanceOf(OpenAiImage2Client.Uncertain.class);
+        assertThat(downloads).hasValue(2);
+    }
+
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");

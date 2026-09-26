@@ -30,7 +30,13 @@ public class OpenAiImage2Client {
     private static final URI OFFICIAL_BASE = URI.create("https://api.openai.com/v1/");
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+    /** 结果图下载的尝试次数；只重试传输失败，不重发已计费的生成请求。 */
+    private static final int DOWNLOAD_ATTEMPTS = 3;
+    /** 两次下载尝试之间的固定间隔，避免瞬时抖动直接落到待人工核对。 */
+    private static final Duration DOWNLOAD_RETRY_DELAY = Duration.ofMillis(300);
     private final OkHttpClient http;
+    /** 结果图托管在中转站自有 CDN，与 API Base URL 不同域，因此单独一个只做 GET 的客户端。 */
+    private final OkHttpClient downloads;
     private final ObjectMapper mapper;
 
     @Autowired
@@ -40,6 +46,10 @@ public class OpenAiImage2Client {
         // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
         this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
                 Duration.ofSeconds(10), Duration.ofSeconds(10), Duration.ofMinutes(3));
+        // 下载已有结果用允许重定向的客户端：中转站与 CDN 常把结果 302/307 跳到实际
+        // 对象存储，禁掉重定向会让正常结果失败。该请求是幂等 GET 且不携带凭证。
+        this.downloads = PinnedHttpClients.pinnedFollowingRedirects(Dns.SYSTEM,
+                Duration.ofSeconds(10), Duration.ofMinutes(1), Duration.ofMinutes(2));
     }
 
     public MediaPayload generate(String key, String model, String prompt, String quality,
@@ -94,28 +104,95 @@ public class OpenAiImage2Client {
                 }
                 if (status != 200) throw new Uncertain("OpenAI submission status uncertain");
                 JsonNode data = mapper.readTree(bytes).path("data");
-                if (!data.isArray() || data.size() != 1
-                        || !data.path(0).path("b64_json").isTextual()) {
+                if (!data.isArray() || data.size() != 1) {
                     throw new Uncertain("OpenAI image result shape is invalid");
                 }
-                byte[] image;
-                try {
-                    image = Base64.getDecoder().decode(data.path(0).path("b64_json").asText());
-                } catch (IllegalArgumentException invalid) {
-                    throw new Uncertain("OpenAI image result is not Base64");
+                JsonNode item = data.path(0);
+                if (item.path("b64_json").isTextual()) {
+                    byte[] image = decodeInline(item.path("b64_json").asText());
+                    requirePng(image);
+                    return new MediaPayload(new ByteArrayInputStream(image), "image/png");
                 }
-                if (image.length == 0 || image.length > MAX_IMAGE_BYTES
-                        || image.length < 8 || image[0] != (byte) 0x89
-                        || image[1] != 'P' || image[2] != 'N' || image[3] != 'G') {
-                    throw new Uncertain("OpenAI image result is not a bounded PNG");
+                if (item.path("url").isTextual()) {
+                    return download(item.path("url").asText());
                 }
-                return new MediaPayload(new ByteArrayInputStream(image), "image/png");
+                throw new Uncertain("OpenAI image result shape is invalid");
             }
         } catch (IOException failure) {
             throw new Uncertain("OpenAI image response was lost");
         } catch (RuntimeException failure) {
             if (failure instanceof Rejected || failure instanceof Uncertain) throw failure;
             throw new Uncertain("OpenAI image response could not be decoded");
+        }
+    }
+
+    private static byte[] decodeInline(String encoded) {
+        try {
+            return Base64.getDecoder().decode(encoded);
+        } catch (IllegalArgumentException invalid) {
+            throw new Uncertain("OpenAI image result is not Base64");
+        }
+    }
+
+    /**
+     * 中转站把结果图托管到自有 CDN 后只回一个 URL（官方 API 回的是 b64_json），该地址与
+     * API Base URL 不同域，也可能再重定向到实际对象存储。这里只按 http/https 取回字节，
+     * 不预设中转站用什么域名、跳几次、给什么格式——格式由归档层解码判定。下载不携带
+     * API Key，避免把凭证交给结果托管方。
+     */
+    private MediaPayload download(String rawUrl) {
+        URI url;
+        try {
+            url = URI.create(rawUrl);
+        } catch (IllegalArgumentException malformed) {
+            throw new Uncertain("OpenAI image result URL is malformed");
+        }
+        if (url.getHost() == null || !("https".equalsIgnoreCase(url.getScheme())
+                || "http".equalsIgnoreCase(url.getScheme()))) {
+            throw new Uncertain("OpenAI image result URL is unsupported");
+        }
+        for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+            try {
+                return fetch(url);
+            } catch (IOException transientFailure) {
+                if (attempt < DOWNLOAD_ATTEMPTS) pause();
+            }
+        }
+        throw new Uncertain("OpenAI image result could not be downloaded");
+    }
+
+    /** 单次下载；已生成的结果没有重发语义，所以非 200 直接判失败而不重试。 */
+    private MediaPayload fetch(URI url) throws IOException {
+        Request request = new Request.Builder().url(url.toString()).get().build();
+        try (Response response = downloads.newCall(request).execute()) {
+            if (response.code() != 200 || response.body() == null) {
+                throw new Uncertain("OpenAI image result URL is unavailable");
+            }
+            try (InputStream input = response.body().byteStream()) {
+                byte[] image = input.readNBytes(MAX_IMAGE_BYTES + 1);
+                if (image.length > MAX_IMAGE_BYTES) {
+                    throw new Uncertain("OpenAI image result exceeds bound");
+                }
+                return new MediaPayload(new ByteArrayInputStream(image),
+                        response.header("Content-Type", "application/octet-stream"));
+            }
+        }
+    }
+
+    private static void requirePng(byte[] image) {
+        if (image.length == 0 || image.length > MAX_IMAGE_BYTES
+                || image.length < 8 || image[0] != (byte) 0x89
+                || image[1] != 'P' || image[2] != 'N' || image[3] != 'G') {
+            throw new Uncertain("OpenAI image result is not a bounded PNG");
+        }
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(DOWNLOAD_RETRY_DELAY.toMillis());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new Uncertain("OpenAI image result download was interrupted");
         }
     }
 

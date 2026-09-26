@@ -63,7 +63,10 @@ class OpenAiImage2PostgresIT {
     private static final HttpServer SERVER = startServer();
     private static final AtomicInteger GENERATIONS = new AtomicInteger();
     private static final AtomicInteger EDITS = new AtomicInteger();
+    private static final AtomicInteger DOWNLOADS = new AtomicInteger();
     private static final AtomicBoolean DROP_NEXT_GENERATION = new AtomicBoolean();
+    /** 中转站只回结果 URL 的形态；官方 API 不走这条分支。 */
+    private static final AtomicBoolean URL_RESULT = new AtomicBoolean();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -141,6 +144,23 @@ class OpenAiImage2PostgresIT {
         assertThat(blocked.errorCode()).isEqualTo("PROVIDER_UNSUPPORTED_INPUT");
         assertThat(GENERATIONS).hasValue(1);
         assertThat(EDITS).hasValue(1);
+
+        // 中转站只回结果 URL 时也必须下载并归档成 Asset，而不是判成 UNKNOWN。
+        URL_RESULT.set(true);
+        try {
+            Fixture linked = fixture(owner.userId(), "Linked result", false);
+            Task linkedTask = approve(owner.userId(), linked);
+            assertThat(worker.submitOnce("openai-url-worker")).isEqualTo(1);
+            Task linkedDone = tasks.get(owner.userId(), linked.project().id(), linkedTask.id());
+            assertThat(linkedDone.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(GENERATIONS).hasValue(2);
+            assertThat(DOWNLOADS).hasValue(1);
+            assertThat(artifacts.get(owner.userId(), linked.project().id(),
+                    UUID.fromString(linkedDone.output().path("artifactId").asText()))
+                    .currentVersion().content().path("assetId").asText()).isNotBlank();
+        } finally {
+            URL_RESULT.set(false);
+        }
     }
 
     private Fixture fixture(UUID ownerId, String name, boolean reference) {
@@ -211,6 +231,15 @@ class OpenAiImage2PostgresIT {
                 EDITS.incrementAndGet();
                 respond(exchange);
             });
+            // 结果托管端点与 API 不同路径，且不接收凭证。
+            server.createContext("/cdn/result.png", exchange -> {
+                DOWNLOADS.incrementAndGet();
+                assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+                byte[] png = pngBytes();
+                exchange.getResponseHeaders().set("Content-Type", "image/png");
+                exchange.sendResponseHeaders(200, png.length);
+                try (var output = exchange.getResponseBody()) { output.write(png); }
+            });
             server.start();
             return server;
         } catch (IOException failure) {
@@ -223,15 +252,22 @@ class OpenAiImage2PostgresIT {
         assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
                 .isEqualTo("Bearer fake-secret");
         assertThat(body).isNotEmpty();
-        BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
-        ByteArrayOutputStream png = new ByteArrayOutputStream();
-        ImageIO.write(image, "png", png);
-        byte[] response = ("{\"data\":[{\"b64_json\":\""
-                + Base64.getEncoder().encodeToString(png.toByteArray())
-                + "\"}]}").getBytes(StandardCharsets.UTF_8);
+        String payload = URL_RESULT.get()
+                ? "{\"data\":[{\"url\":\"http://127.0.0.1:"
+                        + SERVER.getAddress().getPort() + "/cdn/result.png\"}]}"
+                : "{\"data\":[{\"b64_json\":\""
+                        + Base64.getEncoder().encodeToString(pngBytes()) + "\"}]}";
+        byte[] response = payload.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, response.length);
         try (var output = exchange.getResponseBody()) { output.write(response); }
+    }
+
+    private static byte[] pngBytes() throws IOException {
+        BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", png);
+        return png.toByteArray();
     }
 
     @TestConfiguration
