@@ -1,10 +1,12 @@
 package dev.agenvas.llm.infrastructure;
 
+import dev.agenvas.llm.application.RunAction;
 import dev.agenvas.llm.application.ToolExecution;
 import dev.agenvas.llm.application.ToolExecutionRepository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -33,6 +35,27 @@ public class JdbcToolExecutionRepository implements ToolExecutionRepository {
         return jdbc.sql("select count(*) from tool_execution where project_id = :projectId and run_id = :runId")
                 .param("projectId", projectId).param("runId", runId)
                 .query(Long.class).single();
+    }
+
+    /** JSONB 只提取服务端写入的公开摘要和业务状态，避免载入私有结果字段。 */
+    @Override
+    public List<RunAction> listCompletedActions(UUID projectId, UUID runId, int limit) {
+        return jdbc.sql("""
+                        select id, step_index, tool_name,
+                               result_json ->> 'status' as result_status,
+                               result_json ->> 'userVisibleSummary' as summary, completed_at
+                        from tool_execution
+                        where project_id = :projectId and run_id = :runId and status = 'COMPLETED'
+                        order by step_index, created_at, id
+                        limit :limit
+                        """)
+                .param("projectId", projectId).param("runId", runId).param("limit", limit)
+                .query((rs, row) -> new RunAction(rs.getObject("id", UUID.class),
+                        rs.getInt("step_index"), rs.getString("tool_name"),
+                        RunAction.Status.valueOf(rs.getString("result_status")),
+                        rs.getString("summary"),
+                        rs.getObject("completed_at", OffsetDateTime.class).toInstant()))
+                .list();
     }
 
     /** 按 Run、步骤和 toolCallId 读取去重记录及已完成结果。 */

@@ -12,6 +12,18 @@ Modifications: scoped dark-theme styles, required application status label,
 optional elapsed time derived from the persisted task timestamp, compact mode,
 and reduced-motion styling. No demo progress or media is included.
 
+AgentChatPrimitives.tsx and AgentChatPrimitives.css adapt chat message layout,
+task row/status badges, expandable action details and approval card structure:
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ChatComposer.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/TaskRows.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ToolChips.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ApprovalCard.tsx
+
+Modifications: scoped black theme, Phosphor icons, native details disclosure,
+application-provided messages/statuses and approval content, and reused
+CanvasLoadingState. Demo timers, scripted results, reasoning text, automatic
+approval advancement, and simulated progress are omitted.
+
 MIT License
 
 Copyright (c) 2026 Shane Levine

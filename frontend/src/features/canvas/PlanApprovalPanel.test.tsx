@@ -7,7 +7,7 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { PlanApprovalPanel } from "./PlanApprovalPanel";
 
-describe("PlanApprovalPanel", () => {
+describe.each([undefined, "chat"] as const)("PlanApprovalPanel (%s)", (presentation) => {
   beforeEach(() => {
     server.use(http.get("/api/v1/projects/:projectId/plans/:planId/steps/:stepKey/candidates",
       () => HttpResponse.json([])));
@@ -44,7 +44,7 @@ describe("PlanApprovalPanel", () => {
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     expect(await screen.findByText("为三个镜头制作关键帧")).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe("PlanApprovalPanel", () => {
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     await user.click(await screen.findByRole("checkbox", { name: /确认镜头 shot-1/ }));
@@ -137,7 +137,7 @@ describe("PlanApprovalPanel", () => {
       }),
     );
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     expect(await screen.findByText(/本次将创建图片任务 0 个、视频任务 1 个/)).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe("PlanApprovalPanel", () => {
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     await user.click(await screen.findByRole("button", { name: "取消本次 Run" }));
@@ -197,7 +197,7 @@ describe("PlanApprovalPanel", () => {
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
-      <PlanApprovalPanel projectId="project-1" runId="run-1" />
+      <PlanApprovalPanel presentation={presentation} projectId="project-1" runId="run-1" />
     </QueryClientProvider>);
 
     await user.click(await screen.findByRole("button", { name: "取消本次 Run" }));

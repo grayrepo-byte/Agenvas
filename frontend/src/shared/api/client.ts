@@ -30,6 +30,7 @@ export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
 export type UpdateAgentRequest = components["schemas"]["UpdateAgentRequest"];
 export type AgentRun = components["schemas"]["AgentRun"];
 export type AgentRunList = components["schemas"]["AgentRunList"];
+export type RunAction = components["schemas"]["RunAction"];
 export type RunPreflight = components["schemas"]["RunPreflight"];
 export type CreateRunRequest = components["schemas"]["CreateRunRequest"];
 export type ExecutionPlan = components["schemas"]["ExecutionPlan"];
@@ -490,6 +491,14 @@ export async function createRun(
 /** Loads one owner-scoped Run and its immutable creation snapshots. */
 export async function getRun(projectId: string, runId: string): Promise<AgentRun> {
   return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, "无法读取运行状态");
+}
+
+/** Lists only committed, server-authored action summaries for one owned Run. */
+export async function listRunActions(projectId: string, runId: string): Promise<RunAction[]> {
+  return readJson<RunAction[]>(
+    `/api/v1/projects/${projectId}/runs/${runId}/actions`,
+    "无法读取执行动作",
+  );
 }
 
 /** Lists one Agent's durable Run summaries without model-private messages. */

@@ -804,6 +804,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/runs/{runId}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * 列出已提交工具动作的公开摘要
+         * @description 仅返回服务端生成的业务结果摘要，按 stepIndex、登记时间和 id 排序；不返回模型消息、工具参数、完整结果或私有推理。
+         */
+        get: operations["listRunActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/runs/{runId}/cancel": {
         parameters: {
             query?: never;
@@ -1996,6 +2019,21 @@ export interface components {
         AgentRunList: {
             items: components["schemas"]["AgentRunSummary"][];
             nextCursor?: string | null;
+        };
+        RunAction: {
+            /** Format: uuid */
+            id: string;
+            stepIndex: number;
+            toolName: string;
+            /**
+             * @description 动作提交时的业务结果状态；不是当前计划、媒体任务或工具账本状态。
+             * @enum {string}
+             */
+            status: "SUCCEEDED" | "WAITING_APPROVAL";
+            /** @description 服务端生成的可公开动作摘要。 */
+            summary: string;
+            /** Format: date-time */
+            completedAt: string;
         };
         ExecutionPlanStep: {
             stepKey: string;
@@ -4047,6 +4085,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listRunActions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最多 40 个已提交动作；尚无动作时返回空数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAction"][];
                 };
             };
             401: components["responses"]["Unauthenticated"];

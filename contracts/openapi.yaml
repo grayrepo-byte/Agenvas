@@ -1076,6 +1076,29 @@ paths:
               schema: {$ref: "#/components/schemas/AgentRun"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/runs/{runId}/actions:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: runId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listRunActions
+      summary: 列出已提交工具动作的公开摘要
+      description: 仅返回服务端生成的业务结果摘要，按 stepIndex、登记时间和 id 排序；不返回模型消息、工具参数、完整结果或私有推理。
+      tags: [Runs]
+      responses:
+        "200":
+          description: 最多 40 个已提交动作；尚无动作时返回空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 40
+                items: {$ref: "#/components/schemas/RunAction"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/runs/{runId}/cancel:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2514,6 +2537,20 @@ components:
           type: array
           items: {$ref: "#/components/schemas/AgentRunSummary"}
         nextCursor: {type: [string, "null"]}
+    RunAction:
+      type: object
+      additionalProperties: false
+      required: [id, stepIndex, toolName, status, summary, completedAt]
+      properties:
+        id: {type: string, format: uuid}
+        stepIndex: {type: integer, minimum: 0}
+        toolName: {type: string}
+        status:
+          type: string
+          enum: [SUCCEEDED, WAITING_APPROVAL]
+          description: 动作提交时的业务结果状态；不是当前计划、媒体任务或工具账本状态。
+        summary: {type: string, description: 服务端生成的可公开动作摘要。}
+        completedAt: {type: string, format: date-time}
     ExecutionPlanStep:
       type: object
       additionalProperties: false

@@ -1,6 +1,7 @@
 package dev.agenvas.llm.application;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
@@ -10,6 +11,9 @@ public interface ToolExecutionRepository {
 
     /** 持有 Run 行锁时统计已完成调用，串行化新工具执行。 */
     long countByRun(UUID projectId, UUID runId);
+
+    /** 仅投影已提交动作的白名单字段；不读取完整工具结果或模型回合。 */
+    List<RunAction> listCompletedActions(UUID projectId, UUID runId, int limit);
 
     /** 仅在项目作用域内读取精确工具调用。 */
     Optional<ToolExecution> find(UUID projectId, UUID runId, int stepIndex, String toolCallId);

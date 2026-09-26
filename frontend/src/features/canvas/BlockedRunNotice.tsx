@@ -1,8 +1,13 @@
+import { WarningCircle } from "@phosphor-icons/react";
+import "./AgentChatPanels.css";
 import { useQuery } from "@tanstack/react-query";
 import { listRunTasks } from "../../shared/api/client";
 
 /** Explains a durable BLOCKED Run using only safe Task codes, never model messages. */
-export function BlockedRunNotice({ projectId, runId }: { projectId: string; runId: string }) {
+export function BlockedRunNotice({ projectId, runId, presentation = "panel" }: {
+  projectId: string; runId: string; presentation?: "panel" | "chat";
+}) {
+  const isChat = presentation === "chat";
   const tasks = useQuery({
     queryKey: ["run-tasks", projectId, runId],
     queryFn: () => listRunTasks(projectId, runId),
@@ -20,11 +25,12 @@ export function BlockedRunNotice({ projectId, runId }: { projectId: string; runI
     "镜头、参考图或人工选定的关键帧版本已变化，旧计划尚未提交的媒体任务已阻断且不会自动重试。请核对最新输入版本，停止此 Run，重新绑定当前镜头与所需素材后发起新 Run；新图片和视频计划仍须分别由你审批。" :
     switchOnFailure(modelFailure?.errorCode);
 
-  return <section aria-label="运行已阻断" className="col-span-full border-b border-red-300 bg-red-50 px-6 py-3 text-sm text-red-950">
-    <p className="font-semibold">运行已阻断；系统不会自动重复调用模型或提交媒体任务。</p>
+  return <section aria-label="运行已阻断" className={isChat ? "agent-chat-panel agent-chat-blocked"
+    : "col-span-full border-b border-red-300 bg-red-50 px-6 py-3 text-sm text-red-950"}>
+    <p className={isChat ? "agent-chat-panel-notice-title" : "font-semibold"}>{isChat ? <WarningCircle aria-hidden="true" /> : null}运行已阻断；系统不会自动重复调用模型或提交媒体任务。</p>
     {tasks.isPending ? <p>正在读取持久化任务原因…</p> : null}
     {tasks.error ? <p role="alert">暂时无法读取阻断原因，请检查运行记录。</p> : null}
-    {tasks.error ? <button className="underline" onClick={() => void tasks.refetch()} type="button">重试读取</button> : null}
+    {tasks.error ? <button className={isChat ? "agent-chat-panel-text-button" : "underline"} onClick={() => void tasks.refetch()} type="button">重试读取</button> : null}
     {tasks.data ? <p>{explanation}</p> : null}
     {archivedMedia ? <p className="text-xs">诊断码：TASK_PROJECT_ARCHIVED</p> : null}
     {staleMedia ? <p className="text-xs">诊断码：TASK_INPUT_STALE</p> : null}

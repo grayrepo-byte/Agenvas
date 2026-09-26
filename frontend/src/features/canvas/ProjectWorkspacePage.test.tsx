@@ -39,6 +39,10 @@ describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     useCanvasStore.setState({ selectedIds: [] });
     server.use(
+      http.get("/api/v1/projects/:projectId/runs", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/runs/:runId/actions", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/runs/:runId/plans", () => HttpResponse.json([])),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [], defaults: [],
       })),
@@ -858,12 +862,13 @@ describe("ProjectWorkspacePage", () => {
     const heading = await screen.findByText("Agent Alpha");
     const card = heading.closest("article");
     expect(card).not.toBeNull();
-    expect(card).toHaveClass("agent-node-scroll", "nowheel");
+    expect(card).toHaveClass("agent-chat-card");
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Agent 设置" }));
     expect(within(card as HTMLElement).getByText(/明确输入（1）/)).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(new RegExp(artifactId))).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText(new RegExp(versionId))).toBeInTheDocument();
     fireEvent.click(heading);
-    const editorArea = await screen.findByLabelText("所选 Agent 编辑区");
+    const editorArea = heading.closest("article") as HTMLElement;
     const name = within(editorArea).getByDisplayValue("Agent Alpha");
     const instruction = within(editorArea).getByDisplayValue("Initial instruction");
     fireEvent.change(name, { target: { value: "Agent Beta" } });
@@ -875,14 +880,14 @@ describe("ProjectWorkspacePage", () => {
 
     const taskInput = within(editorArea).getByLabelText("本次任务");
     fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
-    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
     expect(await within(editorArea).findByText("确认开始规划")).toBeInTheDocument();
     expect(within(editorArea).getByText("确认开始规划")).toBeDisabled();
     expect(starts).toBe(0);
     modelAvailable = true;
     fireEvent.change(taskInput, { target: { value: "规划三个镜头！" } });
     fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
-    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
     await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
     expect(within(editorArea).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();
     expect(within(editorArea).getByText(/当前模型看不到图片像素、视频帧或音频/)).toBeInTheDocument();
@@ -895,15 +900,15 @@ describe("ProjectWorkspacePage", () => {
     expect(idempotencyKeys[0]).toBeTruthy();
     expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
     await waitFor(() => expect(within(editorArea).queryByText("确认开始规划")).not.toBeInTheDocument());
-    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
     await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
     fireEvent.click(within(editorArea).getByText("确认开始规划"));
     await waitFor(() => expect(starts).toBe(3));
     expect(idempotencyKeys[2]).not.toBe(idempotencyKeys[1]);
-    expect(await screen.findByText("RUNNING")).toBeInTheDocument();
-    fireEvent.click(within(editorArea).getByText("停止"));
-    await waitFor(() => expect(screen.getByText("空闲")).toBeInTheDocument());
-    fireEvent.click(within(card as HTMLElement).getByText("查看记录"));
+    expect(await within(editorArea).findByRole("button", { name: "停止" })).toBeEnabled();
+    fireEvent.click(within(editorArea).getByRole("button", { name: "停止" }));
+    await waitFor(() => expect(screen.getByText("准备就绪")).toBeInTheDocument());
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "查看记录" }));
     expect(await within(card as HTMLElement).findByText("之前的创作")).toBeInTheDocument();
   });
 
@@ -970,10 +975,10 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
     const heading = await screen.findByText("Redo agent");
     fireEvent.click(heading);
-    const editorArea = await screen.findByLabelText("所选 Agent 编辑区");
+    const editorArea = heading.closest("article") as HTMLElement;
     await user.selectOptions(within(editorArea).getByLabelText("运行范围"), shotId);
     await user.type(within(editorArea).getByLabelText("本次任务"), "只重做第二镜头");
-    fireEvent.click(within(editorArea).getByText("检查运行范围"));
+    fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
     fireEvent.click(await within(editorArea).findByText("确认开始规划"));
     await waitFor(() => expect(submitted).toMatchObject({ agentId,
       redoShotArtifactId: shotId, expectedAgentVersion: 0,

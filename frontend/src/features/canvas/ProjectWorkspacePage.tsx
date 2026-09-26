@@ -17,19 +17,15 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
 import { Link, Navigate, useParams } from "react-router";
 import {
   ApiError,
   applyCanvasCommands,
-  cancelRun,
   createAgent,
   createArtifact,
-  createRun,
   getCurrentUser,
   getProject,
   getProjectSnapshot,
-  getRunPreflight,
   listCanvasItems,
   listArtifacts,
   reviseArtifact,
@@ -47,7 +43,7 @@ import { PlanApprovalPanel } from "./PlanApprovalPanel";
 import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
 import { MediaExportPanel } from "./MediaExportPanel";
 import { ShotRedoEditor } from "./ShotRedoEditor";
-import { RunHistoryPanel } from "./RunHistoryPanel";
+import { AgentChatCard, AGENT_CHAT_WIDTH, AGENT_CHAT_HEIGHT, AGENT_CHAT_MIN_WIDTH, AGENT_CHAT_MIN_HEIGHT } from "./AgentChatCard";
 import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { ManualStoryboardPanel } from "./ManualStoryboardPanel";
@@ -88,6 +84,8 @@ type CanvasNodeData = {
   projectId: string;
   activeRun: AgentRun | null;
   redoCandidates: { artifactId: string; versionId: string; title: string }[];
+  outputCount: number;
+  onShowOutputs: (agent: Agent) => void;
   onResizeEnd: (itemId: string, layout: LayoutPatch) => void;
   onRemove: (item: CanvasItem) => void;
   onToggleLocked: (item: CanvasItem) => void;
@@ -97,6 +95,7 @@ type CanvasNodeData = {
   onRemoveReference: (item: CanvasItem,
     reference: ArtifactInputReference) => void;
   updatingAgent: boolean;
+  updateAgentError: Error | null;
   removingReference: boolean;
 };
 
@@ -196,6 +195,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId] });
         }
         const activeRunId = queryClient.getQueryData<ProjectSnapshot>(["snapshot", projectId])?.activeRun?.id;
@@ -237,6 +237,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["plans", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] });
@@ -439,8 +440,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           agentId: agent.id,
           x: creationPoint?.x ?? 100 + (index % 3) * 360,
           y: creationPoint?.y ?? 100 + Math.floor(index / 3) * 360,
-          width: 340,
-          height: 320,
+          width: AGENT_CHAT_WIDTH,
+          height: AGENT_CHAT_HEIGHT,
           zIndex: index,
           locked: false,
         },
@@ -665,24 +666,30 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setToolsKind(null); setResourcesOpen(false); setInspectingId(null); setUploadingItem({ ...item });
   }, []);
 
+  const handleShowOutputs = useCallback((agent: Agent) => {
+    const outputs = (canvas.data?.items ?? []).filter((item) => item.artifact && item.groupId === agent.outputGroupId);
+    setSelectedIds(outputs.map((item) => item.id));
+    if (outputs.length) void flow.current?.fitView({ nodes: outputs, padding: 0.2 });
+  }, [canvas.data?.items, setSelectedIds]);
   const nodes = useMemo<CanvasNode[]>(
     () =>
       (canvas.data?.items ?? [])
         .filter((item) => item.artifact !== null || item.agent !== null)
         .map((item) => {
           const draft = drafts[item.id];
+          const width = Math.max(draft?.width ?? item.width, item.agent ? AGENT_CHAT_MIN_WIDTH : 0);
+          const height = Math.max(draft?.height ?? item.height, item.agent ? AGENT_CHAT_MIN_HEIGHT : 0);
           return {
             id: item.id,
             type: "canvasCard",
             position: { x: draft?.x ?? item.x, y: draft?.y ?? item.y },
             // React Flow needs node dimensions, not only CSS sizes, before it will show a card.
-            initialWidth: draft?.width ?? item.width,
-            initialHeight: draft?.height ?? item.height,
+            initialWidth: width,
+            initialHeight: height,
             // Preserve measured dimensions across controlled-node projections so React Flow
             // keeps its DOM-measured handle bounds for edges and drag-to-connect.
-            measured: { width: draft?.width ?? item.width,
-              height: draft?.height ?? item.height },
-            style: { width: draft?.width ?? item.width, height: draft?.height ?? item.height },
+            measured: { width, height },
+            style: { width, height },
             draggable: !item.locked,
             selected: selectedIds.includes(item.id),
             data: {
@@ -698,6 +705,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 return [{ artifactId: shot.id, versionId: shot.currentVersionId,
                   title: shot.title }];
               }) : [],
+              outputCount: item.agent ? (canvas.data?.items ?? []).filter((candidate) => candidate.artifact && candidate.groupId === item.agent?.outputGroupId).length : 0,
+              onShowOutputs: handleShowOutputs,
               onResizeEnd: handleResizeEnd,
               onRemove: handleRemove,
               onToggleLocked: handleToggleLocked,
@@ -706,6 +715,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onUpdateAgent: handleUpdateAgent,
               onRemoveReference: handleRemoveReference,
               updatingAgent: editAgent.isPending,
+              updateAgentError: editAgent.error,
               removingReference: removeReference.isPending,
             },
           };
@@ -714,8 +724,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       canvas.data?.items,
       drafts,
       editAgent.isPending,
+      editAgent.error,
       handleRemove,
       handleResizeEnd,
+      handleShowOutputs,
       handleToggleLocked,
       handleInspect,
       handleUpload,
@@ -831,7 +843,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     selectedItems.filter((item) => item.agent !== null).length === 1 &&
     selectedItems.some((item) => item.artifact !== null);
   const canClearBindings = selectedItems.filter((item) => item.agent !== null).length === 1;
-  const unknownTasks = snapshot.data?.unknownTasks ?? [];
+  const activeRunOnCanvas = Boolean(snapshot.data?.activeRun && canvas.data?.items.some((item) =>
+    item.agent?.id === snapshot.data?.activeRun?.agentInstanceId));
+  const unknownTasks = (snapshot.data?.unknownTasks ?? []).filter((task) =>
+    !activeRunOnCanvas || task.runId !== snapshot.data?.activeRun?.id);
 
   if (currentUser.isError) return <Navigate to="/login" replace />;
 
@@ -864,7 +879,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       </header>
 
-      {snapshot.data?.activeRun?.status === "BLOCKED" ?
+      {!activeRunOnCanvas && snapshot.data?.activeRun?.status === "BLOCKED" ?
         <BlockedRunNotice projectId={projectId} runId={snapshot.data.activeRun.id} /> : null}
 
       {unknownTasks.length > 0 ? (
@@ -891,11 +906,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      {snapshot.data?.activeRun?.status === "WAITING_APPROVAL" ? (
+      {!activeRunOnCanvas && snapshot.data?.activeRun?.status === "WAITING_APPROVAL" ? (
         <PlanApprovalPanel projectId={projectId} runId={snapshot.data.activeRun.id} />
       ) : null}
 
-      {snapshot.data?.activeRun?.status === "WAITING_TASKS" ? (
+      {!activeRunOnCanvas && snapshot.data?.activeRun?.status === "WAITING_TASKS" ? (
         <KeyframeSelectionPanel projectId={projectId} runId={snapshot.data.activeRun.id} />
       ) : null}
 
@@ -1066,13 +1081,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               <ShotRedoEditor key={selectedItems[0].artifact.currentVersionId}
                 artifact={selectedItems[0].artifact} /> : null}
           </div> : null}
-        {selectedItems.length === 1 && selectedItems[0]?.agent ?
-          <div className="workspace-bottom-editor" aria-label="所选 Agent 编辑区">
-            <button aria-label="关闭编辑区" className="workspace-bottom-close"
-              onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
-            <div className="workspace-bottom-title">{selectedItems[0].agent.name} · 编辑</div>
-            <div id="workspace-agent-bottom-editor" />
-          </div> : null}
         {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
           <button aria-label="关闭编辑区" className="workspace-bottom-close"
             onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
@@ -1122,7 +1130,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 }
 
 const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProps<CanvasNode>) {
-  if (data.item.agent) return <AgentCard data={data} selected={selected} />;
+  if (data.item.agent) return <AgentChatCard data={data} selected={selected} />;
   const artifact = data.item.artifact;
   const content = artifact?.currentVersion?.content;
   const text = content ? contentPreview(content) : "";
@@ -1188,250 +1196,6 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   );
 });
 
-function AgentCard({ data, selected }: { data: CanvasNodeData; selected: boolean }) {
-  const queryClient = useQueryClient();
-  const agent = data.item.agent;
-  const [runInstruction, setRunInstruction] = useState("");
-  const [redoShotId, setRedoShotId] = useState("");
-  const [reviewInstruction, setReviewInstruction] = useState<string | null>(null);
-  const [reviewSelection, setReviewSelection] = useState<string[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [editorTarget, setEditorTarget] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    setEditorTarget(selected ? document.getElementById("workspace-agent-bottom-editor") : null);
-  }, [selected]);
-  const runIntent = useRef<{ instruction: string; agentVersion: number;
-    modelConfigSource: string; modelConfigVersion: number; systemPromptVersion: number;
-    redoShotArtifactId: string | null; selectedItemIds: string[]; key: string } | null>(null);
-  useEffect(() => {
-    setReviewInstruction(null);
-    setReviewSelection([]);
-  }, [agent?.id, agent?.version, redoShotId]);
-  const preflight = useQuery({
-    queryKey: ["run-preflight", data.projectId, agent?.id, agent?.version],
-    queryFn: () => {
-      if (!agent) throw new Error("Agent 卡片不可用。");
-      return getRunPreflight(data.projectId, agent.id);
-    },
-    enabled: false,
-  });
-  const start = useMutation({
-    mutationFn: ({ agentId, instruction, key, expectedAgentVersion,
-      expectedModelConfigSource, expectedModelConfigVersion, expectedSystemPromptVersion,
-      redoShotArtifactId,
-      selectedItemIds }: {
-      agentId: string; instruction: string; key: string; expectedAgentVersion: number;
-      expectedModelConfigSource: string; expectedModelConfigVersion: number;
-      expectedSystemPromptVersion: number;
-      redoShotArtifactId: string | null; selectedItemIds: string[];
-    }) => createRun(data.projectId, key, { agentId, instruction, expectedAgentVersion,
-      expectedModelConfigSource, expectedModelConfigVersion, expectedSystemPromptVersion,
-      selectedItemIds,
-      ...(redoShotArtifactId ? { redoShotArtifactId } : {}) }),
-    onSuccess: async () => {
-      runIntent.current = null;
-      setRunInstruction("");
-      setReviewInstruction(null);
-      setReviewSelection([]);
-      await queryClient.invalidateQueries({ queryKey: ["snapshot", data.projectId] });
-      await queryClient.invalidateQueries({ queryKey: ["run-history", data.projectId, agent?.id] });
-    },
-    onError: (error) => {
-      if (error instanceof ApiError && (error.code === "AGENT_VERSION_CONFLICT" ||
-          error.code === "MODEL_CONFIG_CONFLICT" ||
-          error.code === "SYSTEM_PROMPT_CONFLICT")) {
-        runIntent.current = null;
-        setReviewInstruction(null);
-        void queryClient.invalidateQueries({ queryKey: ["canvas", data.projectId] });
-      }
-    },
-  });
-  const stop = useMutation({
-    mutationFn: (runId: string) => cancelRun(data.projectId, runId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["snapshot", data.projectId] });
-    },
-  });
-  if (!agent) return null;
-  const ownRun = data.activeRun?.agentInstanceId === agent.id ? data.activeRun : null;
-  const redoShot = data.redoCandidates.find((shot) => shot.artifactId === redoShotId) ?? null;
-  const redoBound = !redoShotId || redoShot !== null;
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const values = new FormData(event.currentTarget);
-    data.onUpdateAgent(agent as Agent, String(values.get("name")), String(values.get("instruction")));
-  }
-  function submitRun(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!agent || data.activeRun || start.isPending || !redoBound) return;
-    const instruction = runInstruction.trim();
-    if (!instruction) return;
-    setReviewInstruction(instruction);
-    setReviewSelection([...useCanvasStore.getState().selectedIds]);
-    void preflight.refetch();
-  }
-  function confirmRun() {
-    const reviewed = preflight.data;
-    if (!agent || !reviewInstruction || !reviewed || preflight.isFetching ||
-        !reviewed.modelAvailable || !reviewed.toolCalling || data.activeRun || start.isPending ||
-        reviewed.policySnapshot.systemPromptVersion == null ||
-        reviewed.agentVersion !== agent.version || reviewed.agentId !== agent.id) return;
-    if (runIntent.current?.instruction !== reviewInstruction ||
-        runIntent.current.agentVersion !== reviewed.agentVersion ||
-        runIntent.current.modelConfigSource !== reviewed.policySnapshot.modelConfigSource ||
-        runIntent.current.modelConfigVersion !== reviewed.policySnapshot.modelConfigVersion ||
-        runIntent.current.systemPromptVersion !== reviewed.policySnapshot.systemPromptVersion ||
-        runIntent.current.redoShotArtifactId !== (redoShot?.artifactId ?? null) ||
-        runIntent.current.selectedItemIds.join(",") !== reviewSelection.join(",")) {
-      runIntent.current = {
-        instruction: reviewInstruction, agentVersion: reviewed.agentVersion,
-        modelConfigSource: reviewed.policySnapshot.modelConfigSource,
-        modelConfigVersion: reviewed.policySnapshot.modelConfigVersion,
-        systemPromptVersion: reviewed.policySnapshot.systemPromptVersion,
-        redoShotArtifactId: redoShot?.artifactId ?? null,
-        selectedItemIds: reviewSelection,
-        key: crypto.randomUUID(),
-      };
-    }
-    start.mutate({ agentId: agent.id, instruction: reviewInstruction,
-      key: runIntent.current.key, expectedAgentVersion: reviewed.agentVersion,
-      expectedModelConfigSource: runIntent.current.modelConfigSource,
-      expectedModelConfigVersion: runIntent.current.modelConfigVersion,
-      expectedSystemPromptVersion: runIntent.current.systemPromptVersion,
-      redoShotArtifactId: redoShot?.artifactId ?? null,
-      selectedItemIds: runIntent.current.selectedItemIds });
-  }
-  return (
-    <>
-      <Handle id="agent-input" position={Position.Left}
-        style={{ background: "#2563eb" }} type="target" />
-      <Handle id="agent-output" isConnectable={false} position={Position.Right}
-        style={{ background: "#059669" }} type="source" />
-      <article className={`artifact-node agent-node-scroll nowheel ${selected ? "artifact-node-selected" : ""}`}>
-      <NodeResizer
-        isVisible={selected && !data.item.locked}
-        minHeight={220}
-        minWidth={280}
-        onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)}
-      />
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <span className="artifact-kind">AGENT · {agent.profileKey} v{agent.profileVersion}</span>
-          <h3 className="mt-2 font-semibold">{agent.name}</h3>
-        </div>
-        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
-          {ownRun ? ownRun.status : data.activeRun ? "其他 Agent 运行中" : "空闲"}
-        </span>
-      </div>
-      <p className="mt-2 text-xs text-[var(--muted)]">当前运行：{ownRun ? ownRun.id : "无"}</p>
-      <p className="mt-1 text-xs text-[var(--muted)]">待审批：{ownRun?.status === "WAITING_APPROVAL" ? "请检查上方计划" : "无"}</p>
-      <p className="mt-1 break-all text-xs text-[var(--muted)]">输出范围：{agent.outputGroupId}</p>
-      <details className="nodrag nowheel mt-3 text-xs" open>
-        <summary className="cursor-pointer font-semibold">明确输入（{agent.bindings.length}）</summary>
-        {agent.bindings.length === 0 ? (
-          <p className="mt-2 text-[var(--muted)]">无输入；不会读取项目中的其他内容。</p>
-        ) : (
-          <ul className="mt-2 space-y-1 text-[var(--muted)]">
-            {agent.bindings.map((binding) => (
-              <li className="break-all" key={binding.id}>Artifact {binding.artifactId}<br />Version {binding.selectedVersionId}</li>
-            ))}
-          </ul>
-        )}
-      </details>
-      {selected && editorTarget ? createPortal(<div className="agent-bottom-controls">
-      <form className="nodrag nowheel mt-3" key={agent.version} onSubmit={submit}>
-        <label className="text-xs font-medium">名称<input defaultValue={agent.name} maxLength={120} name="name" required /></label>
-        <label className="mt-2 block text-xs font-medium">指令<textarea className="mt-1 min-h-16 w-full rounded-lg border border-[var(--line)] bg-white p-2 text-xs" defaultValue={agent.instruction} maxLength={8000} name="instruction" required /></label>
-        <button className="node-action mt-2" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? "保存中…" : "保存配置"}</button>
-      </form>
-      <form className="nodrag nowheel mt-3" onSubmit={submitRun}>
-        <label className="mb-2 block text-xs font-medium">运行范围
-          <select className="mt-1 w-full rounded-lg border border-[var(--line)] bg-white p-2"
-            onChange={(event) => setRedoShotId(event.target.value)} value={redoShotId}>
-            <option value="">全项目创作</option>
-            {data.redoCandidates.map((shot) => <option key={shot.artifactId}
-              value={shot.artifactId}>仅重做「{shot.title}」</option>)}
-          </select>
-        </label>
-        {redoShot ? <p className="mb-2 text-xs text-amber-900">
-          仅为「{redoShot.title}」的新版本规划媒体，图片和视频仍需分别审批。
-        </p> : null}
-        {!redoBound ? <p className="mb-2 text-xs text-red-700">目标镜头版本已变化，请重新绑定。</p> : null}
-        <label className="block text-xs font-medium">本次任务
-          <textarea className="mt-1 min-h-16 w-full rounded-lg border border-[var(--line)] bg-white p-2 text-xs"
-            maxLength={8000} onChange={(event) => {
-              setRunInstruction(event.target.value);
-              setReviewInstruction(null);
-              setReviewSelection([]);
-            }}
-            placeholder="例如：规划三个镜头并生成关键帧" required value={runInstruction} />
-        </label>
-        <div className="mt-2 flex gap-2">
-          <button className="node-action" disabled={Boolean(data.activeRun) || start.isPending ||
-            !redoBound || !runInstruction.trim()}
-            type="submit">检查运行范围</button>
-          <button className="node-action" disabled={!ownRun || stop.isPending}
-            onClick={() => { if (ownRun) stop.mutate(ownRun.id); }} type="button">
-            {stop.isPending ? "停止中…" : "停止"}
-          </button>
-        </div>
-      </form>
-      {reviewInstruction !== null ? (
-        <div className="nodrag nowheel mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">
-          <p className="font-semibold">运行前确认</p>
-          {preflight.isPending || preflight.isFetching ? <p className="mt-2">正在核对模型与输入…</p> : null}
-          {preflight.error ? <WorkspaceError error={preflight.error} /> : null}
-          {preflight.data && !preflight.isFetching ? (
-            <>
-              <p className="mt-2 break-words">本次任务：{reviewInstruction}</p>
-              {redoShot ? <p className="mt-1">局部重做目标：{redoShot.title} · 版本 {redoShot.versionId}</p> : null}
-              <p className="mt-1 break-words">Agent 指令：{preflight.data.agentInstruction}</p>
-              <p className="mt-1">模型：{preflight.data.modelAvailable
-                ? `${preflight.data.providerAdapter ?? "未知适配器"} / ${preflight.data.modelId ?? "未声明模型 ID"}`
-                : "未配置 ChatModel，无法启动规划"}</p>
-              <p className="mt-1">模型配置：{preflight.data.policySnapshot.modelConfigSource} v{preflight.data.policySnapshot.modelConfigVersion}；系统提示词 v{preflight.data.policySnapshot.systemPromptVersion ?? "未知"}。确认后若配置或规则变化，需重新检查。</p>
-              <p className="mt-1">精确绑定输入：{preflight.data.bindings.length} 个版本；首轮只发送有上限的内容预览，不发送图片字节。</p>
-              <p className="mt-1">当前模型看不到图片像素、视频帧或音频，只能依据文字与元数据规划；生成计划不等于媒体已生成，实际结果须等待任务归档。</p>
-              <p className="mt-1 break-all">当前选择：{reviewSelection.length} 张卡片
-                {reviewSelection.length ? `（${reviewSelection.join("、")}）` : ""}；仅作为操作意图，不扩大 Agent 权限。</p>
-              {preflight.data.bindings.map((binding) => (
-                <p className="mt-1 break-all" key={binding.selectedVersionId}>
-                  {binding.artifactKind}「{binding.artifactTitle}」 · Artifact {binding.artifactId}
-                  <br />Version {binding.selectedVersionId}
-                </p>
-              ))}
-              <p className="mt-1">还会发送项目名称与画幅。模型调用最多 {preflight.data.policySnapshot.maxModelTurns} 轮、工具最多 {preflight.data.policySnapshot.maxToolExecutions} 次；媒体生成仍需单独审批。</p>
-              <p className="mt-1">本轮限额：图片 {preflight.data.policySnapshot.maxImages}、视频 {preflight.data.policySnapshot.maxVideos}、镜头 {preflight.data.policySnapshot.maxShots}。</p>
-              {!preflight.data.toolCalling && preflight.data.modelAvailable ?
-                <p className="mt-1 text-red-700">当前模型未确认支持工具调用，无法运行。</p> : null}
-              <button className="node-action mt-2" disabled={Boolean(data.activeRun) || start.isPending ||
-                preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
-                !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
-                !redoBound} onClick={confirmRun} type="button">
-                {start.isPending ? "启动中…" : "确认开始规划"}
-              </button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-      {start.error ? <WorkspaceError error={start.error} /> : null}
-      {stop.error ? <WorkspaceError error={stop.error} /> : null}
-      </div>, editorTarget) : null}
-      <div className="nodrag mt-3 flex gap-2">
-        <button aria-expanded={showHistory} className="node-action"
-          onClick={() => setShowHistory(!showHistory)} type="button">
-          {showHistory ? "收起记录" : "查看记录"}
-        </button>
-      </div>
-      {showHistory ? <RunHistoryPanel agentId={agent.id} projectId={data.projectId} /> : null}
-      <div className="nodrag mt-3 flex gap-2">
-        <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? "解锁" : "锁定"}</button>
-        <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">移除卡片</button>
-      </div>
-      </article>
-    </>
-  );
-}
 
 const nodeTypes = { canvasCard: CanvasCardNode };
 
