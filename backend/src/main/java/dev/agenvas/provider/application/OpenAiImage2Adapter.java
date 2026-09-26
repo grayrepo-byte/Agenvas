@@ -75,16 +75,19 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         String key = credential(snapshot);
-        String quality = mapper.readTree(snapshot.specJson()).path("settings")
-                .path("quality").asText("medium");
+        var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        String quality = settings.path("quality").asText("medium");
+        String configuredModel = settings.path("model").asText("");
+        String model = configuredModel.isEmpty() ? OpenAiImage2Client.DEFAULT_MODEL
+                : configuredModel;
         String prompt = context.lease().input().path("prompt").asText();
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
             return new Submission.Completed(context.lease().input().has("referenceImageVersionId")
-                    ? client.edit(key, prompt, quality, size(context), referencePng(context),
+                    ? client.edit(key, model, prompt, quality, size(context), referencePng(context),
                             snapshot.connectionVersion().origin())
-                    : client.generate(key, prompt, quality, size(context),
+                    : client.generate(key, model, prompt, quality, size(context),
                             snapshot.connectionVersion().origin()));
         } catch (OpenAiImage2Client.Rejected rejected) {
             return new Submission.Rejected("OPENAI_IMAGE_REJECTED");

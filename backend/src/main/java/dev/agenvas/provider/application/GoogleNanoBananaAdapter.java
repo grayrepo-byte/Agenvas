@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /** One approved Nano Banana 2 image generation or single-reference edit. */
 @Component
@@ -32,16 +33,18 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     private final AssetService assets;
     private final ProjectService projects;
     private final GoogleNanoBananaClient client;
+    private final ObjectMapper mapper;
 
     public GoogleNanoBananaAdapter(JdbcMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
-            GoogleNanoBananaClient client) {
+            GoogleNanoBananaClient client, ObjectMapper mapper) {
         this.catalog = catalog;
         this.cipher = cipher;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
         this.client = client;
+        this.mapper = mapper;
     }
 
     @Override public String adapterId() { return "GOOGLE_NANO_BANANA_2"; }
@@ -66,14 +69,17 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     }
 
     @Override public Submission submit(AttemptContext context) {
-        String key = credential(snapshot(context));
+        Snapshot snapshot = snapshot(context);
+        String key = credential(snapshot);
+        String configuredModel = modelName(snapshot);
         String prompt = context.lease().input().path("prompt").asText();
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         Reference reference = context.lease().input().has("referenceImageVersionId")
                 ? reference(context) : null;
         try {
-            return new Submission.Completed(client.generate(key, prompt, aspectRatio(context),
+            return new Submission.Completed(client.generate(key, configuredModel,
+                    snapshot.connectionVersion().origin(), prompt, aspectRatio(context),
                     reference == null ? null : reference.bytes(),
                     reference == null ? null : reference.mimeType()));
         } catch (GoogleNanoBananaClient.Rejected rejected) {
@@ -109,6 +115,13 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         return cipher.decryptMedia(version.connectionId(), version.version(),
                 new CredentialCipher.Encrypted(version.credentialCiphertext(),
                         version.credentialNonce(), version.credentialKeyVersion()));
+    }
+
+    /** 能力未配置模型名时回退到内置默认，中转站可覆盖。 */
+    private String modelName(Snapshot snapshot) {
+        String configured = mapper.readTree(snapshot.specJson()).path("settings")
+                .path("model").asText("");
+        return configured.isEmpty() ? GoogleNanoBananaClient.DEFAULT_MODEL : configured;
     }
 
     private String aspectRatio(AttemptContext context) {

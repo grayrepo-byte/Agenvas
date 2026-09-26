@@ -223,8 +223,10 @@ public class MediaCapabilityService {
         if (declaration.originRequired() && version.origin() == null) {
             throw invalid("该适配器需要连接地址");
         }
+        // OpenAI 与 Google 的固定适配器都允许把端点指向自托管网关或中转站。
         if (!declaration.originRequired() && version.origin() != null
-                && !"OPENAI".equals(connection.platform())) {
+                && !"OPENAI".equals(connection.platform())
+                && !"GOOGLE".equals(connection.platform())) {
             throw invalid("该适配器不接受连接地址");
         }
         if (!connection.platform().equals(declaration.platform())) {
@@ -336,7 +338,8 @@ public class MediaCapabilityService {
             case "COMFY_IMAGE_V1" -> List.of("checkpoint");
             case "COMFY_VIDEO_V1" -> List.of("diffusionModel", "textEncoder", "vae",
                     "clipVision");
-            case "OPENAI_GPT_IMAGE_2" -> List.of("quality");
+            case "OPENAI_GPT_IMAGE_2" -> List.of("quality", "model");
+            case "GOOGLE_NANO_BANANA_2" -> List.of("model");
             default -> List.of();
         };
         for (String field : source.propertyNames()) {
@@ -350,6 +353,15 @@ public class MediaCapabilityService {
                     throw invalid("GPT Image 2 质量只能为 low、medium 或 high");
                 }
                 settings.put(field, quality);
+                continue;
+            }
+            // 模型名留空表示沿用适配器内置默认；中转站命名格式无法预知，只挡明显非法的取值。
+            if ("model".equals(field)) {
+                String model = value.isMissingNode() || value.isNull() ? "" : value.asText();
+                if (!model.isEmpty() && !model.matches("[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}")) {
+                    throw invalid("模型名只能包含字母、数字及 . _ : / -，且不超过 120 字符");
+                }
+                settings.put(field, model);
                 continue;
             }
             if (!value.isTextual() || !value.asText().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
@@ -513,22 +525,28 @@ public class MediaCapabilityService {
     }
 
     private static String validatedOrigin(String platform, String origin) {
-        if ("OPENAI".equals(platform)) {
+        if ("OPENAI".equals(platform) || "GOOGLE".equals(platform)) {
             if (origin == null || origin.isBlank()) return null;
             try {
                 java.net.URI uri = java.net.URI.create(origin.trim());
                 String path = uri.getRawPath();
-                if (origin.length() > 500 || !"https".equals(uri.getScheme())
+                if (origin.length() > 500
                         || uri.getHost() == null || uri.getHost().isBlank()
                         || uri.getPort() > 65535 || uri.getRawUserInfo() != null
                         || uri.getRawQuery() != null || uri.getRawFragment() != null
                         || path != null && (path.contains("..") || path.contains("%")
                                 || path.contains("\\") || path.contains("//"))) {
-                    throw invalid("OpenAI Base URL 必须是公开的 HTTPS API 根地址，不能包含凭证、查询或片段");
+                    throw invalid("Base URL 必须是公开的 HTTPS API 根地址，不能包含凭证、查询或片段");
+                }
+                // 本机回环是自托管服务与本地假 API 的固定例外，与 ComfyUI 的规则一致。
+                boolean loopback = "http".equals(uri.getScheme())
+                        && "127.0.0.1".equals(uri.getHost()) && uri.getPort() > 0;
+                if (!"https".equals(uri.getScheme()) && !loopback) {
+                    throw invalid("Base URL 必须是公开的 HTTPS API 根地址，不能包含凭证、查询或片段");
                 }
                 return uri.toASCIIString().replaceAll("/+$", "");
             } catch (IllegalArgumentException invalidUri) {
-                throw invalid("OpenAI Base URL 无效");
+                throw invalid("Base URL 无效");
             }
         }
         if (!"COMFYUI".equals(platform)) {

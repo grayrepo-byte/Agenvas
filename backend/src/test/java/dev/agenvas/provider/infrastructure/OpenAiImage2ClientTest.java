@@ -26,8 +26,7 @@ class OpenAiImage2ClientTest {
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.start();
-        client = new OpenAiImage2Client(mapper,
-                URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
+        client = new OpenAiImage2Client(mapper);
     }
 
     @AfterEach
@@ -65,15 +64,34 @@ class OpenAiImage2ClientTest {
             respond(exchange, 200, result);
         });
 
-        try (var generated = client.generate("fake-secret", "ridge", "medium", "1536x1024", null)) {
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "medium", "1536x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(generated.stream().readAllBytes()).isEqualTo(png);
         }
-        try (var edited = client.edit("fake-secret", "ridge\nAvoid: clouds", "high",
-                "1024x1024", png, null)) {
+        try (var edited = client.edit("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge\nAvoid: clouds", "high",
+                "1024x1024", png, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(edited.stream().readAllBytes()).isEqualTo(png);
         }
         assertThat(generations).hasValue(1);
         assertThat(edits).hasValue(1);
+    }
+
+    @Test
+    void configuredModelNameReplacesTheBuiltInDefault() throws IOException {
+        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        String result = "{\"data\":[{\"b64_json\":\""
+                + Base64.getEncoder().encodeToString(png) + "\"}]}";
+        AtomicInteger calls = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> {
+            var body = mapper.readTree(exchange.getRequestBody().readAllBytes());
+            assertThat(body.path("model").asText()).isEqualTo("gpt-image-1");
+            calls.incrementAndGet();
+            respond(exchange, 200, result);
+        });
+        try (var generated = client.generate("fake-secret", "gpt-image-1", "ridge", "medium",
+                "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+            assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+        }
+        assertThat(calls).hasValue(1);
     }
 
     @Test
@@ -83,7 +101,7 @@ class OpenAiImage2ClientTest {
             requests.incrementAndGet();
             respond(exchange, 200, "{\"data\":[{\"b64_json\":\"bad-base64!\"}]}");
         });
-        assertThatThrownBy(() -> client.generate("key", "ridge", "low", "1024x1024", null))
+        assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "low", "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
                 .isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(requests).hasValue(1);
         server.removeContext("/v1/images/generations");
@@ -91,7 +109,7 @@ class OpenAiImage2ClientTest {
             requests.incrementAndGet();
             exchange.close();
         });
-        assertThatThrownBy(() -> client.generate("key", "ridge", "low", "1024x1024", null))
+        assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "low", "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
                 .isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(requests).hasValue(2);
     }
@@ -103,8 +121,7 @@ class OpenAiImage2ClientTest {
                 .isEqualTo(URI.create("https://gateway.example.com/proxy/v1/images/generations"));
         assertThat(OpenAiImage2Client.apiEndpoint(null, "images/edits"))
                 .isEqualTo(URI.create("https://api.openai.com/v1/images/edits"));
-        client = new OpenAiImage2Client(mapper, URI.create(
-                "http://127.0.0.1:" + server.getAddress().getPort() + "/proxy/v1"));
+        client = new OpenAiImage2Client(mapper);
         byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         String result = "{\"data\":[{\"b64_json\":\""
                 + Base64.getEncoder().encodeToString(png) + "\"}]}";
@@ -113,8 +130,8 @@ class OpenAiImage2ClientTest {
             calls.incrementAndGet();
             respond(exchange, 200, result);
         });
-        try (var generated = client.generate("fake-secret", "ridge", "medium",
-                "1024x1024", "https://unused.example/v1")) {
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "medium",
+                "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/proxy/v1")) {
             assertThat(generated.stream().readAllBytes()).isEqualTo(png);
         }
         assertThat(calls).hasValue(1);
@@ -132,8 +149,8 @@ class OpenAiImage2ClientTest {
             redirected.incrementAndGet();
             exchange.close();
         });
-        assertThatThrownBy(() -> client.generate("fake-secret", "ridge", "low",
-                "1024x1024", null)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
+        assertThatThrownBy(() -> client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "low",
+                "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")).isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(redirected).hasValue(0);
     }
 

@@ -26,41 +26,31 @@ import tools.jackson.databind.node.ObjectNode;
 /** Fixed GPT Image 2 Images API protocol with a version-pinned API base URL. */
 @Component
 public class OpenAiImage2Client {
+    /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
+    public static final String DEFAULT_MODEL = "gpt-image-2";
     private static final URI OFFICIAL_BASE = URI.create("https://api.openai.com/v1/");
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-    private final URI testOrigin;
     private final OkHttpClient http;
     private final ObjectMapper mapper;
 
     @Autowired
     public OpenAiImage2Client(ObjectMapper mapper) {
-        this(mapper, null);
-    }
-
-    /** A loopback origin is accepted only when tests explicitly construct this client. */
-    public OpenAiImage2Client(ObjectMapper mapper, URI origin) {
-        if (origin != null && !("http".equals(origin.getScheme())
-                && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && (origin.getRawPath() == null || !origin.getRawPath().contains(".."))
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null
-                && origin.getRawFragment() == null)) {
-            throw new IllegalArgumentException("Unsupported OpenAI test origin");
-        }
         this.mapper = mapper;
-        this.testOrigin = origin;
+        // 配置层已把端点限定为 HTTPS 公网或字面 127.0.0.1；这里放行回环，域名解析
+        // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
         this.http = new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(10))
                 .callTimeout(Duration.ofMinutes(3)).proxy(Proxy.NO_PROXY)
                 .followRedirects(false).followSslRedirects(false)
                 .retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(Dns.SYSTEM, origin != null))
+                .dns(FixedCloudDns.checked(Dns.SYSTEM, true))
                 .build();
     }
 
-    public MediaPayload generate(String key, String prompt, String quality, String size,
-            String baseUrl) {
+    public MediaPayload generate(String key, String model, String prompt, String quality,
+            String size, String baseUrl) {
         ObjectNode body = mapper.createObjectNode();
-        body.put("model", "gpt-image-2");
+        body.put("model", model);
         body.put("prompt", prompt);
         body.put("quality", quality);
         body.put("size", size);
@@ -70,7 +60,7 @@ public class OpenAiImage2Client {
                 body.toString().getBytes(StandardCharsets.UTF_8));
     }
 
-    public MediaPayload edit(String key, String prompt, String quality, String size,
+    public MediaPayload edit(String key, String model, String prompt, String quality, String size,
             byte[] referencePng, String baseUrl) {
         if (referencePng == null || referencePng.length == 0
                 || referencePng.length > MAX_IMAGE_BYTES) {
@@ -78,7 +68,7 @@ public class OpenAiImage2Client {
         }
         String boundary = "agenvas-" + UUID.randomUUID();
         ByteArrayOutputStream body = new ByteArrayOutputStream();
-        field(body, boundary, "model", "gpt-image-2");
+        field(body, boundary, "model", model);
         field(body, boundary, "prompt", prompt);
         field(body, boundary, "quality", quality);
         field(body, boundary, "size", size);
@@ -94,11 +84,7 @@ public class OpenAiImage2Client {
 
     private MediaPayload send(String key, String baseUrl, String path, String contentType,
             byte[] body) {
-        URI endpoint = testOrigin == null ? apiEndpoint(baseUrl, path)
-                : (testOrigin.getRawPath() == null || testOrigin.getRawPath().isEmpty()
-                        ? testOrigin.resolve("/v1/")
-                        : URI.create(testOrigin + (testOrigin.toString().endsWith("/") ? "" : "/")))
-                        .resolve(path);
+        URI endpoint = apiEndpoint(baseUrl, path);
         Request request = new Request.Builder().url(endpoint.toString())
                 .header("Authorization", "Bearer " + key)
                 .header("Accept", "application/json")
@@ -144,7 +130,9 @@ public class OpenAiImage2Client {
     static URI apiEndpoint(String baseUrl, String path) {
         URI base = baseUrl == null ? OFFICIAL_BASE
                 : URI.create(baseUrl + (baseUrl.endsWith("/") ? "" : "/"));
-        if (!"https".equals(base.getScheme()) || base.getHost() == null
+        // 与配置层一致：HTTPS 公网，或字面 127.0.0.1 的本机服务。
+        boolean loopback = "http".equals(base.getScheme()) && "127.0.0.1".equals(base.getHost());
+        if (base.getHost() == null || !(loopback || "https".equals(base.getScheme()))
                 || base.getRawUserInfo() != null || base.getRawQuery() != null
                 || base.getRawFragment() != null) {
             throw new IllegalArgumentException("Pinned OpenAI API base URL is invalid");

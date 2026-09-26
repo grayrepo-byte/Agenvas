@@ -26,43 +26,31 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class GoogleNanoBananaClient {
     private static final URI OFFICIAL = URI.create("https://generativelanguage.googleapis.com");
-    private static final String MODEL = "gemini-3.1-flash-image";
-    private static final String PATH = "/v1/models/" + MODEL + ":generateContent";
+    /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
+    public static final String DEFAULT_MODEL = "gemini-3.1-flash-image";
     private static final String IMAGE_SIZE = "1K";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration CALL_TIMEOUT = Duration.ofMinutes(3);
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-    private final URI origin;
     private final OkHttpClient http;
     private final ObjectMapper mapper;
 
     @Autowired
     public GoogleNanoBananaClient(ObjectMapper mapper) {
-        this(mapper, OFFICIAL);
-    }
-
-    /** Loopback is available only to an explicitly constructed test client. */
-    public GoogleNanoBananaClient(ObjectMapper mapper, URI origin) {
-        if (!OFFICIAL.equals(origin) && !("http".equals(origin.getScheme())
-                && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && (origin.getRawPath() == null || origin.getRawPath().isEmpty())
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null
-                && origin.getRawFragment() == null)) {
-            throw new IllegalArgumentException("Unsupported fixed Google API origin");
-        }
         this.mapper = mapper;
-        this.origin = origin;
+        // 配置层已把端点限定为 HTTPS 公网或字面 127.0.0.1；这里放行回环，域名解析
+        // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
         this.http = new OkHttpClient.Builder().connectTimeout(CONNECT_TIMEOUT)
                 .callTimeout(CALL_TIMEOUT).proxy(Proxy.NO_PROXY)
                 .followRedirects(false).followSslRedirects(false)
                 .retryOnConnectionFailure(false)
-                .dns(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)))
+                .dns(FixedCloudDns.checked(Dns.SYSTEM, true))
                 .build();
     }
 
-    public MediaPayload generate(String key, String prompt, String aspectRatio,
-            byte[] reference, String referenceMimeType) {
+    public MediaPayload generate(String key, String model, String origin, String prompt,
+            String aspectRatio, byte[] reference, String referenceMimeType) {
         ObjectNode body = mapper.createObjectNode();
         ObjectNode content = body.putArray("contents").addObject();
         content.put("role", "user");
@@ -78,7 +66,10 @@ public class GoogleNanoBananaClient {
         ObjectNode image = config.putObject("responseFormat").putObject("image");
         image.put("aspectRatio", aspectRatio);
         image.put("imageSize", IMAGE_SIZE);
-        Request request = new Request.Builder().url(origin.resolve(PATH).toString())
+        // 能力配置的地址；留空表示沿用官方端点。
+        URI target = origin == null || origin.isBlank() ? OFFICIAL : URI.create(origin);
+        String path = "/v1/models/" + model + ":generateContent";
+        Request request = new Request.Builder().url(target.resolve(path).toString())
                 .header("x-goog-api-key", key)
                 .header("Accept", "application/json")
                 .post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),

@@ -104,8 +104,9 @@ class MediaCloudCapabilityPostgresIT {
                 new CredentialCipher.Encrypted(changedVersion.credentialCiphertext(),
                         changedVersion.credentialNonce(), changedVersion.credentialKeyVersion())))
                 .isEqualTo("secret");
+        // 回环端点现在可用（本地假 API 与自托管服务），HTTP 非回环仍被拒。
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin", "Bad",
-                "OPENAI", "http://127.0.0.1:8080/v1", "secret"))
+                "OPENAI", "http://images.example.com/v1", "secret"))
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin-2", "Bad",
                 "OPENAI", "https://user:pass@images.example.com/v1", "secret"))
@@ -113,8 +114,9 @@ class MediaCloudCapabilityPostgresIT {
         assertThatThrownBy(() -> catalog.publishCapability(google.id(), "Bad model",
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{\"modelId\":\"custom\"}")))
                 .isInstanceOf(ApiProblemException.class);
+        // Google 现在允许自定义 HTTPS 端点（中转站）；明文与私网地址仍被拒。
         assertThatThrownBy(() -> catalog.createConnection("cloud-google-origin", "Bad",
-                "GOOGLE", "https://example.com", "secret"))
+                "GOOGLE", "http://192.168.1.10:8080", "secret"))
                 .isInstanceOf(ApiProblemException.class);
     }
 }

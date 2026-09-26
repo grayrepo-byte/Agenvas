@@ -173,7 +173,7 @@ describe("MediaSettingsPage", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
     await user.click(screen.getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
-      adapterId: "OPENAI_GPT_IMAGE_2", settings: { quality: "high" } }));
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }));
   });
 
   it("publishes the fixed Nano Banana 2 image capability", async () => {
@@ -200,6 +200,6 @@ describe("MediaSettingsPage", () => {
       .toHaveValue("GOOGLE_NANO_BANANA_2");
     await user.click(screen.getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Nano Banana 2",
-      adapterId: "GOOGLE_NANO_BANANA_2", settings: {} }));
+      adapterId: "GOOGLE_NANO_BANANA_2", settings: { model: "" } }));
   });
 });

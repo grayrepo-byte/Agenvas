@@ -17,17 +17,21 @@ const comfyVideoFields = [
   { key: "clipVision", label: "CLIP Vision 文件名" },
 ] as const;
 
+const cloudImageFields = [{ key: "model", label: "模型名（留空用内置默认）" }] as const;
+
 function fixedModelFields(adapterId: string) {
   return adapterId === "COMFY_IMAGE_V1" ? comfyImageFields
-    : adapterId === "COMFY_VIDEO_V1" ? comfyVideoFields : [];
+    : adapterId === "COMFY_VIDEO_V1" ? comfyVideoFields
+    : adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
+      ? cloudImageFields : [];
 }
 
 function fixedModelSettings(adapterId: string, values: Record<string, string>) {
-  if (adapterId === "OPENAI_GPT_IMAGE_2") {
-    return { quality: values.quality ?? "medium" };
-  }
-  return Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
+  const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key]?.trim() ?? ""]));
+  return adapterId === "OPENAI_GPT_IMAGE_2"
+    ? { ...fields, quality: values.quality ?? "medium" }
+    : fields;
 }
 
 function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -125,8 +129,8 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
       </label>
       {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="text-xs">{label}
         <input value={modelNames[key] ?? ""} onChange={(event) => setModelNames((old) =>
-          ({ ...old, [key]: event.target.value }))} required maxLength={160}
-          placeholder="model.safetensors" />
+          ({ ...old, [key]: event.target.value }))} required={key !== "model"} maxLength={160}
+          placeholder={key === "model" ? "留空使用内置默认" : "model.safetensors"} />
       </label>)}
       {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={modelNames.quality ?? "medium"}
         onChange={(quality) => setModelNames((old) => ({ ...old, quality }))} /> : null}
@@ -317,8 +321,8 @@ function ConnectionCard({ connection, settings, apply }: {
         </label>
         {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="text-sm">{label}
           <input value={newModelNames[key] ?? ""} onChange={(event) => setNewModelNames((old) =>
-            ({ ...old, [key]: event.target.value }))} required maxLength={160}
-            placeholder="model.safetensors" />
+            ({ ...old, [key]: event.target.value }))} required={key !== "model"} maxLength={160}
+            placeholder={key === "model" ? "留空使用内置默认" : "model.safetensors"} />
         </label>)}
         {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={newModelNames.quality ?? "medium"}
           onChange={(quality) => setNewModelNames((old) => ({ ...old, quality }))} /> : null}

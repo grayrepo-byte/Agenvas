@@ -57,7 +57,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Real Task/Asset path against a loopback fake Google API; no paid call is made. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, GoogleNanoBananaPostgresIT.FakeClient.class},
+@SpringBootTest(classes = AgenvasApplication.class,
         properties = "agenvas.identity.bootstrap-secret=google-image-integration-secret")
 class GoogleNanoBananaPostgresIT {
     @Container
@@ -96,7 +96,7 @@ class GoogleNanoBananaPostgresIT {
     @Test
     void approvedReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
         var connection = catalog.createConnection("google-it-connection", "Google fake",
-                "GOOGLE", null, "fake-google-secret");
+                "GOOGLE", "http://127.0.0.1:" + SERVER.getAddress().getPort(), "fake-google-secret");
         var ability = catalog.publishCapability(connection.id(), "Nano Banana 2",
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{}"));
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
@@ -242,14 +242,6 @@ class GoogleNanoBananaPostgresIT {
     }
 
     @TestConfiguration
-    static class FakeClient {
-        @Bean
-        @Primary
-        GoogleNanoBananaClient fakeGoogleNanoBananaClient(ObjectMapper mapper) {
-            return new GoogleNanoBananaClient(mapper,
-                    URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
-        }
-    }
 
     private record Fixture(Project project, ArtifactService.ArtifactView shot, AgentRun run) {}
 }

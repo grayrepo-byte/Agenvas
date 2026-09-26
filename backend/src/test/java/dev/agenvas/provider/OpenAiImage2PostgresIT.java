@@ -55,7 +55,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Real Task/Asset path against a loopback fake OpenAI API; no paid call is made. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, OpenAiImage2PostgresIT.FakeClient.class},
+@SpringBootTest(classes = AgenvasApplication.class,
         properties = "agenvas.identity.bootstrap-secret=openai-image-integration-secret")
 class OpenAiImage2PostgresIT {
     @Container
@@ -93,7 +93,7 @@ class OpenAiImage2PostgresIT {
     @Test
     void approvedReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
         var connection = catalog.createConnection("openai-it-connection", "OpenAI fake",
-                "OPENAI", null, "fake-secret");
+                "OPENAI", "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1", "fake-secret");
         var ability = catalog.publishCapability(connection.id(), "GPT Image 2",
                 "OPENAI_GPT_IMAGE_2", mapper.readTree("{\"quality\":\"medium\"}"));
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
@@ -235,14 +235,6 @@ class OpenAiImage2PostgresIT {
     }
 
     @TestConfiguration
-    static class FakeClient {
-        @Bean
-        @Primary
-        OpenAiImage2Client fakeOpenAiImage2Client(ObjectMapper mapper) {
-            return new OpenAiImage2Client(mapper,
-                    URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
-        }
-    }
 
     private record Fixture(Project project, ArtifactService.ArtifactView shot, AgentRun run) {}
 }
