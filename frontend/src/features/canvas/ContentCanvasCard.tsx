@@ -1,8 +1,9 @@
-import { NodeToolbar, Position } from "@xyflow/react";
 import { Clock, FilmSlate, LinkSimple, LockSimple, MapPin, PencilSimple,
   SlidersHorizontal, Stack, TextT, UserCircle } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import type { Artifact } from "../../shared/api/client";
+import { ArtifactCardFrame } from "./ArtifactCardFrame";
+import { readContentNumber, readContentText as readText } from "./artifactContent";
 import "./ContentCanvasCard.css";
 
 /**
@@ -32,16 +33,9 @@ function presentation(kind: Artifact["kind"]) {
   }
 }
 
-function readText(content: unknown, key: string): string {
-  if (!content || typeof content !== "object" || !(key in content)) return "";
-  const value: unknown = content[key as keyof typeof content];
-  return typeof value === "string" ? value : "";
-}
-
 function positiveNumber(content: unknown, key: string): number | null {
-  if (!content || typeof content !== "object" || !(key in content)) return null;
-  const value: unknown = content[key as keyof typeof content];
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+  const value = readContentNumber(content, key);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function durationText(content: unknown): string | null {
@@ -69,18 +63,12 @@ export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspec
   const references = artifact.currentVersion?.inputReferences.length ?? 0;
   const emptyText = artifact.kind === "TEXT" && !text.trim();
 
-  return <>
-    <NodeToolbar isVisible={selected ? undefined : false} position={Position.Top}
-      style={{ top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 6 }}>
-      <div className="media-card-toolbar content-card-toolbar nodrag nowheel" aria-label={`${label}卡片操作`}>
+  return <ArtifactCardFrame title={artifact.title} kindLabel={label} selected={selected} locked={locked}
+    className="content-canvas-card" toolbar={<>
         <button type="button" onClick={onEdit}><PencilSimple size={17} aria-hidden />编辑内容</button>
         <button type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />卡片详情</button>
-      </div>
-    </NodeToolbar>
-    <article className={`content-canvas-card${selected ? " is-selected" : ""}`}
-      aria-label={`${artifact.title} · ${label}${locked ? " · 已锁定" : ""}`}>
+      </>}>
       {children}
-      <span className="content-card-caption" title={artifact.title}>{artifact.title}</span>
       <div className="content-card-bar">
         <Icon size={17} aria-hidden />
         <h3 title={header}>{header}</h3>
@@ -118,6 +106,5 @@ export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspec
         {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{references} 个引用</span> : null}
         {locked ? <LockSimple className="content-card-locked" size={13} aria-label="已锁定" /> : null}
       </footer>
-    </article>
-  </>;
+  </ArtifactCardFrame>;
 }

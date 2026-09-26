@@ -1149,28 +1149,20 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   if (data.item.agent) return <AgentChatCard data={data} selected={selected} />;
   const artifact = data.item.artifact;
   if (!artifact) return null;
-  if (artifact && (artifact.kind === "IMAGE" || artifact.kind === "VIDEO")) {
-    return <>
-      <Handle id="artifact-input" position={Position.Left} type="target" />
-      <Handle id="artifact-output" position={Position.Right} type="source" />
-      <MediaCanvasCard artifact={artifact} selected={selected} locked={data.item.locked}
-        onInspect={() => data.onInspect(data.item)} onUpload={() => data.onUpload(data.item)}
-        onEdit={focusArtifactEditor}>
-        <NodeResizer isVisible={selected && !data.item.locked} minHeight={MIN_ARTIFACT_CARD_SIZE} minWidth={MIN_ARTIFACT_CARD_SIZE}
-          onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
-      </MediaCanvasCard>
-    </>;
-  }
+  const cardProps = {
+    artifact, selected, locked: data.item.locked,
+    onInspect: () => data.onInspect(data.item), onEdit: focusArtifactEditor,
+    children: <NodeResizer isVisible={selected && !data.item.locked}
+      minHeight={MIN_ARTIFACT_CARD_SIZE} minWidth={MIN_ARTIFACT_CARD_SIZE}
+      onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />,
+  };
   return (
     <>
       <Handle id="artifact-input" position={Position.Left} type="target" />
       <Handle id="artifact-output" position={Position.Right} type="source" />
-      <ContentCanvasCard artifact={artifact} selected={selected} locked={data.item.locked}
-        onInspect={() => data.onInspect(data.item)} onEdit={focusArtifactEditor}>
-        <NodeResizer isVisible={selected && !data.item.locked}
-          minHeight={MIN_ARTIFACT_CARD_SIZE} minWidth={MIN_ARTIFACT_CARD_SIZE}
-          onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
-      </ContentCanvasCard>
+      {artifact.kind === "IMAGE" || artifact.kind === "VIDEO"
+        ? <MediaCanvasCard {...cardProps} onUpload={() => data.onUpload(data.item)} />
+        : <ContentCanvasCard {...cardProps} />}
     </>
   );
 });

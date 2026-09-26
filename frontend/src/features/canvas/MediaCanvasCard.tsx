@@ -1,4 +1,3 @@
-import { NodeToolbar, Position } from "@xyflow/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowsOutSimple, ArrowClockwise, CaretDown, Crop, Cube, DownloadSimple,
@@ -7,9 +6,10 @@ import { ArrowsOutSimple, ArrowClockwise, CaretDown, Crop, Cube, DownloadSimple,
 import { assetContentUrl, assetThumbnailUrl, getMediaDraft, listDirectMediaTasks,
   type Artifact, type Task } from "../../shared/api/client";
 import { CanvasLoadingState } from "./CanvasLoadingState";
+import { ArtifactCardFrame } from "./ArtifactCardFrame";
+import { readContentText } from "./artifactContent";
+import { isMediaTaskRunning, latestMediaTask, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 
-const TASK_POLL_MS = 3000;
-const BUSY_STATUSES = new Set(["PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER"]);
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   PENDING: "等待生成", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
   WAITING_PROVIDER: "正在生成", FAILED: "生成失败", CANCELED: "已取消",
@@ -24,11 +24,6 @@ const EXTENSIONS = [
   { label: "局部擦除", icon: Eraser }, { label: "视角调整", icon: Cube },
 ] as const;
 
-function assetFrom(content: unknown): string | null {
-  if (!content || typeof content !== "object" || !("assetId" in content)) return null;
-  return typeof content.assetId === "string" ? content.assetId : null;
-}
-
 /** The media surface contains only the preview; editing and history live outside its bounds. */
 export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect, onUpload, children }: {
   artifact: Artifact; selected: boolean; locked: boolean; onEdit: () => void;
@@ -42,14 +37,12 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
   const showDraft = artifact.currentVersionId === null || draft.data?.displayMode === "DRAFT";
   const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, artifact.id],
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id), enabled: showDraft,
-    refetchInterval: (query) => query.state.data?.some((task) => BUSY_STATUSES.has(task.status))
-      ? TASK_POLL_MS : false });
-  const latest = tasks.data?.find((task) => BUSY_STATUSES.has(task.status) || task.status === "UNKNOWN"
-    || task.status === "BLOCKED" && task.providerRequestId !== null)
-    ?? tasks.data?.[0];
-  const busy = showDraft && latest && BUSY_STATUSES.has(latest.status);
+    refetchInterval: (query) => query.state.data?.some(isMediaTaskRunning)
+      ? MEDIA_TASK_REFRESH_INTERVAL_MS : false });
+  const latest = latestMediaTask(tasks.data);
+  const busy = showDraft && latest && isMediaTaskRunning(latest);
   const status = showDraft && latest ? TASK_LABELS[latest.status] : undefined;
-  const assetId = showDraft ? null : assetFrom(artifact.currentVersion?.content);
+  const assetId = showDraft ? null : readContentText(artifact.currentVersion?.content, "assetId") || null;
   const content = artifact.currentVersion?.content;
   const parameters = content && typeof content === "object" && "parameters" in content ? content.parameters : null;
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
@@ -64,10 +57,8 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
     return () => document.removeEventListener("pointerdown", close);
   }, [menuOpen]);
 
-  return <>
-    <NodeToolbar isVisible={selected ? undefined : false} position={Position.Top}
-      style={{ top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 6 }}>
-      <div className="media-card-toolbar nodrag nowheel" aria-label="媒体卡片操作">
+  return <ArtifactCardFrame title={artifact.title} kindLabel={isImage ? "图片" : "视频"}
+    selected={selected} locked={locked} toolbarLabel="媒体卡片操作" toolbar={<>
         {isImage ? <>
           <button type="button" disabled title="智能编辑尚未接入"><MagicWand size={17} />智能编辑</button>
           <button type="button" disabled title="深度提取尚未接入"><Stack size={17} />深度提取</button>
@@ -91,12 +82,8 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
         <button type="button" onClick={onInspect} aria-label="卡片详情"><SlidersHorizontal size={17} /></button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
           aria-label={isImage ? "下载图片" : "下载视频"}><DownloadSimple size={19} /></a> : null}
-      </div>
-    </NodeToolbar>
-    <article className={`media-canvas-card ${selected ? "is-selected" : ""}`}
-      aria-label={`${artifact.title} · ${isImage ? "图片" : "视频"}${locked ? " · 已锁定" : ""}`}>
+    </>}>
       {children}
-      <span className="media-card-caption">{artifact.title}</span>
       {assetId ? <MediaPreview key={assetId} assetId={assetId} artifact={artifact} demo={demo} />
         : <div className="media-card-empty">
           {busy ? <CanvasLoadingState label={status ?? "正在生成"} /> : <>
@@ -119,8 +106,7 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
           {tasks.error ? <p className="media-card-error" role="alert">任务状态暂不可用
             <button type="button" className="nodrag" onClick={() => void tasks.refetch()}>重试状态</button></p> : null}
         </div>}
-    </article>
-  </>;
+  </ArtifactCardFrame>;
 }
 
 /** Only thumbnails are fetched until the user explicitly opens or plays the original. */

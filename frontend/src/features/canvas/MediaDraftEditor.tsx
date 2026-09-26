@@ -3,6 +3,8 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useEffect, useId, useRef, useState } from "react";
 import { CanvasLoadingState } from "./CanvasLoadingState";
 import { UnknownTaskAttemptPanel } from "./UnknownTaskAttemptPanel";
+import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
+import { readContentText } from "./artifactContent";
 import { ApiError, assetThumbnailUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
   getMediaDraft, getMediaSettings,
   listArtifactVersions, listArtifacts, listDirectMediaTasks, runMediaDraft, saveMediaDraft,
@@ -10,14 +12,10 @@ import { ApiError, assetThumbnailUrl, cancelQueuedDirectMediaTask, getDirectMedi
 import "./MediaDraftEditor.css";
 
 const AUTOSAVE_DELAY_MS = 650;
-const TASK_REFRESH_INTERVAL_MS = 3000;
 const MAX_PROMPT_LENGTH = 20000;
 const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
 const CONFLICT_STATUS = 409;
-const ACTIVE_TASK_STATUSES: ReadonlySet<Task["status"]> = new Set([
-  "PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN",
-]);
 const TASK_LABELS: Record<Task["status"], string> = {
   PENDING: "等待执行", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
   WAITING_PROVIDER: "正在生成", UNKNOWN: "结果待核实", BLOCKED: "任务受阻",
@@ -42,14 +40,9 @@ function modelName(capability: MediaCapability) {
     ?? capability.settings.diffusionModel ?? capability.adapterId;
 }
 
-function occupiesCard(task: Task) {
-  return ACTIVE_TASK_STATUSES.has(task.status)
-    || task.status === "BLOCKED" && Boolean(task.providerRequestId);
-}
-
 function imageAssetId(content: unknown) {
-  if (!content || typeof content !== "object" || !("assetId" in content)) return null;
-  return typeof content.assetId === "string" && content.assetId.trim() ? content.assetId : null;
+  const value = readContentText(content, "assetId");
+  return value.trim() ? value : null;
 }
 
 /**
@@ -77,12 +70,12 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
   const tasksKey = ["direct-media-tasks", artifact.projectId, artifact.id] as const;
   const directTasks = useQuery({ queryKey: tasksKey,
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id),
-    refetchInterval: TASK_REFRESH_INTERVAL_MS });
-  const latestTask = directTasks.data?.find(occupiesCard) ?? directTasks.data?.[0];
+    refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS });
+  const latestTask = latestMediaTask(directTasks.data);
   const queue = useQuery({
     queryKey: ["direct-media-queue", artifact.projectId, latestTask?.id],
     queryFn: () => getDirectMediaQueueStatus(artifact.projectId, latestTask!.id),
-    enabled: latestTask?.status === "READY", refetchInterval: TASK_REFRESH_INTERVAL_MS,
+    enabled: latestTask?.status === "READY", refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
   });
   const [fields, setFields] = useState<DraftFields | null>(null);
   const fieldsRef = useRef<DraftFields | null>(null);
@@ -260,7 +253,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
   const defaultCapabilityId = settings.data?.defaults.find((item) => item.kind === mediaKind)?.capabilityId;
   const chosenCapability = availableCapabilities.find((item) => item.id === (fields.capabilityId ?? defaultCapabilityId));
   const selectedReference = imageChoices.find((choice) => choice.id === fields.inputImageVersionId);
-  const occupied = latestTask ? occupiesCard(latestTask) : false;
+  const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
   const duration = fields.durationSeconds;
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)

@@ -28,3 +28,14 @@
 ## 浏览器限制
 
 已确认开发服务在 5173 监听；内置浏览器访问 `http://localhost:5173` 返回 `net::ERR_BLOCKED_BY_CLIENT`。未取得实现截图，未完成真实指针、控制台和视觉对照验收。详见 [design-qa.md](../../design-qa.md) 的其他节点增量，视觉结果保持 `blocked`。
+
+## 复用整理（2026-09-26）
+
+按用户要求进一步提取现有重复实现，不增加产品功能或合约：
+
+- `ArtifactCardFrame` 统一媒体/内容卡片的标题、表面、选中样式与浮动工具栏；工作区共用连线端点、尺寸控制与通用回调。删除重复及已无调用方的旧样式。
+- `useArtifactRevision` 统一内容编辑的 CAS 基准、草稿保护、保存/重载和缓存刷新；`ContentEditorFrame` 统一外框、状态、错误提示与保存操作。结构化内容与镜头保留各自的校验和请求内容。
+- `artifactContent` 共用版本字段读取；`mediaTaskState` 共用媒体任务运行/占用判断与当前任务选择。各处不同含义的状态文案保持原样。
+- 最终 7 个相关文件共 64 项 Vitest、`corepack pnpm lint`、`corepack pnpm build`（包含严格 TypeScript 检查）及 `git diff --check` 通过。没有新建重复的内部实现镜像测试，沿用真实调用方覆盖保存冲突、远端更新、幂等重试和卡片操作。
+
+本次未运行全量测试、真实 Provider 或额外浏览器验收；前述视觉验收限制仍存在。

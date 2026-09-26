@@ -1,29 +1,8 @@
 /* Beautiful UI content-bar/source-chip hierarchy, using the canvas media palette. */
 .content-canvas-card {
-  position: relative;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  height: 100%;
   min-height: 0;
-  border: 1.5px solid #b7b7b7;
-  border-radius: 14px;
-  background: #262626;
-  color: #ededed;
-}
-
-.content-canvas-card.is-selected { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
-
-.content-card-caption {
-  position: absolute;
-  top: -24px;
-  left: 2px;
-  max-width: 100%;
-  overflow: hidden;
-  color: #b8b8b8;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .content-card-bar {
@@ -68,4 +47,4 @@
 .content-card-empty > svg { flex-shrink: 0; color: #606060; }
 .content-card-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px; border: 1px solid #454545; border-radius: 999px; background: #333; color: #f3f3f3; font-size: 12px; cursor: pointer; }
 .content-card-empty button:hover { background: #424242; }
-.content-card-empty button:focus-visible, .content-card-toolbar button:focus-visible { outline: 2px solid #eee; outline-offset: 2px; }
+.content-card-empty button:focus-visible { outline: 2px solid #eee; outline-offset: 2px; }

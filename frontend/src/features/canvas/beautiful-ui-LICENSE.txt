@@ -24,10 +24,12 @@ application-provided messages/statuses and approval content, and reused
 CanvasLoadingState. Demo timers, scripted results, reasoning text, automatic
 approval advancement, and simulated progress are omitted.
 
-ContentCanvasCard.tsx and ContentCanvasCard.css adapt content bars, source chips
-and contextual action layout from ContextCards.tsx and SelectionActions.tsx.
-ContentArtifactEditor.css (used by StructuredArtifactEditor and ShotRedoEditor)
-adapts the ChatComposer and PromptBar composer hierarchy. MediaDraftEditor.tsx
+ContentCanvasCard.tsx and ContentCanvasCard.css adapt content bars and source
+chips from ContextCards.tsx. ArtifactCardFrame.tsx and ArtifactCardFrame.css
+share the contextual action layout from SelectionActions.tsx across content
+and media cards. ContentEditorFrame.tsx and ContentArtifactEditor.css (used by
+StructuredArtifactEditor and ShotRedoEditor) share the ChatComposer and
+PromptBar composer hierarchy. MediaDraftEditor.tsx
 and MediaDraftEditor.css adapt reference chips, popovers and compact task rows:
 https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ContextCards.tsx
 https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/SelectionActions.tsx
