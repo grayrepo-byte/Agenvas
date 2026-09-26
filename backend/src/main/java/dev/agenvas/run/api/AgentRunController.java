@@ -42,8 +42,9 @@ public class AgentRunController {
     public AgentRunService.RunPreflight preflight(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
-            @RequestParam UUID agentId) {
-        return runs.preflight(principal.userId(), projectId, agentId);
+            @RequestParam UUID agentId,
+            @RequestParam(required = false) UUID conversationId) {
+        return runs.preflight(principal.userId(), projectId, agentId, conversationId);
     }
 
     /** 按一个 Agent 的所有者范围返回有界历史页和不透明续页游标。 */
@@ -78,7 +79,8 @@ public class AgentRunController {
                 request.selectedItemIds(),
                 request.expectedModelConfigSource(),
                 request.expectedModelConfigVersion(),
-                request.expectedSystemPromptVersion());
+                request.expectedSystemPromptVersion(), request.conversationId(),
+                request.expectedConversationVersion());
         return ResponseEntity.accepted()
                 .header("Idempotency-Replayed", Boolean.toString(result.replayed()))
                 .body(RunResponse.from(result.run()));
@@ -114,6 +116,8 @@ public class AgentRunController {
      * @param expectedModelConfigSource 用户预览的模型配置来源
      * @param expectedModelConfigVersion 用户预览的模型配置版本
      * @param expectedSystemPromptVersion 用户预览的系统规则版本
+     * @param conversationId 持久会话 ID；缺省解析为 Agent 当前会话
+     * @param expectedConversationVersion 用户预览的会话版本；新消息改变时拒绝受理
      */
     public record CreateRunRequest(
             @NotNull UUID agentId,
@@ -123,25 +127,29 @@ public class AgentRunController {
             @Size(max = 20) List<@NotNull UUID> selectedItemIds,
             @Size(max = 80) String expectedModelConfigSource,
             @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion,
-            @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion) {}
+            @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion,
+            UUID conversationId,
+            @jakarta.validation.constraints.PositiveOrZero Long expectedConversationVersion) {}
 
     /** 列表摘要省略完整上下文、策略细节和模型原始消息。
      * @param id Run UUID
      * @param agentInstanceId 发起 Run 的 Agent 卡片
+     * @param conversationId Run 所属持久会话
+     * @param conversationTurn 会话内的单调消息序号
      * @param status 当前运行状态
      * @param instruction 本次固定用户指令
      * @param createdAt Run 创建时间
      * @param updatedAt 最近状态更新时间
      * @param completedAt 进入终态的时间；仍在运行时为空
      */
-    public record RunSummary(UUID id, UUID agentInstanceId, AgentRun.Status status,
+    public record RunSummary(UUID id, UUID agentInstanceId, UUID conversationId, long conversationTurn, AgentRun.Status status,
             String instruction, Instant createdAt, Instant updatedAt, Instant completedAt) {
         /** 提取列表展示所需字段，不复制模型消息或策略快照。
          * @param run 已授权的领域 Run
          * @return 列表摘要
          */
         public static RunSummary from(AgentRun run) {
-            return new RunSummary(run.id(), run.agentInstanceId(), run.status(),
+            return new RunSummary(run.id(), run.agentInstanceId(), run.conversationId(), run.conversationTurn(), run.status(),
                     run.instruction(), run.createdAt(), run.updatedAt(), run.completedAt());
         }
     }
@@ -160,6 +168,8 @@ public class AgentRunController {
      * @param id Run ID
      * @param projectId 所属项目
      * @param agentInstanceId 发起运行的 Agent
+     * @param conversationId Run 所属持久会话
+     * @param conversationTurn 会话内的单调消息序号
      * @param status 当前编排状态
      * @param instruction 固定用户指令
      * @param contextSnapshot 创建时固定的项目、绑定和选择快照
@@ -175,6 +185,8 @@ public class AgentRunController {
             UUID id,
             UUID projectId,
             UUID agentInstanceId,
+            UUID conversationId,
+            long conversationTurn,
             AgentRun.Status status,
             String instruction,
             JsonNode contextSnapshot,
@@ -192,6 +204,8 @@ public class AgentRunController {
                     run.id(),
                     run.projectId(),
                     run.agentInstanceId(),
+                    run.conversationId(),
+                    run.conversationTurn(),
                     run.status(),
                     run.instruction(),
                     run.contextSnapshot(),

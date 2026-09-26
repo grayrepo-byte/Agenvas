@@ -745,6 +745,69 @@ export interface paths {
         patch: operations["updateAgent"];
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/agents/{agentId}/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        /** 分页列出 Agent 持久会话及当前选择 */
+        get: operations["listAgentConversations"];
+        put?: never;
+        /** 幂等创建并选择空会话，不取消活动 Run */
+        post: operations["createAgentConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 选择现有会话，不修改或取消其 Run */
+        post: operations["selectAgentConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        /** 按会话消息序号倒序读取一页 Run */
+        get: operations["listConversationRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/runs": {
         parameters: {
             query?: never;
@@ -774,7 +837,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 运行前查看模型、精确输入和服务端限额 */
+        /**
+         * 运行前查看模型、精确输入和服务端限额
+         * @description 在一致性只读快照中核验项目没有活动 Run，再预览会话历史；项目已有活动 Run 时返回 409 ACTIVE_RUN_EXISTS。
+         */
         get: operations["getRunPreflight"];
         put?: never;
         post?: never;
@@ -1886,11 +1952,44 @@ export interface components {
         AgentList: {
             items: components["schemas"]["Agent"][];
         };
+        AgentConversation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            agentInstanceId: string;
+            title: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: int64 */
+            turnCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AgentConversationList: {
+            items: components["schemas"]["AgentConversation"][];
+            nextCursor?: string | null;
+            /** Format: uuid */
+            currentConversationId: string | null;
+        };
         /** @enum {string} */
         AgentRunStatus: "QUEUED" | "RUNNING" | "WAITING_APPROVAL" | "WAITING_TASKS" | "BLOCKED" | "CANCEL_REQUESTED" | "CANCELED" | "FAILED" | "SUCCEEDED";
         CreateRunRequest: {
             /** Format: uuid */
             agentId: string;
+            /**
+             * Format: uuid
+             * @description 必须属于此项目与 Agent；缺省使用当前会话，没有则同事务创建。
+             */
+            conversationId?: string;
+            /**
+             * Format: int64
+             * @description 运行前预览的会话历史版本；已有新消息时返回 CONVERSATION_VERSION_CONFLICT。
+             */
+            expectedConversationVersion?: number;
             instruction: string;
             /** Format: int64 */
             expectedAgentVersion?: number;
@@ -1917,6 +2016,17 @@ export interface components {
             profileVersion: number;
             /** Format: uuid */
             outputGroupId: string;
+            /**
+             * Format: uuid
+             * @description 新 Run 冻结的会话作用域；升级前旧快照保持原值，可能没有此字段
+             */
+            conversationId?: string;
+            /**
+             * Format: int64
+             * @description 创建 Run 前已受理的会话消息水位；仅终态历史可进入记忆
+             */
+            conversationHistoryThroughTurn?: number;
+            conversationMemory?: components["schemas"]["ConversationMemory"];
             bindings: components["schemas"]["RunInputSnapshot"][];
             /** @description 创建 Run 时由服务端核对并固定的画布选择；不扩大工具权限 */
             selection?: {
@@ -1933,6 +2043,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @description 创建 Run 时冻结的公开用户指令、assistant 回复与已提交业务动作摘要；不包含私有推理、原始协议、工具参数或凭证，也不授予额外权限 */
+        ConversationMemory: {
+            /** @description 按时间正序保留首轮及最近轮次；所有 content 合计最多 32000 个 Unicode 码点 */
+            entries: {
+                /** @enum {string} */
+                role: "USER" | "ASSISTANT";
+                content: string;
+            }[];
+            truncated: boolean;
+            priorRunCount: number;
+        };
         RunInputSnapshot: {
             /** Format: uuid */
             artifactId: string;
@@ -1940,6 +2061,12 @@ export interface components {
             selectedVersionId: string;
             /** @constant */
             bindingType: "INPUT";
+            kind?: components["schemas"]["ArtifactKind"];
+            title?: string;
+            /** Format: int64 */
+            expectedVersion?: number;
+            /** @constant */
+            source?: "CONVERSATION_OUTPUT";
         };
         RunPreflightBinding: {
             /** Format: uuid */
@@ -1956,6 +2083,15 @@ export interface components {
             agentVersion: number;
             agentName: string;
             agentInstruction: string;
+            /** Format: uuid */
+            conversationId: string | null;
+            /** Format: int64 */
+            conversationVersion: number | null;
+            /** Format: int64 */
+            conversationTurnCount: number;
+            inheritedBindingCount: number;
+            /** @description 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。 */
+            memoryTruncated: boolean;
             bindings: components["schemas"]["RunPreflightBinding"][];
             modelAvailable: boolean;
             providerAdapter: string | null;
@@ -1987,6 +2123,10 @@ export interface components {
             projectId: string;
             /** Format: uuid */
             agentInstanceId: string;
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: int64 */
+            conversationTurn: number;
             status: components["schemas"]["AgentRunStatus"];
             instruction: string;
             contextSnapshot: components["schemas"]["RunContextSnapshot"];
@@ -2007,6 +2147,10 @@ export interface components {
             id: string;
             /** Format: uuid */
             agentInstanceId: string;
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: int64 */
+            conversationTurn: number;
             status: components["schemas"]["AgentRunStatus"];
             instruction: string;
             /** Format: date-time */
@@ -3977,6 +4121,120 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listAgentConversations: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按更新时间倒序排列的会话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentConversationList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAgentConversation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已创建或同键重放的会话 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentConversation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    selectAgentConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前选择的会话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentConversation"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listConversationRuns: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 同一会话的 Run 摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listAgentRuns: {
         parameters: {
             query: {
@@ -4043,6 +4301,8 @@ export interface operations {
     getRunPreflight: {
         parameters: {
             query: {
+                /** @description 缺省预览 Agent 当前会话；新 Agent 可以没有会话。 */
+                conversationId?: string;
                 agentId: string;
             };
             header?: never;
@@ -4064,6 +4324,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getRun: {

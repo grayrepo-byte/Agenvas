@@ -38,6 +38,9 @@ public class ArtifactService {
     /** 手工创建产物的幂等命令保留时长。 */
     private static final Duration CREATE_KEY_RETENTION = Duration.ofHours(24);
 
+    /** 与每次 Run 的精确输入上限一致；显式输入在合并时优先。 */
+    private static final int MAX_CONVERSATION_INPUTS = 40;
+
     /** 确认项目归属、活跃状态和资源可见性。 */
     private final ProjectService projects;
     /** 保存稳定产物身份、版本和当前选择。 */
@@ -487,7 +490,27 @@ public class ArtifactService {
                 .orElseThrow(this::notFound);
     }
 
-    /** 限制 Agent 只能读取创建 Run 时显式绑定的版本或本轮自身产出的版本。 */
+    /**
+     * 将同会话已终结 Run 的当前选用输出投影为下一轮的精确输入。
+     * 调用方须先按会话筛选历史 Run；此方法不接受来自模型或客户端的 Run 集合。
+     * 之后任何人工修订都会由既有版本/CAS 校验拒绝，历史文字本身不授予修改权。
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationInput> conversationInputs(UUID ownerId, UUID projectId,
+            List<UUID> authorizedPriorRunIds) {
+        projects.get(ownerId, projectId);
+        return artifacts.listSelectedRunOutputs(ownerId, projectId,
+                authorizedPriorRunIds, MAX_CONVERSATION_INPUTS).stream()
+                .map(artifact -> new ConversationInput(artifact.id(), artifact.currentVersionId(),
+                        artifact.kind(), artifact.title(), artifact.version()))
+                .toList();
+    }
+
+    /** 会话继承的不可变版本及冻结时的 CAS 版本；不包含媒体字节。 */
+    public record ConversationInput(UUID artifactId, UUID selectedVersionId,
+            Artifact.Kind kind, String title, Long expectedVersion) {}
+
+    /** 限制 Agent 只能读取创建 Run 时绑定的精确版本（含会话继承）或本轮输出。 */
     @Transactional(readOnly = true)
     public ArtifactVersion requireAgentVisibleVersion(UUID ownerId, UUID projectId,
             UUID runId, UUID versionId, JsonNode contextSnapshot) {

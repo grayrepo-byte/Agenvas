@@ -982,6 +982,106 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/agents/{agentId}/conversations:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listAgentConversations
+      summary: 分页列出 Agent 持久会话及当前选择
+      tags: [Agents]
+      parameters:
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: 按更新时间倒序排列的会话
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentConversationList"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createAgentConversation
+      summary: 幂等创建并选择空会话，不取消活动 Run
+      tags: [Agents]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 200}
+      responses:
+        "201":
+          description: 已创建或同键重放的会话
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentConversation"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/select:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: conversationId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: selectAgentConversation
+      summary: 选择现有会话，不修改或取消其 Run
+      tags: [Agents]
+      responses:
+        "200":
+          description: 当前选择的会话
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentConversation"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/runs:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: conversationId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listConversationRuns
+      summary: 按会话消息序号倒序读取一页 Run
+      tags: [Runs]
+      parameters:
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: 同一会话的 Run 摘要
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentRunList"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/runs:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1043,8 +1143,13 @@ paths:
     get:
       operationId: getRunPreflight
       summary: 运行前查看模型、精确输入和服务端限额
+      description: 在一致性只读快照中核验项目没有活动 Run，再预览会话历史；项目已有活动 Run 时返回 409 ACTIVE_RUN_EXISTS。
       tags: [Runs]
       parameters:
+        - name: conversationId
+          in: query
+          description: 缺省预览 Agent 当前会话；新 Agent 可以没有会话。
+          schema: {type: string, format: uuid}
         - name: agentId
           in: query
           required: true
@@ -1057,6 +1162,7 @@ paths:
               schema: {$ref: "#/components/schemas/RunPreflight"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/runs/{runId}:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2387,6 +2493,29 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/Agent"}
+    AgentConversation:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, agentInstanceId, title, version, turnCount, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        agentInstanceId: {type: string, format: uuid}
+        title: {type: string}
+        version: {type: integer, format: int64, minimum: 0}
+        turnCount: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    AgentConversationList:
+      type: object
+      additionalProperties: false
+      required: [items, currentConversationId]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/AgentConversation"}
+        nextCursor: {type: [string, "null"]}
+        currentConversationId: {type: [string, "null"], format: uuid}
     AgentRunStatus:
       type: string
       enum: [QUEUED, RUNNING, WAITING_APPROVAL, WAITING_TASKS, BLOCKED, CANCEL_REQUESTED, CANCELED, FAILED, SUCCEEDED]
@@ -2396,6 +2525,15 @@ components:
       required: [agentId, instruction]
       properties:
         agentId: {type: string, format: uuid}
+        conversationId:
+          type: string
+          format: uuid
+          description: 必须属于此项目与 Agent；缺省使用当前会话，没有则同事务创建。
+        expectedConversationVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 运行前预览的会话历史版本；已有新消息时返回 CONVERSATION_VERSION_CONFLICT。
         instruction: {type: string, minLength: 1, maxLength: 20000}
         expectedAgentVersion: {type: integer, format: int64, minimum: 0}
         expectedModelConfigSource:
@@ -2430,6 +2568,16 @@ components:
         profileKey: {type: string}
         profileVersion: {type: integer, minimum: 1}
         outputGroupId: {type: string, format: uuid}
+        conversationId:
+          type: string
+          format: uuid
+          description: 新 Run 冻结的会话作用域；升级前旧快照保持原值，可能没有此字段
+        conversationHistoryThroughTurn:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 创建 Run 前已受理的会话消息水位；仅终态历史可进入记忆
+        conversationMemory: {$ref: "#/components/schemas/ConversationMemory"}
         bindings:
           type: array
           items: {$ref: "#/components/schemas/RunInputSnapshot"}
@@ -2447,6 +2595,25 @@ components:
               subjectId: {type: string, format: uuid}
               versionId: {type: string, format: uuid}
               kind: {$ref: "#/components/schemas/ArtifactKind"}
+    ConversationMemory:
+      type: object
+      additionalProperties: false
+      description: 创建 Run 时冻结的公开用户指令、assistant 回复与已提交业务动作摘要；不包含私有推理、原始协议、工具参数或凭证，也不授予额外权限
+      required: [entries, truncated, priorRunCount]
+      properties:
+        entries:
+          type: array
+          maxItems: 20
+          description: 按时间正序保留首轮及最近轮次；所有 content 合计最多 32000 个 Unicode 码点
+          items:
+            type: object
+            additionalProperties: false
+            required: [role, content]
+            properties:
+              role: {type: string, enum: [USER, ASSISTANT]}
+              content: {type: string, maxLength: 32000}
+        truncated: {type: boolean}
+        priorRunCount: {type: integer, minimum: 0}
     RunInputSnapshot:
       type: object
       additionalProperties: false
@@ -2455,6 +2622,10 @@ components:
         artifactId: {type: string, format: uuid}
         selectedVersionId: {type: string, format: uuid}
         bindingType: {type: string, const: INPUT}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        title: {type: string}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        source: {type: string, const: CONVERSATION_OUTPUT}
     RunPreflightBinding:
       type: object
       additionalProperties: false
@@ -2467,12 +2638,17 @@ components:
     RunPreflight:
       type: object
       additionalProperties: false
-      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot]
+      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, inheritedBindingCount, memoryTruncated]
       properties:
         agentId: {type: string, format: uuid}
         agentVersion: {type: integer, format: int64, minimum: 0}
         agentName: {type: string}
         agentInstruction: {type: string}
+        conversationId: {type: [string, "null"], format: uuid}
+        conversationVersion: {type: [integer, "null"], format: int64, minimum: 0}
+        conversationTurnCount: {type: integer, format: int64, minimum: 0}
+        inheritedBindingCount: {type: integer, minimum: 0, maximum: 40}
+        memoryTruncated: {type: boolean, description: 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。}
         bindings:
           type: array
           items: {$ref: "#/components/schemas/RunPreflightBinding"}
@@ -2501,11 +2677,13 @@ components:
     AgentRun:
       type: object
       additionalProperties: false
-      required: [id, projectId, agentInstanceId, status, instruction, contextSnapshot, policySnapshot, profileVersion, nextStepIndex, version, createdAt, updatedAt]
+      required: [id, projectId, agentInstanceId, conversationId, conversationTurn, status, instruction, contextSnapshot, policySnapshot, profileVersion, nextStepIndex, version, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
         agentInstanceId: {type: string, format: uuid}
+        conversationId: {type: string, format: uuid}
+        conversationTurn: {type: integer, format: int64, minimum: 1}
         status: {$ref: "#/components/schemas/AgentRunStatus"}
         instruction: {type: string}
         contextSnapshot: {$ref: "#/components/schemas/RunContextSnapshot"}
@@ -2519,10 +2697,12 @@ components:
     AgentRunSummary:
       type: object
       additionalProperties: false
-      required: [id, agentInstanceId, status, instruction, createdAt, updatedAt]
+      required: [id, agentInstanceId, conversationId, conversationTurn, status, instruction, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         agentInstanceId: {type: string, format: uuid}
+        conversationId: {type: string, format: uuid}
+        conversationTurn: {type: integer, format: int64, minimum: 1}
         status: {$ref: "#/components/schemas/AgentRunStatus"}
         instruction: {type: string}
         createdAt: {type: string, format: date-time}

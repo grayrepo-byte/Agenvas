@@ -69,6 +69,18 @@ public class ProjectService {
         return project;
     }
 
+    /** 只读预检使用同一数据库快照检查活动槽位；确认受理仍须调用锁定版本。 */
+    @Transactional(readOnly = true)
+    public void requireRunSlotAvailableSnapshot(UUID ownerId, UUID projectId) {
+        requireActiveProject(ownerId, projectId);
+        ProjectRepository.SnapshotAnchor snapshot = projects.findSnapshotAnchor(ownerId, projectId)
+                .orElseThrow(this::notFound);
+        if (snapshot.activeRunId() != null) {
+            throw new ApiProblemException(HttpStatus.CONFLICT, "ACTIVE_RUN_EXISTS",
+                    "项目已有活动运行", "请先完成或取消当前运行，再启动新的运行。", false);
+        }
+    }
+
     /** 创建 Run 前锁定项目行；归档项目或已有活动 Run 时拒绝占槽。 */
     @Transactional
     public void requireAvailableRunSlot(UUID ownerId, UUID projectId) {

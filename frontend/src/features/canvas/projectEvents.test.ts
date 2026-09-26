@@ -86,6 +86,25 @@ function snapshot(seq: number): ProjectSnapshot {
 }
 
 describe("project event subscription", () => {
+  it("delivers conversation selection events at the same aggregate version without opening another stream", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const open = vi.fn(() => stream);
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, {
+      open, loadSnapshot: async () => snapshot(2),
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout,
+    });
+    stream.emit({ ...event(1, 0), type: "agent.conversation.changed",
+      payload: { agentId: "agent-1", conversationId: aggregateId, currentConversationId: aggregateId } });
+    stream.emit({ ...event(2, 0), type: "agent.conversation.changed",
+      payload: { agentId: "agent-1", conversationId: aggregateId, currentConversationId: aggregateId } });
+    expect(changes.map((value) => value.seq)).toEqual([1, 2]);
+    expect(open).toHaveBeenCalledOnce();
+    stop();
+  });
+
   it("delivers each immutable usage entry even when the Run has a newer version", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

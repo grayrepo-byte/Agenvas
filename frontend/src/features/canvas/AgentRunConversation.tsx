@@ -38,7 +38,7 @@ function stepIndex(task: Task) {
 /** Render only committed public text and action summaries, never arbitrary Task JSON or model traces. */
 export function AgentRunConversation({ projectId, run, active }: {
   projectId: string;
-  run: Pick<AgentRun, "id" | "status" | "instruction" | "createdAt">;
+  run: Pick<AgentRun, "id" | "status" | "instruction" | "createdAt"> & Partial<Pick<AgentRun, "conversationTurn">>;
   active: boolean;
 }) {
   const tasks = useQuery({ queryKey: ["run-history-tasks", projectId, run.id],
@@ -53,7 +53,7 @@ export function AgentRunConversation({ projectId, run, active }: {
   const unknownTasks = visibleTasks.filter((task) => task.status === "UNKNOWN");
 
   return <section aria-label="任务对话" className="agent-run-conversation">
-    <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString()}</time> · 独立任务</p>
+    <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString()}</time>{run.conversationTurn ? ` · 第 ${run.conversationTurn} 轮` : ""}</p>
     <AgentChatMessage role="user">{run.instruction}</AgentChatMessage>
     {tasks.isPending || actions.isPending ? <CanvasLoadingState compact label="正在读取任务消息…" /> : null}
     {tasks.error ? <div className="agent-chat-error" role="alert">任务消息读取失败。<button className="node-action" onClick={() => void tasks.refetch()} type="button">重试消息</button></div> : null}

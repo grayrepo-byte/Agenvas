@@ -79,6 +79,10 @@ public interface ArtifactRepository {
     /** 列出所有者授权项目的产物身份，供一致性清单构建使用。 */
     List<Artifact> listProjectArtifacts(UUID ownerId, UUID projectId);
 
+    /** 返回已授权历史 Run 仍被当前选用的非人工输出，供同会话下一轮冻结精确输入。 */
+    List<Artifact> listSelectedRunOutputs(UUID ownerId, UUID projectId,
+            List<UUID> authorizedRunIds, int limit);
+
     /** 一次读取项目全部不可变版本，避免逐版本查询引用产生 N+1。 */
     List<ArtifactVersion> listProjectVersions(UUID projectId);
 

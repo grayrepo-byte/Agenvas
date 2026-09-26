@@ -426,6 +426,29 @@ public class JdbcArtifactRepository implements ArtifactRepository {
                 .query(ARTIFACT_MAPPER).list();
     }
 
+    /** 人工新版本和其他会话版本不再自动继承，避免会话记忆扩大修改权限。 */
+    @Override
+    public List<Artifact> listSelectedRunOutputs(UUID ownerId, UUID projectId,
+            List<UUID> authorizedRunIds, int limit) {
+        if (authorizedRunIds.isEmpty()) return List.of();
+        return jdbcClient.sql("""
+                        select a.id, a.project_id, a.kind, a.title, a.current_version_id,
+                               a.archived_at, a.version, a.created_at, a.updated_at
+                        from artifact a
+                        join project p on p.id = a.project_id
+                        join artifact_version v on v.project_id = a.project_id
+                            and v.artifact_id = a.id and v.id = a.current_version_id
+                        where a.project_id = :projectId and p.owner_id = :ownerId
+                            and a.archived_at is null and v.created_by_kind <> 'USER'
+                            and v.run_id in (:runIds)
+                        order by v.created_at desc, v.id desc
+                        limit :limit
+                        """)
+                .param("ownerId", ownerId).param("projectId", projectId)
+                .param("runIds", authorizedRunIds).param("limit", limit)
+                .query(ARTIFACT_MAPPER).list();
+    }
+
     /** 为导出清单按产物和版本顺序读取项目正文；调用方负责白名单脱敏。 */
     @Override
     public List<ArtifactVersion> listProjectVersions(UUID projectId) {

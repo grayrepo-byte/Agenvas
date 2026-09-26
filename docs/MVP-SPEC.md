@@ -47,7 +47,7 @@
 
 ### 1.2 核心交互对象
 
-画布上必须能看到真正可操作的 **Agent 卡片**。卡片本身呈现黑色 AI 对话界面，包含本次任务输入、公开回复、业务动作、状态和停止入口；输入绑定、长期指令、输出区域与历史记录仍可访问。每次发送并确认开始对应独立 AgentRun，不承诺跨任务对话记忆。
+画布上必须能看到真正可操作的 **Agent 卡片**。卡片本身呈现黑色 AI 对话界面，包含本次任务输入、公开回复、业务动作、状态和停止入口；输入绑定、长期指令、输出区域与历史记录仍可访问。一个持久 Agent 会话承载多次交流；每次发送在同一会话中创建 AgentRun 并继承该会话的已发生上下文，只有“新建会话”开始新的记忆。
 
 聊天侧栏是辅助操作界面，不得以“只有侧栏聊天 + 被动图片节点”替代画布中的 Agent。
 
@@ -108,7 +108,8 @@ P2：多个 Agent 并发协调、多人协作、插件市场、完整剪辑时�
 | CanvasItem | Artifact 或 AgentInstance 的空间展示 | 不存业务执行状态的唯一真相 |
 | AgentProfile | 内置系统提示词、允许工具、Skill 和策略版本 | 不存某次运行进度 |
 | AgentInstance | 画布里的 Agent 配置实例和输入绑定 | 不等于一个永久运行的线程 |
-| AgentRun | 一次用户指令的执行生命周期 | 不等于一次 HTTP 请求 |
+| AgentConversation | 一个 Agent 的连续交流与记忆边界 | 不等于登录会话或整个项目 |
+| AgentRun | 会话中一次用户指令的执行生命周期 | 不等于整个会话或一次 HTTP 请求 |
 | ExecutionPlan | 经验证的步骤、依赖、输入与影响范围 | 不等于素材引用关系 |
 | Task | 可恢复的本地或外部执行单元 | 不等于前端 loading 状态 |
 | Approval | 用户对具体计划版本与额度的授权 | 不是模型自己输出的同意 |
@@ -298,7 +299,7 @@ Artifact 卡片：`TEXT`、`IMAGE`、`VIDEO`、`CHARACTER`、`SCENE`、`SHOT`。
 
 2026-09-26 确认：Agent 卡片采用黑色 AI 对话界面，顶部提供“对话 / 历史 / 设置”，中间呈现一次任务的消息、动作和状态，底部为本次任务输入框及发送/停止入口。卡片名称、输入引用数量、输出区域入口保持可见；长期配置指令、绑定输入与布局操作在设置中管理。Beautiful UI 的消息、任务行与审批卡片示例仅负责呈现，运行状态与结果仍来自持久记录。
 
-发送先在卡片内展示运行前确认：本次任务、模型及配置版本、系统提示词版本、精确输入引用、选中范围、调用与媒体限额。只有点击“确认开始规划”才创建 AgentRun；修改输入或发现配置版本变化须重新检查。该确认仅授权本次规划调用，不批准后续付费媒体计划。每次发送并确认产生一个独立 AgentRun；历史页只读查看既有任务，不把历史消息自动拼入下次任务，也不引入新的跨任务会话实体。同项目仍只允许一个活动 AgentRun，其他 Agent 须等待该槽位释放。
+发送先在卡片内展示运行前确认：本次消息、所属会话及已发生轮次、模型及配置版本、系统提示词版本、精确输入引用（含会话继承产物）、选中范围、调用与媒体限额。只有点击“确认开始规划”才创建 AgentRun；修改输入、切换会话或发现配置/会话版本变化须重新检查。该确认仅授权本次规划调用，不批准后续付费媒体计划。同一 AgentConversation 中每次发送并确认创建一条有序 AgentRun，后续消息使用本会话已提交的上下文；新建会话保留旧记录，但不继承旧会话的消息或隐式产物输入。会话列表支持切换后继续交流，当前会话由服务端保存并在刷新后恢复。新建或切换不取消正在运行的任务，运行中的会话提供返回入口。同项目仍只允许一个活动 AgentRun，其他 Agent 须等待该槽位释放。
 
 对话只展示用户已提交指令、成功模型回合持久化的公开 `assistantText`、已提交工具执行的公开业务摘要及媒体 Task 状态。没有公开文本时不补写假回复；加载提示不伪装成模型私有思考，不把待审批提案显示成已生成媒体。公开动作按模型回合归属展示，可查看工具名与完成时间；不展开原始 Prompt、模型协议消息、工具参数或完整结果。
 
@@ -374,9 +375,10 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 | `artifact_version` | id、project_id、artifact_id、version_no、schema_version、content_json、input_refs_json、created_by_kind、run_id、created_at |
 | `artifact_relation` | id、project_id、source_artifact_id、target_artifact_id、relation_type、created_at |
 | `canvas_item` | id、project_id、subject_type、subject_id、x、y、width、height、z_index、group_id、locked、version |
-| `agent_instance` | id、project_id、profile_key、profile_version、name、instruction、output_group_id、version |
+| `agent_instance` | id、project_id、profile_key、profile_version、name、instruction、output_group_id、current_conversation_id、version |
+| `agent_conversation` | id、project_id、agent_instance_id、title、version、turn_count、timestamps |
 | `agent_binding` | id、project_id、agent_instance_id、artifact_id、selected_version_id、binding_type |
-| `agent_run` | id、project_id、agent_instance_id、user_id、status、instruction、context_snapshot_json、policy_snapshot_json、profile_version、next_step_index、version、timestamps |
+| `agent_run` | id、project_id、agent_instance_id、conversation_id、conversation_turn、user_id、status、instruction、context_snapshot_json、policy_snapshot_json、profile_version、next_step_index、version、timestamps |
 | `agent_message` | id、run_id、seq、role、content_json、provider_metadata_json、created_at；保留协议所需工具关联信息 |
 | `agent_step` | id、run_id、step_index、status、request_hash、response_json、model_id、token_usage_json、lease_epoch、timestamps |
 | `tool_execution` | id、run_id、step_index、tool_call_id、tool_name、argument_hash、status、result_json、command_id、timestamps |
@@ -399,6 +401,7 @@ AgentProfile 与 Skill 的 P0 定义放在版本化配置文件，不额外做�
 | 对象 | 必须约束 |
 |---|---|
 | 内容版本 | `UNIQUE(artifact_id, version_no)`；内容版本写入后不可原地修改 |
+| 会话轮次 | `UNIQUE(conversation_id, conversation_turn)`；会话、Agent 与 Run 的项目归属由复合外键约束 |
 | 工具执行 | `UNIQUE(run_id, step_index, tool_call_id)` |
 | 计划 | `UNIQUE(run_id, revision)` |
 | 计划任务 | `UNIQUE(plan_id, step_key, attempt_no)`，非计划任务采用独立命令键 |
@@ -495,7 +498,11 @@ UI 在 WAITING_* 状态不显示虚假的“模型正在思考”。
 
 ### 8.5 上下文组装
 
-顺序：内置系统规则 → 项目创作说明 → 当前 Agent 指令 → 显式输入绑定 → 当前选中对象 → 相关一跳引用 → 本 Run 近期消息 → 本 Run 较早消息的必要摘要。卡片中的历史对话只用于查看，不会自动加入新 Run 上下文；复用旧产物仍须通过明确输入绑定和当前权限检查。
+顺序：内置系统规则 → 项目创作说明 → 当前 Agent 指令 → 精确输入绑定 → 当前选中对象 → 本会话已发生的公开交流与动作 → 当前用户消息 → 本 Run 后续模型/工具回合。创建 Run 时在项目与会话事务边界内冻结历史；Worker 只读取该快照，不因后来新消息或晚到结果改写本次输入。
+
+会话历史只包含同项目、同 Agent、同会话的终态 Run 用户消息、已提交公开回复及业务动作/状态；不继承私有推理、供应商协议元数据、原始工具参数或旧审批授权。当前投影最多 20 条历史消息、32,000 Unicode 字符，为本次工具回合保留空间；长会话保留早期背景与近期交流并显式标记截断，原始会话记录仍可完整分页读取。新建会话没有旧消息记忆，Agent 长期配置和用户显式绑定仍保留。
+
+同会话前序 Run 的产物，只有当前选用版本仍来自这些 Run 且非人工来源时，才能自动合并为精确输入；显式绑定优先，总输入上限不增加。绑定固定版本 ID 与 expectedVersion，后续人工修改仍触发既有 scope/CAS 检查。其他会话或其他 Agent 的产物不能因共用项目或输出分组而取得权限。详见 [ADR 0010](adr/0010-persistent-agent-conversations.md)。
 
 读取素材是按需分页，不把整张大画布 JSON 或全部原图塞进 Prompt。模型具有视觉能力且任务需要时，才传引用图片的受控预览。
 
@@ -864,7 +871,10 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 | POST `/projects/{id}/agents` | 添加内置 Agent 实例 |
 | PATCH `/projects/{id}/agents/{agentId}` | 修改指令/绑定/名称 |
 | GET `/projects/{id}/runs/preflight?agentId=...` | 运行前检查模型、版本、绑定输入与本轮限额；不创建 Run |
-| POST `/projects/{id}/runs` | 用户确认运行范围后创建独立 Run，202 + runId |
+| GET / POST `/projects/{id}/agents/{agentId}/conversations` | 分页会话列表（含当前会话）/幂等新建空会话 |
+| POST `/projects/{id}/agents/{agentId}/conversations/{conversationId}/select` | 保存当前会话选择，不取消任务 |
+| GET `/projects/{id}/agents/{agentId}/conversations/{conversationId}/runs` | 分页读取会话内的有序运行摘要 |
+| POST `/projects/{id}/runs` | 在指定/当前会话中创建 Run，固定历史并校验会话版本，202 + runId |
 | GET `/projects/{id}/runs?agentId=...` | 按 Agent 游标分页的运行摘要；不含模型私有消息 |
 | GET `/projects/{id}/runs/{runId}` | Run、输入快照与策略快照 |
 | GET `/projects/{id}/runs/{runId}/actions` | 最多 40 条已提交工具执行的公开业务摘要；不返回模型消息、参数或完整结果 |
@@ -1164,7 +1174,7 @@ Infrastructure：MyBatis、HTTP、文件系统、Spring AI、FFmpeg 等具体实
 
 ### 20.5 Spring AI 集成
 
-所有 ChatClient 构建与 Provider 配置集中管理；不要在 Controller 中临时 new 模型实例。每 Run 使用独立上下文，不在共享 Bean 里存放可变的 currentProjectId/currentUserId。
+所有 ChatClient 构建与 Provider 配置集中管理；不要在 Controller 中临时 new 模型实例。每 Run 使用创建时冻结的会话上下文快照，不在共享 Bean 里存放可变的 currentProjectId/currentUserId 或会话记忆。
 
 确保使用所选 Boot/AI 版本的公开 API。不可复制其他版本教程的内部类，再靠排除依赖掩盖冲突。
 

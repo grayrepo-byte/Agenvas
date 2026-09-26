@@ -41,6 +41,14 @@ public interface AgentRunRepository {
     List<AgentRun> list(UUID ownerId, UUID projectId, UUID agentId,
             Instant beforeCreatedAt, UUID beforeId, int limit);
 
+    /** 同一会话按单调消息序号倒序分页。 */
+    List<AgentRun> listConversation(UUID ownerId, UUID projectId, UUID agentId,
+            UUID conversationId, Long beforeTurn, int limit);
+
+    /** 保留首轮与最近终态 Run，按会话序号正序，供冻结有界公开记忆。 */
+    List<UUID> contextRunIds(UUID projectId, UUID conversationId, long throughTurn, int limit);
+    long contextRunCount(UUID projectId, UUID conversationId, long throughTurn);
+
     /** 状态转换前在所有者和项目边界内锁定 Run。 */
     Optional<AgentRun> findForUpdate(UUID ownerId, UUID projectId, UUID runId);
 

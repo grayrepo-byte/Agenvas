@@ -189,10 +189,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         if (event.type === "project.changed") {
           void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
         }
-        if (event.type === "task.status.changed" || event.type === "agent.run.changed" ||
+        if (event.type === "task.status.changed" || event.type === "agent.run.changed" || event.type === "agent.conversation.changed" ||
             event.type.startsWith("execution.plan.")) {
           void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["agent-conversations", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["conversation-runs", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
@@ -235,6 +237,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         // The snapshot contains the current workspace, but not historical panels or lists.
         // A missed event may have changed any of them while the stream was unavailable.
         void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["agent-conversations", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["conversation-runs", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });

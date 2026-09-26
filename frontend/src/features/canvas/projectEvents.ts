@@ -8,6 +8,7 @@ const supportedTypes = [
   "asset.ready",
   "canvas.items.changed",
   "agent.instance.changed",
+  "agent.conversation.changed",
   "agent.run.changed",
   "llm.turn.requested",
   "llm.turn.recorded",

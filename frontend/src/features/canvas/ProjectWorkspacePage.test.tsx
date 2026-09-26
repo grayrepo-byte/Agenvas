@@ -39,6 +39,12 @@ describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     useCanvasStore.setState({ selectedIds: [] });
     server.use(
+      http.get("/api/v1/projects/:projectId/agents/:agentId/conversations", ({ params }) => HttpResponse.json({
+        items: [{ id: `conversation-${params.agentId}`, projectId: params.projectId, agentInstanceId: params.agentId,
+          title: "之前的创作", version: 0, turnCount: 0, createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z" }],
+        currentConversationId: `conversation-${params.agentId}`, nextCursor: null,
+      })),
+      http.get("/api/v1/projects/:projectId/agents/:agentId/conversations/:conversationId/runs", () => HttpResponse.json({ items: [], nextCursor: null })),
       http.get("/api/v1/projects/:projectId/runs", () => HttpResponse.json({ items: [] })),
       http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/runs/:runId/actions", () => HttpResponse.json([])),
@@ -271,6 +277,8 @@ describe("ProjectWorkspacePage", () => {
       expect(sources).toHaveLength(1);
       expect(sources[0]?.closed).toBe(false);
       const auxiliaryKeys = [
+        ["agent-conversations", "project-1", "agent-1"],
+        ["conversation-runs", "project-1", "agent-1", "conversation-1"],
         ["run-history", "project-1", "agent-1"],
         ["run-history-plans", "project-1", "run-1"],
         ["run-history-tasks", "project-1", "run-1"],
@@ -280,6 +288,20 @@ describe("ProjectWorkspacePage", () => {
         ["keyframe-selection", "project-1", "run-1"],
       ];
       for (const key of auxiliaryKeys) queryClient.setQueryData(key, { staleView: true });
+      sources[0]?.dispatchEvent(new MessageEvent("agent.conversation.changed", {
+        data: JSON.stringify({
+          projectId: "project-1", seq: 1, eventId: crypto.randomUUID(),
+          type: "agent.conversation.changed", schemaVersion: 1,
+          aggregateId: "conversation-1", aggregateVersion: 0,
+          payload: { agentId: "agent-1", conversationId: "conversation-1", currentConversationId: "conversation-1" },
+          occurredAt: "2026-09-24T00:00:00Z",
+        }), lastEventId: "1",
+      }));
+      for (const key of auxiliaryKeys.slice(0, 2)) {
+        await waitFor(() => expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true));
+        queryClient.setQueryData(key, { staleView: true });
+      }
+      expect(sources).toHaveLength(1);
       sources[0]?.dispatchEvent(new MessageEvent("task.status.changed", {
         data: JSON.stringify({
           projectId: "project-1", seq: 7, eventId: crypto.randomUUID(),
@@ -721,7 +743,7 @@ describe("ProjectWorkspacePage", () => {
     const outputGroupId = crypto.randomUUID();
     const bindingId = crypto.randomUUID();
     let updated = false;
-    let activeRun: { id: string; agentInstanceId: string; status: string } | null = null;
+    let activeRun: { id: string; agentInstanceId: string; status: string; conversationId: string; conversationTurn: number; instruction: string; createdAt: string } | null = null;
     let starts = 0;
     let modelAvailable = false;
     const idempotencyKeys: string[] = [];
@@ -748,6 +770,8 @@ describe("ProjectWorkspacePage", () => {
         expect(new URL(request.url).searchParams.get("agentId")).toBe(agentId);
         return HttpResponse.json({
           agentId, agentVersion: updated ? 1 : 0, agentName: updated ? "Agent Beta" : "Agent Alpha",
+          conversationId: `conversation-${agentId}`, conversationVersion: 0,
+          conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false,
           agentInstruction: updated ? "Updated instruction" : "Initial instruction",
           bindings: [{ artifactId, selectedVersionId: versionId,
             artifactTitle: "Bound brief", artifactKind: "TEXT" }],
@@ -774,6 +798,7 @@ describe("ProjectWorkspacePage", () => {
           selectedItemIds: string[];
         };
         expect(body).toMatchObject({ agentId, instruction: "规划三个镜头",
+          conversationId: `conversation-${agentId}`, expectedConversationVersion: 0,
           expectedAgentVersion: 1, expectedModelConfigSource: "fixture",
           expectedModelConfigVersion: 7, expectedSystemPromptVersion: 2 });
         expect(Array.isArray(body.selectedItemIds)).toBe(true);
@@ -784,7 +809,9 @@ describe("ProjectWorkspacePage", () => {
           code: "SYSTEM_PROMPT_CONFLICT", title: "系统提示词已变化",
           detail: "请重新检查运行范围。", retryable: false,
         }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
-        activeRun = { id: crypto.randomUUID(), agentInstanceId: agentId, status: "RUNNING" };
+        activeRun = { id: crypto.randomUUID(), agentInstanceId: agentId, status: "RUNNING",
+          conversationId: `conversation-${agentId}`, conversationTurn: 1,
+          instruction: "规划三个镜头", createdAt: "2026-09-23T00:00:00Z" };
         return HttpResponse.json(activeRun, { status: 201 });
       }),
       http.post("/api/v1/projects/:projectId/runs/:runId/cancel", () => {
@@ -908,8 +935,8 @@ describe("ProjectWorkspacePage", () => {
     expect(await within(editorArea).findByRole("button", { name: "停止" })).toBeEnabled();
     fireEvent.click(within(editorArea).getByRole("button", { name: "停止" }));
     await waitFor(() => expect(screen.getByText("准备就绪")).toBeInTheDocument());
-    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "查看记录" }));
-    expect(await within(card as HTMLElement).findByText("之前的创作")).toBeInTheDocument();
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "会话列表" }));
+    expect(await within(card as HTMLElement).findByRole("button", { name: /之前的创作/ })).toBeInTheDocument();
   });
 
   it("starts an explicitly scoped redo Run only for a bound current shot", async () => {
@@ -949,6 +976,8 @@ describe("ProjectWorkspacePage", () => {
       ] })),
       http.get("/api/v1/projects/:projectId/runs/preflight", () => HttpResponse.json({
         agentId, agentVersion: 0, agentName: "Redo agent",
+        conversationId: `conversation-${agentId}`, conversationVersion: 0,
+        conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false,
         agentInstruction: "Work only on the chosen shot",
         bindings: [{ artifactId: shotId, selectedVersionId: versionId,
           artifactTitle: "Second shot", artifactKind: "SHOT" }],
@@ -964,7 +993,8 @@ describe("ProjectWorkspacePage", () => {
       http.post("/api/v1/projects/:projectId/runs", async ({ request }) => {
         submitted = await request.json();
         return HttpResponse.json({ id: crypto.randomUUID(), agentInstanceId: agentId,
-          status: "QUEUED" }, { status: 202 });
+          conversationId: `conversation-${agentId}`, conversationTurn: 1,
+          instruction: "只重做第二镜头", createdAt: "2026-09-23T00:00:00Z", status: "QUEUED" }, { status: 202 });
       }),
     );
     const user = userEvent.setup();

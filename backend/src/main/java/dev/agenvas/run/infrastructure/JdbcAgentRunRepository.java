@@ -32,6 +32,8 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 resultSet.getObject("id", UUID.class),
                 resultSet.getObject("project_id", UUID.class),
                 resultSet.getObject("agent_instance_id", UUID.class),
+                resultSet.getObject("conversation_id", UUID.class),
+                resultSet.getLong("conversation_turn"),
                 resultSet.getObject("user_id", UUID.class),
                 AgentRun.Status.valueOf(resultSet.getString("status")),
                 resultSet.getString("instruction"),
@@ -131,11 +133,11 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
     public void create(AgentRun run) {
         jdbcClient.sql("""
                         insert into agent_run (
-                            id, project_id, agent_instance_id, user_id, status, instruction,
+                            id, project_id, agent_instance_id, conversation_id, conversation_turn, user_id, status, instruction,
                             context_snapshot_json, policy_snapshot_json, profile_version,
                             next_step_index, version, created_at, updated_at, completed_at
                         ) values (
-                            :id, :projectId, :agentId, :userId, :status, :instruction,
+                            :id, :projectId, :agentId, :conversationId, :conversationTurn, :userId, :status, :instruction,
                             cast(:contextSnapshot as jsonb), cast(:policySnapshot as jsonb),
                             :profileVersion, :nextStepIndex, :version, :createdAt, :updatedAt, null
                         )
@@ -143,6 +145,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 .param("id", run.id())
                 .param("projectId", run.projectId())
                 .param("agentId", run.agentInstanceId())
+                .param("conversationId", run.conversationId()).param("conversationTurn", run.conversationTurn())
                 .param("userId", run.userId())
                 .param("status", run.status().name())
                 .param("instruction", run.instruction())
@@ -170,7 +173,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
                 ? ""
                 : "and (ar.created_at, ar.id) < (:beforeCreatedAt, :beforeId)";
         JdbcClient.StatementSpec statement = jdbcClient.sql("""
-                        select ar.id, ar.project_id, ar.agent_instance_id, ar.user_id,
+                        select ar.id, ar.project_id, ar.agent_instance_id, ar.conversation_id, ar.conversation_turn, ar.user_id,
                                ar.status, ar.instruction,
                                ar.context_snapshot_json::text as context_snapshot_json,
                                ar.policy_snapshot_json::text as policy_snapshot_json,
@@ -195,6 +198,51 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
         return statement.query(runMapper).list();
     }
 
+    @Override
+    public List<AgentRun> listConversation(UUID ownerId, UUID projectId, UUID agentId,
+            UUID conversationId, Long beforeTurn, int limit) {
+        String cursor = beforeTurn == null ? "" : " and ar.conversation_turn < :beforeTurn";
+        var query = jdbcClient.sql("""
+                select ar.* from agent_run ar join project p on p.id = ar.project_id
+                where p.owner_id = :ownerId and ar.project_id = :projectId
+                  and ar.agent_instance_id = :agentId and ar.conversation_id = :conversationId
+                """ + cursor + " order by ar.conversation_turn desc limit :limit")
+                .param("ownerId", ownerId).param("projectId", projectId).param("agentId", agentId)
+                .param("conversationId", conversationId).param("limit", limit);
+        if (beforeTurn != null) query = query.param("beforeTurn", beforeTurn);
+        return query.query(runMapper).list();
+    }
+
+    @Override
+    public List<UUID> contextRunIds(UUID projectId, UUID conversationId, long throughTurn, int limit) {
+        return jdbcClient.sql("""
+                with prior as (
+                    select id, conversation_turn from agent_run
+                    where project_id = :projectId and conversation_id = :conversationId
+                      and conversation_turn <= :throughTurn
+                      and status in ('SUCCEEDED', 'CANCELED', 'FAILED')
+                ), selected as (
+                    (select * from prior order by conversation_turn asc limit 1)
+                    union
+                    (select * from prior order by conversation_turn desc limit :recentLimit)
+                )
+                select id from selected order by conversation_turn
+                """).param("projectId", projectId).param("conversationId", conversationId)
+                .param("throughTurn", throughTurn)
+                .param("recentLimit", limit - 1).query(UUID.class).list();
+    }
+
+    @Override
+    public long contextRunCount(UUID projectId, UUID conversationId, long throughTurn) {
+        return jdbcClient.sql("""
+                select count(*) from agent_run where project_id = :projectId
+                  and conversation_id = :conversationId and conversation_turn <= :throughTurn
+                  and status in ('SUCCEEDED', 'CANCELED', 'FAILED')
+                """).param("projectId", projectId).param("conversationId", conversationId)
+                .param("throughTurn", throughTurn)
+                .query(Long.class).single();
+    }
+
     /** 对目标 Run 行加锁，供状态机先读后写的事务使用。 */
     @Override
     public Optional<AgentRun> findForUpdate(UUID ownerId, UUID projectId, UUID runId) {
@@ -206,7 +254,7 @@ public class JdbcAgentRunRepository implements AgentRunRepository {
             UUID ownerId, UUID projectId, UUID runId, boolean forUpdate) {
         String lockClause = forUpdate ? " for update of ar" : "";
         return jdbcClient.sql("""
-                        select ar.id, ar.project_id, ar.agent_instance_id, ar.user_id,
+                        select ar.id, ar.project_id, ar.agent_instance_id, ar.conversation_id, ar.conversation_turn, ar.user_id,
                                ar.status, ar.instruction,
                                ar.context_snapshot_json::text as context_snapshot_json,
                                ar.policy_snapshot_json::text as policy_snapshot_json,

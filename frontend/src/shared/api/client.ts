@@ -30,6 +30,8 @@ export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
 export type UpdateAgentRequest = components["schemas"]["UpdateAgentRequest"];
 export type AgentRun = components["schemas"]["AgentRun"];
 export type AgentRunList = components["schemas"]["AgentRunList"];
+export type AgentConversation = components["schemas"]["AgentConversation"];
+export type AgentConversationList = components["schemas"]["AgentConversationList"];
 export type RunAction = components["schemas"]["RunAction"];
 export type RunPreflight = components["schemas"]["RunPreflight"];
 export type CreateRunRequest = components["schemas"]["CreateRunRequest"];
@@ -468,11 +470,48 @@ export async function updateAgent(
 }
 
 /** Reads current trusted model status, pinned inputs and server policy before user consent. */
-export async function getRunPreflight(projectId: string, agentId: string): Promise<RunPreflight> {
+export async function getRunPreflight(projectId: string, agentId: string,
+  conversationId?: string): Promise<RunPreflight> {
+  const params = new URLSearchParams({ agentId });
+  if (conversationId) params.set("conversationId", conversationId);
   return readJson<RunPreflight>(
-    `/api/v1/projects/${projectId}/runs/preflight?agentId=${encodeURIComponent(agentId)}`,
+    `/api/v1/projects/${projectId}/runs/preflight?${params}`,
     "无法核对运行前配置",
   );
+}
+
+/** Reads durable conversations and the Agent's selected conversation without loading model traces. */
+export async function listAgentConversations(projectId: string, agentId: string,
+  cursor?: string, limit = 20): Promise<AgentConversationList> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return readJson<AgentConversationList>(
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`, "无法读取会话记录");
+}
+
+/** Creates and selects an empty conversation; reuse the same key after an uncertain response. */
+export async function createAgentConversation(projectId: string, agentId: string,
+  idempotencyKey: string): Promise<AgentConversation> {
+  return writeJson<AgentConversation>(`/api/v1/projects/${projectId}/agents/${agentId}/conversations`, {
+    method: "POST", headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+/** Changes only the selected conversation, leaving any active Run in its original conversation. */
+export async function selectAgentConversation(projectId: string, agentId: string,
+  conversationId: string): Promise<AgentConversation> {
+  return writeJson<AgentConversation>(
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/select`, { method: "POST" });
+}
+
+/** Lists one conversation's messages newest first using the durable Run turn order. */
+export async function listConversationRuns(projectId: string, agentId: string,
+  conversationId: string, cursor?: string, limit = 20): Promise<AgentRunList> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return readJson<AgentRunList>(
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/runs?${params}`,
+    "无法读取会话消息");
 }
 
 /** Creates or exactly replays one durable Run command under a project activity slot. */

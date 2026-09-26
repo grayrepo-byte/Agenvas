@@ -11,6 +11,7 @@ import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.run.domain.AgentConversation;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.domain.Task;
@@ -25,6 +26,7 @@ import java.time.DateTimeException;
 import java.util.HexFormat;
 import java.util.Base64;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -50,6 +52,8 @@ public class AgentRunService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     /** 历史列表每页最大条数。 */
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_CONTEXT_RUNS = 40;
+    private static final int MAX_CONTEXT_BINDINGS = 40;
 
     /** 校验项目归属并独占项目的活动 Run 槽位。 */
     private final ProjectService projects;
@@ -77,6 +81,8 @@ public class AgentRunService {
     private final Clock clock;
     /** 停机开始后阻止创建新的 Run。 */
     private final ShutdownGate shutdownGate;
+    private final AgentConversationService conversations;
+    private final ConversationMemoryReader memoryReader;
 
     /** 注入 Run 创建所需服务；事务提交由事件服务协调项目槽位、Run、任务与事件。 */
     public AgentRunService(
@@ -92,7 +98,9 @@ public class AgentRunService {
             ChatGateway chatGateway,
             ObjectMapper objectMapper,
             Clock clock,
-            ShutdownGate shutdownGate) {
+            ShutdownGate shutdownGate,
+            AgentConversationService conversations,
+            ConversationMemoryReader memoryReader) {
         this.projects = projects;
         this.agents = agents;
         this.artifacts = artifacts;
@@ -106,6 +114,8 @@ public class AgentRunService {
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.shutdownGate = shutdownGate;
+        this.conversations = conversations;
+        this.memoryReader = memoryReader;
     }
 
     /** 基础创建入口；完全相同的项目级命令键与载荷重放时返回原 Run。 */
@@ -212,6 +222,18 @@ public class AgentRunService {
             String expectedModelConfigSource,
             Integer expectedModelConfigVersion,
             Integer expectedSystemPromptVersion) {
+        return create(ownerId, projectId, agentId, requestedInstruction, requestedIdempotencyKey,
+                expectedAgentVersion, redoShotArtifactId, selectedItemIds, expectedModelConfigSource,
+                expectedModelConfigVersion, expectedSystemPromptVersion, null, null);
+    }
+
+    /** 同会话新消息仍创建独立 Run；创建时冻结历史版本，幂等重放不重新取当前会话。 */
+    @Transactional
+    public CreateResult create(UUID ownerId, UUID projectId, UUID agentId,
+            String requestedInstruction, String requestedIdempotencyKey, Long expectedAgentVersion,
+            UUID redoShotArtifactId, List<UUID> selectedItemIds, String expectedModelConfigSource,
+            Integer expectedModelConfigVersion, Integer expectedSystemPromptVersion,
+            UUID requestedConversationId, Long expectedConversationVersion) {
         shutdownGate.requireAcceptingRuns();
         String instruction = validateInstruction(requestedInstruction);
         String key = validateIdempotencyKey(requestedIdempotencyKey);
@@ -229,6 +251,9 @@ public class AgentRunService {
         if (expectedSystemPromptVersion != null) {
             requestFingerprint += "\nsystem-prompt:" + expectedSystemPromptVersion;
         }
+        // Absent conversation fields preserve the legacy command hash, even after the current pointer changes.
+        if (requestedConversationId != null) requestFingerprint += "\nconversation:" + requestedConversationId;
+        if (expectedConversationVersion != null) requestFingerprint += "\nconversation-version:" + expectedConversationVersion;
         String requestHash = sha256(requestFingerprint);
         Instant now = clock.instant();
         boolean reserved = runs.reserveIdempotency(
@@ -285,25 +310,33 @@ public class AgentRunService {
             redoShotVersionId = shot.currentVersion().id();
         }
         UUID runId = UUID.randomUUID();
-        AgentRun run = new AgentRun(
-                runId,
-                projectId,
-                agentId,
-                ownerId,
-                AgentRun.Status.QUEUED,
-                instruction,
-                contextSnapshot(ownerId, agent, project, redoShotArtifactId,
-                        redoShotVersionId, selection),
-                policy,
-                agent.profileVersion(),
-                0,
-                0,
-                now,
-                now,
-                null);
+        UUID pinnedRedoVersion = redoShotVersionId;
         CreatedRun created = shutdownGate.admitRun(() -> events.recordChange(ownerId, projectId, () -> {
                     shutdownGate.requireAcceptingRuns();
                     projects.requireAvailableRunSlot(ownerId, projectId);
+                    AgentInstance pinnedAgent = agents.get(ownerId, projectId, agentId);
+                    if (pinnedAgent.version() != agent.version()) {
+                        throw new ApiProblemException(HttpStatus.CONFLICT, "AGENT_VERSION_CONFLICT",
+                                "Agent 配置已变化", "输入或指令可能已变化，请重新检查运行范围。", false);
+                    }
+                    AgentConversation conversation = conversations.resolveOrCreate(ownerId, projectId,
+                            agentId, requestedConversationId);
+                    if (expectedConversationVersion != null && expectedConversationVersion != conversation.version()) {
+                        throw new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT",
+                                "会话已变化", "会话已有新消息，请重新检查上下文后发送。", false);
+                    }
+                    ConversationInputs context = conversationInputs(ownerId, projectId, agent, conversation);
+                    ObjectNode snapshot = contextSnapshot(ownerId, agent, project, redoShotArtifactId,
+                            pinnedRedoVersion, selection);
+                    snapshot.set("conversationMemory", objectMapper.valueToTree(context.memory()));
+                    snapshot.put("conversationId", conversation.id().toString());
+                    snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
+                    if (redoShotArtifactId == null) appendInheritedBindings(snapshot, context.inherited());
+                    AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
+                            instruction, expectedConversationVersion, now);
+                    AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
+                            advanced.turnCount(), ownerId, AgentRun.Status.QUEUED, instruction,
+                            snapshot, policy, agent.profileVersion(), 0, 0, now, now, null);
                     runs.create(run);
                     projects.assignRunSlot(ownerId, projectId, runId);
                     UUID firstTaskId = taskCreation.createInitialTurn(projectId, runId, now);
@@ -318,10 +351,10 @@ public class AgentRunService {
                         throw new IllegalStateException(
                                 "Failed to complete reserved Run idempotency record");
                     }
-                    return ProjectEventService.Change.changed(
-                            new CreatedRun(run, firstTaskId), runEvent(run));
+                    return ProjectEventService.Change.changed(new CreatedRun(run, firstTaskId), runEvent(run));
                 })
                 .value());
+        conversations.publishChange(ownerId, projectId, agentId, created.run().conversationId());
         ObjectNode taskPayload = objectMapper.createObjectNode();
         taskPayload.put("taskId", created.firstTaskId().toString());
         taskPayload.put("status", "READY");
@@ -356,6 +389,30 @@ public class AgentRunService {
         List<AgentRun> items = hasMore ? rows.subList(0, limit) : rows;
         return new RunPage(List.copyOf(items),
                 hasMore ? encodeCursor(items.getLast()) : null);
+    }
+
+    /** 会话归属核验先于分页；游标为单调消息序号，不由墙钟时间决定顺序。 */
+    @Transactional(readOnly = true)
+    public RunPage listConversation(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId,
+            String encodedCursor, Integer requestedLimit) {
+        conversations.get(ownerId, projectId, agentId, conversationId);
+        int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
+        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation("limit 必须在 1 到 100 之间。");
+        Long beforeTurn = null;
+        if (encodedCursor != null) {
+            try {
+                if (encodedCursor.length() > 40) throw new IllegalArgumentException();
+                beforeTurn = Long.parseLong(new String(Base64.getUrlDecoder().decode(encodedCursor),
+                        StandardCharsets.UTF_8));
+                if (beforeTurn < 1) throw new IllegalArgumentException();
+            } catch (IllegalArgumentException invalid) { throw validation("cursor 无效或已损坏。"); }
+        }
+        List<AgentRun> rows = runs.listConversation(ownerId, projectId, agentId, conversationId, beforeTurn, limit + 1);
+        boolean more = rows.size() > limit;
+        List<AgentRun> items = more ? rows.subList(0, limit) : rows;
+        String next = more ? Base64.getUrlEncoder().withoutPadding().encodeToString(
+                Long.toString(items.getLast().conversationTurn()).getBytes(StandardCharsets.UTF_8)) : null;
+        return new RunPage(List.copyOf(items), next);
     }
 
     /** 同一 Agent 范围内的一页运行历史；nextCursor 为空表示没有下一页。
@@ -402,21 +459,32 @@ public class AgentRunService {
     }
 
     /** 模型调用前展示当前 Agent 绑定、版本和策略，供用户核对运行范围。 */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId) {
-        projects.requireActiveProject(ownerId, projectId);
+        return preflight(ownerId, projectId, agentId, null);
+    }
+
+    /** 预览同一会话已提交历史与可继承的精确产物；确认时仍在项目锁下再次核对版本。 */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId) {
+        projects.requireRunSlotAvailableSnapshot(ownerId, projectId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
+        AgentConversation conversation = conversations.resolve(ownerId, projectId, agentId, conversationId);
+        ConversationInputs context = conversationInputs(ownerId, projectId, agent, conversation);
+        List<PreflightBinding> bindings = new ArrayList<>(agent.bindings().stream()
+                .map(binding -> {
+                    Artifact target = artifacts.get(ownerId, projectId, binding.artifactId()).artifact();
+                    return new PreflightBinding(binding.artifactId(), binding.selectedVersionId(),
+                            target.title(), target.kind());
+                }).toList());
+        context.inherited().forEach(binding -> bindings.add(new PreflightBinding(binding.artifactId(),
+                binding.selectedVersionId(), binding.title(), binding.kind())));
         ChatGateway.ModelDetails model = chatGateway.modelDetails();
         return new RunPreflight(agent.id(), agent.version(), agent.name(),
-                agent.instruction(), agent.bindings().stream()
-                        .map(binding -> {
-                            Artifact target = artifacts.get(ownerId, projectId,
-                                    binding.artifactId()).artifact();
-                            return new PreflightBinding(binding.artifactId(),
-                                    binding.selectedVersionId(), target.title(), target.kind());
-                        })
-                        .toList(), model.available(), model.providerAdapter(),
-                model.modelId(), model.toolCalling(), policySnapshot());
+                agent.instruction(), List.copyOf(bindings), model.available(), model.providerAdapter(),
+                model.modelId(), model.toolCalling(), policySnapshot(),
+                conversation == null ? null : conversation.id(), conversation == null ? null : conversation.version(),
+                conversation == null ? 0 : conversation.turnCount(), context.inherited().size(), context.memory().truncated());
     }
 
     /** 运行前预览；不包含凭证、端点或模型私有消息。
@@ -430,11 +498,17 @@ public class AgentRunService {
      * @param modelId 对外展示的模型 ID
      * @param toolCalling 当前模型是否声明支持工具调用
      * @param policySnapshot 创建 Run 时将固定的策略快照
+     * @param conversationId 已选择的会话；从未创建会话时为空
+     * @param conversationVersion 用户确认的历史版本；创建 Run 时再次比较
+     * @param conversationTurnCount 会话内已受理的 Run 数
+     * @param inheritedBindingCount 本次将继承的历史产物精确版本数
+     * @param memoryTruncated 历史文本或历史产物是否触及上下文限额
      */
     public record RunPreflight(UUID agentId, long agentVersion, String agentName,
             String agentInstruction, List<PreflightBinding> bindings,
             boolean modelAvailable, String providerAdapter, String modelId,
-            boolean toolCalling, ObjectNode policySnapshot) {}
+            boolean toolCalling, ObjectNode policySnapshot, UUID conversationId, Long conversationVersion,
+            long conversationTurnCount, int inheritedBindingCount, boolean memoryTruncated) {}
 
     /** 预检时将作为首轮文本上下文的产物版本绑定。
      * @param artifactId 输入产物 ID
@@ -591,6 +665,45 @@ public class AgentRunService {
         return new ProjectEventService.EventDraft(
                 "agent.run.changed", 1, run.id(), run.version(), payload);
     }
+
+    /** 从已核验会话的终态 Run 冻结公开记忆和精确输出范围；不以提示词里的 ID 授权。 */
+    private ConversationInputs conversationInputs(UUID ownerId, UUID projectId,
+            AgentInstance agent, AgentConversation conversation) {
+        List<UUID> priorIds = conversation == null ? List.of() : runs.contextRunIds(projectId,
+                conversation.id(), conversation.turnCount(), MAX_CONTEXT_RUNS);
+        long priorCount = conversation == null ? 0 : runs.contextRunCount(projectId,
+                conversation.id(), conversation.turnCount());
+        ConversationMemoryReader.ConversationMemory memory = memoryReader.read(projectId, priorIds);
+        Set<UUID> explicit = agent.bindings().stream().map(AgentInstance.Binding::artifactId)
+                .collect(java.util.stream.Collectors.toSet());
+        List<ArtifactService.ConversationInput> outputs = artifacts.conversationInputs(ownerId, projectId, priorIds);
+        List<ArtifactService.ConversationInput> available = outputs.stream()
+                .filter(binding -> !explicit.contains(binding.artifactId())).toList();
+        int remaining = Math.max(0, MAX_CONTEXT_BINDINGS - agent.bindings().size());
+        List<ArtifactService.ConversationInput> inherited = available.stream().limit(remaining).toList();
+        memory = new ConversationMemoryReader.ConversationMemory(memory.entries(),
+                memory.truncated() || priorCount > priorIds.size() || inherited.size() < available.size()
+                        || outputs.size() == MAX_CONTEXT_BINDINGS,
+                (int) Math.min(Integer.MAX_VALUE, priorCount));
+        return new ConversationInputs(memory, inherited);
+    }
+
+    private void appendInheritedBindings(ObjectNode snapshot, List<ArtifactService.ConversationInput> inherited) {
+        ArrayNode bindings = (ArrayNode) snapshot.path("bindings");
+        for (var binding : inherited) {
+            ObjectNode item = bindings.addObject();
+            item.put("artifactId", binding.artifactId().toString());
+            item.put("selectedVersionId", binding.selectedVersionId().toString());
+            item.put("bindingType", "INPUT");
+            item.put("kind", binding.kind().name());
+            item.put("title", binding.title());
+            item.put("source", "CONVERSATION_OUTPUT");
+            if (binding.expectedVersion() != null) item.put("expectedVersion", binding.expectedVersion());
+        }
+    }
+
+    private record ConversationInputs(ConversationMemoryReader.ConversationMemory memory,
+            List<ArtifactService.ConversationInput> inherited) {}
 
     /** 固定 Agent 绑定与用户选择时的版本；局部重做只暴露目标镜头的绑定。 */
     private ObjectNode contextSnapshot(UUID ownerId, AgentInstance agent, Project project,

@@ -11,6 +11,8 @@ import tools.jackson.databind.JsonNode;
  * @param id Run 身份
  * @param projectId 占用活动槽位的项目
  * @param agentInstanceId 发起运行的 Agent 卡片
+ * @param conversationId 用户选择的持久会话，决定可以继承的公开历史范围
+ * @param conversationTurn 在会话项目锁内分配的单调消息序号
  * @param userId 创建 Run 的服务端用户身份
  * @param status 当前编排状态
  * @param instruction 创建时固定的用户指令
@@ -27,6 +29,8 @@ public record AgentRun(
         UUID id,
         UUID projectId,
         UUID agentInstanceId,
+        UUID conversationId,
+        long conversationTurn,
         UUID userId,
         Status status,
         String instruction,
