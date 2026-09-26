@@ -211,6 +211,32 @@ button:disabled {
   font-size: 0.8rem;
   font-weight: 650;
   margin-bottom: 0.45rem;
+  /* 给右上角的关闭按钮让位，避免长标题压到按钮下面。 */
+  padding-right: 2rem;
+}
+
+.workspace-bottom-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspace-bottom-close:hover,
+.workspace-bottom-close:focus-visible {
+  background: #323235;
+  color: var(--ink);
 }
 
 .workspace-shell input,

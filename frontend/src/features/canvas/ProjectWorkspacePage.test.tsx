@@ -153,6 +153,67 @@ describe("ProjectWorkspacePage", () => {
     await waitFor(() => expect(submittedDraftVersion).toBe(1));
   });
 
+  it("closes the creation menu on an outside click and on Escape without focus inside it", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
+      })),
+      http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json({
+        id: params.projectId, name: "Menu project", status: "ACTIVE",
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>);
+
+    await user.click(screen.getByRole("button", { name: "添加卡片" }));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    await user.click(screen.getByLabelText("项目画布"));
+    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "添加卡片" }));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    screen.getByRole("menuitem", { name: "文字" }).blur();
+    await user.keyboard("{Escape}");
+    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+  });
+
+  it("closes the bottom editor from its close button and from Escape", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
+      })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
+        id: "project-1", name: "Close project", status: "ACTIVE",
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [referenceCard(true)] })),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const user = userEvent.setup();
+    fireEvent.click(await screen.findByText("Hero"));
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Hero"));
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+  });
+
   it("keeps one SSE connection across snapshots and invalidates auxiliary views after a gap", async () => {
     const sources: TrackingEventSource[] = [];
     let proposalReads = 0;

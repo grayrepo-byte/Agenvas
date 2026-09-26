@@ -764,6 +764,35 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     if (creationMenu) creationMenuElement.current?.querySelector("button")?.focus();
   }, [creationMenu]);
 
+  // 关闭入口不依赖焦点：只有 div 上的 onKeyDown 时，用户一旦把焦点移出菜单就再也关不掉。
+  useEffect(() => {
+    if (!creationMenu) return;
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      // 非 Node 目标（例如 Window）不可能落在菜单内，按外部点击处理。
+      if (target instanceof Node && creationMenuElement.current?.contains(target)) return;
+      setCreationMenu(null);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+  }, [creationMenu]);
+
+  // Esc 由外向内收拢：先关创建菜单，再关底部编辑区。setSelectedIds 对相同值返回原 state，
+  // 因此没有选中时按 Esc 不会引起重渲染。
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (creationMenu) {
+        setCreationMenu(null);
+        creationMenuReturnFocus.current?.focus();
+        return;
+      }
+      setSelectedIds([]);
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [creationMenu, setSelectedIds]);
+
   function chooseCreationKind(kind: CreationKind) {
     const point = creationMenu?.point;
     if (!point) return;
@@ -981,11 +1010,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         }} type="button">+</button>
         {creationMenu ? <div className="workspace-create-menu" role="menu"
           ref={creationMenuElement}
-          style={{ left: creationMenu.x, top: creationMenu.y }}
-          onKeyDown={(event) => { if (event.key === "Escape") {
-            setCreationMenu(null);
-            creationMenuReturnFocus.current?.focus();
-          } }}>
+          style={{ left: creationMenu.x, top: creationMenu.y }}>
           <p className="workspace-create-title">添加卡片</p>
           {CREATION_KINDS.map(({ kind, label }) => <button key={kind} role="menuitem"
             onClick={() => chooseCreationKind(kind)} type="button">{label}</button>)}
@@ -998,6 +1023,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <WorkspaceError error={connectInput.error} /></div> : null}
         {selectedItems.length === 1 && selectedItems[0]?.artifact ?
           <div className="workspace-bottom-editor" aria-label="所选卡片编辑区">
+            <button aria-label="关闭编辑区" className="workspace-bottom-close"
+              onClick={() => setSelectedIds([])} type="button">×</button>
             <div className="workspace-bottom-title">{selectedItems[0].artifact.title} · 编辑</div>
             {selectedItems[0].artifact.kind === "IMAGE" ||
               selectedItems[0].artifact.kind === "VIDEO" ?
@@ -1015,10 +1042,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div> : null}
         {selectedItems.length === 1 && selectedItems[0]?.agent ?
           <div className="workspace-bottom-editor" aria-label="所选 Agent 编辑区">
+            <button aria-label="关闭编辑区" className="workspace-bottom-close"
+              onClick={() => setSelectedIds([])} type="button">×</button>
             <div className="workspace-bottom-title">{selectedItems[0].agent.name} · 编辑</div>
             <div id="workspace-agent-bottom-editor" />
           </div> : null}
         {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
+          <button aria-label="关闭编辑区" className="workspace-bottom-close"
+            onClick={() => setSelectedIds([])} type="button">×</button>
           <span>{selectedItems.length} 张卡片已选中</span>
           <button className="node-action" disabled={alignSelected.isPending}
             onClick={() => alignSelected.mutate()} type="button">左对齐</button>
