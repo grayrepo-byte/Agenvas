@@ -3,6 +3,7 @@ package dev.agenvas.shared.http;
 import java.net.Proxy;
 import java.time.Duration;
 import okhttp3.Dns;
+import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 
 /**
@@ -13,6 +14,20 @@ import okhttp3.OkHttpClient;
  * 校验解析结果，LLM 传输用它自己的端点准入规则，两套规则各自演算，只共享管道。
  */
 public final class PinnedHttpClients {
+
+    /**
+     * 剔除响应上的 {@code Retry-After}，阻断 OkHttp 对 503 的重发。
+     *
+     * <p>{@code retryOnConnectionFailure(false)} 管的是连接失败恢复，拦不住这条路径：
+     * {@code RetryAndFollowUpInterceptor} 单独处理 503，读到 {@code Retry-After} 为数字 0
+     * 时会原样重发一次请求。这些出站调用（生成、提交、模型补全）都非幂等且计费，
+     * 静默重发等于重复下单。剔除该头后 {@code retryAfter} 回落到上限值，重发分支不再命中。
+     *
+     * <p>必须是网络拦截器：应用拦截器位于 {@code RetryAndFollowUpInterceptor} 外层，
+     * 拿到的是重发结束之后的响应，改不到它的输入。
+     */
+    private static final Interceptor DROP_RETRY_AFTER = chain ->
+            chain.proceed(chain.request()).newBuilder().removeHeader("Retry-After").build();
 
     private PinnedHttpClients() {}
 
@@ -30,6 +45,7 @@ public final class PinnedHttpClients {
         return new OkHttpClient.Builder()
                 .proxy(Proxy.NO_PROXY)
                 .dns(dns)
+                .addNetworkInterceptor(DROP_RETRY_AFTER)
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .retryOnConnectionFailure(false)
