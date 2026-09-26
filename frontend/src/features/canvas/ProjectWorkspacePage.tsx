@@ -2,10 +2,8 @@ import {
   Background,
   ConnectionLineType,
   Controls,
-  Handle,
   MiniMap,
   NodeResizer,
-  Position,
   ReactFlow,
   type Connection,
   type Node,
@@ -52,7 +50,8 @@ import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCardUpload } from "./MediaCardUpload";
 import { Plus, X } from "@phosphor-icons/react";
-import { inputConnectionUpdate, projectCanvasRelations,
+import { CanvasHandle } from "./CanvasHandle";
+import { inputConnectionUpdate, isCanvasConnectionValid, projectCanvasRelations,
   semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
 import { CANVAS_MAX_SIZE, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
 import { useImageNodeRatios } from "./useImageNodeRatios";
@@ -74,6 +73,8 @@ const DEFAULT_MEDIA_CARD_HEIGHT = 300;
 const DEFAULT_IMAGE_CARD_WIDTH = 225;
 const DEFAULT_VIDEO_CARD_WIDTH = 534;
 const MIN_ARTIFACT_CARD_SIZE = 120;
+/** Drop tolerance around a hidden target handle, in flow units: it keeps the same feel on screen at any zoom. */
+const CANVAS_CONNECTION_RADIUS = 80;
 const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
   TEXT: "文字", IMAGE: "图片", VIDEO: "视频", CHARACTER: "角色", SCENE: "场景", SHOT: "镜头",
 };
@@ -984,7 +985,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-sm font-semibold">选择与对齐</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Shift 或拖出选框选择多张卡片。</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">从 Artifact 右侧连接点拖到 Agent 左侧可保存输入；拖到另一张 Artifact 左侧可建立图片→角色/场景、角色/场景→镜头的精确版本引用，并为目标产物创建新版本（场景→镜头会替换原场景引用）。蓝线是输入、绿线是输出组、灰虚线是素材引用；连线不会触发生成。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入，落在另一张 Artifact 上可建立图片→角色/场景、角色/场景→镜头的精确版本引用，并为目标产物创建新版本（场景→镜头会替换原场景引用）。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是输入、绿线是输出组、灰虚线是素材引用；连线不会触发生成。</p>
           <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
           <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">把已选 Artifact 绑定到 Agent</button>
           <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">清空已选 Agent 输入</button>
@@ -1010,10 +1011,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {canvas.data && canvas.data.items.length === 0 ? <div className="canvas-message">双击空白画布或点击“+”添加第一张卡片。</div> : null}
         <ReactFlow<CanvasNode>
           colorMode="dark"
+          connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
+          connectionRadius={CANVAS_CONNECTION_RADIUS}
           deleteKeyCode={null}
           edges={relationEdges}
           fitView
+          isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
           minZoom={0.25}
           nodes={nodes}
           nodeTypes={nodeTypes}
@@ -1150,8 +1154,8 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   };
   return (
     <>
-      <Handle id="artifact-input" position={Position.Left} type="target" />
-      <Handle id="artifact-output" position={Position.Right} type="source" />
+      <CanvasHandle id="artifact-input" />
+      <CanvasHandle id="artifact-output" />
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO"
         ? <MediaCanvasCard {...cardProps} onUpload={() => data.onUpload(data.item)} />
         : <ContentCanvasCard {...cardProps} />}

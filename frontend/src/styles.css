@@ -219,11 +219,129 @@ button:disabled {
 
 .workspace-media-editor > .workspace-bottom-close { z-index: 2; top: 10px; right: 12px; }
 
-.workspace-shell .react-flow__handle {
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border: 2px solid #161616;
+/* 连接点分两层：外层是 React Flow 的几何盒，中心必须留在卡片边框上，尺寸要小——React Flow
+   按盒子的外边算连线端点（Position.Right 取 x + width），盒子有多大，线就离卡片多远。
+   可见圆点是内层，内边固定在「卡片边框 + gap」，因此放大只向外长，不会压回卡片；
+   卡片排在连接点之后会盖住边框内的一侧，选中外圈（box-shadow 0 0 0 2px）也压在边框外 2px 上，
+   所以圆点必须整体挪出去。命中区域用 ::after 只向卡片外扩展，抓取仍然落在可见圆点上。
+   落点 (--in) 保持 pointer-events: none，靠 connectionRadius 的距离判定成立。 */
+.workspace-shell {
+  --canvas-handle-anchor: 4px;
+  --canvas-handle-dot: 18px;
+  --canvas-handle-dot-active: 22px;
+  --canvas-handle-gap: 4px;
+  --canvas-handle-hit-inset: -12px;
+  --canvas-handle-hit-outset: -25px;
+  --canvas-handle-surface: #26262b;
+  --canvas-handle-invalid: #ff4d4f;
+}
+
+.workspace-shell .react-flow__handle.canvas-handle {
+  width: var(--canvas-handle-anchor);
+  height: var(--canvas-handle-anchor);
+  border: 0;
+  background: transparent;
+  transition: opacity 120ms ease;
+}
+
+.workspace-shell .canvas-handle-dot {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: var(--canvas-handle-dot);
+  height: var(--canvas-handle-dot);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--canvas-handle-surface);
+  color: var(--ink);
+  transition: width 120ms ease, height 120ms ease, border-color 120ms ease,
+    background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.workspace-shell .canvas-handle--out .canvas-handle-dot {
+  left: 50%;
+  transform: translate(var(--canvas-handle-gap), -50%);
+}
+
+.workspace-shell .canvas-handle--in .canvas-handle-dot {
+  right: 50%;
+  transform: translate(calc(-1 * var(--canvas-handle-gap)), -50%);
+}
+
+.workspace-shell .canvas-handle-icon {
+  pointer-events: none;
+  transition: transform 120ms ease;
+}
+
+/* 右侧出口：卡片选中后才出现，是唯一能拖出连线的地方。 */
+.workspace-shell .react-flow__handle.canvas-handle--out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workspace-shell .react-flow__node.selected .react-flow__handle.canvas-handle--out,
+.workspace-shell .react-flow__handle.canvas-handle--out.connectingfrom {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* 命中区域只向卡片外扩展，覆盖整个圆点，向内不越界，因此不会抢走卡片本体的拖动。 */
+.workspace-shell .react-flow__handle.canvas-handle--out::after {
+  position: absolute;
+  inset: var(--canvas-handle-hit-inset) var(--canvas-handle-hit-outset)
+    var(--canvas-handle-hit-inset) 0;
+  border-radius: 999px;
+  content: "";
+}
+
+/* 左侧落点与 Agent 输出锚点：静止时既不显示也不可点。 */
+.workspace-shell .react-flow__handle.canvas-handle--in,
+.workspace-shell .react-flow__handle.canvas-handle--anchor {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 拖拽中靠近落点时才浮现；合法性已由 isValidConnection 判定。 */
+.workspace-shell .react-flow__handle.canvas-handle--in.connectingto {
+  opacity: 1;
+}
+
+/* 悬停出口、拖拽起点、悬停到的合法落点：放大并实心强调。 */
+.workspace-shell .react-flow__handle.canvas-handle--in.connectingto .canvas-handle-dot,
+.workspace-shell .react-flow__handle.canvas-handle--out:hover .canvas-handle-dot,
+.workspace-shell .react-flow__handle.canvas-handle.connectingfrom .canvas-handle-dot,
+.workspace-shell .react-flow__handle.canvas-handle.valid .canvas-handle-dot {
+  width: var(--canvas-handle-dot-active);
+  height: var(--canvas-handle-dot-active);
+}
+
+.workspace-shell .react-flow__handle.canvas-handle--out:hover .canvas-handle-dot,
+.workspace-shell .react-flow__handle.canvas-handle.connectingfrom .canvas-handle-dot,
+.workspace-shell .react-flow__handle.canvas-handle.valid .canvas-handle-dot {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgb(255 27 166 / 22%);
+}
+
+.workspace-shell .react-flow__handle.canvas-handle--in.connectingto:not(.valid) .canvas-handle-dot {
+  border-color: var(--canvas-handle-invalid);
+  color: var(--canvas-handle-invalid);
+}
+
+.workspace-shell .react-flow__handle.canvas-handle--out:hover .canvas-handle-icon,
+.workspace-shell .react-flow__handle.canvas-handle.connectingfrom .canvas-handle-icon,
+.workspace-shell .react-flow__handle.canvas-handle.valid .canvas-handle-icon {
+  transform: scale(1.2);
+}
+
+/* 连接线随落点合法性变色，不必等松手才知道能不能连。 */
+.workspace-shell .react-flow__connection.invalid .react-flow__connection-path {
+  stroke: var(--canvas-handle-invalid);
+}
+
+.workspace-shell .react-flow__connection.valid .react-flow__connection-path {
+  stroke: var(--accent);
 }
 
 /* Keep resize hit areas interactive; the card owns the only visible selection outline. */

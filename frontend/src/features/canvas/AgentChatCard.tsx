@@ -1,10 +1,11 @@
-import { Handle, NodeResizer, Position, type ResizeParams } from "@xyflow/react";
+import { NodeResizer, type ResizeParams } from "@xyflow/react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUp, ClockCounterClockwise, GearSix, Sparkle, Square, ArrowSquareOut, Plus } from "@phosphor-icons/react";
 import { ApiError, cancelRun, createRun, getRunPreflight, listAgentConversations, createAgentConversation, selectAgentConversation, listConversationRuns,
   type Agent, type AgentRun, type AgentRunList, type AgentConversation, type AgentConversationList, type CreateRunRequest, type CanvasItem } from "../../shared/api/client";
 import { useCanvasStore } from "./canvasStore";
+import { CanvasHandle } from "./CanvasHandle";
 import { AgentChatApproval, AgentChatMessage } from "./AgentChatPrimitives";
 import { AgentRunConversation, RUN_STATUS_LABELS } from "./AgentRunConversation";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
@@ -234,8 +235,8 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     start.mutate({ key: runIntent.current.key, input });
   }
   return <>
-    <Handle id="agent-input" position={Position.Left} className="agent-chat-handle-input" type="target" />
-    <Handle id="agent-output" isConnectable={false} position={Position.Right} className="agent-chat-handle-output" type="source" />
+    <CanvasHandle id="agent-input" />
+    <CanvasHandle id="agent-output" />
     <article aria-label={`${agent.name} 聊天卡片`} className={`agent-chat-card ${selected ? "agent-chat-card--selected" : ""}`}>
       <NodeResizer isVisible={selected && !data.item.locked} minHeight={AGENT_CHAT_MIN_HEIGHT}
         minWidth={AGENT_CHAT_MIN_WIDTH} onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />

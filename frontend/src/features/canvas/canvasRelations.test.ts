@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasItem } from "../../shared/api/client";
 import type { VersionedArtifact } from "./versionedArtifact";
-import { inputBindingsAfterConnect, inputConnectionUpdate,
+import { inputBindingsAfterConnect, inputConnectionUpdate, isCanvasConnectionValid,
   projectCanvasRelations, semanticConnectionRevision,
   semanticReferenceRemoval } from "./canvasRelations";
 
@@ -194,5 +194,61 @@ describe("canvas relation projection", () => {
     })).toBeNull();
     expect(semanticReferenceRemoval(shot,
       shot.artifact!.currentVersion.inputReferences[0]!)).toBeNull();
+  });
+});
+
+describe("canvas connection validity", () => {
+  it("accepts Artifact to Agent input and rejects every other handle pair", () => {
+    const input = artifactCard("artifact-a", "version-a");
+    const agent = agentCard();
+    expect(isCanvasConnectionValid([input, agent], {
+      source: input.id, sourceHandle: "artifact-output",
+      target: agent.id, targetHandle: "agent-input",
+    })).toBe(true);
+    expect(isCanvasConnectionValid([input, agent], {
+      source: agent.id, sourceHandle: "agent-output",
+      target: input.id, targetHandle: "artifact-input",
+    })).toBe(false);
+    expect(isCanvasConnectionValid([input, agent], {
+      source: input.id, sourceHandle: "artifact-output",
+      target: agent.id, targetHandle: null,
+    })).toBe(false);
+  });
+
+  it("follows the semantic revision path, including the no-op repeat drop", () => {
+    const image = artifactCard("image", "image-v2");
+    image.artifact!.kind = "IMAGE";
+    const character = artifactCard("character", "character-v2");
+    character.artifact!.kind = "CHARACTER";
+    character.artifact!.currentVersion.content = {
+      name: "Hero", description: "Lead", appearance: "Blue coat",
+      referenceVersionIds: ["image-v2"],
+    };
+    const gesture = { source: image.id, sourceHandle: "artifact-output",
+      target: character.id, targetHandle: "artifact-input" };
+    // Re-dropping a version that is already referenced commits as a no-op success, so it must not read as invalid.
+    expect(semanticConnectionRevision([image, character], gesture))
+      .toEqual({ artifactId: "character", revision: null });
+    expect(isCanvasConnectionValid([image, character], gesture)).toBe(true);
+    expect(isCanvasConnectionValid([image, character], { ...gesture, target: image.id }))
+      .toBe(false);
+    expect(isCanvasConnectionValid([image, artifactCard("text", "text-v1")], {
+      ...gesture, target: "card-text",
+    })).toBe(false);
+  });
+
+  it("reads a projected Edge as well as a live Connection", () => {
+    const image = artifactCard("image", "image-v2");
+    image.artifact!.kind = "IMAGE";
+    const character = artifactCard("character", "character-v1");
+    character.artifact!.kind = "CHARACTER";
+    character.artifact!.currentVersion.content = {
+      name: "Hero", description: "Lead", appearance: "Blue coat", referenceVersionIds: [],
+    };
+    expect(isCanvasConnectionValid([image, character], {
+      id: "reference:card-character:referenceImage:0:image-v2",
+      source: image.id, sourceHandle: "artifact-output",
+      target: character.id, targetHandle: "artifact-input",
+    })).toBe(true);
   });
 });

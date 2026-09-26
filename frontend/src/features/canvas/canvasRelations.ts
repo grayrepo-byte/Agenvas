@@ -83,7 +83,7 @@ export function inputBindingsAfterConnect(source: CanvasItem, target: CanvasItem
 }
 
 /** Rejects every gesture except the explicit input handle pair. */
-export function inputConnectionUpdate(items: CanvasItem[], connection: Connection) {
+export function inputConnectionUpdate(items: CanvasItem[], connection: Connection | Edge) {
   if (connection.sourceHandle !== "artifact-output" ||
       connection.targetHandle !== "agent-input") return null;
   const source = items.find((item) => item.id === connection.source);
@@ -94,7 +94,7 @@ export function inputConnectionUpdate(items: CanvasItem[], connection: Connectio
 }
 
 /** A hand-drawn reference points from the referenced version to its consuming Artifact. */
-export function semanticConnectionRevision(items: CanvasItem[], connection: Connection):
+export function semanticConnectionRevision(items: CanvasItem[], connection: Connection | Edge):
   { artifactId: string; revision: ReviseArtifactRequest | null } | null {
   if (connection.sourceHandle !== "artifact-output" ||
       connection.targetHandle !== "artifact-input") return null;
@@ -131,6 +131,21 @@ export function semanticConnectionRevision(items: CanvasItem[], connection: Conn
   }
   return { artifactId: consumer.id,
     revision: { expectedVersion: consumer.version, content: next } };
+}
+
+/**
+ * Drag feedback for React Flow. It reuses the same two predicates as the commit path so a
+ * highlighted drop target can never be one the server write would reject, and vice versa
+ * ([inputConnectionUpdate] for Agent inputs, [semanticConnectionRevision] for references).
+ */
+export function isCanvasConnectionValid(items: CanvasItem[], connection: Connection | Edge) {
+  if (connection.targetHandle === "artifact-input") {
+    return semanticConnectionRevision(items, connection) !== null;
+  }
+  if (connection.targetHandle === "agent-input") {
+    return inputConnectionUpdate(items, connection) !== null;
+  }
+  return false;
 }
 
 /** Removes only optional schema-backed references; a SHOT scene must be replaced, not deleted. */

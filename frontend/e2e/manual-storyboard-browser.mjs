@@ -134,15 +134,32 @@ async function displayedApprovalCounts() {
   });
 }
 
-/** Exercises the actual pointer gesture between React Flow handles. */
+/** Selects the source card, then drags from its visible output handle onto the target card. */
 async function connect(sourceTitle, sourceHandle, targetTitle, targetHandle) {
   await page(() => document.querySelector(".react-flow__controls-fitview")?.click());
   await new Promise((resolve) => setTimeout(resolve, 500));
+  // Only a selected card renders an output handle, so the gesture starts with a real click on the card.
+  const cardPoint = await page((sourceName) => {
+    const node = [...document.querySelectorAll(".react-flow__node")]
+      .find((candidate) => candidate.querySelector("h3")?.textContent === sourceName);
+    if (!node) throw new Error(`Missing ${sourceName} card`);
+    const rect = node.querySelector("h3").getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, sourceTitle);
+  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...cardPoint,
+    button: "left", clickCount: 1 });
+  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...cardPoint,
+    button: "left", clickCount: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 200));
   const points = await page((sourceName, sourceId, targetName, targetId) => {
     const nodes = [...document.querySelectorAll(".react-flow__node")];
-    function center(title, handleId) {
+    function nodeOf(title) {
       const node = nodes.find((candidate) => candidate.querySelector("h3")?.textContent === title);
-      const handle = node?.querySelector(`[data-handleid='${handleId}']`);
+      if (!node) throw new Error(`Missing ${title} card`);
+      return node;
+    }
+    function center(title, handleId) {
+      const handle = nodeOf(title).querySelector(`[data-handleid='${handleId}']`);
       if (!handle) throw new Error(`Missing ${title} ${handleId} handle`);
       const rect = handle.getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -151,14 +168,17 @@ async function connect(sourceTitle, sourceHandle, targetTitle, targetHandle) {
     const target = center(targetName, targetId);
     return { source, target,
       sourceHit: document.elementFromPoint(source.x, source.y)?.getAttribute("data-handleid"),
-      targetHit: document.elementFromPoint(target.x, target.y)?.getAttribute("data-handleid") };
+      targetOpacity: getComputedStyle(nodeOf(targetName)
+        .querySelector(`[data-handleid='${targetId}']`)).opacity };
   }, sourceTitle, sourceHandle, targetTitle, targetHandle);
   for (const point of [points.source, points.target]) {
     assert.ok(point.x > 0 && point.x < 1440 && point.y > 0 && point.y < 900,
-      "Connection handle must be in the browser viewport");
+      "Connection endpoint must be in the browser viewport");
   }
-  assert.equal(points.sourceHit, sourceHandle, "Source handle must receive the pointer");
-  assert.equal(points.targetHit, targetHandle, "Target handle must receive the pointer");
+  assert.equal(points.sourceHit, sourceHandle,
+    "A selected card's output handle must receive the pointer");
+  assert.equal(points.targetOpacity, "0",
+    "Target handles stay out of the way until a gesture reaches them");
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...points.source,
     button: "left", clickCount: 1 });
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -171,6 +191,13 @@ async function connect(sourceTitle, sourceHandle, targetTitle, targetHandle) {
   await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...points.target,
     button: "left", buttons: 1 });
   await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(await page((targetName, targetId) => {
+    const handle = [...document.querySelectorAll(".react-flow__node")]
+      .find((node) => node.querySelector("h3")?.textContent === targetName)
+      .querySelector(`[data-handleid='${targetId}']`);
+    return { opacity: getComputedStyle(handle).opacity, valid: handle.classList.contains("valid") };
+  }, targetTitle, targetHandle), { opacity: "1", valid: true },
+  "The reached target handle must appear and report a valid drop");
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...points.target,
     button: "left", clickCount: 1 });
 }

@@ -72,7 +72,5 @@
 .agent-chat-card .node-action-danger { color: #f3a2a2; }
 .agent-chat-card .agent-chat-approval__content { font-size: 12px; }
 .agent-chat-error { color: #ffb4b4; background: #442626; border: 1px solid #6c3c3c; border-radius: 8px; padding: 8px 10px; font-size: 12px; overflow-wrap: anywhere; }
-.agent-chat-handle-input { background: #9b9b9b; }
-.agent-chat-handle-output { background: #d4d4d4; }
 @media (prefers-reduced-motion: reduce) { .agent-chat-send { transition: none; } }
 .agent-chat-card .text-red-700 { color: #ffb4b4; }
