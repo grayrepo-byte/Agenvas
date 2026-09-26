@@ -60,11 +60,12 @@ class ArkMediaDownloadPolicyTest {
                 .hasMessage("ARK_MEDIA_INVALID_MP4");
     }
 
-    @Test void refusesPrivateDnsAnswersEvenForOfficialName() {
-        Dns privateAnswer = hostname -> List.of(InetAddress.getByName("10.0.0.2"));
+    /** 官方域名同样不能靠污染的 DNS 绕到被禁地址。私网不在被禁之列，见 ADR 0007。 */
+    @Test void refusesBlockedDnsAnswersEvenForOfficialName() {
+        Dns blockedAnswer = hostname -> List.of(InetAddress.getByName("169.254.169.254"));
         ArkMediaDownloadPolicy official = new ArkMediaDownloadPolicy(
                 URI.create("https://ark-acg-cn-beijing.tos-cn-beijing.volces.com"),
-                privateAnswer, false);
+                blockedAnswer, false);
         assertThatThrownBy(() -> official.download(URI.create(
                 "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/a.mp4"),
                 new ByteArrayOutputStream(), 1024))
