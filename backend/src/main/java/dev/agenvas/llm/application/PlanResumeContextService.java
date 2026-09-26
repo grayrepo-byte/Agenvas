@@ -2,6 +2,7 @@ package dev.agenvas.llm.application;
 
 import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.ExecutionPlanService;
+import dev.agenvas.plan.application.ResumeDecision;
 import dev.agenvas.plan.application.ShotKeyframeSelection;
 import dev.agenvas.plan.application.ShotKeyframeSelectionRepository;
 import dev.agenvas.task.application.TaskService;
@@ -57,9 +58,10 @@ public class PlanResumeContextService {
         String decision = resumeTask.input().path("resumeDecision").asText();
         StringBuilder summary = new StringBuilder("User decision for plan ")
                 .append(plan.id()).append(" (stage ").append(plan.stage()).append("):\n");
-        if ("REJECTED".equals(decision) && plan.status() == ExecutionPlan.Status.REJECTED) {
+        if (ResumeDecision.REJECTED.name().equals(decision)
+                && plan.status() == ExecutionPlan.Status.REJECTED) {
             summary.append("REJECTED. No media tasks were authorized. Re-plan only if useful.");
-        } else if ("APPROVED".equals(decision)
+        } else if (ResumeDecision.APPROVED.name().equals(decision)
                 && plan.status() == ExecutionPlan.Status.APPROVED) {
             summary.append("APPROVED by the authenticated user. Persisted media results:\n");
             List<Task> results = tasks.listByRun(ownerId, projectId, runId).stream()

@@ -2,12 +2,13 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
+import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.PortInput;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Capability;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Connection;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.ConnectionVersion;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
@@ -33,13 +34,13 @@ public class MediaCapabilityService {
     private static final String NANO_BANANA_MODEL_ID = "gemini-3.1-flash-image";
     private static final String NANO_BANANA_IMAGE_SIZE = "1K";
 
-    private final JdbcMediaCapabilityRepository repository;
+    private final JooqMediaCapabilityRepository repository;
     private final MediaAdapterRegistry registry;
     private final CredentialCipher cipher;
     private final Clock clock;
     private final ObjectMapper mapper;
 
-    public MediaCapabilityService(JdbcMediaCapabilityRepository repository,
+    public MediaCapabilityService(JooqMediaCapabilityRepository repository,
             MediaAdapterRegistry registry, CredentialCipher cipher, Clock clock,
             ObjectMapper mapper) {
         this.repository = repository;
@@ -55,7 +56,7 @@ public class MediaCapabilityService {
         UUID id = UUID.randomUUID();
         Instant now = clock.instant();
         repository.insertConnection(id, normalizedName,
-                origin == null ? "MOCK" : "COMFYUI", origin,
+                origin == null ? MediaPlatform.MOCK : MediaPlatform.COMFYUI, origin,
                 origin == null ? null : sha256(origin), null, null, null, null, now);
         return repository.connection(id).orElseThrow();
     }
@@ -69,10 +70,10 @@ public class MediaCapabilityService {
             throw invalid("必须提供有效的 Idempotency-Key");
         }
         String normalizedName = requireName(name);
-        String normalizedPlatform = requirePlatform(platform);
+        MediaPlatform normalizedPlatform = requirePlatform(platform);
         String normalizedOrigin = validatedOrigin(normalizedPlatform, origin);
         validateCredential(normalizedPlatform, apiKey, true);
-        String hash = sha256(normalizedName + "\u0000" + normalizedPlatform + "\u0000"
+        String hash = sha256(normalizedName + "\u0000" + normalizedPlatform.name() + "\u0000"
                 + normalizedOrigin + "\u0000" + apiKey);
         UUID id = UUID.randomUUID();
         Instant now = clock.instant();
@@ -225,11 +226,11 @@ public class MediaCapabilityService {
         }
         // OpenAI 与 Google 的固定适配器都允许把端点指向自托管网关或中转站。
         if (!declaration.originRequired() && version.origin() != null
-                && !"OPENAI".equals(connection.platform())
-                && !"GOOGLE".equals(connection.platform())) {
+                && connection.platform() != MediaPlatform.OPENAI
+                && connection.platform() != MediaPlatform.GOOGLE) {
             throw invalid("该适配器不接受连接地址");
         }
-        if (!connection.platform().equals(declaration.platform())) {
+        if (connection.platform() != declaration.platform()) {
             throw invalid("适配器与平台连接不匹配");
         }
         String spec = spec(adapterId, settings);
@@ -257,7 +258,7 @@ public class MediaCapabilityService {
             throw conflict("能力已被其他操作修改");
         }
         MediaAdapterRegistry.Declaration replacement = registry.declaration(adapterId);
-        if (!current.connection().platform().equals(replacement.platform())) {
+        if (current.connection().platform() != replacement.platform()) {
             throw invalid("适配器与平台连接不匹配");
         }
         if (registry.declaration(current.adapterId()).kind() != replacement.kind()) {
@@ -515,17 +516,16 @@ public class MediaCapabilityService {
         return name;
     }
 
-    private static String requirePlatform(String value) {
-        if (!"MOCK".equals(value) && !"COMFYUI".equals(value)
-                && !"OPENAI".equals(value) && !"ARK".equals(value)
-                && !"GOOGLE".equals(value)) {
+    private static MediaPlatform requirePlatform(String value) {
+        try {
+            return MediaPlatform.valueOf(value);
+        } catch (IllegalArgumentException | NullPointerException unknownPlatform) {
             throw invalid("不支持的平台类型");
         }
-        return value;
     }
 
-    private static String validatedOrigin(String platform, String origin) {
-        if ("OPENAI".equals(platform) || "GOOGLE".equals(platform)) {
+    private static String validatedOrigin(MediaPlatform platform, String origin) {
+        if (platform == MediaPlatform.OPENAI || platform == MediaPlatform.GOOGLE) {
             if (origin == null || origin.isBlank()) return null;
             try {
                 java.net.URI uri = java.net.URI.create(origin.trim());
@@ -549,7 +549,7 @@ public class MediaCapabilityService {
                 throw invalid("Base URL 无效");
             }
         }
-        if (!"COMFYUI".equals(platform)) {
+        if (platform != MediaPlatform.COMFYUI) {
             if (origin != null && !origin.isBlank()) {
                 throw invalid("该平台使用内置固定端点，不能填写自定义地址");
             }
@@ -569,9 +569,9 @@ public class MediaCapabilityService {
         }
     }
 
-    private static void validateCredential(String platform, String apiKey, boolean creating) {
-        boolean cloud = "OPENAI".equals(platform) || "ARK".equals(platform)
-                || "GOOGLE".equals(platform);
+    private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
+        boolean cloud = platform == MediaPlatform.OPENAI || platform == MediaPlatform.ARK
+                || platform == MediaPlatform.GOOGLE;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid("云平台连接必须填写 API Key");
         }

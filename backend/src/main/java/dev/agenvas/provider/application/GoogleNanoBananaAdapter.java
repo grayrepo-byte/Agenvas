@@ -11,8 +11,8 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.GoogleNanoBananaClient;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
 import java.io.IOException;
@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
 public class GoogleNanoBananaAdapter implements MediaAdapter {
     private static final long MAX_REFERENCE_BYTES = 10L * 1024 * 1024;
     private static final Set<String> INPUT_MIME_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
-    private final JdbcMediaCapabilityRepository catalog;
+    private final JooqMediaCapabilityRepository catalog;
     private final CredentialCipher cipher;
     private final ArtifactService artifacts;
     private final AssetService assets;
@@ -35,7 +35,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     private final GoogleNanoBananaClient client;
     private final ObjectMapper mapper;
 
-    public GoogleNanoBananaAdapter(JdbcMediaCapabilityRepository catalog, CredentialCipher cipher,
+    public GoogleNanoBananaAdapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             GoogleNanoBananaClient client, ObjectMapper mapper) {
         this.catalog = catalog;

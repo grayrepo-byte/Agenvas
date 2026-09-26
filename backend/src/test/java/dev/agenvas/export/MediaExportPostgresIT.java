@@ -366,6 +366,10 @@ class MediaExportPostgresIT {
                 "--agenvas.llm.scheduler-enabled=false",
                 "--agenvas.provider.mock.scheduler-enabled=false",
                 "--agenvas.provider.mock.video-scheduler-enabled=false",
+                // 本测试验证「进程被杀后新进程重新认领」，恢复只能发生在租约过期之后，
+                // 因此窗口必须大于租约。生产默认 PT30M 是为覆盖同步 Provider 调用而定
+                // （见 application.yaml），这里显式指定一个可复现的短租约。
+                "--agenvas.task.lease-duration=PT30S",
                 "--server.port=0")
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));

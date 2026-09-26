@@ -13,6 +13,7 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.run.domain.AgentConversation;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.idempotency.IdempotencyState;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -269,7 +270,7 @@ public class AgentRunService {
                         "请为不同的 Agent 或指令使用新的 Idempotency-Key。",
                         false);
             }
-            if (existing.state() != AgentRunRepository.IdempotencyRecord.State.COMPLETED
+            if (existing.state() != IdempotencyState.COMPLETED
                     || existing.resourceId() == null) {
                 throw idempotencyInProgress();
             }
@@ -357,8 +358,8 @@ public class AgentRunService {
         conversations.publishChange(ownerId, projectId, agentId, created.run().conversationId());
         ObjectNode taskPayload = objectMapper.createObjectNode();
         taskPayload.put("taskId", created.firstTaskId().toString());
-        taskPayload.put("status", "READY");
-        taskPayload.put("kind", "AGENT_TURN");
+        taskPayload.put("status", Task.Status.READY.name());
+        taskPayload.put("kind", Task.Kind.AGENT_TURN.name());
         events.append(ownerId, projectId, new ProjectEventService.EventDraft(
                 "task.status.changed", 1, created.firstTaskId(), 0, taskPayload));
         return new CreateResult(created.run(), false);

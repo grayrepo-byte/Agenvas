@@ -10,8 +10,8 @@ import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
@@ -29,7 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Generates or edits one image with the approved fixed connection and image version. */
 @Component
 public class OpenAiImage2Adapter implements MediaAdapter {
-    private final JdbcMediaCapabilityRepository catalog;
+    private final JooqMediaCapabilityRepository catalog;
     private final CredentialCipher cipher;
     private final ArtifactService artifacts;
     private final AssetService assets;
@@ -37,7 +37,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     private final OpenAiImage2Client client;
     private final ObjectMapper mapper;
 
-    public OpenAiImage2Adapter(JdbcMediaCapabilityRepository catalog, CredentialCipher cipher,
+    public OpenAiImage2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             OpenAiImage2Client client, ObjectMapper mapper) {
         this.catalog = catalog;

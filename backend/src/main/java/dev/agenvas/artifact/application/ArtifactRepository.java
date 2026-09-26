@@ -3,6 +3,7 @@ package dev.agenvas.artifact.application;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -102,5 +103,6 @@ public interface ArtifactRepository {
      * @param artifactId 首次请求创建的产物
      * @param responseJson 首次创建时持久化的响应，保证重放结果一致
      */
-    record CreateKey(String requestHash, String state, UUID artifactId, String responseJson) {}
+    record CreateKey(String requestHash, IdempotencyState state, UUID artifactId,
+            String responseJson) {}
 }

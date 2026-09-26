@@ -48,6 +48,26 @@ jobs:
       - name: Install local media tools required by PostgreSQL integration tests
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: ./mvnw --batch-mode --no-transfer-progress verify
+      # 生成源码入库、构建期不连数据库（见 ADR 0012），因此漂移只能在这里发现：
+      # 对一次性 PostgreSQL 重跑迁移 + codegen，生成结果必须与提交内容完全一致。
+      - name: Verify jOOQ generated sources match migrations
+        run: |
+          docker run -d --name agenvas-jooq-codegen \
+            -e POSTGRES_DB=agenvas -e POSTGRES_USER=agenvas \
+            -e POSTGRES_PASSWORD=codegen-only -p 55432:5432 postgres:17.11-alpine
+          for _ in $(seq 1 30); do
+            if docker exec agenvas-jooq-codegen pg_isready -U agenvas -d agenvas >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          ./mvnw --batch-mode --no-transfer-progress -Pjooq-codegen generate-sources
+          # 用 porcelain 而非 git diff：新增表会产生未跟踪文件，git diff 看不到。
+          if [ -n "$(git status --porcelain -- src/jooq/java)" ]; then
+            echo 'src/jooq/java 与迁移不一致，请重新生成并提交：' >&2
+            git status --porcelain -- src/jooq/java >&2
+            exit 1
+          fi
 
   compose-config:
     runs-on: ubuntu-latest

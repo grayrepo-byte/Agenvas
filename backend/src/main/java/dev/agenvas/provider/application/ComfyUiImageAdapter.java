@@ -15,8 +15,8 @@ import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -33,13 +33,13 @@ import tools.jackson.databind.ObjectMapper;
 /** Fixed image graph using the exact connection and model filename version approved by the user. */
 @Component
 public class ComfyUiImageAdapter implements MediaAdapter {
-    private final JdbcMediaCapabilityRepository catalog;
+    private final JooqMediaCapabilityRepository catalog;
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final ProjectService projects;
     private final ObjectMapper mapper;
 
-    public ComfyUiImageAdapter(JdbcMediaCapabilityRepository catalog, ArtifactService artifacts,
+    public ComfyUiImageAdapter(JooqMediaCapabilityRepository catalog, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ObjectMapper mapper) {
         this.catalog = catalog;
         this.artifacts = artifacts;

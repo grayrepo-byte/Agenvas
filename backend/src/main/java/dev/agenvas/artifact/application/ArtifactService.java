@@ -8,6 +8,7 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -146,7 +147,7 @@ public class ArtifactService {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
                         "幂等键已用于不同请求", "请为不同的产物内容使用新的 Idempotency-Key。", false);
             }
-            if (!"COMPLETED".equals(existing.state()) || existing.artifactId() == null
+            if (existing.state() != IdempotencyState.COMPLETED || existing.artifactId() == null
                     || existing.responseJson() == null) {
                 throw createInProgress();
             }

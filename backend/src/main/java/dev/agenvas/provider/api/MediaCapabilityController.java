@@ -3,9 +3,9 @@ package dev.agenvas.provider.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Capability;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Connection;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.ConnectionVersion;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
 import dev.agenvas.task.domain.Task;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -132,7 +132,7 @@ public class MediaCapabilityController {
                 connection.currentVersion()).orElseThrow();
         List<CapabilityView> capabilities = catalog.capabilities(connection.id()).stream()
                 .map(this::view).toList();
-        return new ConnectionView(connection.id(), connection.name(), connection.platform(),
+        return new ConnectionView(connection.id(), connection.name(), connection.platform().name(),
                 connection.enabled(), connection.version(), connection.currentVersion(),
                 version.origin(), version.keyMask(), "NOT_CHECKED", false, capabilities);
     }

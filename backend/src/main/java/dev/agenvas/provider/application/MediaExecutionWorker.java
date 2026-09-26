@@ -9,6 +9,7 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -141,7 +142,7 @@ public class MediaExecutionWorker {
         if (model.isEmpty()) model = spec.path("modelId").asText(null);
         if (model == null) model = spec.path("settings").path("checkpoint").asText(null);
         if (model == null) model = spec.path("settings").path("diffusionModel").asText(null);
-        boolean mock = "MOCK".equals(snapshot.connection().platform());
+        boolean mock = snapshot.connection().platform() == MediaPlatform.MOCK;
         return new CallLogService.CallDescriptor(task.projectId(), task.id(), task.runId(), null,
                 task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
                 operation, binding.adapterId(), model, mock);

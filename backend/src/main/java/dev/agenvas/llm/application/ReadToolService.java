@@ -203,7 +203,7 @@ public class ReadToolService {
     /** 构造成功读取工具共用的空变更结果结构。 */
     private ObjectNode result(UUID operationId, String summary) {
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds");
         result.putArray("updatedIds");

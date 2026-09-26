@@ -14,8 +14,8 @@ import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
 import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
@@ -41,7 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Single first-frame task on the fixed Seedance 2.0 mapping. */
 @Component
 public class ArkSeedance2Adapter implements MediaAdapter {
-    private final JdbcMediaCapabilityRepository catalog;
+    private final JooqMediaCapabilityRepository catalog;
     private final CredentialCipher cipher;
     private final ArtifactService artifacts;
     private final AssetService assets;
@@ -51,7 +51,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     private final MediaToolRunner mediaTools;
     private final ObjectMapper mapper;
 
-    public ArkSeedance2Adapter(JdbcMediaCapabilityRepository catalog, CredentialCipher cipher,
+    public ArkSeedance2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             ArkSeedanceClient client, ArkMediaDownloadPolicy downloads,
             MediaToolRunner mediaTools, ObjectMapper mapper) {

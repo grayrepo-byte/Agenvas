@@ -1,6 +1,7 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.ToolResultStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -313,7 +314,7 @@ public final class MockStoryboardChatGateway implements ChatGateway {
         for (ToolResponseMessage.ToolResponse response : reply.getResponses()) {
             if (name.equals(response.name())) {
                 JsonNode value = mapper.readTree(response.responseData());
-                if ("SUCCEEDED".equals(value.path("status").asText())) {
+                if (ToolResultStatus.SUCCEEDED.name().equals(value.path("status").asText())) {
                     return value;
                 }
             }

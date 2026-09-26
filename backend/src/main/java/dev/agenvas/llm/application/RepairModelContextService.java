@@ -97,7 +97,7 @@ public class RepairModelContextService {
                 return;
             }
             ObjectNode rejection = mapper.createObjectNode();
-            rejection.put("status", "REJECTED");
+            rejection.put("status", ToolResultStatus.REJECTED.name());
             rejection.put("errorCode", code);
             rejection.put("detail", detail);
             rejection.put("businessEffect", false);

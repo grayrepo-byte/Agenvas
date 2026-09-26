@@ -303,12 +303,12 @@ public class AgentTurnCommitService {
             }
             if ("propose_generation_plan".equals(call.name())) {
                 if (index != calls.size() - 1
-                        || !"WAITING_APPROVAL".equals(
+                        || !ToolResultStatus.WAITING_APPROVAL.name().equals(
                                 execution.result().path("status").asText())) {
                     throw new IllegalStateException("Plan proposal must be the last tool call");
                 }
                 waitsForApproval = true;
-            } else if ("WAITING_APPROVAL".equals(
+            } else if (ToolResultStatus.WAITING_APPROVAL.name().equals(
                     execution.result().path("status").asText())) {
                 throw new IllegalStateException("Unexpected approval wait from another tool");
             }

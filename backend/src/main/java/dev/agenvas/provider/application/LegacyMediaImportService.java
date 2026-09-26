@@ -1,13 +1,25 @@
 package dev.agenvas.provider.application;
 
+import static dev.agenvas.db.Tables.COMFYUI_CONFIG_VERSION;
+import static dev.agenvas.db.Tables.EXECUTION_PLAN;
+import static dev.agenvas.db.Tables.MEDIA_LEGACY_IMPORT_MARKER;
+import static dev.agenvas.db.Tables.MEDIA_LEGACY_ORIGIN_MAP;
+import static dev.agenvas.db.Tables.PLAN_STEP;
+import static dev.agenvas.db.Tables.PROJECT;
+import static dev.agenvas.db.Tables.PROVIDER_ATTEMPT;
+import static dev.agenvas.db.Tables.TASK;
+
 import dev.agenvas.event.application.ProjectEventService;
+import dev.agenvas.plan.application.ExecutionPlan;
 import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.task.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -15,13 +27,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -37,8 +50,10 @@ public class LegacyMediaImportService implements ApplicationRunner {
             "00000000-0000-4000-8000-000000000102");
     private static final UUID MOCK_VIDEO = UUID.fromString(
             "00000000-0000-4000-8000-000000000103");
-    private final JdbcClient jdbc;
-    private final JdbcMediaCapabilityRepository repository;
+    /** media_legacy_import_marker 是单行标记表，固定主键为 1。 */
+    private static final short IMPORT_MARKER_ID = 1;
+    private final DSLContext dsl;
+    private final JooqMediaCapabilityRepository repository;
     private final MediaCapabilityService catalog;
     private final ProjectEventService events;
     private final PlanProviderProperties provider;
@@ -51,13 +66,13 @@ public class LegacyMediaImportService implements ApplicationRunner {
     private final boolean recoveryMode;
     private volatile boolean ready;
 
-    public LegacyMediaImportService(JdbcClient jdbc, JdbcMediaCapabilityRepository repository,
+    public LegacyMediaImportService(DSLContext dsl, JooqMediaCapabilityRepository repository,
             MediaCapabilityService catalog, ProjectEventService events,
             PlanProviderProperties provider, ComfyUiImageProperties image,
             ComfyUiVideoProperties video, ObjectProvider<ComfyUiClientRegistry> oldRegistry,
             ObjectMapper mapper, Clock clock, TransactionTemplate transactions,
             @Value("${agenvas.recovery-mode:false}") boolean recoveryMode) {
-        this.jdbc = jdbc;
+        this.dsl = dsl;
         this.repository = repository;
         this.catalog = catalog;
         this.events = events;
@@ -85,9 +100,12 @@ public class LegacyMediaImportService implements ApplicationRunner {
     }
 
     private void importInTransaction() {
-        Boolean completed = jdbc.sql("select completed_at is not null from "
-                        + "media_legacy_import_marker where id=1 for update")
-                .query(Boolean.class).single();
+        // 单行标记表上的行锁串行化跨实例的一次性导入决定；completed_at 非空即已完成。
+        Boolean completed = dsl.select(MEDIA_LEGACY_IMPORT_MARKER.COMPLETED_AT)
+                .from(MEDIA_LEGACY_IMPORT_MARKER)
+                .where(MEDIA_LEGACY_IMPORT_MARKER.ID.eq(IMPORT_MARKER_ID))
+                .forUpdate()
+                .fetchSingle(MEDIA_LEGACY_IMPORT_MARKER.COMPLETED_AT) != null;
         if (completed) {
             return;
         }
@@ -96,25 +114,28 @@ public class LegacyMediaImportService implements ApplicationRunner {
             ComfyUiClientRegistry registry = oldRegistry.getIfAvailable();
             if (registry != null) registry.registerActive();
         }
-        List<OldOrigin> origins = jdbc.sql("select config_version,origin,origin_sha256 "
-                        + "from comfyui_config_version order by config_version desc")
-                .query((row, index) -> new OldOrigin(row.getInt("config_version"),
-                        row.getString("origin"), row.getString("origin_sha256"))).list();
+        List<OldOrigin> origins = dsl.select(COMFYUI_CONFIG_VERSION.CONFIG_VERSION,
+                        COMFYUI_CONFIG_VERSION.ORIGIN, COMFYUI_CONFIG_VERSION.ORIGIN_SHA256)
+                .from(COMFYUI_CONFIG_VERSION)
+                .orderBy(COMFYUI_CONFIG_VERSION.CONFIG_VERSION.desc())
+                .fetch(row -> new OldOrigin(row.value1(), row.value2(), row.value3()));
         Imported imported = origins.isEmpty() ? null : importComfy(origins);
         staleUnapprovedPlans();
         fenceLegacyTasks(imported);
-        jdbc.sql("update media_legacy_import_marker set completed_at=:now,"
-                        + "imported_connection_id=:connectionId where id=1")
-                .param("now", clock.instant().atOffset(ZoneOffset.UTC))
-                .param("connectionId", imported == null ? null : imported.connectionId())
-                .update();
+        dsl.update(MEDIA_LEGACY_IMPORT_MARKER)
+                .set(MEDIA_LEGACY_IMPORT_MARKER.COMPLETED_AT,
+                        clock.instant().atOffset(ZoneOffset.UTC))
+                .set(MEDIA_LEGACY_IMPORT_MARKER.IMPORTED_CONNECTION_ID,
+                        imported == null ? null : imported.connectionId())
+                .where(MEDIA_LEGACY_IMPORT_MARKER.ID.eq(IMPORT_MARKER_ID))
+                .execute();
     }
 
     private Imported importComfy(List<OldOrigin> origins) {
         OldOrigin latest = origins.getFirst();
         UUID connectionId = UUID.randomUUID();
         Instant now = clock.instant();
-        repository.insertConnection(connectionId, "Legacy ComfyUI", "COMFYUI",
+        repository.insertConnection(connectionId, "Legacy ComfyUI", MediaPlatform.COMFYUI,
                 latest.origin(), latest.sha256(), null, null, null, null, now);
         Map<Integer, Integer> versions = new HashMap<>();
         Map<String, Integer> byIdentity = new HashMap<>();
@@ -130,13 +151,12 @@ public class LegacyMediaImportService implements ApplicationRunner {
                 byIdentity.put(identity, version);
             }
             versions.put(origin.configVersion(), version);
-            jdbc.sql("insert into media_legacy_origin_map "
-                            + "(config_version,connection_id,connection_version,origin_sha256) "
-                            + "values (:configVersion,:connectionId,:connectionVersion,:sha)")
-                    .param("configVersion", origin.configVersion())
-                    .param("connectionId", connectionId)
-                    .param("connectionVersion", version)
-                    .param("sha", origin.sha256()).update();
+            dsl.insertInto(MEDIA_LEGACY_ORIGIN_MAP)
+                    .set(MEDIA_LEGACY_ORIGIN_MAP.CONFIG_VERSION, origin.configVersion())
+                    .set(MEDIA_LEGACY_ORIGIN_MAP.CONNECTION_ID, connectionId)
+                    .set(MEDIA_LEGACY_ORIGIN_MAP.CONNECTION_VERSION, version)
+                    .set(MEDIA_LEGACY_ORIGIN_MAP.ORIGIN_SHA256, origin.sha256())
+                    .execute();
         }
         ObjectNode imageSettings = imageSettings();
         ObjectNode videoSettings = videoSettings();
@@ -193,29 +213,35 @@ public class LegacyMediaImportService implements ApplicationRunner {
     }
 
     private void staleUnapprovedPlans() {
-        List<OldPlan> plans = jdbc.sql("select ep.id,ep.project_id,ep.run_id,ep.revision,"
-                        + "ep.stage,p.owner_id from execution_plan ep "
-                        + "join project p on p.id=ep.project_id "
-                        + "where ep.status in ('PENDING','NEEDS_INPUT') "
-                        + "and exists (select 1 from plan_step ps where ps.plan_id=ep.id "
-                        + "and ps.capability_id is null)")
-                .query((row, index) -> new OldPlan(row.getObject("id", UUID.class),
-                        row.getObject("project_id", UUID.class),
-                        row.getObject("run_id", UUID.class), row.getInt("revision"),
-                        row.getString("stage"), row.getObject("owner_id", UUID.class))).list();
+        List<OldPlan> plans = dsl.select(EXECUTION_PLAN.ID, EXECUTION_PLAN.PROJECT_ID,
+                        EXECUTION_PLAN.RUN_ID, EXECUTION_PLAN.REVISION, EXECUTION_PLAN.STAGE,
+                        PROJECT.OWNER_ID)
+                .from(EXECUTION_PLAN)
+                .join(PROJECT).on(PROJECT.ID.eq(EXECUTION_PLAN.PROJECT_ID))
+                .where(EXECUTION_PLAN.STATUS.in(ExecutionPlan.Status.PENDING.name(),
+                        ExecutionPlan.Status.NEEDS_INPUT.name()))
+                .and(DSL.exists(dsl.selectOne()
+                        .from(PLAN_STEP)
+                        .where(PLAN_STEP.PLAN_ID.eq(EXECUTION_PLAN.ID))
+                        .and(PLAN_STEP.CAPABILITY_ID.isNull())))
+                .fetch(row -> new OldPlan(row.value1(), row.value2(), row.value3(),
+                        row.value4(), ExecutionPlan.Stage.valueOf(row.value5()),
+                        row.value6()));
         for (OldPlan plan : plans) {
             events.recordChange(plan.ownerId(), plan.projectId(), () -> {
-                int changed = jdbc.sql("update execution_plan set status='STALE',"
-                                + "updated_at=:now where id=:id "
-                                + "and status in ('PENDING','NEEDS_INPUT')")
-                        .param("now", clock.instant().atOffset(ZoneOffset.UTC))
-                        .param("id", plan.id()).update();
+                int changed = dsl.update(EXECUTION_PLAN)
+                        .set(EXECUTION_PLAN.STATUS, ExecutionPlan.Status.STALE.name())
+                        .set(EXECUTION_PLAN.UPDATED_AT, clock.instant().atOffset(ZoneOffset.UTC))
+                        .where(EXECUTION_PLAN.ID.eq(plan.id()))
+                        .and(EXECUTION_PLAN.STATUS.in(ExecutionPlan.Status.PENDING.name(),
+                        ExecutionPlan.Status.NEEDS_INPUT.name()))
+                        .execute();
                 if (changed == 0) return ProjectEventService.Change.unchanged(false);
                 ObjectNode payload = mapper.createObjectNode();
                 payload.put("planId", plan.id().toString());
                 payload.put("runId", plan.runId().toString());
-                payload.put("stage", plan.stage());
-                payload.put("status", "STALE");
+                payload.put("stage", plan.stage().name());
+                payload.put("status", ExecutionPlan.Status.STALE.name());
                 return ProjectEventService.Change.changed(true,
                         new ProjectEventService.EventDraft("plan.stale", 1,
                                 plan.id(), plan.revision(), payload));
@@ -224,32 +250,32 @@ public class LegacyMediaImportService implements ApplicationRunner {
     }
 
     private void fenceLegacyTasks(Imported imported) {
-        List<OldTask> old = jdbc.sql("select t.id,t.project_id,p.owner_id,t.kind,t.status,"
-                        + "t.provider_request_id,t.input_json::text as input_json,t.version "
-                        + "from task t join project p on p.id=t.project_id "
-                        + "where t.kind in ('IMAGE_GENERATION','VIDEO_GENERATION') "
-                        + "and t.capability_id is null and t.status not in "
-                        + "('SUCCEEDED','FAILED','CANCELED','BLOCKED')")
-                .query((row, index) -> new OldTask(row.getObject("id", UUID.class),
-                        row.getObject("project_id", UUID.class),
-                        row.getObject("owner_id", UUID.class), row.getString("kind"),
-                        row.getString("status"), row.getString("provider_request_id"),
-                        row.getString("input_json"), row.getLong("version"))).list();
+        List<OldTask> old = dsl.select(TASK.ID, TASK.PROJECT_ID, PROJECT.OWNER_ID, TASK.KIND,
+                        TASK.STATUS, TASK.PROVIDER_REQUEST_ID, TASK.INPUT_JSON, TASK.VERSION)
+                .from(TASK)
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .where(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(), Task.Kind.VIDEO_GENERATION.name()))
+                .and(TASK.CAPABILITY_ID.isNull())
+                .and(TASK.STATUS.notIn(Task.Status.SUCCEEDED.name(), Task.Status.FAILED.name(),
+                        Task.Status.CANCELED.name(), Task.Status.BLOCKED.name()))
+                .fetch(row -> new OldTask(row.value1(), row.value2(), row.value3(),
+                        Task.Kind.valueOf(row.value4()), Task.Status.valueOf(row.value5()),
+                        row.value6(), row.value7().data(), row.value8()));
         for (OldTask task : old) {
             OldAttempt attempt = latestAttempt(task.id());
             var input = mapper.readTree(task.inputJson());
             int oldVersion = input.path("providerConfigVersion").asInt(-1);
             String workflow = input.path("workflowVersion").asText();
-            if (("IMAGE_GENERATION".equals(task.kind())
+            if ((task.kind() == Task.Kind.IMAGE_GENERATION
                     && "mock-image-v1".equals(workflow)
-                    || "VIDEO_GENERATION".equals(task.kind())
+                    || task.kind() == Task.Kind.VIDEO_GENERATION
                     && "mock-video-v1".equals(workflow))
-                    && ("PENDING".equals(task.status()) || "READY".equals(task.status())
-                    || "RUNNING".equals(task.status()) && task.providerRequestId() == null)) {
+                    && (task.status() == Task.Status.PENDING || task.status() == Task.Status.READY
+                    || task.status() == Task.Status.RUNNING && task.providerRequestId() == null)) {
                 bindLegacyMock(task);
                 continue;
             }
-            boolean supported = "IMAGE_GENERATION".equals(task.kind())
+            boolean supported = task.kind() == Task.Kind.IMAGE_GENERATION
                     ? ComfyUiImageWorkflow.supportsHistoricalVersion(workflow)
                     : ComfyUiVideoWorkflow.supportsHistoricalVersion(workflow);
             Integer connectionVersion = imported == null ? null : imported.versions().get(oldVersion);
@@ -262,66 +288,78 @@ public class LegacyMediaImportService implements ApplicationRunner {
                     && (task.providerRequestId() == null || task.providerRequestId().equals(
                             attempt.candidateRequestId().toString()));
             if (exact && connectionVersion != null
-                    && ("WAITING_PROVIDER".equals(task.status())
-                            || "UNKNOWN".equals(task.status())
-                            || "SUBMITTING".equals(task.status())
-                            || "RUNNING".equals(task.status())
+                    && (task.status() == Task.Status.WAITING_PROVIDER
+                            || task.status() == Task.Status.UNKNOWN
+                            || task.status() == Task.Status.SUBMITTING
+                            || task.status() == Task.Status.RUNNING
                                     && task.providerRequestId() != null)) {
-                UUID capabilityId = "IMAGE_GENERATION".equals(task.kind())
+                UUID capabilityId = task.kind() == Task.Kind.IMAGE_GENERATION
                         ? imported.imageId() : imported.videoId();
                 bindHistoricalTask(task, attempt, imported.connectionId(),
                         connectionVersion, capabilityId);
-            } else if ("PENDING".equals(task.status()) || "READY".equals(task.status())
-                    || "RUNNING".equals(task.status())
-                    || "WAITING_PROVIDER".equals(task.status())) {
+            } else if (task.status() == Task.Status.PENDING || task.status() == Task.Status.READY
+                    || task.status() == Task.Status.RUNNING
+                    || task.status() == Task.Status.WAITING_PROVIDER) {
                 blockUnresolved(task);
-            } else if ("UNKNOWN".equals(task.status()) || "SUBMITTING".equals(task.status())) {
-                jdbc.sql("update task set error_code='LEGACY_UNRESOLVED' "
-                                + "where id=:id and status=:status")
-                        .param("id", task.id()).param("status", task.status()).update();
+            } else if (task.status() == Task.Status.UNKNOWN || task.status() == Task.Status.SUBMITTING) {
+                dsl.update(TASK)
+                        .set(TASK.ERROR_CODE, "LEGACY_UNRESOLVED")
+                        .where(TASK.ID.eq(task.id()))
+                        .and(TASK.STATUS.eq(task.status().name()))
+                        .execute();
             }
         }
     }
 
     private void bindLegacyMock(OldTask task) {
-        jdbc.sql("update task set connection_id=:connectionId,connection_version=1,"
-                        + "capability_id=:capabilityId,capability_version=1 "
-                        + "where id=:id and capability_id is null")
-                .param("connectionId", MOCK_CONNECTION)
-                .param("capabilityId", "IMAGE_GENERATION".equals(task.kind())
+        dsl.update(TASK)
+                .set(TASK.CONNECTION_ID, MOCK_CONNECTION)
+                .set(TASK.CONNECTION_VERSION, 1)
+                .set(TASK.CAPABILITY_ID, task.kind() == Task.Kind.IMAGE_GENERATION
                         ? MOCK_IMAGE : MOCK_VIDEO)
-                .param("id", task.id()).update();
+                .set(TASK.CAPABILITY_VERSION, 1)
+                .where(TASK.ID.eq(task.id()))
+                .and(TASK.CAPABILITY_ID.isNull())
+                .execute();
     }
 
     private void bindHistoricalTask(OldTask task, OldAttempt attempt, UUID connectionId,
             int connectionVersion, UUID capabilityId) {
-        jdbc.sql("update task set connection_id=:connectionId,"
-                        + "connection_version=:connectionVersion,capability_id=:capabilityId,"
-                        + "capability_version=1 where id=:id and capability_id is null")
-                .param("connectionId", connectionId)
-                .param("connectionVersion", connectionVersion)
-                .param("capabilityId", capabilityId).param("id", task.id()).update();
-        jdbc.sql("update provider_attempt set connection_id=:connectionId,"
-                        + "connection_version=:connectionVersion,capability_id=:capabilityId,"
-                        + "capability_version=1 where id=:id and capability_id is null")
-                .param("connectionId", connectionId)
-                .param("connectionVersion", connectionVersion)
-                .param("capabilityId", capabilityId).param("id", attempt.id()).update();
+        dsl.update(TASK)
+                .set(TASK.CONNECTION_ID, connectionId)
+                .set(TASK.CONNECTION_VERSION, connectionVersion)
+                .set(TASK.CAPABILITY_ID, capabilityId)
+                .set(TASK.CAPABILITY_VERSION, 1)
+                .where(TASK.ID.eq(task.id()))
+                .and(TASK.CAPABILITY_ID.isNull())
+                .execute();
+        dsl.update(PROVIDER_ATTEMPT)
+                .set(PROVIDER_ATTEMPT.CONNECTION_ID, connectionId)
+                .set(PROVIDER_ATTEMPT.CONNECTION_VERSION, connectionVersion)
+                .set(PROVIDER_ATTEMPT.CAPABILITY_ID, capabilityId)
+                .set(PROVIDER_ATTEMPT.CAPABILITY_VERSION, 1)
+                .where(PROVIDER_ATTEMPT.ID.eq(attempt.id()))
+                .and(PROVIDER_ATTEMPT.CAPABILITY_ID.isNull())
+                .execute();
     }
 
     private void blockUnresolved(OldTask task) {
         events.recordChange(task.ownerId(), task.projectId(), () -> {
-            int changed = jdbc.sql("update task set status='BLOCKED',"
-                            + "error_code='LEGACY_UNRESOLVED',lease_owner=null,lease_until=null,"
-                            + "version=version+1,updated_at=:now where id=:id "
-                            + "and version=:version and status=:status")
-                    .param("id", task.id()).param("version", task.version())
-                    .param("status", task.status())
-                    .param("now", clock.instant().atOffset(ZoneOffset.UTC)).update();
+            int changed = dsl.update(TASK)
+                    .set(TASK.STATUS, Task.Status.BLOCKED.name())
+                    .set(TASK.ERROR_CODE, "LEGACY_UNRESOLVED")
+                    .set(TASK.LEASE_OWNER, (String) null)
+                    .set(TASK.LEASE_UNTIL, (java.time.OffsetDateTime) null)
+                    .set(TASK.VERSION, TASK.VERSION.plus(1))
+                    .set(TASK.UPDATED_AT, clock.instant().atOffset(ZoneOffset.UTC))
+                    .where(TASK.ID.eq(task.id()))
+                    .and(TASK.VERSION.eq(task.version()))
+                    .and(TASK.STATUS.eq(task.status().name()))
+                    .execute();
             if (changed == 0) return ProjectEventService.Change.unchanged(false);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());
-            payload.put("status", "BLOCKED");
+            payload.put("status", Task.Status.BLOCKED.name());
             payload.put("cancelRequested", false);
             payload.put("possibleExternalCost", task.providerRequestId() != null);
             return ProjectEventService.Change.changed(true,
@@ -331,23 +369,25 @@ public class LegacyMediaImportService implements ApplicationRunner {
     }
 
     private OldAttempt latestAttempt(UUID taskId) {
-        return jdbc.sql("select id,candidate_request_id,candidate_origin_sha256,"
-                        + "provider_request_id from provider_attempt where task_id=:id "
-                        + "order by created_at desc,id desc limit 1")
-                .param("id", taskId).query((row, index) -> new OldAttempt(
-                        row.getObject("id", UUID.class),
-                        row.getObject("candidate_request_id", UUID.class),
-                        row.getString("candidate_origin_sha256"),
-                        row.getString("provider_request_id"))).optional().orElse(null);
+        return dsl.select(PROVIDER_ATTEMPT.ID, PROVIDER_ATTEMPT.CANDIDATE_REQUEST_ID,
+                        PROVIDER_ATTEMPT.CANDIDATE_ORIGIN_SHA256,
+                        PROVIDER_ATTEMPT.PROVIDER_REQUEST_ID)
+                .from(PROVIDER_ATTEMPT)
+                .where(PROVIDER_ATTEMPT.TASK_ID.eq(taskId))
+                .orderBy(PROVIDER_ATTEMPT.CREATED_AT.desc(), PROVIDER_ATTEMPT.ID.desc())
+                .limit(1)
+                .fetchOptional(row -> new OldAttempt(row.value1(), row.value2(),
+                        row.value3(), row.value4()))
+                .orElse(null);
     }
 
     private OldOrigin originFor(int configVersion) {
-        return jdbc.sql("select config_version,origin,origin_sha256 "
-                        + "from comfyui_config_version where config_version=:version")
-                .param("version", configVersion)
-                .query((row, index) -> new OldOrigin(row.getInt("config_version"),
-                        row.getString("origin"), row.getString("origin_sha256")))
-                .optional().orElse(null);
+        return dsl.select(COMFYUI_CONFIG_VERSION.CONFIG_VERSION,
+                        COMFYUI_CONFIG_VERSION.ORIGIN, COMFYUI_CONFIG_VERSION.ORIGIN_SHA256)
+                .from(COMFYUI_CONFIG_VERSION)
+                .where(COMFYUI_CONFIG_VERSION.CONFIG_VERSION.eq(configVersion))
+                .fetchOptional(row -> new OldOrigin(row.value1(), row.value2(), row.value3()))
+                .orElse(null);
     }
 
     private static String sha256(String value) {
@@ -364,9 +404,9 @@ public class LegacyMediaImportService implements ApplicationRunner {
     private record Imported(UUID connectionId, UUID imageId, UUID videoId,
             Map<Integer, Integer> versions) {}
     private record OldPlan(UUID id, UUID projectId, UUID runId, int revision,
-            String stage, UUID ownerId) {}
-    private record OldTask(UUID id, UUID projectId, UUID ownerId, String kind,
-            String status, String providerRequestId, String inputJson, long version) {}
+            ExecutionPlan.Stage stage, UUID ownerId) {}
+    private record OldTask(UUID id, UUID projectId, UUID ownerId, Task.Kind kind,
+            Task.Status status, String providerRequestId, String inputJson, long version) {}
     private record OldAttempt(UUID id, UUID candidateRequestId, String originSha256,
             String providerRequestId) {}
 }

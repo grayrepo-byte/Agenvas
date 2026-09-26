@@ -1,19 +1,25 @@
 package dev.agenvas.settings.application;
 
+import static dev.agenvas.db.Tables.TASK;
+
 import dev.agenvas.asset.application.AssetProperties;
 import dev.agenvas.llm.application.LlmModeProperties;
 import dev.agenvas.provider.application.ProviderModeProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
+import dev.agenvas.task.domain.Task;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
+import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
 /** 汇总只读安装状态；只报告配置情况与任务计数，不探测付费 Provider 或泄露配置细节。 */
@@ -21,7 +27,7 @@ import org.springframework.stereotype.Service;
 public class SystemDiagnosticsService {
 
     /** 查询近期持久化任务状态，并以数据库访问结果判断数据库可用性。 */
-    private final JdbcClient jdbc;
+    private final DSLContext dsl;
     /** 规范化后的媒体归档根目录，用于检查本地存储权限。 */
     private final Path storageRoot;
     /** 决定 LLM 状态按 Mock 还是已配置 Provider 展示。 */
@@ -40,11 +46,11 @@ public class SystemDiagnosticsService {
     private final Clock clock;
 
     /** 固定本地存储根目录并注入各 Provider 的只读配置状态。 */
-    public SystemDiagnosticsService(JdbcClient jdbc, AssetProperties storage,
+    public SystemDiagnosticsService(DSLContext dsl, AssetProperties storage,
             LlmModeProperties llmMode, LlmProviderConfigService llmConfigs,
             ProviderModeProperties mediaMode, ComfyUiProperties comfy,
             ComfyUiImageProperties image, ComfyUiVideoProperties video, Clock clock) {
-        this.jdbc = jdbc;
+        this.dsl = dsl;
         this.storageRoot = storage.root().toAbsolutePath().normalize();
         this.llmMode = llmMode;
         this.llmConfigs = llmConfigs;
@@ -60,18 +66,23 @@ public class SystemDiagnosticsService {
         boolean databaseAvailable;
         List<RecentError> recentErrors;
         try {
-            recentErrors = jdbc.sql("""
-                            select status, count(*) as total, max(updated_at) as last_at
-                            from task
-                            where status in ('FAILED', 'UNKNOWN', 'BLOCKED')
-                              and updated_at >= now() - interval '7 days'
-                            group by status
-                            order by last_at desc
-                            """)
-                    .query((row, ignored) -> new RecentError(row.getString("status"),
-                            row.getLong("total"),
-                            row.getTimestamp("last_at").toInstant()))
-                    .list();
+            // 七日窗口写作 PG 的 now() - interval '7 days'：DSL 没有可移植的 interval 字面量表达，
+            // 因此只把该时间表达式作为普通 SQL 字段嵌入，其余聚合仍由 jOOQ 构造。
+            Field<OffsetDateTime> sevenDaysAgo = DSL.field(
+                    "now() - interval '7 days'", OffsetDateTime.class);
+            recentErrors = dsl
+                    .select(TASK.STATUS, DSL.count(), DSL.max(TASK.UPDATED_AT))
+                    .from(TASK)
+                    .where(TASK.STATUS.in(
+                            Task.Status.FAILED.name(),
+                            Task.Status.UNKNOWN.name(),
+                            Task.Status.BLOCKED.name()))
+                    .and(TASK.UPDATED_AT.ge(sevenDaysAgo))
+                    .groupBy(TASK.STATUS)
+                    .orderBy(DSL.max(TASK.UPDATED_AT).desc())
+                    .fetch(row -> new RecentError(row.value1(),
+                            row.value2().longValue(),
+                            row.value3().toInstant()));
             databaseAvailable = true;
         } catch (DataAccessException unavailable) {
             databaseAvailable = false;

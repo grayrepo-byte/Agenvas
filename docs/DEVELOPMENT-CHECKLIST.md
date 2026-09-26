@@ -24,13 +24,15 @@
 
 交付：前后端目录、构建 Wrapper、精确依赖、lockfile、容器版本、`docs/dependency-baseline.md`。
 
-- [x] JDK 21、Boot 4.0 基线、Spring AI 2.0.1 与 MyBatis-Plus Boot 4 starter 可解析与编译。
+- [x] JDK 21、Boot 4.0 基线、Spring AI 2.0.1 与数据访问 starter 可解析与编译。
 - [x] 前端 stable 依赖锁定，Node/pnpm engines 一致，类型检查与生产构建可执行。
 - [x] 不含 SNAPSHOT/RC/动态 latest，不重复引入 ORM/工具执行循环。
 
 2026-09-26 前端构建迁移补验：按 [ADR 0009](adr/0009-nextjs-static-frontend.md)迁为 Next.js 16.3.6 静态导出，生产仍由 Nginx 托管且不增加 Node 运行时、Next.js API、Server Action 或 SSR 数据访问；client-only catch-all 保留原 URL 和 React Router 行为。OpenAPI 类型生成、TypeScript、ESLint、20 个文件/84 项 Vitest、Next 生产构建、Node 24 容器冻结安装/构建、Nginx 配置及 `/login`、未知项目 UUID 深链、Chrome 登录页水合均通过，见 [迁移证据](evidence/T01-nextjs-static-frontend.md)。
 
 2026-09-26 前端构建回退：按 [ADR 0011](adr/0011-revert-to-vite.md) 撤销 [ADR 0009](adr/0009-nextjs-static-frontend.md) 的 Next.js 静态导出迁移，恢复 `index.html`、`src/main.tsx` 与 `vite.config.ts` 入口，构建产物由 `out` 回到 `dist` 并同步 Dockerfile、`.dockerignore` 与 e2e 脚本；`@vitejs/plugin-react` 随 dev server 一并恢复以提供 Fast Refresh。`pnpm install --frozen-lockfile`、TypeScript、ESLint、34 个文件/212 项 Vitest、Vite 生产构建，以及 dev server 的 `/api` 代理与未知项目 UUID 深链均通过，见 [回退证据](evidence/T01-vite-rollback.md)。未运行后端测试、容器镜像构建与浏览器视觉验收。
+
+2026-09-26 数据访问迁移到 jOOQ：按 [ADR 0012](adr/0012-jooq-persistence.md) 把生产数据访问从 Spring `JdbcClient` 换成 jOOQ（24 个类、229 处调用点），jOOQ 生成源码提交在 `backend/src/jooq/java` 且构建期不连数据库，同时移除零引用的 MyBatis-Plus starter，并把状态魔法值收敛为枚举/常量。Surefire 112 项、Failsafe 80 项全部通过（先前两项既有失败经 A/B 对比确认与本次迁移无关并已修复），生成结果连续两次字节一致。未做真实 Provider 调用、容器镜像构建与前端浏览器验收，见 [迁移证据](evidence/T01-jooq-migration.md)。
 
 ### T02 默认三服务与 Mock 模式
 

@@ -250,7 +250,7 @@ public class ToolExecutionService {
         }
         ExecutionPlan plan = plans.propose(context, input);
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "WAITING_APPROVAL");
+        result.put("status", ToolResultStatus.WAITING_APPROVAL.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds").add(plan.id().toString());
         result.putArray("updatedIds");
@@ -280,7 +280,7 @@ public class ToolExecutionService {
         }
         ExportProposal proposal = exportProposals.propose(context, run, input);
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds").add(proposal.id().toString());
         result.putArray("updatedIds");
@@ -333,7 +333,7 @@ public class ToolExecutionService {
         }
         creative.placeOutputs(context, run, java.util.List.of(created));
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds").add(created.artifact().id().toString());
         result.putArray("updatedIds");

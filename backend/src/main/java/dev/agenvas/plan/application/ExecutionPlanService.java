@@ -349,7 +349,7 @@ public class ExecutionPlanService {
             created.add(task);
         }
         AgentRun advanced = createResumeTurn(ownerId, projectId, run, plan,
-                created, "APPROVED");
+                created, ResumeDecision.APPROVED);
         events.append(ownerId, projectId, planEvent("execution.plan.approved", plan));
         runs.transition(ownerId, projectId, run.id(), advanced.version(),
                 AgentRun.Status.WAITING_TASKS);
@@ -385,14 +385,14 @@ public class ExecutionPlanService {
         }
         events.append(ownerId, projectId, planEvent("execution.plan.rejected", plan));
         AgentRun advanced = createResumeTurn(ownerId, projectId, run, plan,
-                List.of(), "REJECTED");
+                List.of(), ResumeDecision.REJECTED);
         runs.transition(ownerId, projectId, run.id(), advanced.version(), AgentRun.Status.RUNNING);
         return plans.find(projectId, preliminary.id()).orElseThrow();
     }
 
     /** 创建固定审批决定和任务依赖的持久化续跑回合；图片阶段仍等待用户选择关键帧。 */
     private AgentRun createResumeTurn(UUID ownerId, UUID projectId, AgentRun run,
-            ExecutionPlan plan, List<Task> mediaTasks, String decision) {
+            ExecutionPlan plan, List<Task> mediaTasks, ResumeDecision decision) {
         int previousStep = run.nextStepIndex();
         if (previousStep >= run.policySnapshot().path("maxModelTurns").asInt(12) - 1) {
             throw conflict("Run has no model turn left for the plan result");
@@ -417,10 +417,10 @@ public class ExecutionPlanService {
         resume.put("schemaVersion", 1);
         resume.put("stepIndex", previousStep + 1);
         resume.put("resumePlanId", plan.id().toString());
-        resume.put("resumeDecision", decision);
+        resume.put("resumeDecision", decision.name());
         // An image-plan continuation waits for an explicit choice of each exact result.
         // The model may not turn task completion into implicit approval of a keyframe.
-        resume.put("awaitKeyframes", "APPROVED".equals(decision)
+        resume.put("awaitKeyframes", decision == ResumeDecision.APPROVED
                 && plan.stage() == ExecutionPlan.Stage.IMAGE);
         tasks.create(ownerId, projectId, run.id(), null,
                 "agent-turn-" + (previousStep + 1), Task.Kind.AGENT_TURN,

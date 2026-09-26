@@ -24,7 +24,7 @@
 
 前端：Vite 8 + React + TypeScript，React Flow，TanStack Query，Zustand，React Router，Tailwind/shadcn。前端只承担页面构建与客户端渲染；禁止 BFF、Server Action、SSR 数据访问或 Node 服务端，业务 API 仍全部由 Spring Boot 提供。
 
-后端：Java 21，Spring Boot 4.0 系列与 Spring AI 2.0.1，Spring MVC，Spring Security，Spring Session JDBC，MyBatis-Plus Boot 4 starter，PostgreSQL 17，Flyway。
+后端：Java 21，Spring Boot 4.0 系列与 Spring AI 2.0.1，Spring MVC，Spring Security，Spring Session JDBC，jOOQ（生成源码入库，见 ADR 0012），PostgreSQL 17，Flyway。
 
 部署：单个 Spring Boot 应用、静态前端反代、PostgreSQL、本地文件卷。REST + SSE。
 
@@ -51,7 +51,7 @@
 
 完整保存模型响应与 tool_call_id 后才执行工具。工具执行按 runId + stepIndex + toolCallId 去重，业务生成按 planId + stepKey + attemptNo 去重。
 
-工具只调用应用服务；不得直接注入 Mapper，不得控制 React Flow/DOM，不得执行任意 SQL、Shell、HTTP 请求或动态加载插件。
+工具只调用应用服务；不得直接注入 Repository/Mapper，不得控制 React Flow/DOM，不得执行任意 SQL、Shell、HTTP 请求或动态加载插件。
 
 模型不能选择 userId、权限、预算和批准结果。身份与项目作用域来自服务端可信上下文，目标资源 ID 仍须重新鉴权。
 
@@ -117,7 +117,7 @@ API 类型从合约生成；生成文件禁止手改。组件不包含 Key，不
 
 构造器注入，DTO 与实体分离，状态变化集中到状态机规则。Controller 与 Tool 复用应用服务。
 
-模块间不跨用 Mapper；不建无需求的通用框架。shared 只放真正横切能力。
+模块间不跨用对方的 Repository 或表常量；不建无需求的通用框架。shared 只放真正横切能力。
 
 禁止 catch 后返回成功/null。错误映射到稳定 code 与 HTTP 状态；不把堆栈传给用户或模型。
 
@@ -136,6 +136,8 @@ SQL 参数化，排序字段白名单，查询包含项目/权限边界。检查
 ## 11. 数据库与 API
 
 Flyway 迁移只增不改。关键唯一约束、外键、JSON Schema 版本必须落地；用真实 PostgreSQL 测试，不能用 H2 替代并发语义。
+
+jOOQ 生成源码提交在 `backend/src/jooq/java`，构建期不连数据库；禁止手改，改 schema 后按 [ADR 0012](docs/adr/0012-jooq-persistence.md) 重新生成。生产数据访问只用 jOOQ；集成测试可继续用 `JdbcClient` 写独立断言。
 
 API 前缀 `/api/v1`；camelCase；字符串枚举；UUID 字符串；ISO 8601 UTC；金额十进制字符串。
 

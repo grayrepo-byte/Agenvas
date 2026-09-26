@@ -146,7 +146,7 @@ public class CreativeArtifactToolService {
                 context.projectId(), context.runId(), run.contextSnapshot(), artifactId,
                 version.longValue(), title, content);
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds");
         result.putArray("updatedIds").add(artifactId.toString());
@@ -230,7 +230,7 @@ public class CreativeArtifactToolService {
         CanvasService.OutputPlacements placed = canvas.placeArtifactsInAgentOutputWithinChange(
                 context.ownerId(), context.projectId(), run.agentInstanceId(), artifactIds);
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         ArrayNode createdIds = result.putArray("createdIds");
         placed.created().forEach(item -> createdIds.add(item.id().toString()));
@@ -354,7 +354,7 @@ public class CreativeArtifactToolService {
         List<CanvasService.CanvasEntry> after = canvas.apply(context.ownerId(),
                 context.projectId(), updates);
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds");
         ArrayNode updatedIds = result.putArray("updatedIds");
@@ -454,7 +454,7 @@ public class CreativeArtifactToolService {
                     "请读取当前产物版本后重新建立关系。", false);
         }
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         result.putArray("createdIds");
         ArrayNode updatedIds = result.putArray("updatedIds");
@@ -496,7 +496,7 @@ public class CreativeArtifactToolService {
     private ObjectNode result(UUID operationId, List<ArtifactService.ArtifactView> created,
             String summary) {
         ObjectNode result = mapper.createObjectNode();
-        result.put("status", "SUCCEEDED");
+        result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
         ArrayNode ids = result.putArray("createdIds");
         result.putArray("updatedIds");

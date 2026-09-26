@@ -1,15 +1,18 @@
 package dev.agenvas.run.infrastructure;
 
+import static dev.agenvas.db.Tables.AGENT_RUN;
+
+import dev.agenvas.run.domain.AgentRun;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
+import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,11 +31,11 @@ public class ActiveRunMetrics {
 
     /** 注册非终态 Run 计数查询和 Gauge。 */
     @Autowired
-    public ActiveRunMetrics(JdbcClient jdbc, MeterRegistry meters) {
-        this(() -> jdbc.sql("""
-                        select count(*) from agent_run
-                        where status not in ('CANCELED', 'FAILED', 'SUCCEEDED')
-                        """).query(Long.class).single(), meters);
+    public ActiveRunMetrics(DSLContext dsl, MeterRegistry meters) {
+        this(() -> dsl.fetchCount(AGENT_RUN, AGENT_RUN.STATUS.notIn(
+                AgentRun.Status.CANCELED.name(),
+                AgentRun.Status.FAILED.name(),
+                AgentRun.Status.SUCCEEDED.name())), meters);
     }
 
     /** 注入数量加载器以隔离数据库访问并验证不可用和恢复状态。 */

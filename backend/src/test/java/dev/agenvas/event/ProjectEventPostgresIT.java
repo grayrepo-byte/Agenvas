@@ -123,16 +123,19 @@ class ProjectEventPostgresIT {
                 .run();
         assertThat(concurrentAppend(owner.userId(), project.id())).hasSize(CONCURRENT_EVENTS);
         List<ProjectEvent> events = eventService.listAfter(owner.userId(), project.id(), 1, 100);
+        // Run 创建按序追加三个事件：Run 变更、会话变更（画布需要刷新会话列表），
+        // 随后才是首个 Task 的状态变更；并发追加排在它们之后。
         assertThat(events).extracting(ProjectEvent::seq)
-                .containsExactlyElementsOf(sequence(2, CONCURRENT_EVENTS + 3));
+                .containsExactlyElementsOf(sequence(2, CONCURRENT_EVENTS + 4));
         assertThat(events.getFirst().type()).isEqualTo("agent.run.changed");
         assertThat(events.getFirst().payload().get("status").stringValue()).isEqualTo("QUEUED");
-        assertThat(events.get(1).type()).isEqualTo("task.status.changed");
+        assertThat(events.get(1).type()).isEqualTo("agent.conversation.changed");
+        assertThat(events.get(2).type()).isEqualTo("task.status.changed");
         assertThat(jdbcClient.sql("select event_seq from project where id = :projectId")
                         .param("projectId", project.id())
                         .query(Long.class)
                         .single())
-                .isEqualTo(CONCURRENT_EVENTS + 3L);
+                .isEqualTo(CONCURRENT_EVENTS + 4L);
 
         Task task = taskService.create(
                 owner.userId(),
@@ -147,7 +150,7 @@ class ProjectEventPostgresIT {
                 List.of());
         ProjectSnapshotService.ProjectSnapshot snapshot =
                 snapshotService.snapshot(owner.userId(), project.id());
-        assertThat(snapshot.snapshotSeq()).isEqualTo(CONCURRENT_EVENTS + 4L);
+        assertThat(snapshot.snapshotSeq()).isEqualTo(CONCURRENT_EVENTS + 5L);
         assertThat(snapshot.activeRun().id()).isEqualTo(run.id());
         assertThat(snapshot.activeTasks()).extracting(Task::id).contains(task.id());
         assertThat(snapshot.agents()).extracting(AgentInstance::id).containsExactly(agent.id());
@@ -236,8 +239,9 @@ class ProjectEventPostgresIT {
                 while (!writerDone.get() || reads < 30) {
                     ProjectSnapshotService.ProjectSnapshot snapshot =
                             snapshotService.snapshot(ownerId, project.id());
+                    // 偏移量含会话变更事件：Run 创建同时追加 Run、会话与首个 Task 三个事件。
                     assertThat(snapshot.snapshotSeq())
-                            .isEqualTo(snapshot.activeRun().version() + 3);
+                            .isEqualTo(snapshot.activeRun().version() + 4);
                     reads++;
                 }
             });

@@ -1,16 +1,22 @@
 package dev.agenvas.task.infrastructure;
 
+import static dev.agenvas.db.Tables.TASK;
+
+import dev.agenvas.task.domain.Task;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.OffsetDateTime;
 import java.util.function.Supplier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -35,21 +41,8 @@ public class TaskQueueMetrics {
 
     /** 注册持久层快照查询，并将可见数值映射到无项目标签的 Micrometer 指标。 */
     @Autowired
-    public TaskQueueMetrics(JdbcClient jdbc, MeterRegistry meters) {
-        this(() -> jdbc.sql("""
-                        select count(*) filter (where status = 'READY') as ready,
-                               count(*) filter (where status = 'UNKNOWN') as unknown,
-                               count(*) filter (where status = 'BLOCKED') as blocked,
-                               coalesce(max(greatest(0, extract(epoch from
-                                   (now() - updated_at)))) filter (where status = 'READY'
-                                   and next_action_at <= now()), 0)::double precision
-                                   as oldest_ready_age_seconds
-                        from task
-                        where status in ('READY', 'UNKNOWN', 'BLOCKED')
-                        """)
-                .query((row, ignored) -> new Snapshot(row.getLong("ready"),
-                        row.getLong("unknown"), row.getLong("blocked"),
-                        row.getDouble("oldest_ready_age_seconds"))).single(), meters);
+    public TaskQueueMetrics(DSLContext dsl, MeterRegistry meters) {
+        this(() -> snapshotQuery(dsl), meters);
     }
 
     /** 注入快照加载器，便于隔离数据库状态源并验证失败与恢复行为。 */
@@ -70,6 +63,33 @@ public class TaskQueueMetrics {
                 .description("Durable tasks in one allowlisted state; -1 when unavailable")
                 .tag("status", status)
                 .register(meters);
+    }
+
+    /** 一次只读聚合读取同一快照的任务数量与最老到期任务年龄。 */
+    private static Snapshot snapshotQuery(DSLContext dsl) {
+        Field<Integer> ready = DSL.count()
+                .filterWhere(TASK.STATUS.eq(Task.Status.READY.name()));
+        Field<Integer> unknown = DSL.count()
+                .filterWhere(TASK.STATUS.eq(Task.Status.UNKNOWN.name()));
+        Field<Integer> blocked = DSL.count()
+                .filterWhere(TASK.STATUS.eq(Task.Status.BLOCKED.name()));
+        // now() 与 DSL.currentTimestamp() 在 PostgreSQL 中同义，这里保留原 SQL 的取值方式。
+        Field<OffsetDateTime> now = DSL.field("now()", OffsetDateTime.class);
+        Field<Double> dueAgeSeconds = DSL.field("extract(epoch from ({0} - {1}))",
+                Double.class, now, TASK.UPDATED_AT);
+        Field<Double> oldestReadyAgeSeconds = DSL.coalesce(
+                        DSL.max(DSL.greatest(DSL.inline(0.0), dueAgeSeconds))
+                                .filterWhere(TASK.STATUS.eq(Task.Status.READY.name())
+                                        .and(TASK.NEXT_ACTION_AT.le(now))),
+                        DSL.inline(0.0))
+                .cast(Double.class);
+        var row = dsl.select(ready, unknown, blocked, oldestReadyAgeSeconds)
+                .from(TASK)
+                .where(TASK.STATUS.in(Task.Status.READY.name(), Task.Status.UNKNOWN.name(),
+                        Task.Status.BLOCKED.name()))
+                .fetchSingle();
+        return new Snapshot(row.value1().longValue(), row.value2().longValue(),
+                row.value3().longValue(), row.value4());
     }
 
     /** 用一次只读 SQL 刷新全部状态和队列年龄，不认领或改变任何任务。 */

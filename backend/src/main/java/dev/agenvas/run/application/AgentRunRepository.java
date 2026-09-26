@@ -1,6 +1,7 @@
 package dev.agenvas.run.application;
 
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -75,17 +76,8 @@ public interface AgentRunRepository {
      */
     record IdempotencyRecord(
             String requestHash,
-            State state,
+            IdempotencyState state,
             UUID resourceId,
             String responseJson,
-            Instant expiresAt) {
-
-        /** 预留记录的生命周期。 */
-        public enum State {
-            /** 首次命令已占用键，业务结果尚未提交。 */
-            IN_PROGRESS,
-            /** 原 Run 和响应已提交，同键同载荷可直接重放。 */
-            COMPLETED
-        }
-    }
+            Instant expiresAt) {}
 }

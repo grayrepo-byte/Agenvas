@@ -16,8 +16,8 @@ import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository.Snapshot;
-import dev.agenvas.provider.infrastructure.JdbcMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -35,13 +35,13 @@ import tools.jackson.databind.ObjectMapper;
 /** Fixed Wan I2V graph using the saved keyframe, origin and four model file basenames. */
 @Component
 public class ComfyUiVideoAdapter implements MediaAdapter {
-    private final JdbcMediaCapabilityRepository catalog;
+    private final JooqMediaCapabilityRepository catalog;
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final ProjectService projects;
     private final ObjectMapper mapper;
 
-    public ComfyUiVideoAdapter(JdbcMediaCapabilityRepository catalog, ArtifactService artifacts,
+    public ComfyUiVideoAdapter(JooqMediaCapabilityRepository catalog, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ObjectMapper mapper) {
         this.catalog = catalog;
         this.artifacts = artifacts;

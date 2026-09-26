@@ -22,9 +22,14 @@
         <!-- Keep Tomcat on the Boot 4.0 managed line while including its security fix. -->
         <tomcat.version>11.0.25</tomcat.version>
         <spring-ai.version>2.0.1</spring-ai.version>
-        <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <springdoc.version>3.0.3</springdoc.version>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <!-- jOOQ 生成代码所在的独立源码根；生成文件提交入库，构建期不依赖数据库。 -->
+        <jooq.generated.source.root>${project.basedir}/src/jooq/java</jooq.generated.source.root>
+        <!-- 仅 jooq-codegen profile 使用的一次性迁移库；不是部署数据库。 -->
+        <jooq.codegen.jdbcUrl>jdbc:postgresql://localhost:55432/agenvas</jooq.codegen.jdbcUrl>
+        <jooq.codegen.jdbcUser>agenvas</jooq.codegen.jdbcUser>
+        <jooq.codegen.jdbcPassword>codegen-only</jooq.codegen.jdbcPassword>
     </properties>
 
     <dependencyManagement>
@@ -58,7 +63,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <artifactId>spring-boot-starter-jooq</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -76,11 +81,6 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
-            <version>${mybatis-plus.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
@@ -141,6 +141,25 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- jOOQ 生成源码提交入库，构建期不连数据库；此源码根使普通构建也能编译它们。 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>add-jooq-generated-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${jooq.generated.source.root}</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
@@ -190,4 +209,93 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+          一次性重新生成 jOOQ 源码。生成结果提交在 src/jooq/java，因此普通构建、CI 与
+          部署镜像都不需要数据库。重新生成前先启动一个空的 PostgreSQL 17 并把
+          jooq.codegen.jdbcUrl 指向它；本 profile 会先跑 Flyway 再连库反向生成。
+          docker run 的完整命令与执行步骤见 docs/adr/0012-jooq-persistence.md。
+        -->
+        <profile>
+            <id>jooq-codegen</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.flywaydb</groupId>
+                        <artifactId>flyway-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>migrate-codegen-only-database</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>migrate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <url>${jooq.codegen.jdbcUrl}</url>
+                            <user>${jooq.codegen.jdbcUser}</user>
+                            <password>${jooq.codegen.jdbcPassword}</password>
+                            <locations>
+                                <location>filesystem:src/main/resources/db/migration</location>
+                            </locations>
+                        </configuration>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.flywaydb</groupId>
+                                <artifactId>flyway-database-postgresql</artifactId>
+                                <version>${flyway.version}</version>
+                            </dependency>
+                            <dependency>
+                                <groupId>org.postgresql</groupId>
+                                <artifactId>postgresql</artifactId>
+                                <version>${postgresql.version}</version>
+                            </dependency>
+                        </dependencies>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq-codegen-maven</artifactId>
+                        <executions>
+                            <execution>
+                                <id>generate-jooq-sources</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <jdbc>
+                                <url>${jooq.codegen.jdbcUrl}</url>
+                                <user>${jooq.codegen.jdbcUser}</user>
+                                <password>${jooq.codegen.jdbcPassword}</password>
+                            </jdbc>
+                            <generator>
+                                <database>
+                                    <name>org.jooq.meta.postgres.PostgresDatabase</name>
+                                    <inputSchema>public</inputSchema>
+                                    <excludes>flyway_schema_history</excludes>
+                                    <!-- PL/pgSQL 触发器函数与业务查询无关，且解析属 jOOQ 商业版能力。 -->
+                                    <includeRoutines>false</includeRoutines>
+                                </database>
+                                <generate>
+                                    <records>true</records>
+                                    <pojos>false</pojos>
+                                    <daos>false</daos>
+                                    <javaTimeTypes>true</javaTimeTypes>
+                                    <globalObjectReferences>true</globalObjectReferences>
+                                </generate>
+                                <target>
+                                    <packageName>dev.agenvas.db</packageName>
+                                    <directory>${jooq.generated.source.root}</directory>
+                                </target>
+                            </generator>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

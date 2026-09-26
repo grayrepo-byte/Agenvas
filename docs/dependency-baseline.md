@@ -24,13 +24,15 @@
 | Spring AI BOM / `spring-ai-client-chat` / `spring-ai-starter-model-openai` | 2.0.1 |
 | OkHttp（LLM 出站固定目标与 DNS/重定向控制） | 4.12.0；与 Spring AI 2.0.1 当前解析版本一致 |
 | TwelveMonkeys ImageIO WebP reader | 3.15.2；用于实际 WebP 解码，见 [项目仓库](https://github.com/haraldk/TwelveMonkeys) |
-| MyBatis-Plus Boot 4 Starter | 3.5.17 |
+| jOOQ（Boot 4 starter + codegen 插件） | 3.19.37（Boot 4.0.8 依赖管理）；生成源码提交在 `backend/src/jooq/java`，见 [ADR 0012](adr/0012-jooq-persistence.md) |
 | springdoc OpenAPI WebMVC UI | 3.0.3（按规格保持 3.0.x） |
-| Spring MVC / Security / Session JDBC starter / Actuator / JDBC / Validation | Boot 4.0.8 依赖管理 |
+| Spring MVC / Security / Session JDBC starter / Actuator / jOOQ starter / Validation | Boot 4.0.8 依赖管理 |
 | Flyway / PostgreSQL JDBC | Boot 4.0.8 依赖管理 |
 | Testcontainers PostgreSQL / JUnit Jupiter | 2.0.5（仅集成测试） |
 
 本地 Testcontainers PostgreSQL 仅用于测试且不启用 TLS；Maven Surefire/Failsafe 的测试进程固定 JDBC `sslmode=disable`，避免驱动在 Docker Desktop 端口代理上进行不必要的 SSL 协商。此设置不进入 Spring Boot 生产运行配置，也不改变部署数据库的 TLS 策略。
+
+jOOQ 生成源码（101 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
 Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置，加载应用自有确定性 Mock `ChatGateway` 和 Mock `GenerationGateway`；只有部署者明确启用聊天适配器并配置端点、模型与 Key 才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 

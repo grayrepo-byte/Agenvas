@@ -165,7 +165,7 @@ React Flow 官方说明其库保持 MIT 开源，Pro 提供额外示例与支持
 | Spring AI | 2.0.1 | 使用 spring-ai-bom；禁止混入 1.x 的内部实现 [S01] |
 | Web | Spring MVC | REST、SseEmitter；长任务交给持久化调度 |
 | 安全 | Spring Security + Spring Session JDBC | 同源 Cookie Session；不把 JWT 存 localStorage |
-| 数据访问 | MyBatis-Plus 3.5.17，Boot 4 starter | 不再叠加另一套 MyBatis starter [S03] |
+| 数据访问 | jOOQ 3.19.37，Boot 4 starter | 生成源码入库；不再叠加第二套 ORM [S03] |
 | 数据库 | PostgreSQL 17.11 | 17 系列正式维护版本；后续补丁经 CI 升级 [S14] |
 | 迁移 | Flyway | 所有表和索引通过有版本迁移创建 |
 | 校验 | Jakarta Validation + 领域校验 | 结构正确不等于业务正确 |
@@ -194,7 +194,7 @@ Spring MVC 支持异步响应和 SSE，本项目不因为需要流式进度就�
 
 ### 4.4 依赖冻结门禁
 
-M0 必须产出 `dependency-baseline.md`，记录 JDK、Node、pnpm、Maven、所有直接前端依赖、Boot/AI/MyBatis/springdoc、数据库和镜像 digest。执行依赖解析、构建、启动、JSONB 读写、Tool Calling、SSE、OpenAPI 生成测试后才算冻结完成。
+M0 必须产出 `dependency-baseline.md`，记录 JDK、Node、pnpm、Maven、所有直接前端依赖、Boot/AI/jOOQ/springdoc、数据库和镜像 digest。执行依赖解析、构建、启动、JSONB 读写、Tool Calling、SSE、OpenAPI 生成测试后才算冻结完成。
 
 本文列出的精确版本是已经核对官方文档的起始候选，不是“已在本项目联调通过”的声明。其余工具的补丁号不能由 AI 编造。
 
@@ -1155,7 +1155,7 @@ Application：用例、事务边界、权限、幂等、业务对象协调、事
 
 Domain：状态转换、授权范围、版本与计划规则；不依赖 React、Spring AI Provider DTO 或具体 HTTP 响应。
 
-Infrastructure：MyBatis、HTTP、文件系统、Spring AI、FFmpeg 等具体实现。
+Infrastructure：jOOQ、HTTP、文件系统、Spring AI、FFmpeg 等具体实现。
 
 不得跨模块直接注入对方 Mapper。通用 shared 不得膨胀成业务杂物间。
 
@@ -1542,7 +1542,7 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 
 - [S01] Spring AI Getting Started：版本、BOM、Boot 兼容范围。https://docs.spring.io/spring-ai/reference/getting-started.html
 - [S02] Spring Boot 4.0 System Requirements：4.0.8、Java 与构建要求。https://docs.spring.io/spring-boot/4.0/system-requirements.html
-- [S03] MyBatis-Plus 安装：Boot 4 starter 与依赖使用。https://baomidou.com/getting-started/install/
+- [S03] jOOQ Code Generation：生成源码、Maven 插件与目标数据库配置。https://www.jooq.org/doc/latest/manual/code-generation/
 - [S04] Spring AI Tool Calling：ToolContext、工具定义、方法工具限制。https://docs.spring.io/spring-ai/reference/api/tools.html
 - [S05] Spring AI ChatClient：受控工具循环与关闭自动注册。https://docs.spring.io/spring-ai/reference/api/chatclient.html
 - [S06] Spring AI ToolCallingAdvisor：自动循环与扩展机制。https://docs.spring.io/spring-ai/reference/api/tools/tool-calling-advisor.html

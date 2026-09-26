@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -128,6 +129,7 @@ class ComfyUiVideoPostgresIT {
     @Autowired private ComfyUiVideoWorkflow workflow;
     @Autowired private ComfyUiClient client;
     @Autowired private JdbcClient jdbc;
+    @Autowired private DSLContext dsl;
     @Autowired private ObjectMapper mapper;
 
     @Test
@@ -246,7 +248,7 @@ class ComfyUiVideoPostgresIT {
                 "http://127.0.0.1:65534", null);
         ComfyUiClient rotatedClient = new ComfyUiClient(
                 new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
-        ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(jdbc, mapper,
+        ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(dsl, mapper,
                 new PlanProviderProperties("comfyui", 2),
                 new ComfyUiProperties("http://127.0.0.1:65534"), rotatedClient, false);
         rotatedRegistry.registerActive();

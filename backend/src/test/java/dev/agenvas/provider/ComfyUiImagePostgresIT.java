@@ -45,6 +45,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.imageio.ImageIO;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -116,6 +117,7 @@ class ComfyUiImagePostgresIT {
     @Autowired private ComfyUiClient client;
     @Autowired private ComfyUiClientRegistry clientRegistry;
     @Autowired private JdbcClient jdbc;
+    @Autowired private DSLContext dsl;
     @Autowired private ObjectMapper mapper;
 
     @Test
@@ -289,11 +291,11 @@ class ComfyUiImagePostgresIT {
         due(queuedSecond.id());
         ComfyUiClient differentOrigin = new ComfyUiClient(
                 new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
-        assertThatThrownBy(() -> new ComfyUiClientRegistry(jdbc, mapper,
+        assertThatThrownBy(() -> new ComfyUiClientRegistry(dsl, mapper,
                 new PlanProviderProperties("comfyui", 1),
                 new ComfyUiProperties("http://127.0.0.1:65534"), differentOrigin, false)
                 .registerActive()).isInstanceOf(IllegalStateException.class);
-        ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(jdbc, mapper,
+        ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(dsl, mapper,
                 new PlanProviderProperties("comfyui", 2),
                 new ComfyUiProperties("http://127.0.0.1:65534"), differentOrigin, false);
         rotatedRegistry.registerActive();
