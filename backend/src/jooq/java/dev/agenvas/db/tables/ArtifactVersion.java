@@ -10,6 +10,7 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersionReference.ArtifactVersionReferencePath;
+import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
@@ -47,8 +48,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable content revisions. Selection changes update
- * artifact.current_version_id only.
+ * Immutable content revisions. Resource-default and CanvasItem selections only
+ * move pointers.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
@@ -123,7 +124,7 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
     }
 
     private ArtifactVersion(Name alias, Table<ArtifactVersionRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable content revisions. Selection changes update artifact.current_version_id only."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Immutable content revisions. Resource-default and CanvasItem selections only move pointers."), TableOptions.table(), where);
     }
 
     /**
@@ -256,6 +257,19 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _fkArtifactReferenceTarget = new ArtifactVersionReferencePath(this, null, Keys.ARTIFACT_VERSION_REFERENCE__FK_ARTIFACT_REFERENCE_TARGET.getInverseKey());
 
         return _fkArtifactReferenceTarget;
+    }
+
+    private transient CanvasItemPath _canvasItem;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.canvas_item</code>
+     * table
+     */
+    public CanvasItemPath canvasItem() {
+        if (_canvasItem == null)
+            _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION.getInverseKey());
+
+        return _canvasItem;
     }
 
     private transient MediaDraftPath _mediaDraft;

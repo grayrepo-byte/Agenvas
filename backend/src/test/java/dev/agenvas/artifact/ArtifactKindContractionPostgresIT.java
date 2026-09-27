@@ -68,7 +68,7 @@ class ArtifactKindContractionPostgresIT {
                     plan, waitingTool, doneTool));
         }
 
-        Flyway upgrade = flyway(null);
+        Flyway upgrade = flyway("51");
         upgrade.migrate();
         upgrade.migrate();
 

@@ -11,6 +11,7 @@ import java.util.UUID;
  * @param projectId 所属项目
  * @param subjectType 被展示业务对象的类别
  * @param subjectId 被展示的产物或 Agent ID
+ * @param selectedVersionId 该媒体卡片独立展示的不可变版本；空产物与 Agent 卡片可为空
  * @param title 当前卡片独立的展示标题
  * @param x 左上角横坐标
  * @param y 左上角纵坐标
@@ -28,6 +29,7 @@ public record CanvasItem(
         UUID projectId,
         SubjectType subjectType,
         UUID subjectId,
+        UUID selectedVersionId,
         String title,
         BigDecimal x,
         BigDecimal y,
@@ -42,7 +44,7 @@ public record CanvasItem(
 
     /** 可投影到画布上的业务对象类别。 */
     public enum SubjectType {
-        /** 画布项引用 Artifact，渲染时读取其当前版本。 */
+        /** 画布项引用 Artifact；媒体卡片渲染自身选用的版本。 */
         ARTIFACT,
         /** 画布项引用 AgentInstance，渲染时读取当前配置。 */
         AGENT

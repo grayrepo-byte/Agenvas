@@ -3,10 +3,11 @@ import { getProjectSnapshot, type ProjectEvent, type ProjectSnapshot } from "../
 const supportedTypes = [
   "artifact.created",
   "artifact.version.created",
-  "artifact.current_version.changed",
+  "artifact.resource_default_version.changed",
   "media.draft.changed",
   "asset.ready",
   "canvas.items.changed",
+  "canvas.item.selected_version.changed",
   "agent.instance.changed",
   "agent.conversation.changed",
   "agent.run.changed",

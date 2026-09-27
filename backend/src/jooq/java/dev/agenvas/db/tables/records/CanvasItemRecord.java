@@ -15,8 +15,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Per-card title and spatial presentation; referenced business content remains
- * outside this row.
+ * Spatial card plus card-local work context; Artifact content remains immutable
+ * and shared.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
@@ -263,6 +263,24 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         return (String) get(16);
     }
 
+    /**
+     * Setter for <code>public.canvas_item.selected_version_id</code>. Version
+     * displayed by this card. Media cards own this independently of the
+     * Artifact default.
+     */
+    public void setSelectedVersionId(UUID value) {
+        set(17, value);
+    }
+
+    /**
+     * Getter for <code>public.canvas_item.selected_version_id</code>. Version
+     * displayed by this card. Media cards own this independently of the
+     * Artifact default.
+     */
+    public UUID getSelectedVersionId() {
+        return (UUID) get(17);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -286,7 +304,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     /**
      * Create a detached, initialised CanvasItemRecord
      */
-    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId, String title) {
+    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId, String title, UUID selectedVersionId) {
         super(CanvasItem.CANVAS_ITEM);
 
         setId(id);
@@ -306,6 +324,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         setUpdatedAt(updatedAt);
         setAgentInstanceId(agentInstanceId);
         setTitle(title);
+        setSelectedVersionId(selectedVersionId);
         resetChangedOnNotNull();
     }
 }

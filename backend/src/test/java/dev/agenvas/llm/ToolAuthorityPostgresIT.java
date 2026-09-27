@@ -79,7 +79,7 @@ class ToolAuthorityPostgresIT {
         ArtifactService.ArtifactView brief = createBrief(owner.userId(), project.id());
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
                 List.of(new AgentInstanceService.BindingInput(brief.artifact().id(),
-                        brief.currentVersion().id())));
+                        brief.resourceDefaultVersion().id())));
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Draft one text", "authority-run").run();
         AgentRun running = runs.transition(owner.userId(), project.id(), queued.id(),
@@ -136,9 +136,9 @@ class ToolAuthorityPostgresIT {
         ArtifactService.ArtifactView created =
                 artifacts.get(owner.userId(), project.id(), createdId);
         assertThat(created.artifact().kind()).isEqualTo(Artifact.Kind.TEXT);
-        assertThat(created.currentVersion().createdByKind())
+        assertThat(created.resourceDefaultVersion().createdByKind())
                 .isEqualTo(ArtifactVersion.CreatedByKind.AGENT);
-        assertThat(created.currentVersion().runId()).isEqualTo(running.id());
+        assertThat(created.resourceDefaultVersion().runId()).isEqualTo(running.id());
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
                 .param("runId", running.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
@@ -176,7 +176,7 @@ class ToolAuthorityPostgresIT {
     private ObjectNode draft(ArtifactService.ArtifactView brief) {
         ObjectNode draft = mapper.createObjectNode();
         draft.put("title", "Draft");
-        draft.put("text", brief.currentVersion().content().path("text").asText());
+        draft.put("text", brief.resourceDefaultVersion().content().path("text").asText());
         draft.put("format", "PLAIN_TEXT");
         return draft;
     }

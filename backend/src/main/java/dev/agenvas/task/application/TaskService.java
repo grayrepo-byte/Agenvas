@@ -199,7 +199,7 @@ public class TaskService {
                     "卡片任务占用", "这张媒体卡片已有排队、执行或待核对任务。", true);
         }
         tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                target.id(), target.currentVersionId(), target.version(), null));
+                target.id(), target.resourceDefaultVersionId(), target.version(), null));
         return task;
     }
 
@@ -542,11 +542,13 @@ public class TaskService {
                             || run.status() == AgentRun.Status.CANCELED));
             boolean projectArchived = projects.get(ownerId, lease.projectId()).status()
                     == Project.Status.ARCHIVED;
+            UUID canvasItemId = lease.input().hasNonNull("canvasItemId")
+                    ? UUID.fromString(lease.input().path("canvasItemId").asText()) : null;
             boolean selectResult = !canceled && !projectArchived
                     && pinnedMediaInputsCurrent(ownerId, lease)
                     && (lease.runId() != null
-                            || mediaDrafts.get(ownerId, lease.projectId(),
-                                    target.artifactId()).version()
+                            || canvasItemId != null && mediaDrafts.get(ownerId, lease.projectId(),
+                                    canvasItemId).version()
                                     == lease.input().path("draftVersion").asLong(-1));
             boolean activeOrUnknown = current.status() == Task.Status.RUNNING
                     || current.status() == Task.Status.SUBMITTING
@@ -580,8 +582,8 @@ public class TaskService {
                             lease.projectId(), artifactId, lease.runId(),
                             target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
                             content, selectResult);
-            if (result.selected()) {
-                mediaDrafts.setDisplayModeWithinChange(lease.projectId(), artifactId,
+            if (result.selected() && canvasItemId != null) {
+                mediaDrafts.setDisplayModeWithinChange(lease.projectId(), canvasItemId,
                         MediaDraft.DisplayMode.RESULT);
             }
             ObjectNode output = objectMapper.createObjectNode();
@@ -1030,7 +1032,7 @@ public class TaskService {
                         task.projectId(), versionId);
                 Artifact current = artifacts.get(ownerId, task.projectId(), pinned.artifactId())
                         .artifact();
-                return current.archivedAt() == null && current.currentVersionId().equals(versionId);
+                return current.archivedAt() == null && current.resourceDefaultVersionId().equals(versionId);
             } catch (ApiProblemException | IllegalArgumentException unavailable) {
                 return false;
             }
@@ -1044,7 +1046,7 @@ public class TaskService {
             UUID imageVersionId = UUID.fromString(input.path("imageVersionId").asText());
             Artifact image = artifacts.get(ownerId, task.projectId(), imageId).artifact();
             return image.archivedAt() == null
-                    && imageVersionId.equals(image.currentVersionId());
+                    && imageVersionId.equals(image.resourceDefaultVersionId());
         } catch (ApiProblemException | IllegalArgumentException invalidInput) {
             return false;
         }

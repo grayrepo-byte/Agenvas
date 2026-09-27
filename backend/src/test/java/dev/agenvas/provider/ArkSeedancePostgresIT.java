@@ -9,6 +9,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
@@ -77,6 +78,7 @@ class ArkSeedancePostgresIT {
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
     @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker worker;
@@ -139,15 +141,17 @@ class ArkSeedancePostgresIT {
         var keyframe = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
                 "Keyframe", image);
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.VIDEO, "Clip", null);
-        long draftVersion = drafts.save(ownerId, project.id(), card.artifact().id(), 0,
-                "A detailed coffee pour", keyframe.currentVersion().id(), CLIP_SECONDS, null)
+        UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, ownerId, project.id(), card.artifact().id());
+        long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
+                "A detailed coffee pour", keyframe.resourceDefaultVersion().id(), CLIP_SECONDS, null)
                 .version();
-        return new Fixture(project, card, keyframe, draftVersion);
+        return new Fixture(project, card, keyframe, canvasItemId, draftVersion);
     }
 
     private Task approve(UUID ownerId, Fixture fixture) {
         return directMedia.run(ownerId, fixture.project().id(), fixture.card().artifact().id(),
-                fixture.draftVersion(), "ark-" + UUID.randomUUID());
+                fixture.canvasItemId(), fixture.draftVersion(), "ark-" + UUID.randomUUID());
     }
 
     private static HttpServer startServer() {
@@ -200,5 +204,5 @@ class ArkSeedancePostgresIT {
 
     /** 直连视频任务的固定输入：视频卡片、作为关键帧的图片产物和已保存的草稿版本。 */
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            ArtifactService.ArtifactView keyframe, long draftVersion) {}
+            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {}
 }

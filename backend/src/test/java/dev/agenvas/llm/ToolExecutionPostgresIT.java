@@ -137,9 +137,9 @@ class ToolExecutionPostgresIT {
             UUID artifactId = UUID.fromString(result.at("/createdIds/0").asText());
             ArtifactService.ArtifactView created = artifacts.get(owner.userId(), project.id(),
                     artifactId);
-            assertThat(created.currentVersion().createdByKind())
+            assertThat(created.resourceDefaultVersion().createdByKind())
                     .isEqualTo(ArtifactVersion.CreatedByKind.AGENT);
-            assertThat(created.currentVersion().runId()).isEqualTo(run.id());
+            assertThat(created.resourceDefaultVersion().runId()).isEqualTo(run.id());
             assertThat(jdbc.sql("select count(*) from tool_execution")
                     .query(Long.class).single()).isEqualTo(1);
             assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")

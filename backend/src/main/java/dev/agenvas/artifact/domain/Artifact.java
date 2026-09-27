@@ -10,7 +10,7 @@ import java.util.UUID;
  * @param projectId 所属项目 ID
  * @param kind 正文结构对应的产物类型
  * @param title 当前展示标题
- * @param currentVersionId 用户当前选用的不可变版本 ID
+ * @param resourceDefaultVersionId 资源库明确选用的默认不可变版本 ID
  * @param archivedAt 归档时间；非空时不可再编辑或选用新版本
  * @param version 当前选择与标题的乐观锁版本
  * @param createdAt 创建时间
@@ -21,7 +21,7 @@ public record Artifact(
         UUID projectId,
         Kind kind,
         String title,
-        UUID currentVersionId,
+        UUID resourceDefaultVersionId,
         Instant archivedAt,
         long version,
         Instant createdAt,

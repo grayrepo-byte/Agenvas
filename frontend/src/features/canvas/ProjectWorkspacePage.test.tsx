@@ -19,15 +19,20 @@ function imageCard(): CanvasItem {
     id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id",
     title: "Hero",
     x: 20, y: 20, width: 320, height: 240, zIndex: 0, groupId: null,
-    locked: false, version: 0, agent: null,
+    locked: false, selectedVersionId: imageVersionId, version: 0, agent: null,
     artifact: {
       id: "image-id", projectId: "project-1", kind: "IMAGE", title: "Hero",
-      currentVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
-      currentVersion: {
+      resourceDefaultVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
+      resourceDefaultVersion: {
         id: imageVersionId, versionNo: 1, schemaVersion: 1,
         content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now,
       },
+    },
+    selectedVersion: {
+      id: imageVersionId, versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: now,
     },
   };
 }
@@ -36,7 +41,7 @@ function textCard(): CanvasItem {
   const item = imageCard();
   return { ...item, id: "text-card", subjectId: "text-id", title: "Notes", width: 280, height: 180,
     artifact: item.artifact ? { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",
-      currentVersionId: "text-v2", currentVersion: { ...item.artifact.currentVersion!, id: "text-v2",
+      resourceDefaultVersionId: "text-v2", resourceDefaultVersion: { ...item.artifact.resourceDefaultVersion!, id: "text-v2",
         content: { format: "PLAIN_TEXT", text: "直接在节点里写" }, inputReferences: [] } } : null };
 }
 
@@ -70,6 +75,11 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({ items: [], nextCursor: null })),
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () =>
         HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
+        HttpResponse.json({ projectId: params.projectId, canvasItemId: params.canvasItemId,
+          prompt: "", inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+          displayMode: "RESULT", version: 0, createdAt: "2026-09-23T00:00:00Z",
+          updatedAt: "2026-09-23T00:00:00Z" })),
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
@@ -130,22 +140,22 @@ describe("ProjectWorkspacePage", () => {
           id: itemId, subjectType: "ARTIFACT", subjectId: artifactId,
           title: "新图片",
           x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
-          locked: false, version: 0, agent: null,
+          locked: false, selectedVersionId: null, selectedVersion: null, version: 0, agent: null,
           artifact: { id: artifactId, projectId: "project-1", kind: "IMAGE",
-            title: "新图片", currentVersionId: null, currentVersion: null,
+            title: "新图片", resourceDefaultVersionId: null, resourceDefaultVersion: null,
             version: 0, createdAt: now, updatedAt: now },
         }] });
       }),
-      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/draft", () =>
-        HttpResponse.json({ projectId: "project-1", artifactId, prompt,
+      http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
+        HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt,
           inputImageVersionId: null, durationSeconds: null, capabilityId: null,
           version: draftVersion, createdAt: now, updatedAt: now })),
-      http.put("/api/v1/projects/:projectId/artifacts/:artifactId/draft", async ({ request }) => {
+      http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", async ({ request, params }) => {
         const body = await request.json() as { expectedVersion: number; prompt: string };
         expect(body.expectedVersion).toBe(draftVersion);
         prompt = body.prompt;
         draftVersion++;
-        return HttpResponse.json({ projectId: "project-1", artifactId, prompt,
+        return HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt,
           inputImageVersionId: null, durationSeconds: null, capabilityId: null,
           version: draftVersion, createdAt: now, updatedAt: now });
       }),
@@ -410,18 +420,19 @@ describe("ProjectWorkspacePage", () => {
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
         const body = await request.json() as { commands: Array<{ artifactId: string }> };
         expect(body.commands[0]?.artifactId).toBe(artifactId);
+        const selectedVersion = { id: versionId, versionNo: 1, schemaVersion: 1 as const,
+          content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
+          createdByKind: "USER" as const, runId: null, createdAt: "2026-09-23T00:00:00Z" };
         return HttpResponse.json({ items: [{
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Product reference",
           x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
-          locked: false, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
           artifact: {
             id: artifactId, projectId: "project-1", kind: "IMAGE",
-            title: "Product reference", currentVersionId: versionId, version: 0,
+            title: "Product reference", resourceDefaultVersionId: versionId, version: 0,
             createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
-            currentVersion: { id: versionId, versionNo: 1, schemaVersion: 1,
-              content: { sourceType: "UPLOAD", assetId }, inputReferences: [],
-              createdByKind: "USER", runId: null, createdAt: "2026-09-23T00:00:00Z" },
+            resourceDefaultVersion: selectedVersion,
           },
         }] });
       }),
@@ -647,18 +658,18 @@ describe("ProjectWorkspacePage", () => {
               height: 180,
               zIndex: 0,
               groupId: null,
-              locked: false,
+              locked: false, selectedVersionId: null, selectedVersion: null,
               version: 0,
               artifact: {
                 id: crypto.randomUUID(),
                 projectId: crypto.randomUUID(),
                 kind: "TEXT",
                 title: "Existing card",
-                currentVersionId: crypto.randomUUID(),
+                resourceDefaultVersionId: crypto.randomUUID(),
                 version: 0,
                 createdAt: "2026-09-23T00:00:00Z",
                 updatedAt: "2026-09-23T00:00:00Z",
-                currentVersion: {
+                resourceDefaultVersion: {
                   id: crypto.randomUUID(),
                   versionNo: 1,
                   schemaVersion: 1,
@@ -820,7 +831,7 @@ describe("ProjectWorkspacePage", () => {
         items = [{ id: placedCommand!.itemId, subjectType: "AGENT", subjectId: agent.id,
           title: agent.name,
           x: 80, y: 80, width: 460, height: 600, zIndex: 0, groupId: null,
-          locked: false, version: 0, artifact: null, agent }];
+          locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: null, agent }];
         return HttpResponse.json({ items });
       }),
       http.get("/api/v1/projects/:projectId/runs/:runId/tasks", ({ params }) => {
@@ -961,7 +972,7 @@ describe("ProjectWorkspacePage", () => {
               height: 320,
               zIndex: 0,
               groupId: null,
-              locked: false,
+              locked: false, selectedVersionId: null, selectedVersion: null,
               version: 0,
               artifact: null,
               agent: agent(updated),
@@ -1058,6 +1069,15 @@ describe("ProjectWorkspacePage", () => {
   it("loads the archived original for a generated image card", async () => {
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const selectedVersion = {
+      id: versionId, versionNo: 1, schemaVersion: 1,
+      content: { assetId, prompt: "Ridge sunrise", providerConfigVersion: 1,
+        workflowVersion: "mock-image-v1", sourceTaskId: crypto.randomUUID(),
+        parameters: { mock: true, displayLabel: "演示素材" } },
+      inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
+      createdAt: "2026-09-23T00:00:00Z",
+    } as const;
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
@@ -1070,19 +1090,12 @@ describe("ProjectWorkspacePage", () => {
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Demo still",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: crypto.randomUUID(),
-          locked: false, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
           artifact: {
             id: artifactId, projectId: "project-1", kind: "IMAGE",
-            title: "Demo still", currentVersionId: crypto.randomUUID(), version: 0,
+            title: "Demo still", resourceDefaultVersionId: versionId, version: 0,
             createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
-            currentVersion: {
-              id: crypto.randomUUID(), versionNo: 1, schemaVersion: 1,
-              content: { assetId, prompt: "Ridge sunrise", providerConfigVersion: 1,
-                workflowVersion: "mock-image-v1", sourceTaskId: crypto.randomUUID(),
-                parameters: { mock: true, displayLabel: "演示素材" } },
-              inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
-              createdAt: "2026-09-23T00:00:00Z",
-            },
+            resourceDefaultVersion: selectedVersion,
           },
         }] }),
       ),
@@ -1109,6 +1122,15 @@ describe("ProjectWorkspacePage", () => {
   it("keeps generated video on its poster until the user chooses playback", async () => {
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const selectedVersion = {
+      id: versionId, versionNo: 1, schemaVersion: 1,
+      content: { assetId, prompt: "Coffee", providerConfigVersion: 1,
+        workflowVersion: "mock-video-v1", sourceTaskId: crypto.randomUUID(),
+        keyframeVersionId: crypto.randomUUID(), parameters: { mock: true } },
+      inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
+      createdAt: "2026-09-23T00:00:00Z",
+    } as const;
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
@@ -1121,19 +1143,12 @@ describe("ProjectWorkspacePage", () => {
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Demo clip",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: null,
-          locked: false, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
           artifact: {
             id: artifactId, projectId: "project-1", kind: "VIDEO",
-            title: "Demo clip", currentVersionId: crypto.randomUUID(), version: 0,
+            title: "Demo clip", resourceDefaultVersionId: versionId, version: 0,
             createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
-            currentVersion: {
-              id: crypto.randomUUID(), versionNo: 1, schemaVersion: 1,
-              content: { assetId, prompt: "Coffee", providerConfigVersion: 1,
-                workflowVersion: "mock-video-v1", sourceTaskId: crypto.randomUUID(),
-                keyframeVersionId: crypto.randomUUID(), parameters: { mock: true } },
-              inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
-              createdAt: "2026-09-23T00:00:00Z",
-            },
+            resourceDefaultVersion: selectedVersion,
           },
         }] }),
       ),

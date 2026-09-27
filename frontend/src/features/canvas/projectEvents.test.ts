@@ -157,7 +157,22 @@ describe("project event subscription", () => {
       clearSchedule: clearTimeout,
     });
     stream.emit({ ...event(1, 0), type: "media.draft.changed",
-      payload: { artifactId: aggregateId } });
+      payload: { canvasItemId: aggregateId } });
+    expect(changes).toHaveLength(1);
+    stop();
+  });
+
+  it("delivers card-local version selection changes", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, {
+      open: () => stream, loadSnapshot: async () => snapshot(1),
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout,
+    });
+    stream.emit({ ...event(1, 1), type: "canvas.item.selected_version.changed",
+      payload: { canvasItemId: aggregateId, selectedVersionId: crypto.randomUUID() } });
     expect(changes).toHaveLength(1);
     stop();
   });

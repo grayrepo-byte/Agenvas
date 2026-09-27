@@ -106,7 +106,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .set(ARTIFACT.PROJECT_ID, artifact.projectId())
                 .set(ARTIFACT.KIND, artifact.kind().name())
                 .set(ARTIFACT.TITLE, artifact.title())
-                .set(ARTIFACT.CURRENT_VERSION_ID, (UUID) null)
+                .set(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID, (UUID) null)
                 .set(ARTIFACT.ARCHIVED_AT, (OffsetDateTime) null)
                 .set(ARTIFACT.VERSION, artifact.version())
                 .set(ARTIFACT.CREATED_AT, utc(artifact.createdAt()))
@@ -115,11 +115,11 @@ public class JooqArtifactRepository implements ArtifactRepository {
     }
 
     @Override
-    public void createMediaDraft(UUID projectId, UUID artifactId, String prompt,
+    public void createMediaDraft(UUID projectId, UUID canvasItemId, String prompt,
             MediaDraft.DisplayMode displayMode, Instant now) {
         dsl.insertInto(MEDIA_DRAFT)
                 .set(MEDIA_DRAFT.PROJECT_ID, projectId)
-                .set(MEDIA_DRAFT.ARTIFACT_ID, artifactId)
+                .set(MEDIA_DRAFT.CANVAS_ITEM_ID, canvasItemId)
                 .set(MEDIA_DRAFT.PROMPT, prompt)
                 .set(MEDIA_DRAFT.DISPLAY_MODE, displayMode.name())
                 .set(MEDIA_DRAFT.VERSION, 0L)
@@ -129,10 +129,10 @@ public class JooqArtifactRepository implements ArtifactRepository {
     }
 
     @Override
-    public Optional<MediaDraft> findMediaDraft(UUID projectId, UUID artifactId) {
+    public Optional<MediaDraft> findMediaDraft(UUID projectId, UUID canvasItemId) {
         return dsl.selectFrom(MEDIA_DRAFT)
                 .where(MEDIA_DRAFT.PROJECT_ID.eq(projectId))
-                .and(MEDIA_DRAFT.ARTIFACT_ID.eq(artifactId))
+                .and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(canvasItemId))
                 .fetchOptional(this::mapMediaDraft);
     }
 
@@ -147,19 +147,19 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .set(MEDIA_DRAFT.VERSION, MEDIA_DRAFT.VERSION.plus(1))
                 .set(MEDIA_DRAFT.UPDATED_AT, utc(draft.updatedAt()))
                 .where(MEDIA_DRAFT.PROJECT_ID.eq(draft.projectId()))
-                .and(MEDIA_DRAFT.ARTIFACT_ID.eq(draft.artifactId()))
+                .and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(draft.canvasItemId()))
                 .and(MEDIA_DRAFT.VERSION.eq(expectedVersion))
                 .execute() == 1;
     }
 
     @Override
-    public void setMediaDraftDisplayMode(UUID projectId, UUID artifactId,
+    public void setMediaDraftDisplayMode(UUID projectId, UUID canvasItemId,
             MediaDraft.DisplayMode mode, Instant now) {
         int changed = dsl.update(MEDIA_DRAFT)
                 .set(MEDIA_DRAFT.DISPLAY_MODE, mode.name())
                 .set(MEDIA_DRAFT.UPDATED_AT, utc(now))
                 .where(MEDIA_DRAFT.PROJECT_ID.eq(projectId))
-                .and(MEDIA_DRAFT.ARTIFACT_ID.eq(artifactId))
+                .and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(canvasItemId))
                 .execute();
         if (changed != 1) throw new IllegalStateException("Media draft missing");
     }
@@ -182,7 +182,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
         var artifact = ARTIFACT.as("a");
         var owner = PROJECT.as("p");
         var query = dsl.select(artifact.ID, artifact.PROJECT_ID, artifact.KIND, artifact.TITLE,
-                        artifact.CURRENT_VERSION_ID, artifact.ARCHIVED_AT, artifact.VERSION,
+                        artifact.RESOURCE_DEFAULT_VERSION_ID, artifact.ARCHIVED_AT, artifact.VERSION,
                         artifact.CREATED_AT, artifact.UPDATED_AT)
                 .from(artifact)
                 .join(owner).on(owner.ID.eq(artifact.PROJECT_ID))
@@ -234,12 +234,12 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     /** 只在空指针且初始版本号为零时关联首个版本，避免覆盖已有选择。 */
     @Override
-    public void setInitialCurrentVersion(UUID artifactId, UUID versionId, Instant updatedAt) {
+    public void setInitialResourceDefaultVersion(UUID artifactId, UUID versionId, Instant updatedAt) {
         int changed = dsl.update(ARTIFACT)
-                .set(ARTIFACT.CURRENT_VERSION_ID, versionId)
+                .set(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID, versionId)
                 .set(ARTIFACT.UPDATED_AT, utc(updatedAt))
                 .where(ARTIFACT.ID.eq(artifactId))
-                .and(ARTIFACT.CURRENT_VERSION_ID.isNull())
+                .and(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID.isNull())
                 .and(ARTIFACT.VERSION.eq(0L))
                 .execute();
         if (changed != 1) {
@@ -249,7 +249,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     /** 仅预期版本匹配、产物未归档且目标版本属于该产物时切换当前指针。 */
     @Override
-    public boolean selectVersion(
+    public boolean setResourceDefaultVersion(
             UUID ownerId,
             UUID projectId,
             UUID artifactId,
@@ -260,7 +260,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
         var artifact = ARTIFACT.as("a");
         var owner = PROJECT.as("p");
         return dsl.update(artifact)
-                .set(artifact.CURRENT_VERSION_ID, versionId)
+                .set(artifact.RESOURCE_DEFAULT_VERSION_ID, versionId)
                 .set(artifact.TITLE, title)
                 .set(artifact.UPDATED_AT, utc(updatedAt))
                 .set(artifact.VERSION, artifact.VERSION.plus(1))
@@ -359,7 +359,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .join(PROJECT).on(PROJECT.ID.eq(ARTIFACT.PROJECT_ID))
                 .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.PROJECT_ID.eq(ARTIFACT.PROJECT_ID)
                         .and(ARTIFACT_VERSION.ARTIFACT_ID.eq(ARTIFACT.ID))
-                        .and(ARTIFACT_VERSION.ID.eq(ARTIFACT.CURRENT_VERSION_ID)))
+                        .and(ARTIFACT_VERSION.ID.eq(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID)))
                 .where(ARTIFACT.PROJECT_ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
                 .and(ARTIFACT.ARCHIVED_AT.isNull())
@@ -442,14 +442,14 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 version.createdAt());
     }
 
-    /** 映射稳定产物身份及当前版本指针，不读取版本正文。 */
+    /** 映射稳定产物身份及资源默认版本指针，不读取版本正文。 */
     private Artifact mapArtifact(ArtifactRecord row) {
         return new Artifact(
                 row.getId(),
                 row.getProjectId(),
                 Artifact.Kind.valueOf(row.getKind()),
                 row.getTitle(),
-                row.getCurrentVersionId(),
+                row.getResourceDefaultVersionId(),
                 row.getArchivedAt() == null ? null : row.getArchivedAt().toInstant(),
                 row.getVersion(),
                 row.getCreatedAt().toInstant(),
@@ -460,7 +460,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
     private MediaDraft mapMediaDraft(MediaDraftRecord row) {
         return new MediaDraft(
                 row.getProjectId(),
-                row.getArtifactId(),
+                row.getCanvasItemId(),
                 row.getPrompt(),
                 row.getInputImageVersionId(),
                 row.getDurationSeconds(),

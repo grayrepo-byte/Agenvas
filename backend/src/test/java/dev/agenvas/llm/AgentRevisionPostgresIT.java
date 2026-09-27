@@ -97,11 +97,11 @@ class AgentRevisionPostgresIT {
         assertThat(createdId).isNotNull();
         ArtifactService.ArtifactView revised = artifacts.get(owner.userId(), project.id(), createdId);
         assertThat(revised.artifact().version()).isEqualTo(1);
-        assertThat(revised.currentVersion().content().path("text").asText())
+        assertThat(revised.resourceDefaultVersion().content().path("text").asText())
                 .isEqualTo("Revised draft");
-        assertThat(revised.currentVersion().createdByKind())
+        assertThat(revised.resourceDefaultVersion().createdByKind())
                 .isEqualTo(ArtifactVersion.CreatedByKind.AGENT);
-        assertThat(revised.currentVersion().runId()).isEqualTo(run.id());
+        assertThat(revised.resourceDefaultVersion().runId()).isEqualTo(run.id());
         assertThat(artifacts.listVersions(owner.userId(), project.id(), createdId))
                 .hasSize(2);
         assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(),
@@ -126,7 +126,7 @@ class AgentRevisionPostgresIT {
         AgentInstance mediaAgent = agents.create(owner.userId(), mediaProject.id(),
                 "Media creator", "Revise the bound frame", List.of(
                         new AgentInstanceService.BindingInput(image.artifact().id(),
-                                image.currentVersion().id())));
+                                image.resourceDefaultVersion().id())));
         AgentRun mediaRun = runs.create(owner.userId(), mediaProject.id(), mediaAgent.id(),
                 "Revise the bound frame", "media-revision-run").run();
         // 媒体产物是归档内容：即使同一 Run 的模型回合要求改写，也只能读到原版本。
@@ -142,7 +142,7 @@ class AgentRevisionPostgresIT {
         assertThat(artifacts.listVersions(owner.userId(), mediaProject.id(),
                 image.artifact().id())).hasSize(1);
         assertThat(artifacts.get(owner.userId(), mediaProject.id(), image.artifact().id())
-                .currentVersion().content().path("prompt").asText())
+                .resourceDefaultVersion().content().path("prompt").asText())
                 .isEqualTo("Bound frame prompt");
 
         assertThat(worker.runOnce("revision-worker")).isEqualTo(1);
@@ -151,7 +151,7 @@ class AgentRevisionPostgresIT {
         assertThat(artifacts.listVersions(owner.userId(), project.id(),
                 unbound.artifact().id())).hasSize(1);
         assertThat(artifacts.get(owner.userId(), project.id(), unbound.artifact().id())
-                .currentVersion().content().path("text").asText()).isEqualTo("User private note");
+                .resourceDefaultVersion().content().path("text").asText()).isEqualTo("User private note");
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(2);
         assertThat(gateway.calls.get()).isEqualTo(3);
@@ -163,7 +163,7 @@ class AgentRevisionPostgresIT {
         AgentInstance boundAgent = agents.create(owner.userId(), boundProject.id(),
                 "Bound creator", "Revise the bound draft", List.of(
                         new AgentInstanceService.BindingInput(bound.artifact().id(),
-                                bound.currentVersion().id())));
+                                bound.resourceDefaultVersion().id())));
         AgentRun boundRun = runs.create(owner.userId(), boundProject.id(), boundAgent.id(),
                 "Revise", "bound-revision-run").run();
         assertThat(boundRun.contextSnapshot().path("bindings").path(0)
@@ -173,7 +173,7 @@ class AgentRevisionPostgresIT {
         ArtifactService.ArtifactView boundRevision = artifacts.reviseFromAgent(owner.userId(),
                 boundProject.id(), boundRun.id(), boundRun.contextSnapshot(),
                 bound.artifact().id(), 0, null, changed);
-        assertThat(boundRevision.currentVersion().runId()).isEqualTo(boundRun.id());
+        assertThat(boundRevision.resourceDefaultVersion().runId()).isEqualTo(boundRun.id());
         assertThat(boundRevision.artifact().version()).isEqualTo(1);
         changed.put("text", "User update");
         artifacts.revise(owner.userId(), boundProject.id(), bound.artifact().id(),

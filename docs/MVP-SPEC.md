@@ -61,7 +61,7 @@
 4. Agent 读取受限项目上下文，创建创作说明与文案文字产物，并把它们摆到画布上。
 5. 用户按文案在图片卡片输入提示词并点击“运行”；按钮旁预先显示本次使用的能力与预计费用。图片卡片直接受理固定输入的媒体任务，不创建 Run、不需要审批。
 6. 图片完成后，用户选择需要保留的版本。
-7. 用户以选定的已归档图片版本作为视频输入、设定整数秒时长，在视频卡片点击“运行”；完成后可显式播放并选用结果。
+7. 用户在视频能力支持的纯文本、首尾帧或全能参考模式中准备输入，设定整数秒时长并点击“运行”；图片输入始终固定已归档的精确版本，完成后可显式播放并选用结果。
 8. 用户要求 Agent “把文案改短一点”，Agent 通过受控工具创建文字产物新版本，不改动其他卡片。
 9. 页面刷新或服务重启后，项目、历史结果和任务状态仍可恢复。
 
@@ -83,8 +83,8 @@
 | Agent 卡片 | 添加、配置指令、绑定输入、运行、停止、查看状态与记录 | 一种内置 Agent 配置；不并行协商 |
 | 创作产物 | 文本、图片、视频 | 产物只是内容身份与版本，不是专业资产管理系统 |
 | Agent 能力 | 读取受限上下文、创建/修改文字产物、摆放与整理画布卡片 | 不触发生成、不提出计划、不允许任意 SQL、Shell、网页控制 |
-| 图片 | 上传参考图、直接生成图片、查看历史版本、选用版本 | 两份固定媒体工作流之一；不做画笔局部重绘 |
-| 视频 | 以选定图片版本与整数秒时长直接生成视频、预览、下载 | 一种真实图生视频工作流；不做口型驱动 |
+| 图片 | 上传参考图、有序多图引用、直接生成图片、查看历史版本、选用版本 | 具体图片上限由所选能力声明；不做画笔局部重绘 |
+| 视频 | 纯文本、首尾帧或有序全能参考模式直接生成视频、预览、下载 | 具体模式与图片上限由所选能力声明；不做口型驱动 |
 | 文字 | 文字卡片的模型生成与节点内直接编辑，生成结果追加不可变版本 | 不做富文本排版与协同编辑 |
 | 导出 | 导出项目 JSON 与素材清单，用于备份与迁移 | 不是完整时间线剪辑器；JSON 导入不在 P0 |
 | 可靠性 | 持久化任务、幂等、状态核对、SSE 补发、版本冲突 | 不宣称跨供应商 exactly-once |
@@ -122,7 +122,7 @@ P2：多个 Agent 并发协调、多人协作、插件市场、完整剪辑时�
 | Artifact | 文本、图片、视频等业务产物的稳定身份 | 不是 React Flow Node |
 | ArtifactVersion | 某次内容及其输入引用的不可变版本 | 不是最新内容的可变缓存 |
 | Asset | 实际媒体文件、哈希、大小、存储位置 | 不是带提示词的业务对象 |
-| CanvasItem | Artifact 或 AgentInstance 的空间展示及卡片级标题 | 不存业务执行状态的唯一真相 |
+| CanvasItem | Artifact 或 AgentInstance 的独立画布工作上下文；媒体卡片拥有展示版本、草稿、图片输入与连线 | 不等于 Artifact，不共享其他卡片的草稿或任务状态 |
 | AgentProfile | 内置系统提示词、允许工具、Skill 和策略版本 | 不存某次运行进度 |
 | AgentInstance | 画布里的 Agent 配置实例和输入绑定 | 不等于一个永久运行的线程 |
 | AgentConversation | 一个 Agent 的连续交流与记忆边界 | 不等于登录会话或整个项目 |
@@ -132,13 +132,15 @@ P2：多个 Agent 并发协调、多人协作、插件市场、完整剪辑时�
 
 角色、场景、镜头与执行计划都不是本版的概念；产物修改通过创建内容新版本表达，执行依赖由任务自身的输入与状态表达。
 
-### 3.1 两种图必须分开
+### 3.1 空间、输入关系与执行必须分开
 
-**画布图**：卡片摆在哪里、哪些卡片被分组。
+**空间布局**记录 CanvasItem 摆在哪里、如何分组。
 
-**素材关系图**：某张图片版本引用了哪张素材，某个视频由哪个图片版本生成。部分引用关系允许形成环，不能把全部关系都当作有向无环图。
+**画布卡片连线图**记录用户从具体来源 CanvasItem 到具体目标 CanvasItem 建立的输入关系，并固定建连时的来源图片版本；按 CanvasItem 有向图拒绝直接或间接环。同一精确图片版本可以同时拥有手动来源和多条连线来源，目标图片栏只显示一个去重后的引用。
 
-因此不能用“画布上连了一条线”直接触发付费生成，依赖关系必须由明确的输入版本记录表达，不能靠连线推断。
+**冻结结果来源**记录一次 Task 和 ArtifactVersion 实际使用的精确图片版本、模式、角色与顺序，不等于当前画布拓扑，也不随来源卡片更新。
+
+画布连线只修改未来运行的输入，不触发付费生成、不形成任务执行 DAG；只有用户在目标媒体卡片点击“运行”才会冻结输入并创建 Task。
 
 ### 3.2 数据真相
 
@@ -372,7 +374,7 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 
 2026-09-27 画布工具模式：默认选择工具，单击选择卡片，拖动空白区域框选，拖动未锁定卡片移动节点；短按空格切换并保持手形工具；长按空格临时进入手形工具，松开或窗口失焦恢复所选工具。按住空格期间已开始指针操作的手势也只作临时切换，不因快速松开而保持手形。手形工具用于拖动画布，不移动、框选、缩放卡片或建立连线。右上角添加按钮与工具切换组成深色竖条；工具菜单向左展开，提供选择工具（V）与手形工具（Space），菜单可持久切换工具，V 返回选择工具。输入框、可编辑文本及输入法组合期间不拦截快捷键。选择模式下保留双击空白添加卡片，手形模式下不触发添加。
 
-2026-09-27 图片改显原图：图片卡片与视频输入图改为直接读取归档原文件，解决节点放大到 2000 长边时降采样预览造成的模糊。图片缩略图仍然制作并保存（最长边 480 像素 PNG，与视频封面共用 `thumbnail_*` 与 `/assets/{assetId}/thumbnail`），只是不再由这些界面加载，留给后续需要低带宽/低解码成本的列表功能。视频卡片封面与显式播放行为不变。V48 曾按“图片不再保留预览”更新列注释，V50 已按恢复后的语义改回；列、约束与既有素材的 `.thumb.png` 均未改动。原 T28 画布容量测量以缩略图加载为前提，改用原图后该结论在重新测量前不再适用。
+2026-09-27 图片改显原图：图片卡片的主预览直接读取归档原文件，解决节点放大到 2000 长边时降采样预览造成的模糊。图片缩略图仍然制作并保存（最长边 480 像素 PNG，与视频封面共用 `thumbnail_*` 与 `/assets/{assetId}/thumbnail`），用于媒体编辑器图片栏、资源库和 Agent 输入等低带宽列表，不用于图片卡片主预览。视频卡片封面与显式播放行为不变。V48 曾按“图片不再保留预览”更新列注释，V50 已按恢复后的语义改回；列、约束与既有素材的 `.thumb.png` 均未改动。原 T28 画布容量测量以缩略图加载为前提，主卡片改用原图后该结论在重新测量前不再适用。
 
 2026-09-27 取消选中与追加选择：在空白处单击、拖出选框、平移或缩放画布都会取消当前卡片的选中状态，底部编辑器随之关闭；应用自己发起的视口移动（例如“查看输出”后的适屏）不取消选中的卡片。按住 Cmd（macOS）或 Ctrl 点击卡片是追加选择，不覆盖已有选中。
 
@@ -382,11 +384,26 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 
 媒体底部编辑器采用约 680px 宽的黑色 Prompt 面板，提示词为主要编辑区域，模型选择、参数摘要与圆形运行按钮位于底部。模型选择映射到服务端已启用能力，保留默认能力；参数摘要只显示现有能力配置，不伪造草稿级画幅、分辨率或画质字段。当前尺寸由项目画幅和固定适配器/模板确定，画质由能力配置确定；没有可靠参数时显示模型/模板默认。费用未知必须明确显示。运行加载态使用 Beautiful UI 的像素波浪示例，状态来自持久 Task，不显示虚构进度；支持减少动态效果。编辑并保存草稿不切换当前结果展示，只有明确运行后切到草稿占位。
 
-2026-09-26 其他节点统一及 2026-09-27 文字交互修订：文字采用与图片一致的黑色卡片、选中浮动工具栏和节点下方输入面板。文字面板保存提示词、当前版本和模型配置快照到持久 Task；完整模型响应先落库，再追加 `TASK` 创建的不可变文字版本。若生成期间用户已直接编辑或切换版本，结果只进入历史，不替换当前内容。文字工具栏“编辑内容”在节点内修改实际 Artifact 内容并显式保存新版本；节点版本标签可选择历史版本。新连线固定文字卡片当前选用的实际 ArtifactVersion，不传递提示词或模型响应。存在未保存输入时禁止切换版本，避免草稿被静默替换。完整版本历史、精确引用及其移除、布局锁定和移除卡片仍可从详情抽屉访问。远端更新不会覆盖正在编辑的草稿或替换其 CAS 基准；冲突保留输入，显式载入最新版本才替换本地修改。视频输入图以归档图片版本原图展示，支持历史版本、替换与清除；模型缺失或读取失败不可运行，时长按所选能力范围校验。视频先显示封面，用户点击后才加载播放，缓冲、播放失败和重试独立于生成任务状态。Beautiful UI 的 ContextCards、SelectionActions、PromptBar 与 TaskRows 示例只用于呈现，不增加新媒体类型或模拟后端能力。
+2026-09-26 其他节点统一及 2026-09-27 文字交互修订：文字采用与图片一致的黑色卡片、选中浮动工具栏和节点下方输入面板。文字面板保存提示词、当前版本和模型配置快照到持久 Task；完整模型响应先落库，再追加 `TASK` 创建的不可变文字版本。若生成期间用户已直接编辑或切换版本，结果只进入历史，不替换当前内容。文字工具栏“编辑内容”在节点内修改实际 Artifact 内容并显式保存新版本；节点版本标签可选择历史版本。新连线固定文字卡片当前选用的实际 ArtifactVersion，不传递提示词或模型响应。存在未保存输入时禁止切换版本，避免草稿被静默替换。完整版本历史、精确引用及其移除、布局锁定和移除卡片仍可从详情抽屉访问。远端更新不会覆盖正在编辑的草稿或替换其 CAS 基准；冲突保留输入，显式载入最新版本才替换本地修改。媒体编辑器图片栏使用归档图片版本的缩略图，支持选择历史版本、替换与清除；模型缺失或读取失败不可运行，时长按所选能力范围校验。视频先显示封面，用户点击后才加载播放，缓冲、播放失败和重试独立于生成任务状态。Beautiful UI 的 ContextCards、SelectionActions、PromptBar 与 TaskRows 示例只用于呈现，不增加新媒体类型或模拟后端能力。
 
-图片/视频卡片创建时即有稳定 Artifact 身份，首次生成前允许当前媒体版本为空。提示词、参数和视频输入图保存在独立媒体草稿中，短延迟自动保存；保存失败保留本地输入。图片本轮支持独立文生图，参考图编辑后续再做。视频可先保存不完整草稿，运行前须选择同项目已归档图片的精确版本和有效时长。草稿、当前选用结果和卡片展示状态分离；历史结果由用户显式选回。生成结果追加不可变版本，晚到结果不得覆盖之后的草稿或选用。移除卡片不取消已受理任务，结果可从项目资源找回。
+### 6.10 CanvasItem 工作分支与图片输入（2026-09-27 当前决定）
 
-用户在图片或视频卡片点击“运行”即直接受理媒体 Task，不创建 AgentRun，也没有待审批计划。按钮旁预先显示能力、预计费用或“未知”。直接任务固定点击时的草稿、能力和输入版本；排队期间修改草稿只影响下一次运行。同一卡片所有来源的排队、运行或 UNKNOWN 任务互斥，重复点击返回原任务；不同卡片可并行，也可与一个 AgentRun 并行。UNKNOWN 须由用户显式重试。文字卡片走同构的直连路径：下方 Prompt 固定提示词、当前版本与模型配置并受理文本 Task。
+本节与 [ADR 0014](adr/0014-canvas-item-media-branches-and-versioned-image-inputs.md) 替代本规格中“媒体草稿属于 Artifact”“图片只做独立文生图”“视频只有一个输入图”和“移除卡片不影响引用关系”的旧描述。
+
+- Artifact 共享身份、不可变分支版本历史和资源默认版本；CanvasItem 独立拥有当前展示版本、媒体草稿、本次图片输入、来源和颜色。资源库放置新卡片时展示资源默认版本，但提示词、参数、本次输入、任务和连线为空。复制卡片则先保存源草稿，成功后复制当前展示版本、提示词、参数、本次输入与颜色；不复制任务或连线，复制来的图片输入成为手动来源。
+- 生成结果追加到共享 Artifact 历史，用 `baseVersionId` 指向发起卡片运行时展示的父版本。只有发起卡片可能自动选用新结果；其他卡片和资源默认版本保持不变。版本列表按时间展示并标注“基于 vN”、当前卡片和资源默认版本。切换历史结果只改变展示版本和下次运行父版本，不改写草稿；“使用此版本的输入”在影响确认后完整替换草稿，历史图片变为手动来源，不恢复历史连线。
+- 图片栏位于提示词上方，单行横向滚动，“+”固定最前。点击后先显示“上传图片 / 从资源库选择”：上传使用多文件选择器并为成功文件创建可复用 IMAGE Artifact、不可变版本和 Asset；资源库面板支持搜索、历史版本和多选。两种入口都按用户确认时的顺序追加到能力剩余上限。上传前选择数已超限则整批阻止且不创建资源；上传过程允许逐文件成功并为失败项提供重试；资源库确认是原子操作，任一候选失效则整批不添加并刷新候选。
+- 目标按精确图片版本去重并保存有序引用；支持拖拽和键盘左右移动。每个引用可同时有手动来源和多条 CanvasItem 连线来源，图片栏只显示一次。断开一条线只删除该来源；最后来源消失才删除引用和其全部标签。缩略图“×”会清除该引用的全部来源、相关连线和标签，但不删除资源库中的 Artifact、版本或 Asset。只有会连带删除引用/标签或涉及多个来源时才先列出影响并确认；移除来源卡片的多目标清理使用服务端 CAS 原子提交，任何冲突都整体回滚。
+- 连线端点是具体 CanvasItem，并固定来源卡片建连时展示的图片版本。只有用户主动拖线才建立关系，手动选择不自动画线；同一版本可由多张来源卡片连入同一目标。来源卡片切到新版本后，现有连线以历史版本样式继续指向旧版本，用户可明确同步到来源当前版本；升级或降级若命中目标已有版本，则合并来源并保留已有条目的顺序和颜色。拖线期间来源版本变化会拒绝建连。按 CanvasItem 有向图拒绝直接和间接环，但同一 Artifact 的不同 CanvasItem 是不同节点。
+- 只有来源 CanvasItem 当前展示已归档 IMAGE ArtifactVersion 才能建连。归档版本已有的精确引用仍可继续运行，但资源库不再允许新选；来源 ArtifactVersion 改变不自动迁移引用。显式同步以新版本原位替换旧版本，保留顺序、颜色、手动来源、连线和标签；若目标已有新版本，则并入已有条目，合并全部来源与标签并移除旧条目。
+- 图片或全能参考模式的提示词可通过 `@` 插入结构化图片标签；菜单只列当前图片栏已有图片，不负责新增资源。标签绑定精确版本，带小缩略图和颜色，按当前顺序显示 `Image N`，同一图片可提及多次；删除单次文字提及不删除图片，删除图片会清除其全部标签。重排或删除只更新显示编号，绑定和剩余图片颜色不变。颜色在同一 CanvasItem 内跨保存、排序和删除保持稳定，复制卡片时复制当前分配，之后各分支独立；不同 CanvasItem 可为同一图片分配不同颜色。首尾帧模式改用 `Start Frame` / `End Frame`。模式转换时已有标签自动换显示名但保持版本绑定。运行时按当前顺序稳定渲染标签并以同序提交图片；连线继续使用关系类型自己的颜色，历史版本关系使用虚线，不能只靠标签颜色表达关系。
+- 图片节点允许零张参考图运行文生图；加入图片后走能力声明的参考图生成路径。图片能力声明最大参考图数，领域与能力合约先支持有序多图，但适配器只有完成协议实现和测试后才能声明 `maxReferenceImages > 1`，未升级能力继续限制为 1，任何层都不得静默丢图。
+- 视频能力按模式分别声明约束和默认模式。纯文本模式不接收图片；首尾帧模式首帧必填，并独立声明是否支持可选尾帧；全能参考模式保存有序多图、运行至少一张。首尾帧每个槽位最多一张且同版本不可重复；从添加入口或连线加入时依次填首帧、尾帧，两槽都有图则让用户选择替换首帧、替换尾帧或取消。替换会彻底清除旧图的全部来源、连线和标签。删除首帧时尾帧保持原角色，草稿可保存但禁止运行，直到重新补首帧。
+- 全能参考切到首尾帧时，前两张依序成为首帧和尾帧，超额图片及其来源、连线和标签在影响确认后删除；首尾帧切到全能参考时，首帧成为第 1 张、尾帧成为第 2 张，保留来源、连线、标签与颜色。切到纯文本时清除全部图片关系和标签。模型或模式切换还要列出不兼容参数和能力超额图片，用户确认后把参数改为新能力默认值并原子完成转换。后台能力更新造成旧草稿不兼容时保留全部内容并禁止运行，直到用户明确转换；从纯文本切到只支持图片的能力可以保存缺少必填图片的不完整草稿。
+- 纯文本模式添加或连入图片时先让用户选择当前能力支持的图片模式，确认前不打开文件选择器、不创建资源或连线。能力只支持纯文本时保留禁用的“+”并拒绝连线，提示先换模型。当前媒体主编辑器始终只展示 CanvasItem 可编辑的“本次输入”；某个历史结果实际使用的图片只在版本详情或任务详情中只读展示。
+- 图片 CanvasItem 连到 Agent CanvasItem 时建立另一种持久 Agent 图片输入绑定，不进入媒体草稿、不触发生成，也不出现在聊天 `@` 菜单。Agent 设置/输入区只读展示缩略图、来源卡片当前标题和固定版本，并允许解绑；新增只能拖线。相同版本可保留多条来源及标题别名，但每轮图片字节只发送一次。Agent 模型默认具备视觉输入，不保存或检查 `supportsVision` 布尔值；仍按模型配置最大图片数、单图大小和总图片输入大小，并在建连及发送前各校验一次。一个 AgentInstance 最多有一个 CanvasItem；移除 Agent 卡片删除未来回合的绑定和连线，不删除 AgentInstance、配置或会话，已受理 AgentRun 继续使用冻结输入。
+
+用户在图片或视频 CanvasItem 点击“运行”即直接受理媒体 Task，不创建 AgentRun，也没有待审批计划。按钮旁预先显示能力、预计费用或“未知”。Task 固定 CanvasItem、父版本、提示词、参数、能力版本、输入模式、有序精确图片版本/角色及结构化标签；成功 ArtifactVersion 保存同一份只读来源快照。排队期间修改草稿只影响下一次运行。同一卡片的排队、运行或 UNKNOWN 任务互斥，不同卡片（即使关联同一 Artifact）可以并行。结果自动选用只比较有序图片版本、视频模式和首尾角色；来源数量变化但最终 Provider 输入相同，不算输入变化。移除卡片不取消已受理任务，结果仍进入 Artifact 历史但不再自动选用。UNKNOWN 须由用户显式重试。文字卡片继续走同构的直连路径。
 
 默认每项目最多三个占用中的媒体任务，每种能力有管理员可配置的全局上限；超额任务持久排队，界面显示前方待处理数量、原因和排位可能变化。UNKNOWN 同时占项目和能力名额；ComfyUI 继续使用全局单槽门禁。点击“运行”时预留任务次数额度，已知价格再预留估算金额；排队取消且未对外提交时释放未消耗预留，UNKNOWN 不自动释放。实现边界见 [ADR 0006](adr/0006-direct-media-task-boundary.md)。当前代码已加入直接任务、草稿、迁移、合约和画布交互；验收状态以任务清单和测试证据为准，真实 Provider 调用尚未实测。
 
@@ -410,13 +427,16 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 |---|---|
 | `app_user` | id、login_name、password_hash、status、created_at；P0 一个管理员 |
 | `project` | id、owner_id、name、aspect_ratio、status、active_run_id、event_seq、version、timestamps |
-| `artifact` | id、project_id、kind、title、current_version_id、archived_at、version |
-| `artifact_version` | id、project_id、artifact_id、version_no、schema_version、content_json、input_refs_json、created_by_kind、run_id、created_at |
-| `artifact_relation` | id、project_id、source_artifact_id、target_artifact_id、relation_type、created_at |
-| `canvas_item` | id、project_id、subject_type、subject_id、title、x、y、width、height、z_index、group_id、locked、version |
+| `artifact` | id、project_id、kind、title、resource_default_version_id、archived_at、version；不保存 CanvasItem 当前版本或草稿 |
+| `artifact_version` | id、project_id、artifact_id、version_no、base_version_id、schema_version、content_json、frozen_input_json、created_by_kind、task_id、created_at；写入后不可变 |
+| `canvas_item` | id、project_id、subject_type、subject_id、selected_version_id、title、x、y、width、height、z_index、group_id、locked、version；同一 Artifact 的多张卡片独立选用版本 |
+| `media_draft` | canvas_item_id、capability_id、input_mode、prompt、parameters_json、version、timestamps；每个媒体 CanvasItem 一份独立草稿 |
+| `canvas_item_input` | id、project_id、canvas_item_id、artifact_version_id、role、position、color_key、version；目标内按精确版本去重，顺序/角色受模式约束 |
+| `canvas_item_input_source` | id、project_id、input_id、source_kind、connection_id、created_at；同一引用可有一个手动来源及多条连线来源 |
+| `canvas_connection` | id、project_id、source_canvas_item_id、target_canvas_item_id、relation_type、captured_source_version_id、version、created_at；端点与固定版本均持久化 |
 | `agent_instance` | id、project_id、profile_key、profile_version、name、instruction、output_group_id、current_conversation_id、version |
 | `agent_conversation` | id、project_id、agent_instance_id、title、version、turn_count、timestamps |
-| `agent_binding` | id、project_id、agent_instance_id、artifact_id、selected_version_id、binding_type |
+| `agent_binding` | id、project_id、agent_instance_id、target_canvas_item_id、artifact_version_id、binding_type、version；图片版本去重，来源别名由对应 CanvasItem 连线投影 |
 | `agent_run` | id、project_id、agent_instance_id、conversation_id、conversation_turn、user_id、status、instruction、context_snapshot_json、policy_snapshot_json、profile_version、next_step_index、version、timestamps |
 | `agent_message` | id、run_id、seq、role、content_json、provider_metadata_json、created_at；保留协议所需工具关联信息 |
 | `agent_step` | id、run_id、step_index、status、request_hash、response_json、model_id、token_usage_json、lease_epoch、timestamps |
@@ -438,9 +458,13 @@ AgentProfile 与 Skill 的 P0 定义放在版本化配置文件，不额外做�
 | 对象 | 必须约束 |
 |---|---|
 | 内容版本 | `UNIQUE(artifact_id, version_no)`；内容版本写入后不可原地修改 |
+| CanvasItem 图片输入 | `UNIQUE(canvas_item_id, artifact_version_id)`；位置/角色在同一草稿模式内唯一，引用版本必须属于同项目 IMAGE Artifact |
+| 图片输入来源 | 每个引用至多一个手动来源；每条 CanvasItem 连线至多对应一个来源，删除一种来源不得误删其他来源 |
+| 画布卡片连线 | 来源、目标和固定版本同项目；不允许相同端点/关系/固定版本重复，应用服务在事务中拒绝 CanvasItem 有向环 |
+| Agent 图片绑定 | `UNIQUE(agent_instance_id, artifact_version_id)`；一个 AgentInstance 最多关联一个 CanvasItem，多个来源连线投影为同一绑定的标题别名 |
 | 会话轮次 | `UNIQUE(conversation_id, conversation_turn)`；会话、Agent 与 Run 的项目归属由复合外键约束 |
 | 工具执行 | `UNIQUE(run_id, step_index, tool_call_id)` |
-| 运行任务 | `UNIQUE(run_id, step_key, attempt_no)`，非 Run 任务采用独立命令键 |
+| 运行任务 | `UNIQUE(run_id, step_key, attempt_no)`，非 Run 任务采用独立命令键；媒体活动任务按目标 CanvasItem 互斥而不是按 Artifact 互斥 |
 | 外部请求 | `UNIQUE(provider_id, provider_request_id)` 的非空部分唯一约束，落点可在任务/映射表统一管理 |
 | 事件 | `PRIMARY KEY(project_id, seq)`；event_id 唯一 |
 | 幂等请求 | `UNIQUE(principal_id, scope, key)`；相同 key 不同 hash 返回冲突 |
@@ -454,29 +478,33 @@ AgentProfile 与 Skill 的 P0 定义放在版本化配置文件，不额外做�
 
 TEXT：`format`、`text`。
 
-生成 IMAGE / VIDEO：`assetId`、`prompt`、`negativePrompt`（可选）、`providerConfigVersion`、`workflowVersion`、`parameters`、`sourceTaskId`。用户上传参考图的 IMAGE 使用互斥分支 `sourceType: UPLOAD`、`assetId`，不伪造生成 Task/Provider 字段；详见 [ADR 0001](adr/0001-upload-image-provenance.md)。
+生成 IMAGE / VIDEO：`assetId`、`prompt`、`negativePrompt`（可选）、`providerConfigVersion`、`workflowVersion`、`parameters`、`sourceTaskId`。版本记录另有 `baseVersionId` 和 `frozenInput`：后者保存任务受理时的媒体输入模式、按角色或顺序排列的精确图片版本、结构化标签及其他生成语义。Task 与成功结果必须使用同一份快照，不能从之后变化的 CanvasItem 草稿反推来源。
 
-VIDEO 另有 `keyframeVersionId`：视频所依据的输入图片版本引用。字段名保留原名，它是不可变历史内容与合约的一部分；语义仍是「视频的输入图片版本」，与已移除的镜头关键帧选择无关。
+用户上传参考图的 IMAGE 使用互斥分支 `sourceType: UPLOAD`、`assetId`，不伪造生成 Task/Provider 字段；详见 [ADR 0001](adr/0001-upload-image-provenance.md)。旧的单图 `referenceImageVersionId` / `keyframeVersionId` 不进入新 Schema，也不双写；纯文本、首尾帧和全能参考均由 `frozenInput` 的判别联合表达。
 
 所有 Schema 有明确必填项、字段长度和枚举约束。客户端与模型都不能提供 storage_key、owner_id、任务状态等受保护字段。
 
 ### 7.5 版本与生成结果选择
 
-新一次生成产生新的 ArtifactVersion。重新生成不能覆盖已有文件或删掉旧版本。
+新一次生成产生新的 ArtifactVersion，`baseVersionId` 指向发起 CanvasItem 运行时展示的父版本；重新生成不能覆盖已有文件或删掉旧版本。同一 Artifact 的历史因此是分支图，界面本轮仍按时间排序展示，并标明“基于 vN”、当前 CanvasItem 选用版本和资源默认版本。
 
-任务绑定明确的输入版本 ID；任务执行中用户改了参考图，旧任务仍对应旧输入。结果保存后标注“基于旧版本生成”，不能静默选为最新结果。
+任务绑定明确的输入图片版本、顺序/角色和模式；任务执行中用户修改草稿、来源或画布拓扑不会改写旧任务。来源增删但最终有序 Provider 输入不变时，不视为任务输入变化。
 
-自动选用结果必须满足 compare-and-set 条件：当前选用版本仍等于任务创建时的预期值，且目标未归档、Run 未取消。否则只保存到历史并提示用户。
+自动选用结果必须满足 compare-and-set 条件：发起 CanvasItem 仍存在、当前选用版本仍等于任务固定的父版本，且有序图片版本、视频模式和首尾角色未变化。提示词、参数或标签的后续编辑不阻止自动选用，新结果选用后这些草稿编辑继续保留。条件不满足或发起卡片已移除时，结果只进入共享 Artifact 历史，不修改其他 CanvasItem 或资源默认版本。
 
-同一个 Artifact 在 P0 的多个画布视图中共享内容，不承诺每张展示卡片独立钉住不同版本；钉住的是 Agent 输入与 Task 输入快照。
+同一个 Artifact 的多个 CanvasItem 各自钉住展示版本、媒体草稿和图片输入，可以并行运行并向共享历史追加不同分支。资源默认版本只通过资源库中的明确操作更新；从资源库重新放置不会继承任一既有 CanvasItem 的草稿或任务状态。
 
 ### 7.6 删除语义
 
-从画布移除只删除/归档 CanvasItem，不删除 Artifact 和 Asset。
+从画布移除 CanvasItem 不删除 Artifact、ArtifactVersion 或 Asset，但必须删除以该卡片为端点的 CanvasItem 连线来源。若某个下游图片引用因此失去最后来源，则同时删除该引用及其全部结构化标签；存在连带影响时先列出目标、连线和标签数量并确认，跨目标操作原子提交，任何版本冲突都整体回滚。
+
+移除媒体 CanvasItem 不取消已受理 Task；Task 继续使用冻结输入，成功结果进入共享 Artifact 历史，但不自动放置卡片、不自动选用或修改资源默认版本。移除 Agent CanvasItem 删除未来回合的图片绑定与连线，保留 AgentInstance、配置和会话；已受理 AgentRun 继续使用冻结图片并写入会话历史。
 
 归档 Artifact 不删除历史媒体，若有活动任务引用，先提示并取消尚未提交的相关任务。
 
 归档项目后禁止新 Run；已经提交的外部任务仍需核对并记录晚到结果。物理清理是延迟维护任务，必须再次检查引用、活动任务与备份策略。
+
+ADR 0014 的本地开发升级不迁移旧工作模型：迁移时清空项目、Artifact、ArtifactVersion、Asset、CanvasItem、媒体草稿、连线、Task、AgentRun、事件和相关用量等全部项目创作数据；管理员账号、加密密钥、Provider 连接、媒体能力和模型设置保留。该规则只用于尚未发布的本地开发数据，不能被解释为未来生产升级可无提示删除用户项目。
 
 ---
 
@@ -788,6 +816,8 @@ Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不
 
 媒体配置从单一环境变量模式迁至管理员界面的连接与能力目录，图片/视频任务在受理时固定所选能力版本，由同一任务内核调用项目维护的固定适配器。首批云渠道为 GPT Image 2 图片生成/参考图编辑和火山方舟 Seedance 首帧图生视频；当前实现只用本地假 HTTP 服务验证固定协议、PostgreSQL 任务链路与结果归档。Seedance 的临时视频地址限制在已审核的方舟 HTTPS 媒体域，拒绝重定向，过期时仅重查原任务 ID。其协议、时长与 UNKNOWN 恢复边界以[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)为准。两种云渠道均无真实调用证据，界面仍标记“未实测”，不能宣称已完成真实生成。普通用户与 Agent 仍无执行动态代码或任意外部 HTTP 的权限。
 
+能力目录还必须声明图片参考上限，以及视频支持的输入模式、默认模式和每种模式自己的限制；首尾帧模式单独声明是否支持尾帧，全能参考模式单独声明最大图片数，纯文本模式不接收图片。能力合约支持有序多图不等于固定适配器已经支持：每个适配器只有在外部协议映射、顺序传输、大小校验和测试完成后才能提高上限，未升级适配器继续声明 1。管理员发布新的能力版本导致已有草稿不兼容时，草稿保持原样并禁止运行，不在后台静默裁剪。
+
 OpenAI 图片连接可由管理员配置自定义 HTTPS API Base URL，留空使用官方 `/v1`；地址属于连接版本，已批准任务固定历史版本。服务端拒绝私网 DNS 目标与重定向。自定义公开网关的真实生成尚未运行。
 
 后续固定渠道增加 Google Nano Banana 2 图片生成与单张参考图编辑，使用官方 Gemini `generateContent` 和固定模型 `gemini-3.1-flash-image`；仍复用上述版本、任务与 UNKNOWN 边界。Google 真实调用状态单独记录，详见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)。
@@ -802,7 +832,7 @@ OpenAI 图片连接可由管理员配置自定义 HTTPS API Base URL，留空使
 
 ### 14.1 事件模型
 
-必需事件：artifact.created、artifact.version.created、artifact.current_version.changed、canvas.items.changed、agent.run.changed、task.changed、asset.ready、usage.changed。
+必需事件：artifact.created、artifact.version.created、artifact.resource_default_version.changed、canvas.items.changed、canvas.item.selected_version.changed、media.draft.changed、agent.run.changed、task.changed、asset.ready、usage.changed。
 
 每个事件包含 eventId、projectId、seq、type、schemaVersion、aggregateId、aggregateVersion、occurredAt、payload。正文只包含展示必需的数据；敏感配置与完整 Prompt 不进入通用事件流。
 
@@ -880,7 +910,13 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 | POST `/projects/{id}/artifacts` | 手工创建合法产物 |
 | POST `/projects/{id}/artifacts/{artifactId}/revisions` | 新内容版本 |
 | GET `/projects/{id}/artifacts/{artifactId}/versions` | 历史版本 |
-| POST `/projects/{id}/artifacts/{artifactId}/select-version` | 选择版本，带预期版本 |
+| POST `/projects/{id}/artifacts/{artifactId}/set-default-version` | 明确更新资源默认版本，带 Artifact 预期版本 |
+| POST `/projects/{id}/canvas-items/{canvasItemId}/select-version` | 只切换该 CanvasItem 展示版本，带预期版本；不改写草稿 |
+| GET / PUT `/projects/{id}/canvas-items/{canvasItemId}/media-draft` | 读取或 CAS 保存该卡片独立的提示词、能力、参数、模式及结构化标签 |
+| PUT `/projects/{id}/canvas-items/{canvasItemId}/image-inputs` | 原子保存有序图片引用、角色、颜色与来源变化；返回影响或冲突 |
+| POST `/projects/{id}/canvas-items/{canvasItemId}/reuse-version-inputs` | 经影响确认后用历史版本冻结输入完整替换草稿，图片改为手动来源 |
+| POST `/projects/{id}/canvas-items/{canvasItemId}/duplicate` | 先保存再复制当前工作分支，不复制任务或连线 |
+| POST / DELETE `/projects/{id}/canvas/connections` | 建立或删除 CanvasItem 关系，固定来源版本并校验环、能力上限及连带影响 |
 | POST `/projects/{id}/canvas/commands` | 原子批量布局/展示命令，带每个对象预期版本 |
 | POST `/projects/{id}/agents` | 添加内置 Agent 实例 |
 | PATCH `/projects/{id}/agents/{agentId}` | 修改指令/绑定/名称 |
@@ -893,7 +929,7 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 | GET `/projects/{id}/runs/{runId}` | Run、输入快照与策略快照 |
 | GET `/projects/{id}/runs/{runId}/actions` | 最多 40 条已提交工具执行的公开业务摘要；不返回模型消息、参数或完整结果 |
 | POST `/projects/{id}/runs/{runId}/cancel` | 请求停止，幂等 |
-| POST `/projects/{id}/artifacts/{artifactId}/run` | 固定已保存的媒体草稿并直接受理 `USER_DIRECT` 媒体任务；幂等，返回同一卡片正在执行的任务 |
+| POST `/projects/{id}/canvas-items/{canvasItemId}/run` | 固定该卡片已保存的媒体草稿、父版本与精确图片输入并直接受理 `USER_DIRECT` 媒体任务；幂等，返回同一卡片正在执行的任务 |
 | POST `/projects/{id}/artifacts/{artifactId}/text-generations` | 固定提示词与当前文字版本并直接受理 `USER_DIRECT` 文本任务 |
 | GET `/projects/{id}/tasks/{taskId}` | 任务状态 |
 | POST `/projects/{id}/tasks/{taskId}/new-attempt` | 为结果未知的任务在额度内创建独立的新尝试 |
@@ -982,6 +1018,7 @@ P1 的 S3 实现可按授权生成短时链接，但数据库只保存对象键�
 保留的是**项目导出清单**：在一个只读一致性快照中导出项目的非密钥配置、产物目录与不可变版本历史、以及媒体资产的非私密元数据，用于备份与迁移。
 
 - 逐字段白名单：不包含服务端 Key、会话、原始内部配置或可复用签名链接；用户主动写入的创作正文仍按内容导出。
+- 完整描述 CanvasItem 当前展示版本、媒体草稿、有序图片输入、来源、颜色和连线，以及 Artifact 的 `baseVersionId` 分支图和资源默认版本；冻结任务/结果来源仍按其不可变记录导出。
 - 输出为脱敏 JSON 与素材清单，通过 `GET /projects/{id}/export-manifest` 读取。
 - 只读生成，不创建 Task，不运行 FFmpeg；JSON 导入不在 P0。
 
@@ -1532,6 +1569,8 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 **ADR-008：ComfyUI 固定模板作为首个媒体执行端。** 开放且可替换，不把业务图绑成 ComfyUI workflow。代价是需要独立推理环境和经过验证的模板。
 
 **ADR 0013（[收缩到直连生成](adr/0013-contract-to-direct-generation.md)）：** 创作产物只保留文字、图片、视频；移除三镜头规划主干、执行计划与两阶段审批、关键帧选择、镜头局部重做与媒体导出；Agent 工具目录从 14 收到 8，不再有媒体与计划能力。媒体生成一律由用户在卡片上直连发起（[ADR 0006](adr/0006-direct-media-task-boundary.md) 成为唯一媒体生成路径），项目导出清单保留。代价是首版不再有脚本到成片的端到端自动化，Agent 能力重塑留待后续独立变更。
+
+**ADR 0014（[CanvasItem 独立媒体分支与版本化多图输入](adr/0014-canvas-item-media-branches-and-versioned-image-inputs.md)）：** Artifact 只共享身份、版本分支图和资源默认版本；每个 CanvasItem 独立持有展示版本、媒体草稿、图片输入及来源。图片引用固定精确版本，视频能力按纯文本、首尾帧和全能参考分别声明限制，Task 与结果保存同一份冻结输入；Agent 图片绑定保持为另一种关系。代价是媒体 API、数据库、适配器和删除/连线事务都需要以 CanvasItem 为边界做破坏性升级。
 
 （原 ADR-004「执行计划独立于画布/素材关系」与 ADR-009「先顺序导出，不做完整剪辑器」随 ADR 0013 作废，不再列出。）
 

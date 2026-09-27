@@ -39,7 +39,7 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
       if (!hasCurrentVersion(artifact)) throw new Error("文字卡片还没有可生成的当前版本");
       intent.current ??= { key: crypto.randomUUID(), prompt: prompt.trim(),
         expectedArtifactVersion: artifact.version,
-        expectedCurrentVersionId: artifact.currentVersionId };
+        expectedCurrentVersionId: artifact.resourceDefaultVersionId };
       return runDirectTextGeneration(artifact.projectId, artifact.id, {
         prompt: intent.current.prompt,
         expectedArtifactVersion: intent.current.expectedArtifactVersion,

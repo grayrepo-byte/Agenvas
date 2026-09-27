@@ -181,7 +181,7 @@ class TaskArchivedProjectPostgresIT {
         UUID cardId = UUID.fromString(completed.output().path("artifactId").asText());
         assertThat(artifacts.listVersions(owner.userId(), project.id(), cardId))
                 .extracting(ArtifactVersion::id).contains(result.versionId());
-        assertThat(artifacts.get(owner.userId(), project.id(), cardId).currentVersion()).isNull();
+        assertThat(artifacts.get(owner.userId(), project.id(), cardId).resourceDefaultVersion()).isNull();
     }
 
     /** Real PNG bytes exercise the same decoder and archive path as a completed Provider. */

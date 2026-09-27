@@ -129,7 +129,7 @@ class ComfyUiVideoDisabledPostgresIT {
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Pinned source image", imageContent);
         input.put("imageArtifactId", image.artifact().id().toString());
-        input.put("imageVersionId", image.currentVersion().id().toString());
+        input.put("imageVersionId", image.resourceDefaultVersion().id().toString());
         var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
                 "Historical video card", null);
         Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(),
@@ -155,7 +155,7 @@ class ComfyUiVideoDisabledPostgresIT {
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(completed.providerRequestId()).isEqualTo(requestId.toString());
         var version = artifacts.get(owner.userId(), project.id(),
-                UUID.fromString(completed.output().path("artifactId").asText())).currentVersion();
+                UUID.fromString(completed.output().path("artifactId").asText())).resourceDefaultVersion();
         assertThat(version.content().path("providerConfigVersion").asInt()).isEqualTo(1);
         assertThat(version.content().path("workflowVersion").asText())
                 .isEqualTo(input.path("workflowVersion").asText());

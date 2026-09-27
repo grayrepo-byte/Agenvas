@@ -6,8 +6,8 @@ package dev.agenvas.db.tables;
 
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
+import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
 import dev.agenvas.db.tables.records.MediaDraftRecord;
 
@@ -42,8 +42,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Editable IMAGE/VIDEO generation input; it is never an ArtifactVersion or
- * archived Asset.
+ * Editable generation input owned by one IMAGE/VIDEO CanvasItem and protected
+ * by independent CAS.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class MediaDraft extends TableImpl<MediaDraftRecord> {
@@ -69,9 +69,9 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
     public final TableField<MediaDraftRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column <code>public.media_draft.artifact_id</code>.
+     * The column <code>public.media_draft.canvas_item_id</code>.
      */
-    public final TableField<MediaDraftRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<MediaDraftRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
      * The column <code>public.media_draft.prompt</code>.
@@ -94,6 +94,11 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
     public final TableField<MediaDraftRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "");
 
     /**
+     * The column <code>public.media_draft.display_mode</code>.
+     */
+    public final TableField<MediaDraftRecord, String> DISPLAY_MODE = createField(DSL.name("display_mode"), SQLDataType.VARCHAR(12).nullable(false).defaultValue(DSL.field(DSL.raw("'DRAFT'::character varying"), SQLDataType.VARCHAR)), this, "");
+
+    /**
      * The column <code>public.media_draft.version</code>.
      */
     public final TableField<MediaDraftRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
@@ -108,17 +113,12 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
      */
     public final TableField<MediaDraftRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
 
-    /**
-     * The column <code>public.media_draft.display_mode</code>.
-     */
-    public final TableField<MediaDraftRecord, String> DISPLAY_MODE = createField(DSL.name("display_mode"), SQLDataType.VARCHAR(12).nullable(false).defaultValue(DSL.field(DSL.raw("'DRAFT'::character varying"), SQLDataType.VARCHAR)), this, "");
-
     private MediaDraft(Name alias, Table<MediaDraftRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private MediaDraft(Name alias, Table<MediaDraftRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Editable IMAGE/VIDEO generation input; it is never an ArtifactVersion or archived Asset."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Editable generation input owned by one IMAGE/VIDEO CanvasItem and protected by independent CAS."), TableOptions.table(), where);
     }
 
     /**
@@ -187,19 +187,19 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
 
     @Override
     public List<ForeignKey<MediaDraftRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_ARTIFACT, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_INPUT);
+        return Arrays.asList(Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_INPUT);
     }
 
-    private transient ArtifactPath _artifact;
+    private transient CanvasItemPath _canvasItem;
 
     /**
-     * Get the implicit join path to the <code>public.artifact</code> table.
+     * Get the implicit join path to the <code>public.canvas_item</code> table.
      */
-    public ArtifactPath artifact() {
-        if (_artifact == null)
-            _artifact = new ArtifactPath(this, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_ARTIFACT, null);
+    public CanvasItemPath canvasItem() {
+        if (_canvasItem == null)
+            _canvasItem = new CanvasItemPath(this, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM, null);
 
-        return _artifact;
+        return _canvasItem;
     }
 
     private transient MediaCapabilityPath _mediaCapability;

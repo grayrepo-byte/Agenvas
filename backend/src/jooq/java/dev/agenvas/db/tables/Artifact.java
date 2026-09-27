@@ -10,7 +10,6 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
-import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactRecord;
@@ -88,9 +87,11 @@ public class Artifact extends TableImpl<ArtifactRecord> {
     public final TableField<ArtifactRecord, String> TITLE = createField(DSL.name("title"), SQLDataType.VARCHAR(160).nullable(false), this, "");
 
     /**
-     * The column <code>public.artifact.current_version_id</code>.
+     * The column <code>public.artifact.resource_default_version_id</code>.
+     * Explicit library default used for new CanvasItems; card version selection
+     * never updates it.
      */
-    public final TableField<ArtifactRecord, UUID> CURRENT_VERSION_ID = createField(DSL.name("current_version_id"), SQLDataType.UUID, this, "");
+    public final TableField<ArtifactRecord, UUID> RESOURCE_DEFAULT_VERSION_ID = createField(DSL.name("resource_default_version_id"), SQLDataType.UUID, this, "Explicit library default used for new CanvasItems; card version selection never updates it.");
 
     /**
      * The column <code>public.artifact.archived_at</code>.
@@ -196,20 +197,7 @@ public class Artifact extends TableImpl<ArtifactRecord> {
 
     @Override
     public List<ForeignKey<ArtifactRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.ARTIFACT__FK_ARTIFACT_CURRENT_VERSION, Keys.ARTIFACT__FK_ARTIFACT_PROJECT);
-    }
-
-    private transient ArtifactVersionPath _artifactVersion;
-
-    /**
-     * Get the implicit join path to the <code>public.artifact_version</code>
-     * table.
-     */
-    public ArtifactVersionPath artifactVersion() {
-        if (_artifactVersion == null)
-            _artifactVersion = new ArtifactVersionPath(this, Keys.ARTIFACT__FK_ARTIFACT_CURRENT_VERSION, null);
-
-        return _artifactVersion;
+        return Arrays.asList(Keys.ARTIFACT__FK_ARTIFACT_PROJECT, Keys.ARTIFACT__FK_ARTIFACT_RESOURCE_DEFAULT_VERSION);
     }
 
     private transient ProjectPath _project;
@@ -222,6 +210,19 @@ public class Artifact extends TableImpl<ArtifactRecord> {
             _project = new ProjectPath(this, Keys.ARTIFACT__FK_ARTIFACT_PROJECT, null);
 
         return _project;
+    }
+
+    private transient ArtifactVersionPath _artifactVersion;
+
+    /**
+     * Get the implicit join path to the <code>public.artifact_version</code>
+     * table.
+     */
+    public ArtifactVersionPath artifactVersion() {
+        if (_artifactVersion == null)
+            _artifactVersion = new ArtifactVersionPath(this, Keys.ARTIFACT__FK_ARTIFACT_RESOURCE_DEFAULT_VERSION, null);
+
+        return _artifactVersion;
     }
 
     private transient AgentBindingPath _agentBinding;
@@ -248,19 +249,6 @@ public class Artifact extends TableImpl<ArtifactRecord> {
             _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT.getInverseKey());
 
         return _canvasItem;
-    }
-
-    private transient MediaDraftPath _mediaDraft;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.media_draft</code>
-     * table
-     */
-    public MediaDraftPath mediaDraft() {
-        if (_mediaDraft == null)
-            _mediaDraft = new MediaDraftPath(this, null, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_ARTIFACT.getInverseKey());
-
-        return _mediaDraft;
     }
 
     private transient TaskArtifactTargetPath _taskArtifactTarget;

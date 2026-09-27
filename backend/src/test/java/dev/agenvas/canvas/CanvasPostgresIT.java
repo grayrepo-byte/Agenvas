@@ -119,7 +119,7 @@ class CanvasPostgresIT {
         assertThat(saved.item().x()).isEqualByComparingTo("100");
         assertThat(saved.item().version()).isEqualTo(2);
         assertThat(saved.item().title()).isEqualTo("First card");
-        assertThat(saved.artifact().currentVersion().content().get("text").stringValue())
+        assertThat(saved.artifact().resourceDefaultVersion().content().get("text").stringValue())
                 .isEqualTo("One");
 
         assertThatThrownByCode(

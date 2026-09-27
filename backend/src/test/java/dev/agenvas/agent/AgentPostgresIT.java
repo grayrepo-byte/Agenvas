@@ -95,12 +95,12 @@ class AgentPostgresIT {
                 "Storyboard Creator",
                 "Use only the pinned brief",
                 List.of(new AgentInstanceService.BindingInput(
-                        brief.artifact().id(), brief.currentVersion().id())));
+                        brief.artifact().id(), brief.resourceDefaultVersion().id())));
         assertThat(updated.version()).isEqualTo(1);
         assertThat(updated.outputGroupId()).isEqualTo(created.outputGroupId());
         assertThat(updated.bindings())
                 .extracting(AgentInstance.Binding::selectedVersionId)
-                .containsExactly(brief.currentVersion().id());
+                .containsExactly(brief.resourceDefaultVersion().id());
 
         assertProblem(
                 "AGENT_VERSION_CONFLICT",
@@ -122,7 +122,7 @@ class AgentPostgresIT {
                         updated.name(),
                         updated.instruction(),
                         List.of(new AgentInstanceService.BindingInput(
-                                brief.artifact().id(), second.currentVersion().id()))));
+                                brief.artifact().id(), second.resourceDefaultVersion().id()))));
         assertProblem(
                 "RESOURCE_NOT_FOUND",
                 () -> agentService.update(
@@ -133,7 +133,7 @@ class AgentPostgresIT {
                         updated.name(),
                         updated.instruction(),
                         List.of(new AgentInstanceService.BindingInput(
-                                foreign.artifact().id(), foreign.currentVersion().id()))));
+                                foreign.artifact().id(), foreign.resourceDefaultVersion().id()))));
         assertProblem(
                 "RESOURCE_NOT_FOUND",
                 () -> agentService.get(UUID.randomUUID(), project.id(), created.id()));

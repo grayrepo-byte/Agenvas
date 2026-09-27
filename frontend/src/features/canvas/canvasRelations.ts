@@ -1,18 +1,21 @@
 import type { Connection, Edge } from "@xyflow/react";
 import type { Agent, CanvasItem } from "../../shared/api/client";
-import { hasCurrentVersion } from "./versionedArtifact";
+import { canvasItemVersion, canvasItemVersionId } from "./versionedArtifact";
 
 /** Visual relationships are projections, never execution dependencies or generation commands. */
 export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
   const artifactCards = new Map<string, CanvasItem>();
+  const artifactVersionCards = new Map<string, CanvasItem>();
   const versionCards = new Map<string, CanvasItem>();
   const outputGroups = new Map<string, CanvasItem[]>();
   const agentCards = items.filter((item) => item.agent !== null);
   for (const item of items) {
     if (!item.artifact) continue;
     if (!artifactCards.has(item.artifact.id)) artifactCards.set(item.artifact.id, item);
-    if (item.artifact.currentVersionId) {
-      versionCards.set(item.artifact.currentVersionId, item);
+    const versionId = canvasItemVersionId(item);
+    if (versionId) {
+      if (!versionCards.has(versionId)) versionCards.set(versionId, item);
+      artifactVersionCards.set(`${item.artifact.id}:${versionId}`, item);
     }
     if (item.groupId) {
       const grouped = outputGroups.get(item.groupId) ?? [];
@@ -26,9 +29,11 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
     const agent = agentCard.agent;
     if (!agent) continue;
     for (const binding of agent.bindings) {
-      const input = artifactCards.get(binding.artifactId);
+      const input = artifactVersionCards.get(
+        `${binding.artifactId}:${binding.selectedVersionId}`,
+      ) ?? artifactCards.get(binding.artifactId);
       if (!input) continue;
-      const historical = input.artifact?.currentVersionId !== binding.selectedVersionId;
+      const historical = canvasItemVersionId(input) !== binding.selectedVersionId;
       edges.push({
         id: `input:${binding.id}:${input.id}:${agentCard.id}`,
         source: input.id,
@@ -60,8 +65,9 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
   // 精确版本输入（视频所依据的输入图片）由生成时固定，没有可单独修改或删除的关系记录，
   // 因此只做展示，不给选中与删除手势。
   for (const output of items) {
-    if (!output.artifact?.currentVersion) continue;
-    for (const reference of output.artifact.currentVersion.inputReferences) {
+    const outputVersion = canvasItemVersion(output);
+    if (!outputVersion) continue;
+    for (const reference of outputVersion.inputReferences) {
       const input = versionCards.get(reference.versionId);
       if (!input || input.id === output.id) continue;
       edges.push({
@@ -81,11 +87,12 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
 
 /** One manual Artifact → Agent gesture updates only that Agent's explicit input binding. */
 export function inputBindingsAfterConnect(source: CanvasItem, target: CanvasItem) {
-  if (!source.artifact?.currentVersionId || !target.agent || source.id === target.id) return null;
+  const selectedVersionId = canvasItemVersionId(source);
+  if (!source.artifact || !selectedVersionId || !target.agent || source.id === target.id) return null;
   const bindings = new Map(target.agent.bindings.map((binding) => [binding.artifactId,
     { artifactId: binding.artifactId, selectedVersionId: binding.selectedVersionId }]));
   bindings.set(source.artifact.id, { artifactId: source.artifact.id,
-    selectedVersionId: source.artifact.currentVersionId });
+    selectedVersionId });
   return [...bindings.values()];
 }
 
@@ -116,7 +123,7 @@ export function isCanvasConnectionValid(items: CanvasItem[], connection: Connect
  */
 export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifact-input" | null {
   if (item.agent) return "agent-input";
-  return hasCurrentVersion(item.artifact) ? "artifact-input" : null;
+  return canvasItemVersionId(item) ? "artifact-input" : null;
 }
 
 /** What a user may remove behind a projected edge, or `null` when the edge is not an editable relation. */

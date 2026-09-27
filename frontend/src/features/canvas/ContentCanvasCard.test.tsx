@@ -23,17 +23,17 @@ beforeAll(() => {
 });
 afterAll(() => style.remove());
 
-function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["currentVersion"]>["content"]): Artifact {
+function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["resourceDefaultVersion"]>["content"]): Artifact {
   return { id: "artifact-hidden-id", projectId: "project-hidden-id", kind, title: "创作内容",
-    currentVersionId: "version-hidden-id", version: 3, createdAt: CREATED_AT, updatedAt: CREATED_AT,
-    currentVersion: { id: "version-hidden-id", versionNo: 2, schemaVersion: 2,
+    resourceDefaultVersionId: "version-hidden-id", version: 3, createdAt: CREATED_AT, updatedAt: CREATED_AT,
+    resourceDefaultVersion: { id: "version-hidden-id", versionNo: 2, schemaVersion: 2,
       content, createdByKind: "USER", createdAt: CREATED_AT, inputReferences: [] } };
 }
 
 function itemFor(value: Artifact): CanvasItem {
   return { id: "item-hidden-id", subjectType: "ARTIFACT", subjectId: value.id,
     title: value.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
-    groupId: null, locked: false, version: 0, artifact: value, agent: null };
+    groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: value, agent: null };
 }
 
 function showCard(value: Artifact, selected = true, locked = false) {
@@ -72,7 +72,7 @@ describe("ContentCanvasCard", () => {
 
   it("does not offer a detached editor for an invalid text artifact without a version", () => {
     const empty = { ...artifact("TEXT", { format: "PLAIN_TEXT", text: "" }),
-      currentVersion: null, currentVersionId: null };
+      resourceDefaultVersion: null, resourceDefaultVersionId: null };
     showCard(empty);
     expect(screen.getByText("写下想法，让创作开始")).toBeInTheDocument();
     expect(screen.getByText("暂无版本")).toBeInTheDocument();
@@ -107,8 +107,8 @@ describe("ContentCanvasCard", () => {
       })),
       http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request }) => {
         revision = await request.json();
-        return HttpResponse.json({ ...value, version: 4, currentVersionId: "version-3",
-          currentVersion: { ...value.currentVersion!, id: "version-3", versionNo: 3,
+        return HttpResponse.json({ ...value, version: 4, resourceDefaultVersionId: "version-3",
+          resourceDefaultVersion: { ...value.resourceDefaultVersion!, id: "version-3", versionNo: 3,
             content: { format: "MARKDOWN", text: "节点内新正文" } } }, { status: 201 });
       }),
     );
@@ -130,13 +130,13 @@ describe("ContentCanvasCard", () => {
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
     server.use(
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () =>
-        HttpResponse.json({ items: [value.currentVersion,
-          { ...value.currentVersion!, id: "version-1", versionNo: 1, content: {
+        HttpResponse.json({ items: [value.resourceDefaultVersion,
+          { ...value.resourceDefaultVersion!, id: "version-1", versionNo: 1, content: {
             format: "PLAIN_TEXT", text: "第一版" } }] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
         headerName: "X-XSRF-TOKEN", token: "test-token",
       })),
-      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/select-version", async ({ request }) => {
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/set-default-version", async ({ request }) => {
         selection = await request.json();
         return HttpResponse.json(value);
       }),
@@ -153,8 +153,8 @@ describe("ContentCanvasCard", () => {
   it("keeps a dirty inline draft and blocks version switching", async () => {
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
     server.use(http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () =>
-      HttpResponse.json({ items: [value.currentVersion,
-        { ...value.currentVersion!, id: "version-1", versionNo: 1 }] })));
+      HttpResponse.json({ items: [value.resourceDefaultVersion,
+        { ...value.resourceDefaultVersion!, id: "version-1", versionNo: 1 }] })));
     showCard(value);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "编辑内容" }));

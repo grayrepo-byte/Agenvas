@@ -62,7 +62,7 @@ public class ArtifactController {
                 .body(ArtifactResponse.from(result.view()));
     }
 
-    /** 读取项目范围内的稳定产物身份和当前选用版本。 */
+    /** 读取项目范围内的稳定产物身份和资源默认版本。 */
     @GetMapping("/{artifactId}")
     public ArtifactResponse get(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -102,14 +102,14 @@ public class ArtifactController {
                 .toList());
     }
 
-    /** 按产物预期版本切换到已有历史版本，不产生新正文。 */
-    @PostMapping("/{artifactId}/select-version")
-    public ArtifactResponse selectVersion(
+    /** 按产物预期版本明确切换资源库默认版本，不产生新正文。 */
+    @PostMapping("/{artifactId}/set-default-version")
+    public ArtifactResponse setDefaultVersion(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
             @PathVariable UUID artifactId,
             @Valid @RequestBody SelectArtifactVersionRequest request) {
-        return ArtifactResponse.from(artifacts.selectVersion(
+        return ArtifactResponse.from(artifacts.setResourceDefaultVersion(
                 principal.userId(),
                 projectId,
                 artifactId,
@@ -157,22 +157,22 @@ public class ArtifactController {
      * @param projectId 所属项目 ID
      * @param kind 产物类型
      * @param title 当前展示标题
-     * @param currentVersionId 当前选中版本 ID
+     * @param resourceDefaultVersionId 资源库默认版本 ID
      * @param version 产物并发控制版本
      * @param createdAt 创建时间
      * @param updatedAt 最近更新时间
-     * @param currentVersion 当前选中版本的完整投影
+     * @param resourceDefaultVersion 资源库默认版本的完整投影
      */
     public record ArtifactResponse(
             UUID id,
             UUID projectId,
             Artifact.Kind kind,
             String title,
-            UUID currentVersionId,
+            UUID resourceDefaultVersionId,
             long version,
             Instant createdAt,
             Instant updatedAt,
-            ArtifactVersionResponse currentVersion) {
+            ArtifactVersionResponse resourceDefaultVersion) {
 
         /** 将领域产物与当前版本组合为 API 响应。 */
         public static ArtifactResponse from(ArtifactService.ArtifactView view) {
@@ -182,12 +182,12 @@ public class ArtifactController {
                     artifact.projectId(),
                     artifact.kind(),
                     artifact.title(),
-                    artifact.currentVersionId(),
+                    artifact.resourceDefaultVersionId(),
                     artifact.version(),
                     artifact.createdAt(),
                     artifact.updatedAt(),
-                    view.currentVersion() == null ? null
-                            : ArtifactVersionResponse.from(view.currentVersion()));
+                    view.resourceDefaultVersion() == null ? null
+                            : ArtifactVersionResponse.from(view.resourceDefaultVersion()));
         }
     }
 
@@ -214,7 +214,7 @@ public class ArtifactController {
             Instant createdAt) {
 
         /** 将内部版本转换为包含语义引用、但不含存储路径的 API 投影。 */
-        static ArtifactVersionResponse from(ArtifactVersion version) {
+        public static ArtifactVersionResponse from(ArtifactVersion version) {
             return new ArtifactVersionResponse(
                     version.id(),
                     version.versionNo(),

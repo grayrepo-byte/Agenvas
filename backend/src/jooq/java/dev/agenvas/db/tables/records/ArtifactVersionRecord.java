@@ -15,8 +15,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable content revisions. Selection changes update
- * artifact.current_version_id only.
+ * Immutable content revisions. Resource-default and CanvasItem selections only
+ * move pointers.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRecord> {

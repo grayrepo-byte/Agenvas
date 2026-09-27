@@ -245,7 +245,7 @@ public class ToolExecutionService {
         content.put("text", text);
         ArtifactService.ArtifactView created = artifacts.createFromAgent(context.ownerId(),
                 context.projectId(), context.runId(), Artifact.Kind.TEXT, title, content);
-        if (created.currentVersion().createdByKind() != ArtifactVersion.CreatedByKind.AGENT) {
+        if (created.resourceDefaultVersion().createdByKind() != ArtifactVersion.CreatedByKind.AGENT) {
             throw new IllegalStateException("Agent artifact provenance was not recorded");
         }
         creative.placeOutputs(context, run, java.util.List.of(created));
@@ -255,7 +255,7 @@ public class ToolExecutionService {
         result.putArray("createdIds").add(created.artifact().id().toString());
         result.putArray("updatedIds");
         result.putObject("affectedVersions")
-                .put(created.artifact().id().toString(), created.currentVersion().id().toString());
+                .put(created.artifact().id().toString(), created.resourceDefaultVersion().id().toString());
         result.putObject("artifactVersions")
                 .put(created.artifact().id().toString(), created.artifact().version());
         result.putArray("taskIds");

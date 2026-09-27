@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Authenticated read and optimistic save of a media card's working draft. */
 @RestController
-@RequestMapping("/api/v1/projects/{projectId}/artifacts/{artifactId}/draft")
+@RequestMapping("/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft")
 public class MediaDraftController {
     private final MediaDraftService drafts;
 
@@ -28,15 +28,15 @@ public class MediaDraftController {
 
     @GetMapping
     public MediaDraft get(@AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId, @PathVariable UUID artifactId) {
-        return drafts.get(principal.userId(), projectId, artifactId);
+            @PathVariable UUID projectId, @PathVariable UUID canvasItemId) {
+        return drafts.get(principal.userId(), projectId, canvasItemId);
     }
 
     @PutMapping
     public MediaDraft save(@AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId, @PathVariable UUID artifactId,
+            @PathVariable UUID projectId, @PathVariable UUID canvasItemId,
             @Valid @RequestBody SaveDraftRequest request) {
-        return drafts.save(principal.userId(), projectId, artifactId,
+        return drafts.save(principal.userId(), projectId, canvasItemId,
                 request.expectedVersion(), request.prompt(), request.inputImageVersionId(),
                 request.durationSeconds(), request.capabilityId());
     }

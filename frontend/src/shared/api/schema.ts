@@ -555,7 +555,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 获取产物及当前选用版本 */
+        /** 获取产物及资源库默认版本 */
         get: operations["getArtifact"];
         put?: never;
         post?: never;
@@ -565,19 +565,19 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/artifacts/{artifactId}/draft": {
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft": {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 projectId: components["parameters"]["ProjectId"];
-                artifactId: components["parameters"]["ArtifactId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
             };
             cookie?: never;
         };
-        /** 读取独立于已选结果的图片或视频工作草稿 */
+        /** 读取卡片独立的图片或视频工作草稿 */
         get: operations["getMediaDraft"];
-        /** 按独立版本号保存媒体工作草稿 */
+        /** 按卡片草稿版本号保存媒体工作草稿 */
         put: operations["saveMediaDraft"];
         post?: never;
         delete?: never;
@@ -708,7 +708,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/artifacts/{artifactId}/select-version": {
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/set-default-version": {
         parameters: {
             query?: never;
             header?: never;
@@ -720,8 +720,28 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 乐观选择一个历史版本 */
-        post: operations["selectArtifactVersion"];
+        /** 乐观设置资源库默认版本 */
+        post: operations["setArtifactResourceDefaultVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/select-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 乐观选择此媒体卡片展示的历史版本 */
+        post: operations["selectCanvasItemVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1290,7 +1310,7 @@ export interface components {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
             /** Format: uuid */
-            currentVersionId: string;
+            resourceDefaultVersionId: string | null;
             /** Format: date-time */
             archivedAt?: string | null;
             versions: components["schemas"]["ManifestArtifactVersion"][];
@@ -1441,7 +1461,7 @@ export interface components {
         CreateArtifactRequest: {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
-            /** @description IMAGE/VIDEO 可为 null，此时创建有稳定身份、独立空草稿且尚无结果版本的产物。 */
+            /** @description IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。 */
             content: components["schemas"]["WritableArtifactContent"] | null;
         };
         SaveMediaDraftRequest: {
@@ -1455,6 +1475,8 @@ export interface components {
             capabilityId?: string | null;
         };
         RunMediaDraftRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
             /** Format: int64 */
             expectedDraftVersion: number;
         };
@@ -1475,7 +1497,7 @@ export interface components {
             /** Format: uuid */
             projectId: string;
             /** Format: uuid */
-            artifactId: string;
+            canvasItemId: string;
             prompt: string;
             /** Format: uuid */
             inputImageVersionId: string | null;
@@ -1533,14 +1555,14 @@ export interface components {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
             /** Format: uuid */
-            currentVersionId: string | null;
+            resourceDefaultVersionId: string | null;
             /** Format: int64 */
             version: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
-            currentVersion: components["schemas"]["ArtifactVersion"] | null;
+            resourceDefaultVersion: components["schemas"]["ArtifactVersion"] | null;
         };
         ArtifactVersionList: {
             items: components["schemas"]["ArtifactVersion"][];
@@ -1898,8 +1920,11 @@ export interface components {
             /** Format: uuid */
             groupId?: string | null;
             locked: boolean;
+            /** Format: uuid */
+            selectedVersionId: string | null;
             /** Format: int64 */
             version: number;
+            selectedVersion: components["schemas"]["ArtifactVersion"] | null;
             artifact: components["schemas"]["Artifact"] | null;
             agent: components["schemas"]["Agent"] | null;
         };
@@ -2188,6 +2213,7 @@ export interface components {
     parameters: {
         ProjectId: string;
         ArtifactId: string;
+        CanvasItemId: string;
     };
     requestBodies: never;
     headers: never;
@@ -3231,7 +3257,7 @@ export interface operations {
             header?: never;
             path: {
                 projectId: components["parameters"]["ProjectId"];
-                artifactId: components["parameters"]["ArtifactId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
             };
             cookie?: never;
         };
@@ -3256,7 +3282,7 @@ export interface operations {
             header?: never;
             path: {
                 projectId: components["parameters"]["ProjectId"];
-                artifactId: components["parameters"]["ArtifactId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
             };
             cookie?: never;
         };
@@ -3505,7 +3531,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    selectArtifactVersion: {
+    setArtifactResourceDefaultVersion: {
         parameters: {
             query?: never;
             header?: never;
@@ -3528,6 +3554,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Artifact"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    selectCanvasItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectArtifactVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新后的卡片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasItem"];
                 };
             };
             400: components["responses"]["ValidationError"];

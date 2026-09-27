@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
-import { ApiError, getArtifact, reviseArtifact, selectArtifactVersion, uploadImageAsset,
-  type Artifact } from "../../shared/api/client";
+import { ApiError, getArtifact, reviseArtifact, selectCanvasItemVersion, uploadImageAsset,
+  type Artifact, type CanvasItem } from "../../shared/api/client";
 
 /** Upload fills this artifact and preserves completed stages if the next request fails. */
-export function MediaCardUpload({ artifact, onDone }: { artifact: Artifact; onDone: () => void }) {
+export function MediaCardUpload({ artifact, item, onDone }: {
+  artifact: Artifact; item: CanvasItem; onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [expectedVersion, setExpectedVersion] = useState(artifact.version);
@@ -28,7 +30,7 @@ export function MediaCardUpload({ artifact, onDone }: { artifact: Artifact; onDo
           let current: Artifact;
           try { current = await getArtifact(artifact.projectId, artifact.id); }
           catch { throw failure; }
-          const content = current.currentVersion?.content;
+          const content = current.resourceDefaultVersion?.content;
           if (current.version <= expectedVersion || !content || !("assetId" in content)
             || content.assetId !== pending.assetId || !("sourceType" in content)
             || content.sourceType !== "UPLOAD") throw failure;
@@ -36,15 +38,16 @@ export function MediaCardUpload({ artifact, onDone }: { artifact: Artifact; onDo
         }
       }
       const saved = pending.revised;
-      if (!saved.currentVersionId) throw new Error("上传版本未返回，请刷新卡片核对结果。");
+      if (!saved.resourceDefaultVersionId) throw new Error("上传版本未返回，请刷新卡片核对结果。");
       // Revision creates immutable bytes; selecting that version also switches the display to RESULT.
-      await selectArtifactVersion(artifact.projectId, artifact.id, saved.currentVersionId, saved.version);
+      await selectCanvasItemVersion(
+        artifact.projectId, item.id, saved.resourceDefaultVersionId, item.version);
     },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] }),
-        queryClient.invalidateQueries({ queryKey: ["media-draft", artifact.projectId, artifact.id] }),
+        queryClient.invalidateQueries({ queryKey: ["media-draft", artifact.projectId, item.id] }),
         queryClient.invalidateQueries({ queryKey: ["artifact-versions", artifact.projectId, artifact.id] }),
       ]);
       onDone();

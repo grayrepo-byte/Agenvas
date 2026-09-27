@@ -67,7 +67,7 @@ public class CreativeArtifactToolService {
         result.putArray("createdIds");
         result.putArray("updatedIds").add(artifactId.toString());
         result.putObject("affectedVersions").put(artifactId.toString(),
-                revised.currentVersion().id().toString());
+                revised.resourceDefaultVersion().id().toString());
         result.putObject("artifactVersions").put(artifactId.toString(),
                 revised.artifact().version());
         result.putArray("taskIds");
@@ -124,7 +124,7 @@ public class CreativeArtifactToolService {
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), version.artifactId());
             if (view.artifact().archivedAt() != null
-                    || !view.currentVersion().id().equals(versionId)) {
+                    || !view.resourceDefaultVersion().id().equals(versionId)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
                         "ARTIFACT_VERSION_CONFLICT", "产物版本已变化",
                         "输出卡片只可指向当前选用的产物版本。", false);
@@ -223,7 +223,7 @@ public class CreativeArtifactToolService {
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), item.subjectId());
             if (view.artifact().archivedAt() != null
-                    || !view.currentVersion().id().equals(request.versionId())) {
+                    || !view.resourceDefaultVersion().id().equals(request.versionId())) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
                         "ARTIFACT_VERSION_CONFLICT", "产物版本已变化",
                         "旧内容版本不能决定当前卡片布局。", false);

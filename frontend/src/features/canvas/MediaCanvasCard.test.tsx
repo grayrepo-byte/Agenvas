@@ -13,13 +13,14 @@ vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
   NodeToolbar: ({ children, isVisible }: { children: ReactNode; isVisible?: boolean }) => isVisible !== false ? children : null }));
 
 const artifact: Artifact = { id: "image-1", projectId: "project-1", kind: "IMAGE", title: "湖边",
-  currentVersionId: null, currentVersion: null, version: 0,
+  resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0,
   createdAt: "2026-09-26T00:00:00Z", updatedAt: "2026-09-26T00:00:00Z" };
 
 function itemFor(shownArtifact: Artifact): CanvasItem {
   return { id: "item-1", subjectType: "ARTIFACT", subjectId: shownArtifact.id,
     title: shownArtifact.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
-    groupId: null, locked: false, version: 0, artifact: shownArtifact, agent: null };
+    groupId: null, locked: false, selectedVersionId: shownArtifact.resourceDefaultVersionId,
+    selectedVersion: shownArtifact.resourceDefaultVersion, version: 0, artifact: shownArtifact, agent: null };
 }
 
 function showCard(shownArtifact: Artifact = artifact) {
@@ -38,8 +39,8 @@ function showCard(shownArtifact: Artifact = artifact) {
 describe("MediaCanvasCard", () => {
   beforeEach(() => {
     server.use(
-      http.get("/api/v1/projects/project-1/artifacts/image-1/draft", () => HttpResponse.json({
-        projectId: artifact.projectId, artifactId: artifact.id, prompt: "", displayMode: "DRAFT",
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", prompt: "", displayMode: "DRAFT",
         inputImageVersionId: null, durationSeconds: null, capabilityId: null, version: 0,
         createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
       })),
@@ -63,14 +64,14 @@ describe("MediaCanvasCard", () => {
   it("keeps the full preview available when original dimensions fail and allows retry", async () => {
     let metadataFailed = true;
     server.use(
-      http.get("/api/v1/projects/project-1/artifacts/image-1/draft", () => HttpResponse.json({
-        projectId: artifact.projectId, artifactId: artifact.id, displayMode: "RESULT", version: 0,
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
       })),
       http.get("/api/v1/projects/project-1/assets/image-asset", () => metadataFailed
         ? HttpResponse.json({ detail: "Unavailable" }, { status: 503 })
         : HttpResponse.json({ id: "image-asset", width: 2400, height: 1600 })),
     );
-    showCard({ ...artifact, currentVersionId: "image-version", currentVersion: {
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
       id: "image-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "image-asset" },
       inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
@@ -138,13 +139,13 @@ describe("MediaCanvasCard", () => {
   });
 
   it("loads only the video poster until explicit playback, then handles loading, retry and close", async () => {
-    const videoArtifact: Artifact = { ...artifact, kind: "VIDEO", currentVersionId: "video-version",
-      currentVersion: { id: "video-version", versionNo: 1, schemaVersion: 1,
+    const videoArtifact: Artifact = { ...artifact, kind: "VIDEO", resourceDefaultVersionId: "video-version",
+      resourceDefaultVersion: { id: "video-version", versionNo: 1, schemaVersion: 1,
         content: { assetId: "video-asset", prompt: "A camera movement", providerConfigVersion: 1,
           workflowVersion: "mock-video-v1", sourceTaskId: "video-task", parameters: { mock: true } },
         inputReferences: [], createdByKind: "TASK", runId: null, createdAt: artifact.createdAt } };
-    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/draft", () => HttpResponse.json({
-      projectId: artifact.projectId, artifactId: artifact.id, prompt: "湖面慢慢推进", displayMode: "RESULT",
+    server.use(http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+      projectId: artifact.projectId, canvasItemId: "item-1", prompt: "湖面慢慢推进", displayMode: "RESULT",
       inputImageVersionId: "image-version", durationSeconds: 5, capabilityId: null, version: 1,
       createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
     })));

@@ -11,6 +11,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.provider.application.ProviderProperties;
@@ -105,6 +106,7 @@ class ComfyUiImagePostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
     @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private AssetService assets;
     @Autowired private TaskService tasks;
@@ -143,28 +145,34 @@ class ComfyUiImagePostgresIT {
         // 两张直连图片卡片：第一张固定参考图版本，第二张不带参考图。
         var imageCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Reference frame", null);
+        UUID imageItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), imageCard.artifact().id());
         MediaDraft referenceDraft = drafts.save(owner.userId(), project.id(),
-                imageCard.artifact().id(), 0, "A detailed cinematic coffee pour", null, null, null);
+                imageItemId, 0, "A detailed cinematic coffee pour", null, null, null);
         Task approved = directMedia.run(owner.userId(), project.id(),
-                imageCard.artifact().id(), referenceDraft.version(), "comfy-image-run");
+                imageCard.artifact().id(), imageItemId,
+                referenceDraft.version(), "comfy-image-run");
         // 直连入口不写参考图，按本测试既有做法用 SQL 幂等追加固定参考图版本。
         jdbc.sql("update task set input_json = input_json || "
                         + "jsonb_build_object('referenceImageVersionId', :versionId) where id = :id")
-                .param("versionId", reference.currentVersion().id().toString())
+                .param("versionId", reference.resourceDefaultVersion().id().toString())
                 .param("id", approved.id()).update();
         Task pinnedImage = tasks.get(owner.userId(), project.id(), approved.id());
         assertThat(pinnedImage.input().path("referenceImageVersionId").asText())
-                .isEqualTo(reference.currentVersion().id().toString());
+                .isEqualTo(reference.resourceDefaultVersion().id().toString());
         assertThat(pinnedImage.input().path("providerOriginSha256").asText())
                 .isEqualTo(client.originSha256());
         assertThat(SUBMISSIONS).hasValue(0);
 
         var secondCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Second frame", null);
+        UUID secondItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), secondCard.artifact().id());
         MediaDraft plainDraft = drafts.save(owner.userId(), project.id(),
-                secondCard.artifact().id(), 0, "A detailed cinematic coffee pour", null, null, null);
+                secondItemId, 0, "A detailed cinematic coffee pour", null, null, null);
         Task queuedSecond = directMedia.run(owner.userId(), project.id(),
-                secondCard.artifact().id(), plainDraft.version(), "comfy-second-run");
+                secondCard.artifact().id(), secondItemId,
+                plainDraft.version(), "comfy-second-run");
         CountDownLatch start = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
             Future<Integer> first = pool.submit(() -> {
@@ -279,10 +287,13 @@ class ComfyUiImagePostgresIT {
         // Expiry must preserve the committed candidate and must never submit a second prompt.
         var uncertainCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Uncertain frame", null);
+        UUID uncertainItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), uncertainCard.artifact().id());
         MediaDraft uncertainDraft = drafts.save(owner.userId(), project.id(),
-                uncertainCard.artifact().id(), 0, "A cinematic coffee pour", null, null, null);
+                uncertainItemId, 0, "A cinematic coffee pour", null, null, null);
         Task uncertainTask = directMedia.run(owner.userId(), project.id(),
-                uncertainCard.artifact().id(), uncertainDraft.version(), "comfy-uncertain-run");
+                uncertainCard.artifact().id(), uncertainItemId,
+                uncertainDraft.version(), "comfy-uncertain-run");
         int acceptedBeforeLoss = SUBMISSIONS.get();
         DROP_NEXT_PROMPT_RESPONSE.set(true);
         assertThatThrownBy(() -> mediaWorker.submitOnce("response-loss-worker"))

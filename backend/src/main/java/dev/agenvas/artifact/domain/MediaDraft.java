@@ -6,7 +6,7 @@ import java.util.UUID;
 /** A persisted working draft, independent of the selected immutable media result. */
 public record MediaDraft(
         UUID projectId,
-        UUID artifactId,
+        UUID canvasItemId,
         String prompt,
         UUID inputImageVersionId,
         Integer durationSeconds,

@@ -33,8 +33,8 @@ export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onIn
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const draft = useQuery(mediaDraftQueryOptions(artifact));
-  const showDraft = isMediaDraftDisplayed(artifact, draft.data);
+  const draft = useQuery(mediaDraftQueryOptions(artifact.projectId, item.id));
+  const showDraft = isMediaDraftDisplayed(item, draft.data);
   const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, artifact.id],
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id), enabled: showDraft,
     refetchInterval: (query) => query.state.data?.some(isMediaTaskRunning)
@@ -42,8 +42,8 @@ export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onIn
   const latest = latestMediaTask(tasks.data);
   const busy = showDraft && latest && isMediaTaskRunning(latest);
   const status = showDraft && latest ? TASK_LABELS[latest.status] : undefined;
-  const assetId = displayedMediaAssetId(artifact, draft.data);
-  const content = artifact.currentVersion?.content;
+  const assetId = displayedMediaAssetId(item, draft.data);
+  const content = item.selectedVersion?.content;
   const parameters = content && typeof content === "object" && "parameters" in content ? content.parameters : null;
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
   const isImage = artifact.kind === "IMAGE";

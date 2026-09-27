@@ -44,7 +44,7 @@ import { useCanvasStore } from "./canvasStore";
 import { subscribeProjectEvents, type EventSyncStatus } from "./projectEvents";
 import { AgentChatCard, AGENT_CHAT_WIDTH, AGENT_CHAT_HEIGHT, AGENT_CHAT_MIN_WIDTH, AGENT_CHAT_MIN_HEIGHT } from "./AgentChatCard";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
-import { hasCurrentVersion } from "./versionedArtifact";
+import { canvasItemVersion } from "./versionedArtifact";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { MediaCanvasCard } from "./MediaCanvasCard";
@@ -201,7 +201,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     if (initialEventSequence.current === null || typeof EventSource === "undefined") return;
     return subscribeProjectEvents(projectId, initialEventSequence.current, {
       onChange: (event) => {
-        if (event.type.startsWith("artifact.") || event.type === "canvas.items.changed" ||
+        if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
             event.type === "agent.instance.changed") {
           void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
           if (event.type === "agent.instance.changed") {
@@ -947,7 +947,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const projectResources = [
     ...(resources.data?.items ?? []).map((artifact) => ({
       subjectType: "ARTIFACT" as const, subjectId: artifact.id,
-      label: `${artifact.title} · ${artifact.kind} · ${artifact.currentVersionId ? "有结果" : "草稿"}`,
+      label: `${artifact.title} · ${artifact.kind} · ${artifact.resourceDefaultVersionId ? "有结果" : "草稿"}`,
     })),
     ...(snapshot.data?.agents ?? []).map((agent) => ({
       subjectType: "AGENT" as const, subjectId: agent.id, label: `${agent.name} · Agent`,
@@ -1003,11 +1003,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               .includes(resourceSearch.trim().toLowerCase())).map((resource) => {
               const placed = canvas.data?.items.some((item) =>
                 item.subjectType === resource.subjectType && item.subjectId === resource.subjectId);
+              const duplicateAllowed = resource.subjectType === "ARTIFACT";
               return <li className="resource-entry" key={`${resource.subjectType}:${resource.subjectId}`}>
                 <span>{resource.label}</span>
-                <button className="node-action" disabled={placed || restoreResource.isPending}
+                <button className="node-action" disabled={(!duplicateAllowed && placed) || restoreResource.isPending}
                   onClick={() => restoreResource.mutate(resource)} type="button">
-                  {placed ? "已在画布" : "放回画布"}</button>
+                  {duplicateAllowed ? placed ? "再放一张" : "放到画布"
+                    : placed ? "已在画布" : "放回画布"}</button>
               </li>;
             })}
           </ul>
@@ -1137,8 +1139,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                   onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
                   selectedItems[0].artifact.kind === "VIDEO" ?
-                  <MediaDraftEditor key={selectedItems[0].artifact.id}
-                    artifact={selectedItems[0].artifact} /> : null}
+                  <MediaDraftEditor key={selectedItems[0].id}
+                    artifact={selectedItems[0].artifact} canvasItemId={selectedItems[0].id} /> : null}
                 {selectedItems[0].artifact.kind === "TEXT" ?
                   <TextGenerationEditor key={selectedItems[0].artifact.id}
                     artifact={selectedItems[0].artifact} /> : null}
@@ -1180,14 +1182,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       {inspectingId && selectedItems.some((item) => item.id === inspectingId) ? (() => {
         const item = selectedItems.find((candidate) => candidate.id === inspectingId);
         if (!item?.artifact) return null;
+        const inspectedVersion = canvasItemVersion(item);
         return <aside className="workspace-drawer media-inspector" aria-label="卡片详情">
           <div className="workspace-drawer-heading"><h2>{item.artifact.title}</h2>
             <button className="node-action" aria-label="关闭卡片详情" type="button" onClick={() => setInspectingId(null)}><X size={16} /></button></div>
-          <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {item.artifact.currentVersion ? `v${item.artifact.currentVersion.versionNo}` : "暂无结果"}</p>
-          <ArtifactVersionHistory artifact={item.artifact} />
-          {item.artifact.currentVersion?.inputReferences.length ? <div className="mt-4 text-xs">
-            <h3>输入引用（{item.artifact.currentVersion.inputReferences.length} 个精确版本）</h3><ul className="mt-2 space-y-2">
-              {item.artifact.currentVersion.inputReferences.map((reference) =>
+          <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {inspectedVersion ? `v${inspectedVersion.versionNo}` : "暂无结果"}</p>
+          <ArtifactVersionHistory artifact={item.artifact} item={item} />
+          {inspectedVersion?.inputReferences.length ? <div className="mt-4 text-xs">
+            <h3>输入引用（{inspectedVersion.inputReferences.length} 个精确版本）</h3><ul className="mt-2 space-y-2">
+              {inspectedVersion.inputReferences.map((reference) =>
                 <li className="break-all text-[var(--muted)]" key={`${reference.role}:${reference.order}:${reference.versionId}`}>
                   {reference.role} · {ARTIFACT_LABELS[reference.kind]} · {reference.versionId}
                 </li>)}
@@ -1206,6 +1209,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         <div className="workspace-drawer-heading"><h2>上传图片</h2>
           <button className="node-action" type="button" aria-label="关闭图片上传" onClick={() => setUploadingItem(null)}><X size={16} /></button></div>
         <MediaCardUpload key={`${uploadingItem.id}:${uploadingItem.artifact.version}`} artifact={uploadingItem.artifact}
+          item={uploadingItem}
           onDone={() => setUploadingItem((current) => current === uploadingItem ? null : current)} />
       </aside> : null}
       <div className="workspace-narrow-warning">画布编辑需要至少 1280px 宽度；当前仅提供只读预览。</div>
@@ -1249,8 +1253,11 @@ const nodeTypes = { canvasCard: CanvasCardNode };
 
 function selectedArtifactBindings(items: CanvasItem[], selectedIds: string[]) {
   return items.flatMap((item) => {
-    if (!selectedIds.includes(item.id) || !hasCurrentVersion(item.artifact)) return [];
-    return [{ artifactId: item.artifact.id, selectedVersionId: item.artifact.currentVersionId }];
+    if (!selectedIds.includes(item.id) || !item.artifact) return [];
+    const selectedVersionId = item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO"
+      ? item.selectedVersionId : item.artifact.resourceDefaultVersionId;
+    if (!selectedVersionId) return [];
+    return [{ artifactId: item.artifact.id, selectedVersionId }];
   });
 }
 

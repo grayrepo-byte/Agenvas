@@ -10,13 +10,15 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 const NOW = "2026-09-26T00:00:00Z";
 const PROJECT_ID = "project-media-editor";
 const ARTIFACT_ID = "artifact-media-editor";
+const CANVAS_ITEM_ID = "canvas-item-media-editor";
 const BASE = `/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}`;
+const DRAFT_URL = `/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/media-draft`;
 const artifact: Artifact = {
   id: ARTIFACT_ID, projectId: PROJECT_ID, kind: "IMAGE", title: "新图片",
-  currentVersionId: null, currentVersion: null, version: 0, createdAt: NOW, updatedAt: NOW,
+  resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0, createdAt: NOW, updatedAt: NOW,
 };
 const initialDraft: MediaDraft = {
-  projectId: PROJECT_ID, artifactId: ARTIFACT_ID, prompt: "A lighthouse at dawn",
+  projectId: PROJECT_ID, canvasItemId: CANVAS_ITEM_ID, prompt: "A lighthouse at dawn",
   inputImageVersionId: null, durationSeconds: null, capabilityId: null,
   displayMode: "DRAFT", version: 0, createdAt: NOW, updatedAt: NOW,
 };
@@ -56,8 +58,8 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
   server.use(
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "token" })),
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json(options.settings ?? settings)),
-    http.get(`${BASE}/draft`, () => HttpResponse.json(draft)),
-    http.put(`${BASE}/draft`, async ({ request }) => {
+    http.get(DRAFT_URL, () => HttpResponse.json(draft)),
+    http.put(DRAFT_URL, async ({ request }) => {
       const input = await request.json() as SaveMediaDraftRequest;
       saves.push(input);
       draft = { ...draft, ...input, version: draft.version + 1 };
@@ -70,7 +72,9 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
   );
   if (options.handlers) server.use(...options.handlers);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(<QueryClientProvider client={client}><MediaDraftEditor artifact={{ ...artifact, kind: options.kind ?? "IMAGE" }} /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><MediaDraftEditor
+    artifact={{ ...artifact, kind: options.kind ?? "IMAGE" }} canvasItemId={CANVAS_ITEM_ID} />
+  </QueryClientProvider>);
   return { client, saves, setTasks: (next: Task[]) => { tasks = next; } };
 }
 
@@ -128,8 +132,8 @@ describe("MediaDraftEditor", () => {
     const requests: SaveMediaDraftRequest[] = [];
     let remoteVersion = 0;
     server.use(
-      http.get(`${BASE}/draft`, () => HttpResponse.json({ ...initialDraft, prompt: "Remote prompt", version: remoteVersion })),
-      http.put(`${BASE}/draft`, async ({ request }) => {
+      http.get(DRAFT_URL, () => HttpResponse.json({ ...initialDraft, prompt: "Remote prompt", version: remoteVersion })),
+      http.put(DRAFT_URL, async ({ request }) => {
         const input = await request.json() as SaveMediaDraftRequest;
         requests.push(input);
         if (requests.length === 1) {
@@ -168,8 +172,10 @@ describe("MediaDraftEditor", () => {
     await screen.findByLabelText("图片提示词");
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "运行" }));
-    await waitFor(() => expect(submitted).toEqual({ expectedDraftVersion: 0 }));
-    await waitFor(() => expect(invalidation).toHaveBeenCalledWith({ queryKey: ["media-draft", PROJECT_ID, ARTIFACT_ID] }));
+    await waitFor(() => expect(submitted).toEqual({
+      canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 0,
+    }));
+    await waitFor(() => expect(invalidation).toHaveBeenCalledWith({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] }));
     expect(invalidation).toHaveBeenCalledWith({ queryKey: ["snapshot", PROJECT_ID] });
     expect(invalidation).toHaveBeenCalledWith({ queryKey: ["canvas", PROJECT_ID] });
     expect(await screen.findByText(/前方 2 项/)).toHaveTextContent("项目并发已满");
@@ -200,7 +206,7 @@ describe("MediaDraftEditor", () => {
   it("pins a video input version and saves its whole-second duration", async () => {
     const { saves } = setup({ kind: "VIDEO", handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
-        id: "reference-image", title: "海边灯塔", currentVersionId: "image-v2" }] })),
+        id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v2" }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
         { id: "image-v1", versionNo: 1, content: { assetId: "asset-old-frame" } },
         { id: "image-v2", versionNo: 2, content: { assetId: "asset-new-frame" } },
@@ -240,7 +246,7 @@ describe("MediaDraftEditor", () => {
   it("retains an unavailable pinned video frame without silently using the current version", async () => {
     const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-gone", durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
-        id: "reference-image", title: "新首帧", currentVersionId: "image-v2" }] })),
+        id: "reference-image", title: "新首帧", resourceDefaultVersionId: "image-v2" }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
         { id: "image-gone", versionNo: 1, content: {} },
         { id: "image-v2", versionNo: 2, content: { assetId: "asset-current-frame" } },
@@ -260,7 +266,7 @@ describe("MediaDraftEditor", () => {
     let attempts = 0;
     setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-v1", durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
-        id: "reference-image", title: "海边灯塔", currentVersionId: "image-v2" }] })),
+        id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v2" }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => {
         attempts += 1;
         return attempts === 1 ? HttpResponse.json({ code: "TEMPORARY", detail: "暂不可用" }, { status: 503 })
@@ -286,7 +292,7 @@ describe("MediaDraftEditor", () => {
   it("shows the empty video-reference state without offering image drafts as usable frames", async () => {
     setup({ kind: "VIDEO", handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
-        id: "reference-draft", title: "尚未生成", currentVersionId: null }] })),
+        id: "reference-draft", title: "尚未生成", resourceDefaultVersionId: null }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-draft/versions`, () => HttpResponse.json({ items: [
         { id: "draft-v1", versionNo: 1, content: { assetId: "" } },
       ] })),
@@ -322,12 +328,12 @@ describe("MediaDraftEditor", () => {
     let remoteVersion = 0;
     const saved: SaveMediaDraftRequest[] = [];
     setup({ handlers: [
-      http.get(`${BASE}/draft`, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
+      http.get(DRAFT_URL, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
       http.post(`${BASE}/run`, () => {
         remoteVersion = 4;
         return HttpResponse.json(task("SUCCEEDED"));
       }),
-      http.put(`${BASE}/draft`, async ({ request }) => {
+      http.put(DRAFT_URL, async ({ request }) => {
         const input = await request.json() as SaveMediaDraftRequest;
         saved.push(input);
         return HttpResponse.json({ ...initialDraft, ...input, version: input.expectedVersion + 1 });
@@ -347,13 +353,13 @@ describe("MediaDraftEditor", () => {
     let releaseStale: (() => void) | undefined;
     const saved: SaveMediaDraftRequest[] = [];
     const { client } = setup({ handlers: [
-      http.get(`${BASE}/draft`, async () => {
+      http.get(DRAFT_URL, async () => {
         reads += 1;
         if (reads === 1) return HttpResponse.json(initialDraft);
         await new Promise<void>((resolve) => { releaseStale = resolve; });
         return HttpResponse.json(initialDraft);
       }),
-      http.put(`${BASE}/draft`, async ({ request }) => {
+      http.put(DRAFT_URL, async ({ request }) => {
         const input = await request.json() as SaveMediaDraftRequest;
         saved.push(input);
         return HttpResponse.json({ ...initialDraft, ...input, version: input.expectedVersion + 1 });
@@ -361,7 +367,7 @@ describe("MediaDraftEditor", () => {
     ] });
     const user = userEvent.setup();
     const prompt = await screen.findByLabelText("图片提示词");
-    const slowRefresh = client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, ARTIFACT_ID] });
+    const slowRefresh = client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] });
     await waitFor(() => expect(releaseStale).toBeDefined());
     await user.clear(prompt);
     await user.type(prompt, "Newer saved prompt");
@@ -379,7 +385,7 @@ describe("MediaDraftEditor", () => {
     const payloads: unknown[] = [];
     let remoteVersion = 0;
     const { client } = setup({ handlers: [
-      http.get(`${BASE}/draft`, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
+      http.get(DRAFT_URL, () => HttpResponse.json({ ...initialDraft, version: remoteVersion })),
       http.post(`${BASE}/run`, async ({ request }) => {
         keys.push(request.headers.get("Idempotency-Key"));
         payloads.push(await request.json());
@@ -391,18 +397,21 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "运行" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("运行失败：");
-    await act(async () => { await client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, ARTIFACT_ID] }); });
-    expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, ARTIFACT_ID])?.version).toBe(1);
+    await act(async () => { await client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] }); });
+    expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.version).toBe(1);
     await user.click(screen.getByRole("button", { name: "运行" }));
     await waitFor(() => expect(keys).toHaveLength(2));
     expect(keys[0]).toBeTruthy();
     expect(keys[1]).toBe(keys[0]);
-    expect(payloads).toEqual([{ expectedDraftVersion: 0 }, { expectedDraftVersion: 0 }]);
+    expect(payloads).toEqual([
+      { canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 0 },
+      { canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 0 },
+    ]);
   });
 
   it("retries a failed initial draft read", async () => {
     let reads = 0;
-    setup({ handlers: [http.get(`${BASE}/draft`, () => {
+    setup({ handlers: [http.get(DRAFT_URL, () => {
       reads += 1;
       return reads === 1 ? HttpResponse.json({ code: "TEMPORARY", detail: "暂时无法读取", retryable: true }, { status: 503 })
         : HttpResponse.json(initialDraft);

@@ -14,8 +14,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Editable IMAGE/VIDEO generation input; it is never an ArtifactVersion or
- * archived Asset.
+ * Editable generation input owned by one IMAGE/VIDEO CanvasItem and protected
+ * by independent CAS.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
@@ -37,16 +37,16 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     }
 
     /**
-     * Setter for <code>public.media_draft.artifact_id</code>.
+     * Setter for <code>public.media_draft.canvas_item_id</code>.
      */
-    public void setArtifactId(UUID value) {
+    public void setCanvasItemId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.artifact_id</code>.
+     * Getter for <code>public.media_draft.canvas_item_id</code>.
      */
-    public UUID getArtifactId() {
+    public UUID getCanvasItemId() {
         return (UUID) get(1);
     }
 
@@ -107,59 +107,59 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     }
 
     /**
-     * Setter for <code>public.media_draft.version</code>.
-     */
-    public void setVersion(Long value) {
-        set(6, value);
-    }
-
-    /**
-     * Getter for <code>public.media_draft.version</code>.
-     */
-    public Long getVersion() {
-        return (Long) get(6);
-    }
-
-    /**
-     * Setter for <code>public.media_draft.created_at</code>.
-     */
-    public void setCreatedAt(OffsetDateTime value) {
-        set(7, value);
-    }
-
-    /**
-     * Getter for <code>public.media_draft.created_at</code>.
-     */
-    public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(7);
-    }
-
-    /**
-     * Setter for <code>public.media_draft.updated_at</code>.
-     */
-    public void setUpdatedAt(OffsetDateTime value) {
-        set(8, value);
-    }
-
-    /**
-     * Getter for <code>public.media_draft.updated_at</code>.
-     */
-    public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(8);
-    }
-
-    /**
      * Setter for <code>public.media_draft.display_mode</code>.
      */
     public void setDisplayMode(String value) {
-        set(9, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.media_draft.display_mode</code>.
      */
     public String getDisplayMode() {
-        return (String) get(9);
+        return (String) get(6);
+    }
+
+    /**
+     * Setter for <code>public.media_draft.version</code>.
+     */
+    public void setVersion(Long value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.version</code>.
+     */
+    public Long getVersion() {
+        return (Long) get(7);
+    }
+
+    /**
+     * Setter for <code>public.media_draft.created_at</code>.
+     */
+    public void setCreatedAt(OffsetDateTime value) {
+        set(8, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.created_at</code>.
+     */
+    public OffsetDateTime getCreatedAt() {
+        return (OffsetDateTime) get(8);
+    }
+
+    /**
+     * Setter for <code>public.media_draft.updated_at</code>.
+     */
+    public void setUpdatedAt(OffsetDateTime value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.updated_at</code>.
+     */
+    public OffsetDateTime getUpdatedAt() {
+        return (OffsetDateTime) get(9);
     }
 
     // -------------------------------------------------------------------------
@@ -185,19 +185,19 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     /**
      * Create a detached, initialised MediaDraftRecord
      */
-    public MediaDraftRecord(UUID projectId, UUID artifactId, String prompt, UUID inputImageVersionId, Integer durationSeconds, UUID capabilityId, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String displayMode) {
+    public MediaDraftRecord(UUID projectId, UUID canvasItemId, String prompt, UUID inputImageVersionId, Integer durationSeconds, UUID capabilityId, String displayMode, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
         super(MediaDraft.MEDIA_DRAFT);
 
         setProjectId(projectId);
-        setArtifactId(artifactId);
+        setCanvasItemId(canvasItemId);
         setPrompt(prompt);
         setInputImageVersionId(inputImageVersionId);
         setDurationSeconds(durationSeconds);
         setCapabilityId(capabilityId);
+        setDisplayMode(displayMode);
         setVersion(version);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
-        setDisplayMode(displayMode);
         resetChangedOnNotNull();
     }
 }

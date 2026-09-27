@@ -79,10 +79,10 @@ class DirectTextGenerationPostgresIT {
                 Artifact.Kind.TEXT, "Notes", text("Initial"));
 
         Task first = direct.run(owner.userId(), project.id(), initial.artifact().id(),
-                "Expand this", initial.artifact().version(), initial.currentVersion().id(),
+                "Expand this", initial.artifact().version(), initial.resourceDefaultVersion().id(),
                 "direct-text-first");
         assertThat(direct.run(owner.userId(), project.id(), initial.artifact().id(),
-                "Expand this", initial.artifact().version(), initial.currentVersion().id(),
+                "Expand this", initial.artifact().version(), initial.resourceDefaultVersion().id(),
                 "direct-text-first").id()).isEqualTo(first.id());
         assertThat(first.input().path("currentText").asText()).isEqualTo("Initial");
         assertThat(worker.runOnce("text-worker")).isEqualTo(1);
@@ -93,16 +93,16 @@ class DirectTextGenerationPostgresIT {
         assertThat(firstDone.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(firstDone.output().path("result").path("selected").asBoolean()).isTrue();
         assertThat(firstDone.output().path("response").path("generations")).hasSize(1);
-        assertThat(generated.currentVersion().content().path("text").asText())
+        assertThat(generated.resourceDefaultVersion().content().path("text").asText())
                 .isEqualTo("Generated text 1");
-        assertThat(generated.currentVersion().createdByKind())
+        assertThat(generated.resourceDefaultVersion().createdByKind())
                 .isEqualTo(ArtifactVersion.CreatedByKind.TASK);
         TaskController.TaskResponse publicTask = TaskController.TaskResponse.from(firstDone);
         assertThat(publicTask.input().has("currentText")).isFalse();
         assertThat(publicTask.output().has("response")).isFalse();
 
         Task stale = direct.run(owner.userId(), project.id(), generated.artifact().id(),
-                "Rewrite again", generated.artifact().version(), generated.currentVersion().id(),
+                "Rewrite again", generated.artifact().version(), generated.resourceDefaultVersion().id(),
                 "direct-text-stale");
         ArtifactService.ArtifactView manual = artifacts.revise(owner.userId(), project.id(),
                 generated.artifact().id(), generated.artifact().version(), null,
@@ -114,7 +114,7 @@ class DirectTextGenerationPostgresIT {
                 generated.artifact().id());
         assertThat(staleDone.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(staleDone.output().path("result").path("selected").asBoolean()).isFalse();
-        assertThat(after.currentVersion().id()).isEqualTo(manual.currentVersion().id());
+        assertThat(after.resourceDefaultVersion().id()).isEqualTo(manual.resourceDefaultVersion().id());
         assertThat(artifacts.listVersions(owner.userId(), project.id(), after.artifact().id()))
                 .extracting(version -> version.content().path("text").asText())
                 .contains("Generated text 2", "Manual edit wins");

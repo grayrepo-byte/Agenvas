@@ -753,7 +753,7 @@ paths:
       - {$ref: "#/components/parameters/ArtifactId"}
     get:
       operationId: getArtifact
-      summary: 获取产物及当前选用版本
+      summary: 获取产物及资源库默认版本
       tags: [Artifacts]
       responses:
         "200":
@@ -763,14 +763,14 @@ paths:
               schema: {$ref: "#/components/schemas/Artifact"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/artifacts/{artifactId}/draft:
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
-      - {$ref: "#/components/parameters/ArtifactId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
     get:
       operationId: getMediaDraft
-      summary: 读取独立于已选结果的图片或视频工作草稿
-      tags: [Artifacts]
+      summary: 读取卡片独立的图片或视频工作草稿
+      tags: [Canvas]
       responses:
         "200":
           description: 当前工作草稿
@@ -781,8 +781,8 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     put:
       operationId: saveMediaDraft
-      summary: 按独立版本号保存媒体工作草稿
-      tags: [Artifacts]
+      summary: 按卡片草稿版本号保存媒体工作草稿
+      tags: [Canvas]
       requestBody:
         required: true
         content:
@@ -957,13 +957,13 @@ paths:
               schema: {$ref: "#/components/schemas/ArtifactVersionList"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/artifacts/{artifactId}/select-version:
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/set-default-version:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     post:
-      operationId: selectArtifactVersion
-      summary: 乐观选择一个历史版本
+      operationId: setArtifactResourceDefaultVersion
+      summary: 乐观设置资源库默认版本
       tags: [Artifacts]
       requestBody:
         required: true
@@ -976,6 +976,30 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/select-version:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
+    post:
+      operationId: selectCanvasItemVersion
+      summary: 乐观选择此媒体卡片展示的历史版本
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SelectArtifactVersionRequest"}
+      responses:
+        "200":
+          description: 更新后的卡片
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CanvasItem"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -1687,12 +1711,12 @@ components:
     ManifestArtifact:
       type: object
       additionalProperties: false
-      required: [id, kind, title, currentVersionId, versions]
+      required: [id, kind, title, resourceDefaultVersionId, versions]
       properties:
         id: {type: string, format: uuid}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string}
-        currentVersionId: {type: string, format: uuid}
+        resourceDefaultVersionId: {type: [string, "null"], format: uuid}
         archivedAt: {type: [string, "null"], format: date-time}
         versions:
           type: array
@@ -1889,7 +1913,7 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/WritableArtifactContent"}
             - {type: "null"}
-          description: IMAGE/VIDEO 可为 null，此时创建有稳定身份、独立空草稿且尚无结果版本的产物。
+          description: IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。
     SaveMediaDraftRequest:
       type: object
       additionalProperties: false
@@ -1903,8 +1927,9 @@ components:
     RunMediaDraftRequest:
       type: object
       additionalProperties: false
-      required: [expectedDraftVersion]
+      required: [canvasItemId, expectedDraftVersion]
       properties:
+        canvasItemId: {type: string, format: uuid}
         expectedDraftVersion: {type: integer, format: int64, minimum: 0}
     RunTextGenerationRequest:
       type: object
@@ -1927,10 +1952,10 @@ components:
     MediaDraft:
       type: object
       additionalProperties: false
-      required: [projectId, artifactId, prompt, inputImageVersionId, durationSeconds, capabilityId, displayMode, version, createdAt, updatedAt]
+      required: [projectId, canvasItemId, prompt, inputImageVersionId, durationSeconds, capabilityId, displayMode, version, createdAt, updatedAt]
       properties:
         projectId: {type: string, format: uuid}
-        artifactId: {type: string, format: uuid}
+        canvasItemId: {type: string, format: uuid}
         prompt: {type: string, maxLength: 20000}
         inputImageVersionId: {type: [string, "null"], format: uuid}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
@@ -1981,17 +2006,17 @@ components:
     Artifact:
       type: object
       additionalProperties: false
-      required: [id, projectId, kind, title, currentVersionId, version, createdAt, updatedAt, currentVersion]
+      required: [id, projectId, kind, title, resourceDefaultVersionId, version, createdAt, updatedAt, resourceDefaultVersion]
       properties:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string, minLength: 1, maxLength: 160}
-        currentVersionId: {type: [string, "null"], format: uuid}
+        resourceDefaultVersionId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-        currentVersion:
+        resourceDefaultVersion:
           oneOf:
             - {$ref: "#/components/schemas/ArtifactVersion"}
             - {type: "null"}
@@ -2376,7 +2401,7 @@ components:
     CanvasItem:
       type: object
       additionalProperties: false
-      required: [id, subjectType, subjectId, title, x, y, width, height, zIndex, locked, version, artifact, agent]
+      required: [id, subjectType, subjectId, title, x, y, width, height, zIndex, locked, selectedVersionId, version, selectedVersion, artifact, agent]
       properties:
         id: {type: string, format: uuid}
         subjectType: {$ref: "#/components/schemas/CanvasSubjectType"}
@@ -2389,7 +2414,12 @@ components:
         zIndex: {type: integer, minimum: -1000, maximum: 1000}
         groupId: {type: [string, "null"], format: uuid}
         locked: {type: boolean}
+        selectedVersionId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
+        selectedVersion:
+          oneOf:
+            - {$ref: "#/components/schemas/ArtifactVersion"}
+            - {type: "null"}
         artifact:
           oneOf:
             - {$ref: "#/components/schemas/Artifact"}
@@ -2620,6 +2650,11 @@ components:
       schema: {type: string, format: uuid}
     ArtifactId:
       name: artifactId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    CanvasItemId:
+      name: canvasItemId
       in: path
       required: true
       schema: {type: string, format: uuid}

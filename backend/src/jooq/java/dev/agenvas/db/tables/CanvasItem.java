@@ -9,6 +9,8 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
+import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
+import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.records.CanvasItemRecord;
 
@@ -45,8 +47,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Per-card title and spatial presentation; referenced business content remains
- * outside this row.
+ * Spatial card plus card-local work context; Artifact content remains immutable
+ * and shared.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItem extends TableImpl<CanvasItemRecord> {
@@ -152,12 +154,19 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
      */
     public final TableField<CanvasItemRecord, String> TITLE = createField(DSL.name("title"), SQLDataType.VARCHAR(160).nullable(false), this, "Per-card display title initialized from its subject and edited independently afterward.");
 
+    /**
+     * The column <code>public.canvas_item.selected_version_id</code>. Version
+     * displayed by this card. Media cards own this independently of the
+     * Artifact default.
+     */
+    public final TableField<CanvasItemRecord, UUID> SELECTED_VERSION_ID = createField(DSL.name("selected_version_id"), SQLDataType.UUID, this, "Version displayed by this card. Media cards own this independently of the Artifact default.");
+
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Per-card title and spatial presentation; referenced business content remains outside this row."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Spatial card plus card-local work context; Artifact content remains immutable and shared."), TableOptions.table(), where);
     }
 
     /**
@@ -236,7 +245,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
 
     @Override
     public List<ForeignKey<CanvasItemRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT);
+        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
     }
 
     private transient AgentInstancePath _agentInstance;
@@ -276,10 +285,37 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
         return _project;
     }
 
+    private transient ArtifactVersionPath _artifactVersion;
+
+    /**
+     * Get the implicit join path to the <code>public.artifact_version</code>
+     * table.
+     */
+    public ArtifactVersionPath artifactVersion() {
+        if (_artifactVersion == null)
+            _artifactVersion = new ArtifactVersionPath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION, null);
+
+        return _artifactVersion;
+    }
+
+    private transient MediaDraftPath _mediaDraft;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.media_draft</code>
+     * table
+     */
+    public MediaDraftPath mediaDraft() {
+        if (_mediaDraft == null)
+            _mediaDraft = new MediaDraftPath(this, null, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM.getInverseKey());
+
+        return _mediaDraft;
+    }
+
     @Override
     public List<Check<CanvasItemRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_canvas_item_geometry"), "((((x >= ('-1000000'::integer)::numeric) AND (x <= (1000000)::numeric)) AND ((y >= ('-1000000'::integer)::numeric) AND (y <= (1000000)::numeric)) AND ((width >= (120)::numeric) AND (width <= (2000)::numeric)) AND ((height >= (80)::numeric) AND (height <= (2000)::numeric)) AND ((z_index >= '-1000'::integer) AND (z_index <= 1000))))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_selected_version_subject"), "((((subject_type)::text = 'ARTIFACT'::text) OR (selected_version_id IS NULL)))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "(((((subject_type)::text = 'ARTIFACT'::text) AND (artifact_id = subject_id) AND (agent_instance_id IS NULL)) OR (((subject_type)::text = 'AGENT'::text) AND (artifact_id IS NULL) AND (agent_instance_id = subject_id))))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = ANY ((ARRAY['ARTIFACT'::character varying, 'AGENT'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_title"), "(((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 160)))", true),

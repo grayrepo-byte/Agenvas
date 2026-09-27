@@ -32,11 +32,11 @@ const TEXT_PRESENTATION = { label: "文字", icon: TextT };
 export function ContentCanvasCard({ artifact, item, selected, locked, onInspect,
   children }: ContentCanvasCardProps) {
   const [editingText, setEditingText] = useState(false);
-  const content = artifact.currentVersion?.content;
+  const content = artifact.resourceDefaultVersion?.content;
   const { label, icon: Icon } = TEXT_PRESENTATION;
   const text = readText(content, "text");
   const header = readText(content, "format") === "MARKDOWN" ? "Markdown" : "正文";
-  const references = artifact.currentVersion?.inputReferences.length ?? 0;
+  const references = artifact.resourceDefaultVersion?.inputReferences.length ?? 0;
   const emptyText = !text.trim();
 
   return <ArtifactCardFrame title={item.title} kindLabel={label} selected={selected} locked={locked}
@@ -67,7 +67,7 @@ export function ContentCanvasCard({ artifact, item, selected, locked, onInspect,
         {hasCurrentVersion(artifact)
           ? <TextVersionPicker artifact={artifact} />
           : <span className="content-card-chip"><Stack size={12} aria-hidden />
-            {artifact.currentVersion ? `v${artifact.currentVersion.versionNo}` : "暂无版本"}</span>}
+            {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : "暂无版本"}</span>}
         {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{references} 个引用</span> : null}
         {locked ? <LockSimple className="content-card-locked" size={13} aria-label="已锁定" /> : null}
       </footer>

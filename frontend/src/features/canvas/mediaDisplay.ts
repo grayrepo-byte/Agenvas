@@ -1,11 +1,12 @@
 import { queryOptions, skipToken } from "@tanstack/react-query";
-import { getAssetMetadata, getMediaDraft, type Artifact, type MediaDraft } from "../../shared/api/client";
+import { getAssetMetadata, getMediaDraft,
+  type CanvasItem, type MediaDraft } from "../../shared/api/client";
 import { readContentText } from "./artifactContent";
 
-export function mediaDraftQueryOptions(artifact: Artifact) {
+export function mediaDraftQueryOptions(projectId: string, canvasItemId: string) {
   return queryOptions({
-    queryKey: ["media-draft", artifact.projectId, artifact.id],
-    queryFn: () => getMediaDraft(artifact.projectId, artifact.id),
+    queryKey: ["media-draft", projectId, canvasItemId],
+    queryFn: () => getMediaDraft(projectId, canvasItemId),
   });
 }
 
@@ -17,12 +18,12 @@ export function assetMetadataQueryOptions(projectId: string, assetId: string | n
   });
 }
 
-export function isMediaDraftDisplayed(artifact: Artifact, draft?: MediaDraft): boolean {
-  return artifact.currentVersionId === null || draft?.displayMode === "DRAFT";
+export function isMediaDraftDisplayed(item: CanvasItem, draft?: MediaDraft): boolean {
+  return item.selectedVersionId === null || draft?.displayMode === "DRAFT";
 }
 
 /** Preview, node geometry and downloads must all describe the same displayed result. */
-export function displayedMediaAssetId(artifact: Artifact, draft?: MediaDraft): string | null {
-  return isMediaDraftDisplayed(artifact, draft)
-    ? null : readContentText(artifact.currentVersion?.content, "assetId") || null;
+export function displayedMediaAssetId(item: CanvasItem, draft?: MediaDraft): string | null {
+  return isMediaDraftDisplayed(item, draft)
+    ? null : readContentText(item.selectedVersion?.content, "assetId") || null;
 }

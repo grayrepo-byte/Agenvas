@@ -8,16 +8,16 @@ const createdAt = "2026-09-24T00:00:00Z";
 
 /** Typed cards mirror the API projection; no relation state is created in React Flow. */
 function artifactCard(id: string, versionId: string, groupId: string | null = null,
-  inputReferences: VersionedArtifact["currentVersion"]["inputReferences"] = [],
+  inputReferences: VersionedArtifact["resourceDefaultVersion"]["inputReferences"] = [],
 ): CanvasItem & { artifact: VersionedArtifact } {
   return {
     id: `card-${id}`, subjectType: "ARTIFACT", subjectId: id, title: id,
-    x: 0, y: 0, width: 280, height: 180, zIndex: 0, groupId, locked: false, version: 0,
+    x: 0, y: 0, width: 280, height: 180, zIndex: 0, groupId, locked: false, selectedVersionId: null, selectedVersion: null, version: 0,
     agent: null,
     artifact: {
       id, projectId: "project-1", kind: "TEXT", title: id,
-      currentVersionId: versionId, version: 0, createdAt, updatedAt: createdAt,
-      currentVersion: {
+      resourceDefaultVersionId: versionId, version: 0, createdAt, updatedAt: createdAt,
+      resourceDefaultVersion: {
         id: versionId, versionNo: 1, schemaVersion: 1,
         content: { format: "PLAIN_TEXT", text: "content" }, inputReferences,
         createdByKind: "USER", runId: null, createdAt,
@@ -26,11 +26,25 @@ function artifactCard(id: string, versionId: string, groupId: string | null = nu
   };
 }
 
+function mediaCard(id: string, resourceDefaultVersionId: string, selectedVersionId: string,
+  inputReferences: VersionedArtifact["resourceDefaultVersion"]["inputReferences"] = [],
+): CanvasItem {
+  const card = artifactCard(id, resourceDefaultVersionId);
+  card.artifact.kind = "IMAGE";
+  card.selectedVersionId = selectedVersionId;
+  card.selectedVersion = {
+    ...card.artifact.resourceDefaultVersion,
+    id: selectedVersionId,
+    inputReferences,
+  };
+  return card;
+}
+
 function agentCard(bindingVersion = "version-a"): CanvasItem {
   return {
     id: "card-agent", subjectType: "AGENT", subjectId: "agent-1", title: "Agent",
     x: 400, y: 0, width: 320, height: 280, zIndex: 1, groupId: null,
-    locked: false, version: 0, artifact: null,
+    locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: null,
     agent: {
       id: "agent-1", projectId: "project-1", profileKey: "creator",
       profileVersion: 1, name: "Creator", instruction: "Create",
@@ -99,6 +113,35 @@ describe("canvas relation projection", () => {
     })).toBeNull();
   });
 
+  it("projects a media card's selected version instead of its resource default", () => {
+    const input = mediaCard("artifact-a", "version-library", "version-card");
+    const output = mediaCard("artifact-b", "version-output-library", "version-output-card", [
+      { versionId: "version-card", role: "source", order: 0, kind: "IMAGE" },
+    ]);
+    const edges = projectCanvasRelations([input, agentCard("version-card"), output]);
+
+    expect(edges).toHaveLength(2);
+    expect(edges[0]?.className).toBe("relation-edge relation-edge--input-binding");
+    expect(edges[1]).toMatchObject({ source: input.id, target: output.id });
+    expect(inputBindingsAfterConnect(input, agentCard("version-old"))).toEqual([
+      { artifactId: "artifact-a", selectedVersionId: "version-card" },
+    ]);
+  });
+
+  it("draws a shared Artifact binding from the card displaying the pinned version", () => {
+    const firstBranch = mediaCard("artifact-a", "version-library", "version-first");
+    const secondBranch = mediaCard("artifact-a", "version-library", "version-second");
+    secondBranch.id = "card-artifact-a-second";
+
+    const edges = projectCanvasRelations([
+      firstBranch, secondBranch, agentCard("version-second"),
+    ]);
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ source: secondBranch.id, target: "card-agent" });
+    expect(edges[0]?.className).toBe("relation-edge relation-edge--input-binding");
+  });
+
   it("hand-drawn relations only ever bind an Artifact into an Agent input", () => {
     const input = artifactCard("artifact-a", "version-new");
     const agent = agentCard("version-old");
@@ -148,8 +191,8 @@ describe("canvas target handle", () => {
     expect(canvasTargetHandleId(artifactCard("artifact-a", "version-a"))).toBe("artifact-input");
     // 首次生成前允许当前媒体版本为空，这种卡片还不能接收引用。
     const unversioned = artifactCard("artifact-c", "version-c");
-    unversioned.artifact!.currentVersionId = null as never;
-    unversioned.artifact!.currentVersion = null as never;
+    unversioned.artifact!.resourceDefaultVersionId = null as never;
+    unversioned.artifact!.resourceDefaultVersion = null as never;
     expect(canvasTargetHandleId(unversioned)).toBeNull();
   });
 });

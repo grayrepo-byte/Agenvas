@@ -327,7 +327,7 @@ export async function createArtifact(
   });
 }
 
-/** Loads an Artifact with its currently selected immutable revision. */
+/** Loads an Artifact with its resource-library default immutable revision. */
 export async function getArtifact(projectId: string, artifactId: string): Promise<Artifact> {
   return readJson<Artifact>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}`,
@@ -340,19 +340,19 @@ export async function listArtifacts(projectId: string): Promise<ArtifactList> {
   return readJson<ArtifactList>(`/api/v1/projects/${projectId}/artifacts`, "无法读取项目资源");
 }
 
-/** Loads the editable generation input independently of the selected media result. */
-export async function getMediaDraft(projectId: string, artifactId: string): Promise<MediaDraft> {
+/** Loads one media card's editable generation input independently of its selected result. */
+export async function getMediaDraft(projectId: string, canvasItemId: string): Promise<MediaDraft> {
   return readJson<MediaDraft>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/draft`,
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
     "无法读取媒体草稿",
   );
 }
 
 /** Saves the complete working draft with its own optimistic version. */
-export async function saveMediaDraft(projectId: string, artifactId: string,
+export async function saveMediaDraft(projectId: string, canvasItemId: string,
   input: SaveMediaDraftRequest): Promise<MediaDraft> {
   return writeJson<MediaDraft>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/draft`,
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
     { method: "PUT", body: JSON.stringify(input) },
   );
 }
@@ -423,19 +423,32 @@ export async function listArtifactVersions(
   );
 }
 
-/** Selects a historical revision without overwriting any content. */
-export async function selectArtifactVersion(
+/** Changes the resource-library default without changing any card's selected version. */
+export async function setArtifactResourceDefaultVersion(
   projectId: string,
   artifactId: string,
   versionId: string,
   expectedVersion: number,
 ): Promise<Artifact> {
   return writeJson<Artifact>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/select-version`,
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/set-default-version`,
     {
       method: "POST",
       body: JSON.stringify({ versionId, expectedVersion }),
     },
+  );
+}
+
+/** Selects a historical revision for one media card without changing the resource default. */
+export async function selectCanvasItemVersion(
+  projectId: string,
+  canvasItemId: string,
+  versionId: string,
+  expectedVersion: number,
+): Promise<CanvasItem> {
+  return writeJson<CanvasItem>(
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/select-version`,
+    { method: "POST", body: JSON.stringify({ versionId, expectedVersion }) },
   );
 }
 

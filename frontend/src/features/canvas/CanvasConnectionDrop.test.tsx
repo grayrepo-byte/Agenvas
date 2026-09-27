@@ -33,13 +33,16 @@ const now = "2026-09-27T00:00:00Z";
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
 function card(id: string, kind: Artifact["kind"], title: string, versionId: string,
-  content: NonNullable<Artifact["currentVersion"]>["content"]): CanvasItem {
+  content: NonNullable<Artifact["resourceDefaultVersion"]>["content"]): CanvasItem {
+  const selectedVersion = { id: versionId, versionNo: 1, schemaVersion: 1 as const, content,
+    inputReferences: [], createdByKind: "USER" as const, runId: null, createdAt: now };
   return { id: `${id}-card`, subjectType: "ARTIFACT", subjectId: id, title, x: 0, y: 0,
-    width: 260, height: 150, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
-    artifact: { id, projectId: "project-1", kind, title, currentVersionId: versionId,
+    width: 260, height: 150, zIndex: 0, groupId: null, locked: false,
+    selectedVersionId: kind === "TEXT" ? null : versionId,
+    selectedVersion: kind === "TEXT" ? null : selectedVersion, version: 3, agent: null,
+    artifact: { id, projectId: "project-1", kind, title, resourceDefaultVersionId: versionId,
       version: 3, createdAt: now, updatedAt: now,
-      currentVersion: { id: versionId, versionNo: 1, schemaVersion: 1, content,
-        inputReferences: [], createdByKind: "USER", runId: null, createdAt: now } } };
+      resourceDefaultVersion: selectedVersion } };
 }
 
 const items: CanvasItem[] = [
@@ -52,7 +55,7 @@ const items: CanvasItem[] = [
       workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" }),
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
     title: "Agent",
-    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4, artifact: null,
+    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4, artifact: null,
     agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
       name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
       createdAt: now, updatedAt: now, bindings: [] } },
@@ -84,8 +87,8 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
       id: params.assetId, width: 1024, height: 1024 })),
-    http.get("/api/v1/projects/:projectId/artifacts/:artifactId/draft", ({ params }) =>
-      HttpResponse.json({ projectId: "project-1", artifactId: params.artifactId, prompt: "",
+    http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
+      HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
         inputImageVersionId: null, durationSeconds: null, capabilityId: null, version: 0,
         createdAt: now, updatedAt: now })),
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {

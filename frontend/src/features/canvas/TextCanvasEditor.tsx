@@ -69,8 +69,8 @@ export function TextCanvasEditor({ artifact, locked, onDone }: {
 
 function readFields(artifact: VersionedArtifact): TextFields {
   return {
-    text: readContentText(artifact.currentVersion.content, "text"),
-    format: readContentText(artifact.currentVersion.content, "format") === "MARKDOWN"
+    text: readContentText(artifact.resourceDefaultVersion.content, "text"),
+    format: readContentText(artifact.resourceDefaultVersion.content, "format") === "MARKDOWN"
       ? "MARKDOWN" : "PLAIN_TEXT",
   };
 }

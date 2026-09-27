@@ -79,8 +79,8 @@ public class DirectTextTaskService {
             Artifact artifact = target.artifact();
             if (artifact.kind() != Artifact.Kind.TEXT || artifact.archivedAt() != null
                     || artifact.version() != expectedArtifactVersion
-                    || !expectedCurrentVersionId.equals(artifact.currentVersionId())
-                    || target.currentVersion() == null) {
+                    || !expectedCurrentVersionId.equals(artifact.resourceDefaultVersionId())
+                    || target.resourceDefaultVersion() == null) {
                 throw conflict("文字卡片已变化，请刷新后重新生成。");
             }
             ChatGateway.ConfigIdentity config = gateway.configIdentity();
@@ -89,7 +89,7 @@ public class DirectTextTaskService {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE",
                         "文字模型不可用", "请先配置可用的文字模型。", false);
             }
-            JsonNode current = target.currentVersion().content();
+            JsonNode current = target.resourceDefaultVersion().content();
             ObjectNode input = mapper.createObjectNode();
             input.put("schemaVersion", 1);
             input.put("artifactId", artifactId.toString());

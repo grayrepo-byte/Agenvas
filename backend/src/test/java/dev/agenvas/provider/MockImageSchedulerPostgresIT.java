@@ -106,7 +106,7 @@ class MockImageSchedulerPostgresIT {
                 .isEqualTo(Task.Status.READY);
         UUID artifactId = UUID.fromString(current.output().path("artifactId").asText());
         UUID assetId = UUID.fromString(artifacts.get(owner.userId(), project.id(), artifactId)
-                .currentVersion().content().path("assetId").asText());
+                .resourceDefaultVersion().content().path("assetId").asText());
         assertThat(assets.get(owner.userId(), project.id(), assetId).asset().contentType())
                 .isEqualTo("image/png");
 

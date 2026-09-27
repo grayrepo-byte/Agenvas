@@ -95,7 +95,7 @@ class PromptInjectionPostgresIT {
                 "Untrusted reference", content);
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Use the reference",
                 List.of(new AgentInstanceService.BindingInput(reference.artifact().id(),
-                        reference.currentVersion().id())));
+                        reference.resourceDefaultVersion().id())));
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a safe three-shot plan", "injection-run").run();
 
@@ -146,7 +146,7 @@ class PromptInjectionPostgresIT {
                 "Untrusted reference image", content);
         var agent = agents.create(owner.userId(), project.id(), "Image Creator",
                 "Use this reference image", List.of(new AgentInstanceService.BindingInput(
-                        image.artifact().id(), image.currentVersion().id())));
+                        image.artifact().id(), image.resourceDefaultVersion().id())));
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a safe three-shot plan", "image-injection-run").run();
 

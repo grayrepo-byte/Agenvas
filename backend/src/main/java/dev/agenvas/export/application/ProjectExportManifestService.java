@@ -66,10 +66,10 @@ public class ProjectExportManifestService {
                         .map(this::assetEntry).toList());
     }
 
-    /** 将产物当前指针、归档状态和历史版本摘要组装为清单条目。 */
+    /** 将产物资源库默认指针、归档状态和历史版本摘要组装为清单条目。 */
     private ArtifactEntry artifactEntry(Artifact artifact, List<VersionEntry> versions) {
         return new ArtifactEntry(artifact.id(), artifact.kind(), artifact.title(),
-                artifact.currentVersionId(), artifact.archivedAt(), versions);
+                artifact.resourceDefaultVersionId(), artifact.archivedAt(), versions);
     }
 
     /** 仅复制该产物类型允许导出的内容字段，排除任意媒体参数与任务、Provider 内部数据。 */
@@ -128,12 +128,12 @@ public class ProjectExportManifestService {
      * @param id 产物 ID
      * @param kind 产物类型
      * @param title 当前产物标题
-     * @param currentVersionId 当前选中的内容版本 ID
+     * @param resourceDefaultVersionId 资源库默认内容版本 ID；空媒体资源可为空
      * @param archivedAt 归档时间；未归档时为空
      * @param versions 已保存的历史版本
      */
     public record ArtifactEntry(UUID id, Artifact.Kind kind, String title,
-            UUID currentVersionId, Instant archivedAt, List<VersionEntry> versions) {}
+            UUID resourceDefaultVersionId, Instant archivedAt, List<VersionEntry> versions) {}
 
     /** 只包含按产物类型白名单筛选的内容。
      * @param id 不可变内容版本 ID

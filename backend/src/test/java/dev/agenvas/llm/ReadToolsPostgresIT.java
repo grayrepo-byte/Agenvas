@@ -99,15 +99,15 @@ class ReadToolsPostgresIT {
         content.put("text", "PRIVATE UNBOUND CONTENT");
         ArtifactService.ArtifactView unbound = artifacts.create(owner.userId(), project.id(),
                 Artifact.Kind.TEXT, "Unbound", content);
-        gateway.boundVersionId = bound.currentVersion().id();
-        gateway.largeVersionId = largeBound.currentVersion().id();
+        gateway.boundVersionId = bound.resourceDefaultVersion().id();
+        gateway.largeVersionId = largeBound.resourceDefaultVersion().id();
         gateway.longBrief = longBrief;
-        gateway.unboundVersionId = unbound.currentVersion().id();
+        gateway.unboundVersionId = unbound.resourceDefaultVersion().id();
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader",
                 "Read the brief", List.of(new AgentInstanceService.BindingInput(
-                        bound.artifact().id(), bound.currentVersion().id()),
+                        bound.artifact().id(), bound.resourceDefaultVersion().id()),
                         new AgentInstanceService.BindingInput(largeBound.artifact().id(),
-                                largeBound.currentVersion().id())));
+                                largeBound.resourceDefaultVersion().id())));
         UUID selectedItemId = UUID.randomUUID();
         UUID unboundSelectedItemId = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(
@@ -127,9 +127,9 @@ class ReadToolsPostgresIT {
         assertThat(run.contextSnapshot().at("/selection/0/itemId").asText())
                 .isEqualTo(selectedItemId.toString());
         assertThat(run.contextSnapshot().at("/selection/0/versionId").asText())
-                .isEqualTo(bound.currentVersion().id().toString());
+                .isEqualTo(bound.resourceDefaultVersion().id().toString());
         assertThat(run.contextSnapshot().at("/selection/1/versionId").asText())
-                .isEqualTo(unbound.currentVersion().id().toString());
+                .isEqualTo(unbound.resourceDefaultVersion().id().toString());
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
                 "Summarize the brief", "read-tools-run", null,
                 List.of(selectedItemId)))
@@ -158,13 +158,13 @@ class ReadToolsPostgresIT {
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
         assertThatThrownBy(() -> creativeTools.placeArtifacts(trusted, run,
-                UUID.randomUUID(), gateway.placeRequest(unbound.currentVersion().id())))
+                UUID.randomUUID(), gateway.placeRequest(unbound.resourceDefaultVersion().id())))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("INPUT_SCOPE_DENIED");
         assertThatThrownBy(() -> creativeTools.placeArtifacts(trusted, run,
                 UUID.randomUUID(), "{\"versionIds\":[\""
-                        + largeBound.currentVersion().id() + "\"],\"group\":\"PRIVATE\"}"))
+                        + largeBound.resourceDefaultVersion().id() + "\"],\"group\":\"PRIVATE\"}"))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("TOOL_ARGUMENT_INVALID");
@@ -185,10 +185,10 @@ class ReadToolsPostgresIT {
         assertThat(arranged.version()).isEqualTo(1);
         assertThat(arranged.x()).isEqualByComparingTo(new BigDecimal("800"));
         assertThat(artifacts.get(owner.userId(), project.id(), largeBound.artifact().id())
-                .currentVersion().id()).isEqualTo(largeBound.currentVersion().id());
+                .resourceDefaultVersion().id()).isEqualTo(largeBound.resourceDefaultVersion().id());
         assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
                 UUID.randomUUID(), gateway.arrangeRequest(unboundSelectedItemId,
-                        unbound.currentVersion().id(), 0, "GRID")))
+                        unbound.resourceDefaultVersion().id(), 0, "GRID")))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("INPUT_SCOPE_DENIED");
@@ -197,7 +197,7 @@ class ReadToolsPostgresIT {
                 arranged.width(), arranged.height(), arranged.zIndex(), arranged.groupId())));
         assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
                 UUID.randomUUID(), gateway.arrangeRequest(arranged.id(),
-                        largeBound.currentVersion().id(), 0, "HORIZONTAL")))
+                        largeBound.resourceDefaultVersion().id(), 0, "HORIZONTAL")))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("CANVAS_VERSION_CONFLICT");
@@ -205,13 +205,13 @@ class ReadToolsPostgresIT {
         artifacts.revise(owner.userId(), project.id(), largeBound.artifact().id(),
                 largeBound.artifact().version(), null, content);
         assertThatThrownBy(() -> creativeTools.placeArtifacts(trusted, run,
-                UUID.randomUUID(), gateway.placeRequest(largeBound.currentVersion().id())))
+                UUID.randomUUID(), gateway.placeRequest(largeBound.resourceDefaultVersion().id())))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("ARTIFACT_VERSION_CONFLICT");
         assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
                 UUID.randomUUID(), gateway.arrangeRequest(arranged.id(),
-                        largeBound.currentVersion().id(), 2, "GRID")))
+                        largeBound.resourceDefaultVersion().id(), 2, "GRID")))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("ARTIFACT_VERSION_CONFLICT");
@@ -219,7 +219,7 @@ class ReadToolsPostgresIT {
                 arranged.id(), 2, true)));
         assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
                 UUID.randomUUID(), gateway.arrangeRequest(arranged.id(),
-                        largeBound.currentVersion().id(), 3, "GRID")))
+                        largeBound.resourceDefaultVersion().id(), 3, "GRID")))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("CANVAS_ITEM_LOCKED");

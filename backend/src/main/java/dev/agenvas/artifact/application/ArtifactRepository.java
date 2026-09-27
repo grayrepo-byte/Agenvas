@@ -28,18 +28,18 @@ public interface ArtifactRepository {
     /** 先插入稳定产物身份，再追加首个不可变内容版本。 */
     void createArtifact(Artifact artifact);
 
-    /** Initialize editable input for an empty IMAGE or VIDEO Artifact in the creation transaction. */
-    void createMediaDraft(UUID projectId, UUID artifactId, String prompt,
+    /** Initialize the independent editable input of one IMAGE or VIDEO CanvasItem. */
+    void createMediaDraft(UUID projectId, UUID canvasItemId, String prompt,
             MediaDraft.DisplayMode displayMode, Instant now);
 
-    /** Read the working draft of an authorized media Artifact. */
-    Optional<MediaDraft> findMediaDraft(UUID projectId, UUID artifactId);
+    /** Read one CanvasItem-owned media working draft. */
+    Optional<MediaDraft> findMediaDraft(UUID projectId, UUID canvasItemId);
 
     /** Replace draft fields under its independent optimistic version. */
     boolean updateMediaDraft(MediaDraft draft, long expectedVersion);
 
     /** Change only the card face, without invalidating the saved input version. */
-    void setMediaDraftDisplayMode(UUID projectId, UUID artifactId,
+    void setMediaDraftDisplayMode(UUID projectId, UUID canvasItemId,
             MediaDraft.DisplayMode mode, Instant now);
 
     /** 锁定所有者范围内的产物行，为其安全分配递增版本号。 */
@@ -51,11 +51,11 @@ public interface ArtifactRepository {
     /** 追加不可变内容版本及规范化后的语义引用。 */
     void appendVersion(ArtifactVersion version);
 
-    /** 设置新产物的首个当前版本，不递增产物配置版本。 */
-    void setInitialCurrentVersion(UUID artifactId, UUID versionId, Instant updatedAt);
+    /** 设置新产物的首个资源默认版本，不递增产物配置版本。 */
+    void setInitialResourceDefaultVersion(UUID artifactId, UUID versionId, Instant updatedAt);
 
-    /** 以乐观锁选择当前内容版本，并可同时修改产物标题。 */
-    boolean selectVersion(
+    /** 以乐观锁选择资源默认版本，并可同时修改产物标题。 */
+    boolean setResourceDefaultVersion(
             UUID ownerId,
             UUID projectId,
             UUID artifactId,

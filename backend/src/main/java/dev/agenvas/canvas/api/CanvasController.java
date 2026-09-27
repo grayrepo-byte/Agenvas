@@ -2,6 +2,7 @@ package dev.agenvas.canvas.api;
 
 import dev.agenvas.agent.api.AgentInstanceController.AgentResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactResponse;
+import dev.agenvas.artifact.api.ArtifactController.ArtifactVersionResponse;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.identity.application.AdminPrincipal;
@@ -190,6 +191,7 @@ public class CanvasController {
      * @param id 画布项 ID
      * @param subjectType 被展示对象类型
      * @param subjectId 被展示对象 ID
+     * @param selectedVersionId 该媒体卡片独立展示的版本 ID
      * @param title 当前卡片独立的展示标题
      * @param x 卡片横坐标
      * @param y 卡片纵坐标
@@ -200,12 +202,14 @@ public class CanvasController {
      * @param locked 布局是否锁定
      * @param version 卡片展示状态的乐观锁版本
      * @param artifact 产物卡片当前版本投影
+     * @param selectedVersion 该媒体卡片实际展示的完整版本投影
      * @param agent Agent 卡片当前配置投影
      */
     public record CanvasItemResponse(
             UUID id,
             CanvasItem.SubjectType subjectType,
             UUID subjectId,
+            UUID selectedVersionId,
             String title,
             BigDecimal x,
             BigDecimal y,
@@ -216,6 +220,7 @@ public class CanvasController {
             boolean locked,
             long version,
             ArtifactResponse artifact,
+            ArtifactVersionResponse selectedVersion,
             AgentResponse agent) {
 
         /** 按 subjectType 只填充对应的产物或 Agent 投影。 */
@@ -225,6 +230,7 @@ public class CanvasController {
                     item.id(),
                     item.subjectType(),
                     item.subjectId(),
+                    item.selectedVersionId(),
                     item.title(),
                     item.x(),
                     item.y(),
@@ -235,6 +241,8 @@ public class CanvasController {
                     item.locked(),
                     item.version(),
                     entry.artifact() == null ? null : ArtifactResponse.from(entry.artifact()),
+                    entry.selectedVersion() == null ? null
+                            : ArtifactVersionResponse.from(entry.selectedVersion()),
                     entry.agent() == null ? null : AgentResponse.from(entry.agent()));
         }
     }

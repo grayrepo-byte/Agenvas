@@ -9,6 +9,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
@@ -77,6 +78,7 @@ class OpenAiImage2PostgresIT {
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
     @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker worker;
@@ -108,7 +110,7 @@ class OpenAiImage2PostgresIT {
                 .param("task", editTask.id()).query(String.class).single()).isEqualTo("gpt-image-2");
         assertThat(artifacts.get(owner.userId(), edited.project().id(),
                 UUID.fromString(completed.output().path("artifactId").asText()))
-                .currentVersion().content().path("assetId").asText()).isNotBlank();
+                .resourceDefaultVersion().content().path("assetId").asText()).isNotBlank();
 
         Fixture generated = fixture(owner.userId(), "Lost generation", false);
         Task uncertain = approve(owner.userId(), generated);
@@ -133,7 +135,7 @@ class OpenAiImage2PostgresIT {
         jdbc.sql("update task set input_json=input_json || "
                         + "jsonb_build_object('referenceImageVersionId', :versionId) "
                         + "where id=:id")
-                .param("versionId", edited.referenceImage().currentVersion().id().toString())
+                .param("versionId", edited.referenceImage().resourceDefaultVersion().id().toString())
                 .param("id", foreignTask.id()).update();
         assertThat(worker.submitOnce("openai-foreign-worker")).isEqualTo(1);
         Task blocked = tasks.get(owner.userId(), foreign.project().id(), foreignTask.id());
@@ -154,7 +156,7 @@ class OpenAiImage2PostgresIT {
             assertThat(DOWNLOADS).hasValue(1);
             assertThat(artifacts.get(owner.userId(), linked.project().id(),
                     UUID.fromString(linkedDone.output().path("artifactId").asText()))
-                    .currentVersion().content().path("assetId").asText()).isNotBlank();
+                    .resourceDefaultVersion().content().path("assetId").asText()).isNotBlank();
         } finally {
             URL_RESULT.set(false);
         }
@@ -177,9 +179,12 @@ class OpenAiImage2PostgresIT {
                     "Reference", image);
         }
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE, "Concept", null);
-        long draftVersion = drafts.save(ownerId, project.id(), card.artifact().id(), 0,
+        UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, ownerId, project.id(), card.artifact().id());
+        long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
                 "A detailed cinematic studio scene", null, null, null).version();
-        Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), draftVersion,
+        Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), canvasItemId,
+                draftVersion,
                 "openai-" + UUID.randomUUID());
         return new Fixture(project, card, referenceImage, task);
     }
@@ -193,7 +198,7 @@ class OpenAiImage2PostgresIT {
             jdbc.sql("update task set input_json=input_json || "
                             + "jsonb_build_object('referenceImageVersionId', :versionId) "
                             + "where id=:id")
-                    .param("versionId", fixture.referenceImage().currentVersion().id().toString())
+                    .param("versionId", fixture.referenceImage().resourceDefaultVersion().id().toString())
                     .param("id", fixture.task().id()).update();
             // 注入后的固定输入以数据库为准；run(...) 返回的记录早于这次更新。
             return tasks.get(ownerId, fixture.project().id(), fixture.task().id());

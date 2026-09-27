@@ -119,14 +119,14 @@ class AgentRunPostgresIT {
                 "Creator",
                 "Create a storyboard",
                 List.of(new AgentInstanceService.BindingInput(
-                        brief.artifact().id(), brief.currentVersion().id())));
+                        brief.artifact().id(), brief.resourceDefaultVersion().id())));
         AgentRunService.RunPreflight preflight = runService.preflight(owner.userId(),
                 project.id(), agent.id());
         assertThat(preflight.agentVersion()).isZero();
         assertThat(preflight.bindings()).singleElement()
                 .satisfies(binding -> {
                     assertThat(binding.selectedVersionId())
-                            .isEqualTo(brief.currentVersion().id());
+                            .isEqualTo(brief.resourceDefaultVersion().id());
                     assertThat(binding.artifactTitle()).isEqualTo("Brief");
                 });
         assertThat(preflight.modelAvailable()).isFalse();
@@ -155,7 +155,7 @@ class AgentRunPostgresIT {
                         new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bindings[0].selectedVersionId")
-                        .value(brief.currentVersion().id().toString()))
+                        .value(brief.resourceDefaultVersion().id().toString()))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigSource")
                         .value(reviewedModelSource))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigVersion")
@@ -194,7 +194,7 @@ class AgentRunPostgresIT {
                     assertThat(task.input().path("stepIndex").intValue()).isZero();
                 });
         assertThat(run.contextSnapshot().get("bindings").get(0).get("selectedVersionId").stringValue())
-                .isEqualTo(brief.currentVersion().id().toString());
+                .isEqualTo(brief.resourceDefaultVersion().id().toString());
         assertThat(run.contextSnapshot().path("bindings").path(0)
                 .path("expectedVersion").longValue()).isEqualTo(0);
         assertThat(run.policySnapshot().get("maxModelTurns").intValue()).isEqualTo(12);

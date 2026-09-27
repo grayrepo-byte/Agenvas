@@ -3,6 +3,9 @@ package dev.agenvas.canvas.application;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
@@ -53,6 +56,8 @@ public class CanvasService {
     private final ProjectService projects;
     /** 将画布产物卡片投影到当前服务端版本。 */
     private final ArtifactService artifacts;
+    /** Creates and reads media working state owned by newly placed cards. */
+    private final MediaDraftService mediaDrafts;
     /** 将 Agent 卡片投影到当前配置。 */
     private final AgentInstanceService agents;
     /** 保存卡片级标题与布局，不持有产物正文。 */
@@ -76,6 +81,7 @@ public class CanvasService {
     public CanvasService(
             ProjectService projects,
             ArtifactService artifacts,
+            MediaDraftService mediaDrafts,
             AgentInstanceService agents,
             CanvasItemRepository canvasItems,
             ProjectEventService events,
@@ -83,6 +89,7 @@ public class CanvasService {
             Clock clock) {
         this.projects = projects;
         this.artifacts = artifacts;
+        this.mediaDrafts = mediaDrafts;
         this.agents = agents;
         this.canvasItems = canvasItems;
         this.events = events;
@@ -147,11 +154,13 @@ public class CanvasService {
         int zIndex = Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex)
                 .max().orElse(-1) + 1);
         CanvasItem placed = placement(UUID.randomUUID(), projectId,
-                CanvasItem.SubjectType.ARTIFACT, artifactId, artifact.artifact().title(),
+                CanvasItem.SubjectType.ARTIFACT, artifactId,
+                mediaSelection(artifact), artifact.artifact().title(),
                 x, y, OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, agent.outputGroupId(), false);
         if (!canvasItems.create(placed)) {
             throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
         }
+        initializeMediaDraft(projectId, placed, artifact);
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(placed.id().toString());
         events.append(ownerId, projectId, new ProjectEventService.EventDraft(
@@ -237,6 +246,45 @@ public class CanvasService {
                 .value();
     }
 
+    /** Switches only one media card's displayed immutable version; its draft and resource default stay. */
+    @Transactional
+    public CanvasEntry selectVersion(UUID ownerId, UUID projectId, UUID itemId,
+            UUID versionId, long expectedVersion) {
+        return events.recordChange(ownerId, projectId, () -> {
+            projects.requireActiveProject(ownerId, projectId);
+            CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
+                    .orElseThrow(this::notFound);
+            if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
+            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
+                    current.subjectId());
+            if (artifact.artifact().kind() != Artifact.Kind.IMAGE
+                    && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+                throw validation("只有图片和视频卡片可以独立选择展示版本。");
+            }
+            artifacts.requireVersion(ownerId, projectId, current.subjectId(), versionId);
+            if (java.util.Objects.equals(current.selectedVersionId(), versionId)
+                    && (current.version() == expectedVersion
+                            || current.version() == expectedVersion + 1)) {
+                return ProjectEventService.Change.unchanged(toEntry(ownerId, current));
+            }
+            if (current.version() != expectedVersion
+                    || !canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
+                            versionId, clock.instant())) {
+                throw conflict();
+            }
+            mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
+                    dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
+            CanvasItem selected = canvasItems.find(ownerId, projectId, itemId)
+                    .orElseThrow(this::notFound);
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("canvasItemId", itemId.toString());
+            payload.put("selectedVersionId", versionId.toString());
+            return ProjectEventService.Change.changed(toEntry(ownerId, selected),
+                    new ProjectEventService.EventDraft("canvas.item.selected_version.changed", 1,
+                            itemId, selected.version(), payload));
+        }).value();
+    }
+
     /** 调用方已锁定项目事件序号；逐条验证目标资源和版本后返回完整布局。 */
     private List<CanvasEntry> applyLocked(
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {
@@ -278,6 +326,7 @@ public class CanvasService {
                 projectId,
                 CanvasItem.SubjectType.ARTIFACT,
                 command.artifactId(),
+                mediaSelection(artifact),
                 artifact.artifact().title(),
                 command.x(),
                 command.y(),
@@ -286,7 +335,9 @@ public class CanvasService {
                 command.zIndex(),
                 command.groupId(),
                 command.locked());
-        createOrReplay(ownerId, requested);
+        if (createOrReplay(ownerId, requested)) {
+            initializeMediaDraft(projectId, requested, artifact);
+        }
     }
 
     /** 核验 Agent 权限和坐标后创建卡片；客户端 ID 冲突时比较完整布局字段。 */
@@ -303,6 +354,7 @@ public class CanvasService {
                 projectId,
                 CanvasItem.SubjectType.AGENT,
                 command.agentId(),
+                null,
                 agent.name(),
                 command.x(),
                 command.y(),
@@ -320,6 +372,7 @@ public class CanvasService {
             UUID projectId,
             CanvasItem.SubjectType subjectType,
             UUID subjectId,
+            UUID selectedVersionId,
             String title,
             BigDecimal x,
             BigDecimal y,
@@ -334,6 +387,7 @@ public class CanvasService {
                 projectId,
                 subjectType,
                 subjectId,
+                selectedVersionId,
                 title,
                 x,
                 y,
@@ -348,9 +402,9 @@ public class CanvasService {
     }
 
     /** 首次创建布局项；主键重放只有全部展示字段相同才视为成功。 */
-    private void createOrReplay(UUID ownerId, CanvasItem requested) {
+    private boolean createOrReplay(UUID ownerId, CanvasItem requested) {
         if (canvasItems.create(requested)) {
-            return;
+            return true;
         }
         CanvasItem existing = canvasItems.findForUpdate(
                         ownerId, requested.projectId(), requested.id())
@@ -358,6 +412,7 @@ public class CanvasService {
         if (!samePlacement(existing, requested)) {
             throw conflict();
         }
+        return false;
     }
 
     /** 只修改单张画布卡片的展示标题，不改变其业务对象或内容版本。 */
@@ -378,6 +433,7 @@ public class CanvasService {
                 current.projectId(),
                 current.subjectType(),
                 current.subjectId(),
+                current.selectedVersionId(),
                 title,
                 current.x(),
                 current.y(),
@@ -425,6 +481,7 @@ public class CanvasService {
                 current.projectId(),
                 current.subjectType(),
                 current.subjectId(),
+                current.selectedVersionId(),
                 current.title(),
                 command.x(),
                 command.y(),
@@ -458,6 +515,7 @@ public class CanvasService {
                 current.projectId(),
                 current.subjectType(),
                 current.subjectId(),
+                current.selectedVersionId(),
                 current.title(),
                 current.x(),
                 current.y(),
@@ -496,10 +554,36 @@ public class CanvasService {
         ArtifactService.ArtifactView artifact = item.subjectType() == CanvasItem.SubjectType.ARTIFACT
                 ? artifacts.get(ownerId, item.projectId(), item.subjectId())
                 : null;
+        ArtifactVersion selectedVersion = artifact == null ? null
+                : selectedVersion(ownerId, item, artifact);
         AgentInstance agent = item.subjectType() == CanvasItem.SubjectType.AGENT
                 ? agents.get(ownerId, item.projectId(), item.subjectId())
                 : null;
-        return new CanvasEntry(item, artifact, agent);
+        return new CanvasEntry(item, artifact, selectedVersion, agent);
+    }
+
+    private ArtifactVersion selectedVersion(UUID ownerId, CanvasItem item,
+            ArtifactService.ArtifactView artifact) {
+        if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
+            return null;
+        }
+        if (item.selectedVersionId() == null) return null;
+        return artifacts.requireVersion(ownerId, item.projectId(), item.subjectId(),
+                item.selectedVersionId());
+    }
+
+    private UUID mediaSelection(ArtifactService.ArtifactView artifact) {
+        return artifact.artifact().kind() == Artifact.Kind.IMAGE
+                        || artifact.artifact().kind() == Artifact.Kind.VIDEO
+                ? artifact.artifact().resourceDefaultVersionId() : null;
+    }
+
+    private void initializeMediaDraft(UUID projectId, CanvasItem item,
+            ArtifactService.ArtifactView artifact) {
+        if (artifact.artifact().kind() == Artifact.Kind.IMAGE
+                || artifact.artifact().kind() == Artifact.Kind.VIDEO) {
+            mediaDrafts.initializeWithinChange(projectId, item.id(), item.selectedVersionId() != null);
+        }
     }
 
     /** 精确比较首次放置请求的所有持久化展示字段，用于客户端 ID 重放判定。 */
@@ -507,6 +591,7 @@ public class CanvasService {
         return left.projectId().equals(right.projectId())
                 && left.subjectType() == right.subjectType()
                 && left.subjectId().equals(right.subjectId())
+                && java.util.Objects.equals(left.selectedVersionId(), right.selectedVersionId())
                 && left.title().equals(right.title())
                 && compare(left.x(), right.x())
                 && compare(left.y(), right.y())
@@ -717,5 +802,6 @@ public class CanvasService {
     public record CanvasEntry(
             CanvasItem item,
             ArtifactService.ArtifactView artifact,
+            ArtifactVersion selectedVersion,
             AgentInstance agent) {}
 }

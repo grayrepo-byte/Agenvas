@@ -2,7 +2,6 @@ package dev.agenvas.artifact.application;
 
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
-import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
@@ -215,8 +214,6 @@ public class ArtifactService {
             Artifact empty = new Artifact(UUID.randomUUID(), projectId, kind, title,
                     null, null, 0, now, now);
             artifacts.createArtifact(empty);
-            artifacts.createMediaDraft(projectId, empty.id(), "",
-                    MediaDraft.DisplayMode.DRAFT, now);
             return new ArtifactView(empty, null);
         }
         List<ArtifactVersion.InputReference> references =
@@ -250,26 +247,22 @@ public class ArtifactService {
                 now);
         artifacts.createArtifact(artifact);
         artifacts.appendVersion(version);
-        artifacts.setInitialCurrentVersion(artifactId, versionId, now);
-        if (isMediaKind(kind)) {
-            artifacts.createMediaDraft(projectId, artifactId,
-                    content.path("prompt").asText(""), MediaDraft.DisplayMode.RESULT, now);
-        }
+        artifacts.setInitialResourceDefaultVersion(artifactId, versionId, now);
         return new ArtifactView(
                 requireArtifact(ownerId, projectId, artifactId), version);
     }
 
-    /** 读取稳定产物身份及其当前选用的不可变版本。 */
+    /** 读取稳定产物身份及其资源默认不可变版本。 */
     @Transactional(readOnly = true)
     public ArtifactView get(UUID ownerId, UUID projectId, UUID artifactId) {
         projects.get(ownerId, projectId);
         Artifact artifact = requireArtifact(ownerId, projectId, artifactId);
-        if (artifact.currentVersionId() == null && isMediaKind(artifact.kind())) {
+        if (artifact.resourceDefaultVersionId() == null && isMediaKind(artifact.kind())) {
             return new ArtifactView(artifact, null);
         }
         ArtifactVersion current = artifacts.findVersion(
-                        projectId, artifactId, artifact.currentVersionId())
-                .orElseThrow(() -> new IllegalStateException("Artifact current version is missing"));
+                        projectId, artifactId, artifact.resourceDefaultVersionId())
+                .orElseThrow(() -> new IllegalStateException("Artifact resource default is missing"));
         return new ArtifactView(artifact, current);
     }
 
@@ -344,7 +337,7 @@ public class ArtifactService {
                 .orElseThrow(this::notFound);
         if (author == ArtifactVersion.CreatedByKind.AGENT) {
             ArtifactVersion visible = requireAgentVisibleVersion(ownerId, projectId, runId,
-                    current.currentVersionId(), contextSnapshot);
+                    current.resourceDefaultVersionId(), contextSnapshot);
             if (!runId.equals(visible.runId())) {
                 boolean unchangedBinding = false;
                 JsonNode bindings = contextSnapshot == null ? null
@@ -352,7 +345,7 @@ public class ArtifactService {
                 if (bindings != null && bindings.isArray()) {
                     for (JsonNode binding : bindings) {
                         if (artifactId.toString().equals(binding.path("artifactId").asText())
-                                && current.currentVersionId().toString().equals(
+                                && current.resourceDefaultVersionId().toString().equals(
                                         binding.path("selectedVersionId").asText())
                                 && binding.path("expectedVersion").canConvertToLong()
                                 && binding.path("expectedVersion").longValue()
@@ -400,7 +393,7 @@ public class ArtifactService {
                 runId,
                 now);
         artifacts.appendVersion(revision);
-        if (!artifacts.selectVersion(
+        if (!artifacts.setResourceDefaultVersion(
                 ownerId,
                 projectId,
                 artifactId,
@@ -474,7 +467,7 @@ public class ArtifactService {
         projects.get(ownerId, projectId);
         return artifacts.listSelectedRunOutputs(ownerId, projectId,
                 authorizedPriorRunIds, MAX_CONVERSATION_INPUTS).stream()
-                .map(artifact -> new ConversationInput(artifact.id(), artifact.currentVersionId(),
+                .map(artifact -> new ConversationInput(artifact.id(), artifact.resourceDefaultVersionId(),
                         artifact.kind(), artifact.title(), artifact.version()))
                 .toList();
     }
@@ -513,9 +506,9 @@ public class ArtifactService {
         return version;
     }
 
-    /** 选择已有历史版本；按预期产物版本保护并发修改，重复选择保持幂等。 */
+    /** 明确选择资源库默认版本；CanvasItem 的局部选择不经过此入口。 */
     @Transactional
-    public ArtifactView selectVersion(
+    public ArtifactView setResourceDefaultVersion(
             UUID ownerId,
             UUID projectId,
             UUID artifactId,
@@ -523,23 +516,14 @@ public class ArtifactService {
             long expectedArtifactVersion) {
         return events.recordChange(ownerId, projectId, () -> {
                     ArtifactView before = get(ownerId, projectId, artifactId);
-                    ArtifactView selected = selectVersionLocked(
+                    ArtifactView selected = setResourceDefaultVersionLocked(
                             ownerId, projectId, artifactId, versionId, expectedArtifactVersion);
-                    if (isMediaKind(selected.artifact().kind())) {
-                        MediaDraft beforeDraft = artifacts.findMediaDraft(projectId, artifactId)
-                                .orElseThrow(() -> new IllegalStateException("Media draft missing"));
-                        if (beforeDraft.displayMode() != MediaDraft.DisplayMode.RESULT) {
-                            artifacts.setMediaDraftDisplayMode(projectId, artifactId,
-                                    MediaDraft.DisplayMode.RESULT, clock.instant());
-                        } else if (before.artifact().version() == selected.artifact().version()) {
-                            return ProjectEventService.Change.unchanged(selected);
-                        }
-                    } else if (before.artifact().version() == selected.artifact().version()) {
+                    if (before.artifact().version() == selected.artifact().version()) {
                         return ProjectEventService.Change.unchanged(selected);
                     }
                     return ProjectEventService.Change.changed(
                             selected,
-                            artifactEvent("artifact.current_version.changed", selected));
+                            artifactEvent("artifact.resource_default_version.changed", selected));
                 })
                 .value();
     }
@@ -567,8 +551,8 @@ public class ArtifactService {
         boolean selected = allowSelection
                 && current.archivedAt() == null
                 && current.version() == expectedArtifactVersion
-                && java.util.Objects.equals(current.currentVersionId(), expectedCurrentVersionId)
-                && artifacts.selectVersion(ownerId, projectId, artifactId,
+                && java.util.Objects.equals(current.resourceDefaultVersionId(), expectedCurrentVersionId)
+                && artifacts.setResourceDefaultVersion(ownerId, projectId, artifactId,
                         expectedArtifactVersion, revision.id(), current.title(), now);
         return new TaskVersionResult(revision.id(), selected);
     }
@@ -582,7 +566,7 @@ public class ArtifactService {
     public record TaskVersionResult(UUID versionId, boolean selected) {}
 
     /** 调用方持有项目事件锁时执行的版本选择；接受同一版本的安全幂等重放。 */
-    private ArtifactView selectVersionLocked(
+    private ArtifactView setResourceDefaultVersionLocked(
             UUID ownerId,
             UUID projectId,
             UUID artifactId,
@@ -594,16 +578,16 @@ public class ArtifactService {
         requireEditable(current);
         ArtifactVersion target = artifacts.findVersion(projectId, artifactId, versionId)
                 .orElseThrow(this::notFound);
-        if (java.util.Objects.equals(current.currentVersionId(), versionId)
+        if (java.util.Objects.equals(current.resourceDefaultVersionId(), versionId)
                 && current.version() == expectedArtifactVersion) {
             return new ArtifactView(current, target);
         }
-        if (java.util.Objects.equals(current.currentVersionId(), versionId)
+        if (java.util.Objects.equals(current.resourceDefaultVersionId(), versionId)
                 && current.version() == expectedArtifactVersion + 1) {
             return new ArtifactView(current, target);
         }
         if (current.version() != expectedArtifactVersion
-                || !artifacts.selectVersion(
+                || !artifacts.setResourceDefaultVersion(
                         ownerId,
                         projectId,
                         artifactId,
@@ -617,14 +601,14 @@ public class ArtifactService {
                 requireArtifact(ownerId, projectId, artifactId), target);
     }
 
-    /** 事件仅携带产物 ID、当前版本 ID 和类型，不含正文或媒体地址。 */
+    /** 事件仅携带产物 ID、资源默认版本 ID 和类型，不含正文或媒体地址。 */
     private ProjectEventService.EventDraft artifactEvent(String type, ArtifactView view) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("artifactId", view.artifact().id().toString());
-        if (view.currentVersion() == null) {
-            payload.putNull("currentVersionId");
+        if (view.resourceDefaultVersion() == null) {
+            payload.putNull("resourceDefaultVersionId");
         } else {
-            payload.put("currentVersionId", view.currentVersion().id().toString());
+            payload.put("resourceDefaultVersionId", view.resourceDefaultVersion().id().toString());
         }
         payload.put("kind", view.artifact().kind().name());
         return new ProjectEventService.EventDraft(
@@ -726,12 +710,12 @@ public class ArtifactService {
     }
 
     /**
-     * 稳定产物身份及其当前选用的不可变正文版本。
+     * 稳定产物身份及其资源库默认的不可变正文版本。
      *
-     * @param artifact 产物身份、当前版本指针和项目状态
-     * @param currentVersion 当前指针所对应的完整不可变正文
+     * @param artifact 产物身份、资源默认版本指针和项目状态
+     * @param resourceDefaultVersion 资源默认指针对应的完整不可变正文
      */
-    public record ArtifactView(Artifact artifact, ArtifactVersion currentVersion) {}
+    public record ArtifactView(Artifact artifact, ArtifactVersion resourceDefaultVersion) {}
 
     private static boolean isMediaKind(Artifact.Kind kind) {
         return kind == Artifact.Kind.IMAGE || kind == Artifact.Kind.VIDEO;

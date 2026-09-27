@@ -79,11 +79,11 @@ class ConversationArtifactInputsPostgresIT {
         runs.cancel(owner.userId(), project.id(), first.id());
         var second = runs.create(owner.userId(), project.id(), agent.id(), "Continue that scene", "second").run();
         assertThat(artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), second.id(),
-                editable.currentVersion().id(), second.contextSnapshot()).id()).isEqualTo(editable.currentVersion().id());
+                editable.resourceDefaultVersion().id(), second.contextSnapshot()).id()).isEqualTo(editable.resourceDefaultVersion().id());
         var revised = artifacts.reviseFromAgent(owner.userId(), project.id(), second.id(), second.contextSnapshot(),
                 editable.artifact().id(), editable.artifact().version(), "Scene continued",
                 mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Continued draft\"}"));
-        assertThat(revised.currentVersion().runId()).isEqualTo(second.id());
+        assertThat(revised.resourceDefaultVersion().runId()).isEqualTo(second.id());
 
         var userRevision = artifacts.revise(owner.userId(), project.id(), editedByUser.artifact().id(),
                 editedByUser.artifact().version(), "User changed scene",
@@ -91,12 +91,12 @@ class ConversationArtifactInputsPostgresIT {
         assertThat(artifacts.conversationInputs(owner.userId(), project.id(), List.of(first.id(), second.id())))
                 .extracting(ArtifactService.ConversationInput::artifactId).containsExactly(editable.artifact().id());
         assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), second.id(),
-                userRevision.currentVersion().id(), second.contextSnapshot())).isInstanceOf(ApiProblemException.class);
+                userRevision.resourceDefaultVersion().id(), second.contextSnapshot())).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(), second.id(), second.contextSnapshot(),
                 editedByUser.artifact().id(), userRevision.artifact().version(), "Unsafe overwrite",
                 mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Do not overwrite\"}")))
                 .isInstanceOf(ApiProblemException.class);
-        assertThat(artifacts.get(owner.userId(), project.id(), editedByUser.artifact().id()).currentVersion().id())
-                .isEqualTo(userRevision.currentVersion().id());
+        assertThat(artifacts.get(owner.userId(), project.id(), editedByUser.artifact().id()).resourceDefaultVersion().id())
+                .isEqualTo(userRevision.resourceDefaultVersion().id());
     }
 }

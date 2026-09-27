@@ -53,15 +53,15 @@ const imageVersionId = "11111111-1111-4111-8111-111111111111";
 const items: CanvasItem[] = [
   { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
     title: "参考图",
-    width: 260, height: 150, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
+    width: 260, height: 150, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3, agent: null,
     artifact: { id: "image-id", projectId: "project-1", kind: "IMAGE", title: "参考图",
-      currentVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
-      currentVersion: { id: imageVersionId, versionNo: 1, schemaVersion: 1,
+      resourceDefaultVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
+      resourceDefaultVersion: { id: imageVersionId, versionNo: 1, schemaVersion: 1,
         content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now } } },
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
     title: "Agent",
-    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4, artifact: null,
+    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4, artifact: null,
     agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
       name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
       createdAt: now, updatedAt: now,
@@ -69,11 +69,11 @@ const items: CanvasItem[] = [
         selectedVersionId: imageVersionId, bindingType: "INPUT" }] } },
   { id: "text-card", subjectType: "ARTIFACT", subjectId: "text-id", x: 800, y: 0,
     title: "正文",
-    width: 260, height: 150, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
+    width: 260, height: 150, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5, agent: null,
     artifact: { id: "text-id", projectId: "project-1", kind: "TEXT", title: "正文",
-      currentVersionId: "22222222-2222-4222-8222-222222222222", version: 5,
+      resourceDefaultVersionId: "22222222-2222-4222-8222-222222222222", version: 5,
       createdAt: now, updatedAt: now,
-      currentVersion: { id: "22222222-2222-4222-8222-222222222222", versionNo: 1, schemaVersion: 1,
+      resourceDefaultVersion: { id: "22222222-2222-4222-8222-222222222222", versionNo: 1, schemaVersion: 1,
         content: { format: "PLAIN_TEXT", text: "选中的正文" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now } } },
 ];
@@ -106,8 +106,8 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
       id: params.assetId, width: 1024, height: 1024 })),
-    http.get("/api/v1/projects/:projectId/artifacts/:artifactId/draft", ({ params }) =>
-      HttpResponse.json({ projectId: "project-1", artifactId: params.artifactId, prompt: "",
+    http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
+      HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
         inputImageVersionId: null, durationSeconds: null, capabilityId: null, version: 0,
         createdAt: now, updatedAt: now })));
 });

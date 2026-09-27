@@ -29,13 +29,16 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
 
 const NOW = "2026-09-26T00:00:00Z";
 function imageItem(id = "image-card", assetId = "landscape"): CanvasItem {
+  const selectedVersion = { id: `${assetId}-version`, versionNo: 1, schemaVersion: 1 as const,
+    content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
+    createdByKind: "USER" as const, runId: null, createdAt: NOW };
   return { id, subjectType: "ARTIFACT", subjectId: id, x: 10, y: 30,
     title: "图片",
-    width: 225, height: 300, version: 0, zIndex: 0, groupId: null, locked: false, agent: null,
+    width: 225, height: 300, version: 0, zIndex: 0, groupId: null, locked: false,
+    selectedVersionId: selectedVersion.id, selectedVersion, agent: null,
     artifact: { id, projectId: "project-1", kind: "IMAGE", title: "图片", version: 0,
-      currentVersionId: `${assetId}-version`, createdAt: NOW, updatedAt: NOW,
-      currentVersion: { id: `${assetId}-version`, versionNo: 1, schemaVersion: 1,
-        content: { sourceType: "UPLOAD", assetId }, inputReferences: [], createdByKind: "USER", runId: null, createdAt: NOW } } };
+      resourceDefaultVersionId: `${assetId}-version`, createdAt: NOW, updatedAt: NOW,
+      resourceDefaultVersion: selectedVersion } };
 }
 
 describe("workspace image dimensions", () => {
@@ -59,8 +62,8 @@ describe("workspace image dimensions", () => {
         agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
       http.get("/api/v1/projects/project-1/canvas/items", () => HttpResponse.json({ items })),
-      http.get("/api/v1/projects/project-1/artifacts/:artifactId/draft", ({ params }) => HttpResponse.json({
-        artifactId: params.artifactId, projectId: "project-1", displayMode: draftMode, prompt: "",
+      http.get("/api/v1/projects/project-1/canvas-items/:canvasItemId/media-draft", ({ params }) => HttpResponse.json({
+        canvasItemId: params.canvasItemId, projectId: "project-1", displayMode: draftMode, prompt: "",
         version: 0, inputImageVersionId: null, durationSeconds: null, capabilityId: null,
         createdAt: NOW, updatedAt: NOW,
       })),
@@ -131,7 +134,7 @@ describe("workspace image dimensions", () => {
 
   it("retains stored dimensions when no image exists or metadata is unavailable", async () => {
     const empty = imageItem("empty-card");
-    empty.artifact = empty.artifact ? { ...empty.artifact, currentVersionId: null, currentVersion: null } : null;
+    empty.artifact = empty.artifact ? { ...empty.artifact, resourceDefaultVersionId: null, resourceDefaultVersion: null } : null;
     items = [imageItem(), empty];
     server.use(http.get("/api/v1/projects/project-1/assets/:assetId", () => HttpResponse.json({}, { status: 503 })));
     showWorkspace();

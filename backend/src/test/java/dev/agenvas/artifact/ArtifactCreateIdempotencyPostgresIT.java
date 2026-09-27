@@ -82,7 +82,7 @@ class ArtifactCreateIdempotencyPostgresIT {
         assertThat(replay.replayed()).isTrue();
         assertThat(replay.view()).isEqualTo(first.view());
         assertThat(artifacts.get(owner.userId(), project.id(), first.view().artifact().id())
-                .currentVersion().content().path("text").asText()).isEqualTo("Edited");
+                .resourceDefaultVersion().content().path("text").asText()).isEqualTo("Edited");
 
         assertThatThrownBy(() -> artifacts.createIdempotent(owner.userId(), project.id(),
                 Artifact.Kind.TEXT, "Brief", mapper.readTree("""

@@ -687,7 +687,7 @@ public class AgentRunService {
                     binding.artifactId());
             item.put("kind", selected.artifact().kind().name());
             item.put("title", selected.artifact().title());
-            if (selected.currentVersion().id().equals(binding.selectedVersionId())) {
+            if (selected.resourceDefaultVersion().id().equals(binding.selectedVersionId())) {
                 item.put("expectedVersion", selected.artifact().version());
             }
         }
@@ -705,7 +705,7 @@ public class AgentRunService {
             reference.put("subjectType", item.subjectType().name());
             reference.put("subjectId", item.subjectId().toString());
             if (selected.artifact() != null) {
-                reference.put("versionId", selected.artifact().currentVersion().id().toString());
+                reference.put("versionId", selected.artifact().resourceDefaultVersion().id().toString());
                 reference.put("kind", selected.artifact().artifact().kind().name());
             }
         }

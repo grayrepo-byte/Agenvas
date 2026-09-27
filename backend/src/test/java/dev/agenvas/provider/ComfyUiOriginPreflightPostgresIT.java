@@ -8,6 +8,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
@@ -63,6 +64,7 @@ class ComfyUiOriginPreflightPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
     @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private AssetService assets;
@@ -90,10 +92,12 @@ class ComfyUiOriginPreflightPostgresIT {
         // 直连图片卡片：空卡片 + 草稿，再走真实的直连受理入口；输入里固定受理时的 origin 摘要。
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Fixed origin card", null);
-        MediaDraft draft = drafts.save(owner.userId(), project.id(), card.artifact().id(), 0,
+        UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), card.artifact().id());
+        MediaDraft draft = drafts.save(owner.userId(), project.id(), canvasItemId, 0,
                 "Coffee pour", null, null, null);
         Task approved = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
-                draft.version(), "origin-run");
+                canvasItemId, draft.version(), "origin-run");
         assertThat(approved.input().path("providerOriginSha256").asText())
                 .isEqualTo(originalClient.originSha256());
 

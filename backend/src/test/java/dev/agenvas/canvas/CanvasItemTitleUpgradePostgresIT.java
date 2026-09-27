@@ -48,7 +48,7 @@ class CanvasItemTitleUpgradePostgresIT {
             insertCanvasItem(statement, agentItem, project, "AGENT", agent, null, agent);
         }
 
-        Flyway upgrade = flyway(null);
+        Flyway upgrade = flyway("49");
         upgrade.migrate();
         upgrade.migrate();
 

@@ -16,8 +16,8 @@ const REVISIONS_URL = "/api/v1/projects/:projectId/artifacts/:artifactId/revisio
 /** The text card is the surviving in-node editing path; editing it must never rewrite version 2. */
 function artifact(): VersionedArtifact {
   return { id: "artifact-1", projectId: "project-1", kind: "TEXT", title: "Draft",
-    currentVersionId: "version-2", version: 4, createdAt: now, updatedAt: now,
-    currentVersion: { id: "version-2", versionNo: 2, schemaVersion: 2,
+    resourceDefaultVersionId: "version-2", version: 4, createdAt: now, updatedAt: now,
+    resourceDefaultVersion: { id: "version-2", versionNo: 2, schemaVersion: 2,
       content: { format: "PLAIN_TEXT", text: "Draft" }, inputReferences: [],
       createdByKind: "USER", runId: null, createdAt: now },
   };
@@ -25,8 +25,8 @@ function artifact(): VersionedArtifact {
 
 function updatedArtifact(base: VersionedArtifact, text: string,
   format: "PLAIN_TEXT" | "MARKDOWN" = "PLAIN_TEXT"): VersionedArtifact {
-  return { ...base, version: base.version + 1, currentVersionId: "version-3", currentVersion: {
-    ...base.currentVersion, id: "version-3", versionNo: 3, content: { format, text },
+  return { ...base, version: base.version + 1, resourceDefaultVersionId: "version-3", resourceDefaultVersion: {
+    ...base.resourceDefaultVersion, id: "version-3", versionNo: 3, content: { format, text },
   } };
 }
 
@@ -180,11 +180,11 @@ describe("Artifact version editing", () => {
     server.use(
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () => {
         reads++;
-        return HttpResponse.json({ items: [artifact().currentVersion,
-          { ...artifact().currentVersion, id: "version-1", versionNo: 1 }] });
+        return HttpResponse.json({ items: [artifact().resourceDefaultVersion,
+          { ...artifact().resourceDefaultVersion, id: "version-1", versionNo: 1 }] });
       }),
       csrf(),
-      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/select-version",
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/set-default-version",
         async ({ request }) => {
           selections++;
           expect(await request.json()).toEqual({ versionId: "version-1", expectedVersion: 4 });

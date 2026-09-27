@@ -86,8 +86,8 @@ public class Tables {
     public static final Artifact ARTIFACT = Artifact.ARTIFACT;
 
     /**
-     * Immutable content revisions. Selection changes update
-     * artifact.current_version_id only.
+     * Immutable content revisions. Resource-default and CanvasItem selections
+     * only move pointers.
      */
     public static final ArtifactVersion ARTIFACT_VERSION = ArtifactVersion.ARTIFACT_VERSION;
 
@@ -110,8 +110,8 @@ public class Tables {
     public static final CallLog CALL_LOG = CallLog.CALL_LOG;
 
     /**
-     * Per-card title and spatial presentation; referenced business content
-     * remains outside this row.
+     * Spatial card plus card-local work context; Artifact content remains
+     * immutable and shared.
      */
     public static final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 
@@ -174,8 +174,8 @@ public class Tables {
     public static final MediaDefault MEDIA_DEFAULT = MediaDefault.MEDIA_DEFAULT;
 
     /**
-     * Editable IMAGE/VIDEO generation input; it is never an ArtifactVersion or
-     * archived Asset.
+     * Editable generation input owned by one IMAGE/VIDEO CanvasItem and
+     * protected by independent CAS.
      */
     public static final MediaDraft MEDIA_DRAFT = MediaDraft.MEDIA_DRAFT;
 

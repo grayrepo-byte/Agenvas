@@ -12,9 +12,9 @@ import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 const now = "2026-09-27T00:00:00Z";
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
-function artifact(id: string, kind: Artifact["kind"], title: string, currentVersionId: string | null,
-  currentVersion: Artifact["currentVersion"]): Artifact {
-  return { id, projectId: "project-1", kind, title, currentVersionId, currentVersion,
+function artifact(id: string, kind: Artifact["kind"], title: string, resourceDefaultVersionId: string | null,
+  resourceDefaultVersion: Artifact["resourceDefaultVersion"]): Artifact {
+  return { id, projectId: "project-1", kind, title, resourceDefaultVersionId, resourceDefaultVersion,
     version: 2, createdAt: now, updatedAt: now };
 }
 
@@ -28,11 +28,11 @@ function items(linked: boolean): CanvasItem[] {
   return [
     { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
       title: "图片",
-      width: 280, height: 180, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
+      width: 280, height: 180, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3, agent: null,
       artifact: image },
     { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
       title: "Agent",
-      width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4,
+      width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4,
       artifact: null,
       agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
         name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
@@ -41,7 +41,7 @@ function items(linked: boolean): CanvasItem[] {
           selectedVersionId: imageVersionId, bindingType: "INPUT" }] : [] } },
     { id: "video-card", subjectType: "ARTIFACT", subjectId: "video-id", x: 800, y: 0,
       title: "视频",
-      width: 280, height: 180, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
+      width: 280, height: 180, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5, agent: null,
       artifact: artifact("video-id", "VIDEO", "视频", videoVersionId, {
         id: videoVersionId, versionNo: 1, schemaVersion: 1,
         content: { assetId: "asset-id", prompt: "缓慢推近", providerConfigVersion: 1,

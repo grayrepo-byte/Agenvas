@@ -78,16 +78,20 @@ public class ArtifactRecord extends UpdatableRecordImpl<ArtifactRecord> {
     }
 
     /**
-     * Setter for <code>public.artifact.current_version_id</code>.
+     * Setter for <code>public.artifact.resource_default_version_id</code>.
+     * Explicit library default used for new CanvasItems; card version selection
+     * never updates it.
      */
-    public void setCurrentVersionId(UUID value) {
+    public void setResourceDefaultVersionId(UUID value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.artifact.current_version_id</code>.
+     * Getter for <code>public.artifact.resource_default_version_id</code>.
+     * Explicit library default used for new CanvasItems; card version selection
+     * never updates it.
      */
-    public UUID getCurrentVersionId() {
+    public UUID getResourceDefaultVersionId() {
         return (UUID) get(4);
     }
 
@@ -170,14 +174,14 @@ public class ArtifactRecord extends UpdatableRecordImpl<ArtifactRecord> {
     /**
      * Create a detached, initialised ArtifactRecord
      */
-    public ArtifactRecord(UUID id, UUID projectId, String kind, String title, UUID currentVersionId, OffsetDateTime archivedAt, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public ArtifactRecord(UUID id, UUID projectId, String kind, String title, UUID resourceDefaultVersionId, OffsetDateTime archivedAt, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
         super(Artifact.ARTIFACT);
 
         setId(id);
         setProjectId(projectId);
         setKind(kind);
         setTitle(title);
-        setCurrentVersionId(currentVersionId);
+        setResourceDefaultVersionId(resourceDefaultVersionId);
         setArchivedAt(archivedAt);
         setVersion(version);
         setCreatedAt(createdAt);

@@ -4,12 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact } from "../../shared/api/client";
+import type { Artifact, CanvasItem } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { MediaCardUpload } from "./MediaCardUpload";
 
 const PROJECT_ID = "project-1";
 const ARTIFACT_ID = "empty-image-1";
+const CANVAS_ITEM_ID = "canvas-image-1";
 const ASSET_ID = "uploaded-asset-1";
 const UPLOADED_VERSION_ID = "uploaded-version-1";
 const ORIGINAL_VERSION = 7;
@@ -18,19 +19,24 @@ const NOW = "2026-09-26T00:00:00Z";
 const UPLOAD_URL = `/api/v1/projects/${PROJECT_ID}/assets`;
 const ARTIFACT_URL = `/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}`;
 const REVISION_URL = `/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}/revisions`;
-const SELECT_URL = `/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}/select-version`;
+const SELECT_URL = `/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/select-version`;
 const EMPTY_IMAGE: Artifact = {
   id: ARTIFACT_ID, projectId: PROJECT_ID, kind: "IMAGE", title: "空图片卡片",
-  currentVersionId: null, currentVersion: null, version: ORIGINAL_VERSION,
+  resourceDefaultVersionId: null, resourceDefaultVersion: null, version: ORIGINAL_VERSION,
   createdAt: NOW, updatedAt: NOW,
 };
 const REVISED_IMAGE: Artifact = {
-  ...EMPTY_IMAGE, currentVersionId: UPLOADED_VERSION_ID, version: REVISED_VERSION,
-  currentVersion: {
+  ...EMPTY_IMAGE, resourceDefaultVersionId: UPLOADED_VERSION_ID, version: REVISED_VERSION,
+  resourceDefaultVersion: {
     id: UPLOADED_VERSION_ID, versionNo: 1, schemaVersion: 1,
     content: { sourceType: "UPLOAD", assetId: ASSET_ID }, inputReferences: [],
     createdByKind: "USER", runId: null, createdAt: NOW,
   },
+};
+const ITEM: CanvasItem = {
+  id: CANVAS_ITEM_ID, subjectType: "ARTIFACT", subjectId: ARTIFACT_ID, title: "空图片卡片",
+  x: 0, y: 0, width: 320, height: 320, zIndex: 0, groupId: null, locked: false,
+  selectedVersionId: null, selectedVersion: null, version: 0, artifact: EMPTY_IMAGE, agent: null,
 };
 
 function mockUpload(onUpload: () => void) {
@@ -56,7 +62,7 @@ function mountUpload() {
   const onDone = vi.fn();
   const client = createQueryClient();
   render(<QueryClientProvider client={client}>
-    <MediaCardUpload artifact={EMPTY_IMAGE} onDone={onDone} />
+    <MediaCardUpload artifact={EMPTY_IMAGE} item={ITEM} onDone={onDone} />
   </QueryClientProvider>);
   return onDone;
 }
@@ -89,7 +95,7 @@ describe("MediaCardUpload", () => {
       http.post(SELECT_URL, async ({ request }) => {
         operations.push("select");
         expect(await request.json()).toEqual({ versionId: UPLOADED_VERSION_ID,
-          expectedVersion: REVISED_VERSION });
+          expectedVersion: ITEM.version });
         return HttpResponse.json(REVISED_IMAGE);
       }),
     );
@@ -117,7 +123,7 @@ describe("MediaCardUpload", () => {
         operations.push("select");
         selections++;
         expect(await request.json()).toEqual({ versionId: UPLOADED_VERSION_ID,
-          expectedVersion: REVISED_VERSION });
+          expectedVersion: ITEM.version });
         if (selections === 1) return HttpResponse.json({ title: "暂时不可用", detail: "选用请求暂时失败。",
           code: "SERVICE_UNAVAILABLE", retryable: true },
         { status: 503, headers: { "Content-Type": "application/problem+json" } });
@@ -160,7 +166,7 @@ describe("MediaCardUpload", () => {
       http.post(SELECT_URL, async ({ request }) => {
         operations.push("select");
         expect(await request.json()).toEqual({ versionId: UPLOADED_VERSION_ID,
-          expectedVersion: REVISED_VERSION });
+          expectedVersion: ITEM.version });
         return HttpResponse.json(REVISED_IMAGE);
       }),
     );

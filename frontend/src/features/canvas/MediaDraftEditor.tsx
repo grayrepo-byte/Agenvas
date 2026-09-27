@@ -46,11 +46,13 @@ function imageAssetId(content: unknown) {
  * https://github.com/slev12397/beautiful-ui (MIT, Shane Levine; see beautiful-ui-LICENSE.txt).
  * All states come from persisted drafts/tasks; the source's scripted demo sequences are not used.
  */
-export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
+export function MediaDraftEditor({ artifact, canvasItemId }: {
+  artifact: Artifact; canvasItemId: string;
+}) {
   const queryClient = useQueryClient();
-  const key = ["media-draft", artifact.projectId, artifact.id] as const;
+  const key = ["media-draft", artifact.projectId, canvasItemId] as const;
   const draft = useQuery({ queryKey: key,
-    queryFn: () => getMediaDraft(artifact.projectId, artifact.id) });
+    queryFn: () => getMediaDraft(artifact.projectId, canvasItemId) });
   const resources = useQuery({
     queryKey: ["artifacts", artifact.projectId],
     queryFn: () => listArtifacts(artifact.projectId), enabled: artifact.kind === "VIDEO",
@@ -117,7 +119,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
   }, [popover]);
 
   const save = useMutation({
-    mutationFn: (input: SaveMediaDraftRequest) => saveMediaDraft(artifact.projectId, artifact.id, input),
+    mutationFn: (input: SaveMediaDraftRequest) => saveMediaDraft(artifact.projectId, canvasItemId, input),
     onSuccess: (saved, input) => {
       setExpectedVersion(saved.version);
       queryClient.setQueryData(key, saved);
@@ -137,7 +139,8 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
       // must replay its exact payload, even when SSE/refetch has supplied a newer CAS version.
       runIntent.current ??= { key: crypto.randomUUID(), expectedDraftVersion: expectedVersion };
       return runMediaDraft(artifact.projectId, artifact.id,
-        { expectedDraftVersion: runIntent.current.expectedDraftVersion }, runIntent.current.key);
+        { canvasItemId, expectedDraftVersion: runIntent.current.expectedDraftVersion },
+        runIntent.current.key);
     },
     onSuccess: async () => {
       runIntent.current = null;
@@ -193,7 +196,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
     if (!fields || expectedVersion === null) return;
     if (error instanceof ApiError && error.status === CONFLICT_STATUS) {
       try {
-        const fresh = await getMediaDraft(artifact.projectId, artifact.id);
+        const fresh = await getMediaDraft(artifact.projectId, canvasItemId);
         queryClient.setQueryData(key, fresh);
         setExpectedVersion(fresh.version);
         setError(null);
@@ -236,7 +239,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
       return assetId ? [{ id: version.id, label: `${candidate.title} · v${version.versionNo}`,
         title: candidate.title, versionNo: version.versionNo, assetId,
         available: imageHistories[index]?.isSuccess === true,
-        current: version.id === candidate.currentVersionId }] : [];
+        current: version.id === candidate.resourceDefaultVersionId }] : [];
     }));
   const mediaKind = artifact.kind === "IMAGE" ? "IMAGE_GENERATION" : "VIDEO_GENERATION";
   const availableCapabilities = (settings.data?.connections ?? [])

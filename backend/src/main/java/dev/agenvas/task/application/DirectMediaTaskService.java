@@ -5,6 +5,8 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.canvas.application.CanvasItemQueryService;
+import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.application.MediaCapabilityService;
@@ -35,6 +37,7 @@ public class DirectMediaTaskService {
     private final TaskRepository tasks;
     private final MediaDraftService drafts;
     private final ArtifactService artifacts;
+    private final CanvasItemQueryService canvasItems;
     private final MediaCapabilityService capabilities;
     private final ProviderProperties provider;
     private final ProjectEventService events;
@@ -43,12 +46,14 @@ public class DirectMediaTaskService {
     private final Clock clock;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
-            ArtifactService artifacts, MediaCapabilityService capabilities,
+            ArtifactService artifacts, CanvasItemQueryService canvasItems,
+            MediaCapabilityService capabilities,
             ProviderProperties provider, ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
+        this.canvasItems = canvasItems;
         this.capabilities = capabilities;
         this.provider = provider;
         this.events = events;
@@ -58,9 +63,9 @@ public class DirectMediaTaskService {
     }
 
     @Transactional
-    public Task run(UUID ownerId, UUID projectId, UUID artifactId,
+    public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             long expectedDraftVersion, String commandKey) {
-        if (commandKey == null || commandKey.isBlank()
+        if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
             throw invalid("需要有效的 Idempotency-Key 和草稿版本。");
         }
@@ -69,6 +74,7 @@ public class DirectMediaTaskService {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
                 if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
+                        || !prior.input().path("canvasItemId").asText().equals(canvasItemId.toString())
                         || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion) {
                     throw conflict("相同幂等键已用于不同卡片或草稿版本。");
                 }
@@ -77,13 +83,18 @@ public class DirectMediaTaskService {
             Task occupying = tasks.findOccupyingMediaTask(projectId, artifactId).orElse(null);
             if (occupying != null) return ProjectEventService.Change.unchanged(occupying);
             Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
+            CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId,
+                    canvasItemId);
+            if (!canvasItem.subjectId().equals(artifactId)) {
+                throw invalid("运行目标必须是该媒体产物的画布卡片。");
+            }
             if (target.archivedAt() != null) throw conflict("已归档的卡片不能运行。");
             Task.Kind kind = switch (target.kind()) {
                 case IMAGE -> Task.Kind.IMAGE_GENERATION;
                 case VIDEO -> Task.Kind.VIDEO_GENERATION;
                 default -> throw invalid("只能直接运行图片或视频卡片。");
             };
-            MediaDraft draft = drafts.get(ownerId, projectId, artifactId);
+            MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
             if (draft.version() != expectedDraftVersion) throw conflict("草稿已变化，请检查保存状态后重试。");
             if (draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
             if (kind == Task.Kind.VIDEO_GENERATION
@@ -99,6 +110,7 @@ public class DirectMediaTaskService {
             ObjectNode input = mapper.createObjectNode();
             input.put("schemaVersion", 2);
             input.put("artifactId", artifactId.toString());
+            input.put("canvasItemId", canvasItemId.toString());
             input.put("draftVersion", draft.version());
             input.put("prompt", draft.prompt());
             input.put("providerConfigVersion", provider.configVersion());
@@ -120,8 +132,8 @@ public class DirectMediaTaskService {
             tasks.create(task, List.of());
             tasks.bindMediaTask(task.id(), binding);
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                    artifactId, target.currentVersionId(), target.version(), null));
-            drafts.setDisplayModeWithinChange(projectId, artifactId,
+                    artifactId, target.resourceDefaultVersionId(), target.version(), null));
+            drafts.setDisplayModeWithinChange(projectId, canvasItemId,
                     MediaDraft.DisplayMode.DRAFT);
             usage.reserveMediaTask(ownerId, task, COST_SOURCE);
             ObjectNode payload = mapper.createObjectNode();

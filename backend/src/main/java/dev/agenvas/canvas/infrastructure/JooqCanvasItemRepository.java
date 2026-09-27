@@ -40,6 +40,17 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .fetch(row -> map(row.into(CANVAS_ITEM)));
     }
 
+    @Override
+    public Optional<CanvasItem> find(UUID ownerId, UUID projectId, UUID itemId) {
+        return dsl.select(CANVAS_ITEM.fields())
+                .from(CANVAS_ITEM)
+                .join(PROJECT).on(PROJECT.ID.eq(CANVAS_ITEM.PROJECT_ID))
+                .where(CANVAS_ITEM.ID.eq(itemId))
+                .and(CANVAS_ITEM.PROJECT_ID.eq(projectId))
+                .and(PROJECT.OWNER_ID.eq(ownerId))
+                .fetchOptional(row -> map(row.into(CANVAS_ITEM)));
+    }
+
     /** 锁定单个项目画布项，供应用服务读取后校验布局变更。 */
     @Override
     public Optional<CanvasItem> findForUpdate(
@@ -63,6 +74,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM.PROJECT_ID, item.projectId())
                 .set(CANVAS_ITEM.SUBJECT_TYPE, item.subjectType().name())
                 .set(CANVAS_ITEM.SUBJECT_ID, item.subjectId())
+                .set(CANVAS_ITEM.SELECTED_VERSION_ID, item.selectedVersionId())
                 .set(CANVAS_ITEM.TITLE, item.title())
                 // subject 类型决定填充哪个产物或 Agent 外键，另一个保持 NULL。
                 .set(CANVAS_ITEM.ARTIFACT_ID,
@@ -85,6 +97,22 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM.UPDATED_AT, atUtc(item.updatedAt()))
                 .onConflict(CANVAS_ITEM.ID)
                 .doNothing()
+                .execute() == 1;
+    }
+
+    @Override
+    public boolean selectVersion(UUID ownerId, UUID projectId, UUID itemId,
+            long expectedVersion, UUID selectedVersionId, Instant updatedAt) {
+        return dsl.update(CANVAS_ITEM)
+                .set(CANVAS_ITEM.SELECTED_VERSION_ID, selectedVersionId)
+                .set(CANVAS_ITEM.VERSION, CANVAS_ITEM.VERSION.plus(1))
+                .set(CANVAS_ITEM.UPDATED_AT, atUtc(updatedAt))
+                .where(CANVAS_ITEM.ID.eq(itemId))
+                .and(CANVAS_ITEM.PROJECT_ID.eq(projectId))
+                .and(CANVAS_ITEM.VERSION.eq(expectedVersion))
+                .and(DSL.exists(DSL.selectOne().from(PROJECT)
+                        .where(PROJECT.ID.eq(CANVAS_ITEM.PROJECT_ID))
+                        .and(PROJECT.OWNER_ID.eq(ownerId))))
                 .execute() == 1;
     }
 
@@ -139,6 +167,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 row.getProjectId(),
                 CanvasItem.SubjectType.valueOf(row.getSubjectType()),
                 row.getSubjectId(),
+                row.getSelectedVersionId(),
                 row.getTitle(),
                 row.getX(),
                 row.getY(),

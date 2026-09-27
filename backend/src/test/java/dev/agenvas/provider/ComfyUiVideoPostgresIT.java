@@ -12,6 +12,7 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.provider.application.ProviderProperties;
@@ -113,6 +114,7 @@ class ComfyUiVideoPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
     @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private AssetService assets;
@@ -151,10 +153,13 @@ class ComfyUiVideoPostgresIT {
         // 直连图片卡片：先产出这次视频要固定的输入图版本。
         var imageCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Keyframe card", null);
+        UUID imageItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), imageCard.artifact().id());
         MediaDraft imageDraft = drafts.save(owner.userId(), project.id(),
-                imageCard.artifact().id(), 0, "Cinematic coffee pour", null, null, null);
+                imageItemId, 0, "Cinematic coffee pour", null, null, null);
         Task imageTask = directMedia.run(owner.userId(), project.id(),
-                imageCard.artifact().id(), imageDraft.version(), "comfy-image-run");
+                imageCard.artifact().id(), imageItemId,
+                imageDraft.version(), "comfy-image-run");
         assertThat(IMAGE_SUBMISSIONS).hasValue(0);
         assertThat(mediaWorker.submitOnce("image-submitter")).isEqualTo(1);
         due(imageTask.id());
@@ -166,11 +171,14 @@ class ComfyUiVideoPostgresIT {
         // 直连视频卡片：草稿直接固定刚生成的输入图版本与 5 秒时长。
         var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
                 "Clip card", null);
+        UUID videoItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), videoCard.artifact().id());
         MediaDraft videoDraft = drafts.save(owner.userId(), project.id(),
-                videoCard.artifact().id(), 0, "Cinematic coffee pour", imageVersion, 5, null);
+                videoItemId, 0, "Cinematic coffee pour", imageVersion, 5, null);
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);
         Task videoTask = directMedia.run(owner.userId(), project.id(),
-                videoCard.artifact().id(), videoDraft.version(), "comfy-video-run");
+                videoCard.artifact().id(), videoItemId,
+                videoDraft.version(), "comfy-video-run");
         assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
         assertThat(videoTask.input().path("imageVersionId").asText())
@@ -240,7 +248,7 @@ class ComfyUiVideoPostgresIT {
         assertThat(VIDEO_SUBMISSIONS).hasValue(1);
         assertThat(VIDEO_POLLS).hasValue(2);
         var version = artifacts.get(owner.userId(), project.id(),
-                UUID.fromString(completed.output().path("artifactId").asText())).currentVersion();
+                UUID.fromString(completed.output().path("artifactId").asText())).resourceDefaultVersion();
         assertThat(version.content().path("keyframeVersionId").asText())
                 .isEqualTo(imageVersion.toString());
         assertThat(version.content().path("providerConfigVersion").asInt()).isEqualTo(1);

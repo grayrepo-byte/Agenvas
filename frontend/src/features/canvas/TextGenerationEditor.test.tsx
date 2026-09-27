@@ -11,8 +11,8 @@ import { TextGenerationEditor } from "./TextGenerationEditor";
 const CREATED_AT = "2026-09-27T00:00:00Z";
 const artifact: Artifact = {
   id: "artifact-1", projectId: "project-1", kind: "TEXT", title: "Notes",
-  currentVersionId: "version-2", version: 7, createdAt: CREATED_AT, updatedAt: CREATED_AT,
-  currentVersion: { id: "version-2", versionNo: 2, schemaVersion: 2,
+  resourceDefaultVersionId: "version-2", version: 7, createdAt: CREATED_AT, updatedAt: CREATED_AT,
+  resourceDefaultVersion: { id: "version-2", versionNo: 2, schemaVersion: 2,
     content: { format: "PLAIN_TEXT", text: "现有正文" }, createdByKind: "USER",
     createdAt: CREATED_AT, inputReferences: [] },
 };

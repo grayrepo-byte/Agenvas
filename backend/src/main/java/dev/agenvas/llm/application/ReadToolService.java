@@ -120,7 +120,7 @@ public class ReadToolService {
             item.put("artifactId", version.artifactId().toString());
             item.put("versionId", version.id().toString());
             item.put("kind", view.artifact().kind().name());
-            boolean current = view.currentVersion().id().equals(versionId);
+            boolean current = view.resourceDefaultVersion().id().equals(versionId);
             item.put("current", current);
             if (current) {
                 item.put("title", view.artifact().title());

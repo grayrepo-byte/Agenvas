@@ -32,10 +32,11 @@ public class DirectMediaTaskController {
             @RequestHeader("Idempotency-Key") String commandKey,
             @Valid @RequestBody RunRequest request) {
         return TaskController.TaskResponse.from(direct.run(principal.userId(), projectId,
-                artifactId, request.expectedDraftVersion(), commandKey));
+                artifactId, request.canvasItemId(), request.expectedDraftVersion(), commandKey));
     }
 
-    public record RunRequest(@PositiveOrZero long expectedDraftVersion) {}
+    public record RunRequest(@jakarta.validation.constraints.NotNull UUID canvasItemId,
+            @PositiveOrZero long expectedDraftVersion) {}
 
     @GetMapping("/artifacts/{artifactId}/run")
     public List<TaskController.TaskResponse> list(

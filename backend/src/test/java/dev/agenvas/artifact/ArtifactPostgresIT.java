@@ -106,9 +106,9 @@ class ArtifactPostgresIT {
                 owner.userId(), project.id(), Artifact.Kind.VIDEO, "Wrong media", media(validAssetId)));
         ArtifactService.ArtifactView validImage = artifactService.create(owner.userId(),
                 project.id(), Artifact.Kind.IMAGE, "Uploaded image", upload(validAssetId));
-        assertThat(validImage.currentVersion().content().path("assetId").asText())
+        assertThat(validImage.resourceDefaultVersion().content().path("assetId").asText())
                 .isEqualTo(validAssetId.toString());
-        assertThat(validImage.currentVersion().content().has("sourceTaskId")).isFalse();
+        assertThat(validImage.resourceDefaultVersion().content().has("sourceTaskId")).isFalse();
         assertThatThrownByCode("ASSET_NOT_FOUND", () -> artifactService.create(owner.userId(),
                 project.id(), Artifact.Kind.IMAGE, "Foreign upload", upload(foreignAssetId)));
         assertThatThrownByCode("ARTIFACT_ORIGIN_INVALID", () -> artifactService.createFromAgent(
@@ -142,7 +142,7 @@ class ArtifactPostgresIT {
                         0,
                         null,
                         json("{\"format\":\"MARKDOWN\",\"text\":\"Stale\"}")));
-        assertDatabaseRejectsVersionMutation(text.currentVersion().id());
+        assertDatabaseRejectsVersionMutation(text.resourceDefaultVersion().id());
 
         // 视频正文以精确图片版本固定关键帧输入；该引用必须属于同一项目且类型为 IMAGE。
         UUID videoAssetId = videoAsset(owner.userId(), project.id());
@@ -156,7 +156,7 @@ class ArtifactPostgresIT {
                         project.id(),
                         Artifact.Kind.VIDEO,
                         "Cross-project keyframe",
-                        video(videoAssetId, foreignImage.currentVersion().id())));
+                        video(videoAssetId, foreignImage.resourceDefaultVersion().id())));
         assertThatThrownByCode(
                 "ARTIFACT_REFERENCE_INVALID",
                 () -> artifactService.create(
@@ -164,21 +164,21 @@ class ArtifactPostgresIT {
                         project.id(),
                         Artifact.Kind.VIDEO,
                         "Wrong kind keyframe",
-                        video(videoAssetId, text.currentVersion().id())));
+                        video(videoAssetId, text.resourceDefaultVersion().id())));
 
         ArtifactService.ArtifactView firstVideo = artifactService.create(
                 owner.userId(),
                 project.id(),
                 Artifact.Kind.VIDEO,
                 "First clip",
-                video(videoAssetId, validImage.currentVersion().id()));
-        assertThat(firstVideo.currentVersion().inputReferences())
+                video(videoAssetId, validImage.resourceDefaultVersion().id()));
+        assertThat(firstVideo.resourceDefaultVersion().inputReferences())
                 .singleElement()
                 .satisfies(reference -> {
                     assertThat(reference.role()).isEqualTo("keyframe");
                     assertThat(reference.expectedKind()).isEqualTo(Artifact.Kind.IMAGE);
                     assertThat(reference.versionId())
-                            .isEqualTo(validImage.currentVersion().id());
+                            .isEqualTo(validImage.resourceDefaultVersion().id());
                 });
 
         // 修改被引用图片只产生新版本；已固定旧版本关键帧的视频正文保持不变。
@@ -195,21 +195,21 @@ class ArtifactPostgresIT {
                 project.id(),
                 Artifact.Kind.VIDEO,
                 "Second clip",
-                video(videoAssetId, revisedImage.currentVersion().id()));
+                video(videoAssetId, revisedImage.resourceDefaultVersion().id()));
         assertThat(artifactService
                         .get(owner.userId(), project.id(), firstVideo.artifact().id())
-                        .currentVersion()
+                        .resourceDefaultVersion()
                         .content()
                         .get("keyframeVersionId")
                         .stringValue())
-                .isEqualTo(validImage.currentVersion().id().toString());
+                .isEqualTo(validImage.resourceDefaultVersion().id().toString());
         assertThat(artifactService
                         .get(owner.userId(), project.id(), secondVideo.artifact().id())
-                        .currentVersion()
+                        .resourceDefaultVersion()
                         .content()
                         .get("keyframeVersionId")
                         .stringValue())
-                .isEqualTo(revisedImage.currentVersion().id().toString());
+                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
 
         // 显式改写视频只追加新版本；历史版本仍保留原先固定的关键帧引用。
         ArtifactService.ArtifactView repinnedVideo = artifactService.revise(
@@ -218,14 +218,14 @@ class ArtifactPostgresIT {
                 firstVideo.artifact().id(),
                 0,
                 null,
-                video(videoAssetId, revisedImage.currentVersion().id()));
-        assertThat(repinnedVideo.currentVersion().content().path("keyframeVersionId").asText())
-                .isEqualTo(revisedImage.currentVersion().id().toString());
+                video(videoAssetId, revisedImage.resourceDefaultVersion().id()));
+        assertThat(repinnedVideo.resourceDefaultVersion().content().path("keyframeVersionId").asText())
+                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
         assertThat(artifactService.listVersions(
                         owner.userId(), project.id(), firstVideo.artifact().id()))
                 .extracting(version -> version.content().path("keyframeVersionId").asText())
-                .containsExactly(revisedImage.currentVersion().id().toString(),
-                        validImage.currentVersion().id().toString());
+                .containsExactly(revisedImage.resourceDefaultVersion().id().toString(),
+                        validImage.resourceDefaultVersion().id().toString());
 
         UUID foreignOwner = UUID.randomUUID();
         assertThatThrownByCode(

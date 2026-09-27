@@ -324,12 +324,12 @@ class AssetPostgresIT {
                         .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isCreated()).andReturn();
         var artifact = mapper.readTree(artifactCreated.getResponse().getContentAsString());
-        assertThat(artifact.path("currentVersion").path("content").path("sourceType").asText())
+        assertThat(artifact.path("resourceDefaultVersion").path("content").path("sourceType").asText())
                 .isEqualTo("UPLOAD");
-        assertThat(artifact.path("currentVersion").path("content").has("sourceTaskId"))
+        assertThat(artifact.path("resourceDefaultVersion").path("content").has("sourceTaskId"))
                 .isFalse();
         UUID artifactId = UUID.fromString(artifact.path("id").asText());
-        UUID versionId = UUID.fromString(artifact.path("currentVersionId").asText());
+        UUID versionId = UUID.fromString(artifact.path("resourceDefaultVersionId").asText());
         var agent = agents.create(owner.userId(), project.id(), "Reference creator",
                 "Use only the selected input", List.of(new AgentInstanceService.BindingInput(
                         artifactId, versionId)));
@@ -350,7 +350,7 @@ class AssetPostgresIT {
                         + "/canvas/items").with(authentication(asUser(owner))))
                 .andExpect(status().isOk()).andReturn();
         assertThat(mapper.readTree(canvas.getResponse().getContentAsString())
-                .path("items").path(0).path("artifact").path("currentVersion")
+                .path("items").path(0).path("artifact").path("resourceDefaultVersion")
                 .path("content").path("assetId").asText()).isEqualTo(id.toString());
 
         mvc.perform(multipart(path)

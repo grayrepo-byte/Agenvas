@@ -99,7 +99,7 @@ class TaskArtifactSelectionPostgresIT {
         ArtifactService.ArtifactView selected = artifacts.get(owner.userId(), project.id(),
                 image.artifact().id());
         assertThat(selected.artifact().version()).isEqualTo(1);
-        assertThat(selected.currentVersion().createdByKind()).isEqualTo(ArtifactVersion.CreatedByKind.TASK);
+        assertThat(selected.resourceDefaultVersion().createdByKind()).isEqualTo(ArtifactVersion.CreatedByKind.TASK);
         assertThat(tasks.get(owner.userId(), project.id(), first.id()).status())
                 .isEqualTo(Task.Status.SUCCEEDED);
 
@@ -121,7 +121,7 @@ class TaskArtifactSelectionPostgresIT {
                 "worker-stale", media(stale.id(), "stale result"));
         assertThat(staleResult.selected()).isFalse();
         assertThat(artifacts.get(owner.userId(), project.id(), image.artifact().id())
-                .currentVersion().id()).isEqualTo(edited.currentVersion().id());
+                .resourceDefaultVersion().id()).isEqualTo(edited.resourceDefaultVersion().id());
         assertThat(artifacts.listVersions(owner.userId(), project.id(), image.artifact().id()))
                 .extracting(ArtifactVersion::id).contains(staleResult.versionId());
 
@@ -142,7 +142,7 @@ class TaskArtifactSelectionPostgresIT {
                 "worker-late", media(late.id(), "late result"));
         assertThat(lateResult.selected()).isFalse();
         assertThat(artifacts.get(owner.userId(), project.id(), image.artifact().id())
-                .currentVersion().id()).isEqualTo(edited.currentVersion().id());
+                .resourceDefaultVersion().id()).isEqualTo(edited.resourceDefaultVersion().id());
         assertThat(artifacts.listVersions(owner.userId(), project.id(), image.artifact().id()))
                 .extracting(ArtifactVersion::id).contains(lateResult.versionId());
         assertThat(tasks.get(owner.userId(), project.id(), late.id()).status())

@@ -14,6 +14,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
@@ -71,6 +72,7 @@ class ManualUnknownRetryPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
     @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private TaskRepository taskRepository;
@@ -87,10 +89,12 @@ class ManualUnknownRetryPostgresIT {
         // 用户直连媒体任务必须绑定一张媒体卡片；先建空卡片、保存草稿，再走真实运行入口。
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Retry card", null);
-        drafts.save(owner.userId(), project.id(), card.artifact().id(), 0,
+        UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), card.artifact().id());
+        drafts.save(owner.userId(), project.id(), canvasItemId, 0,
                 "Cinematic coffee pour", null, null, null);
         Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
-                1, "direct-image-1");
+                canvasItemId, 1, "direct-image-1");
         jdbc.sql("update task set status = 'UNKNOWN', version = version + 1 where id = :id")
                 .param("id", original.id()).update();
         Task unknown = tasks.get(owner.userId(), project.id(), original.id());
