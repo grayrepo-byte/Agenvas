@@ -43,7 +43,7 @@ const settings: MediaSettings = {
     { kind: "VIDEO_GENERATION", capabilityId: videoCapability.id, version: 0 }],
 };
 function task(status: Task["status"]): Task {
-  return { id: "task-direct", projectId: PROJECT_ID, runId: null, planId: null,
+  return { id: "task-direct", projectId: PROJECT_ID, runId: null,
     stepKey: "direct", kind: "IMAGE_GENERATION", status, cancelRequested: false,
     input: {}, providerRequestId: null, attemptNo: 1, nextActionAt: NOW, version: 0,
     createdAt: NOW, updatedAt: NOW };

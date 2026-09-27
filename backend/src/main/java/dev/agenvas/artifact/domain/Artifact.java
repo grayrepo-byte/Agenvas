@@ -34,12 +34,6 @@ public record Artifact(
         /** 图片媒体引用及生成信息。 */
         IMAGE,
         /** 视频媒体引用及生成信息。 */
-        VIDEO,
-        /** 共享角色设定。 */
-        CHARACTER,
-        /** 共享场景设定。 */
-        SCENE,
-        /** 镜头规划及选定媒体引用。 */
-        SHOT
+        VIDEO
     }
 }

@@ -2,15 +2,14 @@ package dev.agenvas.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.TrustedToolContext;
-import dev.agenvas.plan.application.ExecutionPlanService;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.ComfyUiImageWorker;
@@ -20,11 +19,9 @@ import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
-import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,9 +62,8 @@ class ComfyUiOriginPreflightPostgresIT {
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private ExecutionPlanService plans;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private AssetService assets;
     @Autowired private ComfyUiImageWorkflow workflow;
@@ -91,48 +87,15 @@ class ComfyUiOriginPreflightPostgresIT {
                 "origin-password-123");
         Project project = projects.create(owner.userId(), "Pinned origin",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        ObjectNode scene = mapper.createObjectNode();
-        scene.put("name", "Studio");
-        scene.put("location", "Shanghai");
-        scene.put("timeOfDay", "Day");
-        scene.put("lighting", "Soft");
-        scene.put("style", "Minimal");
-        scene.putArray("referenceVersionIds");
-        var sceneVersion = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SCENE,
-                "Scene", scene).currentVersion().id();
-        ObjectNode shot = mapper.createObjectNode();
-        shot.put("order", 1);
-        shot.put("durationSeconds", 3);
-        shot.put("description", "Coffee pour");
-        shot.put("camera", "Close");
-        shot.put("action", "Pour coffee");
-        shot.putArray("characterVersionIds");
-        shot.put("sceneVersionId", sceneVersion.toString());
-        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SHOT,
-                "Shot", shot);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
-                        target.currentVersion().id())));
-        AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
-                "Make an image", "origin-run").run();
-        runs.transition(owner.userId(), project.id(), queued.id(), queued.version(),
-                AgentRun.Status.RUNNING);
-        ObjectNode proposal = mapper.createObjectNode();
-        proposal.put("stage", "IMAGE");
-        proposal.put("objective", "One keyframe");
-        ObjectNode step = proposal.putArray("steps").addObject();
-        step.put("stepKey", "frame-1");
-        step.put("outputSlotKey", "frame-output");
-        step.put("shotArtifactId", target.artifact().id().toString());
-        step.put("shotVersionId", target.currentVersion().id().toString());
-        step.put("prompt", "Coffee pour");
-        step.putArray("dependsOnStepKeys");
-        var plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
-                queued.id()), proposal);
-        assertThat(plan.steps().getFirst().input().path("providerOriginSha256").asText())
+        // 直连图片卡片：空卡片 + 草稿，再走真实的直连受理入口；输入里固定受理时的 origin 摘要。
+        var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Fixed origin card", null);
+        MediaDraft draft = drafts.save(owner.userId(), project.id(), card.artifact().id(), 0,
+                "Coffee pour", null, null, null);
+        Task approved = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
+                draft.version(), "origin-run");
+        assertThat(approved.input().path("providerOriginSha256").asText())
                 .isEqualTo(originalClient.originSha256());
-        Task approved = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
 
         var current = catalog.getConnection(connection);
         catalog.updateConnection(connection, current.version(), current.name(), true,

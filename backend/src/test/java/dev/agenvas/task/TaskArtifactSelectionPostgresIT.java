@@ -127,7 +127,7 @@ class TaskArtifactSelectionPostgresIT {
 
         Task late = createMedia(owner.userId(), project.id(), run.id(), image.artifact().id(),
                 "late", List.of());
-        Task dependent = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task dependent = tasks.create(owner.userId(), project.id(), run.id(),
                 "downstream", Task.Kind.VIDEO_GENERATION, mapper.createObjectNode(),
                 null, 1, List.of(late.id()));
         Task lateLease = tasks.claimDue("worker-late", 1).getFirst();
@@ -156,7 +156,7 @@ class TaskArtifactSelectionPostgresIT {
 
     private Task createMedia(UUID ownerId, UUID projectId, UUID runId, UUID artifactId,
             String stepKey, List<UUID> dependencies) {
-        return tasks.createMediaTask(ownerId, projectId, runId, null, stepKey,
+        return tasks.createMediaTask(ownerId, projectId, runId, stepKey,
                 Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1,
                 dependencies, artifactId);
     }

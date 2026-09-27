@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -83,12 +84,16 @@ class MockImageSchedulerPostgresIT {
         imageInput.put("prompt", "A harmless demo card");
         imageInput.put("providerConfigVersion", 1);
         imageInput.put("workflowVersion", "mock-image-v1");
-        Task image = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
-                queued.id(), null, "demo-image", Task.Kind.IMAGE_GENERATION,
-                imageInput, null, 1, List.of(), "demo-slot");
-        Task video = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
-                queued.id(), null, "later-video", Task.Kind.VIDEO_GENERATION,
-                mapper.createObjectNode(), null, 1, List.of(), "video-slot");
+        var imageCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Demo image card", null);
+        Task image = tasks.createMediaTask(owner.userId(), project.id(),
+                queued.id(), "demo-image", Task.Kind.IMAGE_GENERATION,
+                imageInput, null, 1, List.of(), imageCard.artifact().id());
+        var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
+                "Later video card", null);
+        Task video = tasks.createMediaTask(owner.userId(), project.id(),
+                queued.id(), "later-video", Task.Kind.VIDEO_GENERATION,
+                mapper.createObjectNode(), null, 1, List.of(), videoCard.artifact().id());
 
         long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         Task current = tasks.get(owner.userId(), project.id(), image.id());
@@ -107,9 +112,11 @@ class MockImageSchedulerPostgresIT {
 
         ObjectNode staleInput = imageInput.deepCopy();
         staleInput.put("providerConfigVersion", 2);
-        Task stale = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
-                queued.id(), null, "stale-config", Task.Kind.IMAGE_GENERATION,
-                staleInput, null, 1, List.of(), "stale-slot");
+        var staleCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Stale config card", null);
+        Task stale = tasks.createMediaTask(owner.userId(), project.id(),
+                queued.id(), "stale-config", Task.Kind.IMAGE_GENERATION,
+                staleInput, null, 1, List.of(), staleCard.artifact().id());
         long staleDeadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         Task staleCurrent = tasks.get(owner.userId(), project.id(), stale.id());
         while (staleCurrent.status() != Task.Status.FAILED

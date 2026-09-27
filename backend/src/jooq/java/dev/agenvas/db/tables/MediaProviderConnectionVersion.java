@@ -8,7 +8,6 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.MediaLegacyOriginMap.MediaLegacyOriginMapPath;
 import dev.agenvas.db.tables.MediaProviderConnection.MediaProviderConnectionPath;
-import dev.agenvas.db.tables.PlanStep.PlanStepPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.MediaProviderConnectionVersionRecord;
@@ -208,19 +207,6 @@ public class MediaProviderConnectionVersion extends TableImpl<MediaProviderConne
             _mediaProviderConnection = new MediaProviderConnectionPath(this, Keys.MEDIA_PROVIDER_CONNECTION_VERSION__MEDIA_PROVIDER_CONNECTION_VERSION_CONNECTION_ID_FKEY, null);
 
         return _mediaProviderConnection;
-    }
-
-    private transient PlanStepPath _planStep;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table
-     */
-    public PlanStepPath planStep() {
-        if (_planStep == null)
-            _planStep = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_MEDIA_CONNECTION.getInverseKey());
-
-        return _planStep;
     }
 
     private transient ProviderAttemptPath _providerAttempt;

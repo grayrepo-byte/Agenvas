@@ -48,8 +48,6 @@ public class AgentTurnWorker {
     private final InitialModelContextService initialContext;
     /** 从已保存的工具结果组装后续模型回合。 */
     private final LlmConversationService conversation;
-    /** 将已审批计划的执行结果附加到恢复对话。 */
-    private final PlanResumeContextService planResumeContext;
     /** 在模型输出无效时构造有次数限制的修复回合。 */
     private final RepairModelContextService repairContext;
     /** 完成模型请求前后的持久化检查点，返回已落库的完整响应。 */
@@ -81,7 +79,6 @@ public class AgentTurnWorker {
      * @param commits 以短事务提交回合结果和状态变化
      * @param initialContext 构建 Run 首轮固定输入
      * @param conversation 从已保存响应组装后续消息
-     * @param planResumeContext 恢复审批计划完成后的上下文
      * @param repairContext 构建次数受限的模型修复回合
      * @param rounds 持久化模型请求和响应检查点
      * @param turns 读取已保存的模型响应
@@ -93,7 +90,7 @@ public class AgentTurnWorker {
     public AgentTurnWorker(TaskService tasks, TaskRepository taskRepository,
             TaskProperties taskProperties, AgentTurnCommitService commits,
             InitialModelContextService initialContext, LlmConversationService conversation,
-            PlanResumeContextService planResumeContext, RepairModelContextService repairContext,
+            RepairModelContextService repairContext,
             LlmRoundService rounds, LlmTurnRepository turns, LlmProtocolCodec codec,
             ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway) {
         this.tasks = tasks;
@@ -102,7 +99,6 @@ public class AgentTurnWorker {
         this.commits = commits;
         this.initialContext = initialContext;
         this.conversation = conversation;
-        this.planResumeContext = planResumeContext;
         this.repairContext = repairContext;
         this.rounds = rounds;
         this.turns = turns;
@@ -152,8 +148,7 @@ public class AgentTurnWorker {
             int stepIndex = lease.input().path("stepIndex").asInt(-1);
             JsonNode response;
             // 等待态已有完整模型响应，恢复时只读取检查点，不再次调用模型。
-            if (run.status() == AgentRun.Status.WAITING_APPROVAL
-                    || run.status() == AgentRun.Status.WAITING_TASKS
+            if (run.status() == AgentRun.Status.WAITING_TASKS
                     || run.nextStepIndex() > stepIndex) {
                 LlmTurn turn = turns.find(lease.projectId(), lease.runId(), stepIndex)
                         .orElseThrow(() -> new IllegalStateException("Waiting Run has no model turn"));
@@ -168,15 +163,11 @@ public class AgentTurnWorker {
                                 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
                                 : conversation.afterToolRound(ownerId, lease.projectId(),
                                         lease.runId(), stepIndex - 1);
-                if (lease.input().has("resumePlanId")) {
-                    messages = planResumeContext.append(ownerId, lease.projectId(),
-                            lease.runId(), lease, messages);
-                }
                 List<Message> boundedMessages = messages;
                 // rounds.call 在网络请求两侧提交检查点；这里不持有数据库事务。
                 Future<JsonNode> call = modelExecutor.submit(() -> rounds.call(ownerId,
                         lease.projectId(), lease.runId(), stepIndex, boundedMessages,
-                        registry.modelDefinitions(run.contextSnapshot().has("redoShotArtifactId")),
+                        registry.modelDefinitions(),
                         Map.of("projectId", lease.projectId().toString(),
                                 "runId", lease.runId().toString())));
                 try {
@@ -195,8 +186,7 @@ public class AgentTurnWorker {
                 executor.executeLeased(context, stepIndex, assistant.getToolCalls(),
                         lease, workerId);
             } catch (ApiProblemException invalid) {
-                if (!"TOOL_ARGUMENT_INVALID".equals(invalid.code())
-                        && !"PLAN_INVALID".equals(invalid.code())) {
+                if (!"TOOL_ARGUMENT_INVALID".equals(invalid.code())) {
                     throw invalid;
                 }
                 commits.scheduleRepair(lease, workerId, invalid.code(), invalid.getMessage());
@@ -239,7 +229,7 @@ public class AgentTurnWorker {
     }
 
     /**
-     * 校验被选中响应的工具调用结构与数量；媒体计划提案必须位于调用列表末尾，以防审批等待前还有未执行工具。
+     * 校验被选中响应的工具调用结构与数量，拒绝无法持久化执行的畸形调用。
      *
      * @param assistant 从已保存模型响应中恢复的 Assistant 消息
      */
@@ -248,15 +238,10 @@ public class AgentTurnWorker {
         if (calls.size() > 40) {
             throw new IllegalArgumentException("Model emitted too many tool calls");
         }
-        for (int index = 0; index < calls.size(); index++) {
-            AssistantMessage.ToolCall call = calls.get(index);
+        for (AssistantMessage.ToolCall call : calls) {
             if (!"function".equals(call.type()) || call.id() == null || call.id().isBlank()
                     || call.name() == null || call.arguments() == null) {
                 throw new IllegalArgumentException("Model emitted a malformed tool call");
-            }
-            if ("propose_generation_plan".equals(call.name())
-                    && index != calls.size() - 1) {
-                throw new IllegalArgumentException("A plan proposal must be the last tool call");
             }
         }
     }

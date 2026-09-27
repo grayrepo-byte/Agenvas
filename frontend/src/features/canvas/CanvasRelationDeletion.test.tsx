@@ -31,9 +31,9 @@ vi.mock("@xyflow/react", async (importOriginal) => {
 
 const now = "2026-09-27T00:00:00Z";
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
-const characterVersionId = "22222222-2222-4222-8222-222222222222";
+const videoVersionId = "22222222-2222-4222-8222-222222222222";
 
-/** An image card, one Agent bound to it, and a character naming that exact image version. */
+/** An image card, one Agent bound to it, and a video naming that exact image version. */
 const linkedItems: CanvasItem[] = [
   { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
     title: "图片",
@@ -53,16 +53,16 @@ const linkedItems: CanvasItem[] = [
       createdAt: now, updatedAt: now,
       bindings: [{ id: "binding-id", artifactId: "image-id",
         selectedVersionId: imageVersionId, bindingType: "INPUT" }] } },
-  { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id", x: 800, y: 0,
-    title: "角色",
+  { id: "video-card", subjectType: "ARTIFACT", subjectId: "video-id", x: 800, y: 0,
+    title: "视频",
     width: 280, height: 180, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
     artifact: {
-      id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "角色",
-      currentVersionId: characterVersionId, version: 5, createdAt: now, updatedAt: now,
-      currentVersion: { id: characterVersionId, versionNo: 1, schemaVersion: 1,
-        content: { name: "Hero", description: "Lead", appearance: "Blue coat",
-          referenceVersionIds: [imageVersionId] },
-        inputReferences: [{ versionId: imageVersionId, role: "referenceImage",
+      id: "video-id", projectId: "project-1", kind: "VIDEO", title: "视频",
+      currentVersionId: videoVersionId, version: 5, createdAt: now, updatedAt: now,
+      currentVersion: { id: videoVersionId, versionNo: 1, schemaVersion: 1,
+        content: { assetId: "asset-id", prompt: "缓慢推近", providerConfigVersion: 1,
+          workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" },
+        inputReferences: [{ versionId: imageVersionId, role: "sourceImage",
           order: 0, kind: "IMAGE" }],
         createdByKind: "USER", runId: null, createdAt: now },
     } },
@@ -155,21 +155,13 @@ describe("canvas relation deletion", () => {
     expect(canvasCommands).toHaveLength(0);
   });
 
-  it("revises the consuming content behind the selected reference line", async () => {
+  it("writes nothing for a derived output line, an exact-version reference line, or a cascade from a removed card", async () => {
     await renderFlow();
-    await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("reference:")] });
-    await waitFor(() => expect(revisions).toHaveLength(1));
-    expect(revisions[0]?.artifactId).toBe("character-id");
-    expect(revisions[0]?.body).toEqual({ expectedVersion: 5, content: {
-      name: "Hero", description: "Lead", appearance: "Blue coat", referenceVersionIds: [] } });
-    expect(agentPatches).toHaveLength(0);
-  });
-
-  it("writes nothing for the derived output-group line or for a cascade from a removed card", async () => {
-    await renderFlow();
-    // 输出组线由 Agent 决定，既不能选中也不能删除。
+    // 输出组线由 Agent 决定，精确版本引用线由生成时固定，两者都不能选中或删除。
     expect(edge("output:")).toMatchObject({ deletable: false, selectable: false });
+    expect(edge("reference:")).toMatchObject({ deletable: false, selectable: false });
     await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("output:")] });
+    await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("reference:")] });
     // 卡片被移除时，挂到它上面的关系线是级联来的，不能顺手删掉绑定或引用。
     await flowProps.onBeforeDelete!({ nodes: [{ id: "image-card",
       data: { item: linkedItems[0] } } as never], edges: [edge("input:")] });

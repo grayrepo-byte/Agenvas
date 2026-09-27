@@ -75,7 +75,6 @@ public class AgentRunController {
                 request.instruction(),
                 idempotencyKey,
                 request.expectedAgentVersion(),
-                request.redoShotArtifactId(),
                 request.selectedItemIds(),
                 request.expectedModelConfigSource(),
                 request.expectedModelConfigVersion(),
@@ -111,7 +110,6 @@ public class AgentRunController {
      * @param agentId 用户选择的 Agent 卡片
      * @param instruction 本次 Run 指令，最多 20,000 字符
      * @param expectedAgentVersion 用户预览时的 Agent 配置版本
-     * @param redoShotArtifactId 可选局部重做目标镜头
      * @param selectedItemIds 可选画布选择，只作为意图
      * @param expectedModelConfigSource 用户预览的模型配置来源
      * @param expectedModelConfigVersion 用户预览的模型配置版本
@@ -123,7 +121,6 @@ public class AgentRunController {
             @NotNull UUID agentId,
             @NotBlank @Size(max = 20_000) String instruction,
             @jakarta.validation.constraints.PositiveOrZero Long expectedAgentVersion,
-            UUID redoShotArtifactId,
             @Size(max = 20) List<@NotNull UUID> selectedItemIds,
             @Size(max = 80) String expectedModelConfigSource,
             @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion,

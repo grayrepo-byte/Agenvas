@@ -174,15 +174,14 @@ public class UsageService {
         else quantity.put(field, tokens);
     }
 
-    /** 在已鉴权的审批事务中，每创建一个媒体任务后写入对应预留。 */
+    /** 在已鉴权的项目事务中，每创建一个直接媒体任务后写入对应预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveMediaTask(UUID ownerId, Task task, String costSource) {
-        boolean agentMedia = task.planId() != null && task.runId() != null;
-        boolean directMedia = task.planId() == null && task.runId() == null
+        boolean directMedia = task.runId() == null
                 && (task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION);
-        if (!agentMedia && !directMedia) {
-            throw new IllegalArgumentException("Media reservation requires Agent plan or direct media Task");
+        if (!directMedia) {
+            throw new IllegalArgumentException("Media reservation requires a direct media Task");
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RESERVATION,
                 costSource, "media:" + task.id() + ":reserve"));
@@ -195,7 +194,7 @@ public class UsageService {
                 && task.kind() != Task.Kind.VIDEO_GENERATION) return;
         UsageEntry reservation = ledger.findByOperationKey(
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
-                new IllegalStateException("Approved Task has no media usage reservation"));
+                new IllegalStateException("Direct media Task has no media usage reservation"));
         persist(ownerId, entry(task, UsageEntry.EntryType.SETTLEMENT,
                 reservation.costSource(), "media:" + task.id() + ":settle"));
     }
@@ -222,54 +221,12 @@ public class UsageService {
         String prefix = "media:" + task.id();
         UsageEntry reservation = ledger.findByOperationKey(prefix + ":reserve")
                 .orElseThrow(() -> new IllegalStateException(
-                        "Approved Task has no media usage reservation"));
+                        "Direct media Task has no media usage reservation"));
         if (ledger.findByOperationKey(prefix + ":settle").isPresent()) {
             throw new IllegalStateException("A settled media Task cannot release its reservation");
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RELEASE,
                 reservation.costSource(), prefix + ":release"));
-    }
-
-    /** 本地导出预留记录导出需求，不代表已生成视频。 */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void reserveExportTask(UUID ownerId, Task task) {
-        if (task.kind() != Task.Kind.MEDIA_EXPORT || task.runId() != null) {
-            throw new IllegalArgumentException("Project export usage requires a local export Task");
-        }
-        persist(ownerId, entry(task, UsageEntry.EntryType.RESERVATION,
-                "LOCAL_UNPRICED", "export:" + task.id() + ":reserve"));
-    }
-
-    /** 仅带 fencing 校验且已成功的导出任务计入完成量。 */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void settleExportTask(UUID ownerId, Task task) {
-        if (task.kind() != Task.Kind.MEDIA_EXPORT) {
-            throw new IllegalArgumentException("Export settlement requires an export Task");
-        }
-        if (ledger.findByOperationKey("export:" + task.id() + ":reserve").isEmpty()) {
-            throw new IllegalStateException("Export Task has no usage reservation");
-        }
-        persist(ownerId, entry(task, UsageEntry.EntryType.SETTLEMENT,
-                "LOCAL_UNPRICED", "export:" + task.id() + ":settle"));
-    }
-
-    /** 已终结且无输出的导出任务只释放一次预留完成量。 */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void releaseExportTask(UUID ownerId, Task task) {
-        if (task.kind() != Task.Kind.MEDIA_EXPORT
-                || (task.status() != Task.Status.CANCELED
-                        && task.status() != Task.Status.FAILED)) {
-            throw new IllegalArgumentException("Export release requires a failed or canceled Task");
-        }
-        String prefix = "export:" + task.id();
-        if (ledger.findByOperationKey(prefix + ":reserve").isEmpty()) {
-            throw new IllegalStateException("Export Task has no usage reservation");
-        }
-        if (ledger.findByOperationKey(prefix + ":settle").isPresent()) {
-            throw new IllegalStateException("A settled export cannot release its reservation");
-        }
-        persist(ownerId, entry(task, UsageEntry.EntryType.RELEASE,
-                "LOCAL_UNPRICED", prefix + ":release"));
     }
 
     /** 查询用户有权访问的项目账本；金额为空表示未知，不序列化为零。 */
@@ -311,27 +268,15 @@ public class UsageService {
                 quantity.put("videoSeconds", durationText);
                 quantity.put("exportCount", 0);
             }
-            case MEDIA_EXPORT -> {
-                quantity.put("imageCount", 0);
-                quantity.put("videoCount", 0);
-                quantity.put("videoSeconds", secondsV2 ? "0" : "0.000");
-                quantity.put("exportCount", 1);
-            }
-            default -> throw new IllegalArgumentException("Usage requires a media or export Task");
+            default -> throw new IllegalArgumentException("Usage requires a direct media Task");
         }
         quantity.put("llmRequestCount", 0);
         quantity.putNull("inputTokens");
         quantity.putNull("outputTokens");
-        boolean export = task.kind() == Task.Kind.MEDIA_EXPORT;
-        Integer configVersion = export ? null
-                : task.input().path("providerConfigVersion").asInt(-1);
-        String workflowVersion = export ? null
-                : task.input().path("workflowVersion").asText("");
-        if (export ? !"LOCAL_UNPRICED".equals(source)
-                : configVersion == null || configVersion < 1
-                        || workflowVersion == null || workflowVersion.isBlank()
-                        || !("MOCK_UNPRICED".equals(source)
-                                || "PROVIDER_UNPRICED".equals(source))) {
+        int configVersion = task.input().path("providerConfigVersion").asInt(-1);
+        String workflowVersion = task.input().path("workflowVersion").asText("");
+        if (configVersion < 1 || workflowVersion.isBlank()
+                || !("MOCK_UNPRICED".equals(source) || "PROVIDER_UNPRICED".equals(source))) {
             throw new IllegalStateException("Media usage configuration snapshot is invalid");
         }
         return new UsageEntry(UUID.randomUUID(), task.projectId(), task.runId(), task.id(),

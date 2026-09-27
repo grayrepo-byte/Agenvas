@@ -32,7 +32,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Fixed Wan I2V graph using the saved keyframe, origin and four model file basenames. */
+/** Fixed Wan I2V graph using the pinned input image version, origin and four model file basenames. */
 @Component
 public class ComfyUiVideoAdapter implements MediaAdapter {
     private final JooqMediaCapabilityRepository catalog;
@@ -73,7 +73,7 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         Project.AspectRatio ratio = projects.get(context.ownerId(), task.projectId()).aspectRatio();
         UUID requestKey = UUID.fromString(context.requestKey());
         String uploaded = client.uploadImage(requestKey,
-                pinnedKeyframe(context.ownerId(), task, workflow, ratio), "png");
+                pinnedInputImage(context.ownerId(), task, workflow, ratio), "png");
         long seed = requestKey.getMostSignificantBits() & Long.MAX_VALUE;
         UUID promptId = client.submit(workflow.renderSeconds(
                 task.input().path("prompt").asText(),
@@ -134,8 +134,8 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
                 settings.path("clipVision").asText()), mapper);
     }
 
-    /** Decode and normalize the exact approved image version, never a caller-supplied URL. */
-    private byte[] pinnedKeyframe(UUID ownerId, Task task, ComfyUiVideoWorkflow workflow,
+    /** Decode and normalize the exact pinned input image version, never a caller-supplied URL. */
+    private byte[] pinnedInputImage(UUID ownerId, Task task, ComfyUiVideoWorkflow workflow,
             Project.AspectRatio ratio) {
         UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
         UUID versionId = UUID.fromString(task.input().path("imageVersionId").asText());

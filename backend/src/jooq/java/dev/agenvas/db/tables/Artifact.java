@@ -8,14 +8,10 @@ import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
-import dev.agenvas.db.tables.ArtifactRelation.ArtifactRelationPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
-import dev.agenvas.db.tables.PlanStep.PlanStepPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
-import dev.agenvas.db.tables.ShotDurationUpgrade.ShotDurationUpgradePath;
-import dev.agenvas.db.tables.ShotKeyframeSelection.ShotKeyframeSelectionPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactRecord;
 
@@ -241,34 +237,6 @@ public class Artifact extends TableImpl<ArtifactRecord> {
         return _agentBinding;
     }
 
-    private transient ArtifactRelationPath _fkArtifactRelationSource;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.artifact_relation</code> table, via the
-     * <code>fk_artifact_relation_source</code> key
-     */
-    public ArtifactRelationPath fkArtifactRelationSource() {
-        if (_fkArtifactRelationSource == null)
-            _fkArtifactRelationSource = new ArtifactRelationPath(this, null, Keys.ARTIFACT_RELATION__FK_ARTIFACT_RELATION_SOURCE.getInverseKey());
-
-        return _fkArtifactRelationSource;
-    }
-
-    private transient ArtifactRelationPath _fkArtifactRelationTarget;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.artifact_relation</code> table, via the
-     * <code>fk_artifact_relation_target</code> key
-     */
-    public ArtifactRelationPath fkArtifactRelationTarget() {
-        if (_fkArtifactRelationTarget == null)
-            _fkArtifactRelationTarget = new ArtifactRelationPath(this, null, Keys.ARTIFACT_RELATION__FK_ARTIFACT_RELATION_TARGET.getInverseKey());
-
-        return _fkArtifactRelationTarget;
-    }
-
     private transient CanvasItemPath _canvasItem;
 
     /**
@@ -280,34 +248,6 @@ public class Artifact extends TableImpl<ArtifactRecord> {
             _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT.getInverseKey());
 
         return _canvasItem;
-    }
-
-    private transient ShotKeyframeSelectionPath _fkKeyframeImage;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table, via the
-     * <code>fk_keyframe_image</code> key
-     */
-    public ShotKeyframeSelectionPath fkKeyframeImage() {
-        if (_fkKeyframeImage == null)
-            _fkKeyframeImage = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_IMAGE.getInverseKey());
-
-        return _fkKeyframeImage;
-    }
-
-    private transient ShotKeyframeSelectionPath _fkKeyframeShot;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table, via the
-     * <code>fk_keyframe_shot</code> key
-     */
-    public ShotKeyframeSelectionPath fkKeyframeShot() {
-        if (_fkKeyframeShot == null)
-            _fkKeyframeShot = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_SHOT.getInverseKey());
-
-        return _fkKeyframeShot;
     }
 
     private transient MediaDraftPath _mediaDraft;
@@ -323,32 +263,6 @@ public class Artifact extends TableImpl<ArtifactRecord> {
         return _mediaDraft;
     }
 
-    private transient PlanStepPath _fkPlanStepImage;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table, via the <code>fk_plan_step_image</code> key
-     */
-    public PlanStepPath fkPlanStepImage() {
-        if (_fkPlanStepImage == null)
-            _fkPlanStepImage = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_IMAGE.getInverseKey());
-
-        return _fkPlanStepImage;
-    }
-
-    private transient PlanStepPath _fkPlanStepShot;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table, via the <code>fk_plan_step_shot</code> key
-     */
-    public PlanStepPath fkPlanStepShot() {
-        if (_fkPlanStepShot == null)
-            _fkPlanStepShot = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_SHOT.getInverseKey());
-
-        return _fkPlanStepShot;
-    }
-
     private transient TaskArtifactTargetPath _taskArtifactTarget;
 
     /**
@@ -362,23 +276,10 @@ public class Artifact extends TableImpl<ArtifactRecord> {
         return _taskArtifactTarget;
     }
 
-    private transient ShotDurationUpgradePath _shotDurationUpgrade;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_duration_upgrade</code> table
-     */
-    public ShotDurationUpgradePath shotDurationUpgrade() {
-        if (_shotDurationUpgrade == null)
-            _shotDurationUpgrade = new ShotDurationUpgradePath(this, null, Keys.SHOT_DURATION_UPGRADE__SHOT_DURATION_UPGRADE_ARTIFACT_ID_FKEY.getInverseKey());
-
-        return _shotDurationUpgrade;
-    }
-
     @Override
     public List<Check<ArtifactRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_artifact_kind"), "(((kind)::text = ANY ((ARRAY['TEXT'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying, 'CHARACTER'::character varying, 'SCENE'::character varying, 'SHOT'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_artifact_kind"), "(((kind)::text = ANY ((ARRAY['TEXT'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_title_not_blank"), "((length(btrim((title)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_version_non_negative"), "((version >= 0))", true)
         );

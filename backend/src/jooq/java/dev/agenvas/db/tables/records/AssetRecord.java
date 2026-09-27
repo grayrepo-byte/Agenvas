@@ -178,8 +178,8 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
 
     /**
      * Setter for <code>public.asset.thumbnail_key</code>. Private, bounded PNG
-     * video cover frame extracted before a VIDEO Asset becomes READY; NULL for
-     * IMAGE.
+     * preview created before a new IMAGE Asset becomes READY; for VIDEO it is
+     * the extracted cover frame.
      */
     public void setThumbnailKey(String value) {
         set(11, value);
@@ -187,40 +187,40 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
 
     /**
      * Getter for <code>public.asset.thumbnail_key</code>. Private, bounded PNG
-     * video cover frame extracted before a VIDEO Asset becomes READY; NULL for
-     * IMAGE.
+     * preview created before a new IMAGE Asset becomes READY; for VIDEO it is
+     * the extracted cover frame.
      */
     public String getThumbnailKey() {
         return (String) get(11);
     }
 
     /**
-     * Setter for <code>public.asset.thumbnail_byte_size</code>. Video cover
-     * frame byte size; NULL for IMAGE assets.
+     * Setter for <code>public.asset.thumbnail_byte_size</code>. Preview or
+     * cover frame byte size; NULL only for media archived before V21.
      */
     public void setThumbnailByteSize(Long value) {
         set(12, value);
     }
 
     /**
-     * Getter for <code>public.asset.thumbnail_byte_size</code>. Video cover
-     * frame byte size; NULL for IMAGE assets.
+     * Getter for <code>public.asset.thumbnail_byte_size</code>. Preview or
+     * cover frame byte size; NULL only for media archived before V21.
      */
     public Long getThumbnailByteSize() {
         return (Long) get(12);
     }
 
     /**
-     * Setter for <code>public.asset.thumbnail_sha256</code>. Video cover frame
-     * SHA-256 digest; NULL for IMAGE assets.
+     * Setter for <code>public.asset.thumbnail_sha256</code>. Preview or cover
+     * frame SHA-256 digest.
      */
     public void setThumbnailSha256(String value) {
         set(13, value);
     }
 
     /**
-     * Getter for <code>public.asset.thumbnail_sha256</code>. Video cover frame
-     * SHA-256 digest; NULL for IMAGE assets.
+     * Getter for <code>public.asset.thumbnail_sha256</code>. Preview or cover
+     * frame SHA-256 digest.
      */
     public String getThumbnailSha256() {
         return (String) get(13);

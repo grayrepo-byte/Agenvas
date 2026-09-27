@@ -76,7 +76,7 @@ class ShutdownGatePostgresIT {
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create storyboard", "before-close").run();
-        Task image = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task image = tasks.create(owner.userId(), project.id(), run.id(),
                 "queued-image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
                 null, 1, List.of());
         assertThat(image.status()).isEqualTo(Task.Status.READY);
@@ -114,7 +114,9 @@ class ShutdownGatePostgresIT {
         assertThat(tasks.claimProviderPolls("closed-poller", 10)).isEmpty();
         assertThat(tasks.claimComfyImagePolls("closed-comfy-image-poller", 10)).isEmpty();
         assertThat(tasks.claimComfyVideoPolls("closed-comfy-video-poller", 10)).isEmpty();
-        assertThat(tasks.claimExportsDue("closed-export", 10)).isEmpty();
+        assertThat(tasks.claimBoundMedia("closed-bound-media", 10)).isEmpty();
+        assertThat(tasks.claimBoundMediaPolls("closed-bound-media-poller", 10)).isEmpty();
+        assertThat(tasks.claimTextGenerations("closed-direct-text", 10)).isEmpty();
         assertThat(tasks.claimAgentTurns("closed-model", 10)).isEmpty();
         assertThat(tasks.get(owner.userId(), project.id(), image.id()).status())
                 .isEqualTo(Task.Status.READY);

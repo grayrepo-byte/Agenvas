@@ -4,8 +4,6 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -13,7 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
-/** 严格校验六类版本化产物正文，拒绝未知/越权字段并提取类型化精确版本引用。 */
+/** 严格校验三类版本化产物正文，拒绝未知/越权字段并提取类型化精确版本引用。 */
 @Component
 public class ArtifactContentValidator {
 
@@ -51,9 +49,6 @@ public class ArtifactContentValidator {
         rejectProtectedFields(content);
         return switch (kind) {
             case TEXT -> validateText(content);
-            case CHARACTER -> validateCharacter(content);
-            case SCENE -> validateScene(content);
-            case SHOT -> validateShot(content);
             case IMAGE -> validateMedia(content, false);
             case VIDEO -> validateMedia(content, true);
         };
@@ -65,69 +60,6 @@ public class ArtifactContentValidator {
         requireEnum(content, "format", "PLAIN_TEXT", "MARKDOWN");
         requireText(content, "text", 1, 20_000);
         return List.of();
-    }
-
-    /** 角色正文仅允许设定字段和最多八个互异图片参考版本。 */
-    private List<ArtifactVersion.InputReference> validateCharacter(JsonNode content) {
-        allowOnly(
-                content, "name", "description", "appearance", "referenceVersionIds");
-        requireText(content, "name", 1, 120);
-        requireText(content, "description", 1, 4_000);
-        requireText(content, "appearance", 1, 4_000);
-        return arrayReferences(
-                content, "referenceVersionIds", "referenceImage", Artifact.Kind.IMAGE, 8);
-    }
-
-    /** 场景正文仅允许位置、时间、灯光、风格及最多八个图片参考版本。 */
-    private List<ArtifactVersion.InputReference> validateScene(JsonNode content) {
-        allowOnly(
-                content,
-                "name",
-                "location",
-                "timeOfDay",
-                "lighting",
-                "style",
-                "referenceVersionIds");
-        requireText(content, "name", 1, 120);
-        requireText(content, "location", 1, 500);
-        requireText(content, "timeOfDay", 1, 80);
-        requireText(content, "lighting", 1, 1_000);
-        requireText(content, "style", 1, 1_000);
-        return arrayReferences(
-                content, "referenceVersionIds", "referenceImage", Artifact.Kind.IMAGE, 8);
-    }
-
-    /** 镜头正文限制顺序、时长和文本长度，并提取角色、场景及可选媒体引用。 */
-    private List<ArtifactVersion.InputReference> validateShot(JsonNode content) {
-        allowOnly(
-                content,
-                "order",
-                "durationSeconds",
-                "description",
-                "camera",
-                "action",
-                "characterVersionIds",
-                "sceneVersionId",
-                "selectedImageVersionId",
-                "selectedVideoVersionId");
-        requireInteger(content, "order", 1, 6);
-        requireInteger(content, "durationSeconds", 1, 30);
-        requireText(content, "description", 1, 4_000);
-        requireText(content, "camera", 1, 1_000);
-        requireText(content, "action", 1, 2_000);
-        List<ArtifactVersion.InputReference> references = new ArrayList<>(arrayReferences(
-                content,
-                "characterVersionIds",
-                "character",
-                Artifact.Kind.CHARACTER,
-                10));
-        references.add(requiredReference(
-                content, "sceneVersionId", "scene", 0, Artifact.Kind.SCENE));
-        optionalReference(content, "selectedImageVersionId", "selectedImage", Artifact.Kind.IMAGE)
-                .ifPresent(references::add);
-        optionalReference(content, "selectedVideoVersionId", "selectedVideo", Artifact.Kind.VIDEO)
-                .ifPresent(references::add);
-        return List.copyOf(references);
     }
 
     /** 区分用户图片上传和任务生成媒体；生成结果必须保留提示、配置、工作流与来源任务。 */
@@ -154,41 +86,6 @@ public class ArtifactContentValidator {
         requireUuid(content, "sourceTaskId");
         return video ? optionalReference(content, "keyframeVersionId", "keyframe",
                 Artifact.Kind.IMAGE).stream().toList() : List.of();
-    }
-
-    /** 解析有界 UUID 数组，拒绝重复 ID，并按原数组位置保存语义顺序。 */
-    private List<ArtifactVersion.InputReference> arrayReferences(
-            JsonNode content,
-            String field,
-            String role,
-            Artifact.Kind expectedKind,
-            int maximumItems) {
-        JsonNode values = content.get(field);
-        if (values == null || !values.isArray() || values.size() > maximumItems) {
-            throw invalid(field + " 必须是最多 " + maximumItems + " 项的数组。");
-        }
-        List<ArtifactVersion.InputReference> references = new ArrayList<>();
-        Set<UUID> uniqueIds = new HashSet<>();
-        for (int index = 0; index < values.size(); index++) {
-            UUID versionId = parseUuid(values.get(index), field + "[" + index + "]");
-            if (!uniqueIds.add(versionId)) {
-                throw invalid(field + " 不能包含重复版本。");
-            }
-            references.add(new ArtifactVersion.InputReference(
-                    versionId, role, index, expectedKind));
-        }
-        return references;
-    }
-
-    /** 构造正文必须提供的单一版本引用；缺失或非法 UUID 会立即拒绝。 */
-    private ArtifactVersion.InputReference requiredReference(
-            JsonNode content,
-            String field,
-            String role,
-            int order,
-            Artifact.Kind expectedKind) {
-        return new ArtifactVersion.InputReference(
-                requireUuid(content, field), role, order, expectedKind);
     }
 
     /** 仅缺失或 JSON null 可省略；其他类型必须是可解析 UUID。 */

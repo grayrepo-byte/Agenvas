@@ -10,26 +10,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.TrustedToolContext;
-import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.ManualUnknownRetryService;
 import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -37,22 +34,28 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.web.context.WebApplicationContext;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 
-/** PostgreSQL proof: explicit retry preserves UNKNOWN/cost and moves pending DAG edges once. */
+/**
+ * PostgreSQL proof: an explicit retry of a direct media task creates exactly one new attempt on the
+ * same card and never reuses the original reservation.
+ *
+ * <p>自动调度器在本用例中关闭，任务状态与租约由用例自己推进；这样「原任务仍是 UNKNOWN」
+ * 这一前提不会被后台 Worker 抢先改写。
+ */
 @Testcontainers
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=manual-retry-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mode=mock"})
+        "agenvas.provider.mode=mock",
+        "agenvas.provider.mock.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false"})
 class ManualUnknownRetryPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -67,71 +70,29 @@ class ManualUnknownRetryPostgresIT {
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private ExecutionPlanService plans;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private TaskRepository taskRepository;
     @Autowired private ManualUnknownRetryService retries;
     @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext webContext;
 
     @Test
-    void explicitRiskCreatesOneNewReservationAndRewiresOnlyPendingConsumers() throws Exception {
+    void explicitRiskCreatesOneNewReservationWithoutReusingTheOriginal() throws Exception {
         AdminPrincipal owner = identities.setup("manual-retry-integration-secret", "retry-admin",
                 "retry-password-123");
         Project project = projects.create(owner.userId(), "Retry fixture",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        ObjectNode scene = mapper.createObjectNode();
-        scene.put("name", "Studio");
-        scene.put("location", "Shanghai");
-        scene.put("timeOfDay", "Day");
-        scene.put("lighting", "Soft");
-        scene.put("style", "Minimal");
-        scene.putArray("referenceVersionIds");
-        UUID sceneVersion = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SCENE,
-                "Scene", scene).currentVersion().id();
-        ObjectNode shot = mapper.createObjectNode();
-        shot.put("order", 1);
-        shot.put("durationSeconds", 3);
-        shot.put("description", "Coffee pour");
-        shot.put("camera", "Close");
-        shot.put("action", "Pour coffee");
-        shot.putArray("characterVersionIds");
-        shot.put("sceneVersionId", sceneVersion.toString());
-        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SHOT,
-                "Shot", shot);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
-                        target.currentVersion().id())));
-        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
-                "Make an image", "retry-run").run();
-        runs.transition(owner.userId(), project.id(), run.id(), run.version(),
-                AgentRun.Status.RUNNING);
-        ObjectNode proposal = mapper.createObjectNode();
-        proposal.put("stage", "IMAGE");
-        proposal.put("objective", "One image");
-        ObjectNode step = proposal.putArray("steps").addObject();
-        step.put("stepKey", "frame-1");
-        step.put("outputSlotKey", "frame-1-output");
-        step.put("shotArtifactId", target.artifact().id().toString());
-        step.put("shotVersionId", target.currentVersion().id().toString());
-        step.put("prompt", "Cinematic coffee pour");
-        step.putArray("dependsOnStepKeys");
-        var plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(), run.id()),
-                proposal);
-        Task original = plans.approve(owner.userId(), project.id(), plan.id(),
-                plan.planHash(), plans.get(owner.userId(), project.id(), plan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
-        List<Task> dependents = tasks.listByRun(owner.userId(), project.id(), run.id()).stream()
-                .filter(task -> task.kind() == Task.Kind.AGENT_TURN
-                        && task.status() == Task.Status.PENDING).toList();
-        assertThat(dependents).hasSize(1);
+        // 用户直连媒体任务必须绑定一张媒体卡片；先建空卡片、保存草稿，再走真实运行入口。
+        var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Retry card", null);
+        drafts.save(owner.userId(), project.id(), card.artifact().id(), 0,
+                "Cinematic coffee pour", null, null, null);
+        Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
+                1, "direct-image-1");
         jdbc.sql("update task set status = 'UNKNOWN', version = version + 1 where id = :id")
                 .param("id", original.id()).update();
-        AgentRun waiting = runs.get(owner.userId(), project.id(), run.id());
-        runs.transition(owner.userId(), project.id(), run.id(), waiting.version(),
-                AgentRun.Status.BLOCKED);
         Task unknown = tasks.get(owner.userId(), project.id(), original.id());
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(),
                 unknown.version(), ""))
@@ -159,22 +120,19 @@ class ManualUnknownRetryPostgresIT {
                 .isEqualTo(Task.Status.UNKNOWN);
         assertThat(tasks.replacementTaskId(owner.userId(), project.id(), unknown.id()))
                 .isEqualTo(replacement.id());
-        assertThat(jdbc.sql("select depends_on_task_id from task_dependency where task_id = :id")
-                .param("id", dependents.getFirst().id()).query(UUID.class).list())
-                .contains(replacement.id()).doesNotContain(unknown.id());
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.WAITING_TASKS);
+        // 新尝试单独预留用量，原 UNKNOWN 的费用记录不消失。
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id in (:old, :new)")
                 .param("old", unknown.id()).param("new", replacement.id())
                 .query(Long.class).single()).isGreaterThanOrEqualTo(2L);
+        // 两张任务固定在同一张卡片上：替代尝试换的是任务，不是输出目标，也不是原记录。
+        assertThat(jdbc.sql("select count(*) from task_artifact_target where artifact_id = :id")
+                .param("id", card.artifact().id()).query(Long.class).single()).isEqualTo(2L);
         assertThat(retries.create(owner.userId(), project.id(), unknown.id(), unknown.version(),
                 "retry-1").id())
                 .isEqualTo(replacement.id());
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(),
                 unknown.version(), "retry-2"))
                 .isInstanceOf(ApiProblemException.class);
-        assertThat(jdbc.sql("select count(*) from task where plan_id = :id and step_key = 'frame-1'")
-                .param("id", plan.id()).query(Long.class).single()).isEqualTo(2L);
 
         var mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
         var authenticated = authentication(new UsernamePasswordAuthenticationToken(owner, null,

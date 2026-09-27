@@ -1,6 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
@@ -12,8 +11,7 @@ const PROJECT_ID = "project-1";
 const RUN_ID = "run-1";
 const RUN_URL = `/api/v1/projects/${PROJECT_ID}/runs/${RUN_ID}`;
 const NOW = "2026-09-26T00:00:00Z";
-const PLAN_HASH = "a".repeat(64);
-const USER_INSTRUCTION = "请规划三个镜头，并等待我确认图片计划。";
+const USER_INSTRUCTION = "请描述这次创作，并在开始前给我确认。";
 
 function task(overrides: Partial<Task>): Task {
   return {
@@ -25,15 +23,14 @@ function task(overrides: Partial<Task>): Task {
 }
 
 function action(overrides: Partial<RunAction>): RunAction {
-  return { id: "action-1", stepIndex: 0, toolName: "create_artifact", status: "SUCCEEDED",
-    summary: "已创建第一个镜头的文字说明", completedAt: NOW, ...overrides };
+  return { id: "action-1", stepIndex: 0, toolName: "create_text", status: "SUCCEEDED",
+    summary: "已创建一份文字说明", completedAt: NOW, ...overrides };
 }
 
 function mockConversation(tasks: Task[], actions: RunAction[] = []) {
   server.use(
     http.get(`${RUN_URL}/tasks`, () => HttpResponse.json(tasks)),
     http.get(`${RUN_URL}/actions`, () => HttpResponse.json(actions)),
-    http.get(`${RUN_URL}/plans`, () => HttpResponse.json([])),
   );
 }
 
@@ -92,90 +89,50 @@ describe("AgentRunConversation", () => {
     expect(screen.getByText("任务完成")).toBeInTheDocument();
   });
 
-  it("shows committed action summaries while an approval proposal remains pending", async () => {
-    const createdSummary = "已创建三份镜头说明";
-    const proposalSummary = "已提出三张关键帧的图片计划";
+  it("shows committed action summaries without leaking tool arguments or results", async () => {
+    const createdSummary = "已创建一份文字说明";
+    const revisedSummary = "已按说明改写文字产物";
     mockConversation([], [
       action({ summary: createdSummary }),
-      action({ id: "approval-action", stepIndex: 1, toolName: "propose_media_plan",
-        status: "WAITING_APPROVAL", summary: proposalSummary }),
+      action({ id: "revise-action", stepIndex: 1, toolName: "revise_artifact",
+        summary: revisedSummary }),
     ]);
     server.use(http.get(`${RUN_URL}/actions`, () => HttpResponse.json([
       { ...action({ summary: createdSummary }), arguments: { private: "PRIVATE_TOOL_ARGUMENT" },
         result: { raw: "PRIVATE_TOOL_RESULT" } },
-      action({ id: "approval-action", stepIndex: 1, toolName: "propose_media_plan",
-        status: "WAITING_APPROVAL", summary: proposalSummary }),
+      action({ id: "revise-action", stepIndex: 1, toolName: "revise_artifact",
+        summary: revisedSummary }),
     ])));
     mountConversation();
 
-    expect(await screen.findByText(proposalSummary)).toBeInTheDocument();
+    expect(await screen.findByText(createdSummary)).toBeInTheDocument();
     expect(taskSummary(createdSummary).getByText("已完成")).toBeInTheDocument();
-    expect(taskSummary(proposalSummary).getByText("等待中")).toBeInTheDocument();
-    expect(taskSummary(proposalSummary).queryByText("已完成")).not.toBeInTheDocument();
+    expect(taskSummary(revisedSummary).getByText("已完成")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_ARGUMENT");
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_RESULT");
   });
 
-  it("keeps failed, canceled, and unknown task outcomes distinct and labels export and ingest tasks", async () => {
+  it("keeps failed, canceled, and unknown task outcomes distinct and labels ingest tasks", async () => {
     mockConversation([
       task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_TURN_LIMIT_REACHED" }),
       task({ id: "failed-image", kind: "IMAGE_GENERATION", stepKey: "shot-failed", status: "FAILED", errorCode: "PROVIDER_TIMEOUT" }),
       task({ id: "canceled-video", kind: "VIDEO_GENERATION", stepKey: "shot-canceled", status: "CANCELED", cancelRequested: true }),
-      task({ id: "unknown-image", kind: "IMAGE_GENERATION", stepKey: "shot-unknown", status: "UNKNOWN", planId: "plan-1" }),
-      task({ id: "export-task", kind: "MEDIA_EXPORT", stepKey: "export", status: "SUCCEEDED" }),
+      task({ id: "unknown-image", kind: "IMAGE_GENERATION", stepKey: "shot-unknown", status: "UNKNOWN" }),
       task({ id: "ingest-task", kind: "ASSET_INGEST", stepKey: "ingest", status: "READY" }),
     ]);
     mountConversation("CANCELED");
 
     expect(await screen.findByText("生成图片 · shot-failed")).toBeInTheDocument();
-    expect(taskSummary("AI 规划 · planning-failed").getByText("失败")).toBeInTheDocument();
+    expect(taskSummary("AI 回复 · planning-failed").getByText("失败")).toBeInTheDocument();
     expect(screen.getByText(/MODEL_TURN_LIMIT_REACHED/)).toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-failed").getByText("失败")).toBeInTheDocument();
     expect(taskSummary("生成视频 · shot-canceled").getByText("已取消")).toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-unknown").getByText("未知")).toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-unknown").queryByText("失败")).not.toBeInTheDocument();
     expect(taskSummary("生成图片 · shot-unknown").queryByText("已完成")).not.toBeInTheDocument();
-    expect(taskSummary("导出视频 · export").getByText("已完成")).toBeInTheDocument();
     expect(taskSummary("归档素材 · ingest").getByText("等待中")).toBeInTheDocument();
     expect(screen.getByText("结果未知")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     expect(screen.getByText("仅停止本系统后续编排；外部任务可能继续执行并产生费用。")).toBeInTheDocument();
-  });
-
-  it("embeds the actual approval panel in the active conversation and requires explicit approval", async () => {
-    mockConversation([task({ output: { stepIndex: 0, assistantText: "图片计划已准备好，请核对后确认。" } })],
-      [action({ toolName: "propose_media_plan", status: "WAITING_APPROVAL", summary: "图片计划等待审批" })]);
-    const plan = {
-      id: "plan-1", projectId: PROJECT_ID, runId: RUN_ID, revision: 1,
-      stage: "IMAGE", status: "PENDING", objective: "制作晨光街道的关键帧",
-      steps: [{ stepKey: "shot-1", kind: "IMAGE_GENERATION", shotVersionId: "shot-version-1",
-        imageVersionId: null, input: { prompt: "晨光中的街道" } }],
-      estimate: { imageCount: 1, videoCount: 0, costSource: "MOCK_UNPRICED" },
-      workflowVersion: "mock-image-v1", providerConfigVersion: 1, planHash: PLAN_HASH,
-    };
-    let approvals = 0;
-    server.use(
-      http.get(`${RUN_URL}/plans`, () => HttpResponse.json([plan])),
-      http.get(`/api/v1/projects/${PROJECT_ID}/plans/${plan.id}/steps/shot-1/candidates`, () => HttpResponse.json([])),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.post(`/api/v1/projects/${PROJECT_ID}/plans/${plan.id}/approve`, async ({ request }) => {
-        approvals++;
-        expect(await request.json()).toEqual({ planHash: PLAN_HASH, confirmedStepKeys: ["shot-1"] });
-        return HttpResponse.json({ approvalId: "approval-1", plan: { ...plan, status: "APPROVED" }, tasks: [], replayed: false });
-      }),
-    );
-    const user = userEvent.setup();
-    mountConversation("WAITING_APPROVAL", true);
-
-    const conversation = screen.getByRole("region", { name: "任务对话" });
-    const approval = await within(conversation).findByRole("region", { name: "关键帧图片计划待确认" });
-    expect(approval).toHaveTextContent("制作晨光街道的关键帧");
-    expect(approval).toHaveTextContent("Mock 只产生演示素材");
-    expect(approvals).toBe(0);
-    expect(within(approval).getByRole("button", { name: "确认执行此计划" })).toBeDisabled();
-    await user.click(within(approval).getByRole("checkbox", { name: /确认镜头 shot-1/ }));
-    expect(approvals).toBe(0);
-    await user.click(within(approval).getByRole("button", { name: "确认执行此计划" }));
-    await waitFor(() => expect(approvals).toBe(1));
   });
 });

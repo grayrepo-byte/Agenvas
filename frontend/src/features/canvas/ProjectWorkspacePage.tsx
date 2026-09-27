@@ -30,7 +30,7 @@ import {
   getProjectSnapshot,
   listCanvasItems,
   listArtifacts,
-  reviseArtifact,
+  projectExportManifestUrl,
   uploadImageAsset,
   updateAgent,
   type Agent,
@@ -42,12 +42,8 @@ import {
 } from "../../shared/api/client";
 import { useCanvasStore } from "./canvasStore";
 import { subscribeProjectEvents, type EventSyncStatus } from "./projectEvents";
-import { MediaExportPanel } from "./MediaExportPanel";
-import { ShotRedoEditor } from "./ShotRedoEditor";
 import { AgentChatCard, AGENT_CHAT_WIDTH, AGENT_CHAT_HEIGHT, AGENT_CHAT_MIN_WIDTH, AGENT_CHAT_MIN_HEIGHT } from "./AgentChatCard";
-import { ManualStoryboardPanel } from "./ManualStoryboardPanel";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
-import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
 import { hasCurrentVersion } from "./versionedArtifact";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
@@ -59,15 +55,14 @@ import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
 import { CanvasHandle } from "./CanvasHandle";
 import { canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
-  isCanvasConnectionValid, projectCanvasRelations, semanticConnectionRevision,
-  semanticReferenceRemoval, type ArtifactInputReference,
+  isCanvasConnectionValid, projectCanvasRelations,
   type CanvasRelationRemoval } from "./canvasRelations";
 import { CANVAS_MAX_SIZE, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
 import { useImageNodeRatios } from "./useImageNodeRatios";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
-type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "CHARACTER" | "SCENE" | "SHOT" | "AGENT";
-type DrawerKind = CreationKind | "UPLOAD" | "EXPORT" | "ALIGN";
+type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AGENT";
+type DrawerKind = CreationKind | "UPLOAD" | "ALIGN";
 type CreationPoint = { x: number; y: number };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
 type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
@@ -75,7 +70,7 @@ type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string
 type ConnectionTarget = { itemId: string; targetHandle: "agent-input" | "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
 const CREATION_MENU_WIDTH = 184;
-const CREATION_MENU_HEIGHT = 330;
+const CREATION_MENU_HEIGHT = 210;
 const CREATION_MENU_MARGIN = 12;
 const DEFAULT_CARD_WIDTH = 280;
 const DEFAULT_MEDIA_CARD_HEIGHT = 300;
@@ -87,7 +82,7 @@ const CANVAS_CONNECTION_RADIUS = 80;
 /** Delete and Backspace both delete the selected cards and relation lines; React Flow ignores both while typing in a field. */
 const CANVAS_DELETE_KEY_CODES = ["Backspace", "Delete"];
 const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
-  TEXT: "文字", IMAGE: "图片", VIDEO: "视频", CHARACTER: "角色", SCENE: "场景", SHOT: "镜头",
+  TEXT: "文字", IMAGE: "图片", VIDEO: "视频",
 };
 
 function focusArtifactEditor() {
@@ -95,16 +90,13 @@ function focusArtifactEditor() {
 }
 const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string }> = [
   { kind: "TEXT", label: "文字" }, { kind: "IMAGE", label: "图片" },
-  { kind: "VIDEO", label: "视频" }, { kind: "CHARACTER", label: "角色" },
-  { kind: "SCENE", label: "场景" }, { kind: "SHOT", label: "镜头" },
-  { kind: "AGENT", label: "Agent" },
+  { kind: "VIDEO", label: "视频" }, { kind: "AGENT", label: "Agent" },
 ];
 
 type CanvasNodeData = {
   item: CanvasItem;
   projectId: string;
   activeRun: AgentRun | null;
-  redoCandidates: { artifactId: string; versionId: string; title: string }[];
   outputCount: number;
   onShowOutputs: (agent: Agent) => void;
   onResizeEnd: (itemId: string, layout: LayoutPatch) => void;
@@ -222,21 +214,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         if (event.type === "project.changed") {
           void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
         }
-        if (event.type === "task.status.changed" || event.type === "agent.run.changed" || event.type === "agent.conversation.changed" ||
-            event.type.startsWith("execution.plan.")) {
+        if (event.type === "task.status.changed" || event.type === "agent.run.changed" || event.type === "agent.conversation.changed") {
           void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["agent-conversations", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["conversation-runs", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId] });
         }
         const activeRunId = queryClient.getQueryData<ProjectSnapshot>(["snapshot", projectId])?.activeRun?.id;
-        if (event.type.startsWith("execution.plan.") && activeRunId) {
-          void queryClient.invalidateQueries({ queryKey: ["plans", projectId, activeRunId] });
-        }
         if (event.type === "task.status.changed" && event.payload.artifactId) {
           void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
@@ -245,22 +231,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId, activeRunId] });
         }
         if (event.type === "task.status.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["media-exports", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] });
           void queryClient.invalidateQueries({ queryKey: ["direct-media-queue", projectId] });
         }
         if (event.type === "media.draft.changed") {
           void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
         }
-        if (event.type === "export.proposal.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["export-proposals", projectId] });
-        }
         if (event.type === "usage.changed") {
           void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
-        }
-        if (event.type === "shot.keyframe.selected" && activeRunId) {
-          void queryClient.invalidateQueries({ queryKey: ["keyframe-selection", projectId,
-            activeRunId] });
         }
       },
       onSnapshot: (fresh) => {
@@ -272,15 +250,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["agent-conversations", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["conversation-runs", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["run-history-plans", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["provider-attempts", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["plans", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["keyframe-selection", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["export-proposals", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["media-exports", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
@@ -564,19 +536,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
   const connectInput = useMutation({
     mutationFn: async (connection: Connection) => {
-      if (connection.targetHandle === "artifact-input") {
-        const update = semanticConnectionRevision(canvas.data?.items ?? [], connection);
-        if (!update) {
-          throw new CanvasConnectionError("仅支持图片→角色/场景、角色/场景→镜头的精确版本语义关系。");
-        }
-        if (update.revision) {
-          await reviseArtifact(projectId, update.artifactId, update.revision);
-        }
-        return listCanvasItems(projectId);
-      }
       const update = inputConnectionUpdate(canvas.data?.items ?? [], connection);
       if (!update) {
-        throw new CanvasConnectionError("仅支持把 Artifact 连到 Agent 输入或支持的 Artifact 语义关系；连线不会触发生成。");
+        throw new CanvasConnectionError("仅支持把 Artifact 连到 Agent 输入；连线不会触发生成。");
       }
       await updateAgent(projectId, update.agent.id, {
         expectedVersion: update.agent.version,
@@ -584,23 +546,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         instruction: update.agent.instruction,
         bindings: update.bindings,
       });
-      return listCanvasItems(projectId);
-    },
-    onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSaveState("saved");
-    },
-    onError: setSaveError,
-  });
-  const removeReference = useMutation({
-    mutationFn: async ({ item, reference }: { item: CanvasItem;
-      reference: ArtifactInputReference }) => {
-      const revision = semanticReferenceRemoval(item, reference);
-      if (!item.artifact || !revision) {
-        throw new CanvasConnectionError("此引用是必填项或版本已变化，不能直接移除。请刷新后检查。");
-      }
-      await reviseArtifact(projectId, item.artifact.id, revision);
       return listCanvasItems(projectId);
     },
     onMutate: () => setSaveState("saving"),
@@ -682,7 +627,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const removeItemMutate = removeItem.mutate;
   const toggleLockedMutate = toggleLocked.mutate;
   const editAgentMutate = editAgent.mutate;
-  const removeReferenceMutate = removeReference.mutate;
   const removeInputBindingMutate = removeInputBinding.mutate;
   const connectInputMutate = connectInput.mutate;
 
@@ -709,12 +653,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       editAgentMutate({ agent, name, instruction }),
     [editAgentMutate],
   );
-  const handleRemoveReference = useCallback(
-    (item: CanvasItem,
-      reference: ArtifactInputReference) =>
-      removeReferenceMutate({ item, reference }),
-    [removeReferenceMutate],
-  );
   /**
    * Keyboard deletion hands every gesture to the application services and makes React Flow drop its own
    * local removal, so a card or line only disappears from the canvas once the server projection says so.
@@ -728,14 +666,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       for (const node of deletedNodes) removeItemMutate(node.data.item);
       for (const edge of relations) {
         const removal = canvasRelationRemoval(canvas.data?.items ?? [], edge);
-        if (removal?.kind === "inputBinding") removeInputBindingMutate(removal);
-        else if (removal?.kind === "reference") {
-          removeReferenceMutate({ item: removal.item, reference: removal.reference });
-        }
+        if (removal) removeInputBindingMutate(removal);
       }
       return false;
     },
-    [canvas.data?.items, removeInputBindingMutate, removeItemMutate, removeReferenceMutate],
+    [canvas.data?.items, removeInputBindingMutate, removeItemMutate],
   );
   /**
    * A drop lands on the card under the pointer, so a big card does not require aiming at its left port.
@@ -833,15 +768,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               item,
               projectId,
               activeRun: snapshot.data?.activeRun ?? null,
-              redoCandidates: item.agent ? (canvas.data?.items ?? []).flatMap((candidate) => {
-                const shot = candidate.artifact;
-                if (!shot?.currentVersionId || shot.kind !== "SHOT" ||
-                  !item.agent?.bindings.some((binding) =>
-                  binding.artifactId === shot.id &&
-                  binding.selectedVersionId === shot.currentVersionId)) return [];
-                return [{ artifactId: shot.id, versionId: shot.currentVersionId,
-                  title: shot.title }];
-              }) : [],
               outputCount: item.agent ? (canvas.data?.items ?? []).filter((candidate) => candidate.artifact && candidate.groupId === item.agent?.outputGroupId).length : 0,
               onShowOutputs: handleShowOutputs,
               onResizeEnd: handleResizeEnd,
@@ -1047,9 +973,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <button className="secondary-button" onClick={() => {
             setResourcesOpen(false); setInspectingId(null); setUploadingItem(null); setToolsKind("UPLOAD");
           }} type="button">导入素材</button>
-          <button className="secondary-button" onClick={() => {
-            setResourcesOpen(false); setInspectingId(null); setUploadingItem(null); setToolsKind("EXPORT");
-          }} type="button">导出</button>
+          {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
+          <a className="secondary-button" download={`agenvas-project-${projectId}.json`}
+            href={projectExportManifestUrl(projectId)}>导出清单</a>
           <span className="text-xs text-[var(--muted)]" role="status">
             {eventStatus === "live" ? "实时同步" :
               eventStatus === "failed" ? "同步失败，正在重试" :
@@ -1097,16 +1023,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </form>
         {addTextCard.error ? <WorkspaceError error={addTextCard.error} /> : null}
         </> : null}
-        {toolsKind === "CHARACTER" || toolsKind === "SCENE" || toolsKind === "SHOT" ?
-          <ManualStoryboardPanel key={toolsKind} initialKind={toolsKind}
-          placement={creationPoint ?? undefined} projectId={projectId} items={canvas.data?.items ?? []}
-          onSaveStart={() => setSaveState("saving")}
-          onSaved={(saved) => {
-            queryClient.setQueryData(["canvas", projectId], saved);
-            setSaveState("saved");
-            setToolsKind(null);
-          }}
-          onSaveError={setSaveError} /> : null}
         {toolsKind === "UPLOAD" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-base font-semibold">上传参考图</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">支持 PNG、JPEG、WebP；不超过 20 MiB/40 MP。上传后选中图片卡片与 Agent 卡片，再绑定为精确版本输入。模型规划默认不读取图片字节。</p>
@@ -1137,8 +1053,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-sm font-semibold">选择与对齐</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Cmd（macOS）或 Ctrl（其他系统）点击追加选择；按住 Shift 拖出选框可选择多张卡片。</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入，落在另一张 Artifact 上可建立图片→角色/场景、角色/场景→镜头的精确版本引用，并为目标产物创建新版本（场景→镜头会替换原场景引用）。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是输入（指向历史版本时是虚线）、绿线是输出组、灰虚线是素材引用；连线不会触发生成。</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中蓝线或灰虚线按 Delete 或退格删除对应的输入绑定或素材引用。绿线由 Agent 输出组决定、必填场景引用只能替换，两者都不能单独删除。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入绑定；落在另一张 Artifact 上无效，卡片之间的精确版本引用由生成时固定，不能手工建立。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是输入（指向历史版本时是虚线）、绿线是输出组、灰虚线是精确版本输入；连线不会触发生成。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中蓝线按 Delete 或退格删除对应的输入绑定。绿线与灰虚线由 Agent 输出组和生成时固定的输入决定，都不能单独删除。</p>
           <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
           <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">把已选 Artifact 绑定到 Agent</button>
           <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">清空已选 Agent 输入</button>
@@ -1146,10 +1062,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {bindSelection.error ? <WorkspaceError error={bindSelection.error} /> : null}
           {clearBindings.error ? <WorkspaceError error={clearBindings.error} /> : null}
           {connectInput.error ? <WorkspaceError error={connectInput.error} /> : null}
-          {removeReference.error ? <WorkspaceError error={removeReference.error} /> : null}
         </div> : null}
-        {toolsKind === "EXPORT" ? <MediaExportPanel projectId={projectId}
-          items={canvas.data?.items ?? []} /> : null}
       </aside> : null}
 
       <section className={`workspace-canvas${selecting ? " is-select-tool" : " is-hand-tool"}`} aria-label="项目画布" ref={canvasElement}
@@ -1229,15 +1142,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 {selectedItems[0].artifact.kind === "TEXT" ?
                   <TextGenerationEditor key={selectedItems[0].artifact.id}
                     artifact={selectedItems[0].artifact} /> : null}
-                {hasCurrentVersion(selectedItems[0].artifact) &&
-                  (["CHARACTER", "SCENE"] as const).some((kind) =>
-                    kind === selectedItems[0]?.artifact?.kind) ?
-                  <StructuredArtifactEditor key={selectedItems[0].artifact.id}
-                    artifact={selectedItems[0].artifact} /> : null}
-                {hasCurrentVersion(selectedItems[0].artifact) &&
-                  selectedItems[0].artifact.kind === "SHOT" ?
-                  <ShotRedoEditor key={selectedItems[0].artifact.id}
-                    artifact={selectedItems[0].artifact} /> : null}
               </div>
             </NodeToolbar> : null}
           <Background color="#454545" gap={20} size={1.1} />
@@ -1257,8 +1161,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div> : null}
         {addBlankMedia.error ? <div className="canvas-message" role="alert">
           <WorkspaceError error={addBlankMedia.error} /></div> : null}
-        {removeReference.error && !toolsKind && !inspectingId ? <div className="canvas-message">
-          <WorkspaceError error={removeReference.error} /></div> : null}
         {connectInput.error && !toolsKind ? <div className="canvas-message">
           <WorkspaceError error={connectInput.error} /></div> : null}
         {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
@@ -1284,14 +1186,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {item.artifact.currentVersion ? `v${item.artifact.currentVersion.versionNo}` : "暂无结果"}</p>
           <ArtifactVersionHistory artifact={item.artifact} />
           {item.artifact.currentVersion?.inputReferences.length ? <div className="mt-4 text-xs">
-            <h3>素材引用（{item.artifact.currentVersion.inputReferences.length} 个精确版本）</h3><ul className="mt-2 space-y-2">
+            <h3>输入引用（{item.artifact.currentVersion.inputReferences.length} 个精确版本）</h3><ul className="mt-2 space-y-2">
               {item.artifact.currentVersion.inputReferences.map((reference) =>
                 <li className="break-all text-[var(--muted)]" key={`${reference.role}:${reference.order}:${reference.versionId}`}>
                   {reference.role} · {ARTIFACT_LABELS[reference.kind]} · {reference.versionId}
-                  {semanticReferenceRemoval(item, reference) ? <button className="node-action mt-2"
-                    disabled={removeReference.isPending} onClick={() => handleRemoveReference(item, reference)} type="button">
-                    {removeReference.isPending ? "保存中…" : "移除引用"}
-                  </button> : null}
                 </li>)}
             </ul>
           </div> : null}
@@ -1301,7 +1199,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div>
           {removeItem.error ? <WorkspaceError error={removeItem.error} /> : null}
           {toggleLocked.error ? <WorkspaceError error={toggleLocked.error} /> : null}
-          {removeReference.error ? <WorkspaceError error={removeReference.error} /> : null}
           <p className="mt-3 text-xs text-[var(--muted)]">移除卡片后，内容和历史版本仍保留在项目资源中。</p>
         </aside>;
       })() : null}
@@ -1325,7 +1222,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   if (!artifact) return null;
   const cardProps = {
     artifact, item: data.item, selected, locked: data.item.locked,
-    onInspect: () => data.onInspect(data.item), onEdit: focusArtifactEditor,
+    onInspect: () => data.onInspect(data.item),
     children: <NodeResizer isVisible={selected && !data.item.locked}
       {...(data.imageAspectRatio === undefined
         ? { minHeight: MIN_ARTIFACT_CARD_SIZE, minWidth: MIN_ARTIFACT_CARD_SIZE,
@@ -1340,7 +1237,8 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       <CanvasHandle id="artifact-output" />
       {halo}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO"
-        ? <MediaCanvasCard {...cardProps} onUpload={() => data.onUpload(data.item)} />
+        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
+          onUpload={() => data.onUpload(data.item)} />
         : <ContentCanvasCard {...cardProps} />}
     </>
   );

@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent, AgentRun, AgentConversation, CreateRunRequest, ExecutionPlan, RunPreflight } from "../../shared/api/client";
+import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { AgentChatCard, type AgentChatCardData } from "./AgentChatCard";
 import { useCanvasStore } from "./canvasStore";
@@ -30,7 +30,7 @@ const PREFLIGHT: RunPreflight = {
   providerAdapter: "Mock", modelId: "mock-storyboard-v1", toolCalling: true,
   policySnapshot: { schemaVersion: 2, systemPromptVersion: 2,
     modelConfigSource: "mock", modelConfigVersion: 7, maxModelTurns: 12,
-    maxToolExecutions: 40, maxImages: 8, maxVideos: 6, maxShots: 6 },
+    maxToolExecutions: 40 },
 };
 
 function run(overrides: Partial<AgentRun> = {}): AgentRun {
@@ -46,17 +46,7 @@ function conversation(overrides: Partial<AgentConversation> = {}): AgentConversa
   return { id: CONVERSATION_ID, projectId: PROJECT_ID, agentInstanceId: AGENT_ID,
     title: "当前创作会话", version: 0, turnCount: 0, createdAt: NOW, updatedAt: NOW, ...overrides };
 }
-/** A PENDING plan is what makes the approval card appear; an empty list hides it. */
-function pendingPlan(runId: string): ExecutionPlan {
-  return { id: "plan-active", projectId: PROJECT_ID, runId, revision: 1, stage: "IMAGE",
-    status: "PENDING", objective: "等待审批的镜头图片计划", plan: {}, inputSnapshot: {},
-    inputSnapshotHash: "b".repeat(64), planHash: "a".repeat(64), providerConfigVersion: 1,
-    workflowVersion: "mock-image-v1", estimate: { imageCount: 1, videoCount: 0, costSource: "MOCK_UNPRICED" },
-    createdAt: NOW, updatedAt: NOW,
-    steps: [{ stepKey: "image-1", ordinal: 0, kind: "IMAGE_GENERATION", shotArtifactId: "shot-1",
-      shotVersionId: "shot-version-1", imageArtifactId: null, imageVersionId: null,
-      outputSlotKey: "shot-1", input: { prompt: "第一镜关键帧" }, dependencyKeys: [], binding: null }] };
-}
+
 let storedConversations: AgentConversation[];
 let storedRuns: AgentRun[];
 let currentConversationId: string | null;
@@ -80,7 +70,7 @@ function mountCard(activeRun: AgentRun | null = null, overrides: Partial<AgentCh
       title: AGENT.name,
       x: 0, y: 0, width: 460, height: 600, zIndex: 0, locked: true, version: 1,
       artifact: null, agent: AGENT },
-    projectId: PROJECT_ID, activeRun, redoCandidates: [], outputCount: 0,
+    projectId: PROJECT_ID, activeRun, outputCount: 0,
     onShowOutputs: vi.fn(), onResizeEnd: vi.fn(), onRemove: vi.fn(),
     onToggleLocked: vi.fn(), onUpdateAgent: vi.fn(), updatingAgent: false, ...overrides,
   };
@@ -113,7 +103,6 @@ beforeEach(() => {
     http.get(RUNS_URL, () => HttpResponse.json({ items: [], nextCursor: null })),
     http.get(`${RUNS_URL}/:runId/tasks`, () => HttpResponse.json([])),
     http.get(`${RUNS_URL}/:runId/actions`, () => HttpResponse.json([])),
-    http.get(`${RUNS_URL}/:runId/plans`, () => HttpResponse.json([])),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
   );
 });
@@ -145,7 +134,7 @@ describe("AgentChatCard", () => {
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const confirmation = await screen.findByRole("button", { name: "确认开始规划" });
+    const confirmation = await screen.findByRole("button", { name: "确认开始" });
     expect(confirmation).toBeEnabled();
     expect(checks).toBe(1);
     expect(requests).toHaveLength(0);
@@ -180,7 +169,7 @@ describe("AgentChatCard", () => {
     expect(creations).toBe(0);
 
     fireEvent.keyDown(input, { key: "Enter", code: "Enter", ctrlKey: true, isComposing: false });
-    expect(await screen.findByRole("button", { name: "确认开始规划" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "确认开始" })).toBeEnabled();
     expect(checks).toBe(1);
     expect(creations).toBe(0);
   });
@@ -248,7 +237,7 @@ describe("AgentChatCard", () => {
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    expect(await screen.findByRole("button", { name: "确认开始规划" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "确认开始" })).toBeEnabled();
 
     await user.clear(input);
     await user.type(input, "改为规划夜景镜头。");
@@ -256,7 +245,7 @@ describe("AgentChatCard", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("运行前配置当前不可用。");
     expect(client.getQueryData(["run-preflight", PROJECT_ID, AGENT_ID, AGENT_VERSION, CONVERSATION_ID])).toEqual(PREFLIGHT);
     const review = screen.getByRole("region", { name: "运行前确认" });
-    expect(within(review).queryByRole("button", { name: "确认开始规划" })).not.toBeInTheDocument();
+    expect(within(review).queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
     expect(within(review).queryByText(/mock-storyboard-v1/)).not.toBeInTheDocument();
     expect(input).toHaveValue("改为规划夜景镜头。");
     expect(checks).toBe(2);
@@ -280,7 +269,7 @@ describe("AgentChatCard", () => {
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    await user.click(await screen.findByRole("button", { name: "确认开始规划" }));
+    await user.click(await screen.findByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(creations).toBe(1));
 
     const nextDraft = "下一次任务改为拍摄雨中的街道。";
@@ -330,10 +319,10 @@ describe("AgentChatCard", () => {
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    await screen.findByRole("button", { name: "确认开始规划" });
+    await screen.findByRole("button", { name: "确认开始" });
     expect(operations).toEqual(["create-conversation", "preflight"]);
     expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(TASK_TEXT);
-    await user.click(screen.getByRole("button", { name: "确认开始规划" }));
+    await user.click(screen.getByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(operations).toEqual(["create-conversation", "preflight", "create-run"]));
   });
 
@@ -358,7 +347,7 @@ describe("AgentChatCard", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText(/本会话已有 1 轮消息，将继承 2 个精确素材绑定/)).toBeInTheDocument();
     expect(screen.getByText("保留早期背景和最近交流，部分历史未纳入本轮；完整记录仍可查看。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "确认开始规划" }));
+    await user.click(screen.getByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(screen.getAllByRole("article", { name: "你" })).toHaveLength(2));
     cleanup();
     mountCard();
@@ -397,9 +386,9 @@ describe("AgentChatCard", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
     expect(input).toHaveValue("等待期间改成新的想法");
     expect(screen.queryByRole("article", { name: "待发送" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "确认开始规划" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发送" }));
-    expect(await screen.findByRole("button", { name: "确认开始规划" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "确认开始" })).toBeEnabled();
     expect(screen.getByRole("article", { name: "待发送" })).toHaveTextContent("等待期间改成新的想法");
   });
 
@@ -452,7 +441,7 @@ describe("AgentChatCard", () => {
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    await user.click(await screen.findByRole("button", { name: "确认开始规划" }));
+    await user.click(await screen.findByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(started).toBe(true));
     await user.click(screen.getByRole("button", { name: "新建会话" }));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
@@ -465,25 +454,17 @@ describe("AgentChatCard", () => {
     expect(currentConversationId).toBe("conversation-new");
   });
 
-  it("returns to the active run's conversation so its approval remains reachable", async () => {
-    const active = run({ status: "WAITING_APPROVAL" });
+  it("returns to the active run's conversation so its progress and stop control stay reachable", async () => {
+    const active = run({ status: "RUNNING" });
     const selected = conversation({ id: "conversation-other", title: "另一会话" });
     storedConversations = [selected, conversation()]; currentConversationId = selected.id;
     storedRuns = [active];
-    server.use(
-      http.get(`${RUNS_URL}/:runId/plans`, () => HttpResponse.json([pendingPlan(active.id)])),
-      http.get(`/api/v1/projects/${PROJECT_ID}/plans/:planId/steps/:stepKey/candidates`, () => HttpResponse.json([])),
-    );
     mountCard(active);
     const user = userEvent.setup();
     expect(await screen.findByRole("button", { name: "返回运行会话" })).toBeEnabled();
-    expect(screen.queryByRole("region", { name: "待审批执行计划" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "返回运行会话" }));
-    const approval = await screen.findByRole("region", { name: "待审批执行计划" });
-    expect(within(approval).getByText("等待审批的镜头图片计划")).toBeInTheDocument();
-    expect(within(approval).getByText("已确认 0 / 1")).toBeInTheDocument();
-    expect(within(approval).getByRole("button", { name: "确认执行此计划" })).toBeDisabled();
+    expect(await screen.findByRole("region", { name: "任务对话" })).toHaveTextContent(TASK_TEXT);
     expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "返回运行会话" })).not.toBeInTheDocument();
   });

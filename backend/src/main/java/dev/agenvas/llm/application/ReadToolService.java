@@ -68,8 +68,7 @@ public class ReadToolService {
         data.put("aspectRatio", project.aspectRatio().name());
         data.put("status", project.status().name());
         ObjectNode limits = data.putObject("runLimits");
-        for (String field : new String[] {"maxModelTurns", "maxToolExecutions",
-                "maxImages", "maxVideos", "maxShots"}) {
+        for (String field : new String[] {"maxModelTurns", "maxToolExecutions"}) {
             JsonNode value = run.policySnapshot().path(field);
             if (!value.isIntegralNumber() || value.intValue() < 0) {
                 throw new IllegalStateException("Run policy snapshot is malformed");

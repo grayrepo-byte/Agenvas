@@ -1,10 +1,6 @@
 import type { Connection, Edge } from "@xyflow/react";
-import type { Agent, CanvasItem, ReviseArtifactRequest } from "../../shared/api/client";
+import type { Agent, CanvasItem } from "../../shared/api/client";
 import { hasCurrentVersion } from "./versionedArtifact";
-
-/** One entry of the immutable exact-version reference list a content version carries. */
-export type ArtifactInputReference =
-  NonNullable<NonNullable<CanvasItem["artifact"]>["currentVersion"]>["inputReferences"][number];
 
 /** Visual relationships are projections, never execution dependencies or generation commands. */
 export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
@@ -61,6 +57,8 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
 
   // A visible current version can name only visible exact-version inputs. Historical
   // references stay in the Artifact record; we must not draw them to a newer version.
+  // 精确版本输入（视频所依据的输入图片）由生成时固定，没有可单独修改或删除的关系记录，
+  // 因此只做展示，不给选中与删除手势。
   for (const output of items) {
     if (!output.artifact?.currentVersion) continue;
     for (const reference of output.artifact.currentVersion.inputReferences) {
@@ -73,6 +71,8 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         target: output.id,
         targetHandle: "artifact-input",
         className: "relation-edge relation-edge--reference",
+        deletable: false,
+        selectable: false,
       });
     }
   }
@@ -100,62 +100,20 @@ export function inputConnectionUpdate(items: CanvasItem[], connection: Connectio
   return bindings ? { agent: target.agent, bindings } : null;
 }
 
-/** A hand-drawn reference points from the referenced version to its consuming Artifact. */
-export function semanticConnectionRevision(items: CanvasItem[], connection: Connection | Edge):
-  { artifactId: string; revision: ReviseArtifactRequest | null } | null {
-  if (connection.sourceHandle !== "artifact-output" ||
-      connection.targetHandle !== "artifact-input") return null;
-  const reference = items.find((item) => item.id === connection.source)?.artifact;
-  const consumer = items.find((item) => item.id === connection.target)?.artifact;
-  if (!reference?.currentVersionId || !consumer?.currentVersion ||
-      reference.id === consumer.id) return null;
-  const content = consumer.currentVersion.content;
-  // A selected v1 shot needs an explicit duration edit before a new v2 revision.
-  if ("durationMs" in content) return null;
-  const versionId = reference.currentVersionId;
-  let next: ReviseArtifactRequest["content"];
-  if ((consumer.kind === "CHARACTER" || consumer.kind === "SCENE") &&
-      reference.kind === "IMAGE" && "referenceVersionIds" in content &&
-      Array.isArray(content.referenceVersionIds)) {
-    if (content.referenceVersionIds.includes(versionId)) {
-      return { artifactId: consumer.id, revision: null };
-    }
-    next = { ...content, referenceVersionIds: [...content.referenceVersionIds, versionId] };
-  } else if (consumer.kind === "SHOT" && reference.kind === "CHARACTER" &&
-      "characterVersionIds" in content && Array.isArray(content.characterVersionIds)) {
-    if (content.characterVersionIds.includes(versionId)) {
-      return { artifactId: consumer.id, revision: null };
-    }
-    next = { ...content, characterVersionIds: [...content.characterVersionIds, versionId] };
-  } else if (consumer.kind === "SHOT" && reference.kind === "SCENE" &&
-      "sceneVersionId" in content && typeof content.sceneVersionId === "string") {
-    if (content.sceneVersionId === versionId) {
-      return { artifactId: consumer.id, revision: null };
-    }
-    next = { ...content, sceneVersionId: versionId };
-  } else {
-    return null;
-  }
-  return { artifactId: consumer.id,
-    revision: { expectedVersion: consumer.version, content: next } };
+/**
+ * Drag feedback for React Flow. It reuses the same predicate as the commit path so a highlighted
+ * drop target can never be one the server write would reject, and vice versa. Hand-drawn relations
+ * only ever create Agent input bindings; two artifacts are never connected by a gesture.
+ */
+export function isCanvasConnectionValid(items: CanvasItem[], connection: Connection | Edge) {
+  return inputConnectionUpdate(items, connection) !== null;
 }
 
 /**
- * Drag feedback for React Flow. It reuses the same two predicates as the commit path so a
- * highlighted drop target can never be one the server write would reject, and vice versa
- * ([inputConnectionUpdate] for Agent inputs, [semanticConnectionRevision] for references).
+ * 卡片用于接线的连接点；`null` 表示当前还接不了。Artifact 卡片的连接点只承载投影出来的
+ * 精确版本输入线：手工拖动落在 Artifact 卡片上始终无效，只有 Agent 卡片能接手工连线
+ * （见 [isCanvasConnectionValid]）。
  */
-export function isCanvasConnectionValid(items: CanvasItem[], connection: Connection | Edge) {
-  if (connection.targetHandle === "artifact-input") {
-    return semanticConnectionRevision(items, connection) !== null;
-  }
-  if (connection.targetHandle === "agent-input") {
-    return inputConnectionUpdate(items, connection) !== null;
-  }
-  return false;
-}
-
-/** The handle a card receives manual relations on; `null` means it can receive none yet. */
 export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifact-input" | null {
   if (item.agent) return "agent-input";
   return hasCurrentVersion(item.artifact) ? "artifact-input" : null;
@@ -163,63 +121,23 @@ export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifac
 
 /** What a user may remove behind a projected edge, or `null` when the edge is not an editable relation. */
 export type CanvasRelationRemoval =
-  | { kind: "inputBinding"; agent: Agent; bindingId: string }
-  | { kind: "reference"; item: CanvasItem; reference: ArtifactInputReference };
+  | { kind: "inputBinding"; agent: Agent; bindingId: string };
 
 /**
  * Resolves the relation a selected edge stands for, so deleting a line writes through the same
- * application services a card action would use. Agent output-group membership has no relation
- * record, and a required scene reference can only be replaced, so both return `null`.
+ * application services a card action would use. Only Agent input bindings are removable: output-group
+ * membership and exact-version input references have no separately editable relation record, so both
+ * return `null`.
  */
 export function canvasRelationRemoval(items: CanvasItem[],
   edge: Edge): CanvasRelationRemoval | null {
-  if (edge.sourceHandle !== "artifact-output") return null;
-  if (edge.targetHandle === "agent-input") {
-    const source = items.find((item) => item.id === edge.source)?.artifact;
-    const target = items.find((item) => item.id === edge.target);
-    const binding = source
-      ? target?.agent?.bindings.find((candidate) => candidate.artifactId === source.id)
-      : undefined;
-    return target?.agent && binding
-      ? { kind: "inputBinding", agent: target.agent, bindingId: binding.id }
-      : null;
-  }
-  if (edge.targetHandle !== "artifact-input") return null;
-  // The projection draws one edge per visible reference and a consumer names a version at most once,
-  // so the source's current version id identifies the clicked edge. semanticReferenceRemoval then
-  // re-checks role, order and the required-scene rule before anything is written.
-  const versionId = items.find((item) => item.id === edge.source)?.artifact?.currentVersionId;
-  const consumer = items.find((item) => item.id === edge.target);
-  if (!versionId || !consumer?.artifact?.currentVersion) return null;
-  const reference = consumer.artifact.currentVersion.inputReferences
-    .find((candidate) => candidate.versionId === versionId);
-  return reference && semanticReferenceRemoval(consumer, reference)
-    ? { kind: "reference", item: consumer, reference }
+  if (edge.sourceHandle !== "artifact-output" || edge.targetHandle !== "agent-input") return null;
+  const source = items.find((item) => item.id === edge.source)?.artifact;
+  const target = items.find((item) => item.id === edge.target);
+  const binding = source
+    ? target?.agent?.bindings.find((candidate) => candidate.artifactId === source.id)
+    : undefined;
+  return target?.agent && binding
+    ? { kind: "inputBinding", agent: target.agent, bindingId: binding.id }
     : null;
-}
-
-/** Removes only optional schema-backed references; a SHOT scene must be replaced, not deleted. */
-export function semanticReferenceRemoval(item: CanvasItem,
-  reference: ArtifactInputReference): ReviseArtifactRequest | null {
-  const artifact = item.artifact;
-  if (!artifact?.currentVersion) return null;
-  const content = artifact.currentVersion.content;
-  if ("durationMs" in content) return null;
-  let next: ReviseArtifactRequest["content"];
-  if ((artifact.kind === "CHARACTER" || artifact.kind === "SCENE") &&
-      reference.role === "referenceImage" && reference.kind === "IMAGE" &&
-      "referenceVersionIds" in content && Array.isArray(content.referenceVersionIds) &&
-      content.referenceVersionIds[reference.order] === reference.versionId) {
-    next = { ...content, referenceVersionIds: content.referenceVersionIds.filter(
-      (versionId) => versionId !== reference.versionId) };
-  } else if (artifact.kind === "SHOT" && reference.role === "character" &&
-      reference.kind === "CHARACTER" && "characterVersionIds" in content &&
-      Array.isArray(content.characterVersionIds) &&
-      content.characterVersionIds[reference.order] === reference.versionId) {
-    next = { ...content, characterVersionIds: content.characterVersionIds.filter(
-      (versionId) => versionId !== reference.versionId) };
-  } else {
-    return null;
-  }
-  return { expectedVersion: artifact.version, content: next };
 }

@@ -107,18 +107,6 @@ public interface TaskRepository {
     /** ComfyUI 视频与图片提交共用同一个持久化槽位。 */
     List<Task> claimDueComfyVideo(String workerId, Instant now, Instant leaseUntil);
 
-    /** 按客户端固定命令键查找项目导出，供幂等重放。 */
-    Optional<Task> findExportByStepKey(UUID ownerId, UUID projectId, String stepKey);
-
-    /** 查询项目导出历史，不依赖活动 Agent Run。 */
-    List<Task> listExports(UUID ownerId, UUID projectId);
-
-    /** 对 READY 导出直接取消，对运行中导出原子记录取消请求。 */
-    boolean requestExportCancellation(UUID projectId, UUID taskId, Instant now);
-
-    /** 只认领到期的项目级导出任务。 */
-    List<Task> claimDueExports(String workerId, int limit, Instant now, Instant leaseUntil);
-
     /** 只认领已批准且当前视频适配器可处理的任务。 */
     List<Task> claimDueVideos(String workerId, int limit, Instant now, Instant leaseUntil);
 

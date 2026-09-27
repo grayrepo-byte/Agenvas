@@ -27,9 +27,7 @@ approval advancement, and simulated progress are omitted.
 ContentCanvasCard.tsx and ContentCanvasCard.css adapt content bars and source
 chips from ContextCards.tsx. ArtifactCardFrame.tsx and ArtifactCardFrame.css
 share the contextual action layout from SelectionActions.tsx across content
-and media cards. ContentEditorFrame.tsx and ContentArtifactEditor.css (used by
-StructuredArtifactEditor and ShotRedoEditor) share the ChatComposer and
-PromptBar composer hierarchy. MediaDraftEditor.tsx
+and media cards. MediaDraftEditor.tsx
 and MediaDraftEditor.css adapt reference chips, popovers and compact task rows:
 https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ContextCards.tsx
 https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/SelectionActions.tsx

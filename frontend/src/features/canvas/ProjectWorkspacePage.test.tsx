@@ -12,24 +12,20 @@ import type { Agent, CanvasCommand, CanvasItem, ProjectSnapshot } from "../../sh
 
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
-/** One persisted character with an optional exact-version reference. */
-function referenceCard(linked: boolean): CanvasItem {
+/** One persisted image artifact with an archived UPLOAD version. */
+function imageCard(): CanvasItem {
   const now = "2026-09-24T00:00:00Z";
   return {
-    id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id",
+    id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id",
     title: "Hero",
     x: 20, y: 20, width: 320, height: 240, zIndex: 0, groupId: null,
     locked: false, version: 0, agent: null,
     artifact: {
-      id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "Hero",
-      currentVersionId: linked ? "character-v1" : "character-v2",
-      version: linked ? 3 : 4, createdAt: now, updatedAt: now,
+      id: "image-id", projectId: "project-1", kind: "IMAGE", title: "Hero",
+      currentVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
       currentVersion: {
-        id: linked ? "character-v1" : "character-v2", versionNo: linked ? 1 : 2,
-        schemaVersion: 1, content: { name: "Hero", description: "Lead",
-          appearance: "Blue coat", referenceVersionIds: linked ? [imageVersionId] : [] },
-        inputReferences: linked ? [{ versionId: imageVersionId, role: "referenceImage",
-          order: 0, kind: "IMAGE" }] : [],
+        id: imageVersionId, versionNo: 1, schemaVersion: 1,
+        content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now,
       },
     },
@@ -37,7 +33,7 @@ function referenceCard(linked: boolean): CanvasItem {
 }
 
 function textCard(): CanvasItem {
-  const item = referenceCard(false);
+  const item = imageCard();
   return { ...item, id: "text-card", subjectId: "text-id", title: "Notes", width: 280, height: 180,
     artifact: item.artifact ? { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",
       currentVersionId: "text-v2", currentVersion: { ...item.artifact.currentVersion!, id: "text-v2",
@@ -168,7 +164,7 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
     expect(screen.getByRole("menuitem", { name: "文字" })).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
@@ -203,12 +199,12 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
     await user.click(screen.getByLabelText("项目画布"));
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
     screen.getByRole("menuitem", { name: "文字" }).blur();
     await user.keyboard("{Escape}");
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
@@ -223,7 +219,9 @@ describe("ProjectWorkspacePage", () => {
         id: "project-1", name: "Close project", status: "ACTIVE",
       })),
       http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [referenceCard(true)] })),
+        HttpResponse.json({ items: [textCard()] })),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/text-generations", () =>
+        HttpResponse.json([])),
     );
     render(
       <QueryClientProvider client={createQueryClient()}>
@@ -234,14 +232,14 @@ describe("ProjectWorkspacePage", () => {
     );
 
     const user = userEvent.setup();
-    fireEvent.doubleClick(await screen.findByRole("article", { name: "Hero · 角色" }));
+    fireEvent.doubleClick(await screen.findByRole("article", { name: "Notes · 文字" }));
     expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByLabelText("名称")).toHaveFocus());
-    screen.getByLabelText("名称").blur();
+    await waitFor(() => expect(screen.getByLabelText("文字生成提示词")).toHaveFocus());
+    screen.getByLabelText("文字生成提示词").blur();
     await user.keyboard("{Escape}");
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("article", { name: "Hero · 角色" }));
+    fireEvent.click(screen.getByRole("article", { name: "Notes · 文字" }));
     expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
@@ -287,8 +285,7 @@ describe("ProjectWorkspacePage", () => {
 
   it("keeps one SSE connection across snapshots and invalidates auxiliary views after a gap", async () => {
     const sources: TrackingEventSource[] = [];
-    let proposalReads = 0;
-    let exportReads = 0;
+    let snapshotReads = 0;
     class TrackingEventSource extends EventTarget {
       onopen: (() => void) | null = null;
       onerror: (() => void) | null = null;
@@ -311,13 +308,13 @@ describe("ProjectWorkspacePage", () => {
           HttpResponse.json({ id: params.projectId, name: "SSE project", status: "ACTIVE" })),
         http.get("/api/v1/projects/:projectId/canvas/items", () =>
           HttpResponse.json({ items: [] })),
-        http.get("/api/v1/projects/:projectId/export-proposals", () => {
-          proposalReads++;
-          return HttpResponse.json([]);
-        }),
-        http.get("/api/v1/projects/:projectId/exports", () => {
-          exportReads++;
-          return HttpResponse.json([]);
+        http.get("/api/v1/projects/:projectId/snapshot", ({ params }) => {
+          snapshotReads++;
+          return HttpResponse.json({
+            project: { id: params.projectId, name: "SSE project", status: "ACTIVE" },
+            canvas: { items: [] }, agents: [], activeRun: null, activeTasks: [],
+            unknownTasks: [], snapshotSeq: 0,
+          });
         }),
       );
       const queryClient = createQueryClient();
@@ -329,8 +326,9 @@ describe("ProjectWorkspacePage", () => {
         </QueryClientProvider>,
       );
       await waitFor(() => expect(sources).toHaveLength(1));
-      await userEvent.setup().click(screen.getByRole("button", { name: "导出" }));
-      await waitFor(() => expect([proposalReads, exportReads]).toEqual([1, 1]));
+      // 导出清单是普通下载链接：画布不再读取导出或导出提案接口。
+      expect(screen.getByRole("link", { name: "导出清单" })).toHaveAttribute("href",
+        "/api/v1/projects/project-1/export-manifest");
       const current = queryClient.getQueryData<ProjectSnapshot>(["snapshot", "project-1"]);
       expect(current).toBeDefined();
       queryClient.setQueryData(["snapshot", "project-1"], { ...current, snapshotSeq: 5 });
@@ -341,12 +339,12 @@ describe("ProjectWorkspacePage", () => {
         ["agent-conversations", "project-1", "agent-1"],
         ["conversation-runs", "project-1", "agent-1", "conversation-1"],
         ["run-history", "project-1", "agent-1"],
-        ["run-history-plans", "project-1", "run-1"],
         ["run-history-tasks", "project-1", "run-1"],
-        ["provider-attempts", "project-1", "task-1"],
-        ["plans", "project-1", "run-1"],
+        ["run-actions", "project-1", "run-1"],
         ["run-tasks", "project-1", "run-1"],
-        ["keyframe-selection", "project-1", "run-1"],
+        ["direct-media-tasks", "project-1"],
+        ["media-draft", "project-1"],
+        ["project-usage", "project-1"],
       ];
       for (const key of auxiliaryKeys) queryClient.setQueryData(key, { staleView: true });
       sources[0]?.dispatchEvent(new MessageEvent("agent.conversation.changed", {
@@ -363,6 +361,7 @@ describe("ProjectWorkspacePage", () => {
         queryClient.setQueryData(key, { staleView: true });
       }
       expect(sources).toHaveLength(1);
+      const readsBeforeGap = snapshotReads;
       sources[0]?.dispatchEvent(new MessageEvent("task.status.changed", {
         data: JSON.stringify({
           projectId: "project-1", seq: 7, eventId: crypto.randomUUID(),
@@ -373,7 +372,8 @@ describe("ProjectWorkspacePage", () => {
         lastEventId: "7",
       }));
       await waitFor(() => expect(sources).toHaveLength(2));
-      await waitFor(() => expect([proposalReads, exportReads]).toEqual([2, 2]));
+      // 序号缺口必须重新取回一致性快照，而不是只重连。
+      await waitFor(() => expect(snapshotReads).toBeGreaterThan(readsBeforeGap));
       expect(sources[0]?.closed).toBe(true);
       for (const key of auxiliaryKeys) {
         expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
@@ -743,7 +743,7 @@ describe("ProjectWorkspacePage", () => {
     expect(generationRequests).toBe(0);
   });
 
-  it.each(["WAITING_APPROVAL", "WAITING_TASKS", "BLOCKED"])(
+  it.each(["WAITING_TASKS", "BLOCKED"])(
     "does not show an external %s notice when the Agent is not on the canvas", async (status) => {
       let detailReads = 0;
       server.use(
@@ -760,11 +760,11 @@ describe("ProjectWorkspacePage", () => {
           id: "project-1", name: "Hidden Agent", status: "ACTIVE",
         })),
         http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
-        http.get("/api/v1/projects/:projectId/runs/:runId/plans", () => {
+        http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => {
           detailReads++;
           return HttpResponse.json([]);
         }),
-        http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => {
+        http.get("/api/v1/projects/:projectId/runs/:runId/actions", () => {
           detailReads++;
           return HttpResponse.json([]);
         }),
@@ -776,7 +776,7 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>);
 
       await screen.findByRole("heading", { name: "Hidden Agent" });
-      for (const label of ["待审批执行计划", "选择镜头关键帧", "运行已阻断"]) {
+      for (const label of ["运行已阻断", "任务对话"]) {
         expect(screen.queryByRole("region", { name: label })).not.toBeInTheDocument();
       }
       expect(screen.queryByRole("link", { name: "调用日志" })).not.toBeInTheDocument();
@@ -784,12 +784,12 @@ describe("ProjectWorkspacePage", () => {
     },
   );
 
-  it("restores the existing Agent from resources with its original conversation and approval", async () => {
+  it("restores the existing Agent from resources with its original conversation", async () => {
     const now = "2026-09-26T00:00:00Z";
     const agent: Agent = { id: "original-agent", projectId: "project-1", profileKey: "creator",
       profileVersion: 1, name: "Original creator", instruction: "Keep the existing conversation",
       outputGroupId: "original-output", version: 0, createdAt: now, updatedAt: now, bindings: [] };
-    const activeRun = { id: "original-run", agentInstanceId: agent.id, status: "WAITING_APPROVAL",
+    const activeRun = { id: "original-run", agentInstanceId: agent.id, status: "RUNNING",
       conversationId: `conversation-${agent.id}`, conversationTurn: 1,
       instruction: "Create an image of the garden", createdAt: now };
     let items: CanvasItem[] = [];
@@ -823,16 +823,11 @@ describe("ProjectWorkspacePage", () => {
           locked: false, version: 0, artifact: null, agent }];
         return HttpResponse.json({ items });
       }),
-      http.get("/api/v1/projects/:projectId/runs/:runId/plans", ({ params }) => {
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", ({ params }) => {
         expect(params.runId).toBe(activeRun.id);
-        return HttpResponse.json([{ id: "original-plan", projectId: "project-1", runId: activeRun.id,
-          revision: 1, stage: "IMAGE", status: "PENDING", objective: "Garden image awaiting approval",
-          steps: [{ stepKey: "garden", kind: "IMAGE_GENERATION", shotVersionId: "garden-version",
-            imageVersionId: null, input: { prompt: "A quiet garden" } }],
-          estimate: { imageCount: 1, videoCount: 0, costSource: "MOCK_UNPRICED" },
-          workflowVersion: "mock-image-v1", providerConfigVersion: 1, planHash: "a".repeat(64) }]);
+        return HttpResponse.json([]);
       }),
-      http.get("/api/v1/projects/:projectId/plans/:planId/steps/:stepKey/candidates", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId/runs/:runId/actions", () => HttpResponse.json([])),
     );
     render(<QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={["/projects/project-1"]}>
@@ -840,19 +835,16 @@ describe("ProjectWorkspacePage", () => {
       </MemoryRouter>
     </QueryClientProvider>);
     await screen.findByRole("heading", { name: "Original project" });
-    expect(screen.queryByRole("region", { name: "待审批执行计划" })).not.toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "资源" }));
     const resource = (await screen.findByText("Original creator · Agent")).closest("li");
     expect(resource).not.toBeNull();
     await user.click(within(resource!).getByRole("button", { name: "放回画布" }));
 
-    const approval = await screen.findByRole("region", { name: "待审批执行计划" });
-    expect(approval.closest(".agent-chat-card")).toBeInTheDocument();
-    expect(screen.getAllByRole("region", { name: "待审批执行计划" })).toHaveLength(1);
-    expect(within(approval).getByText("Garden image awaiting approval")).toBeInTheDocument();
-    expect(within(approval).getByRole("button", { name: "确认执行此计划" })).toBeDisabled();
-    expect(screen.getByRole("region", { name: "任务对话" })).toHaveTextContent(activeRun.instruction);
+    const conversation = await screen.findByRole("region", { name: "任务对话" });
+    expect(conversation.closest(".agent-chat-card")).toBeInTheDocument();
+    expect(conversation).toHaveTextContent(activeRun.instruction);
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
     expect(screen.queryByRole("link", { name: "调用日志" })).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "项目资源" })).not.toBeInTheDocument();
     expect(placedCommand).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id });
@@ -903,8 +895,7 @@ describe("ProjectWorkspacePage", () => {
           modelId: modelAvailable ? "fixture-model" : null,
           toolCalling: true,
           policySnapshot: { schemaVersion: 2, systemPromptVersion: 2, modelConfigSource: "fixture",
-            modelConfigVersion: 7, maxModelTurns: 12, maxToolExecutions: 40,
-            maxImages: 8, maxVideos: 6, maxShots: 6 },
+            modelConfigVersion: 7, maxModelTurns: 12, maxToolExecutions: 40 },
         });
       }),
       http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
@@ -1033,28 +1024,28 @@ describe("ProjectWorkspacePage", () => {
     const taskInput = within(editorArea).getByLabelText("本次任务");
     fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
     fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
-    expect(await within(editorArea).findByText("确认开始规划")).toBeInTheDocument();
-    expect(within(editorArea).getByText("确认开始规划")).toBeDisabled();
+    expect(await within(editorArea).findByText("确认开始")).toBeInTheDocument();
+    expect(within(editorArea).getByText("确认开始")).toBeDisabled();
     expect(starts).toBe(0);
     modelAvailable = true;
     fireEvent.change(taskInput, { target: { value: "规划三个镜头！" } });
     fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
     fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
-    await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
+    await waitFor(() => expect(within(editorArea).getByText("确认开始")).not.toBeDisabled());
     expect(within(editorArea).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();
     expect(within(editorArea).getByText(/当前模型看不到图片像素、视频帧或音频/)).toBeInTheDocument();
     expect(within(editorArea).getByText(/Bound brief/)).toBeInTheDocument();
-    fireEvent.click(within(editorArea).getByText("确认开始规划"));
+    fireEvent.click(within(editorArea).getByText("确认开始"));
     await waitFor(() => expect(starts).toBe(1));
-    await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
-    fireEvent.click(within(editorArea).getByText("确认开始规划"));
+    await waitFor(() => expect(within(editorArea).getByText("确认开始")).not.toBeDisabled());
+    fireEvent.click(within(editorArea).getByText("确认开始"));
     await waitFor(() => expect(starts).toBe(2));
     expect(idempotencyKeys[0]).toBeTruthy();
     expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
-    await waitFor(() => expect(within(editorArea).queryByText("确认开始规划")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(editorArea).queryByText("确认开始")).not.toBeInTheDocument());
     fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
-    await waitFor(() => expect(within(editorArea).getByText("确认开始规划")).not.toBeDisabled());
-    fireEvent.click(within(editorArea).getByText("确认开始规划"));
+    await waitFor(() => expect(within(editorArea).getByText("确认开始")).not.toBeDisabled());
+    fireEvent.click(within(editorArea).getByText("确认开始"));
     await waitFor(() => expect(starts).toBe(3));
     expect(idempotencyKeys[2]).not.toBe(idempotencyKeys[1]);
     expect(await within(editorArea).findByRole("button", { name: "停止" })).toBeEnabled();
@@ -1062,84 +1053,6 @@ describe("ProjectWorkspacePage", () => {
     await waitFor(() => expect(screen.getByText("准备就绪")).toBeInTheDocument());
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "会话列表" }));
     expect(await within(card as HTMLElement).findByRole("button", { name: /之前的创作/ })).toBeInTheDocument();
-  });
-
-  it("starts an explicitly scoped redo Run only for a bound current shot", async () => {
-    const agentId = crypto.randomUUID();
-    const agentItemId = crypto.randomUUID();
-    const shotId = crypto.randomUUID();
-    const shotItemId = crypto.randomUUID();
-    const versionId = crypto.randomUUID();
-    let submitted: unknown = null;
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({
-        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
-      })),
-      http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json({
-        id: params.projectId, name: "Redo canvas", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [
-        { id: agentItemId, subjectType: "AGENT", subjectId: agentId,
-          title: "Creator",
-          x: 10, y: 10, width: 340, height: 320, zIndex: 0, groupId: null,
-          locked: false, version: 0, artifact: null,
-          agent: { id: agentId, projectId: "project-1", profileKey: "creator",
-            profileVersion: 1, name: "Redo agent", instruction: "Work only on the chosen shot",
-            outputGroupId: crypto.randomUUID(), version: 0,
-            bindings: [{ id: crypto.randomUUID(), artifactId: shotId,
-              selectedVersionId: versionId, bindingType: "INPUT" }] } },
-        { id: shotItemId, subjectType: "ARTIFACT", subjectId: shotId,
-          title: "Second shot",
-          x: 380, y: 10, width: 280, height: 180, zIndex: 1, groupId: null,
-          locked: false, version: 0, agent: null,
-          artifact: { id: shotId, projectId: "project-1", kind: "SHOT", title: "Second shot",
-            currentVersionId: versionId, version: 1,
-            currentVersion: { id: versionId, versionNo: 2, schemaVersion: 1,
-              content: { order: 2, durationMs: 5000, description: "Revised",
-                camera: "Close", action: "Pour", characterVersionIds: [],
-                sceneVersionId: crypto.randomUUID() }, inputReferences: [],
-              createdByKind: "USER", runId: null } } },
-      ] })),
-      http.get("/api/v1/projects/:projectId/runs/preflight", () => HttpResponse.json({
-        agentId, agentVersion: 0, agentName: "Redo agent",
-        conversationId: `conversation-${agentId}`, conversationVersion: 0,
-        conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false,
-        agentInstruction: "Work only on the chosen shot",
-        bindings: [{ artifactId: shotId, selectedVersionId: versionId,
-          artifactTitle: "Second shot", artifactKind: "SHOT" }],
-        modelAvailable: true, providerAdapter: "Mock", modelId: "mock-storyboard-v1",
-        toolCalling: true, policySnapshot: { schemaVersion: 2, systemPromptVersion: 2,
-          modelConfigSource: "mock", modelConfigVersion: 1,
-          maxModelTurns: 12, maxToolExecutions: 40,
-          maxImages: 8, maxVideos: 6, maxShots: 6 },
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "test-token",
-      })),
-      http.post("/api/v1/projects/:projectId/runs", async ({ request }) => {
-        submitted = await request.json();
-        return HttpResponse.json({ id: crypto.randomUUID(), agentInstanceId: agentId,
-          conversationId: `conversation-${agentId}`, conversationTurn: 1,
-          instruction: "只重做第二镜头", createdAt: "2026-09-23T00:00:00Z", status: "QUEUED" }, { status: 202 });
-      }),
-    );
-    const user = userEvent.setup();
-    render(<QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={["/projects/project-1"]}>
-        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
-      </MemoryRouter>
-    </QueryClientProvider>);
-    const heading = await screen.findByText("Redo agent");
-    fireEvent.click(heading);
-    const editorArea = heading.closest("article") as HTMLElement;
-    await user.selectOptions(within(editorArea).getByLabelText("运行范围"), shotId);
-    await user.type(within(editorArea).getByLabelText("本次任务"), "只重做第二镜头");
-    fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
-    fireEvent.click(await within(editorArea).findByText("确认开始规划"));
-    await waitFor(() => expect(submitted).toMatchObject({ agentId,
-      redoShotArtifactId: shotId, expectedAgentVersion: 0,
-      instruction: "只重做第二镜头", selectedItemIds: [agentItemId] }));
   });
 
   it("loads the archived original for a generated image card", async () => {
@@ -1240,61 +1153,5 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByLabelText("Demo clip 的视频")).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(screen.getByText("演示视频")).toBeInTheDocument();
-  });
-
-  it("removes an optional card reference only after the CAS revision is saved", async () => {
-    let linked = true;
-    let revisions = 0;
-    let rejectOnce = true;
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({
-        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
-      })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
-        id: "project-1", name: "Reference project", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [referenceCard(linked)] })),
-      http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "test-token",
-      })),
-      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions",
-        async ({ request, params }) => {
-          revisions++;
-          expect(params.artifactId).toBe("character-id");
-          expect(await request.json()).toEqual({ expectedVersion: 3, content: {
-            name: "Hero", description: "Lead", appearance: "Blue coat",
-            referenceVersionIds: [],
-          } });
-          if (rejectOnce) {
-            rejectOnce = false;
-            return HttpResponse.json({ title: "版本冲突", detail: "请刷新后重试。",
-              code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
-            { status: 409, headers: { "Content-Type": "application/problem+json" } });
-          }
-          linked = false;
-          return HttpResponse.json(referenceCard(false).artifact, { status: 201 });
-        }),
-    );
-    render(
-      <QueryClientProvider client={createQueryClient()}>
-        <MemoryRouter initialEntries={["/projects/project-1"]}>
-          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    fireEvent.click(await screen.findByRole("article", { name: "Hero · 角色" }));
-    fireEvent.click(await screen.findByRole("button", { name: "卡片详情" }));
-    expect(screen.getByText("素材引用（1 个精确版本）")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "移除引用" }));
-    expect(await screen.findByText("请刷新后重试。")).toBeInTheDocument();
-    expect(screen.getByText("素材引用（1 个精确版本）")).toBeInTheDocument();
-    expect(screen.getByText("内容有冲突，当前修改未保存")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "移除引用" }));
-    await waitFor(() => expect(screen.queryByText("素材引用（1 个精确版本）"))
-      .not.toBeInTheDocument());
-    expect(revisions).toBe(2);
-    expect(screen.getAllByText("已保存").length).toBeGreaterThan(0);
   });
 });

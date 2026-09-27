@@ -69,16 +69,14 @@ class MediaCloudCapabilityPostgresIT {
         assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0))
                 .anyMatch(candidate -> candidate.binding().capabilityId().equals(nanoBanana.id())
                         && !candidate.realGenerationTested());
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 3, true))
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 3))
                 .noneMatch(candidate -> candidate.binding().capabilityId().equals(video.id()));
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4, false))
-                .noneMatch(candidate -> candidate.binding().capabilityId().equals(video.id()));
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4, true))
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4))
                 .anyMatch(candidate -> candidate.binding().capabilityId().equals(video.id())
                         && !candidate.realGenerationTested());
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 15, true))
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 15))
                 .anyMatch(candidate -> candidate.binding().capabilityId().equals(video.id()));
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 16, true))
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 16))
                 .noneMatch(candidate -> candidate.binding().capabilityId().equals(video.id()));
         assertThatThrownBy(() -> catalog.resolve(video.id(), Task.Kind.VIDEO_GENERATION, 3))
                 .isInstanceOf(ApiProblemException.class);

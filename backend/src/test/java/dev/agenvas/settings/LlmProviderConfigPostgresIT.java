@@ -31,7 +31,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -170,10 +169,10 @@ class LlmProviderConfigPostgresIT {
         assertThat(gateway.modelDetails().modelId()).isEqualTo("test-tool-model");
         assertThat(gateway.modelDetails().providerAdapter()).isEqualTo("OpenAI-compatible");
         assertThat(gateway.capabilities().toolCalling()).isFalse();
-        assertThatThrownBy(() -> gateway.call(List.of(new UserMessage("No network call")),
-                List.of(), java.util.Map.of()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("unverified");
+        // The Agent path refuses an unverified tool protocol before any request is sent; direct text
+        // generation may still use the stored endpoint, so the guard sits on requireToolCalling.
+        assertThatThrownBy(() -> gateway.requireToolCalling(gateway.configIdentity()))
+                .isInstanceOf(ApiProblemException.class);
 
         verifyCredentialBackupRestore();
     }

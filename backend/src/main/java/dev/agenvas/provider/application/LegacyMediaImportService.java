@@ -1,17 +1,14 @@
 package dev.agenvas.provider.application;
 
 import static dev.agenvas.db.Tables.COMFYUI_CONFIG_VERSION;
-import static dev.agenvas.db.Tables.EXECUTION_PLAN;
 import static dev.agenvas.db.Tables.MEDIA_LEGACY_IMPORT_MARKER;
 import static dev.agenvas.db.Tables.MEDIA_LEGACY_ORIGIN_MAP;
-import static dev.agenvas.db.Tables.PLAN_STEP;
 import static dev.agenvas.db.Tables.PROJECT;
 import static dev.agenvas.db.Tables.PROVIDER_ATTEMPT;
 import static dev.agenvas.db.Tables.TASK;
 
 import dev.agenvas.event.application.ProjectEventService;
-import dev.agenvas.plan.application.ExecutionPlan;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
@@ -28,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jooq.DSLContext;
-import org.jooq.impl.DSL;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -56,7 +52,7 @@ public class LegacyMediaImportService implements ApplicationRunner {
     private final JooqMediaCapabilityRepository repository;
     private final MediaCapabilityService catalog;
     private final ProjectEventService events;
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
     private final ComfyUiImageProperties image;
     private final ComfyUiVideoProperties video;
     private final ObjectProvider<ComfyUiClientRegistry> oldRegistry;
@@ -68,7 +64,7 @@ public class LegacyMediaImportService implements ApplicationRunner {
 
     public LegacyMediaImportService(DSLContext dsl, JooqMediaCapabilityRepository repository,
             MediaCapabilityService catalog, ProjectEventService events,
-            PlanProviderProperties provider, ComfyUiImageProperties image,
+            ProviderProperties provider, ComfyUiImageProperties image,
             ComfyUiVideoProperties video, ObjectProvider<ComfyUiClientRegistry> oldRegistry,
             ObjectMapper mapper, Clock clock, TransactionTemplate transactions,
             @Value("${agenvas.recovery-mode:false}") boolean recoveryMode) {
@@ -120,7 +116,6 @@ public class LegacyMediaImportService implements ApplicationRunner {
                 .orderBy(COMFYUI_CONFIG_VERSION.CONFIG_VERSION.desc())
                 .fetch(row -> new OldOrigin(row.value1(), row.value2(), row.value3()));
         Imported imported = origins.isEmpty() ? null : importComfy(origins);
-        staleUnapprovedPlans();
         fenceLegacyTasks(imported);
         dsl.update(MEDIA_LEGACY_IMPORT_MARKER)
                 .set(MEDIA_LEGACY_IMPORT_MARKER.COMPLETED_AT,
@@ -210,43 +205,6 @@ public class LegacyMediaImportService implements ApplicationRunner {
     private static boolean modelName(String value) {
         return value != null && value.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
                 && !value.contains("..") && value.endsWith(".safetensors");
-    }
-
-    private void staleUnapprovedPlans() {
-        List<OldPlan> plans = dsl.select(EXECUTION_PLAN.ID, EXECUTION_PLAN.PROJECT_ID,
-                        EXECUTION_PLAN.RUN_ID, EXECUTION_PLAN.REVISION, EXECUTION_PLAN.STAGE,
-                        PROJECT.OWNER_ID)
-                .from(EXECUTION_PLAN)
-                .join(PROJECT).on(PROJECT.ID.eq(EXECUTION_PLAN.PROJECT_ID))
-                .where(EXECUTION_PLAN.STATUS.in(ExecutionPlan.Status.PENDING.name(),
-                        ExecutionPlan.Status.NEEDS_INPUT.name()))
-                .and(DSL.exists(dsl.selectOne()
-                        .from(PLAN_STEP)
-                        .where(PLAN_STEP.PLAN_ID.eq(EXECUTION_PLAN.ID))
-                        .and(PLAN_STEP.CAPABILITY_ID.isNull())))
-                .fetch(row -> new OldPlan(row.value1(), row.value2(), row.value3(),
-                        row.value4(), ExecutionPlan.Stage.valueOf(row.value5()),
-                        row.value6()));
-        for (OldPlan plan : plans) {
-            events.recordChange(plan.ownerId(), plan.projectId(), () -> {
-                int changed = dsl.update(EXECUTION_PLAN)
-                        .set(EXECUTION_PLAN.STATUS, ExecutionPlan.Status.STALE.name())
-                        .set(EXECUTION_PLAN.UPDATED_AT, clock.instant().atOffset(ZoneOffset.UTC))
-                        .where(EXECUTION_PLAN.ID.eq(plan.id()))
-                        .and(EXECUTION_PLAN.STATUS.in(ExecutionPlan.Status.PENDING.name(),
-                        ExecutionPlan.Status.NEEDS_INPUT.name()))
-                        .execute();
-                if (changed == 0) return ProjectEventService.Change.unchanged(false);
-                ObjectNode payload = mapper.createObjectNode();
-                payload.put("planId", plan.id().toString());
-                payload.put("runId", plan.runId().toString());
-                payload.put("stage", plan.stage().name());
-                payload.put("status", ExecutionPlan.Status.STALE.name());
-                return ProjectEventService.Change.changed(true,
-                        new ProjectEventService.EventDraft("plan.stale", 1,
-                                plan.id(), plan.revision(), payload));
-            });
-        }
     }
 
     private void fenceLegacyTasks(Imported imported) {
@@ -403,8 +361,6 @@ public class LegacyMediaImportService implements ApplicationRunner {
     private record OldOrigin(int configVersion, String origin, String sha256) {}
     private record Imported(UUID connectionId, UUID imageId, UUID videoId,
             Map<Integer, Integer> versions) {}
-    private record OldPlan(UUID id, UUID projectId, UUID runId, int revision,
-            ExecutionPlan.Stage stage, UUID ownerId) {}
     private record OldTask(UUID id, UUID projectId, UUID ownerId, Task.Kind kind,
             Task.Status status, String providerRequestId, String inputJson, long version) {}
     private record OldAttempt(UUID id, UUID candidateRequestId, String originSha256,

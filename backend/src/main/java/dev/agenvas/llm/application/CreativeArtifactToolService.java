@@ -1,7 +1,6 @@
 package dev.agenvas.llm.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
-import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasItem;
@@ -20,25 +19,15 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 实现受限的创作工具：校验 Run 可见范围后调用产物与画布应用服务。 */
+/** 实现受限的产物修订与画布布局工具：校验 Run 可见范围后调用产物与画布应用服务。 */
 @Service
 public class CreativeArtifactToolService {
 
-    /** 角色正文允许字段；引用仅保存已校验的图片版本 ID。 */
-    private static final Set<String> CHARACTER_FIELDS = Set.of(
-            "name", "description", "appearance", "referenceVersionIds");
-    /** 场景正文允许字段；不接受模型提供资产路径或 Provider 配置。 */
-    private static final Set<String> SCENE_FIELDS = Set.of(
-            "name", "location", "timeOfDay", "lighting", "style", "referenceVersionIds");
-    /** 镜头正文允许字段；素材关系必须指向可见的角色和场景版本。 */
-    private static final Set<String> SHOT_FIELDS = Set.of(
-            "title", "order", "durationSeconds", "description", "camera", "action",
-            "characterVersionIds", "sceneVersionId");
     /** Agent 修订请求允许字段，预期版本用于保护并发编辑。 */
     private static final Set<String> REVISE_FIELDS = Set.of(
             "artifactId", "expectedVersion", "title", "content");
 
-    /** 创建产物及验证 Agent 引用版本范围。 */
+    /** 按预期版本修订产物并校验 Agent 可见版本范围。 */
     private final ArtifactService artifacts;
     /** 在业务画布中创建或排列 Agent 输出卡片。 */
     private final CanvasService canvas;
@@ -51,79 +40,6 @@ public class CreativeArtifactToolService {
         this.artifacts = artifacts;
         this.canvas = canvas;
         this.mapper = mapper;
-    }
-
-    /** 创建角色说明，仅允许引用本 Run 可见的图片版本。 */
-    public JsonNode createCharacter(TrustedToolContext context, AgentRun run,
-            UUID operationId, String arguments) {
-        ObjectNode input = parseObject(arguments);
-        allowOnly(input, CHARACTER_FIELDS);
-        String name = requiredText(input, "name", 120);
-        requiredText(input, "description", 4_000);
-        requiredText(input, "appearance", 4_000);
-        verifyReferences(context, run, input.path("referenceVersionIds"), 8, Artifact.Kind.IMAGE);
-        return createOne(context, run, operationId, Artifact.Kind.CHARACTER, name, input,
-                "已创建角色说明");
-    }
-
-    /** 创建场景说明，仅允许引用本 Run 可见的图片版本。 */
-    public JsonNode createScene(TrustedToolContext context, AgentRun run,
-            UUID operationId, String arguments) {
-        ObjectNode input = parseObject(arguments);
-        allowOnly(input, SCENE_FIELDS);
-        String name = requiredText(input, "name", 120);
-        requiredText(input, "location", 500);
-        requiredText(input, "timeOfDay", 80);
-        requiredText(input, "lighting", 1_000);
-        requiredText(input, "style", 1_000);
-        verifyReferences(context, run, input.path("referenceVersionIds"), 8, Artifact.Kind.IMAGE);
-        return createOne(context, run, operationId, Artifact.Kind.SCENE, name, input,
-                "已创建场景说明");
-    }
-
-    /** 批量创建一至六个有序镜头；任一镜头失败时由调用事务回滚整批操作。 */
-    public JsonNode createShots(TrustedToolContext context, AgentRun run,
-            UUID operationId, String arguments) {
-        ObjectNode input = parseObject(arguments);
-        allowOnly(input, Set.of("shots"));
-        JsonNode shots = input.path("shots");
-        if (!shots.isArray() || shots.isEmpty() || shots.size() > 6) {
-            throw invalid("create_shots requires one to six shots");
-        }
-        List<ArtifactService.ArtifactView> created = new ArrayList<>();
-        for (int index = 0; index < shots.size(); index++) {
-            if (!(shots.get(index) instanceof ObjectNode shot)) {
-                throw invalid("Every shot must be an object");
-            }
-            allowOnly(shot, SHOT_FIELDS);
-            String title = requiredText(shot, "title", 160);
-            JsonNode order = shot.path("order");
-            if (!order.isInt() || order.intValue() != index + 1) {
-                throw invalid("Shot order must be contiguous and start at one");
-            }
-            JsonNode duration = shot.path("durationSeconds");
-            if (!duration.isInt() || duration.intValue() < 1 || duration.intValue() > 30) {
-                throw invalid("Shot duration is out of range");
-            }
-            requiredText(shot, "description", 4_000);
-            requiredText(shot, "camera", 1_000);
-            requiredText(shot, "action", 2_000);
-            verifyReferences(context, run, shot.path("characterVersionIds"), 10,
-                    Artifact.Kind.CHARACTER);
-            UUID sceneVersionId = parseUuid(shot.path("sceneVersionId"));
-            ArtifactVersion scene = artifacts.requireAgentVisibleVersion(context.ownerId(),
-                    context.projectId(), context.runId(), sceneVersionId, run.contextSnapshot());
-            if (!Artifact.Kind.SCENE.equals(artifacts.get(context.ownerId(), context.projectId(),
-                    scene.artifactId()).artifact().kind())) {
-                throw invalid("sceneVersionId must reference a scene");
-            }
-            ObjectNode content = shot.deepCopy();
-            content.remove("title");
-            created.add(artifacts.createFromAgent(context.ownerId(), context.projectId(),
-                    context.runId(), Artifact.Kind.SHOT, title, content));
-        }
-        placeOutputs(context, run, created);
-        return result(operationId, created, "已创建有序镜头");
     }
 
     /** 按预期版本完整修订产物，并由服务端确认目标处于当前 Run 的授权范围。 */
@@ -158,15 +74,6 @@ public class CreativeArtifactToolService {
         result.putNull("errorCode");
         result.put("userVisibleSummary", "已创建产物的新内容版本");
         return result;
-    }
-
-    /** 创建单个产物、放入该 Agent 的持久化输出分组并组装标准工具结果。 */
-    private JsonNode createOne(TrustedToolContext context, AgentRun run, UUID operationId,
-            Artifact.Kind kind, String title, ObjectNode content, String summary) {
-        ArtifactService.ArtifactView created = artifacts.createFromAgent(context.ownerId(),
-                context.projectId(), context.runId(), kind, title, content);
-        placeOutputs(context, run, List.of(created));
-        return result(operationId, List.of(created), summary);
     }
 
     /** 将新产物写入 Agent 持久化输出分组，使其成为业务画布项。 */
@@ -379,160 +286,12 @@ public class CreativeArtifactToolService {
         return result;
     }
 
-    /** 按允许的语义关系更新源产物，并创建不可变的新内容版本。 */
-    public JsonNode linkArtifacts(TrustedToolContext context, AgentRun run,
-            UUID operationId, String arguments) {
-        ObjectNode input = parseObject(arguments);
-        allowOnly(input, Set.of("sourceArtifactId", "expectedVersion",
-                "targetVersionId", "relationship"));
-        UUID sourceId = parseUuid(input.path("sourceArtifactId"));
-        UUID targetVersionId = parseUuid(input.path("targetVersionId"));
-        JsonNode expected = input.path("expectedVersion");
-        if (!expected.isIntegralNumber() || !expected.canConvertToLong()
-                || expected.longValue() < 0) {
-            throw invalid("link_artifacts expectedVersion must be nonnegative");
-        }
-        String relationship = requiredText(input, "relationship", 40);
-        ArtifactService.ArtifactView source = artifacts.get(context.ownerId(),
-                context.projectId(), sourceId);
-        artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(),
-                context.runId(), source.currentVersion().id(), run.contextSnapshot());
-        ArtifactVersion target = artifacts.requireAgentVisibleVersion(context.ownerId(),
-                context.projectId(), context.runId(), targetVersionId, run.contextSnapshot());
-        Artifact.Kind targetKind = artifacts.get(context.ownerId(), context.projectId(),
-                target.artifactId()).artifact().kind();
-        String arrayField = switch (relationship) {
-            case "CHARACTER_REFERENCE_IMAGE" -> {
-                requireLinkKinds(source.artifact().kind(), Artifact.Kind.CHARACTER,
-                        targetKind, Artifact.Kind.IMAGE);
-                yield "referenceVersionIds";
-            }
-            case "SCENE_REFERENCE_IMAGE" -> {
-                requireLinkKinds(source.artifact().kind(), Artifact.Kind.SCENE,
-                        targetKind, Artifact.Kind.IMAGE);
-                yield "referenceVersionIds";
-            }
-            case "SHOT_CHARACTER" -> {
-                requireLinkKinds(source.artifact().kind(), Artifact.Kind.SHOT,
-                        targetKind, Artifact.Kind.CHARACTER);
-                yield "characterVersionIds";
-            }
-            case "SHOT_SCENE" -> {
-                requireLinkKinds(source.artifact().kind(), Artifact.Kind.SHOT,
-                        targetKind, Artifact.Kind.SCENE);
-                yield null;
-            }
-            default -> throw invalid("link_artifacts relationship is unsupported");
-        };
-        if (!(source.currentVersion().content() instanceof ObjectNode sourceContent)) {
-            throw new IllegalStateException("Current Artifact content is not an object");
-        }
-        ObjectNode nextContent = sourceContent.deepCopy();
-        boolean alreadyLinked;
-        if (arrayField == null) {
-            alreadyLinked = targetVersionId.toString().equals(
-                    nextContent.path("sceneVersionId").asText());
-            nextContent.put("sceneVersionId", targetVersionId.toString());
-        } else {
-            JsonNode references = nextContent.path(arrayField);
-            if (!(references instanceof ArrayNode array)) {
-                throw new IllegalStateException("Current reference field is malformed");
-            }
-            alreadyLinked = false;
-            for (JsonNode reference : array) {
-                if (targetVersionId.toString().equals(reference.asText())) {
-                    alreadyLinked = true;
-                    break;
-                }
-            }
-            if (!alreadyLinked) array.add(targetVersionId.toString());
-        }
-        if (source.artifact().archivedAt() != null
-                || source.artifact().version() != expected.longValue()) {
-            throw new ApiProblemException(HttpStatus.CONFLICT,
-                    "ARTIFACT_VERSION_CONFLICT", "产物版本已变化",
-                    "请读取当前产物版本后重新建立关系。", false);
-        }
-        ObjectNode result = mapper.createObjectNode();
-        result.put("status", ToolResultStatus.SUCCEEDED.name());
-        result.put("operationId", operationId.toString());
-        result.putArray("createdIds");
-        ArrayNode updatedIds = result.putArray("updatedIds");
-        ObjectNode affected = result.putObject("affectedVersions");
-        ObjectNode artifactVersions = result.putObject("artifactVersions");
-        result.putArray("taskIds");
-        result.putNull("errorCode");
-        if (alreadyLinked) {
-            artifactVersions.put(sourceId.toString(), source.artifact().version());
-            result.put("userVisibleSummary", "语义关系已存在，未创建重复内容版本");
-            return result;
-        }
-        ArtifactService.ArtifactView revised = artifacts.reviseFromAgent(context.ownerId(),
-                context.projectId(), context.runId(), run.contextSnapshot(), sourceId,
-                expected.longValue(), null, nextContent);
-        updatedIds.add(sourceId.toString());
-        affected.put(sourceId.toString(), revised.currentVersion().id().toString());
-        artifactVersions.put(sourceId.toString(), revised.artifact().version());
-        result.put("userVisibleSummary", "已建立语义关系并创建产物新版本");
-        return result;
-    }
-
-    /** 仅允许内容结构已定义的四种源类型与目标类型组合。 */
-    private void requireLinkKinds(Artifact.Kind source, Artifact.Kind expectedSource,
-            Artifact.Kind target, Artifact.Kind expectedTarget) {
-        if (source != expectedSource || target != expectedTarget) {
-            throw invalid("link_artifacts source or target kind does not match relationship");
-        }
-    }
-
     /** 已校验的单张卡片布局请求，在批量画布更新前保持不可变。
      * @param itemId 要移动或调整尺寸的画布项
      * @param versionId 项目产物卡片当前展示的内容版本；Agent 卡片时为空
      * @param expectedVersion 写入前必须匹配的画布布局版本
      */
     private record ArrangeRequest(UUID itemId, UUID versionId, long expectedVersion) {}
-
-    /** 统一返回新建产物 ID、内容版本 ID 和 Artifact 乐观版本。 */
-    private ObjectNode result(UUID operationId, List<ArtifactService.ArtifactView> created,
-            String summary) {
-        ObjectNode result = mapper.createObjectNode();
-        result.put("status", ToolResultStatus.SUCCEEDED.name());
-        result.put("operationId", operationId.toString());
-        ArrayNode ids = result.putArray("createdIds");
-        result.putArray("updatedIds");
-        ObjectNode versions = result.putObject("affectedVersions");
-        ObjectNode artifactVersions = result.putObject("artifactVersions");
-        result.putArray("taskIds");
-        result.putNull("errorCode");
-        result.put("userVisibleSummary", summary);
-        for (ArtifactService.ArtifactView view : created) {
-            ids.add(view.artifact().id().toString());
-            versions.put(view.artifact().id().toString(), view.currentVersion().id().toString());
-            artifactVersions.put(view.artifact().id().toString(), view.artifact().version());
-        }
-        return result;
-    }
-
-    /** 限制引用数量和重复项，并验证每个版本对当前 Run 可见且类型匹配。 */
-    private void verifyReferences(TrustedToolContext context, AgentRun run, JsonNode references,
-            int maximum, Artifact.Kind kind) {
-        if (!references.isArray() || references.size() > maximum) {
-            throw invalid("Reference list is absent or too large");
-        }
-        Set<UUID> unique = new java.util.HashSet<>();
-        for (JsonNode node : references) {
-            UUID versionId = parseUuid(node);
-            if (!unique.add(versionId)) {
-                throw invalid("Reference versions must be unique");
-            }
-            ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
-                    context.projectId(), context.runId(), versionId, run.contextSnapshot());
-            if (artifacts.get(context.ownerId(), context.projectId(),
-                    version.artifactId()).artifact().kind() != kind) {
-                throw invalid("Reference version has the wrong artifact kind");
-            }
-        }
-    }
 
     /** 解析工具 JSON 对象；语法错误和非对象根节点均转换为稳定参数错误。 */
     private ObjectNode parseObject(String arguments) {

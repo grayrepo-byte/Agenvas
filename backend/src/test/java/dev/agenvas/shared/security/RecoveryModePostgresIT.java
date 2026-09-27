@@ -11,12 +11,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import dev.agenvas.bootstrap.AgenvasApplication;
-import dev.agenvas.export.application.MediaExportScheduler;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnScheduler;
+import dev.agenvas.llm.application.DirectTextGenerationScheduler;
 import dev.agenvas.provider.application.ComfyUiImageScheduler;
 import dev.agenvas.provider.application.ComfyUiVideoScheduler;
+import dev.agenvas.provider.application.MediaExecutionScheduler;
 import dev.agenvas.provider.application.MockImageScheduler;
 import dev.agenvas.provider.application.MockVideoScheduler;
 import dev.agenvas.project.application.ProjectService;
@@ -95,7 +96,8 @@ class RecoveryModePostgresIT {
         assertThat(context.getBeansOfType(MockVideoScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(ComfyUiImageScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(ComfyUiVideoScheduler.class)).isEmpty();
-        assertThat(context.getBeansOfType(MediaExportScheduler.class)).isEmpty();
+        assertThat(context.getBeansOfType(DirectTextGenerationScheduler.class)).isEmpty();
+        assertThat(context.getBeansOfType(MediaExecutionScheduler.class)).isEmpty();
 
         AdminPrincipal owner = identities.setup("recovery-integration-bootstrap-secret",
                 "recovery-admin", "recovery-password-123");

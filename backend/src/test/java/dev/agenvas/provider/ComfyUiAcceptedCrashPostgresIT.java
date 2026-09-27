@@ -8,7 +8,7 @@ import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
@@ -84,7 +84,7 @@ class ComfyUiAcceptedCrashPostgresIT {
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
     @Autowired private TaskService tasks;
-    @Autowired private PlanProviderProperties provider;
+    @Autowired private ProviderProperties provider;
     @Autowired private ComfyUiImageWorkflow workflow;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
@@ -109,7 +109,7 @@ class ComfyUiAcceptedCrashPostgresIT {
         input.put("providerConfigVersion", provider.configVersion());
         input.put("workflowVersion", workflow.version());
         input.put("prompt", "A coffee pour in a studio");
-        Task submitted = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task submitted = tasks.create(owner.userId(), project.id(), run.id(),
                 "image-crash", Task.Kind.IMAGE_GENERATION, input, null, 1, List.of());
 
         Path childLog = Files.createTempFile("agenvas-comfy-accepted-crash-", ".log");

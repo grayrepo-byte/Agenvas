@@ -89,13 +89,6 @@ public class ProjectExportManifestService {
         // The artifact kind is obtained from the validated catalog, not provider JSON.
         return switch (kind) {
             case TEXT -> new String[] {"format", "text"};
-            case CHARACTER -> new String[] {"name", "description", "appearance",
-                    "referenceVersionIds"};
-            case SCENE -> new String[] {"name", "location", "timeOfDay", "lighting",
-                    "style", "referenceVersionIds"};
-            case SHOT -> new String[] {"order", "durationMs", "durationSeconds", "description", "camera",
-                    "action", "characterVersionIds", "sceneVersionId",
-                    "selectedImageVersionId", "selectedVideoVersionId"};
             case IMAGE -> new String[] {"assetId", "prompt", "negativePrompt",
                     "providerConfigVersion", "workflowVersion"};
             case VIDEO -> new String[] {"assetId", "prompt", "negativePrompt",

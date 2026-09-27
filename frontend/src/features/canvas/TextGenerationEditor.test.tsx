@@ -18,7 +18,7 @@ const artifact: Artifact = {
 };
 
 function task(status: Task["status"]): Task {
-  return { id: "task-1", projectId: "project-1", runId: null, planId: null,
+  return { id: "task-1", projectId: "project-1", runId: null,
     stepKey: "direct-text:key", kind: "TEXT_GENERATION", status, cancelRequested: false,
     input: { prompt: "补成三段" }, output: status === "SUCCEEDED"
       ? { artifactId: "artifact-1", artifactVersionId: "version-3", selected: true } : null,

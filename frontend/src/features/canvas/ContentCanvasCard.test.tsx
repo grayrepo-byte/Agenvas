@@ -37,13 +37,12 @@ function itemFor(value: Artifact): CanvasItem {
 }
 
 function showCard(value: Artifact, selected = true, locked = false) {
-  const onEdit = vi.fn();
   const onInspect = vi.fn();
   const result = render(<QueryClientProvider client={createQueryClient()}>
     <ContentCanvasCard artifact={value} item={itemFor(value)} selected={selected} locked={locked}
-      onEdit={onEdit} onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
+      onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
   </QueryClientProvider>);
-  return { ...result, onEdit, onInspect };
+  return { ...result, onInspect };
 }
 
 describe("ContentCanvasCard", () => {
@@ -74,58 +73,18 @@ describe("ContentCanvasCard", () => {
   it("does not offer a detached editor for an invalid text artifact without a version", () => {
     const empty = { ...artifact("TEXT", { format: "PLAIN_TEXT", text: "" }),
       currentVersion: null, currentVersionId: null };
-    const { onEdit } = showCard(empty);
+    showCard(empty);
     expect(screen.getByText("写下想法，让创作开始")).toBeInTheDocument();
     expect(screen.getByText("暂无版本")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑内容" })).toBeDisabled();
-    expect(onEdit).not.toHaveBeenCalled();
-  });
-
-  it("shows character description and appearance with reference counts instead of IDs", () => {
-    const value = artifact("CHARACTER", { name: "小狐狸", description: "好奇的旅人", appearance: "红色围巾与白尾尖",
-      referenceVersionIds: ["reference-hidden-id"] });
-    value.currentVersion!.inputReferences = [{ versionId: "reference-hidden-id", role: "referenceImage", order: 0, kind: "IMAGE" }];
-    const { container } = showCard(value);
-    expect(screen.getByRole("heading", { name: "小狐狸" })).toBeInTheDocument();
-    expect(screen.getByText("好奇的旅人")).toBeInTheDocument();
-    expect(screen.getByText("红色围巾与白尾尖")).toBeInTheDocument();
-    expect(screen.getByText("1 个引用")).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/reference-hidden-id|referenceVersionIds|"appearance"/);
-  });
-
-  it("presents every scene field without serialized JSON", () => {
-    const { container } = showCard(artifact("SCENE", { name: "森林入口", location: "松林边缘", timeOfDay: "黄昏",
-      lighting: "暖色侧光", style: "水彩质感", referenceVersionIds: [] }));
-    const body = screen.getByRole("region", { name: "场景正文" });
-    for (const text of ["地点", "松林边缘", "时间", "黄昏", "光线", "暖色侧光", "风格", "水彩质感"]) {
-      expect(within(body).getByText(text)).toBeInTheDocument();
-    }
-    expect(container.textContent).not.toMatch(/timeOfDay|referenceVersionIds|[{}]/);
-  });
-
-  it("shows shot description, action, camera and current integer seconds", () => {
-    const { container } = showCard(artifact("SHOT", { order: 1, durationSeconds: 5, description: "穿过森林",
-      camera: "缓慢推近", action: "抬头看向远方", characterVersionIds: [], sceneVersionId: "scene-hidden-id" }));
-    expect(screen.getByText("穿过森林")).toBeInTheDocument();
-    expect(screen.getByText("缓慢推近")).toBeInTheDocument();
-    expect(screen.getByText("抬头看向远方")).toBeInTheDocument();
-    expect(screen.getByLabelText("镜头时长：5 秒")).toBeInTheDocument();
-    expect(container.textContent).not.toContain("scene-hidden-id");
-  });
-
-  it("preserves fractional historical shot duration without rounding", () => {
-    showCard(artifact("SHOT", { order: 1, durationMs: 1250, description: "旧镜头", camera: "静止",
-      action: "回头", characterVersionIds: [], sceneVersionId: "scene-hidden-id" }));
-    expect(screen.getByLabelText("镜头时长：历史 1.25 秒")).toBeInTheDocument();
-    expect(screen.queryByLabelText("镜头时长：1 秒")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
   });
 
   it("uses the toolbar action for direct output editing and keeps details available", () => {
-    const { onEdit, onInspect } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "正文" }), true, true);
+    const { onInspect } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "正文" }), true, true);
     fireEvent.click(screen.getByRole("button", { name: "编辑内容" }));
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("正文");
     fireEvent.click(screen.getByRole("button", { name: "卡片详情" }));
-    expect(onEdit).not.toHaveBeenCalled();
     expect(onInspect).toHaveBeenCalledOnce();
     expect(screen.getByRole("article")).toHaveClass("is-selected");
     expect(screen.getByRole("article")).toHaveAccessibleName("创作内容 · 文字 · 已锁定");

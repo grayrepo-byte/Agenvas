@@ -9,9 +9,6 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.TrustedToolContext;
-import dev.agenvas.plan.application.ExecutionPlan;
-import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
@@ -41,8 +38,8 @@ import tools.jackson.databind.node.ObjectNode;
  * 当场按原因码转 UNKNOWN，并让等待中的 Run 转 BLOCKED（人工重试的前置条件）；租约已失效时
  * 放弃写回而不抛异常，交回租约扫描兜底。抛异常会让调度器只记一条错误日志，任务照样空等。
  *
- * <p>用已批准计划的媒体任务而不是直接任务，是因为 Run 阻断只对前者成立：直接任务没有
- * planId，也不需要 Run 承载重试入口。
+ * <p>本用例用带媒体卡片的 Run 内生成任务驱动：Run 阻断只对这类任务成立（{@code runId} 非空且
+ * 类别为图片/视频生成），而项目里的直接任务没有 Run，不需要承载人工重试入口。
  */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -65,7 +62,6 @@ class TaskSubmissionUnknownPostgresIT {
     @Autowired private ArtifactService artifacts;
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
-    @Autowired private ExecutionPlanService plans;
     @Autowired private TaskService tasks;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
@@ -77,49 +73,23 @@ class TaskSubmissionUnknownPostgresIT {
         Project project = projects.create(owner.userId(), "Uncertain submission project",
                 Project.AspectRatio.LANDSCAPE_16_9);
 
-        ObjectNode scene = mapper.createObjectNode();
-        scene.put("name", "Studio");
-        scene.put("location", "Shanghai");
-        scene.put("timeOfDay", "Day");
-        scene.put("lighting", "Soft");
-        scene.put("style", "Minimal");
-        scene.putArray("referenceVersionIds");
-        UUID sceneVersion = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SCENE,
-                "Scene", scene).currentVersion().id();
-        ObjectNode shot = mapper.createObjectNode();
-        shot.put("order", 1);
-        shot.put("durationSeconds", 3);
-        shot.put("description", "Coffee pour");
-        shot.put("camera", "Close");
-        shot.put("action", "Pour coffee");
-        shot.putArray("characterVersionIds");
-        shot.put("sceneVersionId", sceneVersion.toString());
-        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SHOT,
-                "Shot", shot);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
-                        target.currentVersion().id())));
+        // 直连媒体任务固定一张已存在的空图片卡片；提交与判定路径与用户直连生成一致。
+        var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Frame card", null);
+        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
-                "Make an image", "uncertain-submission-run").run();
+                "生成一张图片", "uncertain-submission-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
-
-        ObjectNode proposal = mapper.createObjectNode();
-        proposal.put("stage", "IMAGE");
-        proposal.put("objective", "One image");
-        ObjectNode step = proposal.putArray("steps").addObject();
-        step.put("stepKey", "frame-1");
-        step.put("outputSlotKey", "frame-1-output");
-        step.put("shotArtifactId", target.artifact().id().toString());
-        step.put("shotVersionId", target.currentVersion().id().toString());
-        step.put("prompt", "Cinematic coffee pour");
-        step.putArray("dependsOnStepKeys");
-        var plan = plans.propose(new TrustedToolContext(owner.userId(), project.id(), run.id()),
-                proposal);
-        Task planned = plans.approve(owner.userId(), project.id(), plan.id(), plan.planHash(),
-                plans.get(owner.userId(), project.id(), plan.id()).steps().stream()
-                        .map(ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
-        assertThat(planned.planId()).isNotNull();
+        ObjectNode input = mapper.createObjectNode();
+        input.put("prompt", "Cinematic coffee pour");
+        input.put("providerConfigVersion", 1);
+        Task media = tasks.createMediaTask(owner.userId(), project.id(), run.id(), "frame-1",
+                Task.Kind.IMAGE_GENERATION, input, null, 1, List.of(), card.artifact().id());
+        // Run 自带的 AGENT_TURN 之外，这次提交的媒体任务就是 Run 里唯一的图片生成任务。
+        assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
+                .filteredOn(task -> task.kind() == Task.Kind.IMAGE_GENERATION)
+                .extracting(Task::id).containsExactly(media.id());
         AgentRun running = runs.get(owner.userId(), project.id(), run.id());
         runs.transition(owner.userId(), project.id(), run.id(), running.version(),
                 AgentRun.Status.WAITING_TASKS);
@@ -148,8 +118,7 @@ class TaskSubmissionUnknownPostgresIT {
                 ProviderFailureCodes.CALL_TIMEOUT)).isFalse();
         assertThat(tasks.get(owner.userId(), project.id(), lease.id()).errorCode())
                 .isEqualTo(ProviderFailureCodes.CALL_TIMEOUT);
-        // UNKNOWN 仍占用并发名额，不会因为提前判定而多放行一次外部调用；
-        // 计划的依赖任务因前置未成功而仍不可认领。
+        // UNKNOWN 不是可认领状态：当场判定后不会再多放行一次外部调用。
         assertThat(tasks.claimDue("third-worker", 16)).isEmpty();
 
         // 第二阶段验证租约失效时的回落。Run 一旦不在活动状态，其任务就不再可认领，
@@ -178,7 +147,7 @@ class TaskSubmissionUnknownPostgresIT {
                 .isEqualTo(ProviderFailureCodes.SUBMISSION_UNKNOWN);
     }
 
-    /** 计划里的依赖任务也在这批里，只挑出这次要提交的媒体任务。 */
+    /** 认领本次要提交的图片生成任务；同一批里不应混入别的可认领任务。 */
     private Task claimMediaTask(String workerId) {
         return tasks.claimDue(workerId, 16).stream()
                 .filter(task -> task.kind() == Task.Kind.IMAGE_GENERATION)
@@ -186,7 +155,7 @@ class TaskSubmissionUnknownPostgresIT {
     }
 
     private Task create(UUID ownerId, UUID projectId, UUID runId, String stepKey) {
-        return tasks.create(ownerId, projectId, runId, null, stepKey,
+        return tasks.create(ownerId, projectId, runId, stepKey,
                 Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("{\"step\":\"" + stepKey + "\"}"), null, 1, List.of());
     }

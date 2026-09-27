@@ -330,7 +330,6 @@ public class MediaCapabilityService {
             normalized.put("modelId", "doubao-seedance-2-0-260128");
             normalized.put("outputFormat", "mp4");
             normalized.put("generateAudio", false);
-            normalized.put("requiresSelectedKeyframe", true);
         }
         ObjectNode settings = normalized.putObject("settings");
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
@@ -419,19 +418,11 @@ public class MediaCapabilityService {
 
     /** Candidate metadata is server-selected and contains no endpoint or credential. */
     public List<Candidate> candidates(Task.Kind kind, int durationSeconds) {
-        return candidates(kind, durationSeconds, true);
-    }
-
-    /** A selected first frame is required before offering the fixed Seedance mapping. */
-    public List<Candidate> candidates(Task.Kind kind, int durationSeconds,
-            boolean hasSelectedKeyframe) {
         Task.Kind mediaKind = requireMediaKind(kind);
         return repository.connections().stream().filter(Connection::enabled)
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
-                .filter(snapshot -> hasSelectedKeyframe
-                        || !"ARK_SEEDANCE_2_I2V".equals(snapshot.adapterId()))
                 .filter(snapshot -> registry.supports(snapshot.adapterId(),
                         new PortInput(mediaKind, durationSeconds, null)))
                 .map(snapshot -> new Candidate(binding(snapshot), snapshot.connection().name(),
@@ -474,11 +465,11 @@ public class MediaCapabilityService {
             int durationSeconds, boolean skipDuration) {
         Snapshot snapshot = enabledSnapshot(capabilityId);
         if (registry.declaration(snapshot.adapterId()).kind() != kind) {
-            throw invalid("能力输出类型与计划步骤不匹配");
+            throw invalid("能力输出类型与任务类别不匹配");
         }
         if (!skipDuration && !registry.supports(snapshot.adapterId(),
                 new PortInput(kind, durationSeconds, null))) {
-            throw invalid("该能力不支持当前镜头时长，请调整镜头时长");
+            throw invalid("该能力不支持当前时长，请调整时长");
         }
         return binding(snapshot);
     }

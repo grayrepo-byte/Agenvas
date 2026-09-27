@@ -11,7 +11,6 @@ import dev.agenvas.db.tables.MediaCapabilityVersion.MediaCapabilityVersionPath;
 import dev.agenvas.db.tables.MediaDefault.MediaDefaultPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.MediaProviderConnection.MediaProviderConnectionPath;
-import dev.agenvas.db.tables.PlanStep.PlanStepPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.MediaCapabilityRecord;
@@ -218,19 +217,6 @@ public class MediaCapability extends TableImpl<MediaCapabilityRecord> {
             _mediaDraft = new MediaDraftPath(this, null, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY.getInverseKey());
 
         return _mediaDraft;
-    }
-
-    private transient PlanStepPath _planStep;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table
-     */
-    public PlanStepPath planStep() {
-        if (_planStep == null)
-            _planStep = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_MEDIA_OWNER.getInverseKey());
-
-        return _planStep;
     }
 
     private transient ProviderAttemptPath _providerAttempt;

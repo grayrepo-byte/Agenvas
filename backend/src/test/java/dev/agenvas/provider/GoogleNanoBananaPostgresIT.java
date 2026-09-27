@@ -4,23 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.TrustedToolContext;
-import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
-import dev.agenvas.provider.infrastructure.GoogleNanoBananaClient;
-import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ProviderFailureCodes;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
@@ -31,7 +27,6 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -41,9 +36,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -85,9 +77,8 @@ class GoogleNanoBananaPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private ExecutionPlanService plans;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker worker;
     @Autowired private TaskService tasks;
@@ -135,12 +126,12 @@ class GoogleNanoBananaPostgresIT {
 
         Fixture foreign = fixture(owner.userId(), "Foreign reference", false);
         Task foreignTask = approve(owner.userId(), foreign);
-        String otherProjectVersion = edited.shot().currentVersion().content()
-                .path("selectedImageVersionId").asText();
+        // 跨项目参考图：另一个项目里那张参考图的精确版本。
         jdbc.sql("update task set input_json=input_json || "
                         + "jsonb_build_object('referenceImageVersionId', :versionId) "
                         + "where id=:id")
-                .param("versionId", otherProjectVersion).param("id", foreignTask.id()).update();
+                .param("versionId", edited.referenceImage().currentVersion().id().toString())
+                .param("id", foreignTask.id()).update();
         assertThat(worker.submitOnce("google-foreign-worker")).isEqualTo(1);
         Task blocked = tasks.get(owner.userId(), foreign.project().id(), foreignTask.id());
         assertThat(blocked.status()).isEqualTo(Task.Status.BLOCKED);
@@ -149,19 +140,10 @@ class GoogleNanoBananaPostgresIT {
         assertThat(EDITS).hasValue(1);
     }
 
+    /** 一张空图片卡片、其草稿和直连受理结果；有参考图时同时准备同项目的图片版本。 */
     private Fixture fixture(UUID ownerId, String name, boolean reference) {
         Project project = projects.create(ownerId, name, Project.AspectRatio.LANDSCAPE_16_9);
-        ObjectNode scene = mapper.createObjectNode();
-        scene.put("name", "Studio"); scene.put("location", "Shanghai");
-        scene.put("timeOfDay", "Day"); scene.put("lighting", "Soft");
-        scene.put("style", "Minimal"); scene.putArray("referenceVersionIds");
-        UUID sceneVersion = artifacts.create(ownerId, project.id(), Artifact.Kind.SCENE,
-                "Scene", scene).currentVersion().id();
-        ObjectNode shot = mapper.createObjectNode();
-        shot.put("order", 1); shot.put("durationSeconds", 4);
-        shot.put("description", "A detailed studio shot"); shot.put("camera", "Close");
-        shot.put("action", "Slow pan"); shot.putArray("characterVersionIds");
-        shot.put("sceneVersionId", sceneVersion.toString());
+        ArtifactService.ArtifactView referenceImage = null;
         if (reference) {
             UUID assetId = ImageAssetFixture.archive(assets, ownerId, project.id());
             ObjectNode image = mapper.createObjectNode();
@@ -171,35 +153,32 @@ class GoogleNanoBananaPostgresIT {
             image.put("providerConfigVersion", 1);
             image.put("workflowVersion", "fixture");
             image.putObject("parameters");
-            var artifact = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
+            referenceImage = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
                     "Reference", image);
-            shot.put("selectedImageVersionId", artifact.currentVersion().id().toString());
         }
-        var target = artifacts.create(ownerId, project.id(), Artifact.Kind.SHOT, "Shot", shot);
-        var agent = agents.create(ownerId, project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
-                        target.currentVersion().id())));
-        AgentRun queued = runs.create(ownerId, project.id(), agent.id(), "Create image",
-                "google-" + UUID.randomUUID()).run();
-        runs.transition(ownerId, project.id(), queued.id(), queued.version(),
-                AgentRun.Status.RUNNING);
-        return new Fixture(project, target, queued);
+        var card = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE, "Concept", null);
+        long draftVersion = drafts.save(ownerId, project.id(), card.artifact().id(), 0,
+                "A detailed cinematic studio scene", null, null, null).version();
+        Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), draftVersion,
+                "google-" + UUID.randomUUID());
+        return new Fixture(project, card, referenceImage, task);
     }
 
+    /**
+     * 直连入口不写参考图输入；沿用测试自己的 SQL 注入惯例把它补进固定输入，
+     * 使适配器在有参考图时走 edits 分支。
+     */
     private Task approve(UUID ownerId, Fixture fixture) {
-        ObjectNode proposal = mapper.createObjectNode();
-        proposal.put("stage", "IMAGE");
-        proposal.put("objective", "Create an approved keyframe");
-        ObjectNode step = proposal.putArray("steps").addObject();
-        step.put("stepKey", "frame-1"); step.put("outputSlotKey", "frame-output");
-        step.put("shotArtifactId", fixture.shot().artifact().id().toString());
-        step.put("shotVersionId", fixture.shot().currentVersion().id().toString());
-        step.put("prompt", "A detailed cinematic studio scene");
-        step.putArray("dependsOnStepKeys");
-        var plan = plans.propose(new TrustedToolContext(ownerId, fixture.project().id(),
-                fixture.run().id()), proposal);
-        return plans.approve(ownerId, fixture.project().id(), plan.id(), plan.planHash(),
-                List.of("frame-1")).tasks().getFirst();
+        if (fixture.referenceImage() != null) {
+            jdbc.sql("update task set input_json=input_json || "
+                            + "jsonb_build_object('referenceImageVersionId', :versionId) "
+                            + "where id=:id")
+                    .param("versionId", fixture.referenceImage().currentVersion().id().toString())
+                    .param("id", fixture.task().id()).update();
+            // 注入后的固定输入以数据库为准；run(...) 返回的记录早于这次更新。
+            return tasks.get(ownerId, fixture.project().id(), fixture.task().id());
+        }
+        return fixture.task();
     }
 
     private static HttpServer startServer() {
@@ -240,7 +219,6 @@ class GoogleNanoBananaPostgresIT {
         try (var output = exchange.getResponseBody()) { output.write(response); }
     }
 
-    @TestConfiguration
-
-    private record Fixture(Project project, ArtifactService.ArtifactView shot, AgentRun run) {}
+    private record Fixture(Project project, ArtifactService.ArtifactView card,
+            ArtifactService.ArtifactView referenceImage, Task task) {}
 }

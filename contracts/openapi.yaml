@@ -3,7 +3,7 @@ info:
   title: Agenvas API
   version: 0.1.0
   description: |
-    Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、计划、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
+    Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
     部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects 与 /api/v1/settings 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
 servers:
@@ -1310,147 +1310,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/runs/{runId}/plans:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: runId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: listExecutionPlans
-      summary: 列出当前 Run 的执行计划修订
-      tags: [Plans]
-      responses:
-        "200":
-          description: 按创建时间倒序排列的计划
-          content:
-            application/json:
-              schema:
-                type: array
-                items: {$ref: "#/components/schemas/ExecutionPlan"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/plans/{planId}:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: planId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: getExecutionPlan
-      summary: 获取冻结的计划内容、输入与审批哈希
-      tags: [Plans]
-      responses:
-        "200":
-          description: 执行计划
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExecutionPlan"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/plans/{planId}/approve:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: planId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: approveExecutionPlan
-      summary: 用户按完整计划哈希批准并原子创建任务
-      tags: [Plans]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/ApproveExecutionPlanRequest"}
-      responses:
-        "200":
-          description: 审批与由此创建或重放的任务
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExecutionPlanApproval"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/candidates:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: planId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: stepKey
-        in: path
-        required: true
-        schema: {type: string}
-    get:
-      operationId: listMediaCapabilityCandidates
-      summary: 列出与步骤输出和整数时长兼容的已发布能力
-      tags: [Plans]
-      responses:
-        "200":
-          description: 当前候选能力，无连接地址或凭证
-          content:
-            application/json:
-              schema:
-                type: array
-                items: {$ref: "#/components/schemas/MediaCapabilityCandidate"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/plans/{planId}/steps/{stepKey}/revise:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: planId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: stepKey
-        in: path
-        required: true
-        schema: {type: string}
-    post:
-      operationId: reviseExecutionPlanStep
-      summary: 改选一项能力或补输入并创建新的计划修订
-      tags: [Plans]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/ReviseExecutionPlanStepRequest"}
-      responses:
-        "200":
-          description: 新修订，旧逐项确认全部失效
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExecutionPlan"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/plans/{planId}/reject:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: planId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: rejectExecutionPlan
-      summary: 用户拒绝待审批计划且不创建任务
-      tags: [Plans]
-      responses:
-        "200":
-          description: 已拒绝的计划
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExecutionPlan"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/runs/{runId}/tasks:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1472,48 +1331,6 @@ paths:
                 items: {$ref: "#/components/schemas/Task"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/runs/{runId}/shots/{shotId}/keyframe-selection:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: runId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: shotId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: getShotKeyframeSelection
-      summary: 获取用户明确选定的镜头关键帧
-      tags: [Plans]
-      responses:
-        "200":
-          description: 当前选择
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ShotKeyframeSelection"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-    put:
-      operationId: selectShotKeyframe
-      summary: 用户从本轮已完成的图片中显式选定关键帧
-      tags: [Plans]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/SelectShotKeyframeRequest"}
-      responses:
-        "200":
-          description: 新的或精确重放的选择
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ShotKeyframeSelection"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/tasks/{taskId}:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1564,193 +1381,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/shots/{shotId}/revisions:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: shotId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: reviseShotForRedo
-      summary: 仅修订目标镜头，并可创建共享场景的新版本仅重新绑定该镜头
-      tags: [Artifacts]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/ReviseShotForRedoRequest"}
-      responses:
-        "201":
-          description: 新镜头版本及可选新场景版本，旧媒体选用仍在历史中
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ShotRedoResult"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/exports:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-    get:
-      operationId: listMediaExports
-      summary: 列出项目最近的顺序导出任务
-      tags: [Exports]
-      responses:
-        "200":
-          description: 最近的项目导出
-          content:
-            application/json:
-              schema:
-                type: array
-                items: {$ref: "#/components/schemas/Task"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-    post:
-      operationId: createMediaExport
-      summary: 固定有序视频版本和区间并创建无声 MP4 导出任务
-      tags: [Exports]
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema: {type: string, minLength: 1, maxLength: 120}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/CreateMediaExportRequest"}
-      responses:
-        "202":
-          description: 已受理或精确重放的持久导出任务
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Task"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/export-proposals:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-    get:
-      operationId: listExportProposals
-      summary: 列出最近的 Agent 导出提案，包含已审批和已拒绝项
-      tags: [Exports]
-      responses:
-        "200":
-          description: 最近 100 个持久导出提案
-          content:
-            application/json:
-              schema:
-                type: array
-                items: {$ref: "#/components/schemas/ExportProposal"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/export-proposals/{proposalId}:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: proposalId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: getExportProposal
-      summary: 读取一个不可变导出提案和当前审批状态
-      tags: [Exports]
-      responses:
-        "200":
-          description: 导出提案
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExportProposal"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/export-proposals/{proposalId}/approve:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: proposalId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: approveExportProposal
-      summary: 用户确认精确提案哈希后创建唯一的持久导出任务
-      tags: [Exports]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/ApproveExportProposalRequest"}
-      responses:
-        "200":
-          description: 已审批或同哈希精确重放
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExportProposalApproval"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/export-proposals/{proposalId}/reject:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: proposalId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: rejectExportProposal
-      summary: 拒绝未审批的 Agent 导出提案且不创建任务
-      tags: [Exports]
-      responses:
-        "200":
-          description: 已拒绝或精确重放
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ExportProposal"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/exports/{taskId}:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: taskId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: getMediaExport
-      summary: 读取一个项目导出任务
-      tags: [Exports]
-      responses:
-        "200":
-          description: 持久导出状态与结果
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Task"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/exports/{taskId}/cancel:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: taskId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: cancelMediaExport
-      summary: 取消排队导出或请求终止本地 FFmpeg 进程
-      tags: [Exports]
-      responses:
-        "200":
-          description: 取消后的当前任务状态
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Task"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/canvas/commands:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2122,111 +1752,6 @@ components:
         durationMs: {type: [integer, "null"], minimum: 1, maximum: 60000}
         thumbnailSha256: {type: [string, "null"]}
         createdAt: {type: string, format: date-time}
-    MediaExportSegment:
-      type: object
-      additionalProperties: false
-      required: [videoArtifactId, videoVersionId, startSeconds, endSeconds]
-      properties:
-        videoArtifactId: {type: string, format: uuid}
-        videoVersionId: {type: string, format: uuid}
-        startSeconds: {type: integer, minimum: 0, maximum: 59}
-        endSeconds: {type: integer, minimum: 1, maximum: 60}
-    CreateMediaExportRequest:
-      type: object
-      additionalProperties: false
-      required: [segments]
-      properties:
-        segments:
-          type: array
-          minItems: 1
-          maxItems: 6
-          items: {$ref: "#/components/schemas/MediaExportSegment"}
-    ExportProposalSegmentV1:
-      type: object
-      additionalProperties: false
-      required: [videoArtifactId, videoVersionId, assetId, assetSha256, startMs, endMs, shotArtifactId, shotVersionId]
-      properties:
-        videoArtifactId: {type: string, format: uuid}
-        videoVersionId: {type: string, format: uuid}
-        assetId: {type: string, format: uuid}
-        assetSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
-        startMs: {type: integer, minimum: 0, maximum: 60000}
-        endMs: {type: integer, minimum: 1, maximum: 60000}
-        shotArtifactId: {type: string, format: uuid}
-        shotVersionId: {type: string, format: uuid}
-    ExportProposalSegmentV2:
-      type: object
-      additionalProperties: false
-      required: [videoArtifactId, videoVersionId, assetId, assetSha256, startSeconds, endSeconds, shotArtifactId, shotVersionId]
-      properties:
-        videoArtifactId: {type: string, format: uuid}
-        videoVersionId: {type: string, format: uuid}
-        assetId: {type: string, format: uuid}
-        assetSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
-        startSeconds: {type: integer, minimum: 0, maximum: 59}
-        endSeconds: {type: integer, minimum: 1, maximum: 60}
-        shotArtifactId: {type: string, format: uuid}
-        shotVersionId: {type: string, format: uuid}
-    ExportProposalInputV1:
-      type: object
-      additionalProperties: false
-      required: [schemaVersion, aspectRatio, outputFormat, segments, durationMs]
-      properties:
-        schemaVersion: {type: integer, const: 1}
-        aspectRatio: {type: string, enum: [LANDSCAPE_16_9, PORTRAIT_9_16, SQUARE_1_1]}
-        outputFormat: {type: string, const: SILENT_MP4_720P_24FPS}
-        segments:
-          type: array
-          minItems: 1
-          maxItems: 6
-          items: {$ref: "#/components/schemas/ExportProposalSegmentV1"}
-        durationMs: {type: integer, minimum: 1, maximum: 60000}
-    ExportProposalInputV2:
-      type: object
-      additionalProperties: false
-      required: [schemaVersion, aspectRatio, outputFormat, segments, durationSeconds]
-      properties:
-        schemaVersion: {type: integer, const: 2}
-        aspectRatio: {type: string, enum: [LANDSCAPE_16_9, PORTRAIT_9_16, SQUARE_1_1]}
-        outputFormat: {type: string, const: SILENT_MP4_720P_24FPS}
-        segments:
-          type: array
-          minItems: 1
-          maxItems: 6
-          items: {$ref: "#/components/schemas/ExportProposalSegmentV2"}
-        durationSeconds: {type: integer, minimum: 1, maximum: 60}
-    ExportProposalInput:
-      oneOf:
-        - {$ref: "#/components/schemas/ExportProposalInputV1"}
-        - {$ref: "#/components/schemas/ExportProposalInputV2"}
-    ExportProposal:
-      type: object
-      additionalProperties: false
-      required: [id, runId, status, input, proposalHash, projectVersion, approvedTaskId, createdAt, decidedAt]
-      properties:
-        id: {type: string, format: uuid}
-        runId: {type: string, format: uuid}
-        status: {type: string, enum: [PENDING, APPROVED, REJECTED, STALE]}
-        input: {$ref: "#/components/schemas/ExportProposalInput"}
-        proposalHash: {type: string, pattern: "^[0-9a-f]{64}$"}
-        projectVersion: {type: integer, format: int64, minimum: 0}
-        approvedTaskId: {type: [string, "null"], format: uuid}
-        createdAt: {type: string, format: date-time}
-        decidedAt: {type: [string, "null"], format: date-time}
-    ApproveExportProposalRequest:
-      type: object
-      additionalProperties: false
-      required: [proposalHash]
-      properties:
-        proposalHash: {type: string, pattern: "^[0-9a-f]{64}$"}
-    ExportProposalApproval:
-      type: object
-      additionalProperties: false
-      required: [proposal, task, replayed]
-      properties:
-        proposal: {$ref: "#/components/schemas/ExportProposal"}
-        task: {$ref: "#/components/schemas/Task"}
-        replayed: {type: boolean}
     SetupStatus:
       type: object
       additionalProperties: false
@@ -2342,56 +1867,17 @@ components:
         createdAt: {type: string, format: date-time}
     ArtifactKind:
       type: string
-      enum: [TEXT, IMAGE, VIDEO, CHARACTER, SCENE, SHOT]
+      enum: [TEXT, IMAGE, VIDEO]
     ArtifactContent:
       oneOf:
         - {$ref: "./artifact-schemas/text-v1.schema.json"}
         - {$ref: "./artifact-schemas/image-v1.schema.json"}
         - {$ref: "./artifact-schemas/video-v1.schema.json"}
-        - {$ref: "./artifact-schemas/character-v1.schema.json"}
-        - {$ref: "./artifact-schemas/scene-v1.schema.json"}
-        - {$ref: "./artifact-schemas/shot-v1.schema.json"}
-        - {$ref: "./artifact-schemas/shot-v2.schema.json"}
     WritableArtifactContent:
       oneOf:
         - {$ref: "./artifact-schemas/text-v1.schema.json"}
         - {$ref: "./artifact-schemas/image-v1.schema.json"}
         - {$ref: "./artifact-schemas/video-v1.schema.json"}
-        - {$ref: "./artifact-schemas/character-v1.schema.json"}
-        - {$ref: "./artifact-schemas/scene-v1.schema.json"}
-        - {$ref: "./artifact-schemas/shot-v2.schema.json"}
-    ShotSceneEdit:
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        name: {type: string, minLength: 1, maxLength: 120}
-        location: {type: string, minLength: 1, maxLength: 500}
-        timeOfDay: {type: string, minLength: 1, maxLength: 80}
-        lighting: {type: string, minLength: 1, maxLength: 1000}
-        style: {type: string, minLength: 1, maxLength: 1000}
-    ReviseShotForRedoRequest:
-      type: object
-      additionalProperties: false
-      required: [expectedShotVersionId, expectedShotArtifactVersion, description, camera, action, durationSeconds]
-      properties:
-        expectedShotVersionId: {type: string, format: uuid}
-        expectedShotArtifactVersion: {type: integer, format: int64, minimum: 0}
-        description: {type: string, minLength: 1, maxLength: 4000}
-        camera: {type: string, minLength: 1, maxLength: 1000}
-        action: {type: string, minLength: 1, maxLength: 2000}
-        durationSeconds: {type: integer, minimum: 1, maximum: 30}
-        scene: {$ref: "#/components/schemas/ShotSceneEdit"}
-    ShotRedoResult:
-      type: object
-      additionalProperties: false
-      required: [shot, scene]
-      properties:
-        shot: {$ref: "#/components/schemas/Artifact"}
-        scene:
-          oneOf:
-            - {$ref: "#/components/schemas/Artifact"}
-            - {type: "null"}
     CreateArtifactRequest:
       type: object
       additionalProperties: false
@@ -2615,7 +2101,7 @@ components:
         currentConversationId: {type: [string, "null"], format: uuid}
     AgentRunStatus:
       type: string
-      enum: [QUEUED, RUNNING, WAITING_APPROVAL, WAITING_TASKS, BLOCKED, CANCEL_REQUESTED, CANCELED, FAILED, SUCCEEDED]
+      enum: [QUEUED, RUNNING, WAITING_TASKS, BLOCKED, CANCEL_REQUESTED, CANCELED, FAILED, SUCCEEDED]
     CreateRunRequest:
       type: object
       additionalProperties: false
@@ -2645,10 +2131,6 @@ components:
           type: integer
           minimum: 1
           description: 运行前预览中的系统提示词版本；规则变化时创建返回 409
-        redoShotArtifactId:
-          type: string
-          format: uuid
-          description: 可选单镜头重做范围；必须为 Agent 明确绑定的当前镜头版本
         selectedItemIds:
           type: array
           maxItems: 20
@@ -2760,7 +2242,7 @@ components:
       description: >-
         New Run policies are schema v2 and pin systemPromptVersion=2. Historical v1
         snapshots lack this field and cannot safely start an uncheckpointed model turn.
-      required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions, maxImages, maxVideos, maxShots]
+      required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
         schemaVersion: {type: integer, enum: [1, 2]}
         systemPromptVersion: {type: integer, enum: [1, 2], description: Required on new v2 snapshots; absent on historical v1 snapshots.}
@@ -2768,9 +2250,6 @@ components:
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}
         maxToolExecutions: {type: integer, minimum: 1}
-        maxImages: {type: integer, minimum: 0}
-        maxVideos: {type: integer, minimum: 0}
-        maxShots: {type: integer, minimum: 1}
     AgentRun:
       type: object
       additionalProperties: false
@@ -2824,31 +2303,10 @@ components:
         toolName: {type: string}
         status:
           type: string
-          enum: [SUCCEEDED, WAITING_APPROVAL]
+          enum: [SUCCEEDED]
           description: 动作提交时的业务结果状态；不是当前计划、媒体任务或工具账本状态。
         summary: {type: string, description: 服务端生成的可公开动作摘要。}
         completedAt: {type: string, format: date-time}
-    ExecutionPlanStep:
-      type: object
-      additionalProperties: false
-      required: [stepKey, ordinal, kind, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, outputSlotKey, input, dependencyKeys, binding]
-      properties:
-        stepKey: {type: string, minLength: 1}
-        ordinal: {type: integer, minimum: 0}
-        kind: {$ref: "#/components/schemas/TaskKind"}
-        shotArtifactId: {type: string, format: uuid}
-        shotVersionId: {type: string, format: uuid}
-        imageArtifactId: {type: [string, "null"], format: uuid}
-        imageVersionId: {type: [string, "null"], format: uuid}
-        outputSlotKey: {type: string, minLength: 1}
-        input: {type: object, additionalProperties: true}
-        dependencyKeys:
-          type: array
-          items: {type: string}
-        binding:
-          oneOf:
-            - {$ref: "#/components/schemas/MediaCapabilityBinding"}
-            - {type: "null"}
     MediaCapabilityBinding:
       type: object
       additionalProperties: false
@@ -2874,92 +2332,9 @@ components:
         maximumSeconds: {type: integer, minimum: 0}
         realGenerationTested: {type: boolean}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
-    ExecutionPlan:
-      type: object
-      additionalProperties: false
-      required: [id, projectId, runId, revision, stage, status, objective, plan, inputSnapshot, inputSnapshotHash, planHash, providerConfigVersion, workflowVersion, estimate, createdAt, updatedAt, steps]
-      properties:
-        id: {type: string, format: uuid}
-        projectId: {type: string, format: uuid}
-        runId: {type: string, format: uuid}
-        revision: {type: integer, minimum: 1}
-        stage: {type: string, enum: [IMAGE, VIDEO]}
-        status: {type: string, enum: [NEEDS_INPUT, PENDING, APPROVED, REJECTED, STALE]}
-        objective: {type: string}
-        plan: {type: object, additionalProperties: true}
-        inputSnapshot: {type: object, additionalProperties: true}
-        inputSnapshotHash: {type: string, pattern: "^[0-9a-f]{64}$"}
-        planHash: {type: string, pattern: "^[0-9a-f]{64}$"}
-        providerConfigVersion: {type: integer, minimum: 1}
-        workflowVersion: {type: string}
-        estimate: {type: object, additionalProperties: true}
-        createdAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
-        steps:
-          type: array
-          items: {$ref: "#/components/schemas/ExecutionPlanStep"}
-    ApproveExecutionPlanRequest:
-      type: object
-      additionalProperties: false
-      required: [planHash, confirmedStepKeys]
-      properties:
-        planHash: {type: string, pattern: "^[0-9a-f]{64}$"}
-        confirmedStepKeys:
-          type: array
-          items: {type: string}
-    ReviseExecutionPlanStepRequest:
-      type: object
-      additionalProperties: false
-      required: [expectedPlanHash, inputPatch]
-      properties:
-        expectedPlanHash: {type: string, pattern: "^[0-9a-f]{64}$"}
-        capabilityId: {type: [string, "null"], format: uuid}
-        inputPatch:
-          type: object
-          additionalProperties: false
-          properties:
-            prompt: {type: string}
-            negativePrompt: {type: [string, "null"]}
-            imageArtifactId: {type: [string, "null"], format: uuid}
-            imageVersionId: {type: [string, "null"], format: uuid}
-    ExecutionPlanApproval:
-      type: object
-      additionalProperties: false
-      required: [approvalId, plan, tasks, replayed]
-      properties:
-        approvalId: {type: string, format: uuid}
-        plan: {$ref: "#/components/schemas/ExecutionPlan"}
-        tasks:
-          type: array
-          items: {$ref: "#/components/schemas/Task"}
-        replayed: {type: boolean}
-    SelectShotKeyframeRequest:
-      type: object
-      additionalProperties: false
-      required: [shotVersionId, imageArtifactId, imageVersionId, expectedVersion]
-      properties:
-        shotVersionId: {type: string, format: uuid}
-        imageArtifactId: {type: string, format: uuid}
-        imageVersionId: {type: string, format: uuid}
-        expectedVersion: {type: [integer, "null"], format: int64, minimum: 0}
-    ShotKeyframeSelection:
-      type: object
-      additionalProperties: false
-      required: [projectId, shotArtifactId, shotVersionId, imageArtifactId, imageVersionId, sourceTaskId, selectedByUserId, version, createdAt, updatedAt]
-      properties:
-        projectId: {type: string, format: uuid}
-        shotArtifactId: {type: string, format: uuid}
-        shotVersionId: {type: string, format: uuid}
-        imageArtifactId: {type: string, format: uuid}
-        imageVersionId: {type: string, format: uuid}
-        sourceTaskId: {type: string, format: uuid}
-        selectedByUserId: {type: string, format: uuid}
-        version: {type: integer, format: int64, minimum: 0}
-        createdAt: {type: string, format: date-time}
-        updatedAt: {type: string, format: date-time}
     TaskKind:
       type: string
-      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, MEDIA_EXPORT, ASSET_INGEST]
+      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, ASSET_INGEST]
     TaskStatus:
       type: string
       enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]
@@ -2977,7 +2352,6 @@ components:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
         runId: {type: [string, "null"], format: uuid}
-        planId: {type: [string, "null"], format: uuid}
         stepKey: {type: string}
         kind: {$ref: "#/components/schemas/TaskKind"}
         status: {$ref: "#/components/schemas/TaskStatus"}

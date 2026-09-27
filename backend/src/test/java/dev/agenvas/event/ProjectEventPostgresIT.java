@@ -141,7 +141,6 @@ class ProjectEventPostgresIT {
                 owner.userId(),
                 project.id(),
                 run.id(),
-                null,
                 "snapshot-task",
                 Task.Kind.AGENT_TURN,
                 objectMapper.readTree("{\"step\":\"snapshot\"}"),

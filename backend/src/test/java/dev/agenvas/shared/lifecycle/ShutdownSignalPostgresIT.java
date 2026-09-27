@@ -66,7 +66,7 @@ class ShutdownSignalPostgresIT {
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create storyboard", "signal-smoke-run").run();
-        Task queued = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task queued = tasks.create(owner.userId(), project.id(), run.id(),
                 "image-awaiting-worker", Task.Kind.IMAGE_GENERATION,
                 mapper.createObjectNode(), null, 1, List.of());
         Path childLog = Files.createTempFile("agenvas-shutdown-signal-", ".log");

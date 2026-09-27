@@ -237,7 +237,7 @@ class TaskRecoveryPostgresIT {
 
     private Task create(UUID ownerId, UUID projectId, UUID runId, String stepKey,
             List<UUID> dependencies) {
-        return tasks.create(ownerId, projectId, runId, null, stepKey, Task.Kind.IMAGE_GENERATION,
+        return tasks.create(ownerId, projectId, runId, stepKey, Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("{\"step\":\"" + stepKey + "\"}"), null, 1, dependencies);
     }
 }

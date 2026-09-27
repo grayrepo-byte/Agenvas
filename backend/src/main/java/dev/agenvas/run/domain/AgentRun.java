@@ -43,15 +43,13 @@ public record AgentRun(
         Instant updatedAt,
         Instant completedAt) {
 
-    /** 持久化运行状态；等待审批、等待任务和阻断均未释放项目活动槽位。 */
+    /** 持久化运行状态；等待任务和阻断均未释放项目活动槽位。 */
     public enum Status {
         /** 已创建首个模型任务，等待 Worker 认领。 */
         QUEUED,
         /** 模型或工具回合正在推进。 */
         RUNNING,
-        /** 媒体计划已提出，等待用户审批。 */
-        WAITING_APPROVAL,
-        /** 已审批任务执行中，等待结果后恢复编排。 */
+        /** 同 Run 的媒体任务执行中，等待结果后恢复编排。 */
         WAITING_TASKS,
         /** 需要修复或人工处理，仍保留运行上下文。 */
         BLOCKED,

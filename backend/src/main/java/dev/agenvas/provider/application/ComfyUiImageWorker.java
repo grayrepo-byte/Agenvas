@@ -4,7 +4,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 执行已审批的固定图片工作流；提交与轮询分开，轮询只使用已保存的 prompt ID。 */
+/** 执行固定图片工作流；提交与轮询分开，轮询只使用已保存的 prompt ID。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiImageWorker {
@@ -51,7 +51,7 @@ public class ComfyUiImageWorker {
     /** 版本固定的服务端图片图模板。 */
     private final ComfyUiImageWorkflow workflow;
     /** 当前 Provider 配置版本，用于提交前拒绝配置漂移。 */
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
     /** 构造生成结果所需的 Artifact 内容 JSON。 */
     private final ObjectMapper mapper;
 
@@ -59,7 +59,7 @@ public class ComfyUiImageWorker {
     public ComfyUiImageWorker(TaskService tasks, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ComfyUiClient client,
             ComfyUiClientRegistry clientRegistry, ComfyUiImageWorkflow workflow,
-            PlanProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
+            ProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
         this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
@@ -81,13 +81,14 @@ public class ComfyUiImageWorker {
                 return client.originSha256();
             }
 
-            /** 检查计划固定的 Provider、端点和工作流版本是否仍可提交。 */
+            /** 检查任务固定的 Provider、端点和工作流版本是否仍可提交。 */
             @Override
             public String preflightFailure(Task task) {
                 return task.input().path("providerConfigVersion").asInt(-1)
                         == provider.configVersion()
-                        && (task.planId() == null || client.originSha256().equals(
-                                task.input().path("providerOriginSha256").asText()))
+                        && (!task.input().has("providerOriginSha256")
+                                || client.originSha256().equals(
+                                        task.input().path("providerOriginSha256").asText()))
                         && workflow.version().equals(task.input().path("workflowVersion").asText())
                         ? null : "PROVIDER_CONFIG_CHANGED";
             }
@@ -110,8 +111,8 @@ public class ComfyUiImageWorker {
             if (original == null
                     || !ComfyUiImageWorkflow.supportsHistoricalVersion(
                             task.input().path("workflowVersion").asText())
-                    || task.planId() != null && !savedOrigin.equals(
-                            task.input().path("providerOriginSha256").asText())) {
+                    || (task.input().has("providerOriginSha256") && !savedOrigin.equals(
+                            task.input().path("providerOriginSha256").asText()))) {
                 return new TaskWorker.PollBlocked("PROVIDER_CONFIG_CHANGED");
             }
             UUID promptId = UUID.fromString(task.providerRequestId());

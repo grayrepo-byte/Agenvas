@@ -45,11 +45,11 @@ function card(id: string, kind: Artifact["kind"], title: string, versionId: stri
 const items: CanvasItem[] = [
   card("image-id", "IMAGE", "参考图", imageVersionId,
     { sourceType: "UPLOAD", assetId: "asset-id" }),
-  card("character-id", "CHARACTER", "角色", "22222222-2222-4222-8222-222222222222",
-    { name: "Hero", description: "Lead", appearance: "Blue coat", referenceVersionIds: [] }),
-  card("shot-id", "SHOT", "镜头", "33333333-3333-4333-8333-333333333333",
-    { order: 1, durationSeconds: 3, description: "Shot", camera: "wide", action: "walk",
-      characterVersionIds: [], sceneVersionId: "33333333-3333-4333-8333-333333333333" }),
+  card("text-id", "TEXT", "文字", "22222222-2222-4222-8222-222222222222",
+    { format: "PLAIN_TEXT", text: "正文" }),
+  card("video-id", "VIDEO", "视频", "33333333-3333-4333-8333-333333333333",
+    { assetId: "asset-id", prompt: "缓慢推近", providerConfigVersion: 1,
+      workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" }),
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
     title: "Agent",
     width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4, artifact: null,
@@ -134,11 +134,12 @@ async function dropOn(nodeId: string | null) {
 }
 
 describe("canvas connection drop target", () => {
-  it("commits the relation to the card under the pointer", async () => {
+  it("does not commit a hand-drawn line between two Artifact cards", async () => {
     await renderFlow();
-    await dropOn("character-id-card");
-    await waitFor(() => expect(revisions).toHaveLength(1));
-    expect(revisions[0]).toBe("character-id");
+    await dropOn("text-id-card");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(revisions).toHaveLength(0);
+    expect(agentPatches).toHaveLength(0);
   });
 
   it("saves the Agent input binding when the pointer is over an Agent card", async () => {
@@ -152,7 +153,7 @@ describe("canvas connection drop target", () => {
 
   it("writes nothing for a card that cannot take the relation", async () => {
     await renderFlow();
-    await dropOn("shot-id-card");
+    await dropOn("video-id-card");
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(revisions).toHaveLength(0);
     expect(agentPatches).toHaveLength(0);
@@ -160,13 +161,13 @@ describe("canvas connection drop target", () => {
 
   it("leaves a drop that already reached a port to React Flow's own onConnect", async () => {
     await renderFlow();
-    pointAt("character-id-card");
+    pointAt("text-id-card");
     await act(async () => {
       flowProps.onConnectStart?.(null, { nodeId: "image-id-card", handleId: "artifact-output" });
     });
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 10 }));
     await act(async () => {
-      await flowProps.onConnectEnd?.(null, { toHandle: { nodeId: "character-id-card" } });
+      await flowProps.onConnectEnd?.(null, { toHandle: { nodeId: "text-id-card" } });
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(revisions).toHaveLength(0);

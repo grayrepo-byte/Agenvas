@@ -9,6 +9,7 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnWorker;
+import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.InitialModelContextService;
 import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.llm.application.ToolExecutionRepository;
@@ -23,13 +24,20 @@ import dev.agenvas.run.domain.AgentRun;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -43,9 +51,11 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL projection and model-request checkpoints; all model/tool activity here is Mock. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
+@SpringBootTest(classes = {AgenvasApplication.class,
+        ConversationMemoryPostgresIT.FakeModelConfig.class}, properties = {
         "agenvas.identity.bootstrap-secret=conversation-memory-integration-secret",
-        "agenvas.llm.mode=mock"})
+        "agenvas.llm.mode=mock",
+        "agenvas.llm.scheduler-enabled=false"})
 class ConversationMemoryPostgresIT {
 
     @Container
@@ -106,9 +116,9 @@ class ConversationMemoryPostgresIT {
                 "not-committed", "PRIVATE_UNCOMMITTED_TOOL", "0".repeat(64), Instant.now())).isTrue();
         UUID proposalId = UUID.randomUUID();
         assertThat(ledger.insertExecuting(proposalId, project.id(), first.id(), 0,
-                "public-proposal", "propose_generation_plan", "1".repeat(64), Instant.now())).isTrue();
-        assertThat(ledger.complete(proposalId, mapper.createObjectNode().put("status", "WAITING_APPROVAL")
-                .put("userVisibleSummary", "图片计划等待用户审批。"), Instant.now())).isTrue();
+                "public-action", "create_text", "1".repeat(64), Instant.now())).isTrue();
+        assertThat(ledger.complete(proposalId, mapper.createObjectNode().put("status", "SUCCEEDED")
+                .put("userVisibleSummary", "已创建文字产物。"), Instant.now())).isTrue();
 
         ConversationMemory memory = memoryReader.read(project.id(), List.of(first.id()));
         assertThat(memory.entries()).hasSize(2);
@@ -116,7 +126,7 @@ class ConversationMemoryPostgresIT {
         assertThat(memory.entries().getFirst().content()).isEqualTo(first.instruction());
         assertThat(memory.entries().getLast().role()).isEqualTo(Role.ASSISTANT);
         assertThat(memory.entries().getLast().content()).contains("公开回复：狐狸在青山旁。", "已提交业务动作记录",
-                        "[待审批提案] 图片计划等待用户审批。", "历史运行状态记录：CANCELED")
+                        "[业务动作已完成] 已创建文字产物。", "历史运行状态记录：CANCELED")
                 .doesNotContain("PRIVATE_", "argumentHash", "tool_call_id");
         assertThat(memory.truncated()).isFalse();
         assertThat(memory.priorRunCount()).isEqualTo(1);
@@ -196,5 +206,63 @@ class ConversationMemoryPostgresIT {
         }
         assertThat(jdbc.sql("select count(*) from agent_run where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(15);
+    }
+
+    /** 用确定性测试假模型替换 Mock 网关；本用例需要真实跑完一个 Agent 回合才能产生 llm_turn。 */
+    @TestConfiguration
+    static class FakeModelConfig {
+        @Bean
+        @Primary
+        ChatGateway fakeModelGateway() {
+            return new ReadOnlyToolGateway();
+        }
+    }
+
+    /**
+     * 测试假模型，不是真实模型：每回合只调用一次只读工具，绝不发起任何业务副作用。
+     * 回合因此不会自行终结，Run 保持非终态——这正是本用例要冻结并取消的前提。
+     */
+    static final class ReadOnlyToolGateway implements ChatGateway {
+        /** 假模型固定的配置版本，仅用于与 Run 固定的策略快照保持一致。 */
+        private static final int CONFIG_VERSION = 1;
+        /** 假模型标识，必须能让审计区分它不是真实 Provider。 */
+        private static final String MODEL_ID = "test-fake-read-only";
+        /** 每回合调用一次的只读工具；读取不改变任何业务状态。 */
+        private static final String TOOL_NAME = "read_project_summary";
+        /** 调用序号，保证同一步内的 tool_call_id 稳定且唯一。 */
+        private final java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools,
+                Map<String, Object> toolContext) {
+            AssistantMessage.ToolCall call = new AssistantMessage.ToolCall(
+                    "test-fake-read-" + calls.incrementAndGet(), "function", TOOL_NAME, "{}");
+            AssistantMessage assistant = AssistantMessage.builder().content("")
+                    .toolCalls(List.of(call)).build();
+            return new Exchange(CONFIG_VERSION,
+                    new ChatResponse(List.of(new Generation(assistant))));
+        }
+
+        /** 声明具备工具调用能力；本假模型只调用上面那一个只读工具。 */
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+
+        @Override
+        public int configVersion() {
+            return CONFIG_VERSION;
+        }
+
+        @Override
+        public String configSource() {
+            return "test-fake";
+        }
+
+        @Override
+        public ModelDetails modelDetails() {
+            return new ModelDetails(true, "测试假模型", MODEL_ID, true);
+        }
     }
 }

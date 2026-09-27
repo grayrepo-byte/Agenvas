@@ -130,9 +130,11 @@ class ComfyUiVideoDisabledPostgresIT {
                 "Pinned source image", imageContent);
         input.put("imageArtifactId", image.artifact().id().toString());
         input.put("imageVersionId", image.currentVersion().id().toString());
-        Task task = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(), run.id(),
-                null, "video-original", Task.Kind.VIDEO_GENERATION, input, null, 1,
-                List.of(), "historical-video-output");
+        var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
+                "Historical video card", null);
+        Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(),
+                "video-original", Task.Kind.VIDEO_GENERATION, input, null, 1,
+                List.of(), videoCard.artifact().id());
         Task lease = tasks.claimVideosDue("original-submitter", 1).getFirst();
         UUID requestId = tasks.beginSubmission(lease, "original-submitter",
                 client.originSha256());

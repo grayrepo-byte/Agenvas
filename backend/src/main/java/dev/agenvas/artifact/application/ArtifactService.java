@@ -32,10 +32,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class ArtifactService {
 
-    /** 镜头时长从第二版起用整数秒；其他产物仍维持各自的第一版正文。 */
-    private static int schemaVersion(Artifact.Kind kind) {
-        return kind == Artifact.Kind.SHOT ? 2 : 1;
-    }
+    /** 所有保留产物类型都从第一版正文开始。 */
+    private static final int INITIAL_SCHEMA_VERSION = 1;
     /** 手工创建产物的幂等命令保留时长。 */
     private static final Duration CREATE_KEY_RETENTION = Duration.ofHours(24);
 
@@ -102,7 +100,7 @@ public class ArtifactService {
             JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
                     ArtifactView created = createLocked(ownerId, projectId, kind, requestedTitle,
-                            content, ArtifactVersion.CreatedByKind.USER, null, false);
+                            content, ArtifactVersion.CreatedByKind.USER, null);
                     return ProjectEventService.Change.changed(
                             created, artifactEvent("artifact.created", created));
                 })
@@ -158,7 +156,7 @@ public class ArtifactService {
         }
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, title, normalizedContent,
-                    ArtifactVersion.CreatedByKind.USER, null, false);
+                    ArtifactVersion.CreatedByKind.USER, null);
             if (!artifacts.completeCreateKey(ownerId, scope, key, requestHash,
                     created.artifact().id(), objectMapper.writeValueAsString(created), now)) {
                 throw new IllegalStateException("Failed to complete Artifact creation key");
@@ -190,21 +188,13 @@ public class ArtifactService {
             Artifact.Kind kind, String requestedTitle, JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, requestedTitle,
-                    content, ArtifactVersion.CreatedByKind.AGENT, runId, false);
+                    content, ArtifactVersion.CreatedByKind.AGENT, runId);
             return ProjectEventService.Change.changed(created,
                     artifactEvent("artifact.created", created));
         }).value();
     }
 
-    /** 在调用方已持有项目事件锁的事务内物化任务输出，禁止脱离对应任务状态提交。 */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public ArtifactView createFromTaskWithinChange(UUID ownerId, UUID projectId, UUID runId,
-            Artifact.Kind kind, String requestedTitle, JsonNode content) {
-        return createLocked(ownerId, projectId, kind, requestedTitle, content,
-                ArtifactVersion.CreatedByKind.TASK, runId, true);
-    }
-
-    /** 统一创建边界；任务晚到结果可归档到已归档项目，其他来源只允许活动项目。 */
+    /** 统一创建边界；只允许在活动项目内创建产物。 */
     private ArtifactView createLocked(
             UUID ownerId,
             UUID projectId,
@@ -212,15 +202,9 @@ public class ArtifactService {
             String requestedTitle,
             JsonNode content,
             ArtifactVersion.CreatedByKind createdByKind,
-            UUID runId,
-            boolean taskOutput) {
+            UUID runId) {
         if (content != null && content.isNull()) content = null;
-        if (taskOutput) {
-            // 已受理外部请求的晚到结果仍需归档，即使用户期间归档了项目。
-            projects.get(ownerId, projectId);
-        } else {
-            projects.requireActiveProject(ownerId, projectId);
-        }
+        projects.requireActiveProject(ownerId, projectId);
         String title = validateTitle(requestedTitle);
         if (content == null && isMediaKind(kind)) {
             if (createdByKind != ArtifactVersion.CreatedByKind.USER) {
@@ -258,7 +242,7 @@ public class ArtifactService {
                 projectId,
                 artifactId,
                 1,
-                schemaVersion(kind),
+                INITIAL_SCHEMA_VERSION,
                 content.deepCopy(),
                 references,
                 createdByKind,
@@ -386,18 +370,6 @@ public class ArtifactService {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                         "工具参数无效", "Agent 不能修改已归档媒体内容。", false);
             }
-            if (current.kind() == Artifact.Kind.SHOT) {
-                ArtifactVersion selected = artifacts.findVersion(projectId, artifactId,
-                        current.currentVersionId()).orElseThrow(this::notFound);
-                if (selected.content().has("selectedImageVersionId")
-                        || selected.content().has("selectedVideoVersionId")
-                        || (content != null && (content.has("selectedImageVersionId")
-                                || content.has("selectedVideoVersionId")))) {
-                    throw new ApiProblemException(HttpStatus.BAD_REQUEST,
-                            "TOOL_ARGUMENT_INVALID", "工具参数无效",
-                            "Agent 不能改写人工选定的镜头媒体；请使用局部重做流程。", false);
-                }
-            }
         }
         requireEditable(current);
         if (current.version() != expectedArtifactVersion) {
@@ -421,7 +393,7 @@ public class ArtifactService {
                 projectId,
                 artifactId,
                 artifacts.nextVersionNo(projectId, artifactId),
-                schemaVersion(current.kind()),
+                INITIAL_SCHEMA_VERSION,
                 content.deepCopy(),
                 references,
                 author,
@@ -589,7 +561,7 @@ public class ArtifactService {
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
-                schemaVersion(current.kind()),
+                INITIAL_SCHEMA_VERSION,
                 content.deepCopy(), references, ArtifactVersion.CreatedByKind.TASK, runId, now);
         artifacts.appendVersion(revision);
         boolean selected = allowSelection
@@ -599,30 +571,6 @@ public class ArtifactService {
                 && artifacts.selectVersion(ownerId, projectId, artifactId,
                         expectedArtifactVersion, revision.id(), current.title(), now);
         return new TaskVersionResult(revision.id(), selected);
-    }
-
-    /** 将批准的关键帧和已完成视频写入仍为预期版本的镜头，形成一个新的镜头版本。 */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public ArtifactView selectTaskVideoOnShotWithinChange(UUID ownerId, UUID projectId,
-            UUID runId, UUID shotId, UUID expectedShotVersionId,
-            UUID imageVersionId, UUID videoVersionId) {
-        return events.recordChange(ownerId, projectId, () -> {
-            ArtifactView current = get(ownerId, projectId, shotId);
-            if (current.artifact().kind() != Artifact.Kind.SHOT
-                    || current.artifact().archivedAt() != null
-                    || !current.currentVersion().id().equals(expectedShotVersionId)
-                    || !(current.currentVersion().content() instanceof ObjectNode shotContent)) {
-                throw versionConflict();
-            }
-            ObjectNode selected = shotContent.deepCopy();
-            selected.put("selectedImageVersionId", imageVersionId.toString());
-            selected.put("selectedVideoVersionId", videoVersionId.toString());
-            ArtifactView revised = reviseLocked(ownerId, projectId, shotId,
-                    current.artifact().version(), null, selected,
-                    ArtifactVersion.CreatedByKind.TASK, runId, null);
-            return ProjectEventService.Change.changed(revised,
-                    artifactEvent("artifact.version.created", revised));
-        }).value();
     }
 
     /**

@@ -120,22 +120,22 @@ public class Asset extends TableImpl<AssetRecord> {
 
     /**
      * The column <code>public.asset.thumbnail_key</code>. Private, bounded PNG
-     * video cover frame extracted before a VIDEO Asset becomes READY; NULL for
-     * IMAGE.
+     * preview created before a new IMAGE Asset becomes READY; for VIDEO it is
+     * the extracted cover frame.
      */
-    public final TableField<AssetRecord, String> THUMBNAIL_KEY = createField(DSL.name("thumbnail_key"), SQLDataType.VARCHAR(200), this, "Private, bounded PNG video cover frame extracted before a VIDEO Asset becomes READY; NULL for IMAGE.");
+    public final TableField<AssetRecord, String> THUMBNAIL_KEY = createField(DSL.name("thumbnail_key"), SQLDataType.VARCHAR(200), this, "Private, bounded PNG preview created before a new IMAGE Asset becomes READY; for VIDEO it is the extracted cover frame.");
 
     /**
-     * The column <code>public.asset.thumbnail_byte_size</code>. Video cover
-     * frame byte size; NULL for IMAGE assets.
+     * The column <code>public.asset.thumbnail_byte_size</code>. Preview or
+     * cover frame byte size; NULL only for media archived before V21.
      */
-    public final TableField<AssetRecord, Long> THUMBNAIL_BYTE_SIZE = createField(DSL.name("thumbnail_byte_size"), SQLDataType.BIGINT, this, "Video cover frame byte size; NULL for IMAGE assets.");
+    public final TableField<AssetRecord, Long> THUMBNAIL_BYTE_SIZE = createField(DSL.name("thumbnail_byte_size"), SQLDataType.BIGINT, this, "Preview or cover frame byte size; NULL only for media archived before V21.");
 
     /**
-     * The column <code>public.asset.thumbnail_sha256</code>. Video cover frame
-     * SHA-256 digest; NULL for IMAGE assets.
+     * The column <code>public.asset.thumbnail_sha256</code>. Preview or cover
+     * frame SHA-256 digest.
      */
-    public final TableField<AssetRecord, String> THUMBNAIL_SHA256 = createField(DSL.name("thumbnail_sha256"), SQLDataType.CHAR(64), this, "Video cover frame SHA-256 digest; NULL for IMAGE assets.");
+    public final TableField<AssetRecord, String> THUMBNAIL_SHA256 = createField(DSL.name("thumbnail_sha256"), SQLDataType.CHAR(64), this, "Preview or cover frame SHA-256 digest.");
 
     /**
      * The column <code>public.asset.duration_ms</code>. Verified MP4 duration

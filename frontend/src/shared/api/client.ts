@@ -36,17 +36,8 @@ export type AgentConversationList = components["schemas"]["AgentConversationList
 export type RunAction = components["schemas"]["RunAction"];
 export type RunPreflight = components["schemas"]["RunPreflight"];
 export type CreateRunRequest = components["schemas"]["CreateRunRequest"];
-export type ExecutionPlan = components["schemas"]["ExecutionPlan"];
-export type ExecutionPlanApproval = components["schemas"]["ExecutionPlanApproval"];
-export type ShotKeyframeSelection = components["schemas"]["ShotKeyframeSelection"];
-export type SelectShotKeyframeRequest = components["schemas"]["SelectShotKeyframeRequest"];
 export type Task = components["schemas"]["Task"];
 export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAttemptRequest"];
-export type ReviseShotForRedoRequest = components["schemas"]["ReviseShotForRedoRequest"];
-export type ShotRedoResult = components["schemas"]["ShotRedoResult"];
-export type CreateMediaExportRequest = components["schemas"]["CreateMediaExportRequest"];
-export type ExportProposal = components["schemas"]["ExportProposal"];
-export type ExportProposalApproval = components["schemas"]["ExportProposalApproval"];
 export type UsageEntry = components["schemas"]["UsageEntry"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
@@ -64,8 +55,6 @@ export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCap
 export type UpdateMediaCapabilityRequest = components["schemas"]["UpdateMediaCapabilityRequest"];
 export type UpdateMediaConcurrencyRequest = components["schemas"]["UpdateMediaConcurrencyRequest"];
 export type SetMediaDefaultRequest = components["schemas"]["SetMediaDefaultRequest"];
-export type MediaCapabilityCandidate = components["schemas"]["MediaCapabilityCandidate"];
-export type ReviseExecutionPlanStepRequest = components["schemas"]["ReviseExecutionPlanStepRequest"];
 type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
 
@@ -450,15 +439,6 @@ export async function selectArtifactVersion(
   );
 }
 
-/** Revises one shot and, if requested, forks its shared scene reference atomically. */
-export async function reviseShotForRedo(projectId: string, shotId: string,
-  request: ReviseShotForRedoRequest): Promise<ShotRedoResult> {
-  return writeJson<ShotRedoResult>(`/api/v1/projects/${projectId}/shots/${shotId}/revisions`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-}
-
 /** Loads the authoritative canvas projection for refresh recovery. */
 export async function listCanvasItems(projectId: string): Promise<Canvas> {
   return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, "无法读取画布");
@@ -590,58 +570,6 @@ export async function cancelRun(projectId: string, runId: string): Promise<Agent
   });
 }
 
-/** Recovers every plan revision for an owned Run after page reload or SSE replay. */
-export async function listExecutionPlans(projectId: string, runId: string): Promise<ExecutionPlan[]> {
-  return readJson<ExecutionPlan[]>(
-    `/api/v1/projects/${projectId}/runs/${runId}/plans`,
-    "无法读取执行计划",
-  );
-}
-
-/** Reads the frozen proposal shown to the approving user. */
-export async function getExecutionPlan(projectId: string, planId: string): Promise<ExecutionPlan> {
-  return readJson<ExecutionPlan>(
-    `/api/v1/projects/${projectId}/plans/${planId}`,
-    "无法读取执行计划",
-  );
-}
-
-export async function listMediaCapabilityCandidates(projectId: string, planId: string,
-  stepKey: string): Promise<MediaCapabilityCandidate[]> {
-  return readJson<MediaCapabilityCandidate[]>(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/steps/${encodeURIComponent(stepKey)}/candidates`,
-    "无法读取可用媒体能力",
-  );
-}
-
-export async function reviseExecutionPlanStep(projectId: string, planId: string,
-  stepKey: string, input: ReviseExecutionPlanStepRequest): Promise<ExecutionPlan> {
-  return writeJson<ExecutionPlan>(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/plans/${encodeURIComponent(planId)}/steps/${encodeURIComponent(stepKey)}/revise`,
-    { method: "POST", body: JSON.stringify(input) },
-  );
-}
-
-/** Confirms exactly the plan hash rendered in the approval UI. */
-export async function approveExecutionPlan(
-  projectId: string,
-  planId: string,
-  planHash: string,
-  confirmedStepKeys: string[],
-): Promise<ExecutionPlanApproval> {
-  return writeJson<ExecutionPlanApproval>(`/api/v1/projects/${projectId}/plans/${planId}/approve`, {
-    method: "POST",
-    body: JSON.stringify({ planHash, confirmedStepKeys }),
-  });
-}
-
-/** Rejects a pending plan without authorizing media Tasks. */
-export async function rejectExecutionPlan(projectId: string, planId: string): Promise<ExecutionPlan> {
-  return writeJson<ExecutionPlan>(`/api/v1/projects/${projectId}/plans/${planId}/reject`, {
-    method: "POST",
-  });
-}
-
 /** Reads durable Task state; lease ownership remains an internal worker concern. */
 export async function getTask(projectId: string, taskId: string): Promise<Task> {
   return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, "无法读取任务状态");
@@ -657,71 +585,10 @@ export async function createManualUnknownAttempt(projectId: string, taskId: stri
   });
 }
 
-/** Loads all task outcomes, including completed keyframe outputs omitted from the active snapshot. */
+/** Loads all task outcomes for one owned Run. */
 export async function listRunTasks(projectId: string, runId: string): Promise<Task[]> {
   return readJson<Task[]>(`/api/v1/projects/${projectId}/runs/${runId}/tasks`,
     "无法读取运行任务");
-}
-
-/** Lists project-level exports independently of the active Agent Run. */
-export async function listMediaExports(projectId: string): Promise<Task[]> {
-  return readJson<Task[]>(`/api/v1/projects/${projectId}/exports`, "无法读取导出记录");
-}
-
-/** Shows model-proposed export inputs before any local encoder is authorized. */
-export async function listExportProposals(projectId: string): Promise<ExportProposal[]> {
-  return readJson<ExportProposal[]>(`/api/v1/projects/${projectId}/export-proposals`,
-    "无法读取导出提案");
-}
-
-/** Only the authenticated browser can approve the exact proposal hash it displayed. */
-export async function approveExportProposal(projectId: string, proposalId: string,
-  proposalHash: string): Promise<ExportProposalApproval> {
-  return writeJson<ExportProposalApproval>(
-    `/api/v1/projects/${projectId}/export-proposals/${proposalId}/approve`, {
-      method: "POST", body: JSON.stringify({ proposalHash }),
-    });
-}
-
-/** Declines an Agent export suggestion without creating a Task. */
-export async function rejectExportProposal(projectId: string, proposalId: string): Promise<ExportProposal> {
-  return writeJson<ExportProposal>(
-    `/api/v1/projects/${projectId}/export-proposals/${proposalId}/reject`, { method: "POST" });
-}
-
-/** Starts a silent export with one caller-owned idempotency key and pinned version ranges. */
-export async function createMediaExport(projectId: string, key: string,
-  input: CreateMediaExportRequest): Promise<Task> {
-  return writeJson<Task>(`/api/v1/projects/${projectId}/exports`, {
-    method: "POST",
-    headers: { "Idempotency-Key": key },
-    body: JSON.stringify(input),
-  });
-}
-
-/** Requests cancellation of local export work. */
-export async function cancelMediaExport(projectId: string, taskId: string): Promise<Task> {
-  return writeJson<Task>(`/api/v1/projects/${projectId}/exports/${taskId}/cancel`, {
-    method: "POST",
-  });
-}
-
-/** Reads the exact human-selected image version for one shot in this Run. */
-export async function getShotKeyframeSelection(projectId: string, runId: string,
-  shotId: string): Promise<ShotKeyframeSelection> {
-  return readJson<ShotKeyframeSelection>(
-    `/api/v1/projects/${projectId}/runs/${runId}/shots/${shotId}/keyframe-selection`,
-    "无法读取镜头关键帧选择",
-  );
-}
-
-/** Persists an explicit keyframe choice with optimistic concurrency. */
-export async function selectShotKeyframe(projectId: string, runId: string, shotId: string,
-  request: SelectShotKeyframeRequest): Promise<ShotKeyframeSelection> {
-  return writeJson<ShotKeyframeSelection>(
-    `/api/v1/projects/${projectId}/runs/${runId}/shots/${shotId}/keyframe-selection`,
-    { method: "PUT", body: JSON.stringify(request) },
-  );
 }
 
 async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {

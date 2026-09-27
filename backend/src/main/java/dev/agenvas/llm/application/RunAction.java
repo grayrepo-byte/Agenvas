@@ -9,7 +9,6 @@ public record RunAction(UUID id, int stepIndex, String toolName, Status status,
 
     /** 工具业务结果的历史状态，不是工具账本的 COMPLETED 状态或媒体生成状态。 */
     public enum Status {
-        SUCCEEDED,
-        WAITING_APPROVAL
+        SUCCEEDED
     }
 }

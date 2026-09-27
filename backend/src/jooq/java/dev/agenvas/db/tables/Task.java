@@ -9,14 +9,11 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
 import dev.agenvas.db.tables.CallLog.CallLogPath;
-import dev.agenvas.db.tables.ExecutionPlan.ExecutionPlanPath;
-import dev.agenvas.db.tables.ExportProposal.ExportProposalPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
 import dev.agenvas.db.tables.MediaCapabilityVersion.MediaCapabilityVersionPath;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion.MediaProviderConnectionVersionPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
-import dev.agenvas.db.tables.ShotKeyframeSelection.ShotKeyframeSelectionPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.TaskDependency.TaskDependencyPath;
 import dev.agenvas.db.tables.TaskLateResult.TaskLateResultPath;
@@ -93,11 +90,6 @@ public class Task extends TableImpl<TaskRecord> {
      * The column <code>public.task.run_id</code>.
      */
     public final TableField<TaskRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "");
-
-    /**
-     * The column <code>public.task.plan_id</code>.
-     */
-    public final TableField<TaskRecord, UUID> PLAN_ID = createField(DSL.name("plan_id"), SQLDataType.UUID, this, "");
 
     /**
      * The column <code>public.task.step_key</code>.
@@ -289,7 +281,7 @@ public class Task extends TableImpl<TaskRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IX_TASK_CLAIM_READY, Indexes.IX_TASK_DIRECT_PROJECT, Indexes.IX_TASK_OBSERVABLE_STATES, Indexes.IX_TASK_RECLAIM_RUNNING, Indexes.IX_TASK_RUN, Indexes.IX_TASK_SUBMITTING_LEASE, Indexes.UQ_TASK_DIRECT_KEY, Indexes.UQ_TASK_PLANNED_STEP_ATTEMPT, Indexes.UQ_TASK_PROJECT_EXPORT_KEY, Indexes.UQ_TASK_UNPLANNED_STEP_ATTEMPT);
+        return Arrays.asList(Indexes.IX_TASK_CLAIM_READY, Indexes.IX_TASK_DIRECT_PROJECT, Indexes.IX_TASK_OBSERVABLE_STATES, Indexes.IX_TASK_RECLAIM_RUNNING, Indexes.IX_TASK_RUN, Indexes.IX_TASK_SUBMITTING_LEASE, Indexes.UQ_TASK_DIRECT_KEY, Indexes.UQ_TASK_RUN_STEP_ATTEMPT);
     }
 
     @Override
@@ -304,20 +296,7 @@ public class Task extends TableImpl<TaskRecord> {
 
     @Override
     public List<ForeignKey<TaskRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.TASK__FK_TASK_EXECUTION_PLAN, Keys.TASK__FK_TASK_MEDIA_CAPABILITY, Keys.TASK__FK_TASK_MEDIA_CONNECTION, Keys.TASK__FK_TASK_MEDIA_OWNER, Keys.TASK__FK_TASK_PROJECT, Keys.TASK__FK_TASK_RUN);
-    }
-
-    private transient ExecutionPlanPath _executionPlan;
-
-    /**
-     * Get the implicit join path to the <code>public.execution_plan</code>
-     * table.
-     */
-    public ExecutionPlanPath executionPlan() {
-        if (_executionPlan == null)
-            _executionPlan = new ExecutionPlanPath(this, Keys.TASK__FK_TASK_EXECUTION_PLAN, null);
-
-        return _executionPlan;
+        return Arrays.asList(Keys.TASK__FK_TASK_MEDIA_CAPABILITY, Keys.TASK__FK_TASK_MEDIA_CONNECTION, Keys.TASK__FK_TASK_MEDIA_OWNER, Keys.TASK__FK_TASK_PROJECT, Keys.TASK__FK_TASK_RUN);
     }
 
     private transient MediaCapabilityVersionPath _mediaCapabilityVersion;
@@ -394,47 +373,6 @@ public class Task extends TableImpl<TaskRecord> {
             _callLog = new CallLogPath(this, null, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_TASK_ID_FKEY.getInverseKey());
 
         return _callLog;
-    }
-
-    private transient ExportProposalPath _exportProposal;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.export_proposal</code> table
-     */
-    public ExportProposalPath exportProposal() {
-        if (_exportProposal == null)
-            _exportProposal = new ExportProposalPath(this, null, Keys.EXPORT_PROPOSAL__FK_EXPORT_PROPOSAL_TASK.getInverseKey());
-
-        return _exportProposal;
-    }
-
-    private transient ShotKeyframeSelectionPath _fkKeyframeTask;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table, via the
-     * <code>fk_keyframe_task</code> key
-     */
-    public ShotKeyframeSelectionPath fkKeyframeTask() {
-        if (_fkKeyframeTask == null)
-            _fkKeyframeTask = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_TASK.getInverseKey());
-
-        return _fkKeyframeTask;
-    }
-
-    private transient ShotKeyframeSelectionPath _fkKeyframeTaskProject;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table, via the
-     * <code>fk_keyframe_task_project</code> key
-     */
-    public ShotKeyframeSelectionPath fkKeyframeTaskProject() {
-        if (_fkKeyframeTaskProject == null)
-            _fkKeyframeTaskProject = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_TASK_PROJECT.getInverseKey());
-
-        return _fkKeyframeTaskProject;
     }
 
     private transient TaskManualReplacementPath _fkManualReplacementNew;
@@ -564,11 +502,11 @@ public class Task extends TableImpl<TaskRecord> {
             Internal.createCheck(this, DSL.name("ck_task_attempt_positive"), "((attempt_no > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_completion"), "(((((status)::text = ANY ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])) AND (completed_at IS NOT NULL)) OR (((status)::text <> ALL ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])) AND (completed_at IS NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_input_hash"), "((input_hash ~ '^[0-9a-f]{64}$'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_task_kind"), "(((kind)::text = ANY ((ARRAY['AGENT_TURN'::character varying, 'TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'MEDIA_EXPORT'::character varying, 'ASSET_INGEST'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_task_kind"), "(((kind)::text = ANY ((ARRAY['AGENT_TURN'::character varying, 'TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'ASSET_INGEST'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_epoch_non_negative"), "((lease_epoch >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_pair"), "((((lease_owner IS NULL) AND (lease_until IS NULL)) OR ((lease_owner IS NOT NULL) AND (lease_until IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_media_binding"), "((((capability_id IS NULL) AND (capability_version IS NULL) AND (connection_id IS NULL) AND (connection_version IS NULL)) OR ((capability_id IS NOT NULL) AND (capability_version IS NOT NULL) AND (connection_id IS NOT NULL) AND (connection_version IS NOT NULL))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_origin_scope"), "(((((origin)::text = 'AGENT'::text) AND (run_id IS NOT NULL)) OR (((origin)::text = 'USER_DIRECT'::text) AND (run_id IS NULL) AND (plan_id IS NULL) AND ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying])::text[]))) OR (((origin)::text = 'PROJECT_EXPORT'::text) AND (run_id IS NULL) AND ((kind)::text = 'MEDIA_EXPORT'::text))))", true),
+            Internal.createCheck(this, DSL.name("ck_task_origin_scope"), "(((((origin)::text = 'AGENT'::text) AND (run_id IS NOT NULL)) OR (((origin)::text = 'USER_DIRECT'::text) AND (run_id IS NULL) AND ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying])::text[])))))", true),
             Internal.createCheck(this, DSL.name("ck_task_status"), "(((status)::text = ANY ((ARRAY['PENDING'::character varying, 'READY'::character varying, 'RUNNING'::character varying, 'SUBMITTING'::character varying, 'WAITING_PROVIDER'::character varying, 'UNKNOWN'::character varying, 'BLOCKED'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_step_key_not_blank"), "((length(btrim((step_key)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_version_non_negative"), "((version >= 0))", true)

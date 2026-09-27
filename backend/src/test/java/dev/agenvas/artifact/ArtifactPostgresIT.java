@@ -6,6 +6,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -14,9 +15,15 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.testing.ImageAssetFixture;
 import dev.agenvas.testing.MigrationVersions;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -67,13 +74,16 @@ class ArtifactPostgresIT {
     private AssetService assetService;
 
     @Autowired
+    private MediaToolRunner mediaTools;
+
+    @Autowired
     private JdbcClient jdbcClient;
 
     @Autowired
     private ObjectMapper objectMapper;
 
     @Test
-    void versionsAreImmutableReferencesAreScopedAndSharedSceneRevisionIsLocal() throws Exception {
+    void versionsAreImmutableAndTypedMediaReferencesAreProjectScoped() throws Exception {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
@@ -134,67 +144,88 @@ class ArtifactPostgresIT {
                         json("{\"format\":\"MARKDOWN\",\"text\":\"Stale\"}")));
         assertDatabaseRejectsVersionMutation(text.currentVersion().id());
 
-        ArtifactService.ArtifactView scene = artifactService.create(
-                owner.userId(), project.id(), Artifact.Kind.SCENE, "Cafe", scene("Day"));
-        ArtifactService.ArtifactView otherScene = artifactService.create(
-                owner.userId(), otherProject.id(), Artifact.Kind.SCENE, "Other", scene("Night"));
+        // 视频正文以精确图片版本固定关键帧输入；该引用必须属于同一项目且类型为 IMAGE。
+        UUID videoAssetId = videoAsset(owner.userId(), project.id());
+        ArtifactService.ArtifactView foreignImage = artifactService.create(
+                owner.userId(), otherProject.id(), Artifact.Kind.IMAGE, "Foreign image",
+                upload(foreignAssetId));
         assertThatThrownByCode(
                 "ARTIFACT_REFERENCE_INVALID",
                 () -> artifactService.create(
                         owner.userId(),
                         project.id(),
-                        Artifact.Kind.SHOT,
-                        "Cross-project shot",
-                        shot(1, otherScene.currentVersion().id())));
+                        Artifact.Kind.VIDEO,
+                        "Cross-project keyframe",
+                        video(videoAssetId, foreignImage.currentVersion().id())));
         assertThatThrownByCode(
                 "ARTIFACT_REFERENCE_INVALID",
                 () -> artifactService.create(
                         owner.userId(),
                         project.id(),
-                        Artifact.Kind.SHOT,
-                        "Wrong kind shot",
-                        shot(1, text.currentVersion().id())));
+                        Artifact.Kind.VIDEO,
+                        "Wrong kind keyframe",
+                        video(videoAssetId, text.currentVersion().id())));
 
-        ArtifactService.ArtifactView firstShot = artifactService.create(
+        ArtifactService.ArtifactView firstVideo = artifactService.create(
                 owner.userId(),
                 project.id(),
-                Artifact.Kind.SHOT,
-                "Shot one",
-                shot(1, scene.currentVersion().id()));
-        ArtifactService.ArtifactView secondShot = artifactService.create(
+                Artifact.Kind.VIDEO,
+                "First clip",
+                video(videoAssetId, validImage.currentVersion().id()));
+        assertThat(firstVideo.currentVersion().inputReferences())
+                .singleElement()
+                .satisfies(reference -> {
+                    assertThat(reference.role()).isEqualTo("keyframe");
+                    assertThat(reference.expectedKind()).isEqualTo(Artifact.Kind.IMAGE);
+                    assertThat(reference.versionId())
+                            .isEqualTo(validImage.currentVersion().id());
+                });
+
+        // 修改被引用图片只产生新版本；已固定旧版本关键帧的视频正文保持不变。
+        UUID revisedAssetId = ImageAssetFixture.archive(assetService, owner.userId(), project.id());
+        ArtifactService.ArtifactView revisedImage = artifactService.revise(
                 owner.userId(),
                 project.id(),
-                Artifact.Kind.SHOT,
-                "Shot two",
-                shot(2, scene.currentVersion().id()));
-        ArtifactService.ArtifactView revisedScene = artifactService.revise(
-                owner.userId(),
-                project.id(),
-                scene.artifact().id(),
+                validImage.artifact().id(),
                 0,
                 null,
-                scene("Night"));
-        artifactService.revise(
+                upload(revisedAssetId));
+        ArtifactService.ArtifactView secondVideo = artifactService.create(
                 owner.userId(),
                 project.id(),
-                secondShot.artifact().id(),
+                Artifact.Kind.VIDEO,
+                "Second clip",
+                video(videoAssetId, revisedImage.currentVersion().id()));
+        assertThat(artifactService
+                        .get(owner.userId(), project.id(), firstVideo.artifact().id())
+                        .currentVersion()
+                        .content()
+                        .get("keyframeVersionId")
+                        .stringValue())
+                .isEqualTo(validImage.currentVersion().id().toString());
+        assertThat(artifactService
+                        .get(owner.userId(), project.id(), secondVideo.artifact().id())
+                        .currentVersion()
+                        .content()
+                        .get("keyframeVersionId")
+                        .stringValue())
+                .isEqualTo(revisedImage.currentVersion().id().toString());
+
+        // 显式改写视频只追加新版本；历史版本仍保留原先固定的关键帧引用。
+        ArtifactService.ArtifactView repinnedVideo = artifactService.revise(
+                owner.userId(),
+                project.id(),
+                firstVideo.artifact().id(),
                 0,
                 null,
-                shot(2, revisedScene.currentVersion().id()));
-        assertThat(artifactService
-                        .get(owner.userId(), project.id(), firstShot.artifact().id())
-                        .currentVersion()
-                        .content()
-                        .get("sceneVersionId")
-                        .stringValue())
-                .isEqualTo(scene.currentVersion().id().toString());
-        assertThat(artifactService
-                        .get(owner.userId(), project.id(), secondShot.artifact().id())
-                        .currentVersion()
-                        .content()
-                        .get("sceneVersionId")
-                        .stringValue())
-                .isEqualTo(revisedScene.currentVersion().id().toString());
+                video(videoAssetId, revisedImage.currentVersion().id()));
+        assertThat(repinnedVideo.currentVersion().content().path("keyframeVersionId").asText())
+                .isEqualTo(revisedImage.currentVersion().id().toString());
+        assertThat(artifactService.listVersions(
+                        owner.userId(), project.id(), firstVideo.artifact().id()))
+                .extracting(version -> version.content().path("keyframeVersionId").asText())
+                .containsExactly(revisedImage.currentVersion().id().toString(),
+                        validImage.currentVersion().id().toString());
 
         UUID foreignOwner = UUID.randomUUID();
         assertThatThrownByCode(
@@ -260,31 +291,50 @@ class ArtifactPostgresIT {
         }
     }
 
-    private JsonNode scene(String timeOfDay) {
+    /** 视频正文可选地固定一个图片关键帧版本，用于验证类型化引用校验。 */
+    private JsonNode video(UUID assetId, UUID keyframeVersionId) {
         return json("""
                 {
-                  "name":"Cafe",
-                  "location":"Shanghai",
-                  "timeOfDay":"%s",
-                  "lighting":"Soft light",
-                  "style":"Minimal",
-                  "referenceVersionIds":[]
+                  "assetId":"%s",
+                  "prompt":"Direct clip",
+                  "providerConfigVersion":1,
+                  "workflowVersion":"test-video-v1",
+                  "parameters":{},
+                  "sourceTaskId":"%s",
+                  "keyframeVersionId":"%s"
                 }
-                """.formatted(timeOfDay));
+                """.formatted(assetId, UUID.randomUUID(), keyframeVersionId));
     }
 
-    private JsonNode shot(int order, UUID sceneVersionId) {
-        return json("""
-                {
-                  "order":%d,
-                  "durationSeconds":5,
-                  "description":"Coffee shot",
-                  "camera":"Dolly in",
-                  "action":"Pour coffee",
-                  "characterVersionIds":[],
-                  "sceneVersionId":"%s"
-                }
-                """.formatted(order, sceneVersionId));
+    /** 用 FFmpeg 编码真实 MP4 字节，使 VIDEO 产物走与生产一致的归档校验。 */
+    private UUID videoAsset(UUID ownerId, UUID projectId) throws IOException {
+        Path sourceImage = Files.createTempFile("artifact-keyframe-", ".png");
+        Path sourceVideo = Files.createTempFile("artifact-clip-", ".mp4");
+        try {
+            Files.write(sourceImage, png());
+            mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-loop", "1", "-framerate", "24", "-i", sourceImage.toString(),
+                    "-t", "1", "-vf", "scale=640:360,format=yuv420p", "-an",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
+                    "-y", sourceVideo.toString()));
+            try (var input = Files.newInputStream(sourceVideo)) {
+                return assetService.archiveVideo(ownerId, projectId, input).id();
+            }
+        } finally {
+            Files.deleteIfExists(sourceImage);
+            Files.deleteIfExists(sourceVideo);
+        }
+    }
+
+    /** 提供可解码的图片字节，避免把编码失败误判为归档校验失败。 */
+    private static byte[] png() throws IOException {
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (!ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB),
+                    "png", output)) {
+                throw new IllegalStateException("PNG encoder unavailable");
+            }
+            return output.toByteArray();
+        }
     }
 
     private JsonNode json(String value) {

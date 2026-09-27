@@ -140,11 +140,11 @@ class AgentRunPostgresIT {
                 .path("modelConfigVersion").asInt();
         assertProblem("MODEL_CONFIG_CONFLICT", () -> runService.create(owner.userId(),
                 project.id(), agent.id(), "Create three shots", "stale-model-consent",
-                preflight.agentVersion(), null, List.of(), reviewedModelSource,
+                preflight.agentVersion(), List.of(), reviewedModelSource,
                 reviewedModelVersion + 1));
         assertProblem("SYSTEM_PROMPT_CONFLICT", () -> runService.create(owner.userId(),
                 project.id(), agent.id(), "Create three shots", "stale-prompt-consent",
-                preflight.agentVersion(), null, List.of(), reviewedModelSource,
+                preflight.agentVersion(), List.of(), reviewedModelSource,
                 reviewedModelVersion, 1));
         assertThat(jdbcClient.sql("select count(*) from agent_run where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isZero();
@@ -230,15 +230,16 @@ class AgentRunPostgresIT {
 
         AgentRun running = runService.transition(
                 owner.userId(), project.id(), run.id(), 0, AgentRun.Status.RUNNING);
+        // 等待态仍占用项目活动槽位；WAITING_TASKS 是收缩后唯一保留的非终态等待。
         AgentRun waiting = runService.transition(
                 owner.userId(),
                 project.id(),
                 run.id(),
                 running.version(),
-                AgentRun.Status.WAITING_APPROVAL);
+                AgentRun.Status.WAITING_TASKS);
         assertThat(activeRun(project.id())).isEqualTo(run.id());
         assertThat(runService.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.WAITING_APPROVAL);
+                .isEqualTo(AgentRun.Status.WAITING_TASKS);
         AgentRun canceled = runService.cancel(owner.userId(), project.id(), waiting.id());
         assertThat(canceled.status()).isEqualTo(AgentRun.Status.CANCELED);
         assertThat(taskService.listByRun(owner.userId(), project.id(), run.id()))
@@ -323,7 +324,7 @@ class AgentRunPostgresIT {
         AgentRun started = runService.transition(owner.userId(), project.id(),
                 afterTerminal.id(), afterTerminal.version(), AgentRun.Status.RUNNING);
         runService.transition(owner.userId(), project.id(), afterTerminal.id(),
-                started.version(), AgentRun.Status.WAITING_APPROVAL);
+                started.version(), AgentRun.Status.WAITING_TASKS);
         jdbcClient.sql("update task set lease_until = now() - interval '1 second' where id = :taskId")
                 .param("taskId", activeTurn.id()).update();
         Task resumedWait = taskService.claimAgentTurns("recovery-worker", 1).getFirst();

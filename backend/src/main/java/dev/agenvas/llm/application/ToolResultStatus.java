@@ -4,8 +4,6 @@ package dev.agenvas.llm.application;
 public enum ToolResultStatus {
     /** 工具已完成业务动作。 */
     SUCCEEDED,
-    /** 工具停在等待用户审批的位置，回合不再继续。 */
-    WAITING_APPROVAL,
     /** 工具调用被拒绝，未产生业务副作用。 */
     REJECTED
 }

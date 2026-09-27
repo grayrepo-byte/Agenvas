@@ -143,7 +143,7 @@ describe("project event subscription", () => {
     stop();
   });
 
-  it("delivers keyframe selection events through the same project cursor", () => {
+  it("delivers media draft changes through the same project cursor", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];
     const stop = subscribeProjectEvents(projectId, 0, {
@@ -156,13 +156,13 @@ describe("project event subscription", () => {
       schedule: (callback) => setTimeout(callback, 5_000),
       clearSchedule: clearTimeout,
     });
-    stream.emit({ ...event(1, 0), type: "shot.keyframe.selected",
-      payload: { shotArtifactId: aggregateId } });
+    stream.emit({ ...event(1, 0), type: "media.draft.changed",
+      payload: { artifactId: aggregateId } });
     expect(changes).toHaveLength(1);
     stop();
   });
 
-  it("delivers export proposal changes without leaving a silent cursor gap", () => {
+  it("delivers canvas item changes without leaving a silent cursor gap", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];
     const stop = subscribeProjectEvents(projectId, 0, {
@@ -175,8 +175,8 @@ describe("project event subscription", () => {
       schedule: (callback) => setTimeout(callback, 5_000),
       clearSchedule: clearTimeout,
     });
-    stream.emit({ ...event(1, 0), type: "export.proposal.changed",
-      payload: { proposalId: aggregateId, status: "PENDING" } });
+    stream.emit({ ...event(1, 0), type: "canvas.items.changed",
+      payload: { itemIds: [aggregateId] } });
     stream.emit({ ...event(2, 1), type: "agent.run.changed" });
     expect(changes.map((value) => value.seq)).toEqual([1, 2]);
     stop();

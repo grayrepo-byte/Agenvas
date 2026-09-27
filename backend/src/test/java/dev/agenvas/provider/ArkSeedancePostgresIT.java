@@ -4,30 +4,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.TrustedToolContext;
-import dev.agenvas.plan.application.ExecutionPlanService;
-import dev.agenvas.plan.application.ShotKeyframeSelectionService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
-import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.ImageAssetFixture;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,6 +54,8 @@ class ArkSeedancePostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final String TASK_ID = "cgt-test-seedance-123";
+    /** 假服务端与 Ark 适配器都要求 4 秒，直连入口写入的 durationSeconds 必须与之一致。 */
+    private static final int CLIP_SECONDS = 4;
     private static final HttpServer SERVER = startServer();
     private static final AtomicInteger CREATES = new AtomicInteger();
     private static final AtomicInteger QUERIES = new AtomicInteger();
@@ -76,10 +75,9 @@ class ArkSeedancePostgresIT {
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private ExecutionPlanService plans;
-    @Autowired private ShotKeyframeSelectionService selections;
+    @Autowired private AssetService assets;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker worker;
     @Autowired private TaskService tasks;
@@ -99,7 +97,7 @@ class ArkSeedancePostgresIT {
 
         Fixture accepted = fixture(owner.userId(), "Accepted Seedance");
         Task acceptedTask = approve(owner.userId(), accepted);
-        assertThat(acceptedTask.input().path("durationSeconds").asInt()).isEqualTo(4);
+        assertThat(acceptedTask.input().path("durationSeconds").asInt()).isEqualTo(CLIP_SECONDS);
         assertThat(worker.submitOnce("ark-submit-worker")).isEqualTo(1);
         Task waiting = tasks.get(owner.userId(), accepted.project().id(), acceptedTask.id());
         assertThat(waiting.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
@@ -127,70 +125,29 @@ class ArkSeedancePostgresIT {
         assertThat(CREATES).hasValue(2);
     }
 
+    /** 直连入口只需要一张真实归档图片当关键帧，不再经过规划、审批和关键帧选择。 */
     private Fixture fixture(UUID ownerId, String name) {
         Project project = projects.create(ownerId, name, Project.AspectRatio.LANDSCAPE_16_9);
-        ObjectNode scene = mapper.createObjectNode();
-        scene.put("name", "Studio"); scene.put("location", "Shanghai");
-        scene.put("timeOfDay", "Day"); scene.put("lighting", "Soft");
-        scene.put("style", "Minimal"); scene.putArray("referenceVersionIds");
-        UUID sceneVersion = artifacts.create(ownerId, project.id(), Artifact.Kind.SCENE,
-                "Scene", scene).currentVersion().id();
-        ObjectNode shot = mapper.createObjectNode();
-        shot.put("order", 1); shot.put("durationSeconds", 4);
-        shot.put("description", "Coffee pour"); shot.put("camera", "Close");
-        shot.put("action", "Slow pan"); shot.putArray("characterVersionIds");
-        shot.put("sceneVersionId", sceneVersion.toString());
-        var target = artifacts.create(ownerId, project.id(), Artifact.Kind.SHOT, "Shot", shot);
-        var agent = agents.create(ownerId, project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
-                        target.currentVersion().id())));
-        AgentRun queued = runs.create(ownerId, project.id(), agent.id(), "Animate keyframe",
-                "ark-" + UUID.randomUUID()).run();
-        AgentRun running = runs.transition(ownerId, project.id(), queued.id(),
-                queued.version(), AgentRun.Status.RUNNING);
-        ObjectNode imageProposal = mapper.createObjectNode();
-        imageProposal.put("stage", "IMAGE");
-        imageProposal.put("objective", "Create a keyframe before video");
-        ObjectNode frameStep = imageProposal.putArray("steps").addObject();
-        frameStep.put("stepKey", "frame-1");
-        frameStep.put("outputSlotKey", "frame-output");
-        frameStep.put("shotArtifactId", target.artifact().id().toString());
-        frameStep.put("shotVersionId", target.currentVersion().id().toString());
-        frameStep.put("prompt", "Studio keyframe");
-        frameStep.putArray("dependsOnStepKeys");
-        var imagePlan = plans.propose(new TrustedToolContext(ownerId, project.id(),
-                running.id()), imageProposal);
-        Task imageTask = plans.approve(ownerId, project.id(), imagePlan.id(),
-                imagePlan.planHash(), List.of("frame-1")).tasks().getFirst();
-        assertThat(worker.submitOnce("ark-mock-keyframe-worker")).isEqualTo(1);
-        Task imageDone = tasks.get(ownerId, project.id(), imageTask.id());
-        assertThat(imageDone.status()).isEqualTo(Task.Status.SUCCEEDED);
-        var keyframe = artifacts.get(ownerId, project.id(),
-                UUID.fromString(imageDone.output().path("artifactId").asText()));
-        selections.select(ownerId, project.id(), running.id(), target.artifact().id(),
-                target.currentVersion().id(), keyframe.artifact().id(),
-                keyframe.currentVersion().id(), null);
-        AgentRun waiting = runs.get(ownerId, project.id(), running.id());
-        AgentRun readyForVideo = runs.transition(ownerId, project.id(), running.id(),
-                waiting.version(), AgentRun.Status.RUNNING);
-        return new Fixture(project, target, keyframe, readyForVideo);
+        UUID assetId = ImageAssetFixture.archive(assets, ownerId, project.id());
+        ObjectNode image = mapper.createObjectNode();
+        image.put("assetId", assetId.toString());
+        image.put("sourceTaskId", UUID.randomUUID().toString());
+        image.put("prompt", "Studio keyframe");
+        image.put("providerConfigVersion", 1);
+        image.put("workflowVersion", "fixture");
+        image.putObject("parameters");
+        var keyframe = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
+                "Keyframe", image);
+        var card = artifacts.create(ownerId, project.id(), Artifact.Kind.VIDEO, "Clip", null);
+        long draftVersion = drafts.save(ownerId, project.id(), card.artifact().id(), 0,
+                "A detailed coffee pour", keyframe.currentVersion().id(), CLIP_SECONDS, null)
+                .version();
+        return new Fixture(project, card, keyframe, draftVersion);
     }
 
     private Task approve(UUID ownerId, Fixture fixture) {
-        ObjectNode proposal = mapper.createObjectNode();
-        proposal.put("stage", "VIDEO"); proposal.put("objective", "Animate selected keyframe");
-        ObjectNode step = proposal.putArray("steps").addObject();
-        step.put("stepKey", "clip-1"); step.put("outputSlotKey", "clip-output");
-        step.put("shotArtifactId", fixture.shot().artifact().id().toString());
-        step.put("shotVersionId", fixture.shot().currentVersion().id().toString());
-        step.put("imageArtifactId", fixture.keyframe().artifact().id().toString());
-        step.put("imageVersionId", fixture.keyframe().currentVersion().id().toString());
-        step.put("prompt", "A detailed coffee pour");
-        step.putArray("dependsOnStepKeys");
-        var plan = plans.propose(new TrustedToolContext(ownerId, fixture.project().id(),
-                fixture.run().id()), proposal);
-        return plans.approve(ownerId, fixture.project().id(), plan.id(), plan.planHash(),
-                List.of("clip-1")).tasks().getFirst();
+        return directMedia.run(ownerId, fixture.project().id(), fixture.card().artifact().id(),
+                fixture.draftVersion(), "ark-" + UUID.randomUUID());
     }
 
     private static HttpServer startServer() {
@@ -203,7 +160,7 @@ class ArkSeedancePostgresIT {
                     var body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                     assertThat(body.path("model").asText())
                             .isEqualTo("doubao-seedance-2-0-260128");
-                    assertThat(body.path("duration").asInt()).isEqualTo(4);
+                    assertThat(body.path("duration").asInt()).isEqualTo(CLIP_SECONDS);
                     assertThat(body.path("generate_audio").booleanValue()).isFalse();
                     assertThat(body.path("content").get(1).path("role").asText())
                             .isEqualTo("first_frame");
@@ -241,6 +198,7 @@ class ArkSeedancePostgresIT {
         }
     }
 
-    private record Fixture(Project project, ArtifactService.ArtifactView shot,
-            ArtifactService.ArtifactView keyframe, AgentRun run) {}
+    /** 直连视频任务的固定输入：视频卡片、作为关键帧的图片产物和已保存的草稿版本。 */
+    private record Fixture(Project project, ArtifactService.ArtifactView card,
+            ArtifactService.ArtifactView keyframe, long draftVersion) {}
 }

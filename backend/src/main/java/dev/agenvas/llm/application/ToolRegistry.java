@@ -38,67 +38,6 @@ public class ToolRegistry {
                "text":{"type":"string","minLength":1,"maxLength":20000},
                "format":{"type":"string","enum":["PLAIN_TEXT","MARKDOWN"]}}}
             """;
-    /** 角色创建字段白名单及显式参考版本数量上限。 */
-    private static final String CREATE_CHARACTER_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["name","description","appearance","referenceVersionIds"],
-             "properties":{"name":{"type":"string","minLength":1,"maxLength":120},
-               "description":{"type":"string","minLength":1,"maxLength":4000},
-               "appearance":{"type":"string","minLength":1,"maxLength":4000},
-               "referenceVersionIds":{"type":"array","maxItems":8,"uniqueItems":true,
-                 "items":{"type":"string","format":"uuid"}}}}
-            """;
-    /** 场景创建字段白名单及显式参考版本数量上限。 */
-    private static final String CREATE_SCENE_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["name","location","timeOfDay","lighting","style","referenceVersionIds"],
-             "properties":{"name":{"type":"string","minLength":1,"maxLength":120},
-               "location":{"type":"string","minLength":1,"maxLength":500},
-               "timeOfDay":{"type":"string","minLength":1,"maxLength":80},
-               "lighting":{"type":"string","minLength":1,"maxLength":1000},
-               "style":{"type":"string","minLength":1,"maxLength":1000},
-               "referenceVersionIds":{"type":"array","maxItems":8,"uniqueItems":true,
-                 "items":{"type":"string","format":"uuid"}}}}
-            """;
-    /** 一次最多提出六个有序镜头，每个镜头显式关联角色和场景版本。 */
-    private static final String CREATE_SHOTS_SCHEMA = """
-            {"type":"object","additionalProperties":false,"required":["shots"],
-             "properties":{"shots":{"type":"array","minItems":1,"maxItems":6,
-               "items":{"type":"object","additionalProperties":false,
-                 "required":["title","order","durationSeconds","description","camera","action",
-                   "characterVersionIds","sceneVersionId"],
-                 "properties":{"title":{"type":"string","minLength":1,"maxLength":160},
-                   "order":{"type":"integer","minimum":1,"maximum":6},
-                   "durationSeconds":{"type":"integer","minimum":1,"maximum":30},
-                   "description":{"type":"string","minLength":1,"maxLength":4000},
-                   "camera":{"type":"string","minLength":1,"maxLength":1000},
-                   "action":{"type":"string","minLength":1,"maxLength":2000},
-                   "characterVersionIds":{"type":"array","maxItems":10,"uniqueItems":true,
-                     "items":{"type":"string","format":"uuid"}},
-                   "sceneVersionId":{"type":"string","format":"uuid"}}}}}}
-            """;
-    /** 媒体 DAG 提案 Schema；只表达待审批步骤，不包含批准字段。 */
-    private static final String PROPOSE_GENERATION_PLAN_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["stage","objective","steps"],
-             "properties":{"stage":{"type":"string","enum":["IMAGE","VIDEO"]},
-               "objective":{"type":"string","minLength":1,"maxLength":1000},
-               "steps":{"type":"array","minItems":1,"maxItems":6,
-                 "items":{"type":"object","additionalProperties":false,
-                   "required":["stepKey","outputSlotKey","shotArtifactId","shotVersionId",
-                     "prompt","dependsOnStepKeys"],
-                   "properties":{"stepKey":{"type":"string","minLength":1,"maxLength":160},
-                     "outputSlotKey":{"type":"string","minLength":1,"maxLength":160},
-                     "shotArtifactId":{"type":"string","format":"uuid"},
-                     "shotVersionId":{"type":"string","format":"uuid"},
-                     "imageArtifactId":{"type":"string","format":"uuid"},
-                     "imageVersionId":{"type":"string","format":"uuid"},
-                     "capabilityId":{"type":"string","format":"uuid"},
-                     "prompt":{"type":"string","minLength":1,"maxLength":8000},
-                     "negativePrompt":{"type":"string","minLength":1,"maxLength":8000},
-                     "dependsOnStepKeys":{"type":"array","maxItems":6,"uniqueItems":true,
-                       "items":{"type":"string"}}}}}}}
-            """;
     /** 版本追加要求 expectedVersion 和完整内容，禁止局部补丁或服务端字段。 */
     private static final String REVISE_ARTIFACT_SCHEMA = """
             {"type":"object","additionalProperties":false,
@@ -129,34 +68,6 @@ public class ToolRegistry {
                      "versionId":{"type":"string","format":"uuid"},
                      "expectedVersion":{"type":"integer","minimum":0}}}}}}
             """;
-    /** 语义连线关系白名单；连线只表示内容引用，不触发执行。 */
-    private static final String LINK_ARTIFACTS_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["sourceArtifactId","expectedVersion","targetVersionId","relationship"],
-             "properties":{"sourceArtifactId":{"type":"string","format":"uuid"},
-               "expectedVersion":{"type":"integer","minimum":0},
-               "targetVersionId":{"type":"string","format":"uuid"},
-               "relationship":{"type":"string","enum":["CHARACTER_REFERENCE_IMAGE",
-                 "SCENE_REFERENCE_IMAGE","SHOT_CHARACTER","SHOT_SCENE"]}}}
-            """;
-    /** 无声导出顺序提案；是否启动 FFmpeg 仍由独立人工审批接口决定。 */
-    private static final String PROPOSE_EXPORT_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["aspectRatio","segments"],
-             "properties":{"aspectRatio":{"type":"string",
-               "enum":["LANDSCAPE_16_9","PORTRAIT_9_16","SQUARE_1_1"]},
-               "segments":{"type":"array","minItems":1,"maxItems":6,
-                 "items":{"type":"object","additionalProperties":false,
-                   "required":["shotArtifactId","shotVersionId","videoArtifactId",
-                     "videoVersionId","startSeconds","endSeconds"],
-                   "properties":{"shotArtifactId":{"type":"string","format":"uuid"},
-                     "shotVersionId":{"type":"string","format":"uuid"},
-                     "videoArtifactId":{"type":"string","format":"uuid"},
-                     "videoVersionId":{"type":"string","format":"uuid"},
-                     "startSeconds":{"type":"integer","minimum":0,"maximum":59},
-                     "endSeconds":{"type":"integer","minimum":1,"maximum":60}}}}}}
-            """;
-
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */
     public List<ToolCallback> modelDefinitions() {
         return List.of(
@@ -177,13 +88,8 @@ public class ToolRegistry {
                         READ_TASK_STATUS_SCHEMA),
                 definition("create_text", "Create a text artifact in the current project",
                         CREATE_TEXT_SCHEMA),
-                definition("create_character", "Create a character description",
-                        CREATE_CHARACTER_SCHEMA),
-                definition("create_scene", "Create a scene description", CREATE_SCENE_SCHEMA),
-                definition("create_shots", "Create one to six ordered storyboard shots",
-                        CREATE_SHOTS_SCHEMA),
                 definition("revise_artifact",
-                        "Create a new version of a Run-visible text, character, scene or shot; "
+                        "Create a new version of a Run-visible text artifact; "
                                 + "requires expectedVersion from bound input or artifactVersions "
                                 + "in a prior tool result, plus complete content",
                         REVISE_ARTIFACT_SCHEMA),
@@ -196,27 +102,7 @@ public class ToolRegistry {
                         "Arrange one to six Run-visible cards in this Agent's output group "
                                 + "using itemId, content versionId and itemVersion from "
                                 + "place_artifacts; requires layout CAS, never changes content",
-                        ARRANGE_ITEMS_SCHEMA),
-                definition("link_artifacts",
-                        "Create a typed semantic reference on a Run-visible character, scene "
-                                + "or shot by immutable content revision; never triggers "
-                                + "execution or selects media",
-                        LINK_ARTIFACTS_SCHEMA),
-                definition("propose_generation_plan",
-                        "Propose a media DAG for authenticated user approval; never approves it",
-                        PROPOSE_GENERATION_PLAN_SCHEMA),
-                definition("propose_export",
-                        "Save an ordered silent-export proposal for separate authenticated "
-                                + "approval; requires current Run-visible shot and video "
-                                + "versions and never starts FFmpeg",
-                        PROPOSE_EXPORT_SCHEMA));
-    }
-
-    /** 局部重做只公开媒体计划提案，不能创建无关角色、场景、镜头或文本产物。 */
-    public List<ToolCallback> modelDefinitions(boolean scopedRedo) {
-        return scopedRedo ? List.of(definition("propose_generation_plan",
-                "Propose one target-shot media plan for separate authenticated approval",
-                PROPOSE_GENERATION_PLAN_SCHEMA)) : modelDefinitions();
+                        ARRANGE_ITEMS_SCHEMA));
     }
 
     /** 组装模型可见定义；此回调只供序列化 Schema，不能直接执行业务调用。 */

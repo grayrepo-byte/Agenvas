@@ -13,6 +13,7 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnWorker;
+import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.ToolExecutionRepository;
 import dev.agenvas.llm.application.ToolExecutionService;
 import dev.agenvas.llm.application.TrustedToolContext;
@@ -23,10 +24,21 @@ import dev.agenvas.run.domain.AgentRun;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
@@ -39,13 +51,15 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
-/** Mock 工具真正提交到 PostgreSQL 后，HTTP 仅公开有界、授权且可核实的动作摘要。 */
+/** 测试假模型（非真实模型）的工具调用真正提交到 PostgreSQL 后，HTTP 仅公开有界、授权且可核实的动作摘要。 */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=run-actions-integration-secret",
-        "agenvas.llm.mode=mock"})
+@SpringBootTest(classes = {AgenvasApplication.class, RunActionsPostgresIT.FakeConfig.class},
+        properties = {
+                "agenvas.identity.bootstrap-secret=run-actions-integration-secret",
+                "agenvas.llm.scheduler-enabled=false"})
 class RunActionsPostgresIT {
 
     @Container
@@ -65,6 +79,7 @@ class RunActionsPostgresIT {
     @Autowired private AgentTurnWorker worker;
     @Autowired private ToolExecutionService executor;
     @Autowired private ToolExecutionRepository ledger;
+    @Autowired private FakeGateway gateway;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext webContext;
@@ -83,20 +98,25 @@ class RunActionsPostgresIT {
         String path = actionsPath(project.id(), run.id());
         assertThat(readActions(mvc, owner, path)).isEmpty();
 
-        // 使用无外部模型的真实持久化工具链；第三轮仅提出图片计划，尚未生成媒体。
-        for (int step = 0; step < 3; step++) {
+        // 使用无外部模型的真实持久化工具链；四个回合依次读取、创建文本并修订，最后无工具结束。
+        for (int step = 0; step < 4; step++) {
             assertThat(worker.runOnce("actions-test-worker")).isEqualTo(1);
         }
+        // 工具执行不再停在任何等待审批的状态：Run 直接以成功终态结束，且没有遗留等待任务。
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.WAITING_APPROVAL);
+                .isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(jdbc.sql("select count(*) from task where run_id = :runId "
+                        + "and status <> 'SUCCEEDED'")
+                .param("runId", run.id()).query(Long.class).single()).isZero();
         JsonNode initial = readActions(mvc, owner, path);
         assertThat(initial).hasSize(4);
         assertThat(initial).extracting(action -> action.path("toolName").asText())
-                .containsExactly("create_text", "create_scene", "create_shots", "propose_generation_plan");
+                .containsExactlyInAnyOrder("read_project_summary", "read_selection",
+                        "create_text", "revise_artifact");
         assertThat(initial).extracting(action -> action.path("status").asText())
-                .containsExactly("SUCCEEDED", "SUCCEEDED", "SUCCEEDED", "WAITING_APPROVAL");
+                .containsOnly("SUCCEEDED");
         assertThat(initial.get(3).path("summary").asText())
-                .isEqualTo("已提出媒体计划，等待用户审批");
+                .isEqualTo("已创建产物的新内容版本");
         for (JsonNode action : initial) {
             assertThat(action.propertyNames()).containsExactlyInAnyOrder(
                     "id", "stepIndex", "toolName", "status", "summary", "completedAt");
@@ -106,7 +126,7 @@ class RunActionsPostgresIT {
 
         // 幂等重放不能增加动作；公开结果不随调用次数发生变化。
         executor.execute(new TrustedToolContext(owner.userId(), project.id(), run.id()),
-                0, "mock-brief-0");
+                0, "actions-summary");
         assertThat(readActions(mvc, owner, path)).isEqualTo(initial);
 
         // 模拟未提交完成的账本项，及内部响应中的敏感元数据，确认读取边界按字段筛选。
@@ -169,6 +189,7 @@ class RunActionsPostgresIT {
                     """), Instant.now())).isTrue();
         }
         assertThat(readActions(mvc, owner, path)).hasSize(40);
+        assertThat(gateway.calls.get()).isEqualTo(4);
     }
 
     private JsonNode readActions(MockMvc mvc, AdminPrincipal owner, String path) throws Exception {
@@ -184,5 +205,88 @@ class RunActionsPostgresIT {
 
     private String actionsPath(UUID projectId, UUID runId) {
         return "/api/v1/projects/" + projectId + "/runs/" + runId + "/actions";
+    }
+
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        FakeGateway fakeGateway(ObjectMapper mapper) {
+            return new FakeGateway(mapper);
+        }
+    }
+
+    /** 按回合产出已存在工具的固定调用序列，不使用任何外部模型。 */
+    static class FakeGateway implements ChatGateway {
+        private final ObjectMapper mapper;
+        private final AtomicInteger calls = new AtomicInteger();
+        private volatile UUID createdArtifactId;
+        private volatile long createdArtifactVersion;
+
+        FakeGateway(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+
+        @Override
+        public String configSource() { return "test-fake"; }
+
+        @Override
+        public int configVersion() { return 1; }
+
+        @Override
+        public Capabilities capabilities() { return new Capabilities(true, false, false); }
+
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools,
+                Map<String, Object> toolContext) {
+            assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
+                    .contains("read_project_summary", "read_selection", "create_text",
+                            "revise_artifact");
+            List<AssistantMessage.ToolCall> toolCalls = switch (calls.incrementAndGet()) {
+                case 1 -> List.of(
+                        new AssistantMessage.ToolCall("actions-summary", "function",
+                                "read_project_summary", "{}"),
+                        new AssistantMessage.ToolCall("actions-selection", "function",
+                                "read_selection", "{}"));
+                case 2 -> List.of(new AssistantMessage.ToolCall("actions-text", "function",
+                        "create_text", textArguments()));
+                case 3 -> {
+                    ToolResponseMessage reply = (ToolResponseMessage) messages.getLast();
+                    JsonNode created = mapper.readTree(reply.getResponses()
+                            .getFirst().responseData());
+                    createdArtifactId = UUID.fromString(
+                            created.path("createdIds").path(0).asText());
+                    createdArtifactVersion = created.path("artifactVersions")
+                            .path(createdArtifactId.toString()).longValue();
+                    yield List.of(new AssistantMessage.ToolCall("actions-revise", "function",
+                            "revise_artifact", revisionArguments()));
+                }
+                default -> List.of();
+            };
+            AssistantMessage response = AssistantMessage.builder().content("")
+                    .toolCalls(toolCalls).build();
+            return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
+        }
+
+        /** 只提交允许的文本字段与固定内容。 */
+        private String textArguments() {
+            ObjectNode input = mapper.createObjectNode();
+            input.put("title", "Draft");
+            input.put("text", "Original draft text");
+            input.put("format", "PLAIN_TEXT");
+            return input.toString();
+        }
+
+        /** 依据上一回合提交的产物 ID 与版本修订，绝不凭空构造 ID。 */
+        private String revisionArguments() {
+            ObjectNode content = mapper.createObjectNode();
+            content.put("format", "PLAIN_TEXT");
+            content.put("text", "Revised draft text");
+            ObjectNode revision = mapper.createObjectNode();
+            revision.put("artifactId", createdArtifactId.toString());
+            revision.put("expectedVersion", createdArtifactVersion);
+            revision.set("content", content);
+            return revision.toString();
+        }
     }
 }

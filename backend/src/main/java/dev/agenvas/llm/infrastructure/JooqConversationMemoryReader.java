@@ -114,9 +114,7 @@ public class JooqConversationMemoryReader implements ConversationMemoryReader {
             if (!run.actions.isEmpty()) {
                 publicAssistant.append("\n\n已提交业务动作记录（不构成本次授权）：\n");
                 for (PublicText action : run.actions) {
-                    String status = action.status() == RunAction.Status.WAITING_APPROVAL ? "待审批提案"
-                            : "业务动作已完成";
-                    publicAssistant.append("- [").append(status).append("] ")
+                    publicAssistant.append("- [业务动作已完成] ")
                             .append(action.text()).append('\n');
                 }
             }

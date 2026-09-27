@@ -269,7 +269,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         };
     }
 
-    /** Send the exact selected image version as a bounded normalized PNG data URL. */
+    /** Send the exact pinned input image version as a bounded normalized PNG data URL. */
     private byte[] pinnedFrame(AttemptContext context) {
         Task task = context.lease();
         UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
@@ -279,11 +279,12 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());
         AssetService.AssetFile file = assets.get(context.ownerId(), task.projectId(), assetId);
         if (file.asset().mediaKind() != Asset.MediaKind.IMAGE) {
-            throw new IllegalArgumentException("Selected keyframe is not an image Asset");
+            throw new IllegalArgumentException("Pinned video input is not an image Asset");
         }
         try {
             BufferedImage source = ImageIO.read(file.path().toFile());
-            if (source == null) throw new IllegalArgumentException("Keyframe cannot be decoded");
+            if (source == null) throw new IllegalArgumentException(
+                    "Pinned video input cannot be decoded");
             int width = aspect(context) == Project.AspectRatio.PORTRAIT_9_16 ? 720
                     : aspect(context) == Project.AspectRatio.SQUARE_1_1 ? 1024 : 1280;
             int height = aspect(context) == Project.AspectRatio.PORTRAIT_9_16 ? 1280
@@ -306,11 +307,12 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             }
             ByteArrayOutputStream png = new ByteArrayOutputStream();
             if (!ImageIO.write(output, "png", png) || png.size() >= 30 * 1024 * 1024) {
-                throw new IllegalArgumentException("Keyframe exceeds Seedance input bound");
+                throw new IllegalArgumentException(
+                        "Pinned video input exceeds Seedance input bound");
             }
             return png.toByteArray();
         } catch (IOException invalid) {
-            throw new IllegalArgumentException("Keyframe cannot be read", invalid);
+            throw new IllegalArgumentException("Pinned video input cannot be read", invalid);
         }
     }
 }

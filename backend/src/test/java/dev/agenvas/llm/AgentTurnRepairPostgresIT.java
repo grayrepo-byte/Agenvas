@@ -98,7 +98,8 @@ class AgentTurnRepairPostgresIT {
         AgentRun exhausted = runs.create(owner.userId(), project.id(), agent.id(),
                 "Write again", "repair-exhaust-run").run();
         for (int index = 0; index < 3; index++) {
-            assertThat(worker.runOnce("repair-test")).isEqualTo(1);
+            assertThat(worker.runOnce("repair-test")).as("exhausted turn %s", index + 1)
+                    .isEqualTo(1);
         }
         assertThat(runs.get(owner.userId(), project.id(), exhausted.id()).status())
                 .isEqualTo(AgentRun.Status.BLOCKED);
@@ -163,8 +164,7 @@ class AgentTurnRepairPostgresIT {
             int count = callCounts.computeIfAbsent((String) toolContext.get("runId"),
                     ignored -> new AtomicInteger()).incrementAndGet();
             if (count == 2) {
-                assertThat(messages.getLast().getText()).contains(alwaysInvalid
-                                ? "PLAN_INVALID" : "TOOL_ARGUMENT_INVALID")
+                assertThat(messages.getLast().getText()).contains("TOOL_ARGUMENT_INVALID")
                         .contains("No tools from that response were applied");
                 AssistantMessage rejected = (AssistantMessage) messages.get(messages.size() - 3);
                 ToolResponseMessage failedCalls = (ToolResponseMessage) messages.get(messages.size() - 2);
@@ -180,8 +180,8 @@ class AgentTurnRepairPostgresIT {
             if (alwaysInvalid) {
                 response = AssistantMessage.builder().content("")
                         .toolCalls(List.of(textCall("valid-" + count),
-                                new AssistantMessage.ToolCall("invalid-plan-" + count,
-                                        "function", "propose_generation_plan", "{}")))
+                                new AssistantMessage.ToolCall("invalid-tool-" + count,
+                                        "function", "create_text", "{not-json")))
                         .build();
             } else if (count == 1) {
                 response = AssistantMessage.builder().content("")

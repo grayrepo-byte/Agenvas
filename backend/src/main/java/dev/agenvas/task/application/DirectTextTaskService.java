@@ -104,7 +104,7 @@ public class DirectTextTaskService {
             if (model.providerAdapter() != null) input.put("providerAdapter", model.providerAdapter());
             if (model.modelId() != null) input.put("modelId", model.modelId());
             Instant now = clock.instant();
-            Task task = new Task(UUID.randomUUID(), projectId, null, null, commandKey,
+            Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.TEXT_GENERATION, Task.Status.READY, false, input,
                     hash(input.toString()), null, null, null, 1, now,
                     null, null, 0, 0, null, now, now, null);

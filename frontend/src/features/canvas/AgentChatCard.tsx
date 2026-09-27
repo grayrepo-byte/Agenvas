@@ -22,7 +22,6 @@ export type AgentChatCardData = {
   item: CanvasItem;
   projectId: string;
   activeRun: AgentRun | null;
-  redoCandidates: { artifactId: string; versionId: string; title: string }[];
   outputCount: number;
   onShowOutputs: (agent: Agent) => void;
   onResizeEnd: (itemId: string, layout: Pick<ResizeParams, "x" | "y" | "width" | "height">) => void;
@@ -35,14 +34,14 @@ export type AgentChatCardData = {
 
 
 const EMPTY_CONVERSATION_DRAFT = "new-conversation";
-const EMPTY_DRAFT = { instruction: "", redoShotId: "" };
+const EMPTY_DRAFT = { instruction: "" };
 type ConversationDraft = typeof EMPTY_DRAFT;
 type RunReview = {
   conversationId: string; instruction: string; selectedIds: string[];
-  agentVersion: number; redoShotId: string;
+  agentVersion: number;
 };
 
-/** Conversations persist across messages; each submitted message retains its own Run and approvals. */
+/** Conversations persist across messages; each submitted message retains its own Run. */
 export function AgentChatCard({ data, selected }: { data: AgentChatCardData; selected: boolean }) {
   const queryClient = useQueryClient();
   const agent = data.item.agent;
@@ -65,7 +64,6 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   const draftKey = conversationId ?? EMPTY_CONVERSATION_DRAFT;
   const draft = drafts[draftKey] ?? EMPTY_DRAFT;
   const runInstruction = draft.instruction;
-  const redoShotId = draft.redoShotId;
   const sessions = conversations.data?.pages.flatMap((page) => page.items) ?? [];
   const currentConversation = sessions.find((session) => session.id === conversationId);
   const ownRun = data.activeRun?.agentInstanceId === agent?.id ? data.activeRun : null;
@@ -81,10 +79,8 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   const byId = new Map((runs.data?.pages.flatMap((page) => page.items) ?? []).map((run) => [run.id, run]));
   if (currentActiveRun) byId.set(currentActiveRun.id, currentActiveRun);
   const displayedRuns = [...byId.values()].sort((left, right) => left.conversationTurn - right.conversationTurn);
-  const redoShot = data.redoCandidates.find((shot) => shot.artifactId === redoShotId) ?? null;
-  const redoBound = !redoShotId || redoShot !== null;
   const reviewInstruction = review?.conversationId === conversationId && review.agentVersion === agent?.version
-    && review.redoShotId === redoShotId && review.instruction === runInstruction.trim() ? review.instruction : null;
+    && review.instruction === runInstruction.trim() ? review.instruction : null;
   const reviewSelection = review?.selectedIds ?? [];
   const preflightKey = (id: string | null) => ["run-preflight", data.projectId, agent?.id, agent?.version, id];
   const preflight = useQuery({
@@ -95,10 +91,6 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
 
   function setRunInstruction(instruction: string) {
     setDrafts((previous) => ({ ...previous, [draftKey]: { ...previous[draftKey] ?? EMPTY_DRAFT, instruction } }));
-  }
-  function setRedoShotId(next: string) {
-    setDrafts((previous) => ({ ...previous, [draftKey]: { ...previous[draftKey] ?? EMPTY_DRAFT, redoShotId: next } }));
-    setReview(null);
   }
   function selectInCache(conversation: AgentConversation) {
     queryClient.setQueryData<InfiniteData<AgentConversationList>>(conversationKey, (previous) => {
@@ -199,7 +191,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   }
   async function submitRun() {
     if (!agent || data.activeRun || start.isPending || sessionBusy || preflight.isFetching
-      || conversations.isPending || conversations.isError || !redoBound) return;
+      || conversations.isPending || conversations.isError) return;
     const instruction = runInstruction.trim();
     if (!instruction) return;
     let targetId = conversationId;
@@ -209,7 +201,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     }
     setView("chat");
     setReview({ conversationId: targetId, instruction, agentVersion: agent.version,
-      selectedIds: [...useCanvasStore.getState().selectedIds], redoShotId });
+      selectedIds: [...useCanvasStore.getState().selectedIds] });
     try {
       await queryClient.fetchQuery({ queryKey: preflightKey(targetId), staleTime: 0,
         queryFn: () => getRunPreflight(data.projectId, agent.id, targetId) });
@@ -228,7 +220,6 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       expectedModelConfigVersion: reviewed.policySnapshot.modelConfigVersion,
       expectedSystemPromptVersion: reviewed.policySnapshot.systemPromptVersion,
       selectedItemIds: reviewSelection,
-      ...(redoShot ? { redoShotArtifactId: redoShot.artifactId } : {}),
     };
     const fingerprint = JSON.stringify(input);
     if (runIntent.current?.fingerprint !== fingerprint) runIntent.current = { fingerprint, key: crypto.randomUUID() };
@@ -262,7 +253,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         {createConversation.isPending ? <span>正在新建…</span> : <small>消息会保留在当前会话</small>}
       </div>
       {ownRun && ownRun.conversationId !== conversationId ? <div className="agent-chat-active-session">
-        <span>另一会话正在运行，审批与停止操作保留在原会话。</span>
+        <span>另一会话正在运行，停止操作保留在原会话。</span>
         <button type="button" disabled={sessionBusy} onClick={() => selectConversation.mutate(ownRun.conversationId)}>返回运行会话</button>
       </div> : null}
       <div className="agent-chat-body nodrag nowheel nopan" ref={bodyRef}>
@@ -303,8 +294,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
             onClick={() => void runs.fetchNextPage()} type="button">{runs.isFetchingNextPage ? "读取中…" : "加载更早的消息"}</button> : null}
           {!displayedRuns.length && !reviewInstruction && conversations.isSuccess && (!conversationId || runs.isSuccess) ? <div className="agent-chat-empty">
             <Sparkle size={30} weight="duotone" /><h4>从一个想法开始</h4>
-            <p>描述你想创作的内容，我会根据绑定素材规划。后续消息会延续当前会话的上下文。</p>
-            <button type="button" onClick={() => setRunInstruction("根据绑定素材规划三个镜头，并提出关键帧生成计划。")}>规划三个镜头 <ArrowUp size={14} /></button>
+            <p>描述你想创作的内容，我会根据绑定素材创建或修改文字产物并整理画布。后续消息会延续当前会话的上下文。</p>
           </div> : null}
           {displayedRuns.map((run) => <AgentRunConversation key={run.id} projectId={data.projectId}
             run={run} active={ownRun?.id === run.id} />)}
@@ -316,8 +306,8 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
             <button className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
               preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
               !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
-              !redoBound || preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null} onClick={confirmRun} type="button">
-              {start.isPending ? "启动中…" : "确认开始规划"}
+              preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null} onClick={confirmRun} type="button">
+              {start.isPending ? "启动中…" : "确认开始"}
             </button>
           </div> : undefined}>
           {preflight.isPending || preflight.isFetching ? <p className="mt-2">正在核对模型与输入…</p> : null}
@@ -327,15 +317,14 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
               <p className="mt-2 break-words">本次任务：{reviewInstruction}</p>
               <p>本会话已有 {preflight.data.conversationTurnCount} 轮消息，将继承 {preflight.data.inheritedBindingCount} 个精确素材绑定。</p>
               {preflight.data.memoryTruncated ? <p>保留早期背景和最近交流，部分历史未纳入本轮；完整记录仍可查看。</p> : null}
-              {redoShot ? <p className="mt-1">局部重做目标：{redoShot.title} · 版本 {redoShot.versionId}</p> : null}
               <p className="mt-1 break-words">Agent 指令：{preflight.data.agentInstruction}</p>
               <p className="mt-1">模型：{preflight.data.modelAvailable
                 ? `${preflight.data.providerAdapter ?? "未知适配器"} / ${preflight.data.modelId ?? "未声明模型 ID"}`
-                : "未配置 ChatModel，无法启动规划"}</p>
+                : "未配置 ChatModel，无法启动运行"}</p>
               <details className="agent-chat-review-details"><summary>输入与运行限额</summary>
               <p className="mt-1">模型配置：{preflight.data.policySnapshot.modelConfigSource} v{preflight.data.policySnapshot.modelConfigVersion}；系统提示词 v{preflight.data.policySnapshot.systemPromptVersion ?? "未知"}。确认后若配置或规则变化，需重新检查。</p>
               <p className="mt-1">精确绑定输入：{preflight.data.bindings.length} 个版本；首轮只发送有上限的内容预览，不发送图片字节。</p>
-              <p className="mt-1">当前模型看不到图片像素、视频帧或音频，只能依据文字与元数据规划；生成计划不等于媒体已生成，实际结果须等待任务归档。</p>
+              <p className="mt-1">当前模型看不到图片像素、视频帧或音频，只能依据文字与元数据工作；图片和视频一律在对应卡片上直连发起生成。</p>
               <p className="mt-1 break-all">当前选择：{reviewSelection.length} 张卡片
                 {reviewSelection.length ? `（${reviewSelection.join("、")}）` : ""}；仅作为操作意图，不扩大 Agent 权限。</p>
               {preflight.data.bindings.map((binding) => (
@@ -344,8 +333,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
                   <br />Version {binding.selectedVersionId}
                 </p>
               ))}
-              <p className="mt-1">还会发送项目名称与画幅。模型调用最多 {preflight.data.policySnapshot.maxModelTurns} 轮、工具最多 {preflight.data.policySnapshot.maxToolExecutions} 次；媒体生成仍需单独审批。</p>
-              <p className="mt-1">本轮限额：图片 {preflight.data.policySnapshot.maxImages}、视频 {preflight.data.policySnapshot.maxVideos}、镜头 {preflight.data.policySnapshot.maxShots}。</p>
+              <p className="mt-1">还会发送项目名称与画幅。模型调用最多 {preflight.data.policySnapshot.maxModelTurns} 轮、工具最多 {preflight.data.policySnapshot.maxToolExecutions} 次；Agent 不会触发生成。</p>
               </details>
               {!preflight.data.toolCalling && preflight.data.modelAvailable ?
                 <p className="mt-1 text-red-700">当前模型未确认支持工具调用，无法运行。</p> : null}
@@ -360,12 +348,6 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         {stop.error && displayedRuns.some((run) => run.id === stop.variables) ? <ChatError error={stop.error} /> : null}
       </div>
       <form aria-label="发送新任务" className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
-        <label className="agent-chat-scope">运行范围<select onChange={(event) => setRedoShotId(event.target.value)} value={redoShotId}>
-          <option value="">基于绑定输入创作</option>
-          {data.redoCandidates.map((shot) => <option key={shot.artifactId} value={shot.artifactId}>仅重做「{shot.title}」</option>)}
-        </select></label>
-        {redoShot ? <p className="agent-chat-hint">仅规划「{redoShot.title}」的新版本；图片和视频分别审批。</p> : null}
-        {!redoBound ? <p role="alert">目标镜头版本已变化，请重新绑定。</p> : null}
         <textarea aria-label="本次任务" disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
           setRunInstruction(event.target.value); setReview(null);
         }} onKeyDown={(event) => {
@@ -377,8 +359,8 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         <div className="agent-chat-composer-footer"><span>{data.activeRun && !ownRun ? "请等待其他 Agent 任务结束" : "同一会话共享上下文 · ⌘ / Ctrl + Enter"}</span>
           {currentActiveRun ? <button aria-label="停止" className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
             onClick={() => stop.mutate(currentActiveRun.id)} title="停止后续编排" type="button"><Square weight="fill" size={14} /></button>
-            : <button aria-label="发送" className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !redoBound || !runInstruction.trim()}
-              title="发送并检查运行范围" type="submit"><ArrowUp size={20} weight="bold" /></button>}
+            : <button aria-label="发送" className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !runInstruction.trim()}
+              title="发送并确认本次输入" type="submit"><ArrowUp size={20} weight="bold" /></button>}
         </div>
       </form>
     </article>

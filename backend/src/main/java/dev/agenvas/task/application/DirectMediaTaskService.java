@@ -6,7 +6,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.event.application.ProjectEventService;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -36,7 +36,7 @@ public class DirectMediaTaskService {
     private final MediaDraftService drafts;
     private final ArtifactService artifacts;
     private final MediaCapabilityService capabilities;
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
     private final ProjectEventService events;
     private final UsageService usage;
     private final ObjectMapper mapper;
@@ -44,7 +44,7 @@ public class DirectMediaTaskService {
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, MediaCapabilityService capabilities,
-            PlanProviderProperties provider, ProjectEventService events, UsageService usage,
+            ProviderProperties provider, ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock) {
         this.tasks = tasks;
         this.drafts = drafts;
@@ -114,7 +114,7 @@ public class DirectMediaTaskService {
                 input.put("durationSeconds", seconds);
             }
             Instant now = clock.instant();
-            Task task = new Task(UUID.randomUUID(), projectId, null, null, commandKey, kind,
+            Task task = new Task(UUID.randomUUID(), projectId, null, commandKey, kind,
                     Task.Status.READY, false, input, hash(input.toString()), null, null, null,
                     1, now, null, null, 0, 0, null, now, now, null);
             tasks.create(task, List.of());
@@ -142,7 +142,7 @@ public class DirectMediaTaskService {
             Task current = tasks.find(ownerId, projectId, taskId)
                     .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
                             "RESOURCE_NOT_FOUND", "任务不存在", "找不到该任务。", false));
-            if (current.runId() != null || current.kind() == Task.Kind.MEDIA_EXPORT) {
+            if (current.runId() != null) {
                 throw invalid("只能通过此入口取消直接媒体任务。");
             }
             if (current.status() == Task.Status.CANCELED) {
@@ -174,7 +174,7 @@ public class DirectMediaTaskService {
         Task task = tasks.find(ownerId, projectId, taskId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
                         "RESOURCE_NOT_FOUND", "任务不存在", "找不到该任务。", false));
-        if (task.runId() != null || task.kind() == Task.Kind.MEDIA_EXPORT) {
+        if (task.runId() != null) {
             throw invalid("此任务不是直接媒体任务。");
         }
         return tasks.queueStatus(taskId);

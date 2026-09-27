@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -19,7 +19,7 @@ class ComfyUiClientRegistryTest {
         ComfyUiProperties properties = new ComfyUiProperties("http://127.0.0.1:8188");
         ComfyUiClient client = new ComfyUiClient(properties, mapper);
         ComfyUiClientRegistry registry = new ComfyUiClientRegistry(dsl, mapper,
-                new PlanProviderProperties("comfyui", 1), properties, client, true);
+                new ProviderProperties("comfyui", 1), properties, client, true);
 
         registry.run(null);
         assertThat(registry.forOriginal(1, client.originSha256())).isEmpty();

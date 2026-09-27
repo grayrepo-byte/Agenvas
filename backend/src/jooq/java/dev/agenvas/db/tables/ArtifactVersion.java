@@ -11,9 +11,6 @@ import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersionReference.ArtifactVersionReferencePath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
-import dev.agenvas.db.tables.PlanStep.PlanStepPath;
-import dev.agenvas.db.tables.ShotDurationUpgrade.ShotDurationUpgradePath;
-import dev.agenvas.db.tables.ShotKeyframeSelection.ShotKeyframeSelectionPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
 
@@ -261,34 +258,6 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
         return _fkArtifactReferenceTarget;
     }
 
-    private transient ShotKeyframeSelectionPath _fkKeyframeImageVersion;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table, via the
-     * <code>fk_keyframe_image_version</code> key
-     */
-    public ShotKeyframeSelectionPath fkKeyframeImageVersion() {
-        if (_fkKeyframeImageVersion == null)
-            _fkKeyframeImageVersion = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_IMAGE_VERSION.getInverseKey());
-
-        return _fkKeyframeImageVersion;
-    }
-
-    private transient ShotKeyframeSelectionPath _fkKeyframeShotVersion;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table, via the
-     * <code>fk_keyframe_shot_version</code> key
-     */
-    public ShotKeyframeSelectionPath fkKeyframeShotVersion() {
-        if (_fkKeyframeShotVersion == null)
-            _fkKeyframeShotVersion = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_SHOT_VERSION.getInverseKey());
-
-        return _fkKeyframeShotVersion;
-    }
-
     private transient MediaDraftPath _mediaDraft;
 
     /**
@@ -302,32 +271,6 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
         return _mediaDraft;
     }
 
-    private transient PlanStepPath _fkPlanStepImageVersion;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table, via the <code>fk_plan_step_image_version</code> key
-     */
-    public PlanStepPath fkPlanStepImageVersion() {
-        if (_fkPlanStepImageVersion == null)
-            _fkPlanStepImageVersion = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_IMAGE_VERSION.getInverseKey());
-
-        return _fkPlanStepImageVersion;
-    }
-
-    private transient PlanStepPath _fkPlanStepShotVersion;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table, via the <code>fk_plan_step_shot_version</code> key
-     */
-    public PlanStepPath fkPlanStepShotVersion() {
-        if (_fkPlanStepShotVersion == null)
-            _fkPlanStepShotVersion = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_SHOT_VERSION.getInverseKey());
-
-        return _fkPlanStepShotVersion;
-    }
-
     private transient TaskArtifactTargetPath _taskArtifactTarget;
 
     /**
@@ -339,34 +282,6 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _taskArtifactTarget = new TaskArtifactTargetPath(this, null, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_VERSION.getInverseKey());
 
         return _taskArtifactTarget;
-    }
-
-    private transient ShotDurationUpgradePath _shotDurationUpgradeNewVersionIdFkey;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_duration_upgrade</code> table, via the
-     * <code>shot_duration_upgrade_new_version_id_fkey</code> key
-     */
-    public ShotDurationUpgradePath shotDurationUpgradeNewVersionIdFkey() {
-        if (_shotDurationUpgradeNewVersionIdFkey == null)
-            _shotDurationUpgradeNewVersionIdFkey = new ShotDurationUpgradePath(this, null, Keys.SHOT_DURATION_UPGRADE__SHOT_DURATION_UPGRADE_NEW_VERSION_ID_FKEY.getInverseKey());
-
-        return _shotDurationUpgradeNewVersionIdFkey;
-    }
-
-    private transient ShotDurationUpgradePath _shotDurationUpgradeOldVersionIdFkey;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_duration_upgrade</code> table, via the
-     * <code>shot_duration_upgrade_old_version_id_fkey</code> key
-     */
-    public ShotDurationUpgradePath shotDurationUpgradeOldVersionIdFkey() {
-        if (_shotDurationUpgradeOldVersionIdFkey == null)
-            _shotDurationUpgradeOldVersionIdFkey = new ShotDurationUpgradePath(this, null, Keys.SHOT_DURATION_UPGRADE__SHOT_DURATION_UPGRADE_OLD_VERSION_ID_FKEY.getInverseKey());
-
-        return _shotDurationUpgradeOldVersionIdFkey;
     }
 
     @Override

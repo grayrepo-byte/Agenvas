@@ -18,13 +18,13 @@ function artifact(id: string, kind: Artifact["kind"], title: string, currentVers
     version: 2, createdAt: now, updatedAt: now };
 }
 
-/** One image card, one Agent card bound to it, and one character holding an exact-version reference. */
+/** One image card, one Agent card bound to it, and one video holding an exact-version input. */
 function items(linked: boolean): CanvasItem[] {
   const image = artifact("image-id", "IMAGE", "参考图", imageVersionId, {
     id: imageVersionId, versionNo: 1, schemaVersion: 1,
     content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
     createdByKind: "USER", runId: null, createdAt: now });
-  const characterVersionId = "22222222-2222-4222-8222-222222222222";
+  const videoVersionId = "22222222-2222-4222-8222-222222222222";
   return [
     { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
       title: "图片",
@@ -39,14 +39,14 @@ function items(linked: boolean): CanvasItem[] {
         createdAt: now, updatedAt: now,
         bindings: linked ? [{ id: "binding-id", artifactId: "image-id",
           selectedVersionId: imageVersionId, bindingType: "INPUT" }] : [] } },
-    { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id", x: 800, y: 0,
-      title: "角色",
+    { id: "video-card", subjectType: "ARTIFACT", subjectId: "video-id", x: 800, y: 0,
+      title: "视频",
       width: 280, height: 180, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
-      artifact: artifact("character-id", "CHARACTER", "角色", characterVersionId, {
-        id: characterVersionId, versionNo: 1, schemaVersion: 1,
-        content: { name: "Hero", description: "Lead", appearance: "Blue coat",
-          referenceVersionIds: linked ? [imageVersionId] : [] },
-        inputReferences: linked ? [{ versionId: imageVersionId, role: "referenceImage",
+      artifact: artifact("video-id", "VIDEO", "视频", videoVersionId, {
+        id: videoVersionId, versionNo: 1, schemaVersion: 1,
+        content: { assetId: "asset-id", prompt: "缓慢推近", providerConfigVersion: 1,
+          workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" },
+        inputReferences: linked ? [{ versionId: imageVersionId, role: "sourceImage",
           order: 0, kind: "IMAGE" }] : [],
         createdByKind: "USER", runId: null, createdAt: now }) },
   ];

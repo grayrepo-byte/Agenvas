@@ -4,19 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.TrustedToolContext;
-import dev.agenvas.plan.application.ExecutionPlanService;
-import dev.agenvas.plan.application.PlanProviderProperties;
-import dev.agenvas.plan.application.ShotKeyframeSelectionService;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.ComfyUiImageWorker;
@@ -29,8 +27,7 @@ import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
-import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import java.awt.image.BufferedImage;
@@ -115,10 +112,8 @@ class ComfyUiVideoPostgresIT {
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private ExecutionPlanService plans;
-    @Autowired private ShotKeyframeSelectionService selections;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private AssetService assets;
     @Autowired private MediaToolRunner mediaTools;
@@ -153,66 +148,35 @@ class ComfyUiVideoPostgresIT {
                 "video-password-123");
         Project project = projects.create(owner.userId(), "I2V candidate",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        ObjectNode scene = mapper.createObjectNode();
-        scene.put("name", "Studio");
-        scene.put("location", "Shanghai");
-        scene.put("timeOfDay", "Day");
-        scene.put("lighting", "Soft");
-        scene.put("style", "Minimal");
-        scene.putArray("referenceVersionIds");
-        var sceneVersion = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SCENE,
-                "Scene", scene).currentVersion().id();
-        ObjectNode shot = mapper.createObjectNode();
-        shot.put("order", 1);
-        shot.put("durationSeconds", 5);
-        shot.put("description", "Coffee pour");
-        shot.put("camera", "Close");
-        shot.put("action", "Pour coffee");
-        shot.putArray("characterVersionIds");
-        shot.put("sceneVersionId", sceneVersion.toString());
-        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.SHOT,
-                "Shot", shot);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(target.artifact().id(),
-                        target.currentVersion().id())));
-        AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
-                "Animate the coffee pour", "comfy-video-run").run();
-        runs.transition(owner.userId(), project.id(), queued.id(), queued.version(),
-                AgentRun.Status.RUNNING);
-
-        ObjectNode imageProposal = proposal("IMAGE", "frame-1", target);
-        var imagePlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
-                queued.id()), imageProposal);
-        Task imageTask = plans.approve(owner.userId(), project.id(), imagePlan.id(),
-                imagePlan.planHash(), plans.get(owner.userId(), project.id(), imagePlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
+        // 直连图片卡片：先产出这次视频要固定的输入图版本。
+        var imageCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Keyframe card", null);
+        MediaDraft imageDraft = drafts.save(owner.userId(), project.id(),
+                imageCard.artifact().id(), 0, "Cinematic coffee pour", null, null, null);
+        Task imageTask = directMedia.run(owner.userId(), project.id(),
+                imageCard.artifact().id(), imageDraft.version(), "comfy-image-run");
         assertThat(IMAGE_SUBMISSIONS).hasValue(0);
         assertThat(mediaWorker.submitOnce("image-submitter")).isEqualTo(1);
         due(imageTask.id());
         assertThat(mediaWorker.pollOnce("image-poller")).isEqualTo(1);
         Task imageDone = tasks.get(owner.userId(), project.id(), imageTask.id());
         assertThat(imageDone.status()).isEqualTo(Task.Status.SUCCEEDED);
-        UUID imageId = UUID.fromString(imageDone.output().path("artifactId").asText());
         UUID imageVersion = UUID.fromString(imageDone.output().path("artifactVersionId").asText());
-        selections.select(owner.userId(), project.id(), queued.id(), target.artifact().id(),
-                target.currentVersion().id(), imageId, imageVersion, null);
-        AgentRun waiting = runs.get(owner.userId(), project.id(), queued.id());
-        runs.transition(owner.userId(), project.id(), queued.id(), waiting.version(),
-                AgentRun.Status.RUNNING);
 
-        ObjectNode videoProposal = proposal("VIDEO", "clip-1", target);
-        ObjectNode videoStep = (ObjectNode) videoProposal.path("steps").get(0);
-        videoStep.put("imageArtifactId", imageId.toString());
-        videoStep.put("imageVersionId", imageVersion.toString());
-        var videoPlan = plans.propose(new TrustedToolContext(owner.userId(), project.id(),
-                queued.id()), videoProposal);
-        assertThat(videoPlan.workflowVersion()).isEqualTo("media-capabilities-v1");
-        assertThat(videoPlan.steps().getFirst().input().path("providerOriginSha256").asText())
-                .isEqualTo(client.originSha256());
+        // 直连视频卡片：草稿直接固定刚生成的输入图版本与 5 秒时长。
+        var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
+                "Clip card", null);
+        MediaDraft videoDraft = drafts.save(owner.userId(), project.id(),
+                videoCard.artifact().id(), 0, "Cinematic coffee pour", imageVersion, 5, null);
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);
-        Task videoTask = plans.approve(owner.userId(), project.id(), videoPlan.id(),
-                videoPlan.planHash(), plans.get(owner.userId(), project.id(), videoPlan.id()).steps().stream().map(dev.agenvas.plan.application.ExecutionPlan.Step::stepKey).toList()).tasks().getFirst();
+        Task videoTask = directMedia.run(owner.userId(), project.id(),
+                videoCard.artifact().id(), videoDraft.version(), "comfy-video-run");
         assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
+        assertThat(videoTask.input().path("imageVersionId").asText())
+                .isEqualTo(imageVersion.toString());
+        assertThat(videoTask.input().path("providerOriginSha256").asText())
+                .isEqualTo(client.originSha256());
         assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
                         + "where task_id = :taskId and entry_type = 'RESERVATION'")
                 .param("taskId", videoTask.id()).query(String.class).single()).isEqualTo("5");
@@ -249,7 +213,7 @@ class ComfyUiVideoPostgresIT {
         ComfyUiClient rotatedClient = new ComfyUiClient(
                 new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
         ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(dsl, mapper,
-                new PlanProviderProperties("comfyui", 2),
+                new ProviderProperties("comfyui", 2),
                 new ComfyUiProperties("http://127.0.0.1:65534"), rotatedClient, false);
         rotatedRegistry.registerActive();
         ComfyUiVideoWorkflow rotatedWorkflow = new ComfyUiVideoWorkflow(
@@ -261,7 +225,7 @@ class ComfyUiVideoPostgresIT {
                 rotatedRegistry, mapper, callLogs);
         ComfyUiVideoWorker rotatedVideo = new ComfyUiVideoWorker(tasks, artifacts, assets,
                 projects, rotatedClient, rotatedPoller, rotatedWorkflow,
-                new PlanProviderProperties("comfyui", 2), callLogs);
+                new ProviderProperties("comfyui", 2), callLogs);
         due(videoTask.id());
         assertThat(mediaWorker.pollOnce("video-poller")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status())
@@ -286,21 +250,6 @@ class ComfyUiVideoPostgresIT {
                 .isEqualTo(Asset.MediaKind.VIDEO);
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
                 .param("id", videoTask.id()).query(Integer.class).single()).isEqualTo(1);
-    }
-
-    private ObjectNode proposal(String stage, String key,
-            ArtifactService.ArtifactView shot) {
-        ObjectNode proposal = mapper.createObjectNode();
-        proposal.put("stage", stage);
-        proposal.put("objective", "A fixed candidate workflow");
-        ObjectNode step = proposal.putArray("steps").addObject();
-        step.put("stepKey", key);
-        step.put("outputSlotKey", key + "-output");
-        step.put("shotArtifactId", shot.artifact().id().toString());
-        step.put("shotVersionId", shot.currentVersion().id().toString());
-        step.put("prompt", "Cinematic coffee pour");
-        step.putArray("dependsOnStepKeys");
-        return proposal;
     }
 
     private void due(UUID taskId) {

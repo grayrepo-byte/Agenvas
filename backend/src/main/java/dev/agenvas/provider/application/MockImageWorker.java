@@ -2,7 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.GenerationRequest;
 import dev.agenvas.provider.domain.GenerationResult;
@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 通过持久化提交账本执行已审批图片任务，并把明确标注的演示图归档为真实本地资产。 */
+/** 通过持久化提交账本执行图片任务，并把明确标注的演示图归档为真实本地资产。 */
 @Component
 public class MockImageWorker {
 
@@ -40,13 +40,13 @@ public class MockImageWorker {
     /** 选择当前演示素材 fixture。 */
     private final MockProviderProperties properties;
     /** 为任务结果写入和校验 Mock Provider 配置版本。 */
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
     /** 构造生成产物正文。 */
     private final ObjectMapper mapper;
 
     /** 装配图片演示 Worker 所需的任务、资产和本地生成服务。 */
     public MockImageWorker(TaskService tasks, AssetService assets, GenerationGateway gateway,
-            MockProviderProperties properties, PlanProviderProperties provider,
+            MockProviderProperties properties, ProviderProperties provider,
             ObjectMapper mapper, CallLogService callLogs) {
         this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
@@ -60,7 +60,7 @@ public class MockImageWorker {
     /** 每轮最多认领一个图片生成任务，不处理视频或模型回合任务。 */
     public int runOnce(String workerId) {
         return worker.runImagesOnce(workerId, 1, new TaskWorker.MediaHandler() {
-            /** 配置版本变化时在生成演示图片前阻止旧计划继续。 */
+            /** 配置版本变化时在生成演示图片前阻止旧任务继续。 */
             @Override
             public String preflightFailure(Task task) {
                 return task.input().path("providerConfigVersion").asInt(-1)

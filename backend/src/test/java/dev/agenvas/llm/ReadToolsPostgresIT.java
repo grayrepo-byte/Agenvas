@@ -117,12 +117,12 @@ class ReadToolsPostgresIT {
                         new BigDecimal("400"), BigDecimal.ZERO,
                         new BigDecimal("320"), new BigDecimal("200"), 1, null, false)));
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
-                "Summarize the brief", "invalid-selection", null, null,
+                "Summarize the brief", "invalid-selection", null,
                 List.of(UUID.randomUUID()))).isInstanceOf(ApiProblemException.class);
         gateway.selectedItemId = selectedItemId;
         gateway.unboundSelectedItemId = unboundSelectedItemId;
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
-                "Summarize the brief", "read-tools-run", null, null,
+                "Summarize the brief", "read-tools-run", null,
                 List.of(selectedItemId, unboundSelectedItemId)).run();
         assertThat(run.contextSnapshot().at("/selection/0/itemId").asText())
                 .isEqualTo(selectedItemId.toString());
@@ -131,13 +131,13 @@ class ReadToolsPostgresIT {
         assertThat(run.contextSnapshot().at("/selection/1/versionId").asText())
                 .isEqualTo(unbound.currentVersion().id().toString());
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
-                "Summarize the brief", "read-tools-run", null, null,
+                "Summarize the brief", "read-tools-run", null,
                 List.of(selectedItemId)))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("IDEMPOTENCY_CONFLICT");
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
-                "Summarize the brief", "duplicate-selection", null, null,
+                "Summarize the brief", "duplicate-selection", null,
                 List.of(selectedItemId, selectedItemId)))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())

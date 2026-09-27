@@ -10,15 +10,12 @@ import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentRun;
 import dev.agenvas.db.tables.AppUser;
 import dev.agenvas.db.tables.Artifact;
-import dev.agenvas.db.tables.ArtifactRelation;
 import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
-import dev.agenvas.db.tables.ExecutionPlan;
-import dev.agenvas.db.tables.ExportProposal;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LlmProviderConfig;
@@ -34,14 +31,10 @@ import dev.agenvas.db.tables.MediaLegacyImportMarker;
 import dev.agenvas.db.tables.MediaLegacyOriginMap;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
-import dev.agenvas.db.tables.PlanApproval;
-import dev.agenvas.db.tables.PlanStep;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
 import dev.agenvas.db.tables.ProviderDispatchGate;
-import dev.agenvas.db.tables.ShotDurationUpgrade;
-import dev.agenvas.db.tables.ShotKeyframeSelection;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
 import dev.agenvas.db.tables.Task;
@@ -107,11 +100,6 @@ public class Public extends SchemaImpl {
     public final Artifact ARTIFACT = Artifact.ARTIFACT;
 
     /**
-     * The table <code>public.artifact_relation</code>.
-     */
-    public final ArtifactRelation ARTIFACT_RELATION = ArtifactRelation.ARTIFACT_RELATION;
-
-    /**
      * Immutable content revisions. Selection changes update
      * artifact.current_version_id only.
      */
@@ -145,18 +133,6 @@ public class Public extends SchemaImpl {
      * The table <code>public.comfyui_config_version</code>.
      */
     public final ComfyuiConfigVersion COMFYUI_CONFIG_VERSION = ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION;
-
-    /**
-     * Immutable proposal content and revision identity; only status may change
-     * after proposal.
-     */
-    public final ExecutionPlan EXECUTION_PLAN = ExecutionPlan.EXECUTION_PLAN;
-
-    /**
-     * Agent-suggested immutable export input; only an authenticated user may
-     * authorize a Task.
-     */
-    public final ExportProposal EXPORT_PROPOSAL = ExportProposal.EXPORT_PROPOSAL;
 
     /**
      * Principal-scoped HTTP command replay record; same key with a different
@@ -238,17 +214,6 @@ public class Public extends SchemaImpl {
     public final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
 
     /**
-     * Authenticated approval and reserved use, committed with the corresponding
-     * Tasks.
-     */
-    public final PlanApproval PLAN_APPROVAL = PlanApproval.PLAN_APPROVAL;
-
-    /**
-     * The table <code>public.plan_step</code>.
-     */
-    public final PlanStep PLAN_STEP = PlanStep.PLAN_STEP;
-
-    /**
      * Permission and configuration boundary for one creative workspace.
      */
     public final Project PROJECT = Project.PROJECT;
@@ -270,17 +235,6 @@ public class Public extends SchemaImpl {
      * in task.
      */
     public final ProviderDispatchGate PROVIDER_DISPATCH_GATE = ProviderDispatchGate.PROVIDER_DISPATCH_GATE;
-
-    /**
-     * The table <code>public.shot_duration_upgrade</code>.
-     */
-    public final ShotDurationUpgrade SHOT_DURATION_UPGRADE = ShotDurationUpgrade.SHOT_DURATION_UPGRADE;
-
-    /**
-     * Explicit human selection of one generated keyframe version for a current
-     * shot.
-     */
-    public final ShotKeyframeSelection SHOT_KEYFRAME_SELECTION = ShotKeyframeSelection.SHOT_KEYFRAME_SELECTION;
 
     /**
      * The table <code>public.spring_session</code>.
@@ -361,15 +315,12 @@ public class Public extends SchemaImpl {
             AgentRun.AGENT_RUN,
             AppUser.APP_USER,
             Artifact.ARTIFACT,
-            ArtifactRelation.ARTIFACT_RELATION,
             ArtifactVersion.ARTIFACT_VERSION,
             ArtifactVersionReference.ARTIFACT_VERSION_REFERENCE,
             Asset.ASSET,
             CallLog.CALL_LOG,
             CanvasItem.CANVAS_ITEM,
             ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION,
-            ExecutionPlan.EXECUTION_PLAN,
-            ExportProposal.EXPORT_PROPOSAL,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
             InstallationLock.INSTALLATION_LOCK,
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
@@ -385,14 +336,10 @@ public class Public extends SchemaImpl {
             MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP,
             MediaProviderConnection.MEDIA_PROVIDER_CONNECTION,
             MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION,
-            PlanApproval.PLAN_APPROVAL,
-            PlanStep.PLAN_STEP,
             Project.PROJECT,
             ProjectEvent.PROJECT_EVENT,
             ProviderAttempt.PROVIDER_ATTEMPT,
             ProviderDispatchGate.PROVIDER_DISPATCH_GATE,
-            ShotDurationUpgrade.SHOT_DURATION_UPGRADE,
-            ShotKeyframeSelection.SHOT_KEYFRAME_SELECTION,
             SpringSession.SPRING_SESSION,
             SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES,
             Task.TASK,

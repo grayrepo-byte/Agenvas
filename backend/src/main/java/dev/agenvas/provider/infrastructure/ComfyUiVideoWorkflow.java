@@ -39,7 +39,7 @@ public class ComfyUiVideoWorkflow {
     private final ObjectNode template;
     /** 固定模板使用的四个服务端配置模型文件名。 */
     private final ComfyUiVideoProperties models;
-    /** 绑定模板字节和模型文件名的版本摘要，审批计划会固定该值。 */
+    /** 绑定模板字节和模型文件名的版本摘要，媒体任务会固定该值。 */
     private final String version;
 
     /** 加载并验证随应用发布的固定图生视频图；工作流结构不由用户或模型提供。
@@ -66,7 +66,7 @@ public class ComfyUiVideoWorkflow {
         version = "image-to-video-v1-" + hash(bytes, models).substring(0, 32);
     }
 
-    /** 审批摘要绑定精确工作流图及四个已配置模型文件名。 */
+    /** 版本摘要绑定精确工作流图及四个已配置模型文件名。 */
     public String version() {
         return version;
     }
@@ -81,7 +81,7 @@ public class ComfyUiVideoWorkflow {
         return durationMs >= 1_000 && durationMs <= 5_000 && durationMs % 250 == 0;
     }
 
-    /** 新业务计划仅允许固定模板可精确表示的 1–5 整数秒。 */
+    /** 新任务仅允许固定模板可精确表示的 1–5 整数秒。 */
     public boolean supportsDurationSeconds(int durationSeconds) {
         return durationSeconds >= 1 && durationSeconds <= 5;
     }
@@ -96,7 +96,7 @@ public class ComfyUiVideoWorkflow {
                 Math.multiplyExact(durationSeconds, 1_000));
     }
 
-    /** 深拷贝固定工作流，并将已上传的固定关键帧写入图生视频的两个图像输入。 */
+    /** 深拷贝固定工作流，并将已上传的固定输入图片写入图生视频的两个图像输入。 */
     public ObjectNode render(String prompt, String negativePrompt, long seed,
             String uploadedImageName, Project.AspectRatio ratio, int durationMs) {
         if (prompt == null || prompt.isBlank() || prompt.length() > 8_000
@@ -204,7 +204,7 @@ public class ComfyUiVideoWorkflow {
         }
     }
 
-    /** 将模板原始字节和四个模型名纳入 SHA-256，确保配置变化使计划版本变化。 */
+    /** 将模板原始字节和四个模型名纳入 SHA-256，确保配置变化使工作流版本变化。 */
     private String hash(byte[] bytes, ComfyUiVideoProperties names) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

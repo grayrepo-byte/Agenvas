@@ -66,185 +66,171 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
     }
 
     /**
-     * Setter for <code>public.task.plan_id</code>.
-     */
-    public void setPlanId(UUID value) {
-        set(3, value);
-    }
-
-    /**
-     * Getter for <code>public.task.plan_id</code>.
-     */
-    public UUID getPlanId() {
-        return (UUID) get(3);
-    }
-
-    /**
      * Setter for <code>public.task.step_key</code>.
      */
     public void setStepKey(String value) {
-        set(4, value);
+        set(3, value);
     }
 
     /**
      * Getter for <code>public.task.step_key</code>.
      */
     public String getStepKey() {
-        return (String) get(4);
+        return (String) get(3);
     }
 
     /**
      * Setter for <code>public.task.kind</code>.
      */
     public void setKind(String value) {
-        set(5, value);
+        set(4, value);
     }
 
     /**
      * Getter for <code>public.task.kind</code>.
      */
     public String getKind() {
-        return (String) get(5);
+        return (String) get(4);
     }
 
     /**
      * Setter for <code>public.task.status</code>.
      */
     public void setStatus(String value) {
-        set(6, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.task.status</code>.
      */
     public String getStatus() {
-        return (String) get(6);
+        return (String) get(5);
     }
 
     /**
      * Setter for <code>public.task.input_json</code>.
      */
     public void setInputJson(JSONB value) {
-        set(7, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.task.input_json</code>.
      */
     public JSONB getInputJson() {
-        return (JSONB) get(7);
+        return (JSONB) get(6);
     }
 
     /**
      * Setter for <code>public.task.input_hash</code>.
      */
     public void setInputHash(String value) {
-        set(8, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.task.input_hash</code>.
      */
     public String getInputHash() {
-        return (String) get(8);
+        return (String) get(7);
     }
 
     /**
      * Setter for <code>public.task.output_json</code>.
      */
     public void setOutputJson(JSONB value) {
-        set(9, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.task.output_json</code>.
      */
     public JSONB getOutputJson() {
-        return (JSONB) get(9);
+        return (JSONB) get(8);
     }
 
     /**
      * Setter for <code>public.task.provider_id</code>.
      */
     public void setProviderId(UUID value) {
-        set(10, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.task.provider_id</code>.
      */
     public UUID getProviderId() {
-        return (UUID) get(10);
+        return (UUID) get(9);
     }
 
     /**
      * Setter for <code>public.task.provider_request_id</code>.
      */
     public void setProviderRequestId(String value) {
-        set(11, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.task.provider_request_id</code>.
      */
     public String getProviderRequestId() {
-        return (String) get(11);
+        return (String) get(10);
     }
 
     /**
      * Setter for <code>public.task.attempt_no</code>.
      */
     public void setAttemptNo(Integer value) {
-        set(12, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.task.attempt_no</code>.
      */
     public Integer getAttemptNo() {
-        return (Integer) get(12);
+        return (Integer) get(11);
     }
 
     /**
      * Setter for <code>public.task.next_action_at</code>.
      */
     public void setNextActionAt(OffsetDateTime value) {
-        set(13, value);
+        set(12, value);
     }
 
     /**
      * Getter for <code>public.task.next_action_at</code>.
      */
     public OffsetDateTime getNextActionAt() {
-        return (OffsetDateTime) get(13);
+        return (OffsetDateTime) get(12);
     }
 
     /**
      * Setter for <code>public.task.lease_owner</code>.
      */
     public void setLeaseOwner(String value) {
-        set(14, value);
+        set(13, value);
     }
 
     /**
      * Getter for <code>public.task.lease_owner</code>.
      */
     public String getLeaseOwner() {
-        return (String) get(14);
+        return (String) get(13);
     }
 
     /**
      * Setter for <code>public.task.lease_until</code>.
      */
     public void setLeaseUntil(OffsetDateTime value) {
-        set(15, value);
+        set(14, value);
     }
 
     /**
      * Getter for <code>public.task.lease_until</code>.
      */
     public OffsetDateTime getLeaseUntil() {
-        return (OffsetDateTime) get(15);
+        return (OffsetDateTime) get(14);
     }
 
     /**
@@ -252,7 +238,7 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
      * incremented on every claim or reclaim.
      */
     public void setLeaseEpoch(Long value) {
-        set(16, value);
+        set(15, value);
     }
 
     /**
@@ -260,161 +246,161 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
      * incremented on every claim or reclaim.
      */
     public Long getLeaseEpoch() {
-        return (Long) get(16);
+        return (Long) get(15);
     }
 
     /**
      * Setter for <code>public.task.version</code>.
      */
     public void setVersion(Long value) {
-        set(17, value);
+        set(16, value);
     }
 
     /**
      * Getter for <code>public.task.version</code>.
      */
     public Long getVersion() {
-        return (Long) get(17);
+        return (Long) get(16);
     }
 
     /**
      * Setter for <code>public.task.error_code</code>.
      */
     public void setErrorCode(String value) {
-        set(18, value);
+        set(17, value);
     }
 
     /**
      * Getter for <code>public.task.error_code</code>.
      */
     public String getErrorCode() {
-        return (String) get(18);
+        return (String) get(17);
     }
 
     /**
      * Setter for <code>public.task.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(19, value);
+        set(18, value);
     }
 
     /**
      * Getter for <code>public.task.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(19);
+        return (OffsetDateTime) get(18);
     }
 
     /**
      * Setter for <code>public.task.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(20, value);
+        set(19, value);
     }
 
     /**
      * Getter for <code>public.task.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(20);
+        return (OffsetDateTime) get(19);
     }
 
     /**
      * Setter for <code>public.task.completed_at</code>.
      */
     public void setCompletedAt(OffsetDateTime value) {
-        set(21, value);
+        set(20, value);
     }
 
     /**
      * Getter for <code>public.task.completed_at</code>.
      */
     public OffsetDateTime getCompletedAt() {
-        return (OffsetDateTime) get(21);
+        return (OffsetDateTime) get(20);
     }
 
     /**
      * Setter for <code>public.task.cancel_requested</code>.
      */
     public void setCancelRequested(Boolean value) {
-        set(22, value);
+        set(21, value);
     }
 
     /**
      * Getter for <code>public.task.cancel_requested</code>.
      */
     public Boolean getCancelRequested() {
-        return (Boolean) get(22);
+        return (Boolean) get(21);
     }
 
     /**
      * Setter for <code>public.task.capability_id</code>.
      */
     public void setCapabilityId(UUID value) {
-        set(23, value);
+        set(22, value);
     }
 
     /**
      * Getter for <code>public.task.capability_id</code>.
      */
     public UUID getCapabilityId() {
-        return (UUID) get(23);
+        return (UUID) get(22);
     }
 
     /**
      * Setter for <code>public.task.capability_version</code>.
      */
     public void setCapabilityVersion(Integer value) {
-        set(24, value);
+        set(23, value);
     }
 
     /**
      * Getter for <code>public.task.capability_version</code>.
      */
     public Integer getCapabilityVersion() {
-        return (Integer) get(24);
+        return (Integer) get(23);
     }
 
     /**
      * Setter for <code>public.task.connection_id</code>.
      */
     public void setConnectionId(UUID value) {
-        set(25, value);
+        set(24, value);
     }
 
     /**
      * Getter for <code>public.task.connection_id</code>.
      */
     public UUID getConnectionId() {
-        return (UUID) get(25);
+        return (UUID) get(24);
     }
 
     /**
      * Setter for <code>public.task.connection_version</code>.
      */
     public void setConnectionVersion(Integer value) {
-        set(26, value);
+        set(25, value);
     }
 
     /**
      * Getter for <code>public.task.connection_version</code>.
      */
     public Integer getConnectionVersion() {
-        return (Integer) get(26);
+        return (Integer) get(25);
     }
 
     /**
      * Setter for <code>public.task.origin</code>.
      */
     public void setOrigin(String value) {
-        set(27, value);
+        set(26, value);
     }
 
     /**
      * Getter for <code>public.task.origin</code>.
      */
     public String getOrigin() {
-        return (String) get(27);
+        return (String) get(26);
     }
 
     // -------------------------------------------------------------------------
@@ -440,13 +426,12 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
     /**
      * Create a detached, initialised TaskRecord
      */
-    public TaskRecord(UUID id, UUID projectId, UUID runId, UUID planId, String stepKey, String kind, String status, JSONB inputJson, String inputHash, JSONB outputJson, UUID providerId, String providerRequestId, Integer attemptNo, OffsetDateTime nextActionAt, String leaseOwner, OffsetDateTime leaseUntil, Long leaseEpoch, Long version, String errorCode, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt, Boolean cancelRequested, UUID capabilityId, Integer capabilityVersion, UUID connectionId, Integer connectionVersion, String origin) {
+    public TaskRecord(UUID id, UUID projectId, UUID runId, String stepKey, String kind, String status, JSONB inputJson, String inputHash, JSONB outputJson, UUID providerId, String providerRequestId, Integer attemptNo, OffsetDateTime nextActionAt, String leaseOwner, OffsetDateTime leaseUntil, Long leaseEpoch, Long version, String errorCode, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt, Boolean cancelRequested, UUID capabilityId, Integer capabilityVersion, UUID connectionId, Integer connectionVersion, String origin) {
         super(Task.TASK);
 
         setId(id);
         setProjectId(projectId);
         setRunId(runId);
-        setPlanId(planId);
         setStepKey(stepKey);
         setKind(kind);
         setStatus(status);

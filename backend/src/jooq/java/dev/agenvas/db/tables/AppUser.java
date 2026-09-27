@@ -8,11 +8,8 @@ import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
-import dev.agenvas.db.tables.ExportProposal.ExportProposalPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
-import dev.agenvas.db.tables.PlanApproval.PlanApprovalPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
-import dev.agenvas.db.tables.ShotKeyframeSelection.ShotKeyframeSelectionPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.records.AppUserRecord;
 
@@ -200,19 +197,6 @@ public class AppUser extends TableImpl<AppUserRecord> {
         return _agentRun;
     }
 
-    private transient ExportProposalPath _exportProposal;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.export_proposal</code> table
-     */
-    public ExportProposalPath exportProposal() {
-        if (_exportProposal == null)
-            _exportProposal = new ExportProposalPath(this, null, Keys.EXPORT_PROPOSAL__FK_EXPORT_PROPOSAL_DECIDER.getInverseKey());
-
-        return _exportProposal;
-    }
-
     private transient IdempotencyRecordPath _idempotencyRecord;
 
     /**
@@ -224,32 +208,6 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _idempotencyRecord = new IdempotencyRecordPath(this, null, Keys.IDEMPOTENCY_RECORD__FK_IDEMPOTENCY_PRINCIPAL.getInverseKey());
 
         return _idempotencyRecord;
-    }
-
-    private transient ShotKeyframeSelectionPath _shotKeyframeSelection;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.shot_keyframe_selection</code> table
-     */
-    public ShotKeyframeSelectionPath shotKeyframeSelection() {
-        if (_shotKeyframeSelection == null)
-            _shotKeyframeSelection = new ShotKeyframeSelectionPath(this, null, Keys.SHOT_KEYFRAME_SELECTION__FK_KEYFRAME_USER.getInverseKey());
-
-        return _shotKeyframeSelection;
-    }
-
-    private transient PlanApprovalPath _planApproval;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.plan_approval</code> table
-     */
-    public PlanApprovalPath planApproval() {
-        if (_planApproval == null)
-            _planApproval = new PlanApprovalPath(this, null, Keys.PLAN_APPROVAL__FK_PLAN_APPROVAL_USER.getInverseKey());
-
-        return _planApproval;
     }
 
     private transient ProjectPath _project;

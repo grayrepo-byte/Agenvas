@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
@@ -96,17 +98,23 @@ class TaskArchivedProjectPostgresIT {
         activeRunMetrics.refresh();
         assertThat(meters.get("agenvas.runs.active").gauge().value()).isEqualTo(1);
         assertThat(meters.get("agenvas.runs.active").gauge().getId().getTags()).isEmpty();
-        Task task = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(), run.id(),
-                null, "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1,
-                List.of(), "archived-image");
+        // 直连生成固定写入一张已存在的空媒体卡片；归档发生在提交之后。
+        var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Archived image card", null);
+        Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(),
+                "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1,
+                List.of(), card.artifact().id());
         Task lease = tasks.claimImagesDue("archive-submitter", 1).getFirst();
         tasks.beginSubmission(lease, "archive-submitter");
         String requestId = UUID.randomUUID().toString();
         tasks.waitForProvider(lease, "archive-submitter", requestId,
                 Instant.now().plusSeconds(60));
-        Task unsubmitted = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(),
-                run.id(), null, "not-submitted", Task.Kind.IMAGE_GENERATION,
-                mapper.createObjectNode(), null, 1, List.of(), "not-submitted-output");
+        var unsubmittedCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Not submitted card", null);
+        Task unsubmitted = tasks.createMediaTask(owner.userId(), project.id(),
+                run.id(), "not-submitted", Task.Kind.IMAGE_GENERATION,
+                mapper.createObjectNode(), null, 1, List.of(),
+                unsubmittedCard.artifact().id());
 
         Project archived = projects.archive(owner.userId(), project.id(),
                 projects.get(owner.userId(), project.id()).version());
@@ -168,9 +176,12 @@ class TaskArchivedProjectPostgresIT {
                         + "and provider_request_id = :requestId")
                 .param("taskId", task.id()).param("requestId", requestId)
                 .query(String.class).single()).isEqualTo("ACCEPTED");
-        assertThat(artifacts.get(owner.userId(), project.id(),
-                UUID.fromString(completed.output().path("artifactId").asText()))
-                .currentVersion().id()).isEqualTo(result.versionId());
+        // 晚到结果只追加为不可变的卡片历史版本：可在事后核对，但不会把卡片切到该版本，
+        // 也不会因为晚到而把归档项目重新激活。
+        UUID cardId = UUID.fromString(completed.output().path("artifactId").asText());
+        assertThat(artifacts.listVersions(owner.userId(), project.id(), cardId))
+                .extracting(ArtifactVersion::id).contains(result.versionId());
+        assertThat(artifacts.get(owner.userId(), project.id(), cardId).currentVersion()).isNull();
     }
 
     /** Real PNG bytes exercise the same decoder and archive path as a completed Provider. */

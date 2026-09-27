@@ -3,7 +3,7 @@ package dev.agenvas.provider.infrastructure;
 import static dev.agenvas.db.Tables.COMFYUI_CONFIG_VERSION;
 import static dev.agenvas.db.Tables.MEDIA_LEGACY_IMPORT_MARKER;
 
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,7 +30,7 @@ public class ComfyUiClientRegistry implements ApplicationRunner {
     /** 为历史端点创建仅供查询的客户端实例。 */
     private final ObjectMapper mapper;
     /** 当前 ComfyUI 配置版本，用于拒绝版本回退或身份复用。 */
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
     /** 当前活动端点客户端，只供新请求使用。 */
     private final ComfyUiClient active;
     /** 当前端点的规范化 origin，用于和持久记录精确比较。 */
@@ -42,7 +42,7 @@ public class ComfyUiClientRegistry implements ApplicationRunner {
 
     /** 记录当前端点身份，并根据恢复模式限制历史客户端查询。 */
     public ComfyUiClientRegistry(DSLContext dsl, ObjectMapper mapper,
-            PlanProviderProperties provider, ComfyUiProperties properties, ComfyUiClient active,
+            ProviderProperties provider, ComfyUiProperties properties, ComfyUiClient active,
             @Value("${agenvas.recovery-mode:false}") boolean recoveryMode) {
         this.dsl = dsl;
         this.mapper = mapper;

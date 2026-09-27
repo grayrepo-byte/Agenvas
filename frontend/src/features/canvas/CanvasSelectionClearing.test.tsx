@@ -67,15 +67,14 @@ const items: CanvasItem[] = [
       createdAt: now, updatedAt: now,
       bindings: [{ id: "binding-id", artifactId: "image-id",
         selectedVersionId: imageVersionId, bindingType: "INPUT" }] } },
-  { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id", x: 800, y: 0,
-    title: "角色",
+  { id: "text-card", subjectType: "ARTIFACT", subjectId: "text-id", x: 800, y: 0,
+    title: "正文",
     width: 260, height: 150, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
-    artifact: { id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "角色",
+    artifact: { id: "text-id", projectId: "project-1", kind: "TEXT", title: "正文",
       currentVersionId: "22222222-2222-4222-8222-222222222222", version: 5,
       createdAt: now, updatedAt: now,
       currentVersion: { id: "22222222-2222-4222-8222-222222222222", versionNo: 1, schemaVersion: 1,
-        content: { name: "Hero", description: "Lead", appearance: "Blue coat",
-          referenceVersionIds: [] }, inputReferences: [],
+        content: { format: "PLAIN_TEXT", text: "选中的正文" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now } } },
 ];
 
@@ -241,8 +240,8 @@ describe("workspace selection with real React Flow", () => {
     fireEvent.click(pane);
     fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
     expect(selectedIds()).toEqual(["image-card", "agent-card"]);
-    fireEvent.click(nodeElement("character-card"));
-    expect(selectedIds()).toEqual(["character-card"]);
+    fireEvent.click(nodeElement("text-card"));
+    expect(selectedIds()).toEqual(["text-card"]);
   });
 
   it("syncs programmatic selection and clears it on a pane click", async () => {

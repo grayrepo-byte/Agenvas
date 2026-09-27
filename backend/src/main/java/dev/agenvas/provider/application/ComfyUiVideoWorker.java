@@ -4,7 +4,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
@@ -37,11 +37,11 @@ public class ComfyUiVideoWorker {
     private final TaskWorker worker;
     /** 读取 Worker 权限范围、任务固定输入和已受理 Provider 身份。 */
     private final TaskService tasks;
-    /** 读取审批时固定的图片产物版本。 */
+    /** 读取任务固定的输入图片产物版本。 */
     private final ArtifactService artifacts;
-    /** 读取关键帧文件并幂等归档视频输出。 */
+    /** 读取输入图片文件并幂等归档视频输出。 */
     private final AssetService assets;
-    /** 获取项目画幅设置，用于归一化关键帧。 */
+    /** 获取项目画幅设置，用于归一化输入图片。 */
     private final ProjectService projects;
     /** 向当前 ComfyUI 端点上传图片并提交固定工作流。 */
     private final ComfyUiClient client;
@@ -50,13 +50,13 @@ public class ComfyUiVideoWorker {
     /** 提供版本固定的图生视频模板及输入时长约束。 */
     private final ComfyUiVideoWorkflow workflow;
     /** 用于提交前核对当前 Provider 配置版本。 */
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
 
     /** 装配提交与轮询分离的视频 Worker，避免轮询路径重新提交生成请求。 */
     public ComfyUiVideoWorker(TaskService tasks, ArtifactService artifacts,
             AssetService assets, ProjectService projects, ComfyUiClient client,
             ComfyUiVideoPoller poller, ComfyUiVideoWorkflow workflow,
-            PlanProviderProperties provider, CallLogService callLogs) {
+            ProviderProperties provider, CallLogService callLogs) {
         this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
@@ -77,13 +77,14 @@ public class ComfyUiVideoWorker {
                 return client.originSha256();
             }
 
-            /** 若配置、来源或工作流版本已变化，阻止向新端点提交旧计划。 */
+            /** 若配置、来源或工作流版本已变化，阻止向新端点提交已固定的输入。 */
             @Override
             public String preflightFailure(Task task) {
                 return task.input().path("providerConfigVersion").asInt(-1)
                         == provider.configVersion()
-                        && (task.planId() == null || client.originSha256().equals(
-                                task.input().path("providerOriginSha256").asText()))
+                        && (!task.input().has("providerOriginSha256")
+                                || client.originSha256().equals(
+                                        task.input().path("providerOriginSha256").asText()))
                         && workflow.version().equals(task.input().path("workflowVersion").asText())
                         ? null : "PROVIDER_CONFIG_CHANGED";
             }
@@ -101,7 +102,7 @@ public class ComfyUiVideoWorker {
         return poller.pollOnce(workerId);
     }
 
-    /** 上传审批固定的关键帧，并用任务请求键生成种子后提交版本固定的模板。 */
+    /** 上传任务固定的输入图片，并用任务请求键生成种子后提交版本固定的模板。 */
     private TaskWorker.WaitingProvider submit(Task task, UUID requestKey) {
         UUID ownerId = tasks.ownerForWorker(task);
         Project.AspectRatio ratio = projects.get(ownerId, task.projectId()).aspectRatio();
@@ -109,9 +110,9 @@ public class ComfyUiVideoWorker {
         boolean wholeSeconds = task.input().path("schemaVersion").asInt(1) == 2;
         if (wholeSeconds && !workflow.supportsDurationSeconds(Math.toIntExact(duration.toSeconds()))
                 || !wholeSeconds && !workflow.supportsDuration(Math.toIntExact(duration.toMillis()))) {
-            throw new IllegalStateException("Approved shot duration exceeds fixed I2V capability");
+            throw new IllegalStateException("Pinned video duration exceeds fixed I2V capability");
         }
-        byte[] input = pinnedKeyframe(ownerId, task, ratio);
+        byte[] input = pinnedInputImage(ownerId, task, ratio);
         String uploaded = client.uploadImage(requestKey, input, "png");
         long seed = requestKey.getMostSignificantBits() & Long.MAX_VALUE;
         var graph = wholeSeconds
@@ -125,8 +126,8 @@ public class ComfyUiVideoWorker {
         return new TaskWorker.WaitingProvider(promptId.toString(), Instant.now().plusSeconds(5));
     }
 
-    /** 读取审批固定的历史图片版本，按项目画幅等比缩放并在空白底色上居中。 */
-    private byte[] pinnedKeyframe(UUID ownerId, Task task, Project.AspectRatio ratio) {
+    /** 读取任务固定的历史图片版本，按项目画幅等比缩放并在空白底色上居中。 */
+    private byte[] pinnedInputImage(UUID ownerId, Task task, Project.AspectRatio ratio) {
         UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
         UUID versionId = UUID.fromString(task.input().path("imageVersionId").asText());
         ArtifactVersion version = artifacts.requireVersion(ownerId, task.projectId(),

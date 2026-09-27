@@ -65,10 +65,10 @@ class TaskQueueMetricsPostgresIT {
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a plan", "queue-age-run").run();
-        Task due = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task due = tasks.create(owner.userId(), project.id(), run.id(),
                 "queue-due", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
                 null, 1, List.of());
-        Task future = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task future = tasks.create(owner.userId(), project.id(), run.id(),
                 "queue-future", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
                 null, 1, List.of());
         jdbc.sql("update task set updated_at = now() - interval '120 seconds' where id = :id")

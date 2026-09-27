@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.settings.application.LlmProviderConfigService;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -70,8 +71,10 @@ class StoredLlmGatewayPostgresIT {
         assertThat(gateway.configVersion()).isEqualTo(1);
         assertThat(gateway.modelDetails().modelId()).isEqualTo("stored-model-a");
         assertThat(gateway.capabilities().toolCalling()).isFalse();
-        assertThatThrownBy(() -> gateway.call(List.of(new UserMessage("Hello")),
-                List.of(), Map.of())).isInstanceOf(IllegalStateException.class);
+        // The Agent path refuses an unverified tool protocol before any request is sent; direct text
+        // generation may still use the stored endpoint, so the guard sits on requireToolCalling.
+        assertThatThrownBy(() -> gateway.requireToolCalling(gateway.configIdentity()))
+                .isInstanceOf(ApiProblemException.class);
         assertThat(CALLS).hasValue(0);
 
         // Fixture-only capability stamp; production has no path to set this without a diagnostic.

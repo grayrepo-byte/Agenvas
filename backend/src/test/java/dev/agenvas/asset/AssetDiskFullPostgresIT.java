@@ -12,8 +12,6 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
-import dev.agenvas.export.application.MediaExportService;
-import dev.agenvas.export.application.MediaExportWorker;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
@@ -84,8 +82,6 @@ class AssetDiskFullPostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private AssetService assets;
     @Autowired private ArtifactService artifacts;
-    @Autowired private MediaExportService exports;
-    @Autowired private MediaExportWorker exportWorker;
     @Autowired private FaultingStorage storage;
     @Autowired private MediaToolRunner mediaTools;
     @Autowired private JdbcClient jdbc;
@@ -103,9 +99,10 @@ class AssetDiskFullPostgresIT {
                 "Create image", "disk-full-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
-        Task task = tasks.createMediaTaskForNewOutput(owner.userId(), project.id(), run.id(),
-                null, "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1,
-                List.of(), "disk-image");
+        Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(), "image",
+                Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1, List.of(),
+                artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                        "Disk image", null).artifact().id());
         Task lease = tasks.claimImagesDue("disk-submitter", 1).getFirst();
         tasks.beginSubmission(lease, "disk-submitter");
         String requestId = UUID.randomUUID().toString();
@@ -188,61 +185,10 @@ class AssetDiskFullPostgresIT {
             assertThat(archivedVideo.contentType()).isEqualTo("video/mp4");
             assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                     .param("projectId", projectId).query(Integer.class).single()).isEqualTo(3);
-            verifyExportArchiveWriteFailure(ownerId, projectId, archivedVideo.id());
         } finally {
             Files.deleteIfExists(sourceImage);
             Files.deleteIfExists(sourceVideo);
         }
-    }
-
-    /** An encoded MP4 that cannot be archived must not become a successful export. */
-    private void verifyExportArchiveWriteFailure(UUID ownerId, UUID projectId, UUID videoAssetId)
-            throws Exception {
-        ObjectNode content = mapper.createObjectNode();
-        content.put("assetId", videoAssetId.toString());
-        content.put("prompt", "Disk-full export fixture");
-        content.put("providerConfigVersion", 1);
-        content.put("workflowVersion", "test-video-v1");
-        content.putObject("parameters").put("mock", true);
-        content.put("sourceTaskId", UUID.randomUUID().toString());
-        var video = artifacts.create(ownerId, projectId, Artifact.Kind.VIDEO,
-                "Export failure source", content);
-        var segments = List.of(new MediaExportService.SegmentRequest(video.artifact().id(),
-                video.currentVersion().id(), 0, 1));
-        Task export = exports.create(ownerId, projectId, "disk-full-export", segments);
-        List<String> before = projectFiles(projectId);
-        int readyBefore = jdbc.sql("select count(*) from asset where project_id = :projectId")
-                .param("projectId", projectId).query(Integer.class).single();
-        int readyEventsBefore = jdbc.sql("select count(*) from project_event "
-                        + "where project_id = :projectId and type = 'asset.ready'")
-                .param("projectId", projectId).query(Integer.class).single();
-
-        storage.failNextVideoIngestWrite();
-        assertThat(exportWorker.runOnce("disk-full-export-worker")).isEqualTo(1);
-        Task failed = tasks.get(ownerId, projectId, export.id());
-        assertThat(failed.status()).isEqualTo(Task.Status.FAILED);
-        assertThat(failed.errorCode()).isEqualTo("EXPORT_FAILED");
-        assertThat(failed.output().isNull()).isTrue();
-        assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
-                .param("projectId", projectId).query(Integer.class).single())
-                .isEqualTo(readyBefore);
-        assertThat(jdbc.sql("select count(*) from project_event "
-                        + "where project_id = :projectId and type = 'asset.ready'")
-                .param("projectId", projectId).query(Integer.class).single())
-                .isEqualTo(readyEventsBefore);
-        assertThat(projectFiles(projectId)).containsExactlyElementsOf(before);
-        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :taskId "
-                        + "and entry_type = 'SETTLEMENT'")
-                .param("taskId", export.id()).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :taskId "
-                        + "and entry_type = 'RELEASE'")
-                .param("taskId", export.id()).query(Integer.class).single()).isEqualTo(1);
-
-        Task retry = exports.create(ownerId, projectId, "disk-full-export-retry", segments);
-        assertThat(exportWorker.runOnce("recovered-export-worker")).isEqualTo(1);
-        Task completed = tasks.get(ownerId, projectId, retry.id());
-        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(completed.output().path("assetId").asText()).isNotBlank();
     }
 
     /** Compares exact private file inventories before and after an injected failure. */

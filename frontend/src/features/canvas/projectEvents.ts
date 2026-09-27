@@ -13,13 +13,8 @@ const supportedTypes = [
   "llm.turn.requested",
   "llm.turn.recorded",
   "usage.changed",
-  "execution.plan.proposed",
-  "execution.plan.approved",
-  "execution.plan.rejected",
-  "shot.keyframe.selected",
   "task.changed",
   "task.status.changed",
-  "export.proposal.changed",
   "project.changed",
 ] as const;
 

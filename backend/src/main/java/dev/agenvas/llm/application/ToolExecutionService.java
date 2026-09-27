@@ -4,10 +4,6 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.event.application.ProjectEventService;
-import dev.agenvas.export.application.ExportProposal;
-import dev.agenvas.export.application.ExportProposalService;
-import dev.agenvas.plan.application.ExecutionPlan;
-import dev.agenvas.plan.application.ExecutionPlanService;
 import dev.agenvas.run.application.AgentRunRepository;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -46,14 +42,10 @@ public class ToolExecutionService {
     private final ToolExecutionRepository ledger;
     /** 通过统一业务规则创建不可变文本产物版本。 */
     private final ArtifactService artifacts;
-    /** 执行角色、场景、镜头和画布等受控创作命令。 */
+    /** 执行受控的产物与画布创作命令。 */
     private final CreativeArtifactToolService creative;
     /** 执行已授权的只读项目与任务查询工具。 */
     private final ReadToolService reader;
-    /** 校验并持久化待用户审批的媒体执行计划。 */
-    private final ExecutionPlanService plans;
-    /** 保存待用户审批的导出提案，不直接启动 FFmpeg。 */
-    private final ExportProposalService exportProposals;
     /** 为工具执行提供项目锁顺序与同事务事件记录。 */
     private final ProjectEventService events;
     /** 在业务事务内再次核验当前 Worker 的任务租约。 */
@@ -68,10 +60,8 @@ public class ToolExecutionService {
      * @param turns 读取已保存的模型响应，确认调用来自模型原始输出
      * @param ledger 按 Run 步骤和 toolCallId 去重并保存结果
      * @param artifacts 读取和修改不可变产物版本
-     * @param creative 执行创作、布局及素材关联工具
+     * @param creative 执行产物修订与画布布局工具
      * @param reader 执行授权范围内的只读工具
-     * @param plans 创建待审批媒体计划
-     * @param exportProposals 创建待审批导出提案
      * @param events 与工具副作用一并记录项目事件
      * @param leaseGuard 在副作用事务中核验 Agent 回合租约
      * @param mapper 解析参数并构造稳定结果 JSON
@@ -80,7 +70,6 @@ public class ToolExecutionService {
     public ToolExecutionService(AgentRunRepository runs, LlmTurnRepository turns,
             ToolExecutionRepository ledger, ArtifactService artifacts,
             CreativeArtifactToolService creative, ReadToolService reader,
-            ExecutionPlanService plans, ExportProposalService exportProposals,
             ProjectEventService events, AgentTurnLeaseGuard leaseGuard,
             ObjectMapper mapper, Clock clock) {
         this.runs = runs;
@@ -89,8 +78,6 @@ public class ToolExecutionService {
         this.artifacts = artifacts;
         this.creative = creative;
         this.reader = reader;
-        this.plans = plans;
-        this.exportProposals = exportProposals;
         this.events = events;
         this.leaseGuard = leaseGuard;
         this.mapper = mapper;
@@ -174,10 +161,6 @@ public class ToolExecutionService {
         }
         JsonNode call = findCall(turn.response(), toolCallId);
         String toolName = call.path("name").asText();
-        if (run.contextSnapshot().has("redoShotArtifactId")
-                && !"propose_generation_plan".equals(toolName)) {
-            throw invalid("Scoped redo permits only a target-shot media proposal");
-        }
         String arguments = call.path("arguments").asText();
         String argumentHash = sha256(arguments);
         ToolExecution existing = ledger.find(context.projectId(), context.runId(),
@@ -208,18 +191,11 @@ public class ToolExecutionService {
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
             case "read_task_status" -> reader.taskStatus(context, operationId, arguments);
             case "create_text" -> createText(context, run, operationId, arguments);
-            case "create_character" -> creative.createCharacter(context, run, operationId, arguments);
-            case "create_scene" -> creative.createScene(context, run, operationId, arguments);
-            case "create_shots" -> creative.createShots(context, run, operationId, arguments);
             case "revise_artifact" -> creative.reviseArtifact(context, run, operationId, arguments);
             case "place_artifacts" -> creative.placeArtifacts(context, run,
                     operationId, arguments);
             case "arrange_items" -> creative.arrangeItems(context, run,
                     operationId, arguments);
-            case "link_artifacts" -> creative.linkArtifacts(context, run,
-                    operationId, arguments);
-            case "propose_generation_plan" -> proposePlan(context, operationId, arguments);
-            case "propose_export" -> proposeExport(context, run, operationId, arguments);
             default -> throw invalid("Tool is not allowlisted for this Runtime");
         };
         if (!ledger.complete(operationId, result, clock.instant())) {
@@ -231,65 +207,6 @@ public class ToolExecutionService {
                         && saved.result() != null)
                 .orElseThrow(() -> new IllegalStateException("Completed tool result is missing"))
                 .result();
-    }
-
-    /**
-     * 将模型给出的 JSON 交由计划服务验证并保存提案；返回等待审批状态，不替用户批准计划。
-     *
-     * @param context 只能覆盖当前所有者、项目和 Run 的可信作用域
-     * @param operationId 此次工具执行的账本操作 ID
-     * @param arguments 模型提供的计划参数 JSON 文本
-     * @return 包含计划 ID 和 {@code WAITING_APPROVAL} 状态的工具结果
-     */
-    private JsonNode proposePlan(TrustedToolContext context, UUID operationId, String arguments) {
-        JsonNode input;
-        try {
-            input = mapper.readTree(arguments);
-        } catch (RuntimeException exception) {
-            throw invalid("Plan arguments are not valid JSON");
-        }
-        ExecutionPlan plan = plans.propose(context, input);
-        ObjectNode result = mapper.createObjectNode();
-        result.put("status", ToolResultStatus.WAITING_APPROVAL.name());
-        result.put("operationId", operationId.toString());
-        result.putArray("createdIds").add(plan.id().toString());
-        result.putArray("updatedIds");
-        result.putObject("affectedVersions");
-        result.putArray("taskIds");
-        result.putNull("errorCode");
-        result.put("userVisibleSummary", "已提出媒体计划，等待用户审批");
-        return result;
-    }
-
-    /**
-     * 仅保存导出提案与摘要；实际 FFmpeg 任务仍需用户在审批接口授权。
-     *
-     * @param context 当前 Run 的可信作用域
-     * @param run 已锁定的当前 Run
-     * @param operationId 此次工具执行的账本操作 ID
-     * @param arguments 模型提供的导出提案 JSON 文本
-     * @return 包含提案 ID 和摘要的工具结果
-     */
-    private JsonNode proposeExport(TrustedToolContext context, AgentRun run,
-            UUID operationId, String arguments) {
-        JsonNode input;
-        try {
-            input = mapper.readTree(arguments);
-        } catch (RuntimeException exception) {
-            throw invalid("Export proposal arguments are not valid JSON");
-        }
-        ExportProposal proposal = exportProposals.propose(context, run, input);
-        ObjectNode result = mapper.createObjectNode();
-        result.put("status", ToolResultStatus.SUCCEEDED.name());
-        result.put("operationId", operationId.toString());
-        result.putArray("createdIds").add(proposal.id().toString());
-        result.putArray("updatedIds");
-        result.putObject("affectedVersions");
-        result.putArray("taskIds");
-        result.putNull("errorCode");
-        result.put("proposalHash", proposal.proposalHash());
-        result.put("userVisibleSummary", "已保存导出提案，需用户审批后才会开始导出");
-        return result;
     }
 
     /**

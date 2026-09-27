@@ -10,9 +10,6 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.MediaDraft;
-import dev.agenvas.canvas.application.CanvasService;
-import dev.agenvas.plan.application.ShotKeyframeSelection;
-import dev.agenvas.plan.application.ShotKeyframeSelectionRepository;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.task.domain.ProviderAttempt;
@@ -47,10 +44,6 @@ public class TaskService {
     /** 校验媒体目标和固定输入版本，归档生成结果为不可变版本。 */
     private final ArtifactService artifacts;
     private final MediaDraftService mediaDrafts;
-    /** 将新生成产物放入 Agent 输出区域。 */
-    private final CanvasService canvas;
-    /** 核对视频任务创建时用户选择的精确关键帧版本。 */
-    private final ShotKeyframeSelectionRepository keyframeSelections;
     /** 执行任务、依赖、租约与外部提交账本的条件读写。 */
     private final TaskRepository tasks;
     /** 限定租约时长和单次认领、恢复扫描的批量大小。 */
@@ -70,8 +63,6 @@ public class TaskService {
      * @param runs 校验所属 Run 并推进编排状态
      * @param projects 校验项目作用域和活动状态
      * @param artifacts 锁定归档时需再次核验的产物输出目标
-     * @param canvas 读取任务涉及的画布资源
-     * @param keyframeSelections 读取已选关键帧精确版本
      * @param tasks 任务和 Provider 提交账本的持久化边界
      * @param properties 控制租约、批量认领和恢复上限
      * @param events 将状态变化与项目事件原子提交
@@ -85,8 +76,6 @@ public class TaskService {
             ProjectService projects,
             ArtifactService artifacts,
             MediaDraftService mediaDrafts,
-            CanvasService canvas,
-            ShotKeyframeSelectionRepository keyframeSelections,
             TaskRepository tasks,
             TaskProperties properties,
             ProjectEventService events,
@@ -98,8 +87,6 @@ public class TaskService {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
-        this.canvas = canvas;
-        this.keyframeSelections = keyframeSelections;
         this.tasks = tasks;
         this.properties = properties;
         this.events = events;
@@ -116,8 +103,7 @@ public class TaskService {
      * @param ownerId 经认证的项目所有者 ID
      * @param projectId 任务归属项目 ID
      * @param runId 任务归属 Run ID，必须仍允许创建任务
-     * @param planId 已审批计划 ID；非计划任务可为空
-     * @param requestedStepKey 同计划内稳定步骤键，长度为 1 至 160 字符
+     * @param requestedStepKey 同 Run 内稳定步骤键，长度为 1 至 160 字符
      * @param kind 决定 Worker 认领路径的任务类别
      * @param input 创建时复制并固定的任务 JSON 输入
      * @param providerId 已选 Provider 配置 ID；本地任务可为空
@@ -130,7 +116,6 @@ public class TaskService {
             UUID ownerId,
             UUID projectId,
             UUID runId,
-            UUID planId,
             String requestedStepKey,
             Task.Kind kind,
             JsonNode input,
@@ -161,7 +146,6 @@ public class TaskService {
                 UUID.randomUUID(),
                 projectId,
                 runId,
-                planId,
                 stepKey,
                 kind,
                 dependencies.isEmpty() ? Task.Status.READY : Task.Status.PENDING,
@@ -195,28 +179,9 @@ public class TaskService {
 
     /** 创建写入既有产物的媒体任务，并固定创建时的产物版本；完成时不得覆盖之后的用户编辑。 */
     @Transactional
-    public Task createMediaTask(UUID ownerId, UUID projectId, UUID runId, UUID planId,
+    public Task createMediaTask(UUID ownerId, UUID projectId, UUID runId,
             String stepKey, Task.Kind kind, JsonNode input, UUID providerId, int attemptNo,
             List<UUID> dependencyIds, UUID targetArtifactId) {
-        return createMediaTaskWithAllowedOccupant(ownerId, projectId, runId, planId,
-                stepKey, kind, input, providerId, attemptNo, dependencyIds,
-                targetArtifactId, null);
-    }
-
-    /** Explicit UNKNOWN replacement may coexist with only its audited original attempt. */
-    @Transactional
-    public Task createMediaRetryTask(UUID ownerId, UUID projectId, UUID runId, UUID planId,
-            String stepKey, Task.Kind kind, JsonNode input, UUID providerId, int attemptNo,
-            List<UUID> dependencyIds, UUID targetArtifactId, UUID originalTaskId) {
-        return createMediaTaskWithAllowedOccupant(ownerId, projectId, runId, planId,
-                stepKey, kind, input, providerId, attemptNo, dependencyIds,
-                targetArtifactId, originalTaskId);
-    }
-
-    private Task createMediaTaskWithAllowedOccupant(UUID ownerId, UUID projectId,
-            UUID runId, UUID planId, String stepKey, Task.Kind kind, JsonNode input,
-            UUID providerId, int attemptNo, List<UUID> dependencyIds, UUID targetArtifactId,
-            UUID allowedOccupantTaskId) {
         Artifact.Kind expectedKind = switch (kind) {
             case IMAGE_GENERATION -> Artifact.Kind.IMAGE;
             case VIDEO_GENERATION -> Artifact.Kind.VIDEO;
@@ -226,11 +191,10 @@ public class TaskService {
         if (target.kind() != expectedKind || target.archivedAt() != null) {
             throw validation("媒体任务目标必须是同项目、未归档且类型匹配的 Artifact。");
         }
-        Task task = create(ownerId, projectId, runId, planId, stepKey, kind, input,
+        Task task = create(ownerId, projectId, runId, stepKey, kind, input,
                 providerId, attemptNo, dependencyIds);
         Task occupying = tasks.findOccupyingMediaTask(projectId, target.id()).orElse(null);
-        if (occupying != null && (!occupying.id().equals(allowedOccupantTaskId)
-                || occupying.status() != Task.Status.UNKNOWN)) {
+        if (occupying != null) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CARD_BUSY",
                     "卡片任务占用", "这张媒体卡片已有排队、执行或待核对任务。", true);
         }
@@ -239,114 +203,10 @@ public class TaskService {
         return task;
     }
 
-    /** 为已审批计划预留新媒体输出槽位；产物身份在生成完成并归档时才创建。 */
-    @Transactional
-    public Task createMediaTaskForNewOutput(UUID ownerId, UUID projectId, UUID runId,
-            UUID planId, String stepKey, Task.Kind kind, JsonNode input, UUID providerId,
-            int attemptNo, List<UUID> dependencyIds, String requestedOutputSlotKey) {
-        if (kind != Task.Kind.IMAGE_GENERATION && kind != Task.Kind.VIDEO_GENERATION) {
-            throw validation("只有图片或视频生成任务可以声明新媒体输出槽位。");
-        }
-        String outputSlotKey = validateStepKey(requestedOutputSlotKey);
-        Task task = create(ownerId, projectId, runId, planId, stepKey, kind, input,
-                providerId, attemptNo, dependencyIds);
-        tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                null, null, 0, outputSlotKey));
-        return task;
-    }
-
     /** 按项目所有者读取任务；不存在与无权访问使用相同的 404 响应。 */
     @Transactional(readOnly = true)
     public Task get(UUID ownerId, UUID projectId, UUID taskId) {
         return tasks.find(ownerId, projectId, taskId).orElseThrow(this::notFound);
-    }
-
-    /**
-     * 固定项目导出的输入快照并预留用量。相同步骤键和相同载荷返回原任务；载荷不同返回幂等冲突。
-     * 创建前在项目锁内复核预期版本，避免画幅等设置变化后沿用旧快照。
-     */
-    @Transactional
-    public Task createProjectExport(UUID ownerId, UUID projectId, String requestedStepKey,
-            JsonNode input, long expectedProjectVersion) {
-        String stepKey = validateStepKey(requestedStepKey);
-        if (input == null || !input.isObject()) {
-            throw validation("导出输入快照必须是对象。");
-        }
-        String inputHash = sha256(input.toString());
-        return events.recordChange(ownerId, projectId, () -> {
-            Task existing = tasks.findExportByStepKey(ownerId, projectId, stepKey).orElse(null);
-            if (existing != null) {
-                if (!existing.inputHash().equals(inputHash)) {
-                    throw new ApiProblemException(HttpStatus.CONFLICT,
-                            "IDEMPOTENCY_CONFLICT", "导出请求冲突",
-                            "相同幂等键已用于不同的导出输入。", false);
-                }
-                return ProjectEventService.Change.unchanged(existing);
-            }
-            if (projects.requireActiveProject(ownerId, projectId).version()
-                    != expectedProjectVersion) {
-                throw new ApiProblemException(HttpStatus.CONFLICT,
-                        "PROJECT_VERSION_CONFLICT", "项目设置已变化",
-                        "请重新检查画幅后再创建导出。", false);
-            }
-            Instant now = clock.instant();
-            Task export = new Task(UUID.randomUUID(), projectId, null, null, stepKey,
-                    Task.Kind.MEDIA_EXPORT, Task.Status.READY, false, input.deepCopy(),
-                    inputHash, null, null, null, 1, now, null, null, 0, 0,
-                    null, now, now, null);
-            tasks.create(export, List.of());
-            usage.reserveExportTask(ownerId, export);
-            events.append(ownerId, projectId, taskEvent(export, false));
-            return ProjectEventService.Change.unchanged(export);
-        }).value();
-    }
-
-    /** 查询项目导出历史；导出任务不依赖仍有活动 Agent Run。 */
-    @Transactional(readOnly = true)
-    public List<Task> listProjectExports(UUID ownerId, UUID projectId) {
-        projects.get(ownerId, projectId);
-        return tasks.listExports(ownerId, projectId);
-    }
-
-    /** 按项目内稳定步骤键查找已提交导出，供重试同一命令时核对原任务。 */
-    @Transactional(readOnly = true)
-    public Task findProjectExportByStepKey(UUID ownerId, UUID projectId, String stepKey) {
-        return tasks.findExportByStepKey(ownerId, projectId, validateStepKey(stepKey))
-                .orElse(null);
-    }
-
-    /** 未开始的导出立即取消并释放预留；正在执行的导出标记取消，由 Worker 停止本地后续处理。 */
-    @Transactional
-    public Task cancelProjectExport(UUID ownerId, UUID projectId, UUID taskId) {
-        return events.recordChange(ownerId, projectId, () -> {
-            Task current = get(ownerId, projectId, taskId);
-            if (current.kind() != Task.Kind.MEDIA_EXPORT) {
-                throw validation("只能取消项目导出任务。");
-            }
-            if (current.status() == Task.Status.CANCELED || current.cancelRequested()
-                    || current.status() == Task.Status.SUCCEEDED
-                    || current.status() == Task.Status.FAILED) {
-                return ProjectEventService.Change.unchanged(current);
-            }
-            if (!tasks.requestExportCancellation(projectId, taskId, clock.instant())) {
-                throw leaseLost();
-            }
-            Task updated = get(ownerId, projectId, taskId);
-            if (updated.status() == Task.Status.CANCELED) {
-                usage.releaseExportTask(ownerId, updated);
-            }
-            events.append(ownerId, projectId, taskEvent(updated, false));
-            return ProjectEventService.Change.unchanged(updated);
-        }).value();
-    }
-
-    /** 导出已被取消、接管或不再运行时返回 true，供外部本地进程定期停止。 */
-    @Transactional(readOnly = true)
-    public boolean exportShouldStop(Task lease) {
-        Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
-        return current.kind() != Task.Kind.MEDIA_EXPORT || current.cancelRequested()
-                || current.leaseEpoch() != lease.leaseEpoch()
-                || current.status() != Task.Status.RUNNING;
     }
 
     /** 先核验 Run 的项目归属，再读取该 Run 的全部任务以构造恢复快照。 */
@@ -521,20 +381,6 @@ public class TaskService {
                 now.plus(properties.leaseDuration())), List.of());
     }
 
-    /** 项目级导出使用独立于媒体生成的有界租约认领。 */
-    @Transactional
-    public List<Task> claimExportsDue(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) {
-            throw validation("claim limit 必须为正数。");
-        }
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueExports(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
-    }
-
     /** 从已认领任务的数据库记录反查所有者；不接受模型或任务输入中的身份字段。 */
     @Transactional(readOnly = true)
     public UUID ownerForWorker(Task task) {
@@ -662,9 +508,6 @@ public class TaskService {
                 preserveCanceledResult(lease, workerId, output, now);
             } else if (tasks.finish(lease.id(), validateWorkerId(workerId),
                     lease.leaseEpoch(), Task.Status.SUCCEEDED, output, null, now)) {
-                if (lease.kind() == Task.Kind.MEDIA_EXPORT) {
-                    usage.settleExportTask(ownerId, lease);
-                }
                 if (lease.runId() != null) {
                     tasks.promoteReady(lease.projectId(), lease.runId(), now);
                 }
@@ -674,19 +517,9 @@ public class TaskService {
                 throw leaseLost();
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if (updated.kind() == Task.Kind.MEDIA_EXPORT
-                    && updated.status() == Task.Status.CANCELED) {
-                usage.releaseExportTask(ownerId, updated);
-            }
             events.append(ownerId, lease.projectId(), taskEvent(updated, false));
             return ProjectEventService.Change.unchanged(null);
         });
-    }
-
-    /** 用户选择关键帧后重新核验已归档图片结果，再按持久化依赖条件推进后续任务。 */
-    @Transactional
-    public void promoteAfterKeyframeSelection(UUID projectId, UUID runId) {
-        tasks.promoteReady(projectId, runId, clock.instant());
     }
 
     /**
@@ -739,53 +572,22 @@ public class TaskService {
                     && lease.input().has("imageVersionId")
                     && !content.path("keyframeVersionId").asText("")
                             .equals(lease.input().path("imageVersionId").asText())) {
-                throw validation("视频结果必须引用任务钉住的关键帧版本。");
+                throw validation("视频结果必须引用任务固定的输入图片版本。");
             }
-            UUID artifactId;
-            ArtifactService.TaskVersionResult result;
-            if (target.artifactId() == null) {
-                Artifact.Kind kind = lease.kind() == Task.Kind.IMAGE_GENERATION
-                        ? Artifact.Kind.IMAGE : Artifact.Kind.VIDEO;
-                ArtifactService.ArtifactView created = artifacts.createFromTaskWithinChange(ownerId,
-                        lease.projectId(), lease.runId(), kind,
-                        target.outputSlotKey(), content);
-                artifactId = created.artifact().id();
-                result = new ArtifactService.TaskVersionResult(
-                        created.currentVersion().id(), selectResult);
-                if (selectResult && run != null) {
-                    canvas.placeGeneratedArtifactWithinChange(ownerId, lease.projectId(),
-                            run.agentInstanceId(), artifactId);
-                }
-            } else {
-                artifactId = target.artifactId();
-                result = artifacts.appendTaskVersionWithinChange(ownerId,
-                        lease.projectId(), artifactId, lease.runId(),
-                        target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
-                        content, selectResult);
-                if (result.selected()) {
-                    mediaDrafts.setDisplayModeWithinChange(lease.projectId(), artifactId,
-                            MediaDraft.DisplayMode.RESULT);
-                }
-            }
-            ArtifactService.ArtifactView selectedShot = null;
-            if (result.selected() && lease.kind() == Task.Kind.VIDEO_GENERATION
-                    && lease.input().has("shotArtifactId")
-                    && lease.input().has("shotVersionId")
-                    && lease.input().has("imageVersionId")) {
-                selectedShot = artifacts.selectTaskVideoOnShotWithinChange(ownerId,
-                        lease.projectId(), lease.runId(),
-                        UUID.fromString(lease.input().path("shotArtifactId").asText()),
-                        UUID.fromString(lease.input().path("shotVersionId").asText()),
-                        UUID.fromString(lease.input().path("imageVersionId").asText()),
-                        result.versionId());
+            UUID artifactId = target.artifactId();
+            ArtifactService.TaskVersionResult result =
+                    artifacts.appendTaskVersionWithinChange(ownerId,
+                            lease.projectId(), artifactId, lease.runId(),
+                            target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
+                            content, selectResult);
+            if (result.selected()) {
+                mediaDrafts.setDisplayModeWithinChange(lease.projectId(), artifactId,
+                        MediaDraft.DisplayMode.RESULT);
             }
             ObjectNode output = objectMapper.createObjectNode();
             output.put("artifactId", artifactId.toString());
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
-            if (selectedShot != null) {
-                output.put("selectedShotVersionId", selectedShot.currentVersion().id().toString());
-            }
             if (canceled) {
                 preserveCanceledResult(lease, workerId, output, now);
             } else if (!(acknowledgedPoll
@@ -802,8 +604,8 @@ public class TaskService {
                 }
             }
             tasks.clearProviderPollFailures(lease.id());
-            // Synthetic Agent media tasks without an approved plan have no usage reservation.
-            if (lease.planId() != null || lease.runId() == null) {
+            // Run-scoped media tasks carry no usage reservation; only direct tasks do.
+            if (lease.runId() == null) {
                 usage.settleMediaTask(ownerId, lease);
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
@@ -813,10 +615,6 @@ public class TaskService {
             payload.put("artifactId", artifactId.toString());
             payload.put("artifactVersionId", result.versionId().toString());
             payload.put("selected", result.selected());
-            if (selectedShot != null) {
-                payload.put("shotArtifactId", selectedShot.artifact().id().toString());
-                payload.put("shotVersionId", selectedShot.currentVersion().id().toString());
-            }
             payload.put("possibleExternalCost", true);
             events.append(ownerId, lease.projectId(),
                     new ProjectEventService.EventDraft("task.status.changed", 1,
@@ -845,7 +643,7 @@ public class TaskService {
                 }
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if ((updated.planId() != null || updated.runId() == null)
+            if (updated.runId() == null
                     && (updated.kind() == Task.Kind.IMAGE_GENERATION
                             || updated.kind() == Task.Kind.VIDEO_GENERATION)
                     && before.status() == Task.Status.RUNNING
@@ -853,11 +651,6 @@ public class TaskService {
                     && (updated.status() == Task.Status.FAILED
                             || updated.status() == Task.Status.CANCELED)) {
                 usage.releaseUnsubmittedMediaTask(ownerId, updated);
-            }
-            if (updated.kind() == Task.Kind.MEDIA_EXPORT
-                    && (updated.status() == Task.Status.FAILED
-                            || updated.status() == Task.Status.CANCELED)) {
-                usage.releaseExportTask(ownerId, updated);
             }
             if (updated.kind() == Task.Kind.TEXT_GENERATION && before.output() == null
                     && (updated.status() == Task.Status.FAILED
@@ -903,7 +696,7 @@ public class TaskService {
                 }
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if (updated.planId() != null || updated.runId() == null) {
+            if (updated.runId() == null) {
                 usage.releaseUnsubmittedMediaTask(ownerId, updated);
             }
             events.append(ownerId, lease.projectId(), taskEvent(updated, false));
@@ -1062,7 +855,7 @@ public class TaskService {
         UUID requestKey = UUID.randomUUID();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         return events.recordChange(ownerId, lease.projectId(), () -> {
-            // This project-row lock also serializes shot revisions, closing the
+            // The project-row lock also serializes draft and card changes, closing the
             // preflight-to-submission race before any provider request is sent.
             if (projects.get(ownerId, lease.projectId()).status() == Project.Status.ARCHIVED) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_PROJECT_ARCHIVED",
@@ -1070,11 +863,11 @@ public class TaskService {
             }
             if (binding != null && !tasks.lockCurrentMediaBinding(binding)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED",
-                        "媒体能力已变化", "连接或能力已停用、修改，请重新审阅计划。", false);
+                        "媒体能力已变化", "连接或能力已停用、修改，请重新检查草稿。", false);
             }
             if (!pinnedMediaInputsCurrent(ownerId, lease)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_INPUT_STALE",
-                        "任务输入已过期", "镜头或选定关键帧已修改，旧媒体任务不会提交生成请求。", false);
+                        "任务输入已过期", "输入图片或草稿已修改，旧媒体任务不会提交生成请求。", false);
             }
             if (!tasks.beginSubmission(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
                     UUID.randomUUID(), requestKey, candidateOriginSha256, now)) {
@@ -1136,14 +929,11 @@ public class TaskService {
                             return ProjectEventService.Change.unchanged(false);
                         }
                         Task task = tasks.findById(candidate.taskId()).orElseThrow();
-                        if ((task.planId() != null || task.runId() == null)
+                        if (task.runId() == null
                                 && (task.kind() == Task.Kind.IMAGE_GENERATION
                                         || task.kind() == Task.Kind.VIDEO_GENERATION)
                                 && task.providerRequestId() == null) {
                             usage.releaseUnsubmittedMediaTask(candidate.ownerId(), task);
-                        }
-                        if (task.kind() == Task.Kind.MEDIA_EXPORT) {
-                            usage.releaseExportTask(candidate.ownerId(), task);
                         }
                         events.append(candidate.ownerId(), candidate.projectId(),
                                 taskEvent(task, false));
@@ -1177,13 +967,13 @@ public class TaskService {
     }
 
     /**
-     * 已批准计划的媒体任务失败、阻断或外部结果未知时，阻断仍在等待任务的 Run。
+     * 同 Run 的媒体任务失败、阻断或外部结果未知时，阻断仍在等待任务的 Run。
      *
      * @param ownerId 服务端确定的项目所有者 ID
      * @param task 发生终态失败或待核对状态的媒体任务
      */
     private void blockWaitingRunForMedia(UUID ownerId, Task task) {
-        if (task.planId() == null
+        if (task.runId() == null
                 || (task.kind() != Task.Kind.IMAGE_GENERATION
                         && task.kind() != Task.Kind.VIDEO_GENERATION)
                 || (task.status() != Task.Status.FAILED
@@ -1223,39 +1013,14 @@ public class TaskService {
     }
 
     /**
-     * 核验计划媒体任务仍对应当前镜头版本；不含镜头钉住信息的旧内部夹具保持原有行为。
-     *
-     * @param ownerId 用于重新鉴权镜头产物的项目所有者 ID
-     * @param task 带创建时固定镜头 ID 和版本 ID 的任务
-     * @return 镜头存在、未归档且所选版本未变化时为 true
-     */
-    private boolean pinnedShotIsCurrent(UUID ownerId, Task task) {
-        JsonNode input = task.input();
-        if (!input.has("shotArtifactId") && !input.has("shotVersionId")) {
-            return true;
-        }
-        try {
-            UUID shotId = UUID.fromString(input.path("shotArtifactId").asText());
-            UUID versionId = UUID.fromString(input.path("shotVersionId").asText());
-            ArtifactService.ArtifactView shot = artifacts.get(ownerId, task.projectId(), shotId);
-            return shot.artifact().kind() == Artifact.Kind.SHOT
-                    && shot.artifact().archivedAt() == null
-                    && versionId.equals(shot.currentVersion().id());
-        } catch (ApiProblemException | IllegalArgumentException invalidOrInaccessible) {
-            return false;
-        }
-    }
-
-    /**
-     * 图片任务核验参考图仍为原版本；视频任务还核验镜头、图片及用户关键帧选择的版本全部未变。
+     * 图片任务核验参考图仍为原版本；视频任务还核验输入图片固定的精确版本未变。
      * 任一资源不可访问或输入结构损坏时返回 false，使旧结果只能保留在历史。
      *
      * @param ownerId 用于重新鉴权固定媒体输入的项目所有者 ID
-     * @param task 创建时钉住镜头、图片或关键帧选择的媒体任务
+     * @param task 创建时钉住输入图片的媒体任务
      * @return 自动选用生成结果的输入前提仍成立时为 true
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
-        if (!pinnedShotIsCurrent(ownerId, task)) return false;
         JsonNode input = task.input();
         if (task.kind() == Task.Kind.IMAGE_GENERATION
                 && input.has("referenceImageVersionId")) {
@@ -1271,26 +1036,15 @@ public class TaskService {
             }
         }
         if (task.kind() != Task.Kind.VIDEO_GENERATION
-                || !input.has("keyframeSelectionVersion")) return true;
-        JsonNode selectionVersion = input.path("keyframeSelectionVersion");
-        if (!selectionVersion.isIntegralNumber() || !selectionVersion.canConvertToLong()) {
-            return false;
+                || !input.has("imageArtifactId") || !input.has("imageVersionId")) {
+            return true;
         }
         try {
-            UUID shotId = UUID.fromString(input.path("shotArtifactId").asText());
-            UUID shotVersionId = UUID.fromString(input.path("shotVersionId").asText());
             UUID imageId = UUID.fromString(input.path("imageArtifactId").asText());
             UUID imageVersionId = UUID.fromString(input.path("imageVersionId").asText());
-            ShotKeyframeSelection current = keyframeSelections.find(task.projectId(), shotId)
-                    .orElse(null);
             Artifact image = artifacts.get(ownerId, task.projectId(), imageId).artifact();
-            return current != null
-                    && image.archivedAt() == null
-                    && image.currentVersionId().equals(imageVersionId)
-                    && current.shotVersionId().equals(shotVersionId)
-                    && current.imageArtifactId().equals(imageId)
-                    && current.imageVersionId().equals(imageVersionId)
-                    && current.version() == selectionVersion.longValue();
+            return image.archivedAt() == null
+                    && imageVersionId.equals(image.currentVersionId());
         } catch (ApiProblemException | IllegalArgumentException invalidInput) {
             return false;
         }

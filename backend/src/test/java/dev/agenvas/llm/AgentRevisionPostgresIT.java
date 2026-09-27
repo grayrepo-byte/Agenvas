@@ -8,6 +8,7 @@ import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -18,6 +19,7 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -66,6 +68,7 @@ class AgentRevisionPostgresIT {
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
     @Autowired private ArtifactService artifacts;
+    @Autowired private AssetService assets;
     @Autowired private AgentTurnWorker worker;
     @Autowired private FakeGateway gateway;
     @Autowired private JdbcClient jdbc;
@@ -113,44 +116,34 @@ class AgentRevisionPostgresIT {
                 .extracting(failure -> ((ApiProblemException) failure).code())
                 .isEqualTo("INPUT_SCOPE_DENIED");
 
-        ObjectNode sceneContent = mapper.createObjectNode();
-        sceneContent.put("name", "Stage");
-        sceneContent.put("location", "Studio");
-        sceneContent.put("timeOfDay", "Day");
-        sceneContent.put("lighting", "Soft");
-        sceneContent.put("style", "Minimal");
-        sceneContent.putArray("referenceVersionIds");
-        ArtifactService.ArtifactView visibleScene = artifacts.createFromAgent(owner.userId(),
-                project.id(), run.id(), Artifact.Kind.SCENE, "Visible scene", sceneContent);
-        ArtifactService.ArtifactView hiddenScene = artifacts.create(owner.userId(),
-                project.id(), Artifact.Kind.SCENE, "Unbound scene", sceneContent);
-        ObjectNode shotContent = mapper.createObjectNode();
-        shotContent.put("order", 1);
-        shotContent.put("durationSeconds", 5);
-        shotContent.put("description", "Opening");
-        shotContent.put("camera", "Wide");
-        shotContent.put("action", "Show product");
-        shotContent.putArray("characterVersionIds");
-        shotContent.put("sceneVersionId", visibleScene.currentVersion().id().toString());
-        ArtifactService.ArtifactView shot = artifacts.createFromAgent(owner.userId(),
-                project.id(), run.id(), Artifact.Kind.SHOT, "Shot", shotContent);
-        ObjectNode forgedMediaChoice = shotContent.deepCopy();
-        forgedMediaChoice.put("selectedImageVersionId", UUID.randomUUID().toString());
-        assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(),
-                run.id(), run.contextSnapshot(), shot.artifact().id(), 0,
-                null, forgedMediaChoice))
+        Project mediaProject = projects.create(owner.userId(), "Media revision project",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        ObjectNode mediaContent = imageContent(
+                ImageAssetFixture.archive(assets, owner.userId(), mediaProject.id()),
+                "Bound frame prompt");
+        ArtifactService.ArtifactView image = artifacts.create(owner.userId(),
+                mediaProject.id(), Artifact.Kind.IMAGE, "Bound frame", mediaContent);
+        AgentInstance mediaAgent = agents.create(owner.userId(), mediaProject.id(),
+                "Media creator", "Revise the bound frame", List.of(
+                        new AgentInstanceService.BindingInput(image.artifact().id(),
+                                image.currentVersion().id())));
+        AgentRun mediaRun = runs.create(owner.userId(), mediaProject.id(), mediaAgent.id(),
+                "Revise the bound frame", "media-revision-run").run();
+        // 媒体产物是归档内容：即使同一 Run 的模型回合要求改写，也只能读到原版本。
+        ObjectNode mediaRewrite = imageContent(
+                UUID.fromString(mediaContent.path("assetId").asText()),
+                "Stolen rewrite of the archived frame");
+        assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), mediaProject.id(),
+                mediaRun.id(), mediaRun.contextSnapshot(), image.artifact().id(), 0,
+                null, mediaRewrite))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(failure -> ((ApiProblemException) failure).code())
                 .isEqualTo("TOOL_ARGUMENT_INVALID");
-        shotContent.put("sceneVersionId", hiddenScene.currentVersion().id().toString());
-        assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(),
-                run.id(), run.contextSnapshot(), shot.artifact().id(), 0,
-                null, shotContent))
-                .isInstanceOf(ApiProblemException.class)
-                .extracting(failure -> ((ApiProblemException) failure).code())
-                .isEqualTo("INPUT_SCOPE_DENIED");
-        assertThat(artifacts.listVersions(owner.userId(), project.id(), shot.artifact().id()))
-                .hasSize(1);
+        assertThat(artifacts.listVersions(owner.userId(), mediaProject.id(),
+                image.artifact().id())).hasSize(1);
+        assertThat(artifacts.get(owner.userId(), mediaProject.id(), image.artifact().id())
+                .currentVersion().content().path("prompt").asText())
+                .isEqualTo("Bound frame prompt");
 
         assertThat(worker.runOnce("revision-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
@@ -191,6 +184,18 @@ class AgentRevisionPostgresIT {
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(failure -> ((ApiProblemException) failure).code())
                 .isEqualTo("INPUT_SCOPE_DENIED");
+    }
+
+    /** 一张已归档图片产物的完整生成型正文；Agent 只能读取，不能改写。 */
+    private ObjectNode imageContent(UUID assetId, String prompt) {
+        ObjectNode content = mapper.createObjectNode();
+        content.put("assetId", assetId.toString());
+        content.put("prompt", prompt);
+        content.put("providerConfigVersion", 1);
+        content.put("workflowVersion", "test-image-v1");
+        content.putObject("parameters");
+        content.put("sourceTaskId", UUID.randomUUID().toString());
+        return content;
     }
 
     @TestConfiguration

@@ -3,9 +3,6 @@
 本目录是 ArtifactVersion `schemaVersion: 1` 的内容合约。文件使用 JSON Schema 2020-12；服务端在写入不可变版本前执行同等的字段、长度、枚举、UUID 与语义引用校验。Schema 不包含 `ownerId`、存储路径、审批结果等受保护字段。
 
 - `text-v1.schema.json`
-- `character-v1.schema.json`
-- `scene-v1.schema.json`
-- `shot-v1.schema.json`
 - `image-v1.schema.json`
 - `video-v1.schema.json`
 

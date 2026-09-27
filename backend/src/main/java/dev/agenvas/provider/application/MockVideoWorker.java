@@ -5,7 +5,7 @@ import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
-import dev.agenvas.plan.application.PlanProviderProperties;
+import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.GenerationRequest;
 import dev.agenvas.provider.domain.GenerationResult;
@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 从审批固定的归档关键帧生成明确标为演示素材的 MP4，不调用真实视频模型。 */
+/** 从任务固定的归档输入图片生成明确标为演示素材的 MP4，不调用真实视频模型。 */
 @Component
 public class MockVideoWorker {
 
@@ -32,9 +32,9 @@ public class MockVideoWorker {
     private final TaskWorker worker;
     /** 查询任务所有者并校验已固定的生成输入。 */
     private final TaskService tasks;
-    /** 读取审批指定的镜头和关键帧历史版本。 */
+    /** 读取任务固定的输入图片历史版本。 */
     private final ArtifactService artifacts;
-    /** 读取关键帧资产并幂等归档输出视频。 */
+    /** 读取输入图片资产并幂等归档输出视频。 */
     private final AssetService assets;
     /** 通过受控 FFmpeg 参数合成演示视频。 */
     private final MediaToolRunner mediaTools;
@@ -43,14 +43,14 @@ public class MockVideoWorker {
     /** 选择应用内置或部署提供的演示图片素材。 */
     private final MockProviderProperties fixture;
     /** 将当前 Provider 配置版本写入结果并校验任务输入。 */
-    private final PlanProviderProperties provider;
+    private final ProviderProperties provider;
     /** 构造生成结果中的 JSON 内容。 */
     private final ObjectMapper mapper;
 
     /** 组装演示视频 Worker 的任务、素材和固定媒体工具依赖。 */
     public MockVideoWorker(TaskService tasks, ArtifactService artifacts, AssetService assets,
             MediaToolRunner mediaTools, GenerationGateway gateway,
-            MockProviderProperties fixture, PlanProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
+            MockProviderProperties fixture, ProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
         this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
@@ -94,7 +94,7 @@ public class MockVideoWorker {
         };
     }
 
-    /** 仅读取审批指定的图片版本，再归档 FFmpeg 实际生成的 MP4 文件。 */
+    /** 仅读取任务固定的输入图片版本，再归档 FFmpeg 实际生成的 MP4 文件。 */
     private TaskWorker.GeneratedArtifact completed(Task task, GenerationResult result) {
         if (!result.demoOutput()) {
             throw new IllegalStateException("Mock video result lacks the demo marker");
@@ -102,22 +102,14 @@ public class MockVideoWorker {
         UUID ownerId = tasks.ownerForWorker(task);
         UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
         UUID imageVersionId = UUID.fromString(task.input().path("imageVersionId").asText());
-        UUID shotId = UUID.fromString(task.input().path("shotArtifactId").asText());
-        UUID shotVersionId = UUID.fromString(task.input().path("shotVersionId").asText());
         ArtifactVersion image = artifacts.requireVersion(ownerId, task.projectId(),
                 imageId, imageVersionId);
-        ArtifactVersion shot = artifacts.requireVersion(ownerId, task.projectId(),
-                shotId, shotVersionId);
         UUID imageAssetId = UUID.fromString(image.content().path("assetId").asText());
         AssetService.AssetFile input = assets.get(ownerId, task.projectId(), imageAssetId);
         if (input.asset().mediaKind() != Asset.MediaKind.IMAGE) {
             throw new IllegalStateException("Pinned video input is not an archived image");
         }
         Duration duration = VideoDuration.fromFrozenTask(task.input());
-        if (task.input().path("schemaVersion").asInt(1) == 2
-                && shot.content().path("durationSeconds").asInt(-1) != duration.toSeconds()) {
-            throw new IllegalStateException("Pinned shot duration differs from approved Task");
-        }
         Path rendered;
         try {
             rendered = Files.createTempFile("agenvas-demo-video-", ".mp4");

@@ -16,7 +16,6 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.idempotency.IdempotencyState;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.domain.Task;
-import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -60,7 +59,7 @@ public class AgentRunService {
     private final ProjectService projects;
     /** 读取 Agent 当前配置及其已授权输入绑定。 */
     private final AgentInstanceService agents;
-    /** 重新核验局部重做镜头的当前版本。 */
+    /** 按所有者重新读取绑定产物及其当前版本。 */
     private final ArtifactService artifacts;
     /** 将用户选择的画布项解析为当前项目内的意图快照。 */
     private final CanvasService canvas;
@@ -72,8 +71,6 @@ public class AgentRunService {
     private final RunTaskCancellation taskCancellation;
     /** 在 Run 创建事务中建立首个模型回合任务。 */
     private final RunTaskCreation taskCreation;
-    /** 释放取消或终止前尚未提交任务的用量预留。 */
-    private final UsageService usage;
     /** 预检并固定本次 Run 可用的模型配置。 */
     private final ChatGateway chatGateway;
     /** 构造固定上下文及策略 JSON 快照。 */
@@ -95,7 +92,6 @@ public class AgentRunService {
             ProjectEventService events,
             RunTaskCancellation taskCancellation,
             RunTaskCreation taskCreation,
-            UsageService usage,
             ChatGateway chatGateway,
             ObjectMapper objectMapper,
             Clock clock,
@@ -110,7 +106,6 @@ public class AgentRunService {
         this.events = events;
         this.taskCancellation = taskCancellation;
         this.taskCreation = taskCreation;
-        this.usage = usage;
         this.chatGateway = chatGateway;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -144,20 +139,6 @@ public class AgentRunService {
                 requestedIdempotencyKey, expectedAgentVersion, null);
     }
 
-    /** 局部重做入口仅接受 Agent 已绑定且仍为当前版本的镜头。 */
-    @Transactional
-    public CreateResult create(
-            UUID ownerId,
-            UUID projectId,
-            UUID agentId,
-            String requestedInstruction,
-            String requestedIdempotencyKey,
-            Long expectedAgentVersion,
-            UUID redoShotArtifactId) {
-        return create(ownerId, projectId, agentId, requestedInstruction,
-                requestedIdempotencyKey, expectedAgentVersion, redoShotArtifactId, List.of());
-    }
-
     /** 固定用户选择的画布项作为意图；选择本身不扩展 Agent 对其他产物的访问权。 */
     @Transactional
     public CreateResult create(
@@ -167,10 +148,9 @@ public class AgentRunService {
             String requestedInstruction,
             String requestedIdempotencyKey,
             Long expectedAgentVersion,
-            UUID redoShotArtifactId,
             List<UUID> selectedItemIds) {
         return create(ownerId, projectId, agentId, requestedInstruction,
-                requestedIdempotencyKey, expectedAgentVersion, redoShotArtifactId,
+                requestedIdempotencyKey, expectedAgentVersion,
                 selectedItemIds, null, null);
     }
 
@@ -183,12 +163,11 @@ public class AgentRunService {
             String requestedInstruction,
             String requestedIdempotencyKey,
             Long expectedAgentVersion,
-            UUID redoShotArtifactId,
             List<UUID> selectedItemIds,
             String expectedModelConfigSource,
             Integer expectedModelConfigVersion) {
         return create(ownerId, projectId, agentId, requestedInstruction,
-                requestedIdempotencyKey, expectedAgentVersion, redoShotArtifactId,
+                requestedIdempotencyKey, expectedAgentVersion,
                 selectedItemIds, expectedModelConfigSource, expectedModelConfigVersion, null);
     }
 
@@ -203,7 +182,6 @@ public class AgentRunService {
      * @param requestedInstruction 用户指令，校验长度后固定到 Run
      * @param requestedIdempotencyKey 项目内创建 Run 的客户端幂等键
      * @param expectedAgentVersion 用户预览过的 Agent 版本；为空时不做该版本核对
-     * @param redoShotArtifactId 可选局部重做镜头，必须是已绑定的当前版本
      * @param selectedItemIds 可选画布选择；只作为意图，不授予额外产物权限
      * @param expectedModelConfigSource 预检时的配置来源，须与版本同时提供
      * @param expectedModelConfigVersion 预检时的配置版本，须与来源同时提供
@@ -218,13 +196,12 @@ public class AgentRunService {
             String requestedInstruction,
             String requestedIdempotencyKey,
             Long expectedAgentVersion,
-            UUID redoShotArtifactId,
             List<UUID> selectedItemIds,
             String expectedModelConfigSource,
             Integer expectedModelConfigVersion,
             Integer expectedSystemPromptVersion) {
         return create(ownerId, projectId, agentId, requestedInstruction, requestedIdempotencyKey,
-                expectedAgentVersion, redoShotArtifactId, selectedItemIds, expectedModelConfigSource,
+                expectedAgentVersion, selectedItemIds, expectedModelConfigSource,
                 expectedModelConfigVersion, expectedSystemPromptVersion, null, null);
     }
 
@@ -232,7 +209,7 @@ public class AgentRunService {
     @Transactional
     public CreateResult create(UUID ownerId, UUID projectId, UUID agentId,
             String requestedInstruction, String requestedIdempotencyKey, Long expectedAgentVersion,
-            UUID redoShotArtifactId, List<UUID> selectedItemIds, String expectedModelConfigSource,
+            List<UUID> selectedItemIds, String expectedModelConfigSource,
             Integer expectedModelConfigVersion, Integer expectedSystemPromptVersion,
             UUID requestedConversationId, Long expectedConversationVersion) {
         shutdownGate.requireAcceptingRuns();
@@ -244,7 +221,7 @@ public class AgentRunService {
         }
         String scope = "project:" + projectId + ":create-run";
         String requestFingerprint = agentId + "\n" + instruction + "\n"
-                + expectedAgentVersion + "\n" + redoShotArtifactId + "\n" + selection;
+                + expectedAgentVersion + "\n" + selection;
         if (expectedModelConfigSource != null) {
             requestFingerprint += "\n" + expectedModelConfigSource + "\n"
                     + expectedModelConfigVersion;
@@ -297,21 +274,7 @@ public class AgentRunService {
             throw new ApiProblemException(HttpStatus.CONFLICT, "SYSTEM_PROMPT_CONFLICT",
                     "系统提示词已变化", "运行规则与运行前预览不同，请重新检查后再启动。", false);
         }
-        UUID redoShotVersionId = null;
-        if (redoShotArtifactId != null) {
-            ArtifactService.ArtifactView shot = artifacts.get(ownerId, projectId,
-                    redoShotArtifactId);
-            if (shot.artifact().kind() != Artifact.Kind.SHOT
-                    || agent.bindings().stream().noneMatch(binding ->
-                            binding.artifactId().equals(redoShotArtifactId)
-                            && binding.selectedVersionId().equals(
-                                    shot.currentVersion().id()))) {
-                throw validation("局部重做目标必须是 Agent 明确绑定的当前镜头版本。");
-            }
-            redoShotVersionId = shot.currentVersion().id();
-        }
         UUID runId = UUID.randomUUID();
-        UUID pinnedRedoVersion = redoShotVersionId;
         CreatedRun created = shutdownGate.admitRun(() -> events.recordChange(ownerId, projectId, () -> {
                     shutdownGate.requireAcceptingRuns();
                     projects.requireAvailableRunSlot(ownerId, projectId);
@@ -327,12 +290,12 @@ public class AgentRunService {
                                 "会话已变化", "会话已有新消息，请重新检查上下文后发送。", false);
                     }
                     ConversationInputs context = conversationInputs(ownerId, projectId, agent, conversation);
-                    ObjectNode snapshot = contextSnapshot(ownerId, agent, project, redoShotArtifactId,
-                            pinnedRedoVersion, selection);
+                    ObjectNode snapshot = contextSnapshot(ownerId, agent, project,
+                            selection);
                     snapshot.set("conversationMemory", objectMapper.valueToTree(context.memory()));
                     snapshot.put("conversationId", conversation.id().toString());
                     snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
-                    if (redoShotArtifactId == null) appendInheritedBindings(snapshot, context.inherited());
+                    appendInheritedBindings(snapshot, context.inherited());
                     AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
                             instruction, expectedConversationVersion, now);
                     AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
@@ -558,7 +521,7 @@ public class AgentRunService {
                     AgentRun updated = updateStatusLocked(
                             ownerId, projectId, runId, expectedVersion, target);
                     if (target == AgentRun.Status.CANCEL_REQUESTED) {
-                        cancelUnsubmittedTasks(ownerId, projectId, runId);
+                        cancelUnsubmittedTasks(projectId, runId);
                         events.append(ownerId, projectId, runEvent(updated));
                         return ProjectEventService.Change.unchanged(updated);
                     }
@@ -583,7 +546,7 @@ public class AgentRunService {
             if (current.version() != expectedVersion
                     || current.nextStepIndex() != expectedStepIndex
                     || (current.status() != AgentRun.Status.RUNNING
-                            && current.status() != AgentRun.Status.WAITING_APPROVAL)
+                            && current.status() != AgentRun.Status.WAITING_TASKS)
                     || !runs.advanceStep(ownerId, projectId, runId, expectedVersion,
                             expectedStepIndex, clock.instant())) {
                 throw versionConflict();
@@ -610,7 +573,7 @@ public class AgentRunService {
                                 current.version(),
                                 AgentRun.Status.CANCEL_REQUESTED);
                     }
-                    cancelUnsubmittedTasks(ownerId, projectId, runId);
+                    cancelUnsubmittedTasks(projectId, runId);
                     AgentRun canceled = updateStatusLocked(
                             ownerId,
                             projectId,
@@ -623,14 +586,9 @@ public class AgentRunService {
                 .value();
     }
 
-    /** 仅释放取消操作实际返回的未提交媒体任务用量；已提交请求仍可能产生外部费用。 */
-    private void cancelUnsubmittedTasks(UUID ownerId, UUID projectId, UUID runId) {
-        for (Task task : taskCancellation.requestCancellation(projectId, runId,
-                clock.instant())) {
-            if (task.planId() != null) {
-                usage.releaseUnsubmittedMediaTask(ownerId, task);
-            }
-        }
+    /** 取消本 Run 尚未提交的任务；外部已受理的请求仍可能产生费用。 */
+    private void cancelUnsubmittedTasks(UUID projectId, UUID runId) {
+        taskCancellation.requestCancellation(projectId, runId, clock.instant());
     }
 
     /** 调用前须持有项目锁；CAS 更新状态后仅在终态释放该 Run 占用的槽位。 */
@@ -706,9 +664,9 @@ public class AgentRunService {
     private record ConversationInputs(ConversationMemoryReader.ConversationMemory memory,
             List<ArtifactService.ConversationInput> inherited) {}
 
-    /** 固定 Agent 绑定与用户选择时的版本；局部重做只暴露目标镜头的绑定。 */
+    /** 固定 Agent 绑定与用户选择时的版本。 */
     private ObjectNode contextSnapshot(UUID ownerId, AgentInstance agent, Project project,
-            UUID redoShotArtifactId, UUID redoShotVersionId, List<UUID> selectedItemIds) {
+            List<UUID> selectedItemIds) {
         ObjectNode snapshot = objectMapper.createObjectNode();
         snapshot.put("projectName", project.name());
         snapshot.put("aspectRatio", project.aspectRatio().name());
@@ -719,14 +677,8 @@ public class AgentRunService {
         snapshot.put("agentName", agent.name());
         snapshot.put("agentInstruction", agent.instruction());
         snapshot.put("outputGroupId", agent.outputGroupId().toString());
-        if (redoShotArtifactId != null) {
-            snapshot.put("redoShotArtifactId", redoShotArtifactId.toString());
-            snapshot.put("redoShotVersionId", redoShotVersionId.toString());
-        }
         ArrayNode bindings = snapshot.putArray("bindings");
         for (AgentInstance.Binding binding : agent.bindings()) {
-            if (redoShotArtifactId != null
-                    && !redoShotArtifactId.equals(binding.artifactId())) continue;
             ObjectNode item = bindings.addObject();
             item.put("artifactId", binding.artifactId().toString());
             item.put("selectedVersionId", binding.selectedVersionId().toString());
@@ -760,7 +712,7 @@ public class AgentRunService {
         return snapshot;
     }
 
-    /** 把本次 Run 的模型配置版本及回合、工具、媒体预算写入不可变策略快照。 */
+    /** 把本次 Run 的模型配置版本及回合、工具预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
         policy.put("schemaVersion", 2);
@@ -770,9 +722,6 @@ public class AgentRunService {
         policy.put("modelConfigSource", model.source());
         policy.put("maxModelTurns", 12);
         policy.put("maxToolExecutions", 40);
-        policy.put("maxImages", 8);
-        policy.put("maxVideos", 6);
-        policy.put("maxShots", 6);
         return policy;
     }
 
@@ -785,13 +734,12 @@ public class AgentRunService {
                     AgentRun.Status.CANCEL_REQUESTED,
                     AgentRun.Status.FAILED);
             case RUNNING -> Set.of(
-                    AgentRun.Status.WAITING_APPROVAL,
                     AgentRun.Status.WAITING_TASKS,
                     AgentRun.Status.BLOCKED,
                     AgentRun.Status.CANCEL_REQUESTED,
                     AgentRun.Status.SUCCEEDED,
                     AgentRun.Status.FAILED);
-            case WAITING_APPROVAL, WAITING_TASKS -> Set.of(
+            case WAITING_TASKS -> Set.of(
                     AgentRun.Status.RUNNING,
                     AgentRun.Status.WAITING_TASKS,
                     AgentRun.Status.BLOCKED,

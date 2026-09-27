@@ -18,7 +18,7 @@ const LOG: CallLog = {
   startedAt: "2026-09-26T01:00:00Z", respondedAt: "2026-09-26T01:00:02.125Z", durationMs: 2125, historical: false, mock: true,
 };
 const TASK: Task = {
-  id: TASK_ID, projectId: PROJECT_ID, runId: null, planId: null, stepKey: "direct-image", kind: "IMAGE_GENERATION", status: "UNKNOWN",
+  id: TASK_ID, projectId: PROJECT_ID, runId: null, stepKey: "direct-image", kind: "IMAGE_GENERATION", status: "UNKNOWN",
   cancelRequested: false, input: {}, attemptNo: 1, nextActionAt: "2026-09-26T01:00:00Z", version: 7,
   createdAt: "2026-09-26T01:00:00Z", updatedAt: "2026-09-26T01:00:00Z",
 };

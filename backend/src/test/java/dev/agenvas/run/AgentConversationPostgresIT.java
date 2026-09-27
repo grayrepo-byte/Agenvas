@@ -213,7 +213,7 @@ class AgentConversationPostgresIT {
     private AgentRun send(AdminPrincipal owner, Project project, AgentInstance agent, UUID conversationId,
             long expectedVersion, String key) {
         return runs.create(owner.userId(), project.id(), agent.id(), "消息 " + key, key,
-                null, null, List.of(), null, null, null, conversationId, expectedVersion).run();
+                null, List.of(), null, null, null, conversationId, expectedVersion).run();
     }
 
     private UUID activeRun(UUID projectId) {

@@ -279,7 +279,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
             throw new IllegalStateException("SHA-256 unavailable", exception);
         }
         UUID taskId = UUID.randomUUID();
-        create(new Task(taskId, projectId, runId, null, "agent-turn-0",
+        create(new Task(taskId, projectId, runId, "agent-turn-0",
                 Task.Kind.AGENT_TURN, Task.Status.READY, false, input, inputHash,
                 null, null, null, 1, now, null, null, 0, 0,
                 null, now, now, null), List.of());
@@ -293,7 +293,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.ID, task.id())
                 .set(TASK.PROJECT_ID, task.projectId())
                 .set(TASK.RUN_ID, task.runId())
-                .set(TASK.PLAN_ID, task.planId())
                 .set(TASK.STEP_KEY, task.stepKey())
                 .set(TASK.KIND, task.kind().name())
                 .set(TASK.STATUS, task.status().name())
@@ -313,8 +312,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.UPDATED_AT, utc(task.updatedAt()))
                 .set(TASK.COMPLETED_AT, (OffsetDateTime) null)
                 .set(TASK.ORIGIN, task.runId() == null
-                        ? (task.kind() == Task.Kind.MEDIA_EXPORT
-                                ? TaskOrigin.PROJECT_EXPORT : TaskOrigin.USER_DIRECT).name()
+                        ? TaskOrigin.USER_DIRECT.name()
                         : TaskOrigin.AGENT.name())
                 .execute();
         for (UUID dependencyId : dependencyIds) {
@@ -517,52 +515,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return dsl.selectFrom(TASK)
                 .where(TASK.ID.eq(taskId))
                 .fetchOptional(this::mapTask);
-    }
-
-    /** 按项目命令键定位导出任务，用于校验幂等请求载荷。 */
-    @Override
-    public Optional<Task> findExportByStepKey(UUID ownerId, UUID projectId, String stepKey) {
-        return dsl.select(TASK.fields()).from(TASK)
-                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .where(TASK.PROJECT_ID.eq(projectId))
-                .and(PROJECT.OWNER_ID.eq(ownerId))
-                .and(TASK.KIND.eq(Task.Kind.MEDIA_EXPORT.name()))
-                .and(TASK.STEP_KEY.eq(stepKey))
-                .fetchOptional(row -> mapTask(row.into(TASK)));
-    }
-
-    /** 返回最近 100 条项目导出，即使创建它们的 Run 已结束。 */
-    @Override
-    public List<Task> listExports(UUID ownerId, UUID projectId) {
-        return dsl.select(TASK.fields()).from(TASK)
-                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .where(TASK.PROJECT_ID.eq(projectId))
-                .and(PROJECT.OWNER_ID.eq(ownerId))
-                .and(TASK.KIND.eq(Task.Kind.MEDIA_EXPORT.name()))
-                .orderBy(TASK.CREATED_AT.desc(), TASK.ID.desc())
-                .limit(100)
-                .fetch(row -> mapTask(row.into(TASK)));
-    }
-
-    /** READY 导出立即转 CANCELED；RUNNING 导出只记录取消请求供 Worker 停止。 */
-    @Override
-    public boolean requestExportCancellation(UUID projectId, UUID taskId, Instant now) {
-        return dsl.update(TASK)
-                .set(TASK.CANCEL_REQUESTED, true)
-                .set(TASK.STATUS, DSL.when(TASK.STATUS.eq(Task.Status.READY.name()),
-                                Task.Status.CANCELED.name())
-                        .otherwise(TASK.STATUS))
-                .set(TASK.COMPLETED_AT, DSL.when(TASK.STATUS.eq(Task.Status.READY.name()),
-                                DSL.val(utc(now), TASK.COMPLETED_AT))
-                        .otherwise(TASK.COMPLETED_AT))
-                .set(TASK.UPDATED_AT, utc(now))
-                .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
-                .and(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.KIND.eq(Task.Kind.MEDIA_EXPORT.name()))
-                .and(TASK.STATUS.in(Task.Status.READY.name(), Task.Status.RUNNING.name()))
-                .and(TASK.CANCEL_REQUESTED.isFalse())
-                .execute() == 1;
     }
 
     /** 从数据库反查任务项目的权威所有者，不能使用模型输入中的 ownerId。 */
@@ -821,40 +773,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .fetch(row -> mapTask(row.into(TASK)));
     }
 
-    /** 只认领未取消、项目仍活动且 Run 为空的项目级导出任务。 */
-    @Override
-    public List<Task> claimDueExports(
-            String workerId, int limit, Instant now, Instant leaseUntil) {
-        Condition due = TASK.STATUS.eq(Task.Status.READY.name())
-                        .and(TASK.NEXT_ACTION_AT.le(utc(now)))
-                .or(TASK.STATUS.eq(Task.Status.RUNNING.name())
-                        .and(TASK.LEASE_UNTIL.le(utc(now))));
-        var candidates = DSL.select(TASK.ID)
-                .from(TASK)
-                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .where(TASK.KIND.eq(Task.Kind.MEDIA_EXPORT.name()))
-                .and(TASK.RUN_ID.isNull())
-                .and(PROJECT.STATUS.eq(Project.Status.ACTIVE.name()))
-                .and(TASK.CANCEL_REQUESTED.isFalse())
-                .and(due)
-                .orderBy(TASK.NEXT_ACTION_AT, TASK.CREATED_AT, TASK.ID)
-                .limit(limit)
-                // 只锁 task 行：项目行可能被其他事务占用，锁它会让导出认领互相阻塞。
-                .forUpdate().of(TASK).skipLocked()
-                .asTable("c");
-        return dsl.update(TASK)
-                .set(TASK.STATUS, Task.Status.RUNNING.name())
-                .set(TASK.LEASE_OWNER, workerId)
-                .set(TASK.LEASE_UNTIL, utc(leaseUntil))
-                .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1))
-                .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .set(TASK.UPDATED_AT, utc(now))
-                .from(candidates)
-                .where(TASK.ID.eq(candidates.field(TASK.ID)))
-                .returning(TASK.fields())
-                .fetch(row -> mapTask(row.into(TASK)));
-    }
-
     /** 单独认领 Agent 回合，Run 状态和恢复计划条件在 SQL 中再次限定。 */
     @Override
     public List<Task> claimDueAgentTurns(
@@ -921,13 +839,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         Condition runCondition = agentTurn
                 ? AGENT_RUN.STATUS.in(AgentRun.Status.QUEUED.name(),
                                 AgentRun.Status.RUNNING.name())
-                        .or(AGENT_RUN.STATUS.in(AgentRun.Status.WAITING_APPROVAL.name(),
-                                        AgentRun.Status.WAITING_TASKS.name())
-                                .and(TASK.STATUS.eq(Task.Status.RUNNING.name())))
                         .or(AGENT_RUN.STATUS.eq(AgentRun.Status.WAITING_TASKS.name())
-                                .and(TASK.STATUS.eq(Task.Status.READY.name()))
-                                .and(DSL.field("{0} ->> 'resumePlanId'", String.class,
-                                        TASK.INPUT_JSON).isNotNull()))
+                                .and(TASK.STATUS.eq(Task.Status.RUNNING.name())))
                 : AGENT_RUN.STATUS.in(AgentRun.Status.RUNNING.name(),
                         AgentRun.Status.WAITING_TASKS.name());
         Condition eligibility = agentTurn
@@ -1039,11 +952,11 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute() == 1;
     }
 
-    /** 仅所有前置成功且所需关键帧已选择时，将 PENDING 任务推进 READY。 */
+    /** 仅所有前置成功时，将 PENDING 任务推进 READY。 */
     @Override
     public int promoteReady(UUID projectId, UUID runId, Instant now) {
-        // 恢复判定依赖 input_json ->> 取值、(…)::uuid 转换、is distinct from 以及多别名
-        // 关联子查询，这些 PG 专有表达式保留 SQL 文本；绑定值仍由 jOOQ 参数化。
+        // 恢复判定依赖 input_json ->> 取值、is distinct from 以及多别名关联子查询，
+        // 这些 PG 专有表达式保留 SQL 文本；绑定值仍由 jOOQ 参数化。
         return dsl.execute("""
                         update task candidate
                         set status = 'READY', next_action_at = ?,
@@ -1066,31 +979,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                                 and (predecessor.status <> 'SUCCEEDED'
                                   or predecessor.output_json ->> 'selected' = 'false')
                           )
-                          and (candidate.kind <> 'AGENT_TURN'
-                              or candidate.input_json ->> 'awaitKeyframes' is distinct from 'true'
-                              or not exists (
-                                  select 1 from task image_task
-                                  left join shot_keyframe_selection choice
-                                    on choice.project_id = image_task.project_id
-                                   and choice.source_task_id = image_task.id
-                                   and choice.shot_artifact_id =
-                                       (image_task.input_json ->> 'shotArtifactId')::uuid
-                                   and choice.shot_version_id =
-                                       (image_task.input_json ->> 'shotVersionId')::uuid
-                                   and choice.image_artifact_id =
-                                       (image_task.output_json ->> 'artifactId')::uuid
-                                   and choice.image_version_id =
-                                       (image_task.output_json ->> 'artifactVersionId')::uuid
-                                  where image_task.project_id = candidate.project_id
-                                    and image_task.run_id = candidate.run_id
-                                    and image_task.plan_id =
-                                        (candidate.input_json ->> 'resumePlanId')::uuid
-                                    and image_task.kind = 'IMAGE_GENERATION'
-                                    and not exists (
-                                        select 1 from task_manual_replacement replacement
-                                        where replacement.original_task_id = image_task.id)
-                                    and choice.source_task_id is null
-                              ))
                         """, utc(now), utc(now), projectId, runId);
     }
 
@@ -1559,7 +1447,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 row.getId(),
                 row.getProjectId(),
                 row.getRunId(),
-                row.getPlanId(),
                 row.getStepKey(),
                 Task.Kind.valueOf(row.getKind()),
                 Task.Status.valueOf(row.getStatus()),

@@ -115,10 +115,7 @@ class PromptInjectionPostgresIT {
         assertThat(jdbc.sql("select count(*) from llm_turn where run_id = :runId "
                         + "and status = 'RESPONDED'")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(3);
-        assertThat(jdbc.sql("select count(*) from execution_plan")
-                .query(Long.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from plan_approval")
-                .query(Long.class).single()).isZero();
+        // 收缩后已无计划与审批表；注入若被接受，唯一可能的落地物是媒体任务，第 107-108 行已证明没有。
         assertThat(jdbc.sql("select count(*) from asset")
                 .query(Long.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")
@@ -158,9 +155,8 @@ class PromptInjectionPostgresIT {
         }
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.BLOCKED);
-        assertThat(jdbc.sql("select count(*) from execution_plan where project_id = :projectId")
-                .param("projectId", project.id()).query(Long.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from plan_approval where project_id = :projectId")
+        assertThat(jdbc.sql("select count(*) from usage_ledger where project_id = :projectId "
+                        + "and task_id is not null and entry_type = 'RESERVATION'")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
                         + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")

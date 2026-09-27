@@ -53,8 +53,8 @@ public class ComfyUiVideoPoller {
             if (original == null
                     || !ComfyUiVideoWorkflow.supportsHistoricalVersion(
                             task.input().path("workflowVersion").asText())
-                    || task.planId() != null && !savedOrigin.equals(
-                            task.input().path("providerOriginSha256").asText())) {
+                    || (task.input().has("providerOriginSha256") && !savedOrigin.equals(
+                            task.input().path("providerOriginSha256").asText()))) {
                 return new TaskWorker.PollBlocked("PROVIDER_CONFIG_CHANGED");
             }
             UUID promptId = UUID.fromString(task.providerRequestId());

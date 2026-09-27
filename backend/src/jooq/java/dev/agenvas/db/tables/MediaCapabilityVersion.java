@@ -7,7 +7,6 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
-import dev.agenvas.db.tables.PlanStep.PlanStepPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.MediaCapabilityVersionRecord;
@@ -184,19 +183,6 @@ public class MediaCapabilityVersion extends TableImpl<MediaCapabilityVersionReco
             _mediaCapability = new MediaCapabilityPath(this, Keys.MEDIA_CAPABILITY_VERSION__MEDIA_CAPABILITY_VERSION_CAPABILITY_ID_FKEY, null);
 
         return _mediaCapability;
-    }
-
-    private transient PlanStepPath _planStep;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.plan_step</code>
-     * table
-     */
-    public PlanStepPath planStep() {
-        if (_planStep == null)
-            _planStep = new PlanStepPath(this, null, Keys.PLAN_STEP__FK_PLAN_STEP_MEDIA_CAPABILITY.getInverseKey());
-
-        return _planStep;
     }
 
     private transient ProviderAttemptPath _providerAttempt;

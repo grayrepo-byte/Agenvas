@@ -181,7 +181,6 @@ class TaskLeasePostgresIT {
                 ownerId,
                 projectId,
                 runId,
-                null,
                 stepKey,
                 Task.Kind.ASSET_INGEST,
                 objectMapper.readTree("{\"step\":\"" + stepKey + "\"}"),

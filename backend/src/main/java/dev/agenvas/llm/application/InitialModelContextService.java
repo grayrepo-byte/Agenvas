@@ -77,7 +77,7 @@ public class InitialModelContextService {
     /**
      * 根据 Run 快照中的历史版本 ID 解析每个显式绑定，不跟随当前版本指针变化。
      * 每项最多内联 1,200 字符，绑定预览不超过 64,000 字符；较长正文必须经只读工具读取。
-     * 用户画布选择只作为意图文本，局部重做只开放固定镜头的媒体提案。
+     * 用户画布选择只作为意图文本。
      *
      * @param ownerId 经认证的项目所有者
      * @param projectId Run 所属项目
@@ -101,9 +101,8 @@ public class InitialModelContextService {
                 + required(snapshot, "aspectRatio") + ")"));
         messages.add(new UserMessage("Agent " + agentName + " instructions:\n"
                 + agentInstruction));
-        StringBuilder availableMedia = new StringBuilder("Published media capabilities (IDs are optional "
-                + "in propose_generation_plan steps; omitted IDs use the administrator default). "
-                + "Choose only a compatible kind and integer duration. The user confirms every step:\n");
+        StringBuilder availableMedia = new StringBuilder(
+                "Published media capabilities for this project:\n");
         List<MediaCapabilityService.Candidate> published = capabilities.publishedCandidates();
         for (var candidate : published.stream().limit(40).toList()) {
             availableMedia.append("capabilityId=").append(candidate.binding().capabilityId())
@@ -153,13 +152,6 @@ public class InitialModelContextService {
             }
             messages.add(new UserMessage("Canvas selection at Run start (intent only; "
                     + "not write authorization):\n" + selection));
-        }
-        if (snapshot.has("redoShotArtifactId")) {
-            messages.add(new UserMessage("Scoped redo shot: artifactId="
-                    + required(snapshot, "redoShotArtifactId") + " versionId="
-                    + required(snapshot, "redoShotVersionId")
-                    + "\nOnly this shot may be included in a new media plan; "
-                    + "image and video generation still require separate user approvals."));
         }
         appendConversationMemory(messages, snapshot);
         messages.add(new UserMessage("Current Run request:\n" + run.instruction()));

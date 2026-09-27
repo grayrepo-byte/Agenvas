@@ -87,7 +87,6 @@ public class AgentTurnCommitService {
                 current = runs.transition(ownerId, lease.projectId(), lease.runId(),
                         current.version(), AgentRun.Status.RUNNING);
             } else if (current.status() != AgentRun.Status.RUNNING
-                    && current.status() != AgentRun.Status.WAITING_APPROVAL
                     && current.status() != AgentRun.Status.WAITING_TASKS) {
                 throw new IllegalStateException("Run cannot resume this model turn");
             }
@@ -96,7 +95,7 @@ public class AgentTurnCommitService {
     }
 
     /**
-     * 先确认响应和全部工具结果已落库，再按 FINISH、等待审批或继续回合原子推进任务与 Run。
+     * 先确认响应和全部工具结果已落库，再按 FINISH 或继续回合原子推进任务与 Run。
      * 达到回合上限时阻断 Run，且不再创建新的模型任务。
      *
      * @param lease 要完成的模型回合任务租约
@@ -135,20 +134,12 @@ public class AgentTurnCommitService {
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", 1);
                 input.put("stepIndex", stepIndex + 1);
-                tasks.create(ownerId, lease.projectId(), lease.runId(), null,
+                tasks.create(ownerId, lease.projectId(), lease.runId(),
                         "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input,
                         null, 1, List.of(lease.id()));
                 tasks.succeed(lease, workerId, output);
                 runs.advanceStep(ownerId, lease.projectId(), lease.runId(),
                         run.version(), stepIndex);
-            } else if (decision == Decision.WAIT_APPROVAL) {
-                if (run.status() != AgentRun.Status.WAITING_APPROVAL
-                        && run.status() != AgentRun.Status.WAITING_TASKS
-                        && !(run.status() == AgentRun.Status.RUNNING
-                                && run.nextStepIndex() == stepIndex + 1)) {
-                    throw new IllegalStateException("Run is not waiting for an approved plan");
-                }
-                tasks.succeed(lease, workerId, output);
             } else if (decision == Decision.FINISH) {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Only a running Run can finish");
@@ -205,7 +196,7 @@ public class AgentTurnCommitService {
             input.put("repairErrorCode", errorCode);
             input.put("repairErrorDetail", errorDetail.substring(0,
                     Math.min(errorDetail.length(), 300)));
-            tasks.create(ownerId, lease.projectId(), lease.runId(), null,
+            tasks.create(ownerId, lease.projectId(), lease.runId(),
                     "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input,
                     null, 1, List.of(lease.id()));
             ObjectNode output = mapper.createObjectNode();
@@ -278,7 +269,7 @@ public class AgentTurnCommitService {
     }
 
     /**
-     * 逐项比对模型调用与已完成工具账本；无工具时结束，末尾计划提案进入审批，其余情况继续下一回合。
+     * 逐项比对模型调用与已完成工具账本；无工具时结束，其余情况继续下一回合。
      *
      * @param lease 当前任务，用于限定项目和 Run
      * @param stepIndex 模型响应与工具账本共同使用的步骤序号
@@ -290,9 +281,7 @@ public class AgentTurnCommitService {
         if (calls.isEmpty()) {
             return Decision.FINISH;
         }
-        boolean waitsForApproval = false;
-        for (int index = 0; index < calls.size(); index++) {
-            AssistantMessage.ToolCall call = calls.get(index);
+        for (AssistantMessage.ToolCall call : calls) {
             ToolExecution execution = toolExecutions.find(lease.projectId(), lease.runId(),
                     stepIndex, call.id()).orElseThrow(() ->
                             new IllegalStateException("Model tool result is missing"));
@@ -301,27 +290,14 @@ public class AgentTurnCommitService {
                     || !execution.toolName().equals(call.name())) {
                 throw new IllegalStateException("Model tool result does not match response");
             }
-            if ("propose_generation_plan".equals(call.name())) {
-                if (index != calls.size() - 1
-                        || !ToolResultStatus.WAITING_APPROVAL.name().equals(
-                                execution.result().path("status").asText())) {
-                    throw new IllegalStateException("Plan proposal must be the last tool call");
-                }
-                waitsForApproval = true;
-            } else if (ToolResultStatus.WAITING_APPROVAL.name().equals(
-                    execution.result().path("status").asText())) {
-                throw new IllegalStateException("Unexpected approval wait from another tool");
-            }
         }
-        return waitsForApproval ? Decision.WAIT_APPROVAL : Decision.CONTINUE;
+        return Decision.CONTINUE;
     }
 
-    /** 模型回合完成后可以持久化的四种调度结果。 */
+    /** 模型回合完成后可以持久化的三种调度结果。 */
     public enum Decision {
         /** 工具执行完成，继续创建下一个模型回合。 */
         CONTINUE,
-        /** 媒体计划已提出，等待用户审批。 */
-        WAIT_APPROVAL,
         /** 无后续工具调用，Run 可以结束。 */
         FINISH,
         /** 已达到模型回合上限，Run 被阻断。 */

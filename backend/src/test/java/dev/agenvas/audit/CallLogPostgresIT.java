@@ -196,7 +196,7 @@ class CallLogPostgresIT {
         var agent = agents.create(owner.userId(), project.id(), "Audit agent", "Create", List.of());
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 PRIVATE_MARKER, "legacy-audit-run").run();
-        Task task = tasks.create(owner.userId(), project.id(), run.id(), null,
+        Task task = tasks.create(owner.userId(), project.id(), run.id(),
                 "legacy-media", Task.Kind.IMAGE_GENERATION, privatePayload(), null, 1, List.of());
         jdbc.sql("update task set status='UNKNOWN', error_code='PROVIDER_SUBMISSION_UNKNOWN' where id=:id")
                 .param("id", task.id()).update();
@@ -369,7 +369,7 @@ class CallLogPostgresIT {
 
     private Task newTask(Project project, CallLog.Kind kind) {
         Task.Kind taskKind = kind == CallLog.Kind.IMAGE ? Task.Kind.IMAGE_GENERATION : Task.Kind.VIDEO_GENERATION;
-        return tasks.create(project.ownerId(), project.id(), fixtureRun(project).id(), null,
+        return tasks.create(project.ownerId(), project.id(), fixtureRun(project).id(),
                 "audit-" + UUID.randomUUID(), taskKind, privatePayload(), null, 1, List.of());
     }
 

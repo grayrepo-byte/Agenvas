@@ -11,8 +11,6 @@ import dev.agenvas.db.tables.AgentConversation.AgentConversationPath;
 import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
 import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.CallLog.CallLogPath;
-import dev.agenvas.db.tables.ExecutionPlan.ExecutionPlanPath;
-import dev.agenvas.db.tables.ExportProposal.ExportProposalPath;
 import dev.agenvas.db.tables.LlmTurn.LlmTurnPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.Task.TaskPath;
@@ -303,32 +301,6 @@ public class AgentRun extends TableImpl<AgentRunRecord> {
         return _callLog;
     }
 
-    private transient ExecutionPlanPath _executionPlan;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.execution_plan</code> table
-     */
-    public ExecutionPlanPath executionPlan() {
-        if (_executionPlan == null)
-            _executionPlan = new ExecutionPlanPath(this, null, Keys.EXECUTION_PLAN__FK_EXECUTION_PLAN_RUN.getInverseKey());
-
-        return _executionPlan;
-    }
-
-    private transient ExportProposalPath _exportProposal;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.export_proposal</code> table
-     */
-    public ExportProposalPath exportProposal() {
-        if (_exportProposal == null)
-            _exportProposal = new ExportProposalPath(this, null, Keys.EXPORT_PROPOSAL__FK_EXPORT_PROPOSAL_RUN.getInverseKey());
-
-        return _exportProposal;
-    }
-
     private transient LlmTurnPath _llmTurn;
 
     /**
@@ -387,7 +359,7 @@ public class AgentRun extends TableImpl<AgentRunRecord> {
             Internal.createCheck(this, DSL.name("ck_agent_run_instruction_not_blank"), "((length(btrim(instruction)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_agent_run_next_step_non_negative"), "((next_step_index >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_agent_run_profile_version_positive"), "((profile_version > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_agent_run_status"), "(((status)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'WAITING_APPROVAL'::character varying, 'WAITING_TASKS'::character varying, 'BLOCKED'::character varying, 'CANCEL_REQUESTED'::character varying, 'CANCELED'::character varying, 'FAILED'::character varying, 'SUCCEEDED'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_agent_run_status"), "(((status)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'WAITING_TASKS'::character varying, 'BLOCKED'::character varying, 'CANCEL_REQUESTED'::character varying, 'CANCELED'::character varying, 'FAILED'::character varying, 'SUCCEEDED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_agent_run_version_non_negative"), "((version >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_run_conversation_turn"), "((conversation_turn > 0))", true)
         );

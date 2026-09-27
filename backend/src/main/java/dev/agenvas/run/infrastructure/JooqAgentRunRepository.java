@@ -259,8 +259,7 @@ public class JooqAgentRunRepository implements AgentRunRepository {
                 .set(AGENT_RUN.UPDATED_AT, utc(updatedAt))
                 .where(AGENT_RUN.ID.eq(runId))
                 .and(AGENT_RUN.PROJECT_ID.eq(projectId))
-                .and(AGENT_RUN.STATUS.in(AgentRun.Status.RUNNING.name(),
-                        AgentRun.Status.WAITING_APPROVAL.name()))
+                .and(AGENT_RUN.STATUS.eq(AgentRun.Status.RUNNING.name()))
                 .and(AGENT_RUN.VERSION.eq(expectedVersion))
                 .and(AGENT_RUN.NEXT_STEP_INDEX.eq(expectedStepIndex))
                 .and(ownedProject(ownerId))
