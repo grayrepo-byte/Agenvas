@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useEffect, useId, useRef, useState } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
+import { taskErrorDetail } from "./taskErrorMessages";
 import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { readContentText } from "./artifactContent";
 import { ApiError, assetThumbnailUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
@@ -412,7 +413,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
             ? <CanvasLoadingState compact label={TASK_LABELS[latestTask.status]} />
             : <span className={`media-draft-task-badge is-${latestTask.status.toLowerCase()}`} role="status">
               {latestTask.status === "SUCCEEDED" ? <CheckCircle size={19} /> : <WarningCircle size={19} />}
-              {TASK_LABELS[latestTask.status]}{latestTask.errorCode ? ` · ${latestTask.errorCode}` : ""}</span>}
+              {TASK_LABELS[latestTask.status]}{taskErrorDetail(latestTask.errorCode)}</span>}
           <span className="media-draft-task-kind">本卡片直接生成 · {artifact.kind === "VIDEO" ? "视频" : "图片"}</span>
         </div>
         {queue.data && latestTask.status === "READY" ? <span>前方 {queue.data.waitingAhead} 项 · {QUEUE_LABELS[queue.data.reason]}（排位可能变化）</span> : null}
@@ -421,7 +422,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
           disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? "取消中…" : "取消排队"}</button> : null}
       </div> : null}
       {cancel.error ? <p role="alert">取消失败：{cancel.error.message}</p> : null}
-      {latestTask?.status === "UNKNOWN" ? <UnknownTaskRetryPanel
+      {latestTask?.status === "UNKNOWN" ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} /> : null}
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === CONFLICT_STATUS
         ? "草稿有冲突；本地输入已保留。重新读取版本后可再保存。" : error.message}</span>

@@ -847,6 +847,34 @@ public class TaskService {
         });
     }
 
+    /**
+     * 无法确认外部是否受理或完成时，立即按原因码转 UNKNOWN，不再等租约到期。
+     *
+     * <p>CAS 失败不抛异常：租约若在调用期间过期（例如租约被配得短于客户端超时），
+     * {@link #recoverExpiredSubmissions} 会接手同一条记录。若这里把 {@code leaseLost()}
+     * 抛出去，调度器只会记一条错误日志，任务照样停在 SUBMITTING 等满租约，且只剩笼统的
+     * 兜底原因码——正是本方法与原因码改造要消除的现象。
+     *
+     * @return 是否由本次调用写入；{@code false} 表示租约已失效，交由兜底扫描处理
+     */
+    @Transactional
+    public boolean markSubmissionUnknown(Task lease, String workerId, String errorCode) {
+        String normalizedCode = validateErrorCode(errorCode);
+        Instant now = clock.instant();
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            if (!tasks.markSubmissionUnknown(lease, validateWorkerId(workerId), normalizedCode,
+                    now)) {
+                return ProjectEventService.Change.unchanged(false);
+            }
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            events.append(ownerId, lease.projectId(), taskEvent(updated, true));
+            // 必须转过等待中的 Run：人工重试要求 Run 处于 BLOCKED/WAITING_TASKS。
+            blockWaitingRunForMedia(ownerId, updated);
+            return ProjectEventService.Change.unchanged(true);
+        }).value();
+    }
+
     /** 外部请求受理且原请求 ID 已落库后释放 Worker 租约，后续由轮询任务接续。 */
     @Transactional
     public void waitForProvider(

@@ -217,6 +217,17 @@ public interface TaskRepository {
     /** 只有 Provider 明确拒绝时，才以当前租约写入提交终态失败。 */
     boolean rejectSubmission(Task lease, String workerId, String errorCode, Instant now);
 
+    /**
+     * 无法确认外部是否受理或完成时，以当前租约立即写入 UNKNOWN 与具体原因码。
+     *
+     * <p>与 {@code recoverExpiredSubmission} 互补：这里要求租约仍然有效，由 Worker 在拿到
+     * 确定结论的那一刻写入；那边只处理租约已过期（进程被杀）的兜底。两者靠租约是否过期
+     * 互斥，任一方先成功，另一方条件不再成立。
+     *
+     * @param errorCode 可区分原因码，直接展示给用户，不得是笼统的提交未知
+     */
+    boolean markSubmissionUnknown(Task lease, String workerId, String errorCode, Instant now);
+
     /** 任务创建时固定的目标产物与版本前提；归档不得越过用户后续编辑。
      * @param taskId 产生该输出的任务
      * @param projectId 目标产物所属项目

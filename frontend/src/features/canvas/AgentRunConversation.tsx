@@ -8,6 +8,7 @@ import { PlanApprovalPanel } from "./PlanApprovalPanel";
 import { KeyframeSelectionPanel } from "./KeyframeSelectionPanel";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
+import { taskErrorDetail } from "./taskErrorMessages";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   QUEUED: "等待开始", RUNNING: "正在处理", WAITING_APPROVAL: "等待你的审批",
@@ -70,7 +71,7 @@ export function AgentRunConversation({ projectId, run, active }: {
     </Fragment>)}
     {visibleTasks.length ? <div className="agent-chat-tasks" aria-label="执行任务">
       {visibleTasks.map((task) => <AgentChatTaskRow key={task.id} label={`${TASK_LABELS[task.kind]} · ${task.stepKey}`}
-        status={TASK_STATUS[task.status]} detail={`第 ${task.attemptNo} 次尝试${task.errorCode ? ` · ${task.errorCode}` : ""}${task.cancelRequested ? " · 已请求停止后续编排" : ""}`} />)}
+        status={TASK_STATUS[task.status]} detail={`第 ${task.attemptNo} 次尝试${taskErrorDetail(task.errorCode)}${task.cancelRequested ? " · 已请求停止后续编排" : ""}`} />)}
     </div> : null}
     {!active && plans.data?.length ? <details className="agent-chat-plan-history"><summary>审批记录 · {plans.data.length}</summary>
       {plans.data.map((plan) => <p key={plan.id}>{plan.stage === "IMAGE" ? "图片" : "视频"}计划 · 第 {plan.revision} 版 · {plan.status} · {plan.steps.length} 个步骤</p>)}
@@ -80,7 +81,7 @@ export function AgentRunConversation({ projectId, run, active }: {
     {active && run.status === "WAITING_TASKS" ? <KeyframeSelectionPanel projectId={projectId} runId={run.id} /> : null}
     {active && run.status === "BLOCKED" ? <BlockedRunNotice projectId={projectId} runId={run.id} /> : null}
     {unknownTasks.map((task) => <UnknownTaskRetryPanel key={task.id} projectId={projectId} taskId={task.id}
-      taskVersion={task.version} />)}
+      taskVersion={task.version} errorCode={task.errorCode} />)}
     <div className="agent-chat-run-status" role="status">
       {active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}
       {run.status === "CANCELED" || run.status === "CANCEL_REQUESTED" ? <p>仅停止本系统后续编排；外部任务可能继续执行并产生费用。</p> : null}

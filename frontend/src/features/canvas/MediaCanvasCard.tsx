@@ -9,6 +9,7 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { isMediaTaskRunning, latestMediaTask, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { assetMetadataQueryOptions, displayedMediaAssetId, isMediaDraftDisplayed, mediaDraftQueryOptions } from "./mediaDisplay";
+import { taskErrorMessage } from "./taskErrorMessages";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   PENDING: "等待生成", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
@@ -94,7 +95,7 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
               : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
-              {latest?.errorCode ? <small>{latest.errorCode}</small> : null}
+              <TaskReason errorCode={latest?.errorCode} />
               {latest?.status === "UNKNOWN" ? <small>可在编辑区重试</small> : null}
             </div> : null}
             {latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
@@ -111,6 +112,13 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
             <button type="button" className="nodrag" onClick={() => void tasks.refetch()}>重试状态</button></p> : null}
         </div>}
   </ArtifactCardFrame>;
+}
+
+/** 优先展示可读原因；未登记的码原样回退，便于用户拿它去检索而不是被隐藏。 */
+function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
+  const reason = taskErrorMessage(errorCode);
+  if (reason) return <small>{reason}</small>;
+  return errorCode ? <small>{errorCode}</small> : null;
 }
 
 /** Only thumbnails are fetched until the user explicitly opens or plays the original. */

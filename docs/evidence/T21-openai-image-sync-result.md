@@ -95,6 +95,79 @@ Key**，也不预设中转站的域名、跳转次数或图片格式 —— 重�
 从不渲染（`UnknownTaskAttemptPanel` 的显示条件是 `planned || direct`）。已在
 `ProjectWorkspacePage` 按 `kind` 补齐，并加了回归测试（去掉该参数后用例立即失败）。
 
+## 复发：同一个固定超时常量第二次咬人
+
+2026-09-27 再次实测 `OPENAI_GPT_IMAGE_2`（同一中转站）：**接口 216 秒才返回结果，而当时上限是
+180 秒**，客户端先超时，已生成并计费的结果再次被丢弃。这是同一个故障面的第二次复发
+（10 秒 → 3 分钟 → 5 分钟），说明「一个必须覆盖整次生成、却写死在客户端里的超时常量」本身就是
+脆弱点：上限一旦低于真实耗时，损失的是已经付过费的结果。
+
+同一现象也再次暴露了诊断缺口：`recordSubmission` 的 `Unknown` 分支什么都不写，任务停在
+`SUBMITTING` 直到租约（`PT30M`）过期才被恢复扫描统一写成 `PROVIDER_SUBMISSION_UNKNOWN`。
+用户在卡片上只看到「结果未知」加一个笼统机器码，必须自己去翻服务端日志。这条与上一节
+「原因一」记录的问题完全一致——上一轮只修了超时数值，没有修「原因被丢弃」。
+
+## 本次修复
+
+1. **上限提到 5 分钟**，两个同步图片客户端一致（`OpenAiImage2Client`、`GoogleNanoBananaClient`）。
+   两者都用 `PinnedHttpClients.pinned` 的 read/call 两个上限，且都受
+   `agenvas.task.lease-duration`（默认 `PT30M`）覆盖。新增不变量：租约必须同时大于调用耗时与
+   客户端超时，短于客户端超时会让「当场判定」失效、退化为兜底的笼统码。
+2. **本地得到确定结论时立即判定为 UNKNOWN**，不再等租约到期。新增
+   `TaskRepository.markSubmissionUnknown` 与 `TaskService.markSubmissionUnknown`，CAS 条件
+   镜像 `rejectSubmission`（要求租约仍有效）。与恢复扫描靠 `lease_until` 互斥，任一方先赢。
+   CAS 失败**不抛异常**，只记 WARN 并交回扫描——否则调度器吞掉异常后任务照样空等，且只剩笼统码。
+3. **每个失败点都带稳定原因码**。`Uncertain` 改为携带 `reasonCode`，适配器原样透传，不再把
+   所有情况改写成 `OPENAI_IMAGE_SUBMISSION_UNKNOWN`。新增词汇表
+   `dev.agenvas.shared.error.ProviderFailureCodes`：`PROVIDER_CALL_TIMEOUT`、
+   `PROVIDER_DOWNLOAD_FAILED`、`PROVIDER_RESPONSE_LOST`、`PROVIDER_PROTOCOL_INVALID`、
+   `PROVIDER_RESULT_URL_INVALID`、`PROVIDER_RESPONSE_TOO_LARGE`、`PROVIDER_RESULT_TOO_LARGE`、
+   `PROVIDER_SUBMISSION_UNKNOWN`。超时判定由 `shared.http.OutboundTimeouts` 完成：
+   `SocketTimeoutException`，或消息精确等于 `timeout` 的 `InterruptedIOException`，并遍历
+   cause 与 suppressed——OkHttp 的整次调用超时把底层 socket 异常挂在 cause 上。
+4. **前端展示可读原因**：新增 `taskErrorMessages.ts`，卡片、编辑区、Run 对话、运行历史、阻断
+   提示与 UNKNOWN 重试面板统一改为「状态 · 可读原因」，未登记的码回退原样显示而不是隐藏。
+
+### 一个被否掉的前端改动
+
+原计划还给「卡片已显示旧图」的情况加一个原因浮层。核实后确认那是死代码：
+`displayedMediaAssetId` 与 `showDraft` 共用同一个 `isMediaDraftDisplayed` 判定，两者互为反面，
+所以 `assetId` 非空时 `showDraft` 必为 false、`direct-media-tasks` 查询被禁用，浮层永远不会渲染。
+而且直接媒体任务排队时后端会把 `displayMode` 置为 `DRAFT`，卡片本就回到显示状态与原因的分支。
+前端计划任务的状态按产品规则跟随 Run 对话，不由卡片承载。故未加该浮层。
+
+## 验证
+
+- `OpenAiImage2ClientTest`（16 项）与 `GoogleNanoBananaClientTest`（4 项）通过：新增「注入 300ms
+  超时的慢响应 → 原因码为 `PROVIDER_CALL_TIMEOUT`」「断线 → `PROVIDER_RESPONSE_LOST`（不是超时）」
+  「结果 URL 404 → `PROVIDER_DOWNLOAD_FAILED` 且只请求一次（非 200 不重试）」
+  「`file://` → `PROVIDER_RESULT_URL_INVALID`」「响应形状错误 → `PROVIDER_PROTOCOL_INVALID`」
+  「429 → `PROVIDER_SUBMISSION_UNKNOWN`」。
+- `OutboundTimeoutsTest`（6 项）通过：`SocketTimeoutException` 与 `InterruptedIOException("timeout")`
+  判定为超时；`interrupted`、`deadline reached`、`Canceled` 与形近文案不误判；cause 与 suppressed
+  两条穿透路径成立。
+- `TaskSubmissionUnknownPostgresIT` 通过（真实 PostgreSQL）：已批准计划的媒体任务当场判定后
+  `error_code` 为传入的原因码、租约两列同时清空、`completed_at` 保持为空、provider_attempt 转
+  UNKNOWN，**等待中的 Run 转 BLOCKED**（人工重试的前置条件），兜底扫描返回 0，同一租约不可二次
+  改写，UNKNOWN 仍占用名额；租约已过期时判定返回 false 且任务保持 SUBMITTING，随后由扫描写成
+  `PROVIDER_SUBMISSION_UNKNOWN`。
+- `OpenAiImage2PostgresIT`、`GoogleNanoBananaPostgresIT`、`ArkSeedancePostgresIT` 通过：断连后
+  **当场**是 UNKNOWN 且 `error_code` 为 `PROVIDER_RESPONSE_LOST`，恢复扫描返回 0。方舟沿用
+  `ARK_CREATE_UNCERTAIN`（其超时未改）。
+- 前端：`pnpm typecheck`、`pnpm lint` 通过；`pnpm test` 261 项通过（含新增的
+  `taskErrorMessages` 映射/回退用例与卡片原因展示用例）。
+- 后端单元套件 `./mvnw -o test`：125 项通过。
+- `TaskRecoveryPostgresIT`、`ManualUnknownRetryPostgresIT` 通过：进程被杀的兜底恢复与
+  UNKNOWN 人工重试（含 Run 阻断作为前置条件）未受本次改动影响。
+- `TaskArtifactSelectionPostgresIT`、`ComfyUiImagePostgresIT`、`ComfyUiAcceptedCrashPostgresIT`
+  未在本次运行。它们覆盖的是进程被杀与适配器抛异常的兜底路径，本次未改动该路径。
+  **未运行，不声称通过。**
+- **未做真实 Provider 调用**。因此「216 秒真实结果能正常归档」只由上限提升与上述单元/集成验证
+  推断，未实测；中转站是否还有更长的排队时间也无证据。
+- 参考图编辑（`images/edits`）仍只有本地假服务覆盖。
+- 下载失败现在会给出 `PROVIDER_DOWNLOAD_FAILED`，但仍未验证中转站 CDN 的失败重试在真实链路下的
+  行为。
+
 ## 仍未验证
 
 - 参考图编辑（`images/edits`，multipart）只有本地假服务覆盖，未走真实渠道。

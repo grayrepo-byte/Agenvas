@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { listAgentRuns, listExecutionPlans, listRunTasks } from "../../shared/api/client";
+import { taskErrorDetail } from "./taskErrorMessages";
 
 /** Read-only, persisted Run history; intentionally renders no model messages or tool arguments. */
 export function RunHistoryPanel({ projectId, agentId }: { projectId: string; agentId: string }) {
@@ -51,7 +52,7 @@ export function RunHistoryPanel({ projectId, agentId }: { projectId: string; age
           {tasks.data ? <div className="mt-2">
             <p className="font-medium">执行任务（{tasks.data.length}）</p>
             <ul>{tasks.data.map((task) => <li className="break-words" key={task.id}>
-              {task.kind} · {task.stepKey} · {task.status}{task.errorCode ? ` · ${task.errorCode}` : ""}
+              {task.kind} · {task.stepKey} · {task.status}{taskErrorDetail(task.errorCode)}
             </li>)}</ul>
             {tasks.data.some((task) => task.kind === "IMAGE_GENERATION" ||
               task.kind === "VIDEO_GENERATION") ? <p className="mt-2 text-[var(--muted)]">

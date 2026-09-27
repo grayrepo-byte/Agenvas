@@ -670,7 +670,7 @@ lease 是独立的认领属性，不是把等待 Provider 的整个生命周期�
 
 所有进度写入、心跳和最终落库都带 lease_epoch。旧 Worker 失去租约后返回的结果不能覆盖新 Worker 的状态。
 
-默认租约 30 分钟（`agenvas.task.lease-duration`），心跳间隔取租约的 1/3。心跳执行器与耗时任务执行器分开。外部等待释放执行槽位，按 next_action_at 再次认领查询。租约必须覆盖一次完整的同步 Provider 调用：GPT Image 单次生成约 30–40 秒，租约短于调用耗时会让已经生成的图片在写回时被恢复扫描判成 UNKNOWN 并丢弃；同步媒体提交因此没有心跳，靠租约长度而不是续租渡过调用期。
+默认租约 30 分钟（`agenvas.task.lease-duration`），心跳间隔取租约的 1/3。心跳执行器与耗时任务执行器分开。外部等待释放执行槽位，按 next_action_at 再次认领查询。租约必须同时覆盖一次完整的同步 Provider 调用与客户端自身的调用超时（`OpenAiImage2Client` 与 `GoogleNanoBananaClient` 均为 5 分钟）：实测中转站单次生成曾耗时 216 秒，超时先于生成完成触发，已生成并计费的结果被丢弃；而租约短于客户端超时会让当场判定失效，原因码退化为恢复扫描的笼统码。同步媒体提交因此没有心跳，靠租约长度而不是续租渡过调用期。
 
 ### 12.4 重启恢复分类
 
@@ -703,7 +703,7 @@ Provider 层：只有对方明确支持且实测验证幂等时才复用其幂�
 
 提交前确定的瞬时错误：允许在批准范围内重试。
 
-提交后读超时、连接中断、语义不明确的 5xx：已保存外部请求 ID 则按该 ID 查询；没有外部 ID 则 UNKNOWN，等待用户显式重试。
+提交后读超时、连接中断、语义不明确的 5xx：已保存外部请求 ID 则按该 ID 查询；没有外部 ID 则当场写入 UNKNOWN 与可区分的原因码（`PROVIDER_CALL_TIMEOUT`、`PROVIDER_RESPONSE_LOST`、`PROVIDER_DOWNLOAD_FAILED`、`PROVIDER_PROTOCOL_INVALID`、`PROVIDER_RESULT_URL_INVALID`、`PROVIDER_RESPONSE_TOO_LARGE`、`PROVIDER_RESULT_TOO_LARGE`），等待用户显式重试。原因码直接展示给用户，不得统一改写成笼统的提交未知，否则只能靠服务端日志排查。
 
 鉴权失败、参数非法、模型不支持、用户取消：不自动重试。
 
@@ -722,6 +722,8 @@ Provider 层：只有对方明确支持且实测验证幂等时才复用其幂�
 取消先持久化 cancel_requested；检查点与每次外部提交前都读取它。未提交任务取消，已提交任务仅在 Provider 支持且当前任务归属可验证时请求取消。
 
 任务超过等待期限不等于外部失败，应依据是否确定提交过分别进入 FAILED 或 UNKNOWN/BLOCKED。
+
+同步提交一旦在本地得到确定结论（读超时、连接中断、结果下载失败、响应不符合固定协议），立即按具体原因码写入 UNKNOWN，不由租约到期决定用户何时看到；租约过期扫描只作为进程被杀的兜底，写笼统的 `PROVIDER_SUBMISSION_UNKNOWN`。
 
 本系统不承诺取消能停止供应商计费。
 
@@ -943,7 +945,7 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 }
 ```
 
-主要错误码：VALIDATION_ERROR、UNAUTHENTICATED、RESOURCE_NOT_FOUND、VERSION_CONFLICT、ACTIVE_RUN_EXISTS、APPROVAL_REQUIRED、APPROVAL_STALE、BUDGET_EXCEEDED、PROVIDER_AUTH_FAILED、PROVIDER_UNSUPPORTED_CAPABILITY、PROVIDER_SUBMISSION_UNKNOWN、ASSET_INVALID、TASK_CANCELED、EVENT_CURSOR_EXPIRED。
+主要错误码：VALIDATION_ERROR、UNAUTHENTICATED、RESOURCE_NOT_FOUND、VERSION_CONFLICT、ACTIVE_RUN_EXISTS、APPROVAL_REQUIRED、APPROVAL_STALE、BUDGET_EXCEEDED、PROVIDER_AUTH_FAILED、PROVIDER_UNSUPPORTED_CAPABILITY、PROVIDER_CALL_TIMEOUT、PROVIDER_RESPONSE_LOST、PROVIDER_DOWNLOAD_FAILED、PROVIDER_PROTOCOL_INVALID、PROVIDER_RESULT_URL_INVALID、PROVIDER_RESPONSE_TOO_LARGE、PROVIDER_RESULT_TOO_LARGE、PROVIDER_SUBMISSION_UNKNOWN、ASSET_INVALID、TASK_CANCELED、EVENT_CURSOR_EXPIRED。媒体调用的原因码由 `dev.agenvas.shared.error.ProviderFailureCodes` 定义，前端 `taskErrorMessages.ts` 必须与之同步，因为卡片与调用日志只展示码本身。
 
 ### 15.5 OpenAPI 的单一来源
 

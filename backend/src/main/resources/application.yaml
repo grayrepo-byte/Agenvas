@@ -86,8 +86,10 @@ agenvas:
   identity:
     bootstrap-secret: ${AGENVAS_BOOTSTRAP_SECRET}
   task:
-    # 租约必须覆盖整次同步 Provider 调用：GPT Image 单次生成就要 30-40 秒，
-    # 短于调用耗时的租约会让已生成的结果在写回时被恢复扫描判为 UNKNOWN 并丢弃。
+    # 租约必须同时覆盖两件事：整次同步 Provider 调用，以及客户端的超时上限
+    # （OpenAiImage2Client / GoogleNanoBananaClient 均为 5 分钟）。短于调用耗时的租约会让
+    # 已生成的结果在写回时被恢复扫描判为 UNKNOWN 并丢弃；短于客户端超时的租约则会让
+    # 「当场按原因码判定」失效，退化为兜底扫描的笼统码。默认 30 分钟同时满足两者。
     lease-duration: ${AGENVAS_TASK_LEASE_DURATION:PT30M}
   provider:
     mode: ${AGENVAS_PROVIDER_MODE:mock}

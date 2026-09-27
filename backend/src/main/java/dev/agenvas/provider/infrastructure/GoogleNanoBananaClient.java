@@ -1,6 +1,8 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.shared.error.ProviderFailureCodes;
+import dev.agenvas.shared.http.OutboundTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -32,11 +34,12 @@ public class GoogleNanoBananaClient {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     /**
      * 单次读取上限；工厂要求显式传入，不能漏成 0（0 表示不限）。
-     * 与 OpenAI 图片一样是同步生成，首字节要数十秒才到，读超时必须覆盖整次生成，
-     * 否则客户端会先超时并把已生成的结果判成 UNKNOWN。
+     * 与 OpenAI 图片一样是同步生成，首字节要数十秒到数分钟才到，读超时必须覆盖整次生成，
+     * 否则客户端会先超时并把已生成的结果判成 UNKNOWN。与 {@code OpenAiImage2Client} 取
+     * 同一个上限，并由 {@code agenvas.task.lease-duration}（默认 30 分钟）保证租约长于它。
      */
-    private static final Duration READ_TIMEOUT = Duration.ofMinutes(3);
-    private static final Duration CALL_TIMEOUT = Duration.ofMinutes(3);
+    private static final Duration READ_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofMinutes(5);
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
     private final OkHttpClient http;
@@ -44,11 +47,21 @@ public class GoogleNanoBananaClient {
 
     @Autowired
     public GoogleNanoBananaClient(ObjectMapper mapper) {
+        this(mapper, READ_TIMEOUT, CALL_TIMEOUT);
+    }
+
+    /**
+     * 注入超时的重载，仅供测试构造短于生成耗时上限的客户端，以免验证超时分类要真等数分钟。
+     *
+     * @param readTimeout 等待响应首字节的上限
+     * @param callTimeout 整次生成调用的上限
+     */
+    GoogleNanoBananaClient(ObjectMapper mapper, Duration readTimeout, Duration callTimeout) {
         this.mapper = mapper;
         // 配置层已把端点限定为 HTTPS 公网或字面 127.0.0.1；这里放行回环，域名解析
         // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
         this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
-                CONNECT_TIMEOUT, READ_TIMEOUT, CALL_TIMEOUT);
+                CONNECT_TIMEOUT, readTimeout, callTimeout);
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,
@@ -77,34 +90,52 @@ public class GoogleNanoBananaClient {
                 .post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
                         MediaType.parse("application/json"))).build();
         try (Response response = http.newCall(request).execute()) {
-            if (response.body() == null) throw new Uncertain("Google response has no body");
+            if (response.body() == null) {
+                throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                        "Google response has no body");
+            }
             try (InputStream input = response.body().byteStream()) {
                 byte[] bytes = input.readNBytes(MAX_RESPONSE_BYTES + 1);
                 if (bytes.length > MAX_RESPONSE_BYTES) {
-                    throw new Uncertain("Google response exceeds bound");
+                    throw new Uncertain(ProviderFailureCodes.RESPONSE_TOO_LARGE,
+                            "Google response exceeds bound");
                 }
                 int status = response.code();
                 if (status >= 400 && status < 500 && status != 429) {
                     throw new Rejected(status);
                 }
-                if (status != 200) throw new Uncertain("Google submission status uncertain");
+                if (status != 200) {
+                    throw new Uncertain(ProviderFailureCodes.SUBMISSION_UNKNOWN,
+                            "Google submission status uncertain");
+                }
                 return image(mapper.readTree(bytes));
             }
         } catch (IOException failure) {
-            throw new Uncertain("Google image response was lost");
+            // 超时与断线都会让外部是否完成变得不确定，但原因必须能区分。
+            if (OutboundTimeouts.isTimeout(failure)) {
+                throw new Uncertain(ProviderFailureCodes.CALL_TIMEOUT,
+                        "Google image call timed out");
+            }
+            throw new Uncertain(ProviderFailureCodes.RESPONSE_LOST,
+                    "Google image response was lost");
         } catch (RuntimeException failure) {
             if (failure instanceof Rejected || failure instanceof Uncertain) throw failure;
-            throw new Uncertain("Google image response could not be decoded");
+            throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                    "Google image response could not be decoded");
         }
     }
 
     private static MediaPayload image(JsonNode response) {
         JsonNode candidates = response.path("candidates");
         if (!candidates.isArray() || candidates.size() != 1) {
-            throw new Uncertain("Google image candidate count is invalid");
+            throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                    "Google image candidate count is invalid");
         }
         JsonNode parts = candidates.path(0).path("content").path("parts");
-        if (!parts.isArray()) throw new Uncertain("Google image parts are missing");
+        if (!parts.isArray()) {
+            throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                    "Google image parts are missing");
+        }
         MediaPayload result = null;
         for (JsonNode part : parts) {
             if (part.path("thought").asBoolean(false)) continue;
@@ -112,21 +143,27 @@ public class GoogleNanoBananaClient {
             if (inline.isMissingNode()) continue;
             if (result != null || !inline.path("mimeType").isTextual()
                     || !inline.path("data").isTextual()) {
-                throw new Uncertain("Google returned an ambiguous image result");
+                throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                        "Google returned an ambiguous image result");
             }
             String mime = inline.path("mimeType").asText();
             byte[] bytes;
             try {
                 bytes = Base64.getDecoder().decode(inline.path("data").asText());
             } catch (IllegalArgumentException invalid) {
-                throw new Uncertain("Google image data is not Base64");
+                throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                        "Google image data is not Base64");
             }
             if (bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES || !matchesMime(mime, bytes)) {
-                throw new Uncertain("Google image type or size is invalid");
+                throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                        "Google image type or size is invalid");
             }
             result = new MediaPayload(new ByteArrayInputStream(bytes), mime);
         }
-        if (result == null) throw new Uncertain("Google returned no image");
+        if (result == null) {
+            throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
+                    "Google returned no image");
+        }
         return result;
     }
 
@@ -148,7 +185,18 @@ public class GoogleNanoBananaClient {
         public Rejected(int status) { super("Google image request rejected: HTTP " + status); }
     }
 
+    /**
+     * 无法确认外部是否受理或完成。必须携带稳定原因码，由适配器原样写入任务，否则用户只能
+     * 看到「结果未知」而无法判断是超时、断线还是协议不符。
+     */
     public static final class Uncertain extends RuntimeException {
-        public Uncertain(String message) { super(message); }
+        private final String reasonCode;
+
+        public Uncertain(String reasonCode, String message) {
+            super(message);
+            this.reasonCode = reasonCode;
+        }
+
+        public String reasonCode() { return reasonCode; }
     }
 }

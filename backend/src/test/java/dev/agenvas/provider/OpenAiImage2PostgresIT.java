@@ -20,6 +20,7 @@ import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
@@ -124,13 +125,11 @@ class OpenAiImage2PostgresIT {
         DROP_NEXT_GENERATION.set(true);
         assertThat(worker.submitOnce("openai-unknown-worker")).isEqualTo(1);
         assertThat(GENERATIONS).hasValue(1);
-        assertThat(tasks.get(owner.userId(), generated.project().id(), uncertain.id()).status())
-                .isEqualTo(Task.Status.SUBMITTING);
-        jdbc.sql("update task set lease_until=now() - interval '1 second' where id=:id")
-                .param("id", uncertain.id()).update();
-        assertThat(tasks.recoverExpiredSubmissions(1)).isEqualTo(1);
-        assertThat(tasks.get(owner.userId(), generated.project().id(), uncertain.id()).status())
-                .isEqualTo(Task.Status.UNKNOWN);
+        // 连接被切断当场就按原因码判定，不再等租约到期；码本身要能区分断线与超时。
+        Task lost = tasks.get(owner.userId(), generated.project().id(), uncertain.id());
+        assertThat(lost.status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(lost.errorCode()).isEqualTo(ProviderFailureCodes.RESPONSE_LOST);
+        assertThat(tasks.recoverExpiredSubmissions(1)).isZero();
         assertThat(jdbc.sql("select status from call_log where task_id=:task")
                 .param("task", uncertain.id()).query(String.class).single()).isEqualTo("UNKNOWN");
         assertThat(jdbc.sql("select count(*) from call_log where task_id=:task")

@@ -97,6 +97,24 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
   });
 
+  it("explains why the result is unknown instead of showing only a machine code", async () => {
+    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+      { id: "task-1", status: "UNKNOWN", errorCode: "PROVIDER_CALL_TIMEOUT" },
+    ])));
+    showCard();
+    expect(await screen.findByText("结果未知")).toBeInTheDocument();
+    expect(screen.getByText("调用超时，结果未知")).toBeInTheDocument();
+    expect(screen.queryByText("PROVIDER_CALL_TIMEOUT")).not.toBeInTheDocument();
+  });
+
+  it("still shows an unregistered code rather than hiding the only clue", async () => {
+    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+      { id: "task-1", status: "UNKNOWN", errorCode: "SOME_UNREGISTERED_CODE" },
+    ])));
+    showCard();
+    expect(await screen.findByText("SOME_UNREGISTERED_CODE")).toBeInTheDocument();
+  });
+
   it("keeps the canceled task visible on the draft card", async () => {
     server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
       { id: "task-1", status: "CANCELED", errorCode: null },

@@ -21,6 +21,7 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.RunTaskCancellation;
 import dev.agenvas.run.application.RunTaskCreation;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.task.domain.Task;
@@ -1290,7 +1291,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.STATUS, Task.Status.UNKNOWN.name())
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
-                .set(TASK.ERROR_CODE, "PROVIDER_SUBMISSION_UNKNOWN")
+                .set(TASK.ERROR_CODE, ProviderFailureCodes.SUBMISSION_UNKNOWN)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(taskId))
@@ -1477,6 +1478,53 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute();
         if (attemptChanged != 1) {
             throw new IllegalStateException("Missing provider attempt for confirmed rejection");
+        }
+        return true;
+    }
+
+    /**
+     * 无法确认外部是否受理或完成时立即写入 UNKNOWN。
+     *
+     * <p>与 {@link #rejectSubmission} 的三处有意差异，都在约束与既有语义上必需：
+     * <ul>
+     *   <li>{@code completed_at} 必须保持为空：{@code ck_task_completion} 只允许
+     *       SUCCEEDED/FAILED/CANCELED 有完成时间，UNKNOWN 不是终态；</li>
+     *   <li>不看 {@code cancel_requested}：{@code recoverExpiredSubmission} 已把 UNKNOWN
+     *       定义为无条件结果，否则同一种响应丢失会因用户点没点过取消而产生两种状态；</li>
+     *   <li>{@code lease_owner} 与 {@code lease_until} 必须同时清空，满足 {@code ck_task_lease_pair}。</li>
+     * </ul>
+     * 租约条件要求仍然有效，因此与只处理过期租约的兜底扫描互斥，不会同时写同一行尝试。
+     */
+    @Override
+    public boolean markSubmissionUnknown(Task lease, String workerId, String errorCode,
+            Instant now) {
+        int changed = dsl.update(TASK)
+                .set(TASK.STATUS, Task.Status.UNKNOWN.name())
+                .set(TASK.ERROR_CODE, errorCode)
+                .set(TASK.LEASE_OWNER, (String) null)
+                .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
+                .set(TASK.UPDATED_AT, utc(now))
+                .set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(TASK.ID.eq(lease.id()))
+                .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                        Task.Kind.VIDEO_GENERATION.name()))
+                .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
+                .and(TASK.LEASE_OWNER.eq(workerId))
+                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch()))
+                .and(TASK.LEASE_UNTIL.gt(utc(now)))
+                .execute();
+        if (changed == 0) {
+            return false;
+        }
+        int attemptChanged = dsl.update(PROVIDER_ATTEMPT)
+                .set(PROVIDER_ATTEMPT.STATUS, ProviderAttempt.Status.UNKNOWN.name())
+                .set(PROVIDER_ATTEMPT.UPDATED_AT, utc(now))
+                .where(PROVIDER_ATTEMPT.TASK_ID.eq(lease.id()))
+                .and(PROVIDER_ATTEMPT.LEASE_EPOCH.eq(lease.leaseEpoch()))
+                .and(PROVIDER_ATTEMPT.STATUS.eq(ProviderAttempt.Status.SUBMITTING.name()))
+                .execute();
+        if (attemptChanged != 1) {
+            throw new IllegalStateException("Missing provider attempt for uncertain submission");
         }
         return true;
     }

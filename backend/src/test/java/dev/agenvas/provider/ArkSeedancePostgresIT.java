@@ -116,13 +116,13 @@ class ArkSeedancePostgresIT {
         DROP_NEXT_CREATE.set(true);
         assertThat(worker.submitOnce("ark-unknown-worker")).isEqualTo(1);
         assertThat(CREATES).hasValue(2);
-        assertThat(tasks.get(owner.userId(), uncertain.project().id(), uncertainTask.id())
-                .status()).isEqualTo(Task.Status.SUBMITTING);
-        jdbc.sql("update task set lease_until=now() - interval '1 second' where id=:id")
-                .param("id", uncertainTask.id()).update();
-        assertThat(tasks.recoverExpiredSubmissions(1)).isEqualTo(1);
-        assertThat(tasks.get(owner.userId(), uncertain.project().id(), uncertainTask.id())
-                .status()).isEqualTo(Task.Status.UNKNOWN);
+        // 方舟上传提交的超时配置未变，因此沿用适配器自己的原因码；判定时机与图片一致，
+        // 都是当场写入而不再等租约到期。
+        Task uncertainResult = tasks.get(owner.userId(), uncertain.project().id(),
+                uncertainTask.id());
+        assertThat(uncertainResult.status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(uncertainResult.errorCode()).isEqualTo("ARK_CREATE_UNCERTAIN");
+        assertThat(tasks.recoverExpiredSubmissions(1)).isZero();
         assertThat(worker.submitOnce("ark-after-unknown-worker")).isZero();
         assertThat(CREATES).hasValue(2);
     }

@@ -18,12 +18,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Routes only version-pinned media work through installed fixed Java adapters. */
 @Component
 public class MediaExecutionWorker {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MediaExecutionWorker.class);
 
     private final TaskService tasks;
     private final CallLogService callLogs;
@@ -172,8 +175,13 @@ public class MediaExecutionWorker {
                     tasks.succeedWithArtifact(task, workerId, completed.content());
             case Submission.Rejected rejected -> tasks.rejectSubmission(task, workerId,
                     rejected.code());
-            case Submission.Unknown ignored -> {
-                // The persisted SUBMITTING attempt becomes UNKNOWN after its lease expires.
+            case Submission.Unknown unknown -> {
+                // 拿到「无法确认外部是否完成」的确定结论时就立即按原因码判定，不再让用户
+                // 盯着「正在提交」空等整个租约。租约若已在调用期间过期（例如租约被配得
+                // 短于客户端超时），兜底扫描会接手同一条记录，这里不把它当成错误抛出。
+                if (!tasks.markSubmissionUnknown(task, workerId, unknown.code())) {
+                    LOGGER.warn("Uncertain submission left to the recovery scan: lease expired");
+                }
             }
             case Submission.Pending ignored -> throw new IllegalStateException(
                     "Submission cannot be pending without an accepted request ID");

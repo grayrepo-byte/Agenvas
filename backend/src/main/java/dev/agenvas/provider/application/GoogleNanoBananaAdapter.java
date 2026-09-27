@@ -85,7 +85,8 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         } catch (GoogleNanoBananaClient.Rejected rejected) {
             return new Submission.Rejected("GOOGLE_IMAGE_REJECTED");
         } catch (GoogleNanoBananaClient.Uncertain uncertain) {
-            return new Submission.Unknown("GOOGLE_IMAGE_SUBMISSION_UNKNOWN");
+            // 与 GPT Image 适配器一致：透传客户端区分出的原因码，而不是笼统的提交未知。
+            return new Submission.Unknown(uncertain.reasonCode());
         }
     }
 

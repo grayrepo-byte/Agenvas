@@ -2,6 +2,7 @@ import { WarningCircle } from "@phosphor-icons/react";
 import "./AgentChatPanels.css";
 import { useQuery } from "@tanstack/react-query";
 import { listRunTasks } from "../../shared/api/client";
+import { taskErrorDetail } from "./taskErrorMessages";
 
 /** Explains a durable BLOCKED Run using only safe Task codes, never model messages. */
 export function BlockedRunNotice({ projectId, runId }: {
@@ -32,7 +33,7 @@ export function BlockedRunNotice({ projectId, runId }: {
     {tasks.data ? <p>{explanation}</p> : null}
     {archivedMedia ? <p className="text-xs">诊断码：TASK_PROJECT_ARCHIVED</p> : null}
     {staleMedia ? <p className="text-xs">诊断码：TASK_INPUT_STALE</p> : null}
-    {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">诊断码：{modelFailure.errorCode}</p> : null}
+    {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">诊断码：{modelFailure.errorCode}{taskErrorDetail(modelFailure.errorCode)}</p> : null}
   </section>;
 }
 

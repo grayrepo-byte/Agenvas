@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +22,9 @@ import tools.jackson.databind.ObjectMapper;
 class OpenAiImage2ClientTest {
     /** 模拟慢生成：高于旧版 10 秒读超时，用于证明新配置会等待而不是超时。 */
     private static final long SLOW_GENERATION_DELAY_MS = 11_000;
+    /** 注入短超时的用例里，响应只要慢过这个时长的上限就足以触发超时。 */
+    private static final Duration IMPATIENT_TIMEOUT = Duration.ofMillis(300);
+    private static final long SLOW_RESPONSE_DELAY_MS = 2_000;
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
     private OpenAiImage2Client client;
@@ -301,6 +306,95 @@ class OpenAiImage2ClientTest {
             logger.detachAppender(captured);
             captured.stop();
         }
+    }
+
+    /**
+     * 读超时短于生成耗时是真实链路撞过的故障：Provider 216 秒才返回，客户端 180 秒就放弃，
+     * 已生成并计费的结果被丢掉。这里同时锁住两件事——超时会真正触发，且给出可区分的原因码。
+     */
+    @Test
+    void callTimeoutCarriesItsOwnReasonCode() {
+        int port = server.getAddress().getPort();
+        server.createContext("/v1/images/generations", exchange -> {
+            try {
+                Thread.sleep(SLOW_RESPONSE_DELAY_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        OpenAiImage2Client impatient = new OpenAiImage2Client(mapper, IMPATIENT_TIMEOUT,
+                IMPATIENT_TIMEOUT);
+
+        assertThatThrownBy(() -> impatient.generate("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "low", "1024x1024", "http://127.0.0.1:" + port + "/v1"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode())
+                                .isEqualTo(ProviderFailureCodes.CALL_TIMEOUT));
+    }
+
+    /** 断线必须与超时分开：两者的处置相同，但原因不同，用户不该为此翻服务端日志。 */
+    @Test
+    void connectionLossIsNotReportedAsATimeout() {
+        server.createContext("/v1/images/generations", HttpExchange::close);
+
+        assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "low", "1024x1024",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode())
+                                .isEqualTo(ProviderFailureCodes.RESPONSE_LOST));
+    }
+
+    /**
+     * 结果已生成但取不回来是另一类失败：结果图确实存在过，重试的是下载而不是生成。
+     * 非 200 直接判失败不重试，因此只请求一次。
+     */
+    @Test
+    void failedResultDownloadCarriesItsOwnReasonCode() {
+        int port = server.getAddress().getPort();
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"http://127.0.0.1:" + port + "/missing.png\"}]}"));
+        server.createContext("/missing.png", exchange -> {
+            downloads.incrementAndGet();
+            respond(exchange, 404, "{}");
+        });
+
+        assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "low", "1024x1024", "http://127.0.0.1:" + port + "/v1"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode())
+                                .isEqualTo(ProviderFailureCodes.DOWNLOAD_FAILED));
+        assertThat(downloads).hasValue(1);
+    }
+
+    /** 非法结果地址在发请求之前就被拒绝，原因码要与下载失败区分。 */
+    @Test
+    void unsupportedResultUrlCarriesItsOwnReasonCode() {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"file:///etc/hosts\"}]}"));
+
+        assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "low", "1024x1024",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode())
+                                .isEqualTo(ProviderFailureCodes.RESULT_URL_INVALID));
+    }
+
+    /** 响应形状不对属于协议问题，码必须与传输失败区分。 */
+    @Test
+    void protocolFailureCarriesItsOwnReasonCode() {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[]}"));
+
+        assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "low", "1024x1024",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode())
+                                .isEqualTo(ProviderFailureCodes.PROTOCOL_INVALID));
     }
 
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
