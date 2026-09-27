@@ -39,6 +39,7 @@
 .content-card-field dt { margin-bottom: 4px; color: #939393; font-size: 10px; font-weight: 500; }
 .content-card-field dd, .content-card-text { margin: 0; overflow-wrap: anywhere; color: #dedede; font-size: 13px; font-weight: 400; line-height: 1.75; white-space: pre-wrap; }
 .content-card-sources { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; min-width: 0; overflow: hidden; padding: 8px 12px 11px; }
+.text-card-version-footer { overflow: visible; }
 .content-card-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid #ffffff0d; border-radius: 999px; background: #303030; color: #b7b7b7; font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .content-card-chip svg { color: #8f8f8f; }
 .content-card-locked { flex-shrink: 0; margin-left: auto; color: #a5a5a5; }
@@ -57,7 +58,6 @@
   font: inherit; font-size: 13px; line-height: 1.75; outline: none; white-space: pre-wrap;
 }
 .text-card-editor-body textarea::placeholder { color: #777; }
-.text-card-editor-body textarea:focus-visible { box-shadow: inset 0 0 0 1px #737373; }
 .text-card-editor-footer { overflow: visible; }
 .text-card-editor-footer select {
   min-width: 0; max-width: 74px; border: 0; border-radius: 6px; background: #303030;

@@ -2,8 +2,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { readFileSync } from "node:fs";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Artifact, CanvasItem } from "../../shared/api/client";
 import { server } from "../../test/server";
@@ -14,6 +15,14 @@ vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
     isVisible !== false ? children : null }));
 
 const CREATED_AT = "2026-09-26T00:00:00Z";
+const contentCanvasCardStyles = readFileSync("src/features/canvas/ContentCanvasCard.css", "utf8");
+const style = document.createElement("style");
+beforeAll(() => {
+  style.textContent = contentCanvasCardStyles;
+  document.head.append(style);
+});
+afterAll(() => style.remove());
+
 function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["currentVersion"]>["content"]): Artifact {
   return { id: "artifact-hidden-id", projectId: "project-hidden-id", kind, title: "创作内容",
     currentVersionId: "version-hidden-id", version: 3, createdAt: CREATED_AT, updatedAt: CREATED_AT,
@@ -177,6 +186,7 @@ describe("ContentCanvasCard", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /v2/ }));
     const menu = await screen.findByRole("menu", { name: "文字版本" });
+    expect(getComputedStyle(menu.closest(".content-card-sources")!).overflow).toBe("visible");
     await user.click(within(menu).getByRole("menuitem", { name: /v1/ }));
     await waitFor(() => expect(selection).toEqual({ versionId: "version-1", expectedVersion: 3 }));
   });

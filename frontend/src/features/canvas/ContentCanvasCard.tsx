@@ -110,7 +110,8 @@ export function ContentCanvasCard({ artifact, item, selected, locked, onEdit, on
           </> : null}
         </dl>}
       </div>}
-      <footer className="content-card-sources">
+      <footer className={`content-card-sources${artifact.kind === "TEXT" && hasCurrentVersion(artifact)
+        ? " text-card-version-footer" : ""}`}>
         <span className="content-card-chip"><Icon size={12} aria-hidden />{label}</span>
         {artifact.kind === "TEXT" && hasCurrentVersion(artifact)
           ? <TextVersionPicker artifact={artifact} />

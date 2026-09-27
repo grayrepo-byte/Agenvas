@@ -69,7 +69,6 @@
 .media-draft-run:hover:enabled { transform: translateY(-1px); background: #ff47ba; box-shadow: 0 0 18px #fa1da93d; }
 .media-draft-editor button:focus-visible, .media-draft-editor select:focus-visible,
 .media-draft-editor input:focus-visible { outline: 2px solid #f15caf; outline-offset: 3px; }
-.media-draft-editor .media-draft-prompt:focus-visible { box-shadow: inset 2px 0 #59595f; padding-left: 9px; }
 .media-draft-popover {
   position: absolute; z-index: 30; left: 0; bottom: calc(100% + 12px); width: 320px; max-width: calc(100vw - 40px);
   max-height: min(420px, 55vh); overflow-y: auto; padding: 9px; border: 1px solid #3e3e41;
