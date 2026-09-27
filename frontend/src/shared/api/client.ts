@@ -367,8 +367,10 @@ export async function runMediaDraft(projectId: string, artifactId: string,
   );
 }
 
-export async function listDirectMediaTasks(projectId: string, artifactId: string): Promise<Task[]> {
-  return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run`,
+export async function listDirectMediaTasks(projectId: string, artifactId: string,
+  canvasItemId: string): Promise<Task[]> {
+  const query = new URLSearchParams({ canvasItemId });
+  return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run?${query}`,
     "无法读取卡片任务");
 }
 

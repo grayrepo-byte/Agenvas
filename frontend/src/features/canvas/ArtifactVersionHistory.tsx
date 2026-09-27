@@ -30,6 +30,10 @@ export function ArtifactVersionHistory({ artifact, item }: {
       await queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] });
       await queryClient.invalidateQueries({ queryKey: ["artifact-versions", artifact.projectId,
         artifact.id] });
+      if (cardLocal && item) {
+        await queryClient.invalidateQueries({ queryKey: ["media-draft", artifact.projectId,
+          item.id] });
+      }
     },
   });
 

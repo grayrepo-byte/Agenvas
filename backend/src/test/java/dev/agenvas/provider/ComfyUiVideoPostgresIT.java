@@ -247,8 +247,16 @@ class ComfyUiVideoPostgresIT {
         assertThat(completed.output().path("selected").booleanValue()).isTrue();
         assertThat(VIDEO_SUBMISSIONS).hasValue(1);
         assertThat(VIDEO_POLLS).hasValue(2);
-        var version = artifacts.get(owner.userId(), project.id(),
-                UUID.fromString(completed.output().path("artifactId").asText())).resourceDefaultVersion();
+        UUID completedVersionId = UUID.fromString(
+                completed.output().path("artifactVersionId").asText());
+        var version = artifacts.requireVersion(owner.userId(), project.id(),
+                videoCard.artifact().id(), completedVersionId);
+        assertThat(artifacts.get(owner.userId(), project.id(),
+                videoCard.artifact().id()).resourceDefaultVersion()).isNull();
+        assertThat(canvas.list(owner.userId(), project.id()).stream()
+                .filter(entry -> entry.item().id().equals(videoItemId))
+                .findFirst().orElseThrow().item().selectedVersionId())
+                .isEqualTo(completedVersionId);
         assertThat(version.content().path("keyframeVersionId").asText())
                 .isEqualTo(imageVersion.toString());
         assertThat(version.content().path("providerConfigVersion").asInt()).isEqualTo(1);

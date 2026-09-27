@@ -24,6 +24,7 @@ import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.Task;
+import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskDependency;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
@@ -64,6 +65,7 @@ public class Indexes {
     public static final Index IX_PROJECT_EVENT_OCCURRED_AT = Internal.createIndex(DSL.name("ix_project_event_occurred_at"), ProjectEvent.PROJECT_EVENT, new OrderField[] { ProjectEvent.PROJECT_EVENT.OCCURRED_AT }, false);
     public static final Index IX_PROJECT_OWNER_CREATED = Internal.createIndex(DSL.name("ix_project_owner_created"), Project.PROJECT, new OrderField[] { Project.PROJECT.OWNER_ID, Project.PROJECT.CREATED_AT.desc(), Project.PROJECT.ID.desc() }, false);
     public static final Index IX_PROVIDER_ATTEMPT_TASK = Internal.createIndex(DSL.name("ix_provider_attempt_task"), ProviderAttempt.PROVIDER_ATTEMPT, new OrderField[] { ProviderAttempt.PROVIDER_ATTEMPT.TASK_ID, ProviderAttempt.PROVIDER_ATTEMPT.CREATED_AT }, false);
+    public static final Index IX_TASK_ARTIFACT_TARGET_CANVAS_ITEM = Internal.createIndex(DSL.name("ix_task_artifact_target_canvas_item"), TaskArtifactTarget.TASK_ARTIFACT_TARGET, new OrderField[] { TaskArtifactTarget.TASK_ARTIFACT_TARGET.PROJECT_ID, TaskArtifactTarget.TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID }, false);
     public static final Index IX_TASK_CLAIM_READY = Internal.createIndex(DSL.name("ix_task_claim_ready"), Task.TASK, new OrderField[] { Task.TASK.NEXT_ACTION_AT, Task.TASK.CREATED_AT, Task.TASK.ID }, false);
     public static final Index IX_TASK_DEPENDENCY_PREDECESSOR = Internal.createIndex(DSL.name("ix_task_dependency_predecessor"), TaskDependency.TASK_DEPENDENCY, new OrderField[] { TaskDependency.TASK_DEPENDENCY.PROJECT_ID, TaskDependency.TASK_DEPENDENCY.DEPENDS_ON_TASK_ID }, false);
     public static final Index IX_TASK_DIRECT_PROJECT = Internal.createIndex(DSL.name("ix_task_direct_project"), Task.TASK, new OrderField[] { Task.TASK.PROJECT_ID, Task.TASK.STATUS, Task.TASK.CREATED_AT }, false);

@@ -33,11 +33,17 @@ public interface TaskRepository {
     /** A queued, executing, or unresolved request still owns this card's execution slot. */
     Optional<Task> findOccupyingMediaTask(UUID projectId, UUID artifactId);
 
+    /** A direct request occupies only the CanvasItem that supplied its working draft. */
+    Optional<Task> findOccupyingDirectMediaTask(UUID projectId, UUID canvasItemId);
+
     /** Direct requests use a project-scoped immutable command key. */
     Optional<Task> findDirectByStepKey(UUID ownerId, UUID projectId, String stepKey);
 
     /** Recent direct requests for one stable media Artifact, newest first. */
     List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId);
+
+    /** Recent direct requests for one media CanvasItem, newest first. */
+    List<Task> listDirectForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);
 
     /** All nonterminal direct work, independent of the project's AgentRun slot. */
     List<Task> listActiveDirect(UUID ownerId, UUID projectId);
@@ -231,10 +237,11 @@ public interface TaskRepository {
      * @param expectedCurrentVersionId 创建任务时选中的当前版本；为空表示当时尚无版本
      * @param expectedArtifactVersion 创建任务时产物的版本号，用于归档 CAS
      * @param outputSlotKey 产物内部输出槽位，区分同一产物的可并行内容位置
+     * @param canvasItemId 直连媒体任务所属卡片；文字及旧 Run 任务为空
      */
     record ArtifactTarget(UUID taskId, UUID projectId, UUID artifactId,
             UUID expectedCurrentVersionId, long expectedArtifactVersion,
-            String outputSlotKey) {}
+            String outputSlotKey, UUID canvasItemId) {}
 
     /** Queue position is advisory; a different capability or cancellation can change it. */
     record QueueStatus(long waitingAhead, String reason) {}

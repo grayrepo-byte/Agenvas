@@ -129,7 +129,17 @@ class MediaDraftPostgresIT {
         JsonNode image = mapper.readTree(mvc.perform(get(base + "/artifacts/" + artifactId)
                         .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
-        assertThat(image.path("resourceDefaultVersion").isObject()).isTrue();
+        assertThat(image.path("resourceDefaultVersion").isNull()).isTrue();
+        JsonNode completedCanvas = mapper.readTree(mvc.perform(get(base + "/canvas/items")
+                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString());
+        JsonNode completedCard = java.util.stream.StreamSupport.stream(
+                        completedCanvas.path("items").spliterator(), false)
+                .filter(item -> canvasItemId.equals(item.path("id").asText()))
+                .findFirst().orElseThrow();
+        assertThat(completedCard.path("selectedVersionId").isTextual()).isTrue();
+        assertThat(completedCard.path("selectedVersion").path("createdByKind").asText())
+                .isEqualTo("TASK");
         JsonNode resultDraft = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(resultDraft.path("displayMode").asText()).isEqualTo("RESULT");
@@ -143,7 +153,7 @@ class MediaDraftPostgresIT {
         var selectedResponse = mvc.perform(post(base + "/canvas-items/" + canvasItemId
                         + "/select-version")
                 .with(auth).with(csrf()).contentType("application/json")
-                .content("{\"versionId\":\"" + image.path("resourceDefaultVersionId").asText()
+                .content("{\"versionId\":\"" + completedCard.path("selectedVersionId").asText()
                         + "\",\"expectedVersion\":0}"))
                 .andReturn().getResponse();
         assertThat(selectedResponse.getStatus())
@@ -178,8 +188,7 @@ class MediaDraftPostgresIT {
         JsonNode retainedImage = mapper.readTree(mvc.perform(get(base + "/artifacts/" + artifactId)
                         .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
-        assertThat(retainedImage.path("resourceDefaultVersionId").asText())
-                .isEqualTo(image.path("resourceDefaultVersionId").asText());
+        assertThat(retainedImage.path("resourceDefaultVersionId").isNull()).isTrue();
         mvc.perform(post(base + "/tasks/" + nextRun.path("id").asText() + "/cancel-queued")
                 .with(auth).with(csrf())).andExpect(status().isOk());
 
@@ -202,7 +211,7 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isBadRequest());
         mvc.perform(put(videoDraftPath).with(auth).with(csrf()).contentType("application/json")
                 .content("{\"expectedVersion\":1,\"prompt\":\"Camera pans left\","
-                        + "\"inputImageVersionId\":\"" + image.path("resourceDefaultVersionId").asText()
+                        + "\"inputImageVersionId\":\"" + completedCard.path("selectedVersionId").asText()
                         + "\",\"durationSeconds\":5}"))
                 .andExpect(status().isOk());
         JsonNode videoTask = mapper.readTree(mvc.perform(post(base + "/artifacts/" + videoId
@@ -212,7 +221,7 @@ class MediaDraftPostgresIT {
                                 + "\",\"expectedDraftVersion\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(videoTask.path("input").path("imageVersionId").asText())
-                .isEqualTo(image.path("resourceDefaultVersionId").asText());
+                .isEqualTo(completedCard.path("selectedVersionId").asText());
         UUID videoTaskId = UUID.fromString(videoTask.path("id").asText());
         mvc.perform(post(base + "/tasks/" + videoTaskId + "/cancel-queued")
                 .with(auth).with(csrf())).andExpect(status().isOk());

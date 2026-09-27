@@ -110,7 +110,7 @@ public class DirectTextTaskService {
                     null, null, 0, 0, null, now, now, null);
             tasks.create(task, List.of());
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                    artifactId, expectedCurrentVersionId, expectedArtifactVersion, null));
+                    artifactId, expectedCurrentVersionId, expectedArtifactVersion, null, null));
             usage.reserveDirectTextTask(ownerId, task);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());

@@ -806,6 +806,11 @@ paths:
       operationId: listDirectMediaTasks
       summary: 查询此卡片最近的直接媒体任务
       tags: [Tasks]
+      parameters:
+        - name: canvasItemId
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
       responses:
         "200":
           description: 最近任务，新任务在前

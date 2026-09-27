@@ -9,10 +9,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
@@ -122,6 +126,57 @@ public class LocalAssetStorage {
     /** 视频使用同一跨进程归档机制，但独立的锁命名空间。 */
     public <T> T withTaskVideoLock(UUID projectId, UUID assetId, Supplier<T> action) {
         return withTaskArchiveLock(projectId, assetId, "video", action);
+    }
+
+    /**
+     * Completes the pre-release creative-data reset by removing archived project directories.
+     * Only direct UUID-named child directories of the configured private root are eligible;
+     * unknown operator entries and top-level links are preserved, and nested links are not followed.
+     */
+    public int deleteCreativeProjectDirectories() {
+        int deleted = 0;
+        try {
+            Files.createDirectories(root);
+            try (DirectoryStream<Path> entries = Files.newDirectoryStream(root)) {
+                for (Path entry : entries) {
+                    if (!isProjectDirectory(entry)) continue;
+                    deleteDirectoryTree(entry);
+                    deleted++;
+                }
+            }
+            return deleted;
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot complete creative asset reset", failure);
+        }
+    }
+
+    private boolean isProjectDirectory(Path path) {
+        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) return false;
+        try {
+            UUID.fromString(path.getFileName().toString());
+            return true;
+        } catch (IllegalArgumentException invalidName) {
+            return false;
+        }
+    }
+
+    private void deleteDirectoryTree(Path directory) throws IOException {
+        Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+                    throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path visited, IOException failure)
+                    throws IOException {
+                if (failure != null) throw failure;
+                Files.delete(visited);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     /** 以条带监视器避免同 JVM 重叠锁异常，再持有项目卷上的 OS 文件锁执行操作。 */

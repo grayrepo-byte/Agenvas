@@ -11,18 +11,19 @@ export function hasCurrentVersion(artifact: Artifact | null | undefined):
   return artifact?.resourceDefaultVersionId != null && artifact.resourceDefaultVersion != null;
 }
 
+function isMediaArtifactItem(item: CanvasItem): item is CanvasItem & { artifact: Artifact } {
+  return item.artifact != null
+    && (item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO");
+}
+
 /** The version this card presents; media cards deliberately ignore the resource-library default. */
 export function canvasItemVersionId(item: CanvasItem): string | null {
-  if (!item.artifact) return null;
-  return item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO"
-    ? item.selectedVersionId
-    : item.artifact.resourceDefaultVersionId;
+  if (isMediaArtifactItem(item)) return item.selectedVersionId;
+  return item.artifact?.resourceDefaultVersionId ?? null;
 }
 
 /** The materialized counterpart to [canvasItemVersionId]. */
 export function canvasItemVersion(item: CanvasItem) {
-  if (!item.artifact) return null;
-  return item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO"
-    ? item.selectedVersion
-    : item.artifact.resourceDefaultVersion;
+  if (isMediaArtifactItem(item)) return item.selectedVersion;
+  return item.artifact?.resourceDefaultVersion ?? null;
 }

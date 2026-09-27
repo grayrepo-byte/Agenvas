@@ -4,10 +4,12 @@
 package dev.agenvas.db.tables;
 
 
+import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
+import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.TaskArtifactTargetRecord;
 
@@ -20,6 +22,7 @@ import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
+import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -96,6 +99,11 @@ public class TaskArtifactTarget extends TableImpl<TaskArtifactTargetRecord> {
      */
     public final TableField<TaskArtifactTargetRecord, String> OUTPUT_SLOT_KEY = createField(DSL.name("output_slot_key"), SQLDataType.VARCHAR(160), this, "A named output in an approved plan; no Artifact identity exists until the result arrives.");
 
+    /**
+     * The column <code>public.task_artifact_target.canvas_item_id</code>.
+     */
+    public final TableField<TaskArtifactTargetRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID, this, "");
+
     private TaskArtifactTarget(Name alias, Table<TaskArtifactTargetRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -166,13 +174,18 @@ public class TaskArtifactTarget extends TableImpl<TaskArtifactTargetRecord> {
     }
 
     @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.IX_TASK_ARTIFACT_TARGET_CANVAS_ITEM);
+    }
+
+    @Override
     public UniqueKey<TaskArtifactTargetRecord> getPrimaryKey() {
         return Keys.TASK_ARTIFACT_TARGET_PKEY;
     }
 
     @Override
     public List<ForeignKey<TaskArtifactTargetRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_ARTIFACT, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_TASK, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_VERSION);
+        return Arrays.asList(Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_ARTIFACT, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_CANVAS_ITEM, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_TASK, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_VERSION);
     }
 
     private transient ArtifactPath _artifact;
@@ -185,6 +198,18 @@ public class TaskArtifactTarget extends TableImpl<TaskArtifactTargetRecord> {
             _artifact = new ArtifactPath(this, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_ARTIFACT, null);
 
         return _artifact;
+    }
+
+    private transient CanvasItemPath _canvasItem;
+
+    /**
+     * Get the implicit join path to the <code>public.canvas_item</code> table.
+     */
+    public CanvasItemPath canvasItem() {
+        if (_canvasItem == null)
+            _canvasItem = new CanvasItemPath(this, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_CANVAS_ITEM, null);
+
+        return _canvasItem;
     }
 
     private transient TaskPath _task;

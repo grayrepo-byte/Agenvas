@@ -35,8 +35,8 @@ export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onIn
   const menuButton = useRef<HTMLButtonElement>(null);
   const draft = useQuery(mediaDraftQueryOptions(artifact.projectId, item.id));
   const showDraft = isMediaDraftDisplayed(item, draft.data);
-  const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, artifact.id],
-    queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id), enabled: showDraft,
+  const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, item.id],
+    queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id, item.id), enabled: showDraft,
     refetchInterval: (query) => query.state.data?.some(isMediaTaskRunning)
       ? MEDIA_TASK_REFRESH_INTERVAL_MS : false });
   const latest = latestMediaTask(tasks.data);

@@ -65,9 +65,9 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       queryFn: () => listArtifactVersions(artifact.projectId, candidate.id),
     })) : [] });
   const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings });
-  const tasksKey = ["direct-media-tasks", artifact.projectId, artifact.id] as const;
+  const tasksKey = ["direct-media-tasks", artifact.projectId, canvasItemId] as const;
   const directTasks = useQuery({ queryKey: tasksKey,
-    queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id),
+    queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id, canvasItemId),
     refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS });
   const latestTask = latestMediaTask(directTasks.data);
   const queue = useQuery({

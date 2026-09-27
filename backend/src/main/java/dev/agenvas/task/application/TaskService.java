@@ -9,7 +9,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
-import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.task.domain.ProviderAttempt;
@@ -44,6 +44,7 @@ public class TaskService {
     /** 校验媒体目标和固定输入版本，归档生成结果为不可变版本。 */
     private final ArtifactService artifacts;
     private final MediaDraftService mediaDrafts;
+    private final CanvasService canvas;
     /** 执行任务、依赖、租约与外部提交账本的条件读写。 */
     private final TaskRepository tasks;
     /** 限定租约时长和单次认领、恢复扫描的批量大小。 */
@@ -76,6 +77,7 @@ public class TaskService {
             ProjectService projects,
             ArtifactService artifacts,
             MediaDraftService mediaDrafts,
+            CanvasService canvas,
             TaskRepository tasks,
             TaskProperties properties,
             ProjectEventService events,
@@ -87,6 +89,7 @@ public class TaskService {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
+        this.canvas = canvas;
         this.tasks = tasks;
         this.properties = properties;
         this.events = events;
@@ -199,7 +202,7 @@ public class TaskService {
                     "卡片任务占用", "这张媒体卡片已有排队、执行或待核对任务。", true);
         }
         tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                target.id(), target.resourceDefaultVersionId(), target.version(), null));
+                target.id(), target.resourceDefaultVersionId(), target.version(), null, null));
         return task;
     }
 
@@ -542,8 +545,12 @@ public class TaskService {
                             || run.status() == AgentRun.Status.CANCELED));
             boolean projectArchived = projects.get(ownerId, lease.projectId()).status()
                     == Project.Status.ARCHIVED;
-            UUID canvasItemId = lease.input().hasNonNull("canvasItemId")
-                    ? UUID.fromString(lease.input().path("canvasItemId").asText()) : null;
+            UUID canvasItemId = target.canvasItemId();
+            if (canvasItemId != null
+                    && !canvasItemId.toString().equals(
+                            lease.input().path("canvasItemId").asText())) {
+                throw validation("媒体任务的卡片目标与固定输入不一致。");
+            }
             boolean selectResult = !canceled && !projectArchived
                     && pinnedMediaInputsCurrent(ownerId, lease)
                     && (lease.runId() != null
@@ -577,14 +584,15 @@ public class TaskService {
                 throw validation("视频结果必须引用任务固定的输入图片版本。");
             }
             UUID artifactId = target.artifactId();
-            ArtifactService.TaskVersionResult result =
-                    artifacts.appendTaskVersionWithinChange(ownerId,
-                            lease.projectId(), artifactId, lease.runId(),
-                            target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
-                            content, selectResult);
-            if (result.selected() && canvasItemId != null) {
-                mediaDrafts.setDisplayModeWithinChange(lease.projectId(), canvasItemId,
-                        MediaDraft.DisplayMode.RESULT);
+            ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
+                    ownerId, lease.projectId(), artifactId, lease.runId(),
+                    target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
+                    selectResult && canvasItemId == null);
+            if (canvasItemId != null) {
+                boolean cardSelected = selectResult && canvas.selectTaskResultWithinChange(
+                        ownerId, lease.projectId(), canvasItemId, artifactId,
+                        target.expectedCurrentVersionId(), result.versionId());
+                result = new ArtifactService.TaskVersionResult(result.versionId(), cardSelected);
             }
             ObjectNode output = objectMapper.createObjectNode();
             output.put("artifactId", artifactId.toString());
@@ -1024,6 +1032,7 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        boolean cardOwnedDirectTask = input.hasNonNull("canvasItemId");
         if (task.kind() == Task.Kind.IMAGE_GENERATION
                 && input.has("referenceImageVersionId")) {
             try {
@@ -1032,7 +1041,9 @@ public class TaskService {
                         task.projectId(), versionId);
                 Artifact current = artifacts.get(ownerId, task.projectId(), pinned.artifactId())
                         .artifact();
-                return current.archivedAt() == null && current.resourceDefaultVersionId().equals(versionId);
+                return current.archivedAt() == null
+                        && (cardOwnedDirectTask
+                                || versionId.equals(current.resourceDefaultVersionId()));
             } catch (ApiProblemException | IllegalArgumentException unavailable) {
                 return false;
             }
@@ -1046,7 +1057,8 @@ public class TaskService {
             UUID imageVersionId = UUID.fromString(input.path("imageVersionId").asText());
             Artifact image = artifacts.get(ownerId, task.projectId(), imageId).artifact();
             return image.archivedAt() == null
-                    && imageVersionId.equals(image.resourceDefaultVersionId());
+                    && (cardOwnedDirectTask
+                            || imageVersionId.equals(image.resourceDefaultVersionId()));
         } catch (ApiProblemException | IllegalArgumentException invalidInput) {
             return false;
         }

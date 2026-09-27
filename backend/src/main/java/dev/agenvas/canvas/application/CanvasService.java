@@ -285,6 +285,36 @@ public class CanvasService {
         }).value();
     }
 
+    /**
+     * Selects a generated result only when the originating card still presents the task's parent.
+     * Layout and title edits deliberately do not invalidate this content comparison.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public boolean selectTaskResultWithinChange(UUID ownerId, UUID projectId, UUID itemId,
+            UUID artifactId, UUID expectedParentVersionId, UUID resultVersionId) {
+        CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
+        if (current == null
+                || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
+                || !current.subjectId().equals(artifactId)
+                || !java.util.Objects.equals(current.selectedVersionId(),
+                        expectedParentVersionId)) {
+            return false;
+        }
+        if (!canvasItems.selectVersion(ownerId, projectId, itemId, current.version(),
+                resultVersionId, clock.instant())) {
+            throw new IllegalStateException("Locked CanvasItem result selection failed");
+        }
+        mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
+                dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("canvasItemId", itemId.toString());
+        payload.put("selectedVersionId", resultVersionId.toString());
+        events.append(ownerId, projectId, new ProjectEventService.EventDraft(
+                "canvas.item.selected_version.changed", 1, itemId, current.version() + 1,
+                payload));
+        return true;
+    }
+
     /** 调用方已锁定项目事件序号；逐条验证目标资源和版本后返回完整布局。 */
     private List<CanvasEntry> applyLocked(
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {

@@ -80,14 +80,15 @@ public class DirectMediaTaskService {
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
-            Task occupying = tasks.findOccupyingMediaTask(projectId, artifactId).orElse(null);
-            if (occupying != null) return ProjectEventService.Change.unchanged(occupying);
             Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
             CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId,
                     canvasItemId);
             if (!canvasItem.subjectId().equals(artifactId)) {
                 throw invalid("运行目标必须是该媒体产物的画布卡片。");
             }
+            Task occupying = tasks.findOccupyingDirectMediaTask(projectId, canvasItemId)
+                    .orElse(null);
+            if (occupying != null) return ProjectEventService.Change.unchanged(occupying);
             if (target.archivedAt() != null) throw conflict("已归档的卡片不能运行。");
             Task.Kind kind = switch (target.kind()) {
                 case IMAGE -> Task.Kind.IMAGE_GENERATION;
@@ -111,6 +112,8 @@ public class DirectMediaTaskService {
             input.put("schemaVersion", 2);
             input.put("artifactId", artifactId.toString());
             input.put("canvasItemId", canvasItemId.toString());
+            if (canvasItem.selectedVersionId() == null) input.putNull("parentVersionId");
+            else input.put("parentVersionId", canvasItem.selectedVersionId().toString());
             input.put("draftVersion", draft.version());
             input.put("prompt", draft.prompt());
             input.put("providerConfigVersion", provider.configVersion());
@@ -132,7 +135,8 @@ public class DirectMediaTaskService {
             tasks.create(task, List.of());
             tasks.bindMediaTask(task.id(), binding);
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                    artifactId, target.resourceDefaultVersionId(), target.version(), null));
+                    artifactId, canvasItem.selectedVersionId(), target.version(), null,
+                    canvasItemId));
             drafts.setDisplayModeWithinChange(projectId, canvasItemId,
                     MediaDraft.DisplayMode.DRAFT);
             usage.reserveMediaTask(ownerId, task, COST_SOURCE);
@@ -176,9 +180,13 @@ public class DirectMediaTaskService {
     }
 
     @Transactional(readOnly = true)
-    public List<Task> list(UUID ownerId, UUID projectId, UUID artifactId) {
+    public List<Task> list(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId) {
         artifacts.get(ownerId, projectId, artifactId);
-        return tasks.listDirectForArtifact(ownerId, projectId, artifactId);
+        CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
+        if (!canvasItem.subjectId().equals(artifactId)) {
+            throw invalid("任务列表必须属于该媒体产物的画布卡片。");
+        }
+        return tasks.listDirectForCanvasItem(ownerId, projectId, canvasItemId);
     }
 
     @Transactional(readOnly = true)

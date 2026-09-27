@@ -99,6 +99,26 @@ class CanvasMediaContextPostgresIT {
         assertThat(first.path("prompt").asText()).isEqualTo("first branch");
         assertThat(second.path("prompt").asText()).isEqualTo("second branch");
 
+        JsonNode firstTask = run(mvc, auth, base, artifactId, firstCard,
+                "first-card-run");
+        JsonNode secondTask = run(mvc, auth, base, artifactId, secondCard,
+                "second-card-run");
+        assertThat(secondTask.path("id").asText()).isNotEqualTo(firstTask.path("id").asText());
+        assertThat(taskIds(read(mvc, auth, base + "/artifacts/" + artifactId
+                + "/run?canvasItemId=" + firstCard))).containsExactly(firstTask.path("id").asText());
+        assertThat(taskIds(read(mvc, auth, base + "/artifacts/" + artifactId
+                + "/run?canvasItemId=" + secondCard))).containsExactly(secondTask.path("id").asText());
+        assertThat(jdbc.sql("select expected_current_version_id from task_artifact_target "
+                        + "where task_id=:taskId")
+                .param("taskId", UUID.fromString(firstTask.path("id").asText()))
+                .query(UUID.class).single()).isEqualTo(firstVersion);
+        assertThat(jdbc.sql("select expected_current_version_id from task_artifact_target "
+                        + "where task_id=:taskId")
+                .param("taskId", UUID.fromString(secondTask.path("id").asText()))
+                .query(UUID.class).single()).isEqualTo(secondVersion);
+        cancel(mvc, auth, base, firstTask.path("id").asText());
+        cancel(mvc, auth, base, secondTask.path("id").asText());
+
         JsonNode canvas = read(mvc, auth, base + "/canvas/items");
         assertThat(selectedVersion(canvas, firstCard)).isEqualTo(firstVersion.toString());
         assertThat(selectedVersion(canvas, secondCard)).isEqualTo(secondVersion.toString());
@@ -162,6 +182,25 @@ class CanvasMediaContextPostgresIT {
                 .andExpect(status().isOk());
     }
 
+    private JsonNode run(MockMvc mvc,
+            org.springframework.test.web.servlet.request.RequestPostProcessor auth,
+            String base, UUID artifactId, UUID itemId, String key) throws Exception {
+        return mapper.readTree(mvc.perform(post(base + "/artifacts/" + artifactId + "/run")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .header("Idempotency-Key", key)
+                        .content("{\"canvasItemId\":\"" + itemId
+                                + "\",\"expectedDraftVersion\":1}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private void cancel(MockMvc mvc,
+            org.springframework.test.web.servlet.request.RequestPostProcessor auth,
+            String base, String taskId) throws Exception {
+        mvc.perform(post(base + "/tasks/" + taskId + "/cancel-queued")
+                        .with(auth).with(csrf()))
+                .andExpect(status().isOk());
+    }
+
     private JsonNode read(MockMvc mvc,
             org.springframework.test.web.servlet.request.RequestPostProcessor auth, String path)
             throws Exception {
@@ -176,5 +215,10 @@ class CanvasMediaContextPostgresIT {
             }
         }
         throw new AssertionError("CanvasItem missing: " + itemId);
+    }
+
+    private List<String> taskIds(JsonNode tasks) {
+        return java.util.stream.StreamSupport.stream(tasks.spliterator(), false)
+                .map(task -> task.path("id").asText()).toList();
     }
 }

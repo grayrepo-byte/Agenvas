@@ -108,9 +108,18 @@ class OpenAiImage2PostgresIT {
                 .param("task", editTask.id()).query(String.class).single()).isEqualTo("SUCCEEDED");
         assertThat(jdbc.sql("select model from call_log where task_id=:task")
                 .param("task", editTask.id()).query(String.class).single()).isEqualTo("gpt-image-2");
+        UUID completedVersionId = UUID.fromString(
+                completed.output().path("artifactVersionId").asText());
+        assertThat(artifacts.requireVersion(owner.userId(), edited.project().id(),
+                edited.card().artifact().id(), completedVersionId)
+                .content().path("assetId").asText()).isNotBlank();
         assertThat(artifacts.get(owner.userId(), edited.project().id(),
-                UUID.fromString(completed.output().path("artifactId").asText()))
-                .resourceDefaultVersion().content().path("assetId").asText()).isNotBlank();
+                edited.card().artifact().id()).resourceDefaultVersion()).isNull();
+        assertThat(canvas.list(owner.userId(), edited.project().id()).stream()
+                .filter(entry -> entry.item().id().toString().equals(
+                        editTask.input().path("canvasItemId").asText()))
+                .findFirst().orElseThrow().item().selectedVersionId())
+                .isEqualTo(completedVersionId);
 
         Fixture generated = fixture(owner.userId(), "Lost generation", false);
         Task uncertain = approve(owner.userId(), generated);
@@ -154,9 +163,13 @@ class OpenAiImage2PostgresIT {
             assertThat(linkedDone.status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(GENERATIONS).hasValue(2);
             assertThat(DOWNLOADS).hasValue(1);
+            UUID linkedVersionId = UUID.fromString(
+                    linkedDone.output().path("artifactVersionId").asText());
+            assertThat(artifacts.requireVersion(owner.userId(), linked.project().id(),
+                    linked.card().artifact().id(), linkedVersionId)
+                    .content().path("assetId").asText()).isNotBlank();
             assertThat(artifacts.get(owner.userId(), linked.project().id(),
-                    UUID.fromString(linkedDone.output().path("artifactId").asText()))
-                    .resourceDefaultVersion().content().path("assetId").asText()).isNotBlank();
+                    linked.card().artifact().id()).resourceDefaultVersion()).isNull();
         } finally {
             URL_RESULT.set(false);
         }

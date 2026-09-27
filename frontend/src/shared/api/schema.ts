@@ -3309,7 +3309,9 @@ export interface operations {
     };
     listDirectMediaTasks: {
         parameters: {
-            query?: never;
+            query: {
+                canvasItemId: string;
+            };
             header?: never;
             path: {
                 projectId: components["parameters"]["ProjectId"];

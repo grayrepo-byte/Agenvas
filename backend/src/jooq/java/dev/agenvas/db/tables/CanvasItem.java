@@ -12,6 +12,7 @@ import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
+import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.CanvasItemRecord;
 
 import java.math.BigDecimal;
@@ -309,6 +310,19 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             _mediaDraft = new MediaDraftPath(this, null, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM.getInverseKey());
 
         return _mediaDraft;
+    }
+
+    private transient TaskArtifactTargetPath _taskArtifactTarget;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.task_artifact_target</code> table
+     */
+    public TaskArtifactTargetPath taskArtifactTarget() {
+        if (_taskArtifactTarget == null)
+            _taskArtifactTarget = new TaskArtifactTargetPath(this, null, Keys.TASK_ARTIFACT_TARGET__FK_TASK_ARTIFACT_TARGET_CANVAS_ITEM.getInverseKey());
+
+        return _taskArtifactTarget;
     }
 
     @Override

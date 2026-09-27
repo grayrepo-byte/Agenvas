@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { VersionedArtifact } from "./versionedArtifact";
+import type { CanvasItem } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { TextCanvasEditor } from "./TextCanvasEditor";
@@ -199,5 +200,28 @@ describe("Artifact version editing", () => {
     expect(reads).toBe(1);
     await user.click(screen.getByRole("button", { name: "选用此版本" }));
     await waitFor(() => expect(selections).toBe(1));
+  });
+
+  it("invalidates the card draft after selecting a media card version", async () => {
+    const media: VersionedArtifact = { ...artifact(), kind: "IMAGE" };
+    const item: CanvasItem = { id: "canvas-1", subjectType: "ARTIFACT",
+      subjectId: media.id, selectedVersionId: "version-2", title: "Image", x: 0, y: 0,
+      width: 280, height: 240, zIndex: 0, groupId: null, locked: false, version: 3,
+      artifact: media, selectedVersion: media.resourceDefaultVersion, agent: null };
+    server.use(
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () =>
+        HttpResponse.json({ items: [media.resourceDefaultVersion,
+          { ...media.resourceDefaultVersion, id: "version-1", versionNo: 1 }] })),
+      csrf(),
+      http.post("/api/v1/projects/:projectId/canvas-items/:canvasItemId/select-version",
+        () => HttpResponse.json({ ...item, selectedVersionId: "version-1", version: 4 })),
+    );
+    const rendered = renderEditor(<ArtifactVersionHistory artifact={media} item={item} />);
+    rendered.client.setQueryData(["media-draft", "project-1", "canvas-1"], { version: 1 });
+    const user = userEvent.setup();
+    await user.click(screen.getByText("版本历史与选用"));
+    await user.click(await screen.findByRole("button", { name: "选用此版本" }));
+    await waitFor(() => expect(rendered.client.getQueryState(
+      ["media-draft", "project-1", "canvas-1"])?.isInvalidated).toBe(true));
   });
 });

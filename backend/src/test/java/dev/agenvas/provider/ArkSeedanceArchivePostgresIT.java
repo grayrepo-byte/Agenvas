@@ -123,10 +123,17 @@ class ArkSeedanceArchivePostgresIT {
         Task done = tasks.get(owner.userId(), accepted.project().id(), acceptedTask.id());
         assertThat(done.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(done.providerRequestId()).isEqualTo(TASK_ID);
-        var artifact = artifacts.get(owner.userId(), accepted.project().id(),
-                UUID.fromString(done.output().path("artifactId").asText()));
-        UUID assetId = UUID.fromString(artifact.resourceDefaultVersion().content()
-                .path("assetId").asText());
+        UUID completedVersionId = UUID.fromString(done.output()
+                .path("artifactVersionId").asText());
+        UUID assetId = UUID.fromString(artifacts.requireVersion(owner.userId(),
+                accepted.project().id(), accepted.card().artifact().id(), completedVersionId)
+                .content().path("assetId").asText());
+        assertThat(artifacts.get(owner.userId(), accepted.project().id(),
+                accepted.card().artifact().id()).resourceDefaultVersion()).isNull();
+        assertThat(canvas.list(owner.userId(), accepted.project().id()).stream()
+                .filter(entry -> entry.item().id().equals(accepted.canvasItemId()))
+                .findFirst().orElseThrow().item().selectedVersionId())
+                .isEqualTo(completedVersionId);
         Path archived = assets.get(owner.userId(), accepted.project().id(), assetId).path();
         var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
                 "-show_entries", "stream=codec_type:format=format_name,duration",

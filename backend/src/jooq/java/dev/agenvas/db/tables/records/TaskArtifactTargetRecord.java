@@ -113,6 +113,20 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
         return (String) get(5);
     }
 
+    /**
+     * Setter for <code>public.task_artifact_target.canvas_item_id</code>.
+     */
+    public void setCanvasItemId(UUID value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.task_artifact_target.canvas_item_id</code>.
+     */
+    public UUID getCanvasItemId() {
+        return (UUID) get(6);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -136,7 +150,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     /**
      * Create a detached, initialised TaskArtifactTargetRecord
      */
-    public TaskArtifactTargetRecord(UUID taskId, UUID projectId, UUID artifactId, UUID expectedCurrentVersionId, Long expectedArtifactVersion, String outputSlotKey) {
+    public TaskArtifactTargetRecord(UUID taskId, UUID projectId, UUID artifactId, UUID expectedCurrentVersionId, Long expectedArtifactVersion, String outputSlotKey, UUID canvasItemId) {
         super(TaskArtifactTarget.TASK_ARTIFACT_TARGET);
 
         setTaskId(taskId);
@@ -145,6 +159,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
         setExpectedCurrentVersionId(expectedCurrentVersionId);
         setExpectedArtifactVersion(expectedArtifactVersion);
         setOutputSlotKey(outputSlotKey);
+        setCanvasItemId(canvasItemId);
         resetChangedOnNotNull();
     }
 }

@@ -144,7 +144,7 @@ public class ManualUnknownRetryService {
         repository.bindMediaTask(replacement.id(), binding);
         repository.createArtifactTarget(new TaskRepository.ArtifactTarget(replacement.id(),
                 projectId, target.artifactId(), target.expectedCurrentVersionId(),
-                target.expectedArtifactVersion(), null));
+                target.expectedArtifactVersion(), null, target.canvasItemId()));
         usage.reserveMediaTask(ownerId, replacement, "PROVIDER_UNPRICED");
         repository.createManualReplacement(new TaskRepository.ManualReplacement(projectId,
                 original.id(), replacement.id(), ownerId, expectedTaskVersion,

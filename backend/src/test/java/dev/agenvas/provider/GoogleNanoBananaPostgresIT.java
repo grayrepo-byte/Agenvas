@@ -109,9 +109,18 @@ class GoogleNanoBananaPostgresIT {
                 .path("inlineData").path("mimeType").asText()).isEqualTo("image/png");
         assertThat(LAST_REQUEST.get().path("generationConfig").path("responseFormat")
                 .path("image").path("aspectRatio").asText()).isEqualTo("16:9");
+        UUID completedVersionId = UUID.fromString(
+                completed.output().path("artifactVersionId").asText());
+        assertThat(artifacts.requireVersion(owner.userId(), edited.project().id(),
+                edited.card().artifact().id(), completedVersionId)
+                .content().path("assetId").asText()).isNotBlank();
         assertThat(artifacts.get(owner.userId(), edited.project().id(),
-                UUID.fromString(completed.output().path("artifactId").asText()))
-                .resourceDefaultVersion().content().path("assetId").asText()).isNotBlank();
+                edited.card().artifact().id()).resourceDefaultVersion()).isNull();
+        assertThat(canvas.list(owner.userId(), edited.project().id()).stream()
+                .filter(entry -> entry.item().id().toString().equals(
+                        editTask.input().path("canvasItemId").asText()))
+                .findFirst().orElseThrow().item().selectedVersionId())
+                .isEqualTo(completedVersionId);
 
         Fixture generated = fixture(owner.userId(), "Lost generation", false);
         Task uncertain = approve(owner.userId(), generated);

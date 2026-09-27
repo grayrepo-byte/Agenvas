@@ -16,6 +16,7 @@ import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
+import dev.agenvas.db.tables.CreativeDataResetMarker;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LlmProviderConfig;
@@ -133,6 +134,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.comfyui_config_version</code>.
      */
     public final ComfyuiConfigVersion COMFYUI_CONFIG_VERSION = ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION;
+
+    /**
+     * The table <code>public.creative_data_reset_marker</code>.
+     */
+    public final CreativeDataResetMarker CREATIVE_DATA_RESET_MARKER = CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER;
 
     /**
      * Principal-scoped HTTP command replay record; same key with a different
@@ -321,6 +327,7 @@ public class Public extends SchemaImpl {
             CallLog.CALL_LOG,
             CanvasItem.CANVAS_ITEM,
             ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION,
+            CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
             InstallationLock.INSTALLATION_LOCK,
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
