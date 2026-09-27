@@ -6,8 +6,6 @@ COPY backend/mvnw backend/pom.xml ./
 RUN ./mvnw --batch-mode --no-transfer-progress dependency:go-offline
 
 COPY backend/src src
-COPY docs/evaluation/creator-v1-cases.json /workspace/docs/evaluation/creator-v1-cases.json
-COPY docs/evaluation/creator-v2-cases.json /workspace/docs/evaluation/creator-v2-cases.json
 RUN ./mvnw --batch-mode --no-transfer-progress verify -DskipITs
 
 FROM eclipse-temurin:21.0.9_10-jre-alpine@sha256:08eecc477dbe3f2e33daac27f36e41daf7f4ec51d2f3396006e54fa41832c74c

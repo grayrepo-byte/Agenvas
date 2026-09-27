@@ -434,11 +434,11 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 ### T27 故障、安全和回归套件
 
-Prompt 版本补充：新 Run 的策略快照固定系统 Prompt v2；历史无版本 Run 无法可靠还原，未发送的首轮请求必须阻断并人工重建。v1 历史套件已保留，当前 v2 也有独立的 30 条固定样本输入；两者均未作为真实模型评估通过证据，详见 `docs/evidence/T27-creator-corpus-partial.md`。
+Prompt 版本补充：新 Run 的策略快照固定系统 Prompt v2；历史无版本 Run 无法可靠还原，未发送的首轮请求必须阻断并人工重建。原有的 v1/v2 两份各 30 条固定样本与 `CreatorEvaluationCorpusTest` 于 2026-09-27 随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 的收缩一并删除：它们描述三镜头、局部重做与媒体导出的评测场景，已不可运行。两者均未作为真实模型评估通过证据，历史记录见 `docs/evidence/T27-creator-corpus-partial.md`。另需注意：系统提示词尚未重建——现有 v1/v2 规则仍要求模型提出媒体计划，而该工具已不存在；新的样本集须与重建后的提示词一起制定。
 
 依赖：T26。
 
-进展：已冻结 30 条 Creator 指令样本，分类、fixture 与预期判定由本地测试保护；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的批准工具调用不能创建媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run 与生成受理落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 3 已补同一次假 ComfyUI 接收请求窗口内强杀真实提交进程、第二进程恢复 UNKNOWN 且不重提的测试，见 `docs/evidence/T27-comfy-accepted-process-kill.md`，响应丢失和独立进程恢复的早期证据另见 `docs/evidence/T27-comfy-response-loss.md` 与 `docs/evidence/T13-process-kill-smoke.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、缩略图与 MP4 归档写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 13 的 Artifact/Asset/Run/SSE 精确 ID 越权 HTTP 测试见 `docs/evidence/T27-resource-scope.md`；场景 15 已补 Chrome 展示的图片/视频生成数量与持久 Task 数量的跨层核对，见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
+进展：原 30 条 Creator 指令样本及其守卫测试已于 2026-09-27 随 ADR 0013 删除（场景已不可运行，见上）；固定样本集待随 Agent 能力重塑重建；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的批准工具调用不能创建媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run 与生成受理落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 3 已补同一次假 ComfyUI 接收请求窗口内强杀真实提交进程、第二进程恢复 UNKNOWN 且不重提的测试，见 `docs/evidence/T27-comfy-accepted-process-kill.md`，响应丢失和独立进程恢复的早期证据另见 `docs/evidence/T27-comfy-response-loss.md` 与 `docs/evidence/T13-process-kill-smoke.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、缩略图与 MP4 归档写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 13 的 Artifact/Asset/Run/SSE 精确 ID 越权 HTTP 测试见 `docs/evidence/T27-resource-scope.md`；场景 15 已补 Chrome 展示的图片/视频生成数量与持久 Task 数量的跨层核对，见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
 
 - [ ] 主规格第 22 节的全部故障验收有可重复测试证据。
 - [ ] 至少 30 条固定 Agent 样本集，保存配置版本与失败报告。
