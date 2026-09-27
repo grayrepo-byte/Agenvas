@@ -156,12 +156,20 @@ public class ArtifactService {
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, title, normalizedContent,
                     ArtifactVersion.CreatedByKind.USER, null);
+            String responseJson = objectMapper.writeValueAsString(created);
             if (!artifacts.completeCreateKey(ownerId, scope, key, requestHash,
-                    created.artifact().id(), objectMapper.writeValueAsString(created), now)) {
+                    created.artifact().id(), responseJson, now)) {
                 throw new IllegalStateException("Failed to complete Artifact creation key");
             }
-            return ProjectEventService.Change.changed(new CreateResult(created, false),
-                    artifactEvent("artifact.created", created));
+            // PostgreSQL JSONB normalizes object field order. Read the persisted snapshot back so
+            // the first response is byte-semantically equivalent to every later replay.
+            ArtifactView snapshot = artifacts.findCreateKey(ownerId, scope, key)
+                    .map(ArtifactRepository.CreateKey::responseJson)
+                    .map(json -> objectMapper.readValue(json, ArtifactView.class))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Completed Artifact creation key is missing"));
+            return ProjectEventService.Change.changed(new CreateResult(snapshot, false),
+                    artifactEvent("artifact.created", snapshot));
         }).value();
     }
 
@@ -240,6 +248,8 @@ public class ArtifactService {
                 artifactId,
                 1,
                 INITIAL_SCHEMA_VERSION,
+                null,
+                null,
                 content.deepCopy(),
                 references,
                 createdByKind,
@@ -387,6 +397,8 @@ public class ArtifactService {
                 artifactId,
                 artifacts.nextVersionNo(projectId, artifactId),
                 INITIAL_SCHEMA_VERSION,
+                current.resourceDefaultVersionId(),
+                null,
                 content.deepCopy(),
                 references,
                 author,
@@ -534,11 +546,20 @@ public class ArtifactService {
      */
     public TaskVersionResult appendTaskVersionWithinChange(UUID ownerId, UUID projectId,
             UUID artifactId, UUID runId, UUID expectedCurrentVersionId,
-            long expectedArtifactVersion, JsonNode content, boolean allowSelection) {
+            long expectedArtifactVersion, JsonNode content, JsonNode frozenInput,
+            boolean allowSelection) {
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
                 .orElseThrow(this::notFound);
-        List<ArtifactVersion.InputReference> references =
-                contentValidator.validate(current.kind(), content);
+        List<ArtifactVersion.InputReference> references = new java.util.ArrayList<>(
+                contentValidator.validate(current.kind(), content));
+        if (frozenInput != null) {
+            int index = 0;
+            for (JsonNode image : frozenInput.path("images")) {
+                references.add(new ArtifactVersion.InputReference(
+                        UUID.fromString(image.path("versionId").asText()),
+                        image.path("role").asText(), index++, Artifact.Kind.IMAGE));
+            }
+        }
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.TASK);
         validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, current.kind(), content);
@@ -546,7 +567,10 @@ public class ArtifactService {
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
                 INITIAL_SCHEMA_VERSION,
-                content.deepCopy(), references, ArtifactVersion.CreatedByKind.TASK, runId, now);
+                expectedCurrentVersionId,
+                frozenInput == null ? null : frozenInput.deepCopy(),
+                content.deepCopy(), List.copyOf(references),
+                ArtifactVersion.CreatedByKind.TASK, runId, now);
         artifacts.appendVersion(revision);
         boolean selected = allowSelection
                 && current.archivedAt() == null
@@ -577,7 +601,7 @@ public class ArtifactService {
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
-                INITIAL_SCHEMA_VERSION, content.deepCopy(), references,
+                INITIAL_SCHEMA_VERSION, null, null, content.deepCopy(), references,
                 ArtifactVersion.CreatedByKind.USER, null, now);
         artifacts.appendVersion(revision);
         return revision;

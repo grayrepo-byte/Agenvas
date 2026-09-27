@@ -61,7 +61,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         }
         try {
             aspectRatio(context);
-            if (context.lease().input().has("referenceImageVersionId")) reference(context);
+            if (!FrozenMediaInputs.images(context.lease()).isEmpty()) reference(context);
             return null;
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
@@ -75,7 +75,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         String prompt = context.lease().input().path("prompt").asText();
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
-        Reference reference = context.lease().input().has("referenceImageVersionId")
+        Reference reference = !FrozenMediaInputs.images(context.lease()).isEmpty()
                 ? reference(context) : null;
         try {
             return new Submission.Completed(client.generate(key, configuredModel,
@@ -138,7 +138,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     /** Never accept a URL or an image outside the exact project and pinned version. */
     private Reference reference(AttemptContext context) {
         Task task = context.lease();
-        UUID versionId = UUID.fromString(task.input().path("referenceImageVersionId").asText());
+        UUID versionId = FrozenMediaInputs.first(task).versionId();
         ArtifactVersion version = artifacts.requireImageVersionForTask(context.ownerId(),
                 task.projectId(), versionId);
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());

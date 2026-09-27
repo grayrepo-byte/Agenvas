@@ -4,6 +4,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -14,16 +15,31 @@ import org.springframework.stereotype.Component;
 public final class MediaAdapterRegistry {
 
     public record Declaration(MediaPlatform platform, Task.Kind kind, int minimumSeconds,
-            int maximumSeconds, boolean originRequired) {}
+            int maximumSeconds, boolean originRequired, int maxReferenceImages,
+            Set<String> supportedVideoInputModes, String defaultVideoInputMode,
+            boolean supportsEndFrame) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.of(
-            "MOCK_IMAGE", new Declaration(MediaPlatform.MOCK, Task.Kind.IMAGE_GENERATION, 0, 0, false),
-            "MOCK_VIDEO", new Declaration(MediaPlatform.MOCK, Task.Kind.VIDEO_GENERATION, 1, 30, false),
-            "COMFY_IMAGE_V1", new Declaration(MediaPlatform.COMFYUI, Task.Kind.IMAGE_GENERATION, 0, 0, true),
-            "COMFY_VIDEO_V1", new Declaration(MediaPlatform.COMFYUI, Task.Kind.VIDEO_GENERATION, 1, 5, true),
-            "OPENAI_GPT_IMAGE_2", new Declaration(MediaPlatform.OPENAI, Task.Kind.IMAGE_GENERATION, 0, 0, false),
-            "GOOGLE_NANO_BANANA_2", new Declaration(MediaPlatform.GOOGLE, Task.Kind.IMAGE_GENERATION, 0, 0, false),
-            "ARK_SEEDANCE_2_I2V", new Declaration(MediaPlatform.ARK, Task.Kind.VIDEO_GENERATION, 4, 15, false));
+            "MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4),
+            "MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, true),
+            "COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1),
+            "COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, false),
+            "OPENAI_GPT_IMAGE_2", image(MediaPlatform.OPENAI, false, 1),
+            "GOOGLE_NANO_BANANA_2", image(MediaPlatform.GOOGLE, false, 1),
+            "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, false));
+
+    private static Declaration image(MediaPlatform platform, boolean originRequired,
+            int maxReferenceImages) {
+        return new Declaration(platform, Task.Kind.IMAGE_GENERATION, 0, 0, originRequired,
+                maxReferenceImages, Set.of(), null, false);
+    }
+
+    private static Declaration video(MediaPlatform platform, int minimumSeconds,
+            int maximumSeconds, boolean originRequired, boolean supportsEndFrame) {
+        return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
+                maximumSeconds, originRequired, 0, Set.of("START_END"), "START_END",
+                supportsEndFrame);
+    }
 
     private final Map<String, MediaAdapter> implementations;
 

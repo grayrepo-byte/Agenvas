@@ -586,6 +586,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/restore-version-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 用历史版本的冻结输入完整替换卡片草稿 */
+        post: operations["restoreMediaDraftVersionInputs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 列出项目中固定精确图片版本的 CanvasItem 连线 */
+        get: operations["listCanvasConnections"];
+        put?: never;
+        /** 原子创建媒体或 Agent 的精确图片版本连线 */
+        post: operations["createCanvasConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/connections/{connectionId}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 原子删除一条连线来源并按剩余来源维护目标图片输入 */
+        post: operations["disconnectCanvasConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/run": {
         parameters: {
             query?: never;
@@ -1075,6 +1135,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas/items/{sourceItemId}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                sourceItemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 复制媒体卡片的完整工作分支但不复制任务和画布连线 */
+        post: operations["duplicateCanvasItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1164,6 +1244,10 @@ export interface components {
             kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
             minimumSeconds: number;
             maximumSeconds: number;
+            maxReferenceImages: number;
+            supportedVideoInputModes: components["schemas"]["VideoInputMode"][];
+            defaultVideoInputMode: components["schemas"]["VideoInputMode"] | null;
+            supportsEndFrame: boolean;
             maxConcurrent: number;
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
@@ -1306,7 +1390,7 @@ export interface components {
         };
         ProjectExportManifest: {
             /** @constant */
-            schemaVersion: 1;
+            schemaVersion: 2;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -1314,6 +1398,8 @@ export interface components {
             project: components["schemas"]["ManifestProject"];
             artifacts: components["schemas"]["ManifestArtifact"][];
             assets: components["schemas"]["ManifestAsset"][];
+            canvasItems: components["schemas"]["ManifestCanvasItem"][];
+            connections: components["schemas"]["ManifestCanvasConnection"][];
         };
         ManifestProject: {
             /** Format: uuid */
@@ -1340,6 +1426,11 @@ export interface components {
             id: string;
             versionNo: number;
             schemaVersion: number;
+            /** Format: uuid */
+            baseVersionId: string | null;
+            frozenInput: {
+                [key: string]: unknown;
+            } | null;
             /** Format: date-time */
             createdAt: string;
             content: components["schemas"]["ManifestVersionContent"];
@@ -1374,8 +1465,6 @@ export interface components {
             negativePrompt?: string;
             providerConfigVersion?: number;
             workflowVersion?: string;
-            /** Format: uuid */
-            keyframeVersionId?: string;
         };
         ManifestAsset: {
             /** Format: uuid */
@@ -1392,6 +1481,57 @@ export interface components {
             thumbnailSha256?: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        ManifestCanvasItem: {
+            /** Format: uuid */
+            id: string;
+            subjectType: components["schemas"]["CanvasSubjectType"];
+            /** Format: uuid */
+            subjectId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            title: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+            /** Format: uuid */
+            groupId: string | null;
+            locked: boolean;
+            /** Format: int64 */
+            version: number;
+            mediaDraft: components["schemas"]["ManifestMediaDraft"] | null;
+        };
+        ManifestMediaDraft: {
+            prompt: string;
+            parameters: {
+                [key: string]: unknown;
+            };
+            durationSeconds: number | null;
+            /** Format: uuid */
+            capabilityId: string | null;
+            videoInputMode: components["schemas"]["VideoInputMode"] | null;
+            imageInputs: components["schemas"]["MediaImageInput"][];
+            mentions: components["schemas"]["PromptImageMention"][];
+            /** @enum {string} */
+            displayMode: "DRAFT" | "RESULT";
+            /** Format: int64 */
+            version: number;
+        };
+        ManifestCanvasConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sourceCanvasItemId: string;
+            /** Format: uuid */
+            targetCanvasItemId: string;
+            /** @enum {string} */
+            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT";
+            /** Format: uuid */
+            sourceArtifactVersionId: string;
+            /** Format: int64 */
+            version: number;
         };
         SetupStatus: {
             setupRequired: boolean;
@@ -1488,11 +1628,21 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
             prompt: string;
-            /** Format: uuid */
-            inputImageVersionId?: string | null;
+            parameters: {
+                [key: string]: unknown;
+            };
             durationSeconds?: number | null;
             /** Format: uuid */
             capabilityId?: string | null;
+            videoInputMode: components["schemas"]["VideoInputMode"] | null;
+            imageInputs: components["schemas"]["SaveMediaImageInput"][];
+            mentions: components["schemas"]["PromptImageMention"][];
+        };
+        RestoreMediaDraftVersionInputsRequest: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: int64 */
+            expectedVersion: number;
         };
         RunMediaDraftRequest: {
             /** Format: uuid */
@@ -1519,11 +1669,15 @@ export interface components {
             /** Format: uuid */
             canvasItemId: string;
             prompt: string;
-            /** Format: uuid */
-            inputImageVersionId: string | null;
+            parameters: {
+                [key: string]: unknown;
+            };
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
+            videoInputMode: components["schemas"]["VideoInputMode"] | null;
+            imageInputs: components["schemas"]["MediaImageInput"][];
+            mentions: components["schemas"]["PromptImageMention"][];
             /** @enum {string} */
             displayMode: "DRAFT" | "RESULT";
             /** Format: int64 */
@@ -1532,6 +1686,104 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @enum {string} */
+        VideoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
+        /** @enum {string} */
+        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME";
+        SaveMediaImageInput: {
+            /** Format: uuid */
+            versionId: string;
+            role: components["schemas"]["MediaInputRole"];
+            color: string;
+        };
+        MediaImageInputSource: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "MANUAL" | "CONNECTION";
+            /** Format: uuid */
+            connectionId: string | null;
+        };
+        MediaImageInput: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            artifactId: string;
+            role: components["schemas"]["MediaInputRole"];
+            order: number;
+            color: string;
+            sources: components["schemas"]["MediaImageInputSource"][];
+        };
+        PromptImageMention: {
+            /** Format: uuid */
+            versionId: string;
+            role: components["schemas"]["MediaInputRole"];
+        };
+        CanvasConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            sourceCanvasItemId: string;
+            /** Format: uuid */
+            targetCanvasItemId: string;
+            /** @enum {string} */
+            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT";
+            /** Format: uuid */
+            sourceArtifactVersionId: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CanvasConnectionList: {
+            items: components["schemas"]["CanvasConnection"][];
+        };
+        CreateCanvasConnectionRequest: {
+            /** Format: uuid */
+            sourceCanvasItemId: string;
+            /** Format: uuid */
+            targetCanvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** @enum {string} */
+            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT";
+            /** Format: int64 */
+            expectedTargetDraftVersion?: number;
+            /** Format: int64 */
+            expectedTargetAgentVersion?: number;
+        };
+        DisconnectCanvasConnectionRequest: {
+            /** Format: int64 */
+            expectedTargetDraftVersion?: number;
+            /** Format: int64 */
+            expectedTargetAgentVersion?: number;
+        };
+        CanvasConnectionResult: {
+            connection: components["schemas"]["CanvasConnection"];
+            draft: components["schemas"]["MediaDraft"] | null;
+            agent: components["schemas"]["Agent"] | null;
+        };
+        DuplicateCanvasItemRequest: {
+            /** Format: uuid */
+            targetItemId: string;
+            /** Format: int64 */
+            expectedSourceVersion: number;
+            /** Format: int64 */
+            expectedSourceDraftVersion: number;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+        };
+        DuplicateCanvasItemResponse: {
+            item: components["schemas"]["CanvasItem"];
+            draft: components["schemas"]["MediaDraft"];
         };
         ReviseArtifactRequest: {
             /** Format: int64 */
@@ -1563,6 +1815,11 @@ export interface components {
             versionNo: number;
             /** @enum {integer} */
             schemaVersion: 1 | 2;
+            /** Format: uuid */
+            baseVersionId?: string | null;
+            frozenInput?: {
+                [key: string]: unknown;
+            } | null;
             content: components["schemas"]["ArtifactContent"];
             inputReferences: components["schemas"]["ArtifactInputReference"][];
             /** @enum {string} */
@@ -1959,6 +2216,7 @@ export interface components {
         ProjectSnapshot: {
             project: components["schemas"]["Project"];
             canvas: components["schemas"]["Canvas"];
+            connections: components["schemas"]["CanvasConnection"][];
             agents: components["schemas"]["Agent"][];
             activeRun: components["schemas"]["AgentRun"] | null;
             activeTasks: components["schemas"]["Task"][];
@@ -2139,8 +2397,6 @@ export interface components {
             };
             /** Format: uuid */
             sourceTaskId: string;
-            /** Format: uuid */
-            keyframeVersionId?: string;
         };
     };
     responses: {
@@ -3332,6 +3588,122 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    restoreMediaDraftVersionInputs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreMediaDraftVersionInputsRequest"];
+            };
+        };
+        responses: {
+            /** @description 已恢复的媒体草稿；图片只保留手工来源 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listCanvasConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 持久化连线 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasConnectionList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createCanvasConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCanvasConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的连线和更新后的目标状态 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasConnectionResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    disconnectCanvasConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisconnectCanvasConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已删除的连线和更新后的目标状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasConnectionResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listDirectMediaTasks: {
         parameters: {
             query: {
@@ -4179,6 +4551,37 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    duplicateCanvasItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                sourceItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateCanvasItemRequest"];
+            };
+        };
+        responses: {
+            /** @description 新的独立媒体卡片及其草稿 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateCanvasItemResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };

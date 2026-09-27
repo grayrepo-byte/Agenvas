@@ -147,18 +147,16 @@ class ComfyUiImagePostgresIT {
                 "Reference frame", null);
         UUID imageItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), imageCard.artifact().id());
-        MediaDraft referenceDraft = drafts.save(owner.userId(), project.id(),
-                imageItemId, 0, "A detailed cinematic coffee pour", null, null, null);
+        MediaDraft referenceDraft = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(),
+                imageItemId, 0, "A detailed cinematic coffee pour",
+                reference.resourceDefaultVersion().id(), null, null);
         Task approved = directMedia.run(owner.userId(), project.id(),
                 imageCard.artifact().id(), imageItemId,
                 referenceDraft.version(), "comfy-image-run");
-        // 直连入口不写参考图，按本测试既有做法用 SQL 幂等追加固定参考图版本。
-        jdbc.sql("update task set input_json = input_json || "
-                        + "jsonb_build_object('referenceImageVersionId', :versionId) where id = :id")
-                .param("versionId", reference.resourceDefaultVersion().id().toString())
-                .param("id", approved.id()).update();
-        Task pinnedImage = tasks.get(owner.userId(), project.id(), approved.id());
-        assertThat(pinnedImage.input().path("referenceImageVersionId").asText())
+        Task pinnedImage = approved;
+        assertThat(pinnedImage.input().path("mediaInput").path("images").get(0)
+                .path("versionId").asText())
                 .isEqualTo(reference.resourceDefaultVersion().id().toString());
         assertThat(pinnedImage.input().path("providerOriginSha256").asText())
                 .isEqualTo(client.originSha256());
@@ -168,7 +166,8 @@ class ComfyUiImagePostgresIT {
                 "Second frame", null);
         UUID secondItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), secondCard.artifact().id());
-        MediaDraft plainDraft = drafts.save(owner.userId(), project.id(),
+        MediaDraft plainDraft = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(),
                 secondItemId, 0, "A detailed cinematic coffee pour", null, null, null);
         Task queuedSecond = directMedia.run(owner.userId(), project.id(),
                 secondCard.artifact().id(), secondItemId,
@@ -289,7 +288,8 @@ class ComfyUiImagePostgresIT {
                 "Uncertain frame", null);
         UUID uncertainItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), uncertainCard.artifact().id());
-        MediaDraft uncertainDraft = drafts.save(owner.userId(), project.id(),
+        MediaDraft uncertainDraft = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(),
                 uncertainItemId, 0, "A cinematic coffee pour", null, null, null);
         Task uncertainTask = directMedia.run(owner.userId(), project.id(),
                 uncertainCard.artifact().id(), uncertainItemId,

@@ -272,8 +272,9 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     /** Send the exact pinned input image version as a bounded normalized PNG data URL. */
     private byte[] pinnedFrame(AttemptContext context) {
         Task task = context.lease();
-        UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
-        UUID versionId = UUID.fromString(task.input().path("imageVersionId").asText());
+        FrozenMediaInputs.Image image = FrozenMediaInputs.first(task);
+        UUID imageId = image.artifactId();
+        UUID versionId = image.versionId();
         ArtifactVersion version = artifacts.requireVersion(context.ownerId(), task.projectId(),
                 imageId, versionId);
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());

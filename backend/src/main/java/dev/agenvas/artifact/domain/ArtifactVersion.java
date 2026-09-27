@@ -25,6 +25,8 @@ public record ArtifactVersion(
         UUID artifactId,
         int versionNo,
         int schemaVersion,
+        UUID baseVersionId,
+        JsonNode frozenInput,
         JsonNode content,
         List<InputReference> inputReferences,
         CreatedByKind createdByKind,

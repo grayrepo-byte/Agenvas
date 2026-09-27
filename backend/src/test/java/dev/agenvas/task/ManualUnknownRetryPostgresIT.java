@@ -91,7 +91,8 @@ class ManualUnknownRetryPostgresIT {
                 "Retry card", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), card.artifact().id());
-        drafts.save(owner.userId(), project.id(), canvasItemId, 0,
+        dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(), canvasItemId, 0,
                 "Cinematic coffee pour", null, null, null);
         Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
                 canvasItemId, 1, "direct-image-1");

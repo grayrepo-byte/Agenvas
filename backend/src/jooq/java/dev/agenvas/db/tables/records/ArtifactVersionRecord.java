@@ -163,6 +163,42 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
         return (OffsetDateTime) get(9);
     }
 
+    /**
+     * Setter for <code>public.artifact_version.base_version_id</code>.
+     * Displayed parent version from the originating CanvasItem when this
+     * immutable version was created.
+     */
+    public void setBaseVersionId(UUID value) {
+        set(10, value);
+    }
+
+    /**
+     * Getter for <code>public.artifact_version.base_version_id</code>.
+     * Displayed parent version from the originating CanvasItem when this
+     * immutable version was created.
+     */
+    public UUID getBaseVersionId() {
+        return (UUID) get(10);
+    }
+
+    /**
+     * Setter for <code>public.artifact_version.frozen_input_json</code>.
+     * Read-only generation input copied from the accepting Task; null for
+     * uploads and text edits.
+     */
+    public void setFrozenInputJson(JSONB value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.artifact_version.frozen_input_json</code>.
+     * Read-only generation input copied from the accepting Task; null for
+     * uploads and text edits.
+     */
+    public JSONB getFrozenInputJson() {
+        return (JSONB) get(11);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -186,7 +222,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
     /**
      * Create a detached, initialised ArtifactVersionRecord
      */
-    public ArtifactVersionRecord(UUID id, UUID projectId, UUID artifactId, Integer versionNo, Integer schemaVersion, JSONB contentJson, JSONB inputRefsJson, String createdByKind, UUID runId, OffsetDateTime createdAt) {
+    public ArtifactVersionRecord(UUID id, UUID projectId, UUID artifactId, Integer versionNo, Integer schemaVersion, JSONB contentJson, JSONB inputRefsJson, String createdByKind, UUID runId, OffsetDateTime createdAt, UUID baseVersionId, JSONB frozenInputJson) {
         super(ArtifactVersion.ARTIFACT_VERSION);
 
         setId(id);
@@ -199,6 +235,8 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
         setCreatedByKind(createdByKind);
         setRunId(runId);
         setCreatedAt(createdAt);
+        setBaseVersionId(baseVersionId);
+        setFrozenInputJson(frozenInputJson);
         resetChangedOnNotNull();
     }
 }

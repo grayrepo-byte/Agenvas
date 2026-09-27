@@ -77,6 +77,7 @@ function snapshot(seq: number): ProjectSnapshot {
       archivedAt: null,
     },
     canvas: { items: [] },
+    connections: [],
     agents: [],
     activeRun: null,
     activeTasks: [],
@@ -174,6 +175,23 @@ describe("project event subscription", () => {
     stream.emit({ ...event(1, 1), type: "canvas.item.selected_version.changed",
       payload: { canvasItemId: aggregateId, selectedVersionId: crypto.randomUUID() } });
     expect(changes).toHaveLength(1);
+    stop();
+  });
+
+  it("delivers persistent canvas connection changes", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, {
+      open: () => stream, loadSnapshot: async () => snapshot(2),
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout,
+    });
+    stream.emit({ ...event(1, 0), type: "canvas.connection.created" });
+    stream.emit({ ...event(2, 0), type: "canvas.connection.deleted" });
+    expect(changes.map((value) => value.type)).toEqual([
+      "canvas.connection.created", "canvas.connection.deleted",
+    ]);
     stop();
   });
 

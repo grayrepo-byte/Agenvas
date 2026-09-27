@@ -144,42 +144,24 @@ class ArtifactPostgresIT {
                         json("{\"format\":\"MARKDOWN\",\"text\":\"Stale\"}")));
         assertDatabaseRejectsVersionMutation(text.resourceDefaultVersion().id());
 
-        // 视频正文以精确图片版本固定关键帧输入；该引用必须属于同一项目且类型为 IMAGE。
+        // 媒体正文不再携带关键帧字段；图片输入只存在于卡片草稿和任务冻结来源中。
         UUID videoAssetId = videoAsset(owner.userId(), project.id());
-        ArtifactService.ArtifactView foreignImage = artifactService.create(
-                owner.userId(), otherProject.id(), Artifact.Kind.IMAGE, "Foreign image",
-                upload(foreignAssetId));
         assertThatThrownByCode(
-                "ARTIFACT_REFERENCE_INVALID",
+                "ARTIFACT_SCHEMA_INVALID",
                 () -> artifactService.create(
                         owner.userId(),
                         project.id(),
                         Artifact.Kind.VIDEO,
-                        "Cross-project keyframe",
-                        video(videoAssetId, foreignImage.resourceDefaultVersion().id())));
-        assertThatThrownByCode(
-                "ARTIFACT_REFERENCE_INVALID",
-                () -> artifactService.create(
-                        owner.userId(),
-                        project.id(),
-                        Artifact.Kind.VIDEO,
-                        "Wrong kind keyframe",
-                        video(videoAssetId, text.resourceDefaultVersion().id())));
+                        "Legacy keyframe",
+                        legacyVideo(videoAssetId, validImage.resourceDefaultVersion().id())));
 
         ArtifactService.ArtifactView firstVideo = artifactService.create(
                 owner.userId(),
                 project.id(),
                 Artifact.Kind.VIDEO,
                 "First clip",
-                video(videoAssetId, validImage.resourceDefaultVersion().id()));
-        assertThat(firstVideo.resourceDefaultVersion().inputReferences())
-                .singleElement()
-                .satisfies(reference -> {
-                    assertThat(reference.role()).isEqualTo("keyframe");
-                    assertThat(reference.expectedKind()).isEqualTo(Artifact.Kind.IMAGE);
-                    assertThat(reference.versionId())
-                            .isEqualTo(validImage.resourceDefaultVersion().id());
-                });
+                video(videoAssetId));
+        assertThat(firstVideo.resourceDefaultVersion().inputReferences()).isEmpty();
 
         // 修改被引用图片只产生新版本；已固定旧版本关键帧的视频正文保持不变。
         UUID revisedAssetId = ImageAssetFixture.archive(assetService, owner.userId(), project.id());
@@ -195,37 +177,23 @@ class ArtifactPostgresIT {
                 project.id(),
                 Artifact.Kind.VIDEO,
                 "Second clip",
-                video(videoAssetId, revisedImage.resourceDefaultVersion().id()));
-        assertThat(artifactService
-                        .get(owner.userId(), project.id(), firstVideo.artifact().id())
-                        .resourceDefaultVersion()
-                        .content()
-                        .get("keyframeVersionId")
-                        .stringValue())
-                .isEqualTo(validImage.resourceDefaultVersion().id().toString());
-        assertThat(artifactService
-                        .get(owner.userId(), project.id(), secondVideo.artifact().id())
-                        .resourceDefaultVersion()
-                        .content()
-                        .get("keyframeVersionId")
-                        .stringValue())
-                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
+                video(videoAssetId));
+        assertThat(secondVideo.resourceDefaultVersion().inputReferences()).isEmpty();
 
-        // 显式改写视频只追加新版本；历史版本仍保留原先固定的关键帧引用。
+        // 显式改写视频只追加新版本，并记录资源默认版本作为分支父版本。
         ArtifactService.ArtifactView repinnedVideo = artifactService.revise(
                 owner.userId(),
                 project.id(),
                 firstVideo.artifact().id(),
                 0,
                 null,
-                video(videoAssetId, revisedImage.resourceDefaultVersion().id()));
-        assertThat(repinnedVideo.resourceDefaultVersion().content().path("keyframeVersionId").asText())
-                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
+                video(videoAssetId));
+        assertThat(repinnedVideo.resourceDefaultVersion().baseVersionId())
+                .isEqualTo(firstVideo.resourceDefaultVersion().id());
         assertThat(artifactService.listVersions(
                         owner.userId(), project.id(), firstVideo.artifact().id()))
-                .extracting(version -> version.content().path("keyframeVersionId").asText())
-                .containsExactly(revisedImage.resourceDefaultVersion().id().toString(),
-                        validImage.resourceDefaultVersion().id().toString());
+                .extracting(version -> version.baseVersionId())
+                .containsExactly(firstVideo.resourceDefaultVersion().id(), null);
 
         UUID foreignOwner = UUID.randomUUID();
         assertThatThrownByCode(
@@ -291,8 +259,7 @@ class ArtifactPostgresIT {
         }
     }
 
-    /** 视频正文可选地固定一个图片关键帧版本，用于验证类型化引用校验。 */
-    private JsonNode video(UUID assetId, UUID keyframeVersionId) {
+    private JsonNode video(UUID assetId) {
         return json("""
                 {
                   "assetId":"%s",
@@ -300,7 +267,16 @@ class ArtifactPostgresIT {
                   "providerConfigVersion":1,
                   "workflowVersion":"test-video-v1",
                   "parameters":{},
-                  "sourceTaskId":"%s",
+                  "sourceTaskId":"%s"
+                }
+                """.formatted(assetId, UUID.randomUUID()));
+    }
+
+    private JsonNode legacyVideo(UUID assetId, UUID keyframeVersionId) {
+        return json("""
+                {
+                  "assetId":"%s", "prompt":"Legacy", "providerConfigVersion":1,
+                  "workflowVersion":"legacy", "parameters":{}, "sourceTaskId":"%s",
                   "keyframeVersionId":"%s"
                 }
                 """.formatted(assetId, UUID.randomUUID(), keyframeVersionId));

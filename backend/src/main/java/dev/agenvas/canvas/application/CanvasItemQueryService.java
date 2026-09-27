@@ -25,6 +25,15 @@ public class CanvasItemQueryService {
         return item;
     }
 
+    /** Resolves the sole canvas representation of one owned Agent instance. */
+    @Transactional(readOnly = true)
+    public CanvasItem requireAgentItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        CanvasItem item = canvasItems.find(ownerId, projectId, canvasItemId)
+                .orElseThrow(this::notFound);
+        if (item.subjectType() != CanvasItem.SubjectType.AGENT) throw notFound();
+        return item;
+    }
+
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                 "画布卡片不存在", "画布卡片不存在或当前用户无权访问。", false);

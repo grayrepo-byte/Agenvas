@@ -10,8 +10,9 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersionReference.ArtifactVersionReferencePath;
+import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
-import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
+import dev.agenvas.db.tables.CanvasItemMediaInput.CanvasItemMediaInputPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
 
@@ -119,6 +120,20 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
      */
     public final TableField<ArtifactVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
 
+    /**
+     * The column <code>public.artifact_version.base_version_id</code>.
+     * Displayed parent version from the originating CanvasItem when this
+     * immutable version was created.
+     */
+    public final TableField<ArtifactVersionRecord, UUID> BASE_VERSION_ID = createField(DSL.name("base_version_id"), SQLDataType.UUID, this, "Displayed parent version from the originating CanvasItem when this immutable version was created.");
+
+    /**
+     * The column <code>public.artifact_version.frozen_input_json</code>.
+     * Read-only generation input copied from the accepting Task; null for
+     * uploads and text edits.
+     */
+    public final TableField<ArtifactVersionRecord, JSONB> FROZEN_INPUT_JSON = createField(DSL.name("frozen_input_json"), SQLDataType.JSONB, this, "Read-only generation input copied from the accepting Task; null for uploads and text edits.");
+
     private ArtifactVersion(Name alias, Table<ArtifactVersionRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -203,7 +218,7 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
 
     @Override
     public List<ForeignKey<ArtifactVersionRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT);
+        return Arrays.asList(Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_BASE);
     }
 
     private transient ArtifactPath _artifact;
@@ -216,6 +231,19 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _artifact = new ArtifactPath(this, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT, null);
 
         return _artifact;
+    }
+
+    private transient ArtifactVersionPath _artifactVersion;
+
+    /**
+     * Get the implicit join path to the <code>public.artifact_version</code>
+     * table.
+     */
+    public ArtifactVersionPath artifactVersion() {
+        if (_artifactVersion == null)
+            _artifactVersion = new ArtifactVersionPath(this, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_BASE, null);
+
+        return _artifactVersion;
     }
 
     private transient AgentBindingPath _agentBinding;
@@ -259,6 +287,32 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
         return _fkArtifactReferenceTarget;
     }
 
+    private transient CanvasConnectionPath _canvasConnection;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_connection</code> table
+     */
+    public CanvasConnectionPath canvasConnection() {
+        if (_canvasConnection == null)
+            _canvasConnection = new CanvasConnectionPath(this, null, Keys.CANVAS_CONNECTION__FK_CANVAS_CONNECTION_VERSION.getInverseKey());
+
+        return _canvasConnection;
+    }
+
+    private transient CanvasItemMediaInputPath _canvasItemMediaInput;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_item_media_input</code> table
+     */
+    public CanvasItemMediaInputPath canvasItemMediaInput() {
+        if (_canvasItemMediaInput == null)
+            _canvasItemMediaInput = new CanvasItemMediaInputPath(this, null, Keys.CANVAS_ITEM_MEDIA_INPUT__FK_CANVAS_ITEM_MEDIA_INPUT_VERSION.getInverseKey());
+
+        return _canvasItemMediaInput;
+    }
+
     private transient CanvasItemPath _canvasItem;
 
     /**
@@ -270,19 +324,6 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION.getInverseKey());
 
         return _canvasItem;
-    }
-
-    private transient MediaDraftPath _mediaDraft;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.media_draft</code>
-     * table
-     */
-    public MediaDraftPath mediaDraft() {
-        if (_mediaDraft == null)
-            _mediaDraft = new MediaDraftPath(this, null, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_INPUT.getInverseKey());
-
-        return _mediaDraft;
     }
 
     private transient TaskArtifactTargetPath _taskArtifactTarget;
@@ -305,6 +346,7 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             Internal.createCheck(this, DSL.name("ck_artifact_created_by_kind"), "(((created_by_kind)::text = ANY ((ARRAY['USER'::character varying, 'AGENT'::character varying, 'TASK'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_input_refs_array"), "((jsonb_typeof(input_refs_json) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_schema_version_positive"), "((schema_version > 0))", true),
+            Internal.createCheck(this, DSL.name("ck_artifact_version_frozen_input_object"), "(((frozen_input_json IS NULL) OR (jsonb_typeof(frozen_input_json) = 'object'::text)))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_version_no_positive"), "((version_no > 0))", true)
         );
     }

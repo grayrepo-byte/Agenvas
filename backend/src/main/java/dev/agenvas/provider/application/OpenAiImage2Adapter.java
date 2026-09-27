@@ -63,7 +63,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         }
         try {
             size(context);
-            if (context.lease().input().has("referenceImageVersionId")) {
+            if (!FrozenMediaInputs.images(context.lease()).isEmpty()) {
                 referencePng(context);
             }
             return null;
@@ -84,7 +84,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
-            return new Submission.Completed(context.lease().input().has("referenceImageVersionId")
+            return new Submission.Completed(!FrozenMediaInputs.images(context.lease()).isEmpty()
                     ? client.edit(key, model, prompt, quality, size(context), referencePng(context),
                             snapshot.connectionVersion().origin())
                     : client.generate(key, model, prompt, quality, size(context),
@@ -139,7 +139,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     /** Resolve only the exact same-project image version approved in the task input. */
     private byte[] referencePng(AttemptContext context) {
         Task task = context.lease();
-        UUID versionId = UUID.fromString(task.input().path("referenceImageVersionId").asText());
+        UUID versionId = FrozenMediaInputs.first(task).versionId();
         ArtifactVersion version = artifacts.requireImageVersionForTask(context.ownerId(),
                 task.projectId(), versionId);
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());

@@ -63,6 +63,8 @@ public class CanvasService {
     private final AgentInstanceService agents;
     /** 保存卡片级标题与布局，不持有产物正文。 */
     private final CanvasItemRepository canvasItems;
+    /** Cleans card-owned topology and downstream reference sources before deletion. */
+    private final CanvasConnectionService connections;
     /** 原子提交批量画布变化及项目事件。 */
     private final ProjectEventService events;
     /** 构造变化事件的受限负载。 */
@@ -85,6 +87,7 @@ public class CanvasService {
             MediaDraftService mediaDrafts,
             AgentInstanceService agents,
             CanvasItemRepository canvasItems,
+            CanvasConnectionService connections,
             ProjectEventService events,
             ObjectMapper objectMapper,
             Clock clock) {
@@ -93,6 +96,7 @@ public class CanvasService {
         this.mediaDrafts = mediaDrafts;
         this.agents = agents;
         this.canvasItems = canvasItems;
+        this.connections = connections;
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -106,6 +110,46 @@ public class CanvasService {
                 .map(item -> toEntry(ownerId, item))
                 .toList();
     }
+
+    /** Creates an independent media work branch from one fully persisted source card. */
+    @Transactional
+    public DuplicateResult duplicate(UUID ownerId, UUID projectId, UUID sourceItemId,
+            UUID targetItemId, long expectedSourceVersion, long expectedSourceDraftVersion,
+            BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, int zIndex) {
+        return events.recordChange(ownerId, projectId, () -> {
+            projects.requireActiveProject(ownerId, projectId);
+            validateGeometry(x, y, width, height, zIndex);
+            CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
+                    .orElseThrow(this::notFound);
+            if (source.version() != expectedSourceVersion) throw conflict();
+            if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
+                throw validation("只有图片和视频卡片可以复制工作分支。");
+            }
+            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
+                    source.subjectId());
+            if (artifact.artifact().kind() != Artifact.Kind.IMAGE
+                    && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+                throw validation("只有图片和视频卡片可以复制工作分支。");
+            }
+            CanvasItem target = placement(targetItemId, projectId,
+                    CanvasItem.SubjectType.ARTIFACT, source.subjectId(),
+                    source.selectedVersionId(), source.title(), x, y, width, height,
+                    zIndex, source.groupId(), false);
+            if (!canvasItems.create(target)) throw conflict();
+            var draft = mediaDrafts.duplicateWithinChange(ownerId, projectId,
+                    sourceItemId, targetItemId, expectedSourceDraftVersion);
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("sourceCanvasItemId", sourceItemId.toString());
+            payload.put("targetCanvasItemId", targetItemId.toString());
+            DuplicateResult result = new DuplicateResult(toEntry(ownerId, target), draft);
+            return ProjectEventService.Change.changed(result,
+                    new ProjectEventService.EventDraft("canvas.item.duplicated", 1,
+                            targetItemId, target.version(), payload));
+        }).value();
+    }
+
+    public record DuplicateResult(CanvasEntry item,
+            dev.agenvas.artifact.domain.MediaDraft draft) {}
 
     /**
      * 在调用方任务事务内将新产物放入 Agent 输出分组；已有卡片包括锁定卡片均不移动、不修改。
@@ -615,7 +659,11 @@ public class CanvasService {
             return;
         }
         if (current.version() != command.expectedVersion()
-                || !canvasItems.delete(
+                ) {
+            throw conflict();
+        }
+        connections.removeItemConnectionsWithinChange(ownerId, projectId, command.itemId());
+        if (!canvasItems.delete(
                         ownerId,
                         projectId,
                         command.itemId(),

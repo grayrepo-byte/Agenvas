@@ -136,7 +136,7 @@ public class ComfyUiImageWorker {
     /** 生成确定性种子的输入图并以请求键上传、提交固定模板。 */
     private TaskWorker.WaitingProvider submit(Task task, UUID requestKey) {
         UUID ownerId = tasks.ownerForWorker(task);
-        boolean reference = task.input().has("referenceImageVersionId");
+        boolean reference = !FrozenMediaInputs.images(task).isEmpty();
         byte[] image = inputImage(ownerId, task, reference);
         String uploaded = client.uploadImage(requestKey, image, "png");
         String prompt = task.input().path("prompt").asText();
@@ -156,7 +156,7 @@ public class ComfyUiImageWorker {
                 : ratio == Project.AspectRatio.SQUARE_1_1 ? 768 : 576;
         BufferedImage source = null;
         if (reference) {
-            UUID versionId = UUID.fromString(task.input().path("referenceImageVersionId").asText());
+            UUID versionId = FrozenMediaInputs.first(task).versionId();
             ArtifactVersion version = artifacts.requireImageVersionForTask(ownerId,
                     task.projectId(), versionId);
             UUID assetId = UUID.fromString(version.content().path("assetId").asText());
@@ -216,8 +216,6 @@ public class ComfyUiImageWorker {
         content.put("sourceTaskId", task.id().toString());
         ObjectNode parameters = content.putObject("parameters");
         parameters.put("providerRequestId", promptId.toString());
-        parameters.put("referenceImageVersionId",
-                task.input().path("referenceImageVersionId").asText(""));
         return new TaskWorker.PollGenerated(content);
     }
 }

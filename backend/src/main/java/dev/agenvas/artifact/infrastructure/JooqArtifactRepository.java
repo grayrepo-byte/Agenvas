@@ -3,6 +3,8 @@ package dev.agenvas.artifact.infrastructure;
 import static dev.agenvas.db.Tables.ARTIFACT;
 import static dev.agenvas.db.Tables.ARTIFACT_VERSION;
 import static dev.agenvas.db.Tables.ARTIFACT_VERSION_REFERENCE;
+import static dev.agenvas.db.Tables.CANVAS_ITEM_MEDIA_INPUT;
+import static dev.agenvas.db.Tables.CANVAS_ITEM_MEDIA_INPUT_SOURCE;
 import static dev.agenvas.db.Tables.IDEMPOTENCY_RECORD;
 import static dev.agenvas.db.Tables.MEDIA_DRAFT;
 import static dev.agenvas.db.Tables.PROJECT;
@@ -141,15 +143,54 @@ public class JooqArtifactRepository implements ArtifactRepository {
     public boolean updateMediaDraft(MediaDraft draft, long expectedVersion) {
         return dsl.update(MEDIA_DRAFT)
                 .set(MEDIA_DRAFT.PROMPT, draft.prompt())
-                .set(MEDIA_DRAFT.INPUT_IMAGE_VERSION_ID, draft.inputImageVersionId())
+                .set(MEDIA_DRAFT.PARAMETERS_JSON,
+                        JSONB.valueOf(draft.parameters().toString()))
                 .set(MEDIA_DRAFT.DURATION_SECONDS, draft.durationSeconds())
                 .set(MEDIA_DRAFT.CAPABILITY_ID, draft.capabilityId())
+                .set(MEDIA_DRAFT.VIDEO_INPUT_MODE, draft.videoInputMode() == null
+                        ? null : draft.videoInputMode().name())
+                .set(MEDIA_DRAFT.MENTIONS_JSON,
+                        JSONB.valueOf(objectMapper.writeValueAsString(draft.mentions())))
                 .set(MEDIA_DRAFT.VERSION, MEDIA_DRAFT.VERSION.plus(1))
                 .set(MEDIA_DRAFT.UPDATED_AT, utc(draft.updatedAt()))
                 .where(MEDIA_DRAFT.PROJECT_ID.eq(draft.projectId()))
                 .and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(draft.canvasItemId()))
                 .and(MEDIA_DRAFT.VERSION.eq(expectedVersion))
                 .execute() == 1;
+    }
+
+    @Override
+    public void replaceMediaInputs(UUID projectId, UUID canvasItemId,
+            List<MediaDraft.ImageInput> inputs, Instant now) {
+        dsl.deleteFrom(CANVAS_ITEM_MEDIA_INPUT)
+                .where(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID.eq(projectId))
+                .and(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID.eq(canvasItemId))
+                .execute();
+        for (MediaDraft.ImageInput input : inputs) {
+            dsl.insertInto(CANVAS_ITEM_MEDIA_INPUT)
+                    .set(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID, projectId)
+                    .set(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID, canvasItemId)
+                    .set(CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID, input.versionId())
+                    .set(CANVAS_ITEM_MEDIA_INPUT.INPUT_ROLE, input.role().name())
+                    .set(CANVAS_ITEM_MEDIA_INPUT.INPUT_ORDER, input.order())
+                    .set(CANVAS_ITEM_MEDIA_INPUT.COLOR, input.color())
+                    .set(CANVAS_ITEM_MEDIA_INPUT.CREATED_AT, utc(now))
+                    .set(CANVAS_ITEM_MEDIA_INPUT.UPDATED_AT, utc(now))
+                    .execute();
+            for (MediaDraft.InputSource source : input.sources()) {
+                dsl.insertInto(CANVAS_ITEM_MEDIA_INPUT_SOURCE)
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID, source.id())
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.PROJECT_ID, projectId)
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CANVAS_ITEM_ID, canvasItemId)
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.ARTIFACT_VERSION_ID,
+                                input.versionId())
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.SOURCE_TYPE, source.type().name())
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CONNECTION_ID,
+                                source.connectionId())
+                        .set(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CREATED_AT, utc(now))
+                        .execute();
+            }
+        }
     }
 
     @Override
@@ -214,6 +255,9 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .set(ARTIFACT_VERSION.ARTIFACT_ID, version.artifactId())
                 .set(ARTIFACT_VERSION.VERSION_NO, version.versionNo())
                 .set(ARTIFACT_VERSION.SCHEMA_VERSION, version.schemaVersion())
+                .set(ARTIFACT_VERSION.BASE_VERSION_ID, version.baseVersionId())
+                .set(ARTIFACT_VERSION.FROZEN_INPUT_JSON, version.frozenInput() == null
+                        ? null : JSONB.valueOf(version.frozenInput().toString()))
                 .set(ARTIFACT_VERSION.CONTENT_JSON, JSONB.valueOf(version.content().toString()))
                 .set(ARTIFACT_VERSION.INPUT_REFS_JSON,
                         JSONB.valueOf(objectMapper.writeValueAsString(version.inputReferences())))
@@ -400,6 +444,9 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 row.getArtifactId(),
                 row.getVersionNo(),
                 row.getSchemaVersion(),
+                row.getBaseVersionId(),
+                row.getFrozenInputJson() == null ? null
+                        : objectMapper.readTree(row.getFrozenInputJson().data()),
                 content,
                 List.of(),
                 ArtifactVersion.CreatedByKind.valueOf(row.getCreatedByKind()),
@@ -422,8 +469,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .join(ARTIFACT).on(ARTIFACT.ID.eq(ARTIFACT_VERSION.ARTIFACT_ID)
                         .and(ARTIFACT.PROJECT_ID.eq(ARTIFACT_VERSION.PROJECT_ID)))
                 .where(ARTIFACT_VERSION_REFERENCE.SOURCE_VERSION_ID.eq(version.id()))
-                .orderBy(ARTIFACT_VERSION_REFERENCE.REFERENCE_ROLE,
-                        ARTIFACT_VERSION_REFERENCE.REFERENCE_ORDER)
+                .orderBy(ARTIFACT_VERSION_REFERENCE.REFERENCE_ORDER)
                 .fetch(row -> new ArtifactVersion.InputReference(
                         row.value1(),
                         row.value2(),
@@ -435,6 +481,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 version.artifactId(),
                 version.versionNo(),
                 version.schemaVersion(),
+                version.baseVersionId(),
+                version.frozenInput(),
                 version.content(),
                 references,
                 version.createdByKind(),
@@ -458,13 +506,56 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     /** 映射草稿正文、可空生成参数及独立乐观版本。 */
     private MediaDraft mapMediaDraft(MediaDraftRecord row) {
+        List<MediaDraft.PromptMention> mentions = new java.util.ArrayList<>();
+        for (JsonNode mention : objectMapper.readTree(row.getMentionsJson().data())) {
+            mentions.add(new MediaDraft.PromptMention(
+                    UUID.fromString(mention.path("versionId").asText()),
+                    MediaDraft.InputRole.valueOf(mention.path("role").asText())));
+        }
+        Map<UUID, List<MediaDraft.InputSource>> sources = new LinkedHashMap<>();
+        dsl.select(CANVAS_ITEM_MEDIA_INPUT_SOURCE.ARTIFACT_VERSION_ID,
+                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID,
+                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.SOURCE_TYPE,
+                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.CONNECTION_ID)
+                .from(CANVAS_ITEM_MEDIA_INPUT_SOURCE)
+                .where(CANVAS_ITEM_MEDIA_INPUT_SOURCE.PROJECT_ID.eq(row.getProjectId()))
+                .and(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CANVAS_ITEM_ID.eq(row.getCanvasItemId()))
+                .orderBy(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CREATED_AT,
+                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID)
+                .forEach(source -> sources.computeIfAbsent(source.value1(), ignored ->
+                                new java.util.ArrayList<>())
+                        .add(new MediaDraft.InputSource(source.value2(),
+                                MediaDraft.SourceType.valueOf(source.value3()),
+                                source.value4())));
+        List<MediaDraft.ImageInput> inputs = dsl
+                .select(CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID,
+                        ARTIFACT_VERSION.ARTIFACT_ID,
+                        CANVAS_ITEM_MEDIA_INPUT.INPUT_ROLE,
+                        CANVAS_ITEM_MEDIA_INPUT.INPUT_ORDER,
+                        CANVAS_ITEM_MEDIA_INPUT.COLOR)
+                .from(CANVAS_ITEM_MEDIA_INPUT)
+                .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.PROJECT_ID.eq(
+                                CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID)
+                        .and(ARTIFACT_VERSION.ID.eq(
+                                CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID)))
+                .where(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID.eq(row.getProjectId()))
+                .and(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID.eq(row.getCanvasItemId()))
+                .orderBy(CANVAS_ITEM_MEDIA_INPUT.INPUT_ORDER)
+                .fetch(input -> new MediaDraft.ImageInput(input.value1(), input.value2(),
+                        MediaDraft.InputRole.valueOf(input.value3()), input.value4(),
+                        input.value5(), List.copyOf(sources.getOrDefault(input.value1(),
+                                List.of()))));
         return new MediaDraft(
                 row.getProjectId(),
                 row.getCanvasItemId(),
                 row.getPrompt(),
-                row.getInputImageVersionId(),
+                objectMapper.readTree(row.getParametersJson().data()),
                 row.getDurationSeconds(),
                 row.getCapabilityId(),
+                row.getVideoInputMode() == null ? null
+                        : MediaDraft.VideoInputMode.valueOf(row.getVideoInputMode()),
+                inputs,
+                List.copyOf(mentions),
                 MediaDraft.DisplayMode.valueOf(row.getDisplayMode()),
                 row.getVersion(),
                 row.getCreatedAt().toInstant(),

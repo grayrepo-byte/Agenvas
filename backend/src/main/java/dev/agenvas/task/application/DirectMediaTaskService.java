@@ -26,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Accepts a user's saved media draft as one immutable, unapproved direct Task. */
@@ -98,9 +99,20 @@ public class DirectMediaTaskService {
             MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
             if (draft.version() != expectedDraftVersion) throw conflict("草稿已变化，请检查保存状态后重试。");
             if (draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
+            if (kind == Task.Kind.VIDEO_GENERATION && draft.durationSeconds() == null) {
+                throw invalid("视频运行前需要选择时长。");
+            }
             if (kind == Task.Kind.VIDEO_GENERATION
-                    && (draft.inputImageVersionId() == null || draft.durationSeconds() == null)) {
-                throw invalid("视频运行前需要选择输入图片版本和时长。");
+                    && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
+                    && (draft.imageInputs().isEmpty()
+                            || draft.imageInputs().getFirst().role()
+                                    != MediaDraft.InputRole.START_FRAME)) {
+                throw invalid("首尾帧视频运行前需要选择首帧。");
+            }
+            if (kind == Task.Kind.VIDEO_GENERATION
+                    && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
+                    && draft.imageInputs().isEmpty()) {
+                throw invalid("全能参考视频运行前至少需要一张图片。");
             }
             int seconds = kind == Task.Kind.VIDEO_GENERATION ? draft.durationSeconds() : 0;
             MediaCapabilityBinding binding = draft.capabilityId() == null
@@ -108,6 +120,7 @@ public class DirectMediaTaskService {
                     : capabilities.resolve(draft.capabilityId(), kind, seconds);
             // A default binding must also support the draft's exact duration.
             binding = capabilities.resolve(binding.capabilityId(), kind, seconds);
+            validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding));
             ObjectNode input = mapper.createObjectNode();
             input.put("schemaVersion", 2);
             input.put("artifactId", artifactId.toString());
@@ -122,12 +135,30 @@ public class DirectMediaTaskService {
                     .connectionVersion().originSha256();
             if (originHash != null) input.put("providerOriginSha256", originHash);
             if (kind == Task.Kind.VIDEO_GENERATION) {
-                ArtifactVersion image = artifacts.requireImageVersionForTask(ownerId, projectId,
-                        draft.inputImageVersionId());
-                input.put("imageArtifactId", image.artifactId().toString());
-                input.put("imageVersionId", image.id().toString());
                 input.put("durationSeconds", seconds);
             }
+            ObjectNode frozen = input.putObject("mediaInput");
+            if (canvasItem.selectedVersionId() == null) frozen.putNull("parentVersionId");
+            else frozen.put("parentVersionId", canvasItem.selectedVersionId().toString());
+            frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
+                    ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
+                    : draft.videoInputMode().name());
+            frozen.put("prompt", draft.prompt());
+            frozen.set("parameters", draft.parameters().deepCopy());
+            frozen.put("capabilityId", binding.capabilityId().toString());
+            frozen.put("capabilityVersion", binding.capabilityVersion());
+            if (kind == Task.Kind.VIDEO_GENERATION) frozen.put("durationSeconds", seconds);
+            ArrayNode images = frozen.putArray("images");
+            for (MediaDraft.ImageInput imageInput : draft.imageInputs()) {
+                ArtifactVersion image = artifacts.requireImageVersionForTask(ownerId, projectId,
+                        imageInput.versionId());
+                ObjectNode imageNode = images.addObject();
+                imageNode.put("artifactId", image.artifactId().toString());
+                imageNode.put("versionId", image.id().toString());
+                imageNode.put("role", imageInput.role().name());
+                imageNode.put("order", imageInput.order());
+            }
+            frozen.set("mentions", mapper.valueToTree(draft.mentions()));
             Instant now = clock.instant();
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey, kind,
                     Task.Status.READY, false, input, hash(input.toString()), null, null, null,
@@ -206,6 +237,25 @@ public class DirectMediaTaskService {
                     .digest(input.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException unavailable) {
             throw new IllegalStateException("SHA-256 unavailable", unavailable);
+        }
+    }
+
+    private void validateCapabilityInputs(Task.Kind kind, MediaDraft draft,
+            dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy) {
+        if (kind == Task.Kind.IMAGE_GENERATION) {
+            if (draft.imageInputs().size() > policy.maxReferenceImages()) {
+                throw invalid("所选图片能力最多接受 " + policy.maxReferenceImages()
+                        + " 张参考图。");
+            }
+            return;
+        }
+        String mode = draft.videoInputMode().name();
+        if (!policy.supportedVideoInputModes().contains(mode)) {
+            throw invalid("所选视频能力不支持当前图片输入模式。");
+        }
+        if (!policy.supportsEndFrame() && draft.imageInputs().stream().anyMatch(input ->
+                input.role() == MediaDraft.InputRole.END_FRAME)) {
+            throw invalid("所选视频能力不支持尾帧。");
         }
     }
 

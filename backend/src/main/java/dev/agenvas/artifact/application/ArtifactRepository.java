@@ -38,6 +38,10 @@ public interface ArtifactRepository {
     /** Replace draft fields under its independent optimistic version. */
     boolean updateMediaDraft(MediaDraft draft, long expectedVersion);
 
+    /** Replace the complete ordered input set and all source rows in the draft transaction. */
+    void replaceMediaInputs(UUID projectId, UUID canvasItemId,
+            List<MediaDraft.ImageInput> inputs, Instant now);
+
     /** Change only the card face, without invalidating the saved input version. */
     void setMediaDraftDisplayMode(UUID projectId, UUID canvasItemId,
             MediaDraft.DisplayMode mode, Instant now);

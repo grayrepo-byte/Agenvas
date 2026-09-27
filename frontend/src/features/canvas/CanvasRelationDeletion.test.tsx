@@ -91,11 +91,12 @@ const linkedItems: CanvasItem[] = [
 const agentPatches: Array<Record<string, unknown>> = [];
 const revisions: Array<{ artifactId: string; body: Record<string, unknown> }> = [];
 const canvasCommands: Array<Record<string, unknown>> = [];
+const disconnectedConnections: Array<{ id: string; body: Record<string, unknown> }> = [];
 
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "删除项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items: linkedItems }, agents: [], activeRun: null, activeTasks: [],
+    canvas: { items: linkedItems }, connections: [], agents: [], activeRun: null, activeTasks: [],
     unknownTasks: [], snapshotSeq: 0 };
 }
 
@@ -103,6 +104,7 @@ beforeEach(() => {
   agentPatches.length = 0;
   revisions.length = 0;
   canvasCommands.length = 0;
+  disconnectedConnections.length = 0;
   flowProps = {};
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json({
@@ -113,10 +115,21 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json(snapshot())),
     http.get("/api/v1/projects/:projectId/canvas/items", () =>
       HttpResponse.json({ items: linkedItems })),
+    http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items: [{
+      id: "connection-id", projectId: "project-1", sourceCanvasItemId: "image-card",
+      targetCanvasItemId: "video-card", relationType: "MEDIA_INPUT",
+      sourceArtifactVersionId: imageVersionId, version: 0, createdAt: now, updatedAt: now,
+    }] })),
+    http.get("/api/v1/projects/:projectId/assets/:assetId", () => HttpResponse.json({
+      id: "asset-id", projectId: "project-1", mediaKind: "IMAGE", contentType: "image/png",
+      byteSize: 10, sha256: "a".repeat(64), width: 1, height: 1, durationMs: null,
+      createdAt: now,
+    })),
     http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft",
       ({ params }) => HttpResponse.json({
         projectId: String(params.projectId), canvasItemId: String(params.canvasItemId), prompt: "",
-        inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+        parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: "START_END",
+        imageInputs: [], mentions: [],
         displayMode: "RESULT", version: 0, createdAt: now, updatedAt: now,
       })),
     http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
@@ -127,6 +140,15 @@ beforeEach(() => {
       canvasCommands.push(...body.commands);
       return HttpResponse.json({ items: linkedItems });
     }),
+    http.post("/api/v1/projects/:projectId/canvas/connections/:connectionId/disconnect",
+      async ({ request, params }) => {
+        disconnectedConnections.push({ id: String(params.connectionId),
+          body: await request.json() as Record<string, unknown> });
+        return HttpResponse.json({ projectId: "project-1", canvasItemId: "video-card",
+          prompt: "", parameters: {}, durationSeconds: null, capabilityId: null,
+          videoInputMode: "START_END", imageInputs: [], mentions: [], displayMode: "RESULT",
+          version: 1, createdAt: now, updatedAt: now });
+      }),
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
       agentPatches.push(body);
@@ -174,13 +196,16 @@ describe("canvas relation deletion", () => {
     expect(canvasCommands).toHaveLength(0);
   });
 
-  it("writes nothing for a derived output line, an exact-version reference line, or a cascade from a removed card", async () => {
+  it("disconnects persisted media lines but ignores output lines and card-delete cascades", async () => {
     await renderFlow();
-    // 输出组线由 Agent 决定，精确版本引用线由生成时固定，两者都不能选中或删除。
+    // 输出组线由 Agent 决定；媒体输入线则映射到服务端持久化关系。
     expect(edge("output:")).toMatchObject({ deletable: false, selectable: false });
-    expect(edge("reference:")).toMatchObject({ deletable: false, selectable: false });
+    expect(edge("canvas-connection:").deletable).toBeUndefined();
     await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("output:")] });
-    await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("reference:")] });
+    await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("canvas-connection:")] });
+    await waitFor(() => expect(disconnectedConnections).toEqual([{
+      id: "connection-id", body: { expectedTargetDraftVersion: 0 },
+    }]));
     // 卡片被移除时，挂到它上面的关系线是级联来的，不能顺手删掉绑定或引用。
     await flowProps.onBeforeDelete!({ nodes: [{ id: "image-card",
       data: { item: linkedItems[0] } } as never], edges: [edge("input:")] });

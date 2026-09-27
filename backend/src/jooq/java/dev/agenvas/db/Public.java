@@ -14,7 +14,10 @@ import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
+import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
+import dev.agenvas.db.tables.CanvasItemMediaInput;
+import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
 import dev.agenvas.db.tables.CreativeDataResetMarker;
 import dev.agenvas.db.tables.IdempotencyRecord;
@@ -125,10 +128,27 @@ public class Public extends SchemaImpl {
     public final CallLog CALL_LOG = CallLog.CALL_LOG;
 
     /**
+     * Persistent CanvasItem-to-CanvasItem topology with the exact source
+     * version captured at creation.
+     */
+    public final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
+
+    /**
      * Spatial card plus card-local work context; Artifact content remains
      * immutable and shared.
      */
     public final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
+
+    /**
+     * Ordered exact image versions used by one CanvasItem media draft; identity
+     * and color are card-local.
+     */
+    public final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
+
+    /**
+     * Manual and connection reasons that keep a deduplicated media input alive.
+     */
+    public final CanvasItemMediaInputSource CANVAS_ITEM_MEDIA_INPUT_SOURCE = CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE;
 
     /**
      * The table <code>public.comfyui_config_version</code>.
@@ -325,7 +345,10 @@ public class Public extends SchemaImpl {
             ArtifactVersionReference.ARTIFACT_VERSION_REFERENCE,
             Asset.ASSET,
             CallLog.CALL_LOG,
+            CanvasConnection.CANVAS_CONNECTION,
             CanvasItem.CANVAS_ITEM,
+            CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT,
+            CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE,
             ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION,
             CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER,
             IdempotencyRecord.IDEMPOTENCY_RECORD,

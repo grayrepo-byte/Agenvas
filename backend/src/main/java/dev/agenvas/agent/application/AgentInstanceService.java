@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -100,7 +101,7 @@ public class AgentInstanceService {
         projects.requireActiveProject(ownerId, projectId);
         Instant now = clock.instant();
         List<AgentInstance.Binding> bindings =
-                validateBindings(ownerId, projectId, requestedBindings, now);
+                validateBindings(ownerId, projectId, requestedBindings, now, Map.of());
         AgentInstance instance = new AgentInstance(
                 UUID.randomUUID(),
                 projectId,
@@ -184,8 +185,26 @@ public class AgentInstanceService {
             throw versionConflict();
         }
         Instant now = clock.instant();
-        List<AgentInstance.Binding> bindings =
-                validateBindings(ownerId, projectId, requestedBindings, now);
+        Map<UUID, AgentInstance.Binding> connectedImages = current.bindings().stream()
+                .filter(binding -> artifacts.get(ownerId, projectId, binding.artifactId())
+                        .artifact().kind()
+                        == dev.agenvas.artifact.domain.Artifact.Kind.IMAGE)
+                .collect(java.util.stream.Collectors.toMap(
+                        AgentInstance.Binding::artifactId, binding -> binding));
+        Map<UUID, UUID> allowedImageVersions = connectedImages.entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,
+                        entry -> entry.getValue().selectedVersionId()));
+        List<AgentInstance.Binding> validated = validateBindings(ownerId, projectId,
+                requestedBindings, now, allowedImageVersions);
+        List<AgentInstance.Binding> bindings = new java.util.ArrayList<>(validated.stream()
+                .filter(binding -> !connectedImages.containsKey(binding.artifactId()))
+                .toList());
+        // IMAGE bindings are a projection of persistent canvas connections. Settings edits may
+        // retain them but cannot create or remove them independently of that topology.
+        bindings.addAll(connectedImages.values());
+        if (bindings.size() > MAX_BINDINGS) {
+            throw validation("Agent 输入最多绑定 40 个 Artifact。");
+        }
         AgentInstance replacement = new AgentInstance(
                 current.id(),
                 current.projectId(),
@@ -205,6 +224,61 @@ public class AgentInstanceService {
         return require(ownerId, projectId, agentId);
     }
 
+    /** Adds an exact image version captured by a CanvasItem connection. */
+    public AgentInstance addImageBindingWithinChange(UUID ownerId, UUID projectId,
+            UUID agentId, long expectedVersion, UUID artifactId, UUID versionId) {
+        AgentInstance current = agents.findForUpdate(ownerId, projectId, agentId)
+                .orElseThrow(this::notFound);
+        if (current.version() != expectedVersion) throw versionConflict();
+        ArtifactService.ArtifactView target = artifacts.get(ownerId, projectId, artifactId);
+        if (target.artifact().kind() != dev.agenvas.artifact.domain.Artifact.Kind.IMAGE) {
+            throw validation("Agent 图片连线只能绑定 IMAGE 版本。");
+        }
+        artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
+        AgentInstance.Binding existing = current.bindings().stream()
+                .filter(binding -> binding.artifactId().equals(artifactId))
+                .findFirst().orElse(null);
+        if (existing != null) {
+            if (!existing.selectedVersionId().equals(versionId)) {
+                throw validation("同一 Agent 不能通过画布连线同时绑定同一图片的不同版本。");
+            }
+            return current;
+        }
+        if (current.bindings().size() >= MAX_BINDINGS) {
+            throw validation("Agent 输入最多绑定 40 个 Artifact。");
+        }
+        List<AgentInstance.Binding> bindings = new java.util.ArrayList<>(current.bindings());
+        bindings.add(new AgentInstance.Binding(UUID.randomUUID(), artifactId, versionId,
+                AgentInstance.BindingType.INPUT, clock.instant()));
+        return replaceBindingsWithinChange(ownerId, current, bindings);
+    }
+
+    /** Removes an image binding after its final CanvasItem connection disappears. */
+    public AgentInstance removeImageBindingWithinChange(UUID ownerId, UUID projectId,
+            UUID agentId, long expectedVersion, UUID versionId) {
+        AgentInstance current = agents.findForUpdate(ownerId, projectId, agentId)
+                .orElseThrow(this::notFound);
+        if (current.version() != expectedVersion) throw versionConflict();
+        List<AgentInstance.Binding> bindings = current.bindings().stream()
+                .filter(binding -> !binding.selectedVersionId().equals(versionId)).toList();
+        return bindings.size() == current.bindings().size()
+                ? current : replaceBindingsWithinChange(ownerId, current, bindings);
+    }
+
+    private AgentInstance replaceBindingsWithinChange(UUID ownerId, AgentInstance current,
+            List<AgentInstance.Binding> bindings) {
+        Instant now = clock.instant();
+        AgentInstance replacement = new AgentInstance(current.id(), current.projectId(),
+                current.profileKey(), current.profileVersion(), current.name(),
+                current.instruction(), current.outputGroupId(), current.version(),
+                current.createdAt(), current.updatedAt(), List.copyOf(bindings));
+        if (!agents.update(ownerId, replacement, current.version(), now)) {
+            throw versionConflict();
+        }
+        agents.replaceBindings(current.projectId(), current.id(), bindings);
+        return require(ownerId, current.projectId(), current.id());
+    }
+
     /** Agent 事件只包含 ID 和版本，不广播卡片指令或绑定的媒体内容。 */
     private ProjectEventService.EventDraft agentEvent(AgentInstance agent) {
         ObjectNode payload = objectMapper.createObjectNode();
@@ -218,7 +292,8 @@ public class AgentInstanceService {
             UUID ownerId,
             UUID projectId,
             List<BindingInput> requestedBindings,
-            Instant now) {
+            Instant now,
+            Map<UUID, UUID> allowedImageVersions) {
         List<BindingInput> inputs = requestedBindings == null ? List.of() : requestedBindings;
         if (inputs.size() > MAX_BINDINGS) {
             throw validation("Agent 输入最多绑定 40 个 Artifact。");
@@ -232,11 +307,16 @@ public class AgentInstanceService {
                             || !artifactIds.add(input.artifactId())) {
                         throw validation("输入绑定必须完整且不能重复 Artifact。");
                     }
-                    artifacts.requireVersion(
-                            ownerId,
-                            projectId,
-                            input.artifactId(),
+                    ArtifactService.ArtifactView target = artifacts.get(
+                            ownerId, projectId, input.artifactId());
+                    artifacts.requireVersion(ownerId, projectId, input.artifactId(),
                             input.selectedVersionId());
+                    if (target.artifact().kind()
+                            == dev.agenvas.artifact.domain.Artifact.Kind.IMAGE
+                            && !input.selectedVersionId().equals(
+                                    allowedImageVersions.get(input.artifactId()))) {
+                        throw validation("Agent 图片输入只能通过画布连线添加或移除。");
+                    }
                     return new AgentInstance.Binding(
                             UUID.randomUUID(),
                             input.artifactId(),

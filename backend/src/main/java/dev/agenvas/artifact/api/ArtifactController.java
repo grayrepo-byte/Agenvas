@@ -207,6 +207,8 @@ public class ArtifactController {
             UUID id,
             int versionNo,
             int schemaVersion,
+            UUID baseVersionId,
+            JsonNode frozenInput,
             JsonNode content,
             List<InputReferenceResponse> inputReferences,
             ArtifactVersion.CreatedByKind createdByKind,
@@ -219,6 +221,8 @@ public class ArtifactController {
                     version.id(),
                     version.versionNo(),
                     version.schemaVersion(),
+                    version.baseVersionId(),
+                    version.frozenInput(),
                     version.content(),
                     version.inputReferences().stream()
                             .map(InputReferenceResponse::from)

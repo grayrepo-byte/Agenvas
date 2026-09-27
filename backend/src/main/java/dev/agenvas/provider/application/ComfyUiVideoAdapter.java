@@ -137,8 +137,9 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
     /** Decode and normalize the exact pinned input image version, never a caller-supplied URL. */
     private byte[] pinnedInputImage(UUID ownerId, Task task, ComfyUiVideoWorkflow workflow,
             Project.AspectRatio ratio) {
-        UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
-        UUID versionId = UUID.fromString(task.input().path("imageVersionId").asText());
+        FrozenMediaInputs.Image image = FrozenMediaInputs.first(task);
+        UUID imageId = image.artifactId();
+        UUID versionId = image.versionId();
         ArtifactVersion version = artifacts.requireVersion(ownerId, task.projectId(),
                 imageId, versionId);
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());

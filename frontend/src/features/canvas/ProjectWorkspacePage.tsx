@@ -23,16 +23,21 @@ import { Link, Navigate, useParams } from "react-router";
 import {
   ApiError,
   applyCanvasCommands,
+  createCanvasConnection,
   createAgent,
   createArtifact,
   getCurrentUser,
+  getMediaDraft,
   getProject,
   getProjectSnapshot,
   listCanvasItems,
+  listCanvasConnections,
   listArtifacts,
   projectExportManifestUrl,
   uploadImageAsset,
   updateAgent,
+  disconnectCanvasConnection,
+  duplicateCanvasItem,
   type Agent,
   type AgentRun,
   type Artifact,
@@ -54,8 +59,8 @@ import { X } from "@phosphor-icons/react";
 import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
 import { CanvasHandle } from "./CanvasHandle";
-import { canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
-  isCanvasConnectionValid, projectCanvasRelations,
+import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
+  isCanvasConnectionValid, mediaInputConnection, projectCanvasRelations,
   type CanvasRelationRemoval } from "./canvasRelations";
 import { CANVAS_MAX_SIZE, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
 import { useImageNodeRatios } from "./useImageNodeRatios";
@@ -104,6 +109,7 @@ type CanvasNodeData = {
   onToggleLocked: (item: CanvasItem) => void;
   onInspect: (item: CanvasItem) => void;
   onUpload: (item: CanvasItem) => void;
+  onDuplicate: (item: CanvasItem) => void;
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
   updatingAgent: boolean;
   updateAgentError: Error | null;
@@ -183,6 +189,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryFn: () => listCanvasItems(projectId),
     enabled: snapshot.isSuccess,
   });
+  const canvasConnections = useQuery({
+    queryKey: ["canvas-connections", projectId],
+    queryFn: () => listCanvasConnections(projectId),
+    enabled: snapshot.isSuccess,
+  });
   const imageRatios = useImageNodeRatios(canvas.data?.items);
   const effectiveNodeSize = useCallback((item: CanvasItem, patch?: Partial<LayoutPatch>) => {
     const draft = useCanvasStore.getState().drafts[item.id];
@@ -204,6 +215,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
             event.type === "agent.instance.changed") {
           void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
+          if (event.type.startsWith("canvas.connection.")) {
+            void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
+            void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
+          }
+          if (event.type === "canvas.items.changed") {
+            void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
+            void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
+          }
           if (event.type === "agent.instance.changed") {
             void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
           }
@@ -247,6 +266,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         }
         if (event.type === "media.draft.changed") {
           void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
+          void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
         }
         if (event.type === "usage.changed") {
           void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
@@ -256,6 +276,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         queryClient.setQueryData(["snapshot", projectId], fresh);
         queryClient.setQueryData(["projects", projectId], fresh.project);
         queryClient.setQueryData(["canvas", projectId], fresh.canvas);
+        queryClient.setQueryData(["canvas-connections", projectId], { items: fresh.connections });
         // The snapshot contains the current workspace, but not historical panels or lists.
         // A missed event may have changed any of them while the stream was unavailable.
         void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
@@ -305,6 +326,34 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["canvas", projectId], saved);
       clearDraft(item.id);
       setInspectingId(null);
+      setSaveState("saved");
+    },
+    onError: setSaveError,
+  });
+  const duplicateMediaItem = useMutation({
+    mutationFn: async (item: CanvasItem) => {
+      const draft = await getMediaDraft(projectId, item.id);
+      const targetItemId = crypto.randomUUID();
+      const result = await duplicateCanvasItem(projectId, item.id, {
+        targetItemId,
+        expectedSourceVersion: item.version,
+        expectedSourceDraftVersion: draft.version,
+        x: item.x + 32,
+        y: item.y + 32,
+        width: item.width,
+        height: item.height,
+        zIndex: Math.min(1000, item.zIndex + 1),
+      });
+      return result;
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(["media-draft", projectId, result.item.id], result.draft);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["canvas", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] }),
+      ]);
+      setSelectedIds([result.item.id]);
       setSaveState("saved");
     },
     onError: setSaveError,
@@ -547,21 +596,64 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
   const connectInput = useMutation({
     mutationFn: async (connection: Connection) => {
-      const update = inputConnectionUpdate(canvas.data?.items ?? [], connection);
-      if (!update) {
-        throw new CanvasConnectionError("仅支持把 Artifact 连到 Agent 输入；连线不会触发生成。");
+      const agentImage = agentImageConnection(canvas.data?.items ?? [], connection);
+      if (agentImage) {
+        await createCanvasConnection(projectId, {
+          sourceCanvasItemId: agentImage.sourceCanvasItemId,
+          targetCanvasItemId: agentImage.targetCanvasItemId,
+          sourceVersionId: agentImage.sourceVersionId,
+          relationType: "AGENT_IMAGE_INPUT",
+          expectedTargetAgentVersion: agentImage.agent.version,
+        });
+        return;
       }
-      await updateAgent(projectId, update.agent.id, {
-        expectedVersion: update.agent.version,
-        name: update.agent.name,
-        instruction: update.agent.instruction,
-        bindings: update.bindings,
-      });
-      return listCanvasItems(projectId);
+      const update = inputConnectionUpdate(canvas.data?.items ?? [], connection);
+      if (update) {
+        await updateAgent(projectId, update.agent.id, {
+          expectedVersion: update.agent.version,
+          name: update.agent.name,
+          instruction: update.agent.instruction,
+          bindings: update.bindings,
+        });
+        return;
+      }
+      const media = mediaInputConnection(canvas.data?.items ?? [], connection);
+      if (!media) throw new CanvasConnectionError("仅支持把图片卡片连到媒体或 Agent 输入。");
+      const targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
+      await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
+        expectedTargetDraftVersion: targetDraft.version });
     },
     onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["canvas", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] }),
+      ]);
+      setSaveState("saved");
+    },
+    onError: setSaveError,
+  });
+  const removeMediaConnection = useMutation({
+    mutationFn: async ({ connection }: Extract<CanvasRelationRemoval, { kind: "mediaConnection" }>) => {
+      if (connection.relationType === "AGENT_IMAGE_INPUT") {
+        const target = canvas.data?.items.find((item) => item.id === connection.targetCanvasItemId);
+        if (!target?.agent) throw new CanvasConnectionError("Agent 卡片已不存在，请刷新画布。");
+        return disconnectCanvasConnection(projectId, connection.id, {
+          expectedTargetAgentVersion: target.agent.version,
+        });
+      }
+      const targetDraft = await getMediaDraft(projectId, connection.targetCanvasItemId);
+      return disconnectCanvasConnection(projectId, connection.id, {
+        expectedTargetDraftVersion: targetDraft.version,
+      });
+    },
+    onMutate: () => setSaveState("saving"),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] }),
+      ]);
       setSaveState("saved");
     },
     onError: setSaveError,
@@ -639,6 +731,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const toggleLockedMutate = toggleLocked.mutate;
   const editAgentMutate = editAgent.mutate;
   const removeInputBindingMutate = removeInputBinding.mutate;
+  const removeMediaConnectionMutate = removeMediaConnection.mutate;
   const connectInputMutate = connectInput.mutate;
 
   const handleResizeEnd = useCallback(
@@ -655,6 +748,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     (item: CanvasItem) => removeItemMutate(item),
     [removeItemMutate],
   );
+  const handleDuplicate = useCallback(
+    (item: CanvasItem) => duplicateMediaItem.mutate(item),
+    [duplicateMediaItem],
+  );
   const handleToggleLocked = useCallback(
     (item: CanvasItem) => toggleLockedMutate(item),
     [toggleLockedMutate],
@@ -670,18 +767,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    */
   const handleBeforeDelete = useCallback(
     async ({ nodes: deletedNodes, edges: deletedEdges }: { nodes: CanvasNode[]; edges: Edge[] }) => {
-      // 移除卡片不动内容：Artifact 与它参与的关系都还在，所以级联到被删卡片的关系线不跟着删。
+      // 移除卡片不动 Artifact 内容；服务端会同步清理以该卡片为端点的画布拓扑关系。
       const deletedIds = new Set(deletedNodes.map((node) => node.id));
       const relations = deletedEdges.filter((edge) =>
         !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
       for (const node of deletedNodes) removeItemMutate(node.data.item);
       for (const edge of relations) {
-        const removal = canvasRelationRemoval(canvas.data?.items ?? [], edge);
-        if (removal) removeInputBindingMutate(removal);
+        const removal = canvasRelationRemoval(canvas.data?.items ?? [], canvasConnections.data?.items ?? [], edge);
+        if (removal?.kind === "inputBinding") removeInputBindingMutate(removal);
+        if (removal?.kind === "mediaConnection") removeMediaConnectionMutate(removal);
       }
       return false;
     },
-    [canvas.data?.items, removeInputBindingMutate, removeItemMutate],
+    [canvas.data?.items, canvasConnections.data?.items, removeInputBindingMutate,
+      removeItemMutate, removeMediaConnectionMutate],
   );
   /**
    * A drop lands on the card under the pointer, so a big card does not require aiming at its left port.
@@ -786,6 +885,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onToggleLocked: handleToggleLocked,
               onInspect: handleInspect,
               onUpload: handleUpload,
+              onDuplicate: handleDuplicate,
               onUpdateAgent: handleUpdateAgent,
               updatingAgent: editAgent.isPending,
               updateAgentError: editAgent.error,
@@ -808,6 +908,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleToggleLocked,
       handleInspect,
       handleUpload,
+      handleDuplicate,
       handleUpdateAgent,
       imageRatios,
       projectId,
@@ -823,9 +924,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    * them back on the prop. Selection is therefore the only locally owned part of a line.
    */
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
-  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [])
+  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? [])
     .map((edge) => selectedEdgeIds.includes(edge.id) ? { ...edge, selected: true } : edge),
-    [canvas.data?.items, selectedEdgeIds]);
+    [canvas.data?.items, canvasConnections.data?.items, selectedEdgeIds]);
   const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
     setSelectedEdgeIds((current) => {
       const next = new Set(current);
@@ -1066,8 +1167,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-sm font-semibold">选择与对齐</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Cmd（macOS）或 Ctrl（其他系统）点击追加选择；按住 Shift 拖出选框可选择多张卡片。</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入绑定；落在另一张 Artifact 上无效，卡片之间的精确版本引用由生成时固定，不能手工建立。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是输入（指向历史版本时是虚线）、绿线是输出组、灰虚线是精确版本输入；连线不会触发生成。</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中蓝线按 Delete 或退格删除对应的输入绑定。绿线与灰虚线由 Agent 输出组和生成时固定的输入决定，都不能单独删除。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入绑定；图片落在图片或视频卡片上会把当前展示的精确版本加入目标草稿，但不会触发生成。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是 Agent 输入，灰线是媒体输入，指向历史版本时使用虚线，绿线是输出组。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中 Agent 输入线或媒体输入线可删除对应关系。输出组和生成版本内冻结的来源记录不能单独删除。</p>
           <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
           <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">把已选 Artifact 绑定到 Agent</button>
           <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">清空已选 Agent 输入</button>
@@ -1253,7 +1354,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {halo}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO"
         ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
-          onUpload={() => data.onUpload(data.item)} />
+          onUpload={() => data.onUpload(data.item)} onDuplicate={() => data.onDuplicate(data.item)} />
         : <ContentCanvasCard {...cardProps} />}
     </>
   );
@@ -1264,8 +1365,8 @@ const nodeTypes = { canvasCard: CanvasCardNode };
 
 function selectedArtifactBindings(items: CanvasItem[], selectedIds: string[]) {
   return items.flatMap((item) => {
-    if (!selectedIds.includes(item.id) || !item.artifact) return [];
-    const selectedVersionId = item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO"
+    if (!selectedIds.includes(item.id) || !item.artifact || item.artifact.kind === "IMAGE") return [];
+    const selectedVersionId = item.artifact.kind === "VIDEO"
       ? item.selectedVersionId : item.artifact.resourceDefaultVersionId;
     if (!selectedVersionId) return [];
     return [{ artifactId: item.artifact.id, selectedVersionId }];

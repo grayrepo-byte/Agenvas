@@ -84,7 +84,8 @@ class MediaDraftPostgresIT {
         assertThat(initial.path("prompt").asText()).isEmpty();
         assertThat(initial.path("version").asLong()).isZero();
 
-        String save = "{\"expectedVersion\":0,\"prompt\":\"A red kite over a lake\"}";
+        String save = "{\"expectedVersion\":0,\"prompt\":\"A red kite over a lake\","
+                + "\"parameters\":{},\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}";
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
                 .content(save)).andExpect(status().isOk());
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
@@ -144,7 +145,8 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(resultDraft.path("displayMode").asText()).isEqualTo("RESULT");
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
-                .content("{\"expectedVersion\":1,\"prompt\":\"Second concept\"}"))
+                .content("{\"expectedVersion\":1,\"prompt\":\"Second concept\","
+                        + "\"parameters\":{},\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         JsonNode edited = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -165,7 +167,8 @@ class MediaDraftPostgresIT {
         JsonNode retainedResult = mapper.readTree(mvc.perform(put(draftPath)
                         .with(auth).with(csrf()).contentType("application/json")
                         .content("{\"expectedVersion\":" + restoredResult.path("version").asLong()
-                                + ",\"prompt\":\"Next concept\"}"))
+                                + ",\"prompt\":\"Next concept\",\"parameters\":{},"
+                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(retainedResult.path("displayMode").asText()).isEqualTo("RESULT");
         JsonNode reloadedResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
@@ -201,7 +204,9 @@ class MediaDraftPostgresIT {
         String videoItemId = place(mvc, auth, base, videoId);
         String videoDraftPath = base + "/canvas-items/" + videoItemId + "/media-draft";
         mvc.perform(put(videoDraftPath).with(auth).with(csrf()).contentType("application/json")
-                .content("{\"expectedVersion\":0,\"prompt\":\"Camera pans left\"}"))
+                .content("{\"expectedVersion\":0,\"prompt\":\"Camera pans left\","
+                        + "\"parameters\":{},\"videoInputMode\":\"START_END\","
+                        + "\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         mvc.perform(post(base + "/artifacts/" + videoId + "/run")
                 .with(auth).with(csrf()).contentType("application/json")
@@ -211,8 +216,11 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isBadRequest());
         mvc.perform(put(videoDraftPath).with(auth).with(csrf()).contentType("application/json")
                 .content("{\"expectedVersion\":1,\"prompt\":\"Camera pans left\","
-                        + "\"inputImageVersionId\":\"" + completedCard.path("selectedVersionId").asText()
-                        + "\",\"durationSeconds\":5}"))
+                        + "\"parameters\":{},\"videoInputMode\":\"START_END\","
+                        + "\"imageInputs\":[{\"versionId\":\""
+                        + completedCard.path("selectedVersionId").asText()
+                        + "\",\"role\":\"START_FRAME\",\"color\":\"#7C3AED\"}],"
+                        + "\"mentions\":[],\"durationSeconds\":5}"))
                 .andExpect(status().isOk());
         JsonNode videoTask = mapper.readTree(mvc.perform(post(base + "/artifacts/" + videoId
                         + "/run").with(auth).with(csrf()).contentType("application/json")
@@ -220,7 +228,8 @@ class MediaDraftPostgresIT {
                         .content("{\"canvasItemId\":\"" + videoItemId
                                 + "\",\"expectedDraftVersion\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(videoTask.path("input").path("imageVersionId").asText())
+        assertThat(videoTask.path("input").path("mediaInput").path("images").get(0)
+                .path("versionId").asText())
                 .isEqualTo(completedCard.path("selectedVersionId").asText());
         UUID videoTaskId = UUID.fromString(videoTask.path("id").asText());
         mvc.perform(post(base + "/tasks/" + videoTaskId + "/cancel-queued")
@@ -240,7 +249,9 @@ class MediaDraftPostgresIT {
             String itemId = place(mvc, auth, base, cardId);
             mvc.perform(put(base + "/canvas-items/" + itemId + "/media-draft")
                     .with(auth).with(csrf()).contentType("application/json")
-                    .content("{\"expectedVersion\":0,\"prompt\":\"Parallel concept\"}"))
+                    .content("{\"expectedVersion\":0,\"prompt\":\"Parallel concept\","
+                            + "\"parameters\":{},\"videoInputMode\":null,"
+                            + "\"imageInputs\":[],\"mentions\":[]}"))
                     .andExpect(status().isOk());
             JsonNode accepted = mapper.readTree(mvc.perform(post(base + "/artifacts/"
                             + cardId + "/run").with(auth).with(csrf())
@@ -292,7 +303,9 @@ class MediaDraftPostgresIT {
         String otherItemId = place(mvc, auth, otherBase, otherId);
         mvc.perform(put(otherBase + "/canvas-items/" + otherItemId + "/media-draft")
                 .with(auth).with(csrf()).contentType("application/json")
-                .content("{\"expectedVersion\":0,\"prompt\":\"A quiet lake\"}"))
+                .content("{\"expectedVersion\":0,\"prompt\":\"A quiet lake\","
+                        + "\"parameters\":{},\"videoInputMode\":null,"
+                        + "\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         JsonNode limitedTask = mapper.readTree(mvc.perform(post(otherBase + "/artifacts/"
                         + otherId + "/run").with(auth).with(csrf())

@@ -9,6 +9,7 @@ import dev.agenvas.db.tables.MediaDraft;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
 
@@ -65,101 +66,129 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     }
 
     /**
-     * Setter for <code>public.media_draft.input_image_version_id</code>.
-     */
-    public void setInputImageVersionId(UUID value) {
-        set(3, value);
-    }
-
-    /**
-     * Getter for <code>public.media_draft.input_image_version_id</code>.
-     */
-    public UUID getInputImageVersionId() {
-        return (UUID) get(3);
-    }
-
-    /**
      * Setter for <code>public.media_draft.duration_seconds</code>.
      */
     public void setDurationSeconds(Integer value) {
-        set(4, value);
+        set(3, value);
     }
 
     /**
      * Getter for <code>public.media_draft.duration_seconds</code>.
      */
     public Integer getDurationSeconds() {
-        return (Integer) get(4);
+        return (Integer) get(3);
     }
 
     /**
      * Setter for <code>public.media_draft.capability_id</code>.
      */
     public void setCapabilityId(UUID value) {
-        set(5, value);
+        set(4, value);
     }
 
     /**
      * Getter for <code>public.media_draft.capability_id</code>.
      */
     public UUID getCapabilityId() {
-        return (UUID) get(5);
+        return (UUID) get(4);
     }
 
     /**
      * Setter for <code>public.media_draft.display_mode</code>.
      */
     public void setDisplayMode(String value) {
-        set(6, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.media_draft.display_mode</code>.
      */
     public String getDisplayMode() {
-        return (String) get(6);
+        return (String) get(5);
     }
 
     /**
      * Setter for <code>public.media_draft.version</code>.
      */
     public void setVersion(Long value) {
-        set(7, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.media_draft.version</code>.
      */
     public Long getVersion() {
-        return (Long) get(7);
+        return (Long) get(6);
     }
 
     /**
      * Setter for <code>public.media_draft.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(8, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.media_draft.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(8);
+        return (OffsetDateTime) get(7);
     }
 
     /**
      * Setter for <code>public.media_draft.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(9, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.media_draft.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(9);
+        return (OffsetDateTime) get(8);
+    }
+
+    /**
+     * Setter for <code>public.media_draft.parameters_json</code>.
+     */
+    public void setParametersJson(JSONB value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.parameters_json</code>.
+     */
+    public JSONB getParametersJson() {
+        return (JSONB) get(9);
+    }
+
+    /**
+     * Setter for <code>public.media_draft.video_input_mode</code>.
+     */
+    public void setVideoInputMode(String value) {
+        set(10, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.video_input_mode</code>.
+     */
+    public String getVideoInputMode() {
+        return (String) get(10);
+    }
+
+    /**
+     * Setter for <code>public.media_draft.mentions_json</code>.
+     */
+    public void setMentionsJson(JSONB value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.mentions_json</code>.
+     */
+    public JSONB getMentionsJson() {
+        return (JSONB) get(11);
     }
 
     // -------------------------------------------------------------------------
@@ -185,19 +214,21 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     /**
      * Create a detached, initialised MediaDraftRecord
      */
-    public MediaDraftRecord(UUID projectId, UUID canvasItemId, String prompt, UUID inputImageVersionId, Integer durationSeconds, UUID capabilityId, String displayMode, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public MediaDraftRecord(UUID projectId, UUID canvasItemId, String prompt, Integer durationSeconds, UUID capabilityId, String displayMode, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, JSONB parametersJson, String videoInputMode, JSONB mentionsJson) {
         super(MediaDraft.MEDIA_DRAFT);
 
         setProjectId(projectId);
         setCanvasItemId(canvasItemId);
         setPrompt(prompt);
-        setInputImageVersionId(inputImageVersionId);
         setDurationSeconds(durationSeconds);
         setCapabilityId(capabilityId);
         setDisplayMode(displayMode);
         setVersion(version);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setParametersJson(parametersJson);
+        setVideoInputMode(videoInputMode);
+        setMentionsJson(mentionsJson);
         resetChangedOnNotNull();
     }
 }

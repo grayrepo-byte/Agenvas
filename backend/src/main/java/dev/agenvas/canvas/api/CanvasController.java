@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 已认证的画布展示状态读取与原子命令 REST 边界。 */
@@ -57,6 +58,30 @@ public class CanvasController {
                 request.commands().stream().map(this::toCommand).toList();
         return CanvasResponse.from(canvas.apply(principal.userId(), projectId, commands));
     }
+
+    /** Copies one saved media card branch without inheriting tasks or canvas topology. */
+    @PostMapping("/items/{sourceItemId}/duplicate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public DuplicateCanvasItemResponse duplicate(
+            @AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID sourceItemId,
+            @Valid @RequestBody DuplicateCanvasItemRequest request) {
+        CanvasService.DuplicateResult result = canvas.duplicate(principal.userId(), projectId,
+                sourceItemId, request.targetItemId(), request.expectedSourceVersion(),
+                request.expectedSourceDraftVersion(), request.x(), request.y(),
+                request.width(), request.height(), request.zIndex());
+        return new DuplicateCanvasItemResponse(CanvasItemResponse.from(result.item()),
+                result.draft());
+    }
+
+    public record DuplicateCanvasItemRequest(@NotNull UUID targetItemId,
+            @PositiveOrZero long expectedSourceVersion,
+            @PositiveOrZero long expectedSourceDraftVersion,
+            @NotNull BigDecimal x, @NotNull BigDecimal y,
+            @NotNull BigDecimal width, @NotNull BigDecimal height, int zIndex) {}
+
+    public record DuplicateCanvasItemResponse(CanvasItemResponse item,
+            dev.agenvas.artifact.domain.MediaDraft draft) {}
 
     /** 按命令类型提取必填字段并转换为封闭的应用层命令。 */
     private CanvasService.CanvasCommand toCommand(CanvasCommandRequest request) {

@@ -319,6 +319,15 @@ public class MediaCapabilityService {
         normalized.put("kind", declaration.kind().name());
         normalized.put("minimumSeconds", declaration.minimumSeconds());
         normalized.put("maximumSeconds", declaration.maximumSeconds());
+        normalized.put("maxReferenceImages", declaration.maxReferenceImages());
+        var modes = normalized.putArray("supportedVideoInputModes");
+        declaration.supportedVideoInputModes().stream().sorted().forEach(modes::add);
+        if (declaration.defaultVideoInputMode() == null) {
+            normalized.putNull("defaultVideoInputMode");
+        } else {
+            normalized.put("defaultVideoInputMode", declaration.defaultVideoInputMode());
+        }
+        normalized.put("supportsEndFrame", declaration.supportsEndFrame());
         if ("OPENAI_GPT_IMAGE_2".equals(adapterId)) {
             normalized.put("modelId", "gpt-image-2");
             normalized.put("outputFormat", "png");
@@ -389,6 +398,11 @@ public class MediaCapabilityService {
 
     public UUID defaultCapabilityId(Task.Kind kind) {
         return repository.defaultCapabilityId(requireMediaKind(kind).name());
+    }
+
+    /** Immutable input policy of the exact compiled adapter pinned by this task. */
+    public MediaAdapterRegistry.Declaration inputPolicy(MediaCapabilityBinding binding) {
+        return registry.declaration(binding.adapterId());
     }
 
     @Transactional

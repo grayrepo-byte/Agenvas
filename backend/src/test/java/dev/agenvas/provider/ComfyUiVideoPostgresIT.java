@@ -155,7 +155,8 @@ class ComfyUiVideoPostgresIT {
                 "Keyframe card", null);
         UUID imageItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), imageCard.artifact().id());
-        MediaDraft imageDraft = drafts.save(owner.userId(), project.id(),
+        MediaDraft imageDraft = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(),
                 imageItemId, 0, "Cinematic coffee pour", null, null, null);
         Task imageTask = directMedia.run(owner.userId(), project.id(),
                 imageCard.artifact().id(), imageItemId,
@@ -173,7 +174,8 @@ class ComfyUiVideoPostgresIT {
                 "Clip card", null);
         UUID videoItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), videoCard.artifact().id());
-        MediaDraft videoDraft = drafts.save(owner.userId(), project.id(),
+        MediaDraft videoDraft = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(),
                 videoItemId, 0, "Cinematic coffee pour", imageVersion, 5, null);
         assertThat(VIDEO_SUBMISSIONS).hasValue(0);
         Task videoTask = directMedia.run(owner.userId(), project.id(),
@@ -181,7 +183,8 @@ class ComfyUiVideoPostgresIT {
                 videoDraft.version(), "comfy-video-run");
         assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
-        assertThat(videoTask.input().path("imageVersionId").asText())
+        assertThat(videoTask.input().path("mediaInput").path("images").get(0)
+                .path("versionId").asText())
                 .isEqualTo(imageVersion.toString());
         assertThat(videoTask.input().path("providerOriginSha256").asText())
                 .isEqualTo(client.originSha256());
@@ -257,7 +260,7 @@ class ComfyUiVideoPostgresIT {
                 .filter(entry -> entry.item().id().equals(videoItemId))
                 .findFirst().orElseThrow().item().selectedVersionId())
                 .isEqualTo(completedVersionId);
-        assertThat(version.content().path("keyframeVersionId").asText())
+        assertThat(version.frozenInput().path("images").get(0).path("versionId").asText())
                 .isEqualTo(imageVersion.toString());
         assertThat(version.content().path("providerConfigVersion").asInt()).isEqualTo(1);
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());

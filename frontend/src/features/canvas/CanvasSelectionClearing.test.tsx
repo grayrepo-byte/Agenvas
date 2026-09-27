@@ -81,7 +81,7 @@ const items: CanvasItem[] = [
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "选中项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items }, agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
+    canvas: { items }, connections: [], agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -108,7 +108,8 @@ beforeEach(() => {
       id: params.assetId, width: 1024, height: 1024 })),
     http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
       HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
-        inputImageVersionId: null, durationSeconds: null, capabilityId: null, version: 0,
+        parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: null,
+        imageInputs: [], mentions: [], displayMode: "RESULT", version: 0,
         createdAt: now, updatedAt: now })));
 });
 

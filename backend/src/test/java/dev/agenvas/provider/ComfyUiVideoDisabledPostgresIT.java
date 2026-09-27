@@ -128,8 +128,12 @@ class ComfyUiVideoDisabledPostgresIT {
         imageContent.put("assetId", imageAssetId.toString());
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Pinned source image", imageContent);
-        input.put("imageArtifactId", image.artifact().id().toString());
-        input.put("imageVersionId", image.resourceDefaultVersion().id().toString());
+        var mediaInput = input.putObject("mediaInput");
+        mediaInput.put("mode", "START_END");
+        mediaInput.putArray("images").addObject()
+                .put("artifactId", image.artifact().id().toString())
+                .put("versionId", image.resourceDefaultVersion().id().toString())
+                .put("role", "START_FRAME").put("order", 0);
         var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
                 "Historical video card", null);
         Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(),

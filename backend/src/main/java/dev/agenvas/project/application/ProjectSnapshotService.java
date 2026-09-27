@@ -3,6 +3,8 @@ package dev.agenvas.project.application;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
@@ -26,6 +28,8 @@ public class ProjectSnapshotService {
     private final ProjectRepository projectRepository;
     /** 读取画布投影。 */
     private final CanvasService canvas;
+    /** 读取与画布项处于同一快照水位的持久化连线。 */
+    private final CanvasConnectionService connections;
     /** 读取项目 Agent 配置和固定输入。 */
     private final AgentInstanceService agents;
     /** 按项目锚点读取活动 Run。 */
@@ -45,12 +49,14 @@ public class ProjectSnapshotService {
             ProjectService projects,
             ProjectRepository projectRepository,
             CanvasService canvas,
+            CanvasConnectionService connections,
             AgentInstanceService agents,
             AgentRunService runs,
             TaskService tasks) {
         this.projects = projects;
         this.projectRepository = projectRepository;
         this.canvas = canvas;
+        this.connections = connections;
         this.agents = agents;
         this.runs = runs;
         this.tasks = tasks;
@@ -71,6 +77,7 @@ public class ProjectSnapshotService {
                 .findSnapshotAnchor(ownerId, projectId)
                 .orElseThrow(this::notFound);
         List<CanvasService.CanvasEntry> canvasEntries = canvas.list(ownerId, projectId);
+        List<CanvasConnection> canvasConnections = connections.list(ownerId, projectId);
         List<AgentInstance> agentInstances = agents.list(ownerId, projectId);
         AgentRun activeRun = anchor.activeRunId() == null
                 ? null
@@ -81,6 +88,7 @@ public class ProjectSnapshotService {
         return new ProjectSnapshot(
                 project,
                 canvasEntries,
+                canvasConnections,
                 agentInstances,
                 activeRun,
                 activeTasks,
@@ -103,6 +111,7 @@ public class ProjectSnapshotService {
      *
      * @param project 项目设置及事件序号
      * @param canvas 当前画布展示项
+     * @param connections 固定精确来源版本的当前画布连线
      * @param agents 项目 Agent 卡片及固定输入
      * @param activeRun 当前占用项目槽位的 Run；无活动 Run 时为空
      * @param activeTasks 活动 Run 与用户直接媒体任务
@@ -112,6 +121,7 @@ public class ProjectSnapshotService {
     public record ProjectSnapshot(
             Project project,
             List<CanvasService.CanvasEntry> canvas,
+            List<CanvasConnection> connections,
             List<AgentInstance> agents,
             AgentRun activeRun,
             List<Task> activeTasks,

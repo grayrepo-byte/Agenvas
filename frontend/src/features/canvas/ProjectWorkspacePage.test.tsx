@@ -77,7 +77,8 @@ describe("ProjectWorkspacePage", () => {
         HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
         HttpResponse.json({ projectId: params.projectId, canvasItemId: params.canvasItemId,
-          prompt: "", inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+          prompt: "", parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+          durationSeconds: null, capabilityId: null,
           displayMode: "RESULT", version: 0, createdAt: "2026-09-23T00:00:00Z",
           updatedAt: "2026-09-23T00:00:00Z" })),
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
@@ -148,7 +149,8 @@ describe("ProjectWorkspacePage", () => {
       }),
       http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
         HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt,
-          inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+          parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+          durationSeconds: null, capabilityId: null,
           version: draftVersion, createdAt: now, updatedAt: now })),
       http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", async ({ request, params }) => {
         const body = await request.json() as { expectedVersion: number; prompt: string };
@@ -156,7 +158,8 @@ describe("ProjectWorkspacePage", () => {
         prompt = body.prompt;
         draftVersion++;
         return HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt,
-          inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+          parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+          durationSeconds: null, capabilityId: null,
           version: draftVersion, createdAt: now, updatedAt: now });
       }),
       http.post("/api/v1/projects/:projectId/artifacts/:artifactId/run", async ({ request }) => {
@@ -1144,7 +1147,7 @@ describe("ProjectWorkspacePage", () => {
       id: versionId, versionNo: 1, schemaVersion: 1,
       content: { assetId, prompt: "Coffee", providerConfigVersion: 1,
         workflowVersion: "mock-video-v1", sourceTaskId: crypto.randomUUID(),
-        keyframeVersionId: crypto.randomUUID(), parameters: { mock: true } },
+        parameters: { mock: true } },
       inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
       createdAt: "2026-09-23T00:00:00Z",
     } as const;

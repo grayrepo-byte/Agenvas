@@ -128,8 +128,9 @@ public class ComfyUiVideoWorker {
 
     /** 读取任务固定的历史图片版本，按项目画幅等比缩放并在空白底色上居中。 */
     private byte[] pinnedInputImage(UUID ownerId, Task task, Project.AspectRatio ratio) {
-        UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
-        UUID versionId = UUID.fromString(task.input().path("imageVersionId").asText());
+        FrozenMediaInputs.Image image = FrozenMediaInputs.first(task);
+        UUID imageId = image.artifactId();
+        UUID versionId = image.versionId();
         ArtifactVersion version = artifacts.requireVersion(ownerId, task.projectId(),
                 imageId, versionId);
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());

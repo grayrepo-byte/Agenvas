@@ -1,6 +1,7 @@
-import { ArrowUp, CaretDown, Check, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, ArrowUp, CaretDown, Check, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
@@ -17,6 +18,7 @@ const MAX_PROMPT_LENGTH = 20000;
 const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
 const CONFLICT_STATUS = 409;
+const INPUT_COLORS = ["#F15CAF", "#67C7F3", "#F1B95C", "#8DD17E", "#A98AF7", "#F27979", "#56C8B5", "#D98BD9"] as const;
 const QUEUE_LABELS = {
   PROJECT_CAPACITY: "项目并发已满", CAPABILITY_CAPACITY: "能力并发已满",
   COMFY_SINGLE_SLOT: "ComfyUI 正在处理其他任务", WAITING_WORKER: "等待执行器", NOT_QUEUED: "未排队",
@@ -55,15 +57,14 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     queryFn: () => getMediaDraft(artifact.projectId, canvasItemId) });
   const resources = useQuery({
     queryKey: ["artifacts", artifact.projectId],
-    queryFn: () => listArtifacts(artifact.projectId), enabled: artifact.kind === "VIDEO",
+    queryFn: () => listArtifacts(artifact.projectId),
   });
   const imageResources = (resources.data?.items ?? []).filter((candidate) =>
     candidate.kind === "IMAGE");
-  const imageHistories = useQueries({ queries: artifact.kind === "VIDEO"
-    ? imageResources.map((candidate) => ({
+  const imageHistories = useQueries({ queries: imageResources.map((candidate) => ({
       queryKey: ["artifact-versions", artifact.projectId, candidate.id],
       queryFn: () => listArtifactVersions(artifact.projectId, candidate.id),
-    })) : [] });
+    })) });
   const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings });
   const tasksKey = ["direct-media-tasks", artifact.projectId, canvasItemId] as const;
   const directTasks = useQuery({ queryKey: tasksKey,
@@ -124,10 +125,9 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       setExpectedVersion(saved.version);
       queryClient.setQueryData(key, saved);
       const latest = fieldsRef.current;
-      if (latest && JSON.stringify(latest) === JSON.stringify({
-        prompt: input.prompt, inputImageVersionId: input.inputImageVersionId,
-        durationSeconds: input.durationSeconds, capabilityId: input.capabilityId,
-      })) setDirty(false);
+      const submitted = Object.fromEntries(Object.entries(input)
+        .filter(([name]) => name !== "expectedVersion")) as DraftFields;
+      if (latest && JSON.stringify(latest) === JSON.stringify(submitted)) setDirty(false);
       setError(null);
     },
     onError: (failure) => setError(failure),
@@ -165,8 +165,11 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
     if (expectedVersion !== null && draft.data.version < expectedVersion) return;
     const initial = {
-      prompt: draft.data.prompt, inputImageVersionId: draft.data.inputImageVersionId,
+      prompt: draft.data.prompt, parameters: draft.data.parameters ?? {},
       durationSeconds: draft.data.durationSeconds, capabilityId: draft.data.capabilityId,
+      videoInputMode: draft.data.videoInputMode,
+      imageInputs: (draft.data.imageInputs ?? []).map(({ versionId, role, color }) => ({ versionId, role, color })),
+      mentions: draft.data.mentions ?? [],
     };
     fieldsRef.current = initial;
     setFields(initial);
@@ -220,12 +223,6 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     triggerRef.current?.focus();
   }
 
-  function chooseReference(inputImageVersionId: string | null) {
-    edit({ inputImageVersionId });
-    setPopover(null);
-    triggerRef.current?.focus();
-  }
-
   if (!fields) return <div className="media-draft-editor media-draft-initial" aria-label="媒体生成编辑器">
     {draft.error ? <div role="alert">无法读取工作草稿：{draft.error.message}
       <button className="media-draft-text-action" disabled={draft.isFetching}
@@ -251,7 +248,22 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       })));
   const defaultCapabilityId = settings.data?.defaults.find((item) => item.kind === mediaKind)?.capabilityId;
   const chosenCapability = availableCapabilities.find((item) => item.id === (fields.capabilityId ?? defaultCapabilityId));
-  const selectedReference = imageChoices.find((choice) => choice.id === fields.inputImageVersionId);
+  const effectiveMode = artifact.kind === "VIDEO"
+    ? fields.videoInputMode ?? chosenCapability?.defaultVideoInputMode ?? null : null;
+  const selectedReferences = fields.imageInputs.map((input) => ({ input,
+    choice: imageChoices.find((choice) => choice.id === input.versionId) }));
+  const imageCapacity = chosenCapability?.maxReferenceImages ?? 0;
+  const referenceLimitReached = fields.imageInputs.length >= imageCapacity;
+  const allInputsAvailable = selectedReferences.every(({ choice }) => choice?.available);
+  const startFrame = fields.imageInputs.find((input) => input.role === "START_FRAME");
+  const endFrame = fields.imageInputs.find((input) => input.role === "END_FRAME");
+  const semanticInputsValid = artifact.kind === "IMAGE"
+    ? fields.imageInputs.length <= imageCapacity
+    : effectiveMode === "TEXT" ? fields.imageInputs.length === 0
+      : effectiveMode === "START_END" ? Boolean(startFrame)
+        && (chosenCapability?.supportsEndFrame || !endFrame)
+      : effectiveMode === "GENERAL_REFERENCE" ? fields.imageInputs.length > 0
+        && fields.imageInputs.length <= imageCapacity : false;
   const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
   const duration = fields.durationSeconds;
   const validDuration = duration != null && Number.isInteger(duration)
@@ -260,15 +272,54 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const canRun = !dirty && !save.isPending && !error && !run.isPending
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
     && fields.prompt.trim().length > 0 && !occupied
-    && (artifact.kind === "IMAGE" || Boolean(resources.isSuccess && selectedReference?.available && validDuration));
+    && semanticInputsValid && allInputsAvailable
+    && (artifact.kind === "IMAGE" || validDuration);
   const isTemplate = chosenCapability?.adapterId.startsWith("COMFY_");
   const dimensionLabel = isTemplate ? "模板默认" : "由模型决定";
   const quality = chosenCapability?.settings.quality;
   const qualityLabel = quality ? `${QUALITY_LABELS[quality]}画质` : "默认画质";
-  const referenceLabel = selectedReference?.label;
   const historyError = imageHistories.find((history) => history.error)?.error;
   const historyPending = resources.isPending || imageHistories.some((history) => history.isPending);
   const saveLabel = save.isPending ? "保存中…" : dirty ? error ? "保存失败，本地输入已保留" : "待保存…" : "已保存";
+  const currentFields = fields;
+
+  function nextRole() {
+    if (artifact.kind === "IMAGE" || effectiveMode === "GENERAL_REFERENCE") return "REFERENCE" as const;
+    if (effectiveMode === "START_END") return startFrame ? "END_FRAME" as const : "START_FRAME" as const;
+    return null;
+  }
+
+  function chooseReference(versionId: string) {
+    if (currentFields.imageInputs.some((input) => input.versionId === versionId)) return;
+    const role = nextRole();
+    if (!role || referenceLimitReached || (role === "END_FRAME" && !chosenCapability?.supportsEndFrame)) return;
+    const used = new Set(currentFields.imageInputs.map((input) => input.color));
+    const color = INPUT_COLORS.find((candidate) => !used.has(candidate)) ?? INPUT_COLORS[currentFields.imageInputs.length % INPUT_COLORS.length]!;
+    edit({ imageInputs: [...currentFields.imageInputs, { versionId, role, color }] });
+  }
+
+  function removeReference(versionId: string) {
+    edit({ imageInputs: currentFields.imageInputs.filter((input) => input.versionId !== versionId),
+      mentions: currentFields.mentions.filter((mention) => mention.versionId !== versionId) });
+  }
+
+  function moveReference(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= currentFields.imageInputs.length || effectiveMode === "START_END") return;
+    const next = [...currentFields.imageInputs];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    edit({ imageInputs: next });
+  }
+
+  function addMention(input: DraftFields["imageInputs"][number]) {
+    edit({ mentions: [...currentFields.mentions, { versionId: input.versionId, role: input.role }] });
+  }
+
+  function isConnectionOnly(versionId: string) {
+    const persisted = draft.data?.imageInputs.find((input) => input.versionId === versionId);
+    return persisted !== undefined && persisted.sources.length > 0
+      && persisted.sources.every((source) => source.type === "CONNECTION");
+  }
 
   return <div className="media-draft-editor" aria-label="媒体生成编辑器">
     <div className="media-draft-header">
@@ -276,36 +327,41 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       <span className="media-draft-tab-unavailable" aria-disabled="true" title="请使用画布中的 Agent 卡片运行 Agent">Agent</span>
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
-    <div className="media-draft-reference-row">
+    {artifact.kind === "VIDEO" && chosenCapability?.supportedVideoInputModes.length ? <div className="media-draft-mode-row" aria-label="视频输入模式">
+      {chosenCapability.supportedVideoInputModes.map((mode) => <button key={mode} type="button"
+        aria-pressed={effectiveMode === mode} onClick={() => edit({ videoInputMode: mode })}>
+        {mode === "TEXT" ? "纯文本" : mode === "START_END" ? "首尾帧" : "全能参考"}</button>)}
+    </div> : null}
+    <div className="media-draft-reference-row" aria-label="图片输入">
       <div className="media-draft-popover-anchor">
         <button className="media-draft-reference-add" type="button"
-          disabled={artifact.kind === "IMAGE"}
-          aria-label={artifact.kind === "IMAGE" ? "添加参考图（暂不支持）" : "选择输入图片版本"}
-          title={artifact.kind === "IMAGE" ? "当前支持文生图，参考图编辑暂不支持" : "选择同项目图片的精确版本"}
-          aria-expanded={artifact.kind === "VIDEO" ? popover === "references" : undefined}
-          aria-controls={artifact.kind === "VIDEO" ? `${id}-references` : undefined}
+          disabled={!chosenCapability || referenceLimitReached || effectiveMode === "TEXT"}
+          aria-label="添加图片输入"
+          title={effectiveMode === "TEXT" ? "纯文本模式不接受图片" : referenceLimitReached ? `所选模型最多支持 ${imageCapacity} 张图片` : "选择同项目图片的精确版本"}
+          aria-expanded={popover === "references"}
+          aria-controls={`${id}-references`}
           onClick={(event) => togglePopover("references", event.currentTarget)}>
           <Plus size={20} />
         </button>
         {popover === "references" ? <div className="media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-references`} role="dialog" aria-label="输入图片版本">
-          <p className="media-draft-popover-title">选择视频首帧</p>
+          <p className="media-draft-popover-title">选择精确图片版本</p>
           <label htmlFor={`${id}-input-image`}>输入图片版本</label>
-          <select id={`${id}-input-image`} value={fields.inputImageVersionId ?? ""}
-            onChange={(event) => edit({ inputImageVersionId: event.target.value || null })}>
-            <option value="">选择同项目图片</option>
-            {fields.inputImageVersionId && !referenceLabel ? <option value={fields.inputImageVersionId}>已固定版本（暂不可用）</option> : null}
+          <select id={`${id}-input-image`} value=""
+            onChange={(event) => { if (event.target.value) chooseReference(event.target.value); }}>
+            <option value="">选择同项目图片，可连续添加</option>
             {imageChoices.map((choice) => <option key={choice.id} value={choice.id} disabled={!choice.available}>{choice.label}</option>)}
           </select>
           <div className="media-draft-reference-options">
             {imageChoices.map((choice) => <button key={choice.id} type="button"
               className="media-draft-reference-option" aria-label={`使用 ${choice.label}`}
-              aria-pressed={choice.id === fields.inputImageVersionId} disabled={!choice.available}
+              aria-pressed={fields.imageInputs.some((input) => input.versionId === choice.id)}
+              disabled={!choice.available || fields.imageInputs.some((input) => input.versionId === choice.id)}
               onClick={() => chooseReference(choice.id)}>
               {/* Reference pixels are shown from the archived original, not the 480px preview. */}
               <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />
               <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? "当前选用版本" : "历史版本"}</small></span>
-              {choice.id === fields.inputImageVersionId ? <Check size={15} /> : null}
+              {fields.imageInputs.some((input) => input.versionId === choice.id) ? <Check size={15} /> : null}
             </button>)}
           </div>
           {historyPending ? <CanvasLoadingState compact label="正在读取图片版本" /> : null}
@@ -315,29 +371,42 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
               void resources.refetch();
               imageHistories.forEach((history) => { if (history.error) void history.refetch(); });
             }} type="button">重试读取图片</button></div> : null}
-          <p>仅显示已有媒体文件的图片版本。运行时固定首帧版本，后续修改图片不会改变已提交的任务。</p>
+          <p>按确认顺序添加，运行时固定精确版本。所选模型最多支持 {imageCapacity} 张图片。</p>
         </div> : null}
       </div>
-      {artifact.kind === "VIDEO" && fields.inputImageVersionId ? <div className="media-draft-reference-chip">
-        <button className="media-draft-reference-replace" type="button" aria-label="替换视频首帧"
-          aria-expanded={popover === "references"} aria-controls={`${id}-references`}
-          onClick={(event) => togglePopover("references", event.currentTarget)}>
-          {selectedReference ?
-            <img src={assetContentUrl(artifact.projectId, selectedReference.assetId)} alt={`${referenceLabel} 首帧`} />
-            : <ImageSquare size={25} />}
-          <span><strong>{referenceLabel ?? "已固定图片版本"}</strong>
-            <small>{selectedReference?.available && resources.isSuccess ? "视频首帧 · 点击替换"
-              : historyPending ? "正在确认首帧版本…" : "此版本暂不可用 · 点击替换"}</small></span>
-        </button>
-        <button className="media-draft-reference-remove" type="button" aria-label="清除视频首帧"
-          onClick={() => edit({ inputImageVersionId: null })}><X size={13} /></button>
-      </div> : <span className="media-draft-reference-hint">{artifact.kind === "IMAGE"
-        ? "文生图 · 暂不支持参考图" : "添加图片作为视频首帧"}</span>}
+      {selectedReferences.map(({ input, choice }, index) => <div className="media-draft-reference-chip"
+        key={input.versionId} style={{ "--reference-color": input.color } as CSSProperties}>
+        <div className="media-draft-reference-replace">
+          {choice ? <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt={choice.label} /> : <ImageSquare size={25} />}
+          <span><strong>{input.role === "START_FRAME" ? "Start Frame" : input.role === "END_FRAME" ? "End Frame" : `Image ${index + 1}`}</strong>
+            <small>{choice?.label ?? "已固定图片版本"}</small></span>
+        </div>
+        <button type="button" className="media-draft-reference-move" aria-label={`向左移动 ${choice?.label ?? `Image ${index + 1}`}`}
+          disabled={index === 0 || effectiveMode === "START_END"} onClick={() => moveReference(index, -1)}><ArrowLeft size={12} /></button>
+        <button type="button" className="media-draft-reference-move" aria-label={`向右移动 ${choice?.label ?? `Image ${index + 1}`}`}
+          disabled={index === fields.imageInputs.length - 1 || effectiveMode === "START_END"} onClick={() => moveReference(index, 1)}><ArrowRight size={12} /></button>
+        <button className="media-draft-reference-remove" type="button"
+          aria-label={`移除 ${choice?.label ?? "图片输入"}`}
+          disabled={isConnectionOnly(input.versionId)}
+          title={isConnectionOnly(input.versionId)
+            ? "该图片仅由画布连线提供，请在画布上断开对应连线" : "移除图片输入"}
+          onClick={() => removeReference(input.versionId)}><X size={13} /></button>
+      </div>)}
+      {!fields.imageInputs.length ? <span className="media-draft-reference-hint">{effectiveMode === "TEXT"
+        ? "纯文本视频不使用图片" : "添加图片作为精确版本输入"}</span> : null}
     </div>
     <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{artifact.kind === "IMAGE" ? "图片提示词" : "视频提示词"}</label>
     <textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
       placeholder={artifact.kind === "IMAGE" ? "描述你想创作的画面，让想象发生…" : "描述镜头、动作和运镜，让画面动起来…"}
       value={fields.prompt} onChange={(event) => edit({ prompt: event.target.value })} />
+    {fields.imageInputs.length ? <div className="media-draft-mention-row" aria-label="图片标签">
+      {fields.imageInputs.map((input, index) => <button key={input.versionId} type="button"
+        style={{ "--reference-color": input.color } as CSSProperties} onClick={() => addMention(input)}>
+        @{input.role === "START_FRAME" ? "Start Frame" : input.role === "END_FRAME" ? "End Frame" : `Image ${index + 1}`}</button>)}
+      {fields.mentions.map((mention, index) => <span key={`${mention.versionId}-${index}`}>@
+        {mention.role === "START_FRAME" ? "Start Frame" : mention.role === "END_FRAME" ? "End Frame"
+          : `Image ${Math.max(1, fields.imageInputs.findIndex((input) => input.versionId === mention.versionId) + 1)}`}</span>)}
+    </div> : null}
     <div className="media-draft-toolbar">
       <div className="media-draft-popover-anchor media-draft-model-anchor">
         <button className="media-draft-toolbar-button media-draft-model-trigger" type="button"
@@ -403,8 +472,10 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       {settings.error ? <div role="alert">无法读取模型配置。
         <button className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">重试读取模型</button></div> : null}
       {artifact.kind === "VIDEO" && duration != null && !validDuration ? <p role="alert">请填写所选模型支持的整数秒时长。</p> : null}
-      {artifact.kind === "VIDEO" && fields.inputImageVersionId && !historyPending && (!resources.isSuccess || !selectedReference?.available)
-        ? <p role="alert">无法确认已固定的首帧版本。原选择已保留，请重试读取图片或替换首帧。</p> : null}
+      {fields.imageInputs.length > 0 && !historyPending && (!resources.isSuccess || !allInputsAvailable)
+        ? <p role="alert">无法确认一个或多个已固定图片版本。原选择已保留，请重试读取图片或替换输入。</p> : null}
+      {artifact.kind === "VIDEO" && chosenCapability && !semanticInputsValid
+        ? <p role="alert">当前图片输入不满足所选视频模式或模型能力，请调整后再运行。</p> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
         ? <p role="alert">生成未完成{taskErrorDetail(latestTask.errorCode)}</p> : null}
       {latestTask?.status === "READY" ? <div className="media-draft-task-status">

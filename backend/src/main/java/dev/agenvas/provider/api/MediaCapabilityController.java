@@ -144,7 +144,10 @@ public class MediaCapabilityController {
         return new CapabilityView(capability.id(), capability.name(), capability.enabled(),
                 capability.version(), capability.currentVersion(), snapshot.adapterId(),
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
-                catalog.maxConcurrent(capability.id()), snapshot.mappingSha256(), settings.isMissingNode()
+                declaration.maxReferenceImages(), declaration.supportedVideoInputModes().stream()
+                        .sorted().toList(), declaration.defaultVideoInputMode(),
+                declaration.supportsEndFrame(), catalog.maxConcurrent(capability.id()),
+                snapshot.mappingSha256(), settings.isMissingNode()
                         ? mapper.createObjectNode() : settings);
     }
 
@@ -170,7 +173,9 @@ public class MediaCapabilityController {
             List<CapabilityView> capabilities) {}
     public record CapabilityView(UUID id, String name, boolean enabled, long version,
             int capabilityVersion, String adapterId, Task.Kind kind,
-            int minimumSeconds, int maximumSeconds, int maxConcurrent, String mappingSha256,
+            int minimumSeconds, int maximumSeconds, int maxReferenceImages,
+            List<String> supportedVideoInputModes, String defaultVideoInputMode,
+            boolean supportsEndFrame, int maxConcurrent, String mappingSha256,
             JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
 }

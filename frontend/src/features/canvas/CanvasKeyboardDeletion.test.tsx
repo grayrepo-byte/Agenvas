@@ -55,7 +55,7 @@ function items(linked: boolean): CanvasItem[] {
 function snapshot(getItems: () => CanvasItem[]): ProjectSnapshot {
   return { project: { id: "project-1", name: "删除项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items: getItems() }, agents: [], activeRun: null, activeTasks: [],
+    canvas: { items: getItems() }, connections: [], agents: [], activeRun: null, activeTasks: [],
     unknownTasks: [], snapshotSeq: 0 };
 }
 

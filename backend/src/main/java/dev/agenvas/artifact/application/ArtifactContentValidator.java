@@ -49,8 +49,7 @@ public class ArtifactContentValidator {
         rejectProtectedFields(content);
         return switch (kind) {
             case TEXT -> validateText(content);
-            case IMAGE -> validateMedia(content, false);
-            case VIDEO -> validateMedia(content, true);
+            case IMAGE, VIDEO -> validateMedia(content);
         };
     }
 
@@ -63,20 +62,14 @@ public class ArtifactContentValidator {
     }
 
     /** 区分用户图片上传和任务生成媒体；生成结果必须保留提示、配置、工作流与来源任务。 */
-    private List<ArtifactVersion.InputReference> validateMedia(JsonNode content, boolean video) {
-        if (!video && "UPLOAD".equals(content.path("sourceType").asText())) {
+    private List<ArtifactVersion.InputReference> validateMedia(JsonNode content) {
+        if ("UPLOAD".equals(content.path("sourceType").asText())) {
             allowOnly(content, "sourceType", "assetId");
             requireUuid(content, "assetId");
             return List.of();
         }
-        if (video) {
-            allowOnly(content, "assetId", "prompt", "negativePrompt",
-                    "providerConfigVersion", "workflowVersion", "parameters",
-                    "sourceTaskId", "keyframeVersionId");
-        } else {
-            allowOnly(content, "assetId", "prompt", "negativePrompt",
-                    "providerConfigVersion", "workflowVersion", "parameters", "sourceTaskId");
-        }
+        allowOnly(content, "assetId", "prompt", "negativePrompt",
+                "providerConfigVersion", "workflowVersion", "parameters", "sourceTaskId");
         requireUuid(content, "assetId");
         requireText(content, "prompt", 1, 8_000);
         optionalText(content, "negativePrompt", 8_000);
@@ -84,19 +77,7 @@ public class ArtifactContentValidator {
         requireText(content, "workflowVersion", 1, 120);
         requireObject(content.get("parameters"), "parameters");
         requireUuid(content, "sourceTaskId");
-        return video ? optionalReference(content, "keyframeVersionId", "keyframe",
-                Artifact.Kind.IMAGE).stream().toList() : List.of();
-    }
-
-    /** 仅缺失或 JSON null 可省略；其他类型必须是可解析 UUID。 */
-    private java.util.Optional<ArtifactVersion.InputReference> optionalReference(
-            JsonNode content, String field, String role, Artifact.Kind expectedKind) {
-        JsonNode value = content.get(field);
-        if (value == null || value.isNull()) {
-            return java.util.Optional.empty();
-        }
-        return java.util.Optional.of(new ArtifactVersion.InputReference(
-                parseUuid(value, field), role, 0, expectedKind));
+        return List.of();
     }
 
     /** 对当前对象执行白名单校验，防止应用忽略的字段被误当作已接受内容。 */

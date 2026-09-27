@@ -12,7 +12,6 @@
     "providerConfigVersion": {"type": "integer", "minimum": 1},
     "workflowVersion": {"type": "string", "minLength": 1, "maxLength": 120},
     "parameters": {"type": "object", "additionalProperties": true},
-    "sourceTaskId": {"type": "string", "format": "uuid"},
-    "keyframeVersionId": {"type": "string", "format": "uuid"}
+    "sourceTaskId": {"type": "string", "format": "uuid"}
   }
 }

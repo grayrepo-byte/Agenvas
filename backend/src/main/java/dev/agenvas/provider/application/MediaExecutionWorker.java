@@ -209,19 +209,11 @@ public class MediaExecutionWorker {
             content.put("providerConfigVersion",
                     task.input().path("providerConfigVersion").asInt());
             content.put("workflowVersion", task.input().path("workflowVersion").asText());
-            if (task.kind() == Task.Kind.VIDEO_GENERATION) {
-                content.put("keyframeVersionId",
-                        task.input().path("imageVersionId").asText());
-            }
             ObjectNode parameters = content.putObject("parameters");
             parameters.put("adapterId", attempt.binding().adapterId());
             parameters.put("capabilityId", attempt.binding().capabilityId().toString());
             parameters.put("providerRequestId", attempt.originalRequestId() != null
                     ? attempt.originalRequestId() : attempt.requestKey());
-            if (task.input().has("referenceImageVersionId")) {
-                parameters.put("referenceImageVersionId",
-                        task.input().path("referenceImageVersionId").asText());
-            }
             return content;
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close media response", failure);

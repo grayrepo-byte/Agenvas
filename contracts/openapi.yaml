@@ -798,6 +798,89 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/restore-version-inputs:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
+    post:
+      operationId: restoreMediaDraftVersionInputs
+      summary: 用历史版本的冻结输入完整替换卡片草稿
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RestoreMediaDraftVersionInputsRequest"}
+      responses:
+        "200":
+          description: 已恢复的媒体草稿；图片只保留手工来源
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas/connections:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listCanvasConnections
+      summary: 列出项目中固定精确图片版本的 CanvasItem 连线
+      tags: [Canvas]
+      responses:
+        "200":
+          description: 持久化连线
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CanvasConnectionList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: createCanvasConnection
+      summary: 原子创建媒体或 Agent 的精确图片版本连线
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateCanvasConnectionRequest"}
+      responses:
+        "201":
+          description: 已创建的连线和更新后的目标状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CanvasConnectionResult"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas/connections/{connectionId}/disconnect:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: disconnectCanvasConnection
+      summary: 原子删除一条连线来源并按剩余来源维护目标图片输入
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DisconnectCanvasConnectionRequest"}
+      responses:
+        "200":
+          description: 已删除的连线和更新后的目标状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CanvasConnectionResult"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/run:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1457,6 +1540,32 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas/items/{sourceItemId}/duplicate:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: sourceItemId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: duplicateCanvasItem
+      summary: 复制媒体卡片的完整工作分支但不复制任务和画布连线
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DuplicateCanvasItemRequest"}
+      responses:
+        "201":
+          description: 新的独立媒体卡片及其草稿
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DuplicateCanvasItemResponse"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
     CallLogPage:
@@ -1539,7 +1648,8 @@ components:
       type: object
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
-        minimumSeconds, maximumSeconds, maxConcurrent, mappingSha256, settings]
+        minimumSeconds, maximumSeconds, maxReferenceImages, supportedVideoInputModes,
+        defaultVideoInputMode, supportsEndFrame, maxConcurrent, mappingSha256, settings]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -1550,6 +1660,16 @@ components:
         kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
         minimumSeconds: {type: integer, minimum: 0}
         maximumSeconds: {type: integer, minimum: 0}
+        maxReferenceImages: {type: integer, minimum: 0}
+        supportedVideoInputModes:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/VideoInputMode"}
+        defaultVideoInputMode:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoInputMode"}
+            - {type: "null"}
+        supportsEndFrame: {type: boolean}
         maxConcurrent: {type: integer, minimum: 1, maximum: 100}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
@@ -1715,9 +1835,10 @@ components:
     ProjectExportManifest:
       type: object
       additionalProperties: false
-      required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets]
+      required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
+        canvasItems, connections]
       properties:
-        schemaVersion: {type: integer, const: 1}
+        schemaVersion: {type: integer, const: 2}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -1727,6 +1848,12 @@ components:
         assets:
           type: array
           items: {$ref: "#/components/schemas/ManifestAsset"}
+        canvasItems:
+          type: array
+          items: {$ref: "#/components/schemas/ManifestCanvasItem"}
+        connections:
+          type: array
+          items: {$ref: "#/components/schemas/ManifestCanvasConnection"}
     ManifestProject:
       type: object
       additionalProperties: false
@@ -1753,11 +1880,16 @@ components:
     ManifestArtifactVersion:
       type: object
       additionalProperties: false
-      required: [id, versionNo, schemaVersion, createdAt, content]
+      required: [id, versionNo, schemaVersion, baseVersionId, frozenInput, createdAt, content]
       properties:
         id: {type: string, format: uuid}
         versionNo: {type: integer, minimum: 1}
         schemaVersion: {type: integer, minimum: 1}
+        baseVersionId: {type: [string, "null"], format: uuid}
+        frozenInput:
+          oneOf:
+            - {type: object, additionalProperties: true}
+            - {type: "null"}
         createdAt: {type: string, format: date-time}
         content: {$ref: "#/components/schemas/ManifestVersionContent"}
     ManifestVersionContent:
@@ -1789,7 +1921,6 @@ components:
         negativePrompt: {type: string}
         providerConfigVersion: {type: integer}
         workflowVersion: {type: string}
-        keyframeVersionId: {type: string, format: uuid}
     ManifestAsset:
       type: object
       additionalProperties: false
@@ -1805,6 +1936,59 @@ components:
         durationMs: {type: [integer, "null"], minimum: 1, maximum: 60000}
         thumbnailSha256: {type: [string, "null"]}
         createdAt: {type: string, format: date-time}
+    ManifestCanvasItem:
+      type: object
+      additionalProperties: false
+      required: [id, subjectType, subjectId, selectedVersionId, title, x, y, width,
+        height, zIndex, groupId, locked, version, mediaDraft]
+      properties:
+        id: {type: string, format: uuid}
+        subjectType: {$ref: "#/components/schemas/CanvasSubjectType"}
+        subjectId: {type: string, format: uuid}
+        selectedVersionId: {type: [string, "null"], format: uuid}
+        title: {type: string}
+        x: {type: number}
+        y: {type: number}
+        width: {type: number}
+        height: {type: number}
+        zIndex: {type: integer}
+        groupId: {type: [string, "null"], format: uuid}
+        locked: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        mediaDraft:
+          oneOf:
+            - {$ref: "#/components/schemas/ManifestMediaDraft"}
+            - {type: "null"}
+    ManifestMediaDraft:
+      type: object
+      additionalProperties: false
+      required: [prompt, parameters, durationSeconds, capabilityId, videoInputMode,
+        imageInputs, mentions, displayMode, version]
+      properties:
+        prompt: {type: string}
+        parameters: {type: object, additionalProperties: true}
+        durationSeconds: {type: [integer, "null"]}
+        capabilityId: {type: [string, "null"], format: uuid}
+        videoInputMode:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoInputMode"}
+            - {type: "null"}
+        imageInputs: {type: array, items: {$ref: "#/components/schemas/MediaImageInput"}}
+        mentions: {type: array, items: {$ref: "#/components/schemas/PromptImageMention"}}
+        displayMode: {type: string, enum: [DRAFT, RESULT]}
+        version: {type: integer, format: int64, minimum: 0}
+    ManifestCanvasConnection:
+      type: object
+      additionalProperties: false
+      required: [id, sourceCanvasItemId, targetCanvasItemId, relationType,
+        sourceArtifactVersionId, version]
+      properties:
+        id: {type: string, format: uuid}
+        sourceCanvasItemId: {type: string, format: uuid}
+        targetCanvasItemId: {type: string, format: uuid}
+        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT]}
+        sourceArtifactVersionId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
     SetupStatus:
       type: object
       additionalProperties: false
@@ -1946,13 +2130,31 @@ components:
     SaveMediaDraftRequest:
       type: object
       additionalProperties: false
-      required: [expectedVersion, prompt]
+      required: [expectedVersion, prompt, parameters, videoInputMode, imageInputs, mentions]
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         prompt: {type: string, maxLength: 20000}
-        inputImageVersionId: {type: [string, "null"], format: uuid}
+        parameters: {type: object, additionalProperties: true}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
         capabilityId: {type: [string, "null"], format: uuid}
+        videoInputMode:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoInputMode"}
+            - {type: "null"}
+        imageInputs:
+          type: array
+          maxItems: 8
+          items: {$ref: "#/components/schemas/SaveMediaImageInput"}
+        mentions:
+          type: array
+          items: {$ref: "#/components/schemas/PromptImageMention"}
+    RestoreMediaDraftVersionInputsRequest:
+      type: object
+      additionalProperties: false
+      required: [versionId, expectedVersion]
+      properties:
+        versionId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
     RunMediaDraftRequest:
       type: object
       additionalProperties: false
@@ -1981,18 +2183,144 @@ components:
     MediaDraft:
       type: object
       additionalProperties: false
-      required: [projectId, canvasItemId, prompt, inputImageVersionId, durationSeconds, capabilityId, displayMode, version, createdAt, updatedAt]
+      required: [projectId, canvasItemId, prompt, parameters, durationSeconds, capabilityId,
+        videoInputMode, imageInputs, mentions, displayMode, version, createdAt, updatedAt]
       properties:
         projectId: {type: string, format: uuid}
         canvasItemId: {type: string, format: uuid}
         prompt: {type: string, maxLength: 20000}
-        inputImageVersionId: {type: [string, "null"], format: uuid}
+        parameters: {type: object, additionalProperties: true}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
         capabilityId: {type: [string, "null"], format: uuid}
+        videoInputMode:
+          oneOf:
+            - {$ref: "#/components/schemas/VideoInputMode"}
+            - {type: "null"}
+        imageInputs:
+          type: array
+          items: {$ref: "#/components/schemas/MediaImageInput"}
+        mentions:
+          type: array
+          items: {$ref: "#/components/schemas/PromptImageMention"}
         displayMode: {type: string, enum: [DRAFT, RESULT]}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
+    VideoInputMode:
+      type: string
+      enum: [TEXT, START_END, GENERAL_REFERENCE]
+    MediaInputRole:
+      type: string
+      enum: [REFERENCE, START_FRAME, END_FRAME]
+    SaveMediaImageInput:
+      type: object
+      additionalProperties: false
+      required: [versionId, role, color]
+      properties:
+        versionId: {type: string, format: uuid}
+        role: {$ref: "#/components/schemas/MediaInputRole"}
+        color: {type: string, pattern: "^#[0-9A-F]{6}$"}
+    MediaImageInputSource:
+      type: object
+      additionalProperties: false
+      required: [id, type, connectionId]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string, enum: [MANUAL, CONNECTION]}
+        connectionId: {type: [string, "null"], format: uuid}
+    MediaImageInput:
+      type: object
+      additionalProperties: false
+      required: [versionId, artifactId, role, order, color, sources]
+      properties:
+        versionId: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        role: {$ref: "#/components/schemas/MediaInputRole"}
+        order: {type: integer, minimum: 0}
+        color: {type: string, pattern: "^#[0-9A-F]{6}$"}
+        sources:
+          type: array
+          items: {$ref: "#/components/schemas/MediaImageInputSource"}
+    PromptImageMention:
+      type: object
+      additionalProperties: false
+      required: [versionId, role]
+      properties:
+        versionId: {type: string, format: uuid}
+        role: {$ref: "#/components/schemas/MediaInputRole"}
+    CanvasConnection:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, sourceCanvasItemId, targetCanvasItemId, relationType,
+        sourceArtifactVersionId, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        sourceCanvasItemId: {type: string, format: uuid}
+        targetCanvasItemId: {type: string, format: uuid}
+        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT]}
+        sourceArtifactVersionId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CanvasConnectionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
+    CreateCanvasConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceCanvasItemId, targetCanvasItemId, sourceVersionId, relationType]
+      properties:
+        sourceCanvasItemId: {type: string, format: uuid}
+        targetCanvasItemId: {type: string, format: uuid}
+        sourceVersionId: {type: string, format: uuid}
+        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT]}
+        expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
+        expectedTargetAgentVersion: {type: integer, format: int64, minimum: 0}
+    DisconnectCanvasConnectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
+        expectedTargetAgentVersion: {type: integer, format: int64, minimum: 0}
+    CanvasConnectionResult:
+      type: object
+      additionalProperties: false
+      required: [connection, draft, agent]
+      properties:
+        connection: {$ref: "#/components/schemas/CanvasConnection"}
+        draft:
+          oneOf:
+            - {$ref: "#/components/schemas/MediaDraft"}
+            - {type: "null"}
+        agent:
+          oneOf:
+            - {$ref: "#/components/schemas/Agent"}
+            - {type: "null"}
+    DuplicateCanvasItemRequest:
+      type: object
+      additionalProperties: false
+      required: [targetItemId, expectedSourceVersion, expectedSourceDraftVersion,
+        x, y, width, height, zIndex]
+      properties:
+        targetItemId: {type: string, format: uuid}
+        expectedSourceVersion: {type: integer, format: int64, minimum: 0}
+        expectedSourceDraftVersion: {type: integer, format: int64, minimum: 0}
+        x: {type: number, minimum: -1000000, maximum: 1000000}
+        y: {type: number, minimum: -1000000, maximum: 1000000}
+        width: {type: number, minimum: 120, maximum: 2000}
+        height: {type: number, minimum: 80, maximum: 2000}
+        zIndex: {type: integer, minimum: -1000, maximum: 1000}
+    DuplicateCanvasItemResponse:
+      type: object
+      additionalProperties: false
+      required: [item, draft]
+      properties:
+        item: {$ref: "#/components/schemas/CanvasItem"}
+        draft: {$ref: "#/components/schemas/MediaDraft"}
     ReviseArtifactRequest:
       type: object
       additionalProperties: false
@@ -2032,6 +2360,11 @@ components:
         id: {type: string, format: uuid}
         versionNo: {type: integer, minimum: 1}
         schemaVersion: {type: integer, enum: [1, 2]}
+        baseVersionId: {type: [string, "null"], format: uuid}
+        frozenInput:
+          oneOf:
+            - {type: object, additionalProperties: true}
+            - {type: "null"}
         content: {$ref: "#/components/schemas/ArtifactContent"}
         inputReferences:
           type: array
@@ -2475,10 +2808,13 @@ components:
     ProjectSnapshot:
       type: object
       additionalProperties: false
-      required: [project, canvas, agents, activeRun, activeTasks, unknownTasks, snapshotSeq]
+      required: [project, canvas, connections, agents, activeRun, activeTasks, unknownTasks, snapshotSeq]
       properties:
         project: {$ref: "#/components/schemas/Project"}
         canvas: {$ref: "#/components/schemas/Canvas"}
+        connections:
+          type: array
+          items: {$ref: "#/components/schemas/CanvasConnection"}
         agents:
           type: array
           items: {$ref: "#/components/schemas/Agent"}

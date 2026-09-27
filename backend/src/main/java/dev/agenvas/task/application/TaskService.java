@@ -9,6 +9,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
@@ -469,7 +470,7 @@ public class TaskService {
             ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
                     ownerId, lease.projectId(), target.artifactId(), null,
                     target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
-                    content, true);
+                    content, null, true);
             ObjectNode summary = objectMapper.createObjectNode();
             summary.put("artifactId", target.artifactId().toString());
             summary.put("artifactVersionId", result.versionId().toString());
@@ -553,10 +554,7 @@ public class TaskService {
             }
             boolean selectResult = !canceled && !projectArchived
                     && pinnedMediaInputsCurrent(ownerId, lease)
-                    && (lease.runId() != null
-                            || canvasItemId != null && mediaDrafts.get(ownerId, lease.projectId(),
-                                    canvasItemId).version()
-                                    == lease.input().path("draftVersion").asLong(-1));
+                    && (lease.runId() != null || canvasItemId != null);
             boolean activeOrUnknown = current.status() == Task.Status.RUNNING
                     || current.status() == Task.Status.SUBMITTING
                     || current.status() == Task.Status.WAITING_PROVIDER
@@ -577,16 +575,11 @@ public class TaskService {
                     .equals(lease.id().toString())) {
                 throw validation("生成结果必须标识匹配的 sourceTaskId。");
             }
-            if (lease.kind() == Task.Kind.VIDEO_GENERATION
-                    && lease.input().has("imageVersionId")
-                    && !content.path("keyframeVersionId").asText("")
-                            .equals(lease.input().path("imageVersionId").asText())) {
-                throw validation("视频结果必须引用任务固定的输入图片版本。");
-            }
             UUID artifactId = target.artifactId();
             ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
                     ownerId, lease.projectId(), artifactId, lease.runId(),
                     target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
+                    lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
                     selectResult && canvasItemId == null);
             if (canvasItemId != null) {
                 boolean cardSelected = selectResult && canvas.selectTaskResultWithinChange(
@@ -1033,35 +1026,38 @@ public class TaskService {
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
         boolean cardOwnedDirectTask = input.hasNonNull("canvasItemId");
-        if (task.kind() == Task.Kind.IMAGE_GENERATION
-                && input.has("referenceImageVersionId")) {
+        if (cardOwnedDirectTask && input.has("mediaInput")) {
             try {
-                UUID versionId = UUID.fromString(input.path("referenceImageVersionId").asText());
-                ArtifactVersion pinned = artifacts.requireImageVersionForTask(ownerId,
-                        task.projectId(), versionId);
-                Artifact current = artifacts.get(ownerId, task.projectId(), pinned.artifactId())
-                        .artifact();
-                return current.archivedAt() == null
-                        && (cardOwnedDirectTask
-                                || versionId.equals(current.resourceDefaultVersionId()));
+                UUID canvasItemId = UUID.fromString(input.path("canvasItemId").asText());
+                MediaDraft current = mediaDrafts.get(ownerId, task.projectId(), canvasItemId);
+                JsonNode frozen = input.path("mediaInput");
+                String currentMode = task.kind() == Task.Kind.IMAGE_GENERATION
+                        ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
+                        : current.videoInputMode().name();
+                if (!currentMode.equals(frozen.path("mode").asText())
+                        || current.imageInputs().size() != frozen.path("images").size()) {
+                    return false;
+                }
+                for (int index = 0; index < current.imageInputs().size(); index++) {
+                    MediaDraft.ImageInput currentImage = current.imageInputs().get(index);
+                    JsonNode frozenImage = frozen.path("images").get(index);
+                    if (frozenImage == null
+                            || !currentImage.versionId().toString().equals(
+                                    frozenImage.path("versionId").asText())
+                            || !currentImage.role().name().equals(
+                                    frozenImage.path("role").asText())
+                            || currentImage.order() != frozenImage.path("order").asInt(-1)) {
+                        return false;
+                    }
+                    artifacts.requireImageVersionForTask(ownerId, task.projectId(),
+                            currentImage.versionId());
+                }
+                return true;
             } catch (ApiProblemException | IllegalArgumentException unavailable) {
                 return false;
             }
         }
-        if (task.kind() != Task.Kind.VIDEO_GENERATION
-                || !input.has("imageArtifactId") || !input.has("imageVersionId")) {
-            return true;
-        }
-        try {
-            UUID imageId = UUID.fromString(input.path("imageArtifactId").asText());
-            UUID imageVersionId = UUID.fromString(input.path("imageVersionId").asText());
-            Artifact image = artifacts.get(ownerId, task.projectId(), imageId).artifact();
-            return image.archivedAt() == null
-                    && (cardOwnedDirectTask
-                            || imageVersionId.equals(image.resourceDefaultVersionId()));
-        } catch (ApiProblemException | IllegalArgumentException invalidInput) {
-            return false;
-        }
+        return true;
     }
 
     /** 校验并去除步骤键首尾空白，保证持久化幂等键长度为 1 至 160 字符。 */

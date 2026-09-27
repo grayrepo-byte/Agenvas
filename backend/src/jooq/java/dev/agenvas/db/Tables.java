@@ -14,7 +14,10 @@ import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
+import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
+import dev.agenvas.db.tables.CanvasItemMediaInput;
+import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
 import dev.agenvas.db.tables.CreativeDataResetMarker;
 import dev.agenvas.db.tables.IdempotencyRecord;
@@ -111,10 +114,27 @@ public class Tables {
     public static final CallLog CALL_LOG = CallLog.CALL_LOG;
 
     /**
+     * Persistent CanvasItem-to-CanvasItem topology with the exact source
+     * version captured at creation.
+     */
+    public static final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
+
+    /**
      * Spatial card plus card-local work context; Artifact content remains
      * immutable and shared.
      */
     public static final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
+
+    /**
+     * Ordered exact image versions used by one CanvasItem media draft; identity
+     * and color are card-local.
+     */
+    public static final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
+
+    /**
+     * Manual and connection reasons that keep a deduplicated media input alive.
+     */
+    public static final CanvasItemMediaInputSource CANVAS_ITEM_MEDIA_INPUT_SOURCE = CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE;
 
     /**
      * The table <code>public.comfyui_config_version</code>.

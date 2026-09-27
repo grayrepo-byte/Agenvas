@@ -100,8 +100,12 @@ public class MockVideoWorker {
             throw new IllegalStateException("Mock video result lacks the demo marker");
         }
         UUID ownerId = tasks.ownerForWorker(task);
-        UUID imageId = UUID.fromString(task.input().path("imageArtifactId").asText());
-        UUID imageVersionId = UUID.fromString(task.input().path("imageVersionId").asText());
+        var firstImage = task.input().path("mediaInput").path("images").get(0);
+        if (firstImage == null) {
+            throw new IllegalStateException("Mock video renderer requires a frozen image input");
+        }
+        UUID imageId = UUID.fromString(firstImage.path("artifactId").asText());
+        UUID imageVersionId = UUID.fromString(firstImage.path("versionId").asText());
         ArtifactVersion image = artifacts.requireVersion(ownerId, task.projectId(),
                 imageId, imageVersionId);
         UUID imageAssetId = UUID.fromString(image.content().path("assetId").asText());
@@ -145,7 +149,6 @@ public class MockVideoWorker {
             content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
             content.put("workflowVersion", task.input().path("workflowVersion").asText());
             content.put("sourceTaskId", task.id().toString());
-            content.put("keyframeVersionId", imageVersionId.toString());
             ObjectNode parameters = content.putObject("parameters");
             parameters.put("mock", true);
             parameters.put("displayLabel", "演示视频（非 AI 生成）");

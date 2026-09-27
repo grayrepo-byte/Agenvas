@@ -143,7 +143,8 @@ class ArkSeedancePostgresIT {
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.VIDEO, "Clip", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, ownerId, project.id(), card.artifact().id());
-        long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
+        long draftVersion = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                ownerId, project.id(), canvasItemId, 0,
                 "A detailed coffee pour", keyframe.resourceDefaultVersion().id(), CLIP_SECONDS, null)
                 .version();
         return new Fixture(project, card, keyframe, canvasItemId, draftVersion);

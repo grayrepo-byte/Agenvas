@@ -62,16 +62,18 @@ const items: CanvasItem[] = [
 ];
 
 const agentPatches: Array<Record<string, unknown>> = [];
+const canvasConnections: Array<Record<string, unknown>> = [];
 const revisions: string[] = [];
 
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "落点项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items }, agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
+    canvas: { items }, connections: [], agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
 beforeEach(() => {
   agentPatches.length = 0;
+  canvasConnections.length = 0;
   revisions.length = 0;
   flowProps = {};
   server.use(
@@ -89,8 +91,20 @@ beforeEach(() => {
       id: params.assetId, width: 1024, height: 1024 })),
     http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
       HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
-        inputImageVersionId: null, durationSeconds: null, capabilityId: null, version: 0,
+        parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: "START_END",
+        imageInputs: [], mentions: [], displayMode: "RESULT", version: 0,
         createdAt: now, updatedAt: now })),
+    http.post("/api/v1/projects/:projectId/canvas/connections", async ({ request }) => {
+      const body = await request.json() as Record<string, unknown>;
+      canvasConnections.push(body);
+      return HttpResponse.json({ connection: {
+        id: "connection-id", projectId: "project-1",
+        sourceCanvasItemId: body.sourceCanvasItemId,
+        targetCanvasItemId: body.targetCanvasItemId,
+        sourceArtifactVersionId: body.sourceVersionId,
+        relationType: body.relationType, version: 0, createdAt: now, updatedAt: now,
+      }, draft: null, agent: items[3]!.agent }, { status: 201 });
+    }),
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
       agentPatches.push(body);
@@ -145,19 +159,28 @@ describe("canvas connection drop target", () => {
     expect(agentPatches).toHaveLength(0);
   });
 
-  it("saves the Agent input binding when the pointer is over an Agent card", async () => {
+  it("persists an exact-version Agent image connection when dropped on an Agent card", async () => {
     await renderFlow();
     await dropOn("agent-card");
-    await waitFor(() => expect(agentPatches).toHaveLength(1));
-    expect(agentPatches[0]).toMatchObject({ expectedVersion: 4,
-      bindings: [{ artifactId: "image-id", selectedVersionId: imageVersionId }] });
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(canvasConnections[0]).toMatchObject({
+      sourceCanvasItemId: "image-id-card", targetCanvasItemId: "agent-card",
+      sourceVersionId: imageVersionId, relationType: "AGENT_IMAGE_INPUT",
+      expectedTargetAgentVersion: 4,
+    });
+    expect(agentPatches).toHaveLength(0);
     expect(revisions).toHaveLength(0);
   });
 
-  it("writes nothing for a card that cannot take the relation", async () => {
+  it("persists a media input connection when dropped on a video card", async () => {
     await renderFlow();
     await dropOn("video-id-card");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(canvasConnections[0]).toMatchObject({
+      sourceCanvasItemId: "image-id-card", targetCanvasItemId: "video-id-card",
+      sourceVersionId: imageVersionId, relationType: "MEDIA_INPUT",
+      expectedTargetDraftVersion: 0,
+    });
     expect(revisions).toHaveLength(0);
     expect(agentPatches).toHaveLength(0);
   });

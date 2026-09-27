@@ -5,4 +5,7 @@ export const server = setupServer(
   http.get("/api/v1/auth/setup-status", () =>
     HttpResponse.json({ setupRequired: true }),
   ),
+  http.get("/api/v1/projects/:projectId/canvas/connections", () =>
+    HttpResponse.json({ items: [] }),
+  ),
 );

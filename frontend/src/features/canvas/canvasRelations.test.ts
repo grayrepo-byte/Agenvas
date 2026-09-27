@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
-import type { CanvasItem } from "../../shared/api/client";
+import type { CanvasConnection, CanvasItem } from "../../shared/api/client";
 import type { VersionedArtifact } from "./versionedArtifact";
-import { canvasRelationRemoval, canvasTargetHandleId, inputBindingsAfterConnect,
+import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputBindingsAfterConnect,
   inputConnectionUpdate, isCanvasConnectionValid, projectCanvasRelations } from "./canvasRelations";
 
 const createdAt = "2026-09-24T00:00:00Z";
+
+function mediaConnection(source: CanvasItem, target: CanvasItem,
+  sourceVersionId: string): CanvasConnection {
+  return { id: "connection-1", projectId: "project-1", sourceCanvasItemId: source.id,
+    targetCanvasItemId: target.id, relationType: "MEDIA_INPUT",
+    sourceArtifactVersionId: sourceVersionId, version: 0, createdAt, updatedAt: createdAt };
+}
+
+function agentImageEdge(source: CanvasItem, target: CanvasItem,
+  sourceVersionId: string): CanvasConnection {
+  return { ...mediaConnection(source, target, sourceVersionId), id: "agent-image-connection",
+    relationType: "AGENT_IMAGE_INPUT" };
+}
 
 /** Typed cards mirror the API projection; no relation state is created in React Flow. */
 function artifactCard(id: string, versionId: string, groupId: string | null = null,
@@ -57,31 +70,31 @@ function agentCard(bindingVersion = "version-a"): CanvasItem {
 }
 
 describe("canvas relation projection", () => {
-  it("keeps input, output ownership, and exact-version references distinct", () => {
-    const input = artifactCard("artifact-a", "version-a");
-    const output = artifactCard("artifact-b", "version-b", "output-group-1", [
-      { versionId: "version-a", role: "source", order: 0, kind: "TEXT" },
+  it("keeps Agent bindings, output ownership, and persisted media inputs distinct", () => {
+    const input = mediaCard("artifact-a", "version-a", "version-a");
+    const output = mediaCard("artifact-b", "version-b", "version-b");
+    output.groupId = "output-group-1";
+    const edges = projectCanvasRelations([input, agentCard(), output], [
+      mediaConnection(input, output, "version-a"),
     ]);
-    const edges = projectCanvasRelations([input, agentCard(), output]);
 
     expect(edges).toHaveLength(3);
     expect(edges.map((edge) => [edge.source, edge.target])).toEqual([
+      ["card-artifact-a", "card-artifact-b"],
       ["card-artifact-a", "card-agent"],
       ["card-agent", "card-artifact-b"],
-      ["card-artifact-a", "card-artifact-b"],
     ]);
     expect(edges.every((edge) => edge.label === undefined)).toBe(true);
     expect(new Set(edges.map((edge) => edge.id)).size).toBe(3);
     expect(edges.map((edge) => edge.className)).toEqual([
+      "relation-edge relation-edge--reference",
       "relation-edge relation-edge--input-binding",
       "relation-edge relation-edge--agent-output",
-      "relation-edge relation-edge--reference",
     ]);
     // Output-group membership is derived from the Agent, so that line offers no selection or deletion.
-    expect(edges[1]).toMatchObject({ deletable: false, selectable: false });
-    expect(edges[0]?.deletable).toBeUndefined();
-    // Exact-version reference lines are display-only: they have no editable relation record.
     expect(edges[2]).toMatchObject({ deletable: false, selectable: false });
+    expect(edges[0]?.deletable).toBeUndefined();
+    expect(edges[1]?.deletable).toBeUndefined();
   });
 
   it("marks historical bindings with a dashed line and never misdraws them to newer content", () => {
@@ -93,6 +106,24 @@ describe("canvas relation projection", () => {
     expect(edges).toHaveLength(1);
     expect(edges[0]?.className).toBe(
       "relation-edge relation-edge--input-binding relation-edge--input-binding-historical");
+  });
+
+  it("projects an Agent image line once and resolves its exact card-local version", () => {
+    const image = mediaCard("artifact-a", "version-library", "version-card");
+    const agent = agentCard("version-card");
+    const connection = agentImageEdge(image, agent, "version-card");
+    const edges = projectCanvasRelations([image, agent], [connection]);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ source: image.id, target: agent.id,
+      id: `canvas-connection:${connection.id}` });
+    expect(agentImageConnection([image, agent], {
+      source: image.id, sourceHandle: "artifact-output",
+      target: agent.id, targetHandle: "agent-input",
+    })).toMatchObject({ sourceVersionId: "version-card", agent: agent.agent });
+    expect(inputConnectionUpdate([image, agent], {
+      source: image.id, sourceHandle: "artifact-output",
+      target: agent.id, targetHandle: "agent-input",
+    })).toBeNull();
   });
 
   it("manual Artifact to Agent binding pins the selected current version without duplicates", () => {
@@ -115,14 +146,15 @@ describe("canvas relation projection", () => {
 
   it("projects a media card's selected version instead of its resource default", () => {
     const input = mediaCard("artifact-a", "version-library", "version-card");
-    const output = mediaCard("artifact-b", "version-output-library", "version-output-card", [
-      { versionId: "version-card", role: "source", order: 0, kind: "IMAGE" },
+    const output = mediaCard("artifact-b", "version-output-library", "version-output-card");
+    const edges = projectCanvasRelations([input, agentCard("version-card"), output], [
+      mediaConnection(input, output, "version-card"),
     ]);
-    const edges = projectCanvasRelations([input, agentCard("version-card"), output]);
 
     expect(edges).toHaveLength(2);
-    expect(edges[0]?.className).toBe("relation-edge relation-edge--input-binding");
-    expect(edges[1]).toMatchObject({ source: input.id, target: output.id });
+    expect(edges[0]).toMatchObject({ source: input.id, target: output.id,
+      className: "relation-edge relation-edge--reference" });
+    expect(edges[1]?.className).toBe("relation-edge relation-edge--input-binding");
     expect(inputBindingsAfterConnect(input, agentCard("version-old"))).toEqual([
       { artifactId: "artifact-a", selectedVersionId: "version-card" },
     ]);

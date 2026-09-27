@@ -2,6 +2,7 @@ package dev.agenvas.project.api;
 
 import dev.agenvas.agent.api.AgentInstanceController.AgentResponse;
 import dev.agenvas.canvas.api.CanvasController.CanvasResponse;
+import dev.agenvas.canvas.api.CanvasConnectionController.ConnectionView;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.project.application.ProjectSnapshotService;
 import dev.agenvas.project.api.ProjectController.ProjectResponse;
@@ -40,6 +41,7 @@ public class ProjectSnapshotController {
         return new ProjectSnapshotResponse(
                 ProjectResponse.from(snapshot.project()),
                 CanvasResponse.from(snapshot.canvas()),
+                snapshot.connections().stream().map(ConnectionView::from).toList(),
                 snapshot.agents().stream().map(AgentResponse::from).toList(),
                 snapshot.activeRun() == null ? null : RunResponse.from(snapshot.activeRun()),
                 snapshot.activeTasks().stream().map(TaskResponse::from).toList(),
@@ -52,6 +54,7 @@ public class ProjectSnapshotController {
      *
      * @param project 项目设置与版本
      * @param canvas 画布内容投影
+     * @param connections 固定精确图片版本的持久化画布连线
      * @param agents Agent 配置投影
      * @param activeRun 当前活动 Run；空值表示空闲
      * @param activeTasks 活动 Run 的任务状态
@@ -61,6 +64,7 @@ public class ProjectSnapshotController {
     public record ProjectSnapshotResponse(
             ProjectResponse project,
             CanvasResponse canvas,
+            List<ConnectionView> connections,
             List<AgentResponse> agents,
             RunResponse activeRun,
             List<TaskResponse> activeTasks,

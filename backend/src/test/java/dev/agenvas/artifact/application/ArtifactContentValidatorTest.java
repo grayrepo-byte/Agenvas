@@ -18,8 +18,6 @@ class ArtifactContentValidatorTest {
 
     @Test
     void acceptsTextImageAndVideoSchemaFamilies() {
-        UUID imageVersionId = UUID.randomUUID();
-
         assertThat(validate(Artifact.Kind.TEXT, """
                 {"format":"MARKDOWN","text":"# Brief"}
                 """))
@@ -29,23 +27,6 @@ class ArtifactContentValidatorTest {
                 "{\"sourceType\":\"UPLOAD\",\"assetId\":\"" + UUID.randomUUID() + "\"}"))
                 .isEmpty();
         assertThat(validate(Artifact.Kind.VIDEO, mediaContent())).isEmpty();
-        assertThat(validate(Artifact.Kind.VIDEO, """
-                {
-                  "assetId":"%s",
-                  "prompt":"Direct clip",
-                  "providerConfigVersion":1,
-                  "workflowVersion":"mock-v1",
-                  "parameters":{},
-                  "sourceTaskId":"%s",
-                  "keyframeVersionId":"%s"
-                }
-                """.formatted(UUID.randomUUID(), UUID.randomUUID(), imageVersionId)))
-                .singleElement()
-                .satisfies(reference -> {
-                    assertThat(reference.versionId()).isEqualTo(imageVersionId);
-                    assertThat(reference.role()).isEqualTo("keyframe");
-                    assertThat(reference.expectedKind()).isEqualTo(Artifact.Kind.IMAGE);
-                });
     }
 
     @Test
@@ -73,9 +54,9 @@ class ArtifactContentValidatorTest {
                   "workflowVersion":"mock-v1",
                   "parameters":{},
                   "sourceTaskId":"%s",
-                  "keyframeVersionId":"not-a-uuid"
+                  "keyframeVersionId":"%s"
                 }
-                """.formatted(UUID.randomUUID(), UUID.randomUUID())))
+                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID())))
                 .isInstanceOf(ApiProblemException.class);
     }
 

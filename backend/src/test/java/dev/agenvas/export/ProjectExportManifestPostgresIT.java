@@ -9,9 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
@@ -21,6 +26,7 @@ import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.Base64;
 import java.util.UUID;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -62,6 +68,9 @@ class ProjectExportManifestPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private AssetService assets;
     @Autowired private ArtifactService artifacts;
+    @Autowired private CanvasService canvas;
+    @Autowired private MediaDraftService mediaDrafts;
+    @Autowired private CanvasConnectionService connections;
     @Autowired private LlmProviderConfigService llmConfigs;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
@@ -80,9 +89,29 @@ class ProjectExportManifestPostgresIT {
         ObjectNode content = mediaContent(assetId, "Initial frame");
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Frame", content);
-        artifacts.revise(owner.userId(), project.id(), image.artifact().id(),
+        var revisedImage = artifacts.revise(owner.userId(), project.id(), image.artifact().id(),
                 image.artifact().version(), "Frame revised",
                 mediaContent(assetId, "Revised frame"));
+        var video = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
+                "Video", null);
+        UUID sourceItemId = UUID.randomUUID();
+        UUID targetItemId = UUID.randomUUID();
+        canvas.apply(owner.userId(), project.id(), List.of(
+                new CanvasService.PlaceArtifact(sourceItemId, image.artifact().id(),
+                        BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"),
+                        new BigDecimal("240"), 0, null, false),
+                new CanvasService.PlaceArtifact(targetItemId, video.artifact().id(),
+                        new BigDecimal("400"), BigDecimal.ZERO, new BigDecimal("320"),
+                        new BigDecimal("240"), 1, null, false)));
+        mediaDrafts.save(owner.userId(), project.id(), targetItemId, 0,
+                "Animate the exact frame", mapper.createObjectNode(), 5, null,
+                MediaDraft.VideoInputMode.GENERAL_REFERENCE,
+                List.of(new MediaDraftService.SaveImageInput(
+                        revisedImage.resourceDefaultVersion().id(),
+                        MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of());
+        connections.connect(owner.userId(), project.id(), sourceItemId, targetItemId,
+                revisedImage.resourceDefaultVersion().id(),
+                CanvasConnection.RelationType.MEDIA_INPUT, 1);
 
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/projects/" + project.id() + "/export-manifest";
@@ -96,7 +125,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(1);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();
@@ -108,6 +137,19 @@ class ProjectExportManifestPostgresIT {
                 .isEqualTo("image-v1-test");
         assertThat(versionHistory.get(1).path("content").path("providerConfigVersion").asInt())
                 .isEqualTo(3);
+        assertThat(versionHistory.get(1).path("baseVersionId").asText())
+                .isEqualTo(versionHistory.get(0).path("id").asText());
+        assertThat(manifest.path("canvasItems").size()).isEqualTo(2);
+        JsonNode targetCard = findById(manifest.path("canvasItems"), targetItemId);
+        assertThat(targetCard.path("selectedVersionId").isNull()).isTrue();
+        JsonNode input = targetCard.path("mediaDraft").path("imageInputs").get(0);
+        assertThat(input.path("versionId").asText())
+                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
+        assertThat(input.path("sources").size()).isEqualTo(2);
+        assertThat(manifest.path("connections").size()).isEqualTo(1);
+        assertThat(manifest.path("connections").get(0)
+                .path("sourceArtifactVersionId").asText())
+                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
         assertThat(manifest.path("assets").get(0).path("id").asText())
                 .isEqualTo(assetId.toString());
         assertThat(json).doesNotContain(actualKey, "manifest-private-model",
@@ -136,6 +178,13 @@ class ProjectExportManifestPostgresIT {
         parameters.put("signedUrl", "https://example.test/reusable-token");
         parameters.put("providerRequestId", "internal-request");
         return content;
+    }
+
+    private JsonNode findById(JsonNode values, UUID id) {
+        for (JsonNode value : values) {
+            if (id.toString().equals(value.path("id").asText())) return value;
+        }
+        throw new AssertionError("Missing manifest entry " + id);
     }
 
     private static UsernamePasswordAuthenticationToken asUser(AdminPrincipal principal) {

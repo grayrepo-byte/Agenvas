@@ -6,8 +6,8 @@ package dev.agenvas.db.tables;
 
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
+import dev.agenvas.db.tables.CanvasItemMediaInput.CanvasItemMediaInputPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
 import dev.agenvas.db.tables.records.MediaDraftRecord;
 
@@ -22,6 +22,7 @@ import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.InverseForeignKey;
+import org.jooq.JSONB;
 import org.jooq.Name;
 import org.jooq.Path;
 import org.jooq.PlainSQL;
@@ -79,11 +80,6 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
     public final TableField<MediaDraftRecord, String> PROMPT = createField(DSL.name("prompt"), SQLDataType.CLOB.nullable(false).defaultValue(DSL.field(DSL.raw("''::text"), SQLDataType.CLOB)), this, "");
 
     /**
-     * The column <code>public.media_draft.input_image_version_id</code>.
-     */
-    public final TableField<MediaDraftRecord, UUID> INPUT_IMAGE_VERSION_ID = createField(DSL.name("input_image_version_id"), SQLDataType.UUID, this, "");
-
-    /**
      * The column <code>public.media_draft.duration_seconds</code>.
      */
     public final TableField<MediaDraftRecord, Integer> DURATION_SECONDS = createField(DSL.name("duration_seconds"), SQLDataType.INTEGER, this, "");
@@ -112,6 +108,21 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
      * The column <code>public.media_draft.updated_at</code>.
      */
     public final TableField<MediaDraftRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+
+    /**
+     * The column <code>public.media_draft.parameters_json</code>.
+     */
+    public final TableField<MediaDraftRecord, JSONB> PARAMETERS_JSON = createField(DSL.name("parameters_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
+     * The column <code>public.media_draft.video_input_mode</code>.
+     */
+    public final TableField<MediaDraftRecord, String> VIDEO_INPUT_MODE = createField(DSL.name("video_input_mode"), SQLDataType.VARCHAR(24), this, "");
+
+    /**
+     * The column <code>public.media_draft.mentions_json</code>.
+     */
+    public final TableField<MediaDraftRecord, JSONB> MENTIONS_JSON = createField(DSL.name("mentions_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
 
     private MediaDraft(Name alias, Table<MediaDraftRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -187,7 +198,7 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
 
     @Override
     public List<ForeignKey<MediaDraftRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_INPUT);
+        return Arrays.asList(Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY);
     }
 
     private transient CanvasItemPath _canvasItem;
@@ -215,17 +226,17 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
         return _mediaCapability;
     }
 
-    private transient ArtifactVersionPath _artifactVersion;
+    private transient CanvasItemMediaInputPath _canvasItemMediaInput;
 
     /**
-     * Get the implicit join path to the <code>public.artifact_version</code>
-     * table.
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_item_media_input</code> table
      */
-    public ArtifactVersionPath artifactVersion() {
-        if (_artifactVersion == null)
-            _artifactVersion = new ArtifactVersionPath(this, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_INPUT, null);
+    public CanvasItemMediaInputPath canvasItemMediaInput() {
+        if (_canvasItemMediaInput == null)
+            _canvasItemMediaInput = new CanvasItemMediaInputPath(this, null, Keys.CANVAS_ITEM_MEDIA_INPUT__FK_CANVAS_ITEM_MEDIA_INPUT_DRAFT.getInverseKey());
 
-        return _artifactVersion;
+        return _canvasItemMediaInput;
     }
 
     @Override
@@ -233,8 +244,11 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_media_draft_display_mode"), "(((display_mode)::text = ANY ((ARRAY['DRAFT'::character varying, 'RESULT'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_media_draft_duration"), "(((duration_seconds IS NULL) OR ((duration_seconds >= 1) AND (duration_seconds <= 30))))", true),
+            Internal.createCheck(this, DSL.name("ck_media_draft_mentions_array"), "((jsonb_typeof(mentions_json) = 'array'::text))", true),
+            Internal.createCheck(this, DSL.name("ck_media_draft_parameters_object"), "((jsonb_typeof(parameters_json) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("ck_media_draft_prompt_length"), "((length(prompt) <= 20000))", true),
-            Internal.createCheck(this, DSL.name("ck_media_draft_version"), "((version >= 0))", true)
+            Internal.createCheck(this, DSL.name("ck_media_draft_version"), "((version >= 0))", true),
+            Internal.createCheck(this, DSL.name("ck_media_draft_video_input_mode"), "(((video_input_mode IS NULL) OR ((video_input_mode)::text = ANY ((ARRAY['TEXT'::character varying, 'START_END'::character varying, 'GENERAL_REFERENCE'::character varying])::text[]))))", true)
         );
     }
 

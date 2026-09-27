@@ -6,4 +6,4 @@
 - `image-v1.schema.json`
 - `video-v1.schema.json`
 
-IMAGE/VIDEO 中的 `assetId` 先验证 UUID 形状，再由服务层核验同项目、媒体类型匹配且已归档可读。IMAGE 新增互斥的 `sourceType: UPLOAD` 分支，仅包含已归档 `assetId`，用于用户上传参考图，不伪造 Provider 配置或 Task ID；现有生成分支原样保留。`sourceTaskId` 由 Task 成功路径校验与当前 Task 一致；普通手工生成形状版本仍只做 UUID 形状校验。VIDEO 可记录精确 `keyframeVersionId`，服务端抽取为 IMAGE 类型引用并由组合外键校验同项目与存在性。此字段是 0.1.0 开发期的加法变更，旧内容不强制补写；Mock 视频新版本总会填写。
+IMAGE/VIDEO 中的 `assetId` 先验证 UUID 形状，再由服务层核验同项目、媒体类型匹配且已归档可读。IMAGE 的 `sourceType: UPLOAD` 分支仅包含已归档 `assetId`，用于用户上传图片，不伪造 Provider 配置或 Task ID；生成分支保留可验证的工作流元数据。`sourceTaskId` 由 Task 成功路径校验与当前 Task 一致。媒体的图片来源不再写入 IMAGE/VIDEO 内容字段；Task 和成功 ArtifactVersion 通过同一份 `frozenInput` 保存有序精确版本、角色、模式与结构化标签。

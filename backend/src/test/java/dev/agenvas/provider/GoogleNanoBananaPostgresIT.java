@@ -99,7 +99,8 @@ class GoogleNanoBananaPostgresIT {
                 "google-admin", "google-password-123");
         Fixture edited = fixture(owner.userId(), "Reference edit", true);
         Task editTask = approve(owner.userId(), edited);
-        assertThat(editTask.input().path("referenceImageVersionId").asText()).isNotBlank();
+        assertThat(editTask.input().path("mediaInput").path("images").get(0)
+                .path("versionId").asText()).isNotBlank();
         assertThat(worker.submitOnce("google-edit-worker")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), edited.project().id(), editTask.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
@@ -138,9 +139,11 @@ class GoogleNanoBananaPostgresIT {
         Fixture foreign = fixture(owner.userId(), "Foreign reference", false);
         Task foreignTask = approve(owner.userId(), foreign);
         // 跨项目参考图：另一个项目里那张参考图的精确版本。
-        jdbc.sql("update task set input_json=input_json || "
-                        + "jsonb_build_object('referenceImageVersionId', :versionId) "
+        jdbc.sql("update task set input_json=jsonb_set(input_json, '{mediaInput,images}', "
+                        + "jsonb_build_array(jsonb_build_object('artifactId', :artifactId, "
+                        + "'versionId', :versionId, 'role', 'REFERENCE', 'order', 0))) "
                         + "where id=:id")
+                .param("artifactId", edited.referenceImage().artifact().id().toString())
                 .param("versionId", edited.referenceImage().resourceDefaultVersion().id().toString())
                 .param("id", foreignTask.id()).update();
         assertThat(worker.submitOnce("google-foreign-worker")).isEqualTo(1);
@@ -170,28 +173,18 @@ class GoogleNanoBananaPostgresIT {
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE, "Concept", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, ownerId, project.id(), card.artifact().id());
-        long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
-                "A detailed cinematic studio scene", null, null, null).version();
+        long draftVersion = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                ownerId, project.id(), canvasItemId, 0,
+                "A detailed cinematic studio scene",
+                referenceImage == null ? null : referenceImage.resourceDefaultVersion().id(),
+                null, null).version();
         Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), canvasItemId,
                 draftVersion,
                 "google-" + UUID.randomUUID());
         return new Fixture(project, card, referenceImage, task);
     }
 
-    /**
-     * 直连入口不写参考图输入；沿用测试自己的 SQL 注入惯例把它补进固定输入，
-     * 使适配器在有参考图时走 edits 分支。
-     */
     private Task approve(UUID ownerId, Fixture fixture) {
-        if (fixture.referenceImage() != null) {
-            jdbc.sql("update task set input_json=input_json || "
-                            + "jsonb_build_object('referenceImageVersionId', :versionId) "
-                            + "where id=:id")
-                    .param("versionId", fixture.referenceImage().resourceDefaultVersion().id().toString())
-                    .param("id", fixture.task().id()).update();
-            // 注入后的固定输入以数据库为准；run(...) 返回的记录早于这次更新。
-            return tasks.get(ownerId, fixture.project().id(), fixture.task().id());
-        }
         return fixture.task();
     }
 

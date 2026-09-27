@@ -64,7 +64,7 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         ComfyUiImageWorkflow workflow = workflow(snapshot);
         Task task = context.lease();
         UUID requestKey = UUID.fromString(context.requestKey());
-        boolean reference = task.input().has("referenceImageVersionId");
+        boolean reference = !FrozenMediaInputs.images(task).isEmpty();
         String uploaded = client.uploadImage(requestKey,
                 inputImage(context.ownerId(), task, reference), "png");
         long seed = requestKey.getMostSignificantBits() & Long.MAX_VALUE;
@@ -133,7 +133,7 @@ public class ComfyUiImageAdapter implements MediaAdapter {
                 : ratio == Project.AspectRatio.SQUARE_1_1 ? 768 : 576;
         BufferedImage source = null;
         if (reference) {
-            UUID versionId = UUID.fromString(task.input().path("referenceImageVersionId").asText());
+            UUID versionId = FrozenMediaInputs.first(task).versionId();
             ArtifactVersion version = artifacts.requireImageVersionForTask(ownerId,
                     task.projectId(), versionId);
             UUID assetId = UUID.fromString(version.content().path("assetId").asText());

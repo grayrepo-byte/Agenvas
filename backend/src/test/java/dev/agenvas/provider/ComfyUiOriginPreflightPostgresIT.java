@@ -94,7 +94,8 @@ class ComfyUiOriginPreflightPostgresIT {
                 "Fixed origin card", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, owner.userId(), project.id(), card.artifact().id());
-        MediaDraft draft = drafts.save(owner.userId(), project.id(), canvasItemId, 0,
+        MediaDraft draft = dev.agenvas.support.CanvasMediaFixture.save(drafts,
+                owner.userId(), project.id(), canvasItemId, 0,
                 "Coffee pour", null, null, null);
         Task approved = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
                 canvasItemId, draft.version(), "origin-run");

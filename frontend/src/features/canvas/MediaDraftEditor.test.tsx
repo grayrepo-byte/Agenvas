@@ -19,17 +19,22 @@ const artifact: Artifact = {
 };
 const initialDraft: MediaDraft = {
   projectId: PROJECT_ID, canvasItemId: CANVAS_ITEM_ID, prompt: "A lighthouse at dawn",
-  inputImageVersionId: null, durationSeconds: null, capabilityId: null,
+  parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: null,
+  imageInputs: [], mentions: [],
   displayMode: "DRAFT", version: 0, createdAt: NOW, updatedAt: NOW,
 };
 const imageCapability: MediaCapability = {
   id: "image-capability", name: "细节生图", enabled: true, version: 0, capabilityVersion: 1,
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0,
-  maximumSeconds: 0, maxConcurrent: 2, mappingSha256: "a".repeat(64), settings: { quality: "high" },
+  maximumSeconds: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
+  defaultVideoInputMode: null, supportsEndFrame: false,
+  maxConcurrent: 2, mappingSha256: "a".repeat(64), settings: { quality: "high" },
 };
 const videoCapability: MediaCapability = {
   ...imageCapability, id: "video-capability", name: "镜头视频", adapterId: "ARK_SEEDANCE_2_I2V",
-  kind: "VIDEO_GENERATION", minimumSeconds: 2, maximumSeconds: 10, settings: {},
+  kind: "VIDEO_GENERATION", minimumSeconds: 2, maximumSeconds: 10,
+  maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
+  defaultVideoInputMode: "START_END", supportsEndFrame: true, settings: {},
 };
 const settings: MediaSettings = {
   connections: [{ id: "connection", name: "我的媒体连接", platform: "OPENAI", enabled: true,
@@ -62,7 +67,10 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
     http.put(DRAFT_URL, async ({ request }) => {
       const input = await request.json() as SaveMediaDraftRequest;
       saves.push(input);
-      draft = { ...draft, ...input, version: draft.version + 1 };
+      draft = { ...draft, ...input, imageInputs: input.imageInputs.map((item, order) => ({
+        ...item, artifactId: "reference-image", order,
+        sources: [{ id: `manual-${order}`, type: "MANUAL" as const, connectionId: null }],
+      })), version: draft.version + 1 };
       return HttpResponse.json(draft);
     }),
     http.get(`${BASE}/run`, () => HttpResponse.json(tasks)),
@@ -79,12 +87,22 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
 }
 
 describe("MediaDraftEditor", () => {
+  it("keeps a connection-only image read-only until its canvas line is disconnected", async () => {
+    setup({ draft: { ...initialDraft,
+      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+        role: "REFERENCE", order: 0, color: "#F15CAF",
+        sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] } });
+    const remove = await screen.findByRole("button", { name: "移除 图片输入" });
+    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute("title", "该图片仅由画布连线提供，请在画布上断开对应连线");
+  });
+
   it("shows read-only size and configured quality without inventing draft parameters", async () => {
     const { saves } = setup();
     const user = userEvent.setup();
     await screen.findByLabelText("图片提示词");
-    expect(screen.getByRole("button", { name: "添加参考图（暂不支持）" })).toBeDisabled();
-    expect(screen.getByText("文生图 · 暂不支持参考图")).toBeVisible();
+    expect(screen.getByRole("button", { name: "添加图片输入" })).toBeEnabled();
+    expect(screen.getByText("添加图片作为精确版本输入")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     const parameters = screen.getByRole("dialog", { name: "尺寸与画质设置" });
     expect(within(parameters).getByText("由模型决定")).toBeVisible();
@@ -115,7 +133,8 @@ describe("MediaDraftEditor", () => {
       await user.keyboard("{ArrowDown}{Enter}");
       await waitFor(() => expect(saves).toHaveLength(1));
       expect(saves[0]).toEqual({ expectedVersion: 0, prompt: initialDraft.prompt,
-        inputImageVersionId: null, durationSeconds: null, capabilityId: imageCapability.id });
+        parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+        durationSeconds: null, capabilityId: imageCapability.id });
       await user.click(screen.getByRole("button", { name: "选择生成模型" }));
       outerEscape.mockClear();
       await user.keyboard("{Escape}");
@@ -203,7 +222,7 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
-  it("pins a video input version and saves its whole-second duration", async () => {
+  it("pins ordered start/end versions and saves their stable colors with whole-second duration", async () => {
     const { saves } = setup({ kind: "VIDEO", handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
         id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v2" }] })),
@@ -216,7 +235,7 @@ describe("MediaDraftEditor", () => {
     const user = userEvent.setup();
     await screen.findByLabelText("视频提示词");
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await screen.findByRole("option", { name: "海边灯塔 · v1" });
     expect(screen.queryByRole("option", { name: /v3/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "使用 海边灯塔 · v1" })).toBeVisible();
@@ -227,24 +246,32 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("max", "10");
     await user.type(screen.getByRole("spinbutton", { name: "时长（秒）" }), "4");
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: "image-v1", durationSeconds: 4 }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({
+      imageInputs: [{ versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" }], durationSeconds: 4 }));
     expect(screen.getByText("海边灯塔 · v1")).toBeVisible();
-    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧" })).toHaveAttribute("src",
+    expect(screen.getByRole("img", { name: "海边灯塔 · v1" })).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
     expect(screen.queryByRole("img", { name: /v2/ })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
-    await user.click(screen.getByRole("button", { name: "替换视频首帧" }));
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await user.click(screen.getByRole("button", { name: "使用 海边灯塔 · v2" }));
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: "image-v2", durationSeconds: 4 }));
-    expect(screen.getByRole("img", { name: "海边灯塔 · v2 首帧" })).toHaveAttribute("src",
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
+      { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
+      { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
+    ], durationSeconds: 4 }));
+    expect(screen.getByRole("img", { name: "海边灯塔 · v2" })).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/content`);
-    await user.click(screen.getByRole("button", { name: "清除视频首帧" }));
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: null, durationSeconds: 4 }));
+    await user.click(screen.getByRole("button", { name: "移除 海边灯塔 · v1" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
+      { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
+    ], durationSeconds: 4 }));
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
   it("retains an unavailable pinned video frame without silently using the current version", async () => {
-    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-gone", durationSeconds: 4 }, handlers: [
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, videoInputMode: "START_END",
+      imageInputs: [{ versionId: "image-gone", artifactId: "reference-image", role: "START_FRAME",
+        order: 0, color: "#F15CAF", sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }], durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
         id: "reference-image", title: "新首帧", resourceDefaultVersionId: "image-v2" }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
@@ -253,18 +280,20 @@ describe("MediaDraftEditor", () => {
       ] })),
     ] });
     const user = userEvent.setup();
-    expect(await screen.findByText(/无法确认已固定的首帧版本/)).toBeVisible();
+    expect(await screen.findByText(/无法确认一个或多个已固定图片版本/)).toBeVisible();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
-    expect(screen.getByRole("combobox", { name: "输入图片版本" })).toHaveValue("image-gone");
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    expect(screen.getByRole("combobox", { name: "输入图片版本" })).toHaveValue("");
     expect(screen.queryByRole("button", { name: /使用 新首帧 · v1/ })).not.toBeInTheDocument();
     expect(saves).toHaveLength(0);
   });
 
   it("retries video image-history failures and restores the exact old frame", async () => {
     let attempts = 0;
-    setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-v1", durationSeconds: 4 }, handlers: [
+    setup({ kind: "VIDEO", draft: { ...initialDraft, videoInputMode: "START_END",
+      imageInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "START_FRAME",
+        order: 0, color: "#F15CAF", sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }], durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
         id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v2" }] })),
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => {
@@ -278,13 +307,13 @@ describe("MediaDraftEditor", () => {
     ] });
     const user = userEvent.setup();
     await screen.findByLabelText("视频提示词");
-    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     expect(await screen.findByText("无法读取图片版本。")).toBeVisible();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "重试读取图片" }));
     expect(await screen.findByRole("option", { name: "海边灯塔 · v1" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧" })).toHaveAttribute("src",
+    expect(screen.getByRole("img", { name: "海边灯塔 · v1" })).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
@@ -299,7 +328,7 @@ describe("MediaDraftEditor", () => {
     ] });
     const user = userEvent.setup();
     await screen.findByLabelText("视频提示词");
-    await user.click(screen.getByRole("button", { name: "选择输入图片版本" }));
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     expect(await screen.findByText("暂无已生成或上传的图片，请先添加图片。")).toBeVisible();
     expect(screen.getAllByRole("option")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();

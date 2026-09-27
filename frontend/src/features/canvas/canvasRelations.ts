@@ -1,12 +1,11 @@
 import type { Connection, Edge } from "@xyflow/react";
-import type { Agent, CanvasItem } from "../../shared/api/client";
-import { canvasItemVersion, canvasItemVersionId } from "./versionedArtifact";
+import type { Agent, CanvasConnection, CanvasItem } from "../../shared/api/client";
+import { canvasItemVersionId } from "./versionedArtifact";
 
 /** Visual relationships are projections, never execution dependencies or generation commands. */
-export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
+export function projectCanvasRelations(items: CanvasItem[], connections: CanvasConnection[] = []): Edge[] {
   const artifactCards = new Map<string, CanvasItem>();
   const artifactVersionCards = new Map<string, CanvasItem>();
-  const versionCards = new Map<string, CanvasItem>();
   const outputGroups = new Map<string, CanvasItem[]>();
   const agentCards = items.filter((item) => item.agent !== null);
   for (const item of items) {
@@ -14,7 +13,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
     if (!artifactCards.has(item.artifact.id)) artifactCards.set(item.artifact.id, item);
     const versionId = canvasItemVersionId(item);
     if (versionId) {
-      if (!versionCards.has(versionId)) versionCards.set(versionId, item);
       artifactVersionCards.set(`${item.artifact.id}:${versionId}`, item);
     }
     if (item.groupId) {
@@ -25,10 +23,25 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
   }
 
   const edges: Edge[] = [];
+  for (const connection of connections) {
+    const source = items.find((item) => item.id === connection.sourceCanvasItemId);
+    const historical = !source || canvasItemVersionId(source) !== connection.sourceArtifactVersionId;
+    edges.push({
+      id: `canvas-connection:${connection.id}`,
+      source: connection.sourceCanvasItemId,
+      sourceHandle: "artifact-output",
+      target: connection.targetCanvasItemId,
+      targetHandle: connection.relationType === "AGENT_IMAGE_INPUT" ? "agent-input" : "artifact-input",
+      className: `relation-edge relation-edge--reference${historical ? " relation-edge--input-binding-historical" : ""}`,
+    });
+  }
   for (const agentCard of agentCards) {
     const agent = agentCard.agent;
     if (!agent) continue;
     for (const binding of agent.bindings) {
+      if (connections.some((connection) => connection.relationType === "AGENT_IMAGE_INPUT"
+          && connection.targetCanvasItemId === agentCard.id
+          && connection.sourceArtifactVersionId === binding.selectedVersionId)) continue;
       const input = artifactVersionCards.get(
         `${binding.artifactId}:${binding.selectedVersionId}`,
       ) ?? artifactCards.get(binding.artifactId);
@@ -60,28 +73,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
     }
   }
 
-  // A visible current version can name only visible exact-version inputs. Historical
-  // references stay in the Artifact record; we must not draw them to a newer version.
-  // 精确版本输入（视频所依据的输入图片）由生成时固定，没有可单独修改或删除的关系记录，
-  // 因此只做展示，不给选中与删除手势。
-  for (const output of items) {
-    const outputVersion = canvasItemVersion(output);
-    if (!outputVersion) continue;
-    for (const reference of outputVersion.inputReferences) {
-      const input = versionCards.get(reference.versionId);
-      if (!input || input.id === output.id) continue;
-      edges.push({
-        id: `reference:${output.id}:${reference.role}:${reference.order}:${reference.versionId}`,
-        source: input.id,
-        sourceHandle: "artifact-output",
-        target: output.id,
-        targetHandle: "artifact-input",
-        className: "relation-edge relation-edge--reference",
-        deletable: false,
-        selectable: false,
-      });
-    }
-  }
   return edges;
 }
 
@@ -102,24 +93,48 @@ export function inputConnectionUpdate(items: CanvasItem[], connection: Connectio
       connection.targetHandle !== "agent-input") return null;
   const source = items.find((item) => item.id === connection.source);
   const target = items.find((item) => item.id === connection.target);
-  if (!source || !target || !target.agent) return null;
+  if (!source || !target || !target.agent || source.artifact?.kind === "IMAGE") return null;
   const bindings = inputBindingsAfterConnect(source, target);
   return bindings ? { agent: target.agent, bindings } : null;
+}
+
+/** Resolves IMAGE → Agent separately from ordinary artifact bindings. */
+export function agentImageConnection(items: CanvasItem[], connection: Connection | Edge) {
+  if (connection.sourceHandle !== "artifact-output" || connection.targetHandle !== "agent-input") return null;
+  const source = items.find((item) => item.id === connection.source);
+  const target = items.find((item) => item.id === connection.target);
+  const sourceVersionId = source ? canvasItemVersionId(source) : null;
+  if (source?.artifact?.kind !== "IMAGE" || !sourceVersionId || !target?.agent
+      || source.id === target.id) return null;
+  return { sourceCanvasItemId: source.id, targetCanvasItemId: target.id,
+    sourceVersionId, agent: target.agent };
+}
+
+/** Resolves an image-card gesture into the exact version required by the media connection API. */
+export function mediaInputConnection(items: CanvasItem[], connection: Connection | Edge) {
+  if (connection.sourceHandle !== "artifact-output" || connection.targetHandle !== "artifact-input") return null;
+  const source = items.find((item) => item.id === connection.source);
+  const target = items.find((item) => item.id === connection.target);
+  const sourceVersionId = source ? canvasItemVersionId(source) : null;
+  if (!source?.artifact || source.artifact.kind !== "IMAGE" || !sourceVersionId
+      || !target?.artifact || target.artifact.kind === "TEXT" || source.id === target.id) return null;
+  return { sourceCanvasItemId: source.id, targetCanvasItemId: target.id, sourceVersionId };
 }
 
 /**
  * Drag feedback for React Flow. It reuses the same predicate as the commit path so a highlighted
  * drop target can never be one the server write would reject, and vice versa. Hand-drawn relations
- * only ever create Agent input bindings; two artifacts are never connected by a gesture.
+ * create either an Agent input binding or a persisted image-to-media input connection.
  */
 export function isCanvasConnectionValid(items: CanvasItem[], connection: Connection | Edge) {
-  return inputConnectionUpdate(items, connection) !== null;
+  return inputConnectionUpdate(items, connection) !== null
+    || agentImageConnection(items, connection) !== null
+    || mediaInputConnection(items, connection) !== null;
 }
 
 /**
- * 卡片用于接线的连接点；`null` 表示当前还接不了。Artifact 卡片的连接点只承载投影出来的
- * 精确版本输入线：手工拖动落在 Artifact 卡片上始终无效，只有 Agent 卡片能接手工连线
- * （见 [isCanvasConnectionValid]）。
+ * 卡片用于接线的连接点；`null` 表示当前还接不了。Agent 接收显式输入绑定，
+ * 有已选版本的媒体卡接收持久化的图片输入连线（见 [isCanvasConnectionValid]）。
  */
 export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifact-input" | null {
   if (item.agent) return "agent-input";
@@ -128,16 +143,21 @@ export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifac
 
 /** What a user may remove behind a projected edge, or `null` when the edge is not an editable relation. */
 export type CanvasRelationRemoval =
-  | { kind: "inputBinding"; agent: Agent; bindingId: string };
+  | { kind: "inputBinding"; agent: Agent; bindingId: string }
+  | { kind: "mediaConnection"; connection: CanvasConnection };
 
 /**
  * Resolves the relation a selected edge stands for, so deleting a line writes through the same
- * application services a card action would use. Only Agent input bindings are removable: output-group
- * membership and exact-version input references have no separately editable relation record, so both
- * return `null`.
+ * application services a card action would use. Agent bindings and persisted media connections are
+ * removable; output-group membership and frozen generation provenance are projections and return `null`.
  */
-export function canvasRelationRemoval(items: CanvasItem[],
-  edge: Edge): CanvasRelationRemoval | null {
+export function canvasRelationRemoval(items: CanvasItem[], connectionsOrEdge: CanvasConnection[] | Edge,
+  maybeEdge?: Edge): CanvasRelationRemoval | null {
+  const connections = Array.isArray(connectionsOrEdge) ? connectionsOrEdge : [];
+  const edge = Array.isArray(connectionsOrEdge) ? maybeEdge : connectionsOrEdge;
+  if (!edge) return null;
+  const persisted = connections.find((connection) => edge.id === `canvas-connection:${connection.id}`);
+  if (persisted) return { kind: "mediaConnection", connection: persisted };
   if (edge.sourceHandle !== "artifact-output" || edge.targetHandle !== "agent-input") return null;
   const source = items.find((item) => item.id === edge.source)?.artifact;
   const target = items.find((item) => item.id === edge.target);

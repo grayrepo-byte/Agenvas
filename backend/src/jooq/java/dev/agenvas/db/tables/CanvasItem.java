@@ -10,6 +10,7 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
+import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
@@ -297,6 +298,34 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             _artifactVersion = new ArtifactVersionPath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION, null);
 
         return _artifactVersion;
+    }
+
+    private transient CanvasConnectionPath _fkCanvasConnectionSource;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_connection</code> table, via the
+     * <code>fk_canvas_connection_source</code> key
+     */
+    public CanvasConnectionPath fkCanvasConnectionSource() {
+        if (_fkCanvasConnectionSource == null)
+            _fkCanvasConnectionSource = new CanvasConnectionPath(this, null, Keys.CANVAS_CONNECTION__FK_CANVAS_CONNECTION_SOURCE.getInverseKey());
+
+        return _fkCanvasConnectionSource;
+    }
+
+    private transient CanvasConnectionPath _fkCanvasConnectionTarget;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_connection</code> table, via the
+     * <code>fk_canvas_connection_target</code> key
+     */
+    public CanvasConnectionPath fkCanvasConnectionTarget() {
+        if (_fkCanvasConnectionTarget == null)
+            _fkCanvasConnectionTarget = new CanvasConnectionPath(this, null, Keys.CANVAS_CONNECTION__FK_CANVAS_CONNECTION_TARGET.getInverseKey());
+
+        return _fkCanvasConnectionTarget;
     }
 
     private transient MediaDraftPath _mediaDraft;

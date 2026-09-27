@@ -15,6 +15,7 @@ export type Artifact = components["schemas"]["Artifact"];
 export type ArtifactList = components["schemas"]["ArtifactList"];
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
+export type RestoreMediaDraftVersionInputsRequest = components["schemas"]["RestoreMediaDraftVersionInputsRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
@@ -26,6 +27,13 @@ export type UploadCanvasItemVersionRequest = components["schemas"]["UploadCanvas
 export type Canvas = components["schemas"]["Canvas"];
 export type CanvasItem = components["schemas"]["CanvasItem"];
 export type CanvasCommand = components["schemas"]["CanvasCommand"];
+export type CanvasConnection = components["schemas"]["CanvasConnection"];
+export type CanvasConnectionList = components["schemas"]["CanvasConnectionList"];
+export type CreateCanvasConnectionRequest = components["schemas"]["CreateCanvasConnectionRequest"];
+export type DisconnectCanvasConnectionRequest = components["schemas"]["DisconnectCanvasConnectionRequest"];
+export type CanvasConnectionResult = components["schemas"]["CanvasConnectionResult"];
+export type DuplicateCanvasItemRequest = components["schemas"]["DuplicateCanvasItemRequest"];
+export type DuplicateCanvasItemResponse = components["schemas"]["DuplicateCanvasItemResponse"];
 export type Agent = components["schemas"]["Agent"];
 export type AgentList = components["schemas"]["AgentList"];
 export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
@@ -355,6 +363,50 @@ export async function saveMediaDraft(projectId: string, canvasItemId: string,
   return writeJson<MediaDraft>(
     `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
     { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+/** Deliberately replaces a card draft from immutable provenance; historical lines are not restored. */
+export async function restoreMediaDraftVersionInputs(projectId: string, canvasItemId: string,
+  input: RestoreMediaDraftVersionInputsRequest): Promise<MediaDraft> {
+  return writeJson<MediaDraft>(
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft/restore-version-inputs`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** Lists exact-version CanvasItem relationships; the server remains the topology source of truth. */
+export async function listCanvasConnections(projectId: string): Promise<CanvasConnectionList> {
+  return readJson<CanvasConnectionList>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections`,
+    "无法读取画布连线",
+  );
+}
+
+/** Atomically creates a line and the corresponding target input source. */
+export async function createCanvasConnection(projectId: string,
+  input: CreateCanvasConnectionRequest): Promise<CanvasConnectionResult> {
+  return writeJson<CanvasConnectionResult>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** Atomically removes one media or Agent image line and returns the updated target state. */
+export async function disconnectCanvasConnection(projectId: string, connectionId: string,
+  input: DisconnectCanvasConnectionRequest): Promise<CanvasConnectionResult> {
+  return writeJson<CanvasConnectionResult>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections/${encodeURIComponent(connectionId)}/disconnect`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** Copies one persisted media branch while intentionally dropping tasks and topology ownership. */
+export async function duplicateCanvasItem(projectId: string, sourceItemId: string,
+  input: DuplicateCanvasItemRequest): Promise<DuplicateCanvasItemResponse> {
+  return writeJson<DuplicateCanvasItemResponse>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/items/${encodeURIComponent(sourceItemId)}/duplicate`,
+    { method: "POST", body: JSON.stringify(input) },
   );
 }
 

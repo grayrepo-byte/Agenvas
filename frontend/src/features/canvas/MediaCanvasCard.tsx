@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowsOutSimple, ArrowClockwise, CaretDown, Crop, Cube, DownloadSimple,
-  Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush, Play, Scissors,
+  CopySimple, Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush, Play, Scissors,
   SlidersHorizontal, Smiley, Sun, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
 import { assetContentUrl, assetThumbnailUrl, listDirectMediaTasks,
   type Artifact, type CanvasItem, type Task } from "../../shared/api/client";
@@ -26,9 +26,10 @@ const EXTENSIONS = [
 ] as const;
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
-export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onInspect, onUpload, children }: {
+export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onInspect, onUpload,
+  onDuplicate, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; locked: boolean; onEdit: () => void;
-  onInspect: () => void; onUpload: () => void; children: ReactNode;
+  onInspect: () => void; onUpload: () => void; onDuplicate?: () => void; children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,8 @@ export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onIn
         </> : null}
         <button type="button" onClick={onEdit} title="编辑工作草稿，点击运行生成新版本">
           <ArrowClockwise size={17} />{assetId ? "重新生成" : "编辑草稿"}</button>
+        {onDuplicate ? <button type="button" onClick={onDuplicate} title="复制完整工作草稿，不复制任务和连线">
+          <CopySimple size={17} />复制</button> : null}
         <button type="button" onClick={onInspect} aria-label="卡片详情"><SlidersHorizontal size={17} /></button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
           aria-label={isImage ? "下载图片" : "下载视频"}><DownloadSimple size={19} /></a> : null}

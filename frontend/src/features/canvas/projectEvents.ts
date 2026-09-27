@@ -8,6 +8,8 @@ const supportedTypes = [
   "asset.ready",
   "canvas.items.changed",
   "canvas.item.selected_version.changed",
+  "canvas.connection.created",
+  "canvas.connection.deleted",
   "agent.instance.changed",
   "agent.conversation.changed",
   "agent.run.changed",

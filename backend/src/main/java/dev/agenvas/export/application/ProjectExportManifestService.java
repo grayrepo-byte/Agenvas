@@ -5,6 +5,12 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.domain.CanvasConnection;
+import dev.agenvas.canvas.domain.CanvasItem;
+import dev.agenvas.artifact.application.MediaDraftService;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import java.time.Clock;
@@ -30,6 +36,12 @@ public class ProjectExportManifestService {
     private final ArtifactService artifacts;
     /** 列出项目媒体资产的非私密元数据。 */
     private final AssetService assets;
+    /** Reads persisted spatial cards and their independent displayed versions. */
+    private final CanvasService canvas;
+    /** Reads each media card's complete editable generation branch. */
+    private final MediaDraftService mediaDrafts;
+    /** Reads persisted card topology without deriving editable lines from provenance. */
+    private final CanvasConnectionService connections;
     /** 构造经过字段白名单过滤的内容 JSON。 */
     private final ObjectMapper mapper;
     /** 标记清单生成时间。 */
@@ -37,10 +49,14 @@ public class ProjectExportManifestService {
 
     /** 组装项目清单所需的权限、产物、资产和时间服务。 */
     public ProjectExportManifestService(ProjectService projects, ArtifactService artifacts,
-            AssetService assets, ObjectMapper mapper, Clock clock) {
+            AssetService assets, CanvasService canvas, MediaDraftService mediaDrafts,
+            CanvasConnectionService connections, ObjectMapper mapper, Clock clock) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.assets = assets;
+        this.canvas = canvas;
+        this.mediaDrafts = mediaDrafts;
+        this.connections = connections;
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -57,13 +73,18 @@ public class ProjectExportManifestService {
                 .collect(Collectors.groupingBy(ArtifactVersion::artifactId,
                         Collectors.mapping(version -> versionEntry(version,
                                 kinds.get(version.artifactId())), Collectors.toList())));
-        return new Manifest(1, clock.instant(), project.eventSeq(),
+        List<CanvasItemEntry> canvasItems = canvas.list(ownerId, projectId).stream()
+                .map(entry -> canvasItemEntry(ownerId, projectId, entry))
+                .toList();
+        List<ConnectionEntry> connectionEntries = connections.list(ownerId, projectId).stream()
+                .map(this::connectionEntry).toList();
+        return new Manifest(2, clock.instant(), project.eventSeq(),
                 new ProjectEntry(project.id(), project.name(), project.aspectRatio(),
                         project.status(), project.createdAt()),
                 catalog.artifacts().stream().map(artifact -> artifactEntry(
                         artifact, versions.getOrDefault(artifact.id(), List.of()))).toList(),
                 assets.listProjectAssets(ownerId, projectId).stream()
-                        .map(this::assetEntry).toList());
+                        .map(this::assetEntry).toList(), canvasItems, connectionEntries);
     }
 
     /** 将产物资源库默认指针、归档状态和历史版本摘要组装为清单条目。 */
@@ -81,7 +102,37 @@ public class ProjectExportManifestService {
             if (value != null) safe.set(field, value.deepCopy());
         }
         return new VersionEntry(version.id(), version.versionNo(), version.schemaVersion(),
-                version.createdAt(), safe);
+                version.baseVersionId(), copy(version.frozenInput()), version.createdAt(), safe);
+    }
+
+    private JsonNode copy(JsonNode value) {
+        return value == null ? null : value.deepCopy();
+    }
+
+    /** Exports the exact card layout, selected result and card-owned media working branch. */
+    private CanvasItemEntry canvasItemEntry(UUID ownerId, UUID projectId,
+            CanvasService.CanvasEntry entry) {
+        CanvasItem item = entry.item();
+        MediaDraftEntry draft = null;
+        if (entry.artifact() != null
+                && entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
+            draft = mediaDraftEntry(mediaDrafts.get(ownerId, projectId, item.id()));
+        }
+        return new CanvasItemEntry(item.id(), item.subjectType(), item.subjectId(),
+                item.selectedVersionId(), item.title(), item.x(), item.y(), item.width(),
+                item.height(), item.zIndex(), item.groupId(), item.locked(), item.version(), draft);
+    }
+
+    private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
+        return new MediaDraftEntry(draft.prompt(), copy(draft.parameters()),
+                draft.durationSeconds(), draft.capabilityId(), draft.videoInputMode(),
+                draft.imageInputs(), draft.mentions(), draft.displayMode(), draft.version());
+    }
+
+    private ConnectionEntry connectionEntry(CanvasConnection connection) {
+        return new ConnectionEntry(connection.id(), connection.sourceCanvasItemId(),
+                connection.targetCanvasItemId(), connection.relationType(),
+                connection.sourceArtifactVersionId(), connection.version());
     }
 
     /** 按领域产物类型返回清单字段白名单，不读取 Provider JSON 中的类型提示。 */
@@ -92,7 +143,7 @@ public class ProjectExportManifestService {
             case IMAGE -> new String[] {"assetId", "prompt", "negativePrompt",
                     "providerConfigVersion", "workflowVersion"};
             case VIDEO -> new String[] {"assetId", "prompt", "negativePrompt",
-                    "providerConfigVersion", "workflowVersion", "keyframeVersionId"};
+                    "providerConfigVersion", "workflowVersion"};
         };
     }
 
@@ -112,7 +163,8 @@ public class ProjectExportManifestService {
      * @param assets 项目媒体资产的安全元数据
      */
     public record Manifest(int schemaVersion, Instant generatedAt, long snapshotSeq,
-            ProjectEntry project, List<ArtifactEntry> artifacts, List<AssetEntry> assets) {}
+            ProjectEntry project, List<ArtifactEntry> artifacts, List<AssetEntry> assets,
+            List<CanvasItemEntry> canvasItems, List<ConnectionEntry> connections) {}
 
     /** 不含所有者或凭证的项目身份摘要。
      * @param id 项目 ID
@@ -143,7 +195,24 @@ public class ProjectExportManifestService {
      * @param content 经过类型字段白名单筛选的 JSON 正文
      */
     public record VersionEntry(UUID id, int versionNo, int schemaVersion,
-            Instant createdAt, JsonNode content) {}
+            UUID baseVersionId, JsonNode frozenInput, Instant createdAt, JsonNode content) {}
+
+    /** Persisted spatial state plus the independent media branch owned by that card. */
+    public record CanvasItemEntry(UUID id, CanvasItem.SubjectType subjectType, UUID subjectId,
+            UUID selectedVersionId, String title, java.math.BigDecimal x,
+            java.math.BigDecimal y, java.math.BigDecimal width, java.math.BigDecimal height,
+            int zIndex, UUID groupId, boolean locked, long version, MediaDraftEntry mediaDraft) {}
+
+    /** Complete safe generation state for one image or video card. */
+    public record MediaDraftEntry(String prompt, JsonNode parameters, Integer durationSeconds,
+            UUID capabilityId, MediaDraft.VideoInputMode videoInputMode,
+            List<MediaDraft.ImageInput> imageInputs, List<MediaDraft.PromptMention> mentions,
+            MediaDraft.DisplayMode displayMode, long version) {}
+
+    /** One persisted editable topology edge with its frozen source image version. */
+    public record ConnectionEntry(UUID id, UUID sourceCanvasItemId, UUID targetCanvasItemId,
+            CanvasConnection.RelationType relationType, UUID sourceArtifactVersionId,
+            long version) {}
 
     /** 媒体资产元数据，不包含私有对象键或可复用下载地址。
      * @param id 资产 ID

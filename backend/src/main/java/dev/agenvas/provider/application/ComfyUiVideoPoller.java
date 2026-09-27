@@ -90,7 +90,6 @@ public class ComfyUiVideoPoller {
         content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
         content.put("workflowVersion", task.input().path("workflowVersion").asText());
         content.put("sourceTaskId", task.id().toString());
-        content.put("keyframeVersionId", task.input().path("imageVersionId").asText());
         ObjectNode parameters = content.putObject("parameters");
         parameters.put("providerRequestId", promptId.toString());
         return new TaskWorker.PollGenerated(content);
