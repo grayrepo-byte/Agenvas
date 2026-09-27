@@ -1,14 +1,18 @@
 import { NodeToolbar, Position } from "@xyflow/react";
 import type { ReactNode } from "react";
+import type { CanvasItem } from "../../shared/api/client";
+import { CanvasItemTitleEditor } from "./CanvasItemTitleEditor";
 import "./ArtifactCardFrame.css";
 
 const TOOLBAR_NODE_GAP = 32;
 
 /** Shared media/content surface and node-anchored toolbar; callers own their content and actions. */
 export function ArtifactCardFrame({ title, kindLabel, selected, locked, toolbar, toolbarLabel,
-  className = "", children }: {
+  editableTitle, className = "", children }: {
   title: string; kindLabel: string; selected: boolean; locked: boolean;
-  toolbar: ReactNode; toolbarLabel?: string; className?: string; children: ReactNode;
+  toolbar: ReactNode; toolbarLabel?: string;
+  editableTitle?: { projectId: string; item: CanvasItem };
+  className?: string; children: ReactNode;
 }) {
   return <>
     {/* Toolbar portals sit outside the node; exclude their gestures from viewport panning. */}
@@ -19,7 +23,9 @@ export function ArtifactCardFrame({ title, kindLabel, selected, locked, toolbar,
     </NodeToolbar>
     <article className={`artifact-canvas-card ${className}${selected ? " is-selected" : ""}`}
       aria-label={`${title} · ${kindLabel}${locked ? " · 已锁定" : ""}`}>
-      <span className="artifact-card-caption" title={title}>{title}</span>
+      {editableTitle
+        ? <CanvasItemTitleEditor {...editableTitle} kindLabel={kindLabel} />
+        : <span className="artifact-card-caption" title={title}>{title}</span>}
       {children}
     </article>
   </>;

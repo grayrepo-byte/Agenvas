@@ -121,6 +121,8 @@
 
 2026-09-27 双击与落点（按用户反馈）：双击空白画布只开添加菜单，不再缩放；连线落点按卡片判定，指针落在卡片任意位置松手即可建立关系，手势中指针所在卡片显示强调色/红色高亮外圈，源卡片自身不作为落点。定位与实测见 [连接点证据](evidence/T07-canvas-connection-handles.md) 的 2026-09-27 小节。
 
+2026-09-27 卡片标题编辑（按用户反馈）：Artifact 卡片标题可双击原位编辑，Enter/失焦保存、Esc 取消；失败或冲突保留草稿。标题持久化在 CanvasItem，使用画布项 CAS，同一 Artifact 的其他卡片及 Artifact/ArtifactVersion 均不改变；V49 从既有 Artifact/Agent 名称回填旧卡片。验证记录见 [标题编辑证据](evidence/T07-canvas-item-title-editing.md)。
+
 2026-09-27 取消选中（按用户反馈）：点空白、拖出选框、平移与缩放画布都清除选中；受控节点改为接收 React Flow 的 select 变更（此前后者被忽略，导致画布已取消选中而应用侧仍保留高亮）。原始偶发失败尚未复现，过期回写的根因假设未证实；受控 selected 仍会同步到 React Flow 内部状态。实现与验证范围见 [节点选中证据](evidence/T07-node-selection-and-image-ratio.md) 的 2026-09-27 小节。
 
 2026-09-27 关系线去掉文字（按用户反馈）：线上不再显示“输入”等说明文字，关系类型只靠颜色与线型区分，历史版本的输入绑定改用虚线表达。实测见 [连接点证据](evidence/T07-canvas-connection-handles.md) 的 2026-09-27 关系线小节。

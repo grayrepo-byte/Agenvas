@@ -63,6 +63,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM.PROJECT_ID, item.projectId())
                 .set(CANVAS_ITEM.SUBJECT_TYPE, item.subjectType().name())
                 .set(CANVAS_ITEM.SUBJECT_ID, item.subjectId())
+                .set(CANVAS_ITEM.TITLE, item.title())
                 // subject 类型决定填充哪个产物或 Agent 外键，另一个保持 NULL。
                 .set(CANVAS_ITEM.ARTIFACT_ID,
                         item.subjectType() == CanvasItem.SubjectType.ARTIFACT
@@ -87,11 +88,12 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .execute() == 1;
     }
 
-    /** 以预期布局版本更新坐标、尺寸、分组或锁定状态。 */
+    /** 以预期画布项版本更新标题、坐标、尺寸、分组或锁定状态。 */
     @Override
     public boolean update(
             UUID ownerId, CanvasItem item, long expectedVersion, Instant updatedAt) {
         return dsl.update(CANVAS_ITEM)
+                .set(CANVAS_ITEM.TITLE, item.title())
                 .set(CANVAS_ITEM.X, item.x())
                 .set(CANVAS_ITEM.Y, item.y())
                 .set(CANVAS_ITEM.WIDTH, item.width())
@@ -137,6 +139,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 row.getProjectId(),
                 CanvasItem.SubjectType.valueOf(row.getSubjectType()),
                 row.getSubjectId(),
+                row.getTitle(),
                 row.getX(),
                 row.getY(),
                 row.getWidth(),

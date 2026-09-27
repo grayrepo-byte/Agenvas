@@ -136,8 +136,8 @@ public class Public extends SchemaImpl {
     public final CallLog CALL_LOG = CallLog.CALL_LOG;
 
     /**
-     * Spatial presentation only; Artifact content remains in immutable
-     * ArtifactVersion rows.
+     * Per-card title and spatial presentation; referenced business content
+     * remains outside this row.
      */
     public final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 

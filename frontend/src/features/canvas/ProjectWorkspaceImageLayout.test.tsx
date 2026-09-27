@@ -30,6 +30,7 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
 const NOW = "2026-09-26T00:00:00Z";
 function imageItem(id = "image-card", assetId = "landscape"): CanvasItem {
   return { id, subjectType: "ARTIFACT", subjectId: id, x: 10, y: 30,
+    title: "图片",
     width: 225, height: 300, version: 0, zIndex: 0, groupId: null, locked: false, agent: null,
     artifact: { id, projectId: "project-1", kind: "IMAGE", title: "图片", version: 0,
       currentVersionId: `${assetId}-version`, createdAt: NOW, updatedAt: NOW,

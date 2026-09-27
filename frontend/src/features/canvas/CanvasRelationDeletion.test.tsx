@@ -36,6 +36,7 @@ const characterVersionId = "22222222-2222-4222-8222-222222222222";
 /** An image card, one Agent bound to it, and a character naming that exact image version. */
 const linkedItems: CanvasItem[] = [
   { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
+    title: "图片",
     width: 280, height: 180, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
     artifact: {
       id: "image-id", projectId: "project-1", kind: "IMAGE", title: "参考图",
@@ -45,6 +46,7 @@ const linkedItems: CanvasItem[] = [
         createdByKind: "USER", runId: null, createdAt: now },
     } },
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
+    title: "Agent",
     width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4, artifact: null,
     agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
       name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
@@ -52,6 +54,7 @@ const linkedItems: CanvasItem[] = [
       bindings: [{ id: "binding-id", artifactId: "image-id",
         selectedVersionId: imageVersionId, bindingType: "INPUT" }] } },
   { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id", x: 800, y: 0,
+    title: "角色",
     width: 280, height: 180, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
     artifact: {
       id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "角色",
@@ -64,6 +67,7 @@ const linkedItems: CanvasItem[] = [
         createdByKind: "USER", runId: null, createdAt: now },
     } },
   { id: "output-card", subjectType: "ARTIFACT", subjectId: "output-id", x: 1200, y: 0,
+    title: "输出",
     width: 280, height: 180, zIndex: 3, groupId: "group-1", locked: false, version: 6, agent: null,
     artifact: {
       id: "output-id", projectId: "project-1", kind: "IMAGE", title: "Agent 产物",

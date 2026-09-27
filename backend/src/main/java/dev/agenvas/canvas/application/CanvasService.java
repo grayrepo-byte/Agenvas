@@ -22,12 +22,14 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 原子执行画布布局命令；画布卡片位置与产物正文版本分开保存。 */
+/** 原子执行画布展示命令；卡片标题和布局与产物正文版本分开保存。 */
 @Service
 public class CanvasService {
 
-    /** 一次布局提交允许的最大命令数。 */
+    /** 一次画布提交允许的最大命令数。 */
     private static final int MAX_COMMANDS = 100;
+    /** 卡片展示标题允许的最大字符数。 */
+    private static final int MAX_TITLE_LENGTH = 160;
     /** 卡片坐标的最小边界。 */
     private static final BigDecimal MIN_COORDINATE = new BigDecimal("-1000000");
     /** 卡片坐标的最大边界。 */
@@ -53,9 +55,9 @@ public class CanvasService {
     private final ArtifactService artifacts;
     /** 将 Agent 卡片投影到当前配置。 */
     private final AgentInstanceService agents;
-    /** 保存纯布局数据，不持有产物正文。 */
+    /** 保存卡片级标题与布局，不持有产物正文。 */
     private final CanvasItemRepository canvasItems;
-    /** 原子提交批量布局变化及项目事件。 */
+    /** 原子提交批量画布变化及项目事件。 */
     private final ProjectEventService events;
     /** 构造变化事件的受限负载。 */
     private final ObjectMapper objectMapper;
@@ -88,7 +90,7 @@ public class CanvasService {
         this.clock = clock;
     }
 
-    /** 读取持久化布局，并按卡片类型附加当前产物版本或 Agent 配置。 */
+    /** 读取持久化展示状态，并按卡片类型附加当前产物版本或 Agent 配置。 */
     @Transactional(readOnly = true)
     public List<CanvasEntry> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
@@ -104,7 +106,7 @@ public class CanvasService {
     public CanvasItem placeGeneratedArtifactWithinChange(UUID ownerId, UUID projectId,
             UUID agentId, UUID artifactId) {
         projects.requireActiveProject(ownerId, projectId);
-        artifacts.get(ownerId, projectId, artifactId);
+        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         List<CanvasItem> existing = new ArrayList<>(canvasItems.list(ownerId, projectId));
         CanvasItem agentCard = existing.stream()
@@ -145,7 +147,7 @@ public class CanvasService {
         int zIndex = Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex)
                 .max().orElse(-1) + 1);
         CanvasItem placed = placement(UUID.randomUUID(), projectId,
-                CanvasItem.SubjectType.ARTIFACT, artifactId,
+                CanvasItem.SubjectType.ARTIFACT, artifactId, artifact.artifact().title(),
                 x, y, OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, agent.outputGroupId(), false);
         if (!canvasItems.create(placed)) {
             throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
@@ -204,13 +206,13 @@ public class CanvasService {
     }
 
     /**
-     * 在单一事务中应用命令批次；全部成功才返回数据库布局并追加事件，任何一项失败则整批回滚。
-     * 相同布局重放不新增事件序号。
+     * 在单一事务中应用命令批次；全部成功才返回数据库展示状态并追加事件，任何一项失败则整批回滚。
+     * 相同命令重放不新增事件序号。
      *
      * @param ownerId 经认证的项目所有者
      * @param projectId 画布所属项目
      * @param commands 要原子应用的 1 至 100 条命令，同批不能重复目标卡片
-     * @return 应用后的权威画布布局
+     * @return 应用后的权威画布展示状态
      */
     @Transactional
     public List<CanvasEntry> apply(
@@ -250,6 +252,7 @@ public class CanvasService {
             switch (command) {
                 case PlaceArtifact place -> placeArtifact(ownerId, projectId, place);
                 case PlaceAgent place -> placeAgent(ownerId, projectId, place);
+                case UpdateTitle update -> updateTitle(ownerId, projectId, update);
                 case UpdateLayout update -> updateLayout(ownerId, projectId, update);
                 case SetLocked lock -> setLocked(ownerId, projectId, lock);
                 case Remove remove -> remove(ownerId, projectId, remove);
@@ -268,12 +271,14 @@ public class CanvasService {
                 command.width(),
                 command.height(),
                 command.zIndex());
-        artifacts.get(ownerId, projectId, command.artifactId());
+        ArtifactService.ArtifactView artifact = artifacts.get(
+                ownerId, projectId, command.artifactId());
         CanvasItem requested = placement(
                 command.itemId(),
                 projectId,
                 CanvasItem.SubjectType.ARTIFACT,
                 command.artifactId(),
+                artifact.artifact().title(),
                 command.x(),
                 command.y(),
                 command.width(),
@@ -292,12 +297,13 @@ public class CanvasService {
                 command.width(),
                 command.height(),
                 command.zIndex());
-        agents.get(ownerId, projectId, command.agentId());
+        AgentInstance agent = agents.get(ownerId, projectId, command.agentId());
         CanvasItem requested = placement(
                 command.itemId(),
                 projectId,
                 CanvasItem.SubjectType.AGENT,
                 command.agentId(),
+                agent.name(),
                 command.x(),
                 command.y(),
                 command.width(),
@@ -314,6 +320,7 @@ public class CanvasService {
             UUID projectId,
             CanvasItem.SubjectType subjectType,
             UUID subjectId,
+            String title,
             BigDecimal x,
             BigDecimal y,
             BigDecimal width,
@@ -327,6 +334,7 @@ public class CanvasService {
                 projectId,
                 subjectType,
                 subjectId,
+                title,
                 x,
                 y,
                 width,
@@ -348,6 +356,40 @@ public class CanvasService {
                         ownerId, requested.projectId(), requested.id())
                 .orElseThrow(this::conflict);
         if (!samePlacement(existing, requested)) {
+            throw conflict();
+        }
+    }
+
+    /** 只修改单张画布卡片的展示标题，不改变其业务对象或内容版本。 */
+    private void updateTitle(UUID ownerId, UUID projectId, UpdateTitle command) {
+        CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, command.itemId())
+                .orElseThrow(this::notFound);
+        String title = validateTitle(command.title());
+        if (current.title().equals(title)
+                && (current.version() == command.expectedVersion()
+                        || current.version() == command.expectedVersion() + 1)) {
+            return;
+        }
+        if (current.version() != command.expectedVersion()) {
+            throw conflict();
+        }
+        CanvasItem updated = new CanvasItem(
+                current.id(),
+                current.projectId(),
+                current.subjectType(),
+                current.subjectId(),
+                title,
+                current.x(),
+                current.y(),
+                current.width(),
+                current.height(),
+                current.zIndex(),
+                current.groupId(),
+                current.locked(),
+                current.version(),
+                current.createdAt(),
+                current.updatedAt());
+        if (!canvasItems.update(ownerId, updated, command.expectedVersion(), clock.instant())) {
             throw conflict();
         }
     }
@@ -383,6 +425,7 @@ public class CanvasService {
                 current.projectId(),
                 current.subjectType(),
                 current.subjectId(),
+                current.title(),
                 command.x(),
                 command.y(),
                 command.width(),
@@ -415,6 +458,7 @@ public class CanvasService {
                 current.projectId(),
                 current.subjectType(),
                 current.subjectId(),
+                current.title(),
                 current.x(),
                 current.y(),
                 current.width(),
@@ -463,6 +507,7 @@ public class CanvasService {
         return left.projectId().equals(right.projectId())
                 && left.subjectType() == right.subjectType()
                 && left.subjectId().equals(right.subjectId())
+                && left.title().equals(right.title())
                 && compare(left.x(), right.x())
                 && compare(left.y(), right.y())
                 && compare(left.width(), right.width())
@@ -513,6 +558,15 @@ public class CanvasService {
         return value.compareTo(minimum) < 0 || value.compareTo(maximum) > 0;
     }
 
+    /** 规范化卡片标题并保持数据库、合约和应用层的同一长度约束。 */
+    private String validateTitle(String title) {
+        String normalized = title == null ? "" : title.trim();
+        if (normalized.isEmpty() || normalized.length() > MAX_TITLE_LENGTH) {
+            throw validation("卡片标题必须包含 1 到 160 个字符。");
+        }
+        return normalized;
+    }
+
     /** 将不存在和无权访问的画布项映射为相同 404。 */
     private ApiProblemException notFound() {
         return new ApiProblemException(
@@ -528,7 +582,7 @@ public class CanvasService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "CANVAS_VERSION_CONFLICT",
-                "画布布局已更新",
+                "画布卡片已更新",
                 "画布卡片已被其他请求修改，请刷新后重试。",
                 false);
     }
@@ -545,7 +599,7 @@ public class CanvasService {
 
     /** 画布支持的封闭命令集合；所有命令只修改空间展示状态。 */
     public sealed interface CanvasCommand
-            permits PlaceArtifact, PlaceAgent, UpdateLayout, SetLocked, Remove {
+            permits PlaceArtifact, PlaceAgent, UpdateTitle, UpdateLayout, SetLocked, Remove {
         /** 返回命令明确定位的画布项，供批量操作检测重复目标。
          * @return 目标画布项 UUID
          */
@@ -600,6 +654,16 @@ public class CanvasService {
             int zIndex,
             UUID groupId,
             boolean locked)
+            implements CanvasCommand {}
+
+    /**
+     * 修改单张卡片的展示标题；同一业务对象的其他卡片不受影响。
+     *
+     * @param itemId 目标画布项
+     * @param expectedVersion 客户端读取到的画布项版本
+     * @param title 去除首尾空白后的新标题
+     */
+    public record UpdateTitle(UUID itemId, long expectedVersion, String title)
             implements CanvasCommand {}
 
     /**

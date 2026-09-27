@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact } from "../../shared/api/client";
+import type { Artifact, CanvasItem } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 
@@ -21,11 +21,17 @@ function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["current
       content, createdByKind: "USER", createdAt: CREATED_AT, inputReferences: [] } };
 }
 
+function itemFor(value: Artifact): CanvasItem {
+  return { id: "item-hidden-id", subjectType: "ARTIFACT", subjectId: value.id,
+    title: value.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
+    groupId: null, locked: false, version: 0, artifact: value, agent: null };
+}
+
 function showCard(value: Artifact, selected = true, locked = false) {
   const onEdit = vi.fn();
   const onInspect = vi.fn();
   const result = render(<QueryClientProvider client={createQueryClient()}>
-    <ContentCanvasCard artifact={value} selected={selected} locked={locked}
+    <ContentCanvasCard artifact={value} item={itemFor(value)} selected={selected} locked={locked}
       onEdit={onEdit} onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
   </QueryClientProvider>);
   return { ...result, onEdit, onInspect };

@@ -1330,7 +1330,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 原子批量保存画布展示命令 */
+        /** 原子批量保存画布卡片展示命令 */
         post: operations["applyCanvasCommands"];
         delete?: never;
         options?: never;
@@ -2419,6 +2419,7 @@ export interface components {
             subjectType: components["schemas"]["CanvasSubjectType"];
             /** Format: uuid */
             subjectId: string;
+            title: string;
             x: number;
             y: number;
             width: number;
@@ -2505,6 +2506,18 @@ export interface components {
             /** @default false */
             locked: boolean;
         };
+        UpdateCanvasItemTitleCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "UPDATE_TITLE";
+            /** Format: uuid */
+            itemId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            title: string;
+        };
         UpdateLayoutCommand: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -2546,7 +2559,7 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
         };
-        CanvasCommand: components["schemas"]["PlaceArtifactCommand"] | components["schemas"]["PlaceAgentCommand"] | components["schemas"]["UpdateLayoutCommand"] | components["schemas"]["SetCanvasItemLockedCommand"] | components["schemas"]["RemoveCanvasItemCommand"];
+        CanvasCommand: components["schemas"]["PlaceArtifactCommand"] | components["schemas"]["PlaceAgentCommand"] | components["schemas"]["UpdateCanvasItemTitleCommand"] | components["schemas"]["UpdateLayoutCommand"] | components["schemas"]["SetCanvasItemLockedCommand"] | components["schemas"]["RemoveCanvasItemCommand"];
         CanvasCommandBatchRequest: {
             commands: components["schemas"]["CanvasCommand"][];
         };

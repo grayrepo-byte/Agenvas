@@ -105,7 +105,7 @@ P2：多个 Agent 并发协调、多人协作、插件市场、完整剪辑时�
 | Artifact | 文本、镜头、图片等业务产物的稳定身份 | 不是 React Flow Node |
 | ArtifactVersion | 某次内容及其输入引用的不可变版本 | 不是最新内容的可变缓存 |
 | Asset | 实际媒体文件、哈希、大小、存储位置 | 不是带提示词的业务对象 |
-| CanvasItem | Artifact 或 AgentInstance 的空间展示 | 不存业务执行状态的唯一真相 |
+| CanvasItem | Artifact 或 AgentInstance 的空间展示及卡片级标题 | 不存业务执行状态的唯一真相 |
 | AgentProfile | 内置系统提示词、允许工具、Skill 和策略版本 | 不存某次运行进度 |
 | AgentInstance | 画布里的 Agent 配置实例和输入绑定 | 不等于一个永久运行的线程 |
 | AgentConversation | 一个 Agent 的连续交流与记忆边界 | 不等于登录会话或整个项目 |
@@ -364,6 +364,8 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 
 2026-09-27 关系线去掉文字：线上不再写“输入”“Agent 输出组”“素材引用 · 角色”这类说明，关系类型只靠颜色与线型区分——蓝线是输入、绿线是输出组、灰虚线是素材引用，输入绑定指向历史版本时蓝线改为虚线。引用角色、绑定版本等具体信息在卡片详情与 Agent 配置里查看。
 
+2026-09-27 卡片标题编辑：Artifact 卡片标题支持双击后在原位置进入紧凑输入态；Enter 或失焦保存，Esc 取消。空标题、请求失败或并发冲突时保留输入并提示失败。可编辑标题属于 CanvasItem 展示实例，保存使用 CanvasItem 的 `expectedVersion` 乐观并发控制；同一 Artifact 的其他卡片、Artifact 规范名称、内容版本和任务 CAS 均不改变。新放置卡片从 Artifact 标题或 Agent 名称初始化，V49 为已有卡片回填当时的对应名称。
+
 媒体底部编辑器采用约 680px 宽的黑色 Prompt 面板，提示词为主要编辑区域，模型选择、参数摘要与圆形运行按钮位于底部。模型选择映射到服务端已启用能力，保留默认能力；参数摘要只显示现有能力配置，不伪造草稿级画幅、分辨率或画质字段。当前尺寸由项目画幅和固定适配器/模板确定，画质由能力配置确定；没有可靠参数时显示模型/模板默认。费用未知必须明确显示。运行加载态使用 Beautiful UI 的像素波浪示例，状态来自持久 Task，不显示虚构进度；支持减少动态效果。编辑并保存草稿不切换当前结果展示，只有明确运行后切到草稿占位。
 
 2026-09-26 其他节点统一及 2026-09-27 文字交互修订：文字、角色、场景和镜头采用与图片一致的黑色卡片、选中浮动工具栏和节点下方输入面板。文字面板保存提示词、当前版本和模型配置快照到持久 Task；完整模型响应先落库，再追加 `TASK` 创建的不可变文字版本。若生成期间用户已直接编辑或切换版本，结果只进入历史，不替换当前内容。文字工具栏“编辑内容”在节点内修改实际 Artifact 内容并显式保存新版本；节点版本标签可选择历史版本。新连线固定文字卡片当前选用的实际 ArtifactVersion，不传递提示词或模型响应。存在未保存输入时禁止切换版本，避免草稿被静默替换。结构化内容按字段展示；完整版本历史、精确引用及其移除、布局锁定和移除卡片仍可从详情抽屉访问。远端更新不会覆盖正在编辑的草稿或替换其 CAS 基准；冲突保留输入，显式载入最新版本才替换本地修改。视频首帧选择以归档图片版本原图展示，支持历史版本、替换与清除；模型缺失或读取失败不可运行，时长按所选能力范围校验。视频先显示封面，用户点击后才加载播放，缓冲、播放失败和重试独立于生成任务状态。Beautiful UI 的 ContextCards、SelectionActions、PromptBar 与 TaskRows 示例只用于呈现，不增加新媒体类型或模拟后端能力。
@@ -397,7 +399,7 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 | `artifact` | id、project_id、kind、title、current_version_id、archived_at、version |
 | `artifact_version` | id、project_id、artifact_id、version_no、schema_version、content_json、input_refs_json、created_by_kind、run_id、created_at |
 | `artifact_relation` | id、project_id、source_artifact_id、target_artifact_id、relation_type、created_at |
-| `canvas_item` | id、project_id、subject_type、subject_id、x、y、width、height、z_index、group_id、locked、version |
+| `canvas_item` | id、project_id、subject_type、subject_id、title、x、y、width、height、z_index、group_id、locked、version |
 | `agent_instance` | id、project_id、profile_key、profile_version、name、instruction、output_group_id、current_conversation_id、version |
 | `agent_conversation` | id、project_id、agent_instance_id、title、version、turn_count、timestamps |
 | `agent_binding` | id、project_id、agent_instance_id、artifact_id、selected_version_id、binding_type |

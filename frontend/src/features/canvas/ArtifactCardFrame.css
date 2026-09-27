@@ -25,6 +25,54 @@
   white-space: nowrap;
 }
 
+.artifact-card-title-editor {
+  position: absolute;
+  z-index: 4;
+  top: -27px;
+  left: 2px;
+  max-width: calc(100% - 4px);
+}
+.artifact-card-title-editor .artifact-card-caption {
+  position: static;
+  display: block;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  line-height: 22px;
+  text-align: left;
+  cursor: text;
+}
+.artifact-card-title-input {
+  box-sizing: border-box;
+  display: block;
+  height: 22px;
+  min-width: 64px;
+  max-width: 100%;
+  margin: 0;
+  border: 1px solid #b45cff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: #232323;
+  color: #ededed;
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  outline: none;
+  box-shadow: 0 0 0 1px #7f35d8;
+}
+.artifact-card-title-input:focus {
+  border-color: #d178ff;
+  box-shadow: 0 0 0 1px #a94cff;
+}
+.artifact-card-title-input.is-error {
+  border-color: #ff5d67;
+  box-shadow: 0 0 0 1px #c83545;
+}
+.artifact-card-title-input:disabled { opacity: .7; cursor: progress; }
+
 .artifact-card-toolbar { display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 48px); padding: 6px 8px; border: 1px solid #484848; border-radius: 999px; background: #232323; box-shadow: 0 6px 18px #0005; }
 /* Nested menus retain their own geometry regardless of stylesheet import order. */
 .artifact-card-toolbar :where(button), .artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: 999px; color: #eee; background: transparent; font-size: 13px; white-space: nowrap; cursor: pointer; }

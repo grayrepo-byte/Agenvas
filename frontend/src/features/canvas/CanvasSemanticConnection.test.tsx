@@ -31,6 +31,7 @@ function cards(referenced: boolean): CanvasItem[] {
   const reference = referenced ? ["image-version"] : [];
   return [
     { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id",
+      title: "参考图",
       x: 0, y: 0, width: 280, height: 180, zIndex: 0, groupId: null,
       locked: false, version: 0, agent: null,
       artifact: { id: "image-id", projectId: "project-1", kind: "IMAGE", title: "参考图",
@@ -39,6 +40,7 @@ function cards(referenced: boolean): CanvasItem[] {
           content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
           createdByKind: "USER", runId: null, createdAt } } },
     { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id",
+      title: "角色",
       x: 400, y: 0, width: 280, height: 180, zIndex: 1, groupId: null,
       locked: false, version: 0, agent: null,
       artifact: { id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "角色",

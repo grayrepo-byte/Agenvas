@@ -52,6 +52,7 @@ const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
 const items: CanvasItem[] = [
   { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
+    title: "参考图",
     width: 260, height: 150, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
     artifact: { id: "image-id", projectId: "project-1", kind: "IMAGE", title: "参考图",
       currentVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
@@ -59,6 +60,7 @@ const items: CanvasItem[] = [
         content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now } } },
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
+    title: "Agent",
     width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4, artifact: null,
     agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
       name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
@@ -66,6 +68,7 @@ const items: CanvasItem[] = [
       bindings: [{ id: "binding-id", artifactId: "image-id",
         selectedVersionId: imageVersionId, bindingType: "INPUT" }] } },
   { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id", x: 800, y: 0,
+    title: "角色",
     width: 260, height: 150, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
     artifact: { id: "character-id", projectId: "project-1", kind: "CHARACTER", title: "角色",
       currentVersionId: "22222222-2222-4222-8222-222222222222", version: 5,

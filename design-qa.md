@@ -184,3 +184,44 @@ Edge label removal result: partial — 预览页真实渲染核对通过，完�
 - 未覆盖：完整工作区的真实点击、追加选择、框选，以及原始偶发失败的回归复现。
 
 Selection writeback result: partial — 实现方向合理，偶发问题根因与完整工作区行为仍待验证。
+
+## CanvasItem 卡片标题原位编辑（2026-09-27）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-ce4a834f-25cb-4028-9c57-1cf561fa93d6.png`
+- implementation source: `frontend/src/features/canvas/CanvasItemTitleEditor.tsx` 与 `ArtifactCardFrame.css`
+- implementation comparison capture: Codex 内置浏览器在 `http://127.0.0.1:4173/` 打开临时并排核对页后以内联截图捕获；过程页核对后移除，未保留独立截图文件。
+- viewport: 932 × 896 CSS px；并排区域各 361 × 110 CSS px。
+- source pixels / normalization: 源文件实际 354 × 108 px，在核对页等比显示为 361 × 110 CSS px；浏览器 device scale 使用默认值。实现区域为 361 × 110 CSS px。
+- state: 标题输入已聚焦并全选，内容均为 `Failed selfies nine grid`。
+- primary interactions tested: 浏览器中 F2 进入编辑、Esc 取消并恢复标题、再次 F2 进入；双击、Enter/失焦保存、失败保留和空标题由组件测试覆盖。浏览器过程未向旧 Docker 后端提交画布命令。
+- console errors checked: 内置浏览器 warning/error 为空。
+
+### Full-view comparison evidence
+
+参考图与实际组件在同一浏览器截图中并排显示。实现沿用 Agenvas 现有标题锚点，不引入参考产品左侧图片图标；这与用户给出的图一现有卡片结构一致。输入框实际测得 173 × 22 CSS px，参考图约 171 × 20 px，属于 2px 以内的非实质差异。
+
+### Focused region comparison evidence
+
+- 字体与排版：沿用卡片标题 11px 字号、18px 行高和常规字重；长标题单行显示，输入宽度随内容增长且受卡片宽度约束。
+- 间距与布局：输入框保持标题原锚点，距卡片表面约 5px；没有推动或缩放卡片内容。
+- 颜色与 token：实际聚焦边框 `rgb(209, 120, 255)`，外圈 `rgb(169, 76, 255)`，背景 `rgb(35, 35, 35)`，文字 `rgb(237, 237, 237)`，与参考的紫色描边深色输入态一致。
+- 图片质量与资产：本次只改变可编辑 UI 文本，不替换、裁切或生成卡片媒体资产；参考图中的缩略图不属于本次实现范围。
+- 文案与内容：参考标题原样用于核对；提示文案只通过 `title`/辅助文本提供，不占用可见标题区域。
+
+### Findings
+
+无可执行的 P0/P1/P2 差异。参考图左侧图片图标不移植，属于保持 Agenvas 现有卡片标题结构的有意差异；输入框高度相差约 2px，保留为可接受的 P3 细节。
+
+### Comparison history
+
+首次并排比较即未发现 P0/P1/P2；未因视觉问题修改实现。浏览器自动化的双击动作未可靠触发原生 `dblclick`，因此双击行为以 Testing Library 的真实事件序列回归为准，浏览器视觉态通过同一公开键盘入口 F2 进入。
+
+### Implementation checklist
+
+- [x] 双击与 F2 进入原位编辑，输入自动聚焦并全选。
+- [x] Enter/失焦保存，Esc 取消。
+- [x] 空标题与失败/冲突保留草稿并显示错误态。
+- [x] 紫色紧凑描边、深色背景、单行宽度约束与参考一致。
+- [x] 键盘输入不触发画布删除快捷键。
+
+final result: passed

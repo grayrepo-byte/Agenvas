@@ -225,6 +225,7 @@ function videoItem(projectId: string, title: string, artifactId: string,
   const versionId = crypto.randomUUID();
   return {
     id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+    title,
     x: 0, y: 0, width: 300, height: 200, zIndex: 0, groupId: null,
     locked: false, version: 0, agent: null,
     artifact: {

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
-import type { Artifact } from "../../shared/api/client";
+import type { Artifact, CanvasItem } from "../../shared/api/client";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 
 // React Flow positions the toolbar; this component test exercises its actual controls and media state.
@@ -16,6 +16,12 @@ const artifact: Artifact = { id: "image-1", projectId: "project-1", kind: "IMAGE
   currentVersionId: null, currentVersion: null, version: 0,
   createdAt: "2026-09-26T00:00:00Z", updatedAt: "2026-09-26T00:00:00Z" };
 
+function itemFor(shownArtifact: Artifact): CanvasItem {
+  return { id: "item-1", subjectType: "ARTIFACT", subjectId: shownArtifact.id,
+    title: shownArtifact.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
+    groupId: null, locked: false, version: 0, artifact: shownArtifact, agent: null };
+}
+
 function showCard(shownArtifact: Artifact = artifact) {
   const onUpload = vi.fn();
   const onInspect = vi.fn();
@@ -23,7 +29,7 @@ function showCard(shownArtifact: Artifact = artifact) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   render(<QueryClientProvider client={client}>
-    <MediaCanvasCard artifact={shownArtifact} selected locked={false} onEdit={onEdit}
+    <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected locked={false} onEdit={onEdit}
       onUpload={onUpload} onInspect={onInspect}>{null}</MediaCanvasCard>
   </QueryClientProvider>);
   return { onUpload, onInspect, onEdit };

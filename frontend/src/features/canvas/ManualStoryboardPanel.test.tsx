@@ -11,6 +11,7 @@ import { ManualStoryboardPanel } from "./ManualStoryboardPanel";
 function item(id: string, kind: "SCENE" | "CHARACTER", versionId: string): CanvasItem {
   const now = "2026-09-24T00:00:00Z";
   return { id: `${id}-card`, subjectType: "ARTIFACT", subjectId: id,
+    title: id,
     x: 0, y: 0, width: 280, height: 220, zIndex: 0, groupId: null,
     locked: false, version: 0, agent: null,
     artifact: { id, projectId: "project-1", kind, title: id,

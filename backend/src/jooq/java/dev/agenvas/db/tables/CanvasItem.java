@@ -45,8 +45,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Spatial presentation only; Artifact content remains in immutable
- * ArtifactVersion rows.
+ * Per-card title and spatial presentation; referenced business content remains
+ * outside this row.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItem extends TableImpl<CanvasItemRecord> {
@@ -146,12 +146,18 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
      */
     public final TableField<CanvasItemRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID, this, "");
 
+    /**
+     * The column <code>public.canvas_item.title</code>. Per-card display title
+     * initialized from its subject and edited independently afterward.
+     */
+    public final TableField<CanvasItemRecord, String> TITLE = createField(DSL.name("title"), SQLDataType.VARCHAR(160).nullable(false), this, "Per-card display title initialized from its subject and edited independently afterward.");
+
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Spatial presentation only; Artifact content remains in immutable ArtifactVersion rows."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Per-card title and spatial presentation; referenced business content remains outside this row."), TableOptions.table(), where);
     }
 
     /**
@@ -276,6 +282,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             Internal.createCheck(this, DSL.name("ck_canvas_item_geometry"), "((((x >= ('-1000000'::integer)::numeric) AND (x <= (1000000)::numeric)) AND ((y >= ('-1000000'::integer)::numeric) AND (y <= (1000000)::numeric)) AND ((width >= (120)::numeric) AND (width <= (2000)::numeric)) AND ((height >= (80)::numeric) AND (height <= (2000)::numeric)) AND ((z_index >= '-1000'::integer) AND (z_index <= 1000))))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "(((((subject_type)::text = 'ARTIFACT'::text) AND (artifact_id = subject_id) AND (agent_instance_id IS NULL)) OR (((subject_type)::text = 'AGENT'::text) AND (artifact_id IS NULL) AND (agent_instance_id = subject_id))))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = ANY ((ARRAY['ARTIFACT'::character varying, 'AGENT'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_title"), "(((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 160)))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_version_non_negative"), "((version >= 0))", true)
         );
     }

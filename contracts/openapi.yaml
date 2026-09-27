@@ -1756,7 +1756,7 @@ paths:
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: applyCanvasCommands
-      summary: 原子批量保存画布展示命令
+      summary: 原子批量保存画布卡片展示命令
       tags: [Canvas]
       requestBody:
         required: true
@@ -3002,11 +3002,12 @@ components:
     CanvasItem:
       type: object
       additionalProperties: false
-      required: [id, subjectType, subjectId, x, y, width, height, zIndex, locked, version, artifact, agent]
+      required: [id, subjectType, subjectId, title, x, y, width, height, zIndex, locked, version, artifact, agent]
       properties:
         id: {type: string, format: uuid}
         subjectType: {$ref: "#/components/schemas/CanvasSubjectType"}
         subjectId: {type: string, format: uuid}
+        title: {type: string, minLength: 1, maxLength: 160}
         x: {type: number, minimum: -1000000, maximum: 1000000}
         y: {type: number, minimum: -1000000, maximum: 1000000}
         width: {type: number, minimum: 120, maximum: 2000}
@@ -3097,6 +3098,15 @@ components:
         zIndex: {type: integer, minimum: -1000, maximum: 1000}
         groupId: {type: [string, "null"], format: uuid}
         locked: {type: boolean, default: false}
+    UpdateCanvasItemTitleCommand:
+      type: object
+      additionalProperties: false
+      required: [type, itemId, expectedVersion, title]
+      properties:
+        type: {type: string, const: UPDATE_TITLE}
+        itemId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        title: {type: string, minLength: 1, maxLength: 160}
     UpdateLayoutCommand:
       type: object
       additionalProperties: false
@@ -3132,6 +3142,7 @@ components:
       oneOf:
         - {$ref: "#/components/schemas/PlaceArtifactCommand"}
         - {$ref: "#/components/schemas/PlaceAgentCommand"}
+        - {$ref: "#/components/schemas/UpdateCanvasItemTitleCommand"}
         - {$ref: "#/components/schemas/UpdateLayoutCommand"}
         - {$ref: "#/components/schemas/SetCanvasItemLockedCommand"}
         - {$ref: "#/components/schemas/RemoveCanvasItemCommand"}
@@ -3140,6 +3151,7 @@ components:
         mapping:
           PLACE_ARTIFACT: "#/components/schemas/PlaceArtifactCommand"
           PLACE_AGENT: "#/components/schemas/PlaceAgentCommand"
+          UPDATE_TITLE: "#/components/schemas/UpdateCanvasItemTitleCommand"
           UPDATE_LAYOUT: "#/components/schemas/UpdateLayoutCommand"
           SET_LOCKED: "#/components/schemas/SetCanvasItemLockedCommand"
           REMOVE: "#/components/schemas/RemoveCanvasItemCommand"

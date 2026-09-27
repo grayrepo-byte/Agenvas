@@ -17,6 +17,7 @@ function referenceCard(linked: boolean): CanvasItem {
   const now = "2026-09-24T00:00:00Z";
   return {
     id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id",
+    title: "Hero",
     x: 20, y: 20, width: 320, height: 240, zIndex: 0, groupId: null,
     locked: false, version: 0, agent: null,
     artifact: {
@@ -37,7 +38,7 @@ function referenceCard(linked: boolean): CanvasItem {
 
 function textCard(): CanvasItem {
   const item = referenceCard(false);
-  return { ...item, id: "text-card", subjectId: "text-id", width: 280, height: 180,
+  return { ...item, id: "text-card", subjectId: "text-id", title: "Notes", width: 280, height: 180,
     artifact: item.artifact ? { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",
       currentVersionId: "text-v2", currentVersion: { ...item.artifact.currentVersion!, id: "text-v2",
         content: { format: "PLAIN_TEXT", text: "直接在节点里写" }, inputReferences: [] } } : null };
@@ -131,6 +132,7 @@ describe("ProjectWorkspacePage", () => {
         expect(body.commands[0]?.itemId).toBeTruthy();
         return HttpResponse.json({ items: [{
           id: itemId, subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "新图片",
           x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
           locked: false, version: 0, agent: null,
           artifact: { id: artifactId, projectId: "project-1", kind: "IMAGE",
@@ -410,6 +412,7 @@ describe("ProjectWorkspacePage", () => {
         expect(body.commands[0]?.artifactId).toBe(artifactId);
         return HttpResponse.json({ items: [{
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "Product reference",
           x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
           locked: false, version: 0, agent: null,
           artifact: {
@@ -637,6 +640,7 @@ describe("ProjectWorkspacePage", () => {
               id: crypto.randomUUID(),
               subjectType: "ARTIFACT",
               subjectId: crypto.randomUUID(),
+              title: "Existing card",
               x: 10,
               y: 10,
               width: 280,
@@ -814,6 +818,7 @@ describe("ProjectWorkspacePage", () => {
         expect(placedCommand).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id,
           width: 460, height: 600 });
         items = [{ id: placedCommand!.itemId, subjectType: "AGENT", subjectId: agent.id,
+          title: agent.name,
           x: 80, y: 80, width: 460, height: 600, zIndex: 0, groupId: null,
           locked: false, version: 0, artifact: null, agent }];
         return HttpResponse.json({ items });
@@ -958,6 +963,7 @@ describe("ProjectWorkspacePage", () => {
               id: itemId,
               subjectType: "AGENT",
               subjectId: agentId,
+              title: "Agent Alpha",
               x: 10,
               y: 10,
               width: 340,
@@ -1075,6 +1081,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [
         { id: agentItemId, subjectType: "AGENT", subjectId: agentId,
+          title: "Creator",
           x: 10, y: 10, width: 340, height: 320, zIndex: 0, groupId: null,
           locked: false, version: 0, artifact: null,
           agent: { id: agentId, projectId: "project-1", profileKey: "creator",
@@ -1083,6 +1090,7 @@ describe("ProjectWorkspacePage", () => {
             bindings: [{ id: crypto.randomUUID(), artifactId: shotId,
               selectedVersionId: versionId, bindingType: "INPUT" }] } },
         { id: shotItemId, subjectType: "ARTIFACT", subjectId: shotId,
+          title: "Second shot",
           x: 380, y: 10, width: 280, height: 180, zIndex: 1, groupId: null,
           locked: false, version: 0, agent: null,
           artifact: { id: shotId, projectId: "project-1", kind: "SHOT", title: "Second shot",
@@ -1147,6 +1155,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/canvas/items", () =>
         HttpResponse.json({ items: [{
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "Demo still",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: crypto.randomUUID(),
           locked: false, version: 0, agent: null,
           artifact: {
@@ -1197,6 +1206,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/canvas/items", () =>
         HttpResponse.json({ items: [{
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "Demo clip",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: null,
           locked: false, version: 0, agent: null,
           artifact: {

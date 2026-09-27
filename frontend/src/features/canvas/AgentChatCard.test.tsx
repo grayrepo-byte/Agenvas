@@ -77,6 +77,7 @@ function mountCard(activeRun: AgentRun | null = null, overrides: Partial<AgentCh
   client.setDefaultOptions({ queries: { retry: false } });
   const data: AgentChatCardData = {
     item: { id: "agent-item-1", subjectType: "AGENT", subjectId: AGENT_ID,
+      title: AGENT.name,
       x: 0, y: 0, width: 460, height: 600, zIndex: 0, locked: true, version: 1,
       artifact: null, agent: AGENT },
     projectId: PROJECT_ID, activeRun, redoCandidates: [], outputCount: 0,

@@ -15,8 +15,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Spatial presentation only; Artifact content remains in immutable
- * ArtifactVersion rows.
+ * Per-card title and spatial presentation; referenced business content remains
+ * outside this row.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
@@ -247,6 +247,22 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         return (UUID) get(15);
     }
 
+    /**
+     * Setter for <code>public.canvas_item.title</code>. Per-card display title
+     * initialized from its subject and edited independently afterward.
+     */
+    public void setTitle(String value) {
+        set(16, value);
+    }
+
+    /**
+     * Getter for <code>public.canvas_item.title</code>. Per-card display title
+     * initialized from its subject and edited independently afterward.
+     */
+    public String getTitle() {
+        return (String) get(16);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -270,7 +286,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     /**
      * Create a detached, initialised CanvasItemRecord
      */
-    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId) {
+    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId, String title) {
         super(CanvasItem.CANVAS_ITEM);
 
         setId(id);
@@ -289,6 +305,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setAgentInstanceId(agentInstanceId);
+        setTitle(title);
         resetChangedOnNotNull();
     }
 }

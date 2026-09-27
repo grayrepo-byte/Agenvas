@@ -11,6 +11,7 @@ import java.util.UUID;
  * @param projectId 所属项目
  * @param subjectType 被展示业务对象的类别
  * @param subjectId 被展示的产物或 Agent ID
+ * @param title 当前卡片独立的展示标题
  * @param x 左上角横坐标
  * @param y 左上角纵坐标
  * @param width 卡片宽度
@@ -18,15 +19,16 @@ import java.util.UUID;
  * @param zIndex 显示层级
  * @param groupId 可选画布分组
  * @param locked 是否禁止位置和尺寸更新
- * @param version 布局乐观锁版本
+ * @param version 卡片展示状态的乐观锁版本
  * @param createdAt 创建时间
- * @param updatedAt 最近一次布局更新时间
+ * @param updatedAt 最近一次展示状态更新时间
  */
 public record CanvasItem(
         UUID id,
         UUID projectId,
         SubjectType subjectType,
         UUID subjectId,
+        String title,
         BigDecimal x,
         BigDecimal y,
         BigDecimal width,

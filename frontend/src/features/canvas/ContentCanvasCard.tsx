@@ -2,7 +2,7 @@ import { Clock, FilmSlate, LinkSimple, LockSimple, MapPin, PencilSimple,
   SlidersHorizontal, Stack, TextT, UserCircle } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import type { Artifact } from "../../shared/api/client";
+import type { Artifact, CanvasItem } from "../../shared/api/client";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentNumber, readContentText as readText } from "./artifactContent";
 import { TextCanvasEditor } from "./TextCanvasEditor";
@@ -18,6 +18,7 @@ import "./ContentCanvasCard.css";
  */
 type ContentCanvasCardProps = {
   artifact: Artifact;
+  item: CanvasItem;
   selected: boolean;
   locked: boolean;
   onEdit: () => void;
@@ -55,7 +56,7 @@ function ContentField({ label, value }: { label: string; value: string }) {
 }
 
 /** Text edits in place; structured content keeps its dedicated node-anchored editor. */
-export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspect,
+export function ContentCanvasCard({ artifact, item, selected, locked, onEdit, onInspect,
   children }: ContentCanvasCardProps) {
   const [editingText, setEditingText] = useState(false);
   const content = artifact.currentVersion?.content;
@@ -68,8 +69,8 @@ export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspec
   const references = artifact.currentVersion?.inputReferences.length ?? 0;
   const emptyText = artifact.kind === "TEXT" && !text.trim();
 
-  return <ArtifactCardFrame title={artifact.title} kindLabel={label} selected={selected} locked={locked}
-    className="content-canvas-card" toolbar={<>
+  return <ArtifactCardFrame title={item.title} kindLabel={label} selected={selected} locked={locked}
+    editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
         <button type="button" disabled={artifact.kind === "TEXT" && !hasCurrentVersion(artifact)}
           onClick={artifact.kind === "TEXT"
           ? () => setEditingText(true) : onEdit}>

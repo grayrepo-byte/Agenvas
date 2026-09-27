@@ -27,9 +27,11 @@ function items(linked: boolean): CanvasItem[] {
   const characterVersionId = "22222222-2222-4222-8222-222222222222";
   return [
     { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
+      title: "图片",
       width: 280, height: 180, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
       artifact: image },
     { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
+      title: "Agent",
       width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4,
       artifact: null,
       agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
@@ -38,6 +40,7 @@ function items(linked: boolean): CanvasItem[] {
         bindings: linked ? [{ id: "binding-id", artifactId: "image-id",
           selectedVersionId: imageVersionId, bindingType: "INPUT" }] : [] } },
     { id: "character-card", subjectType: "ARTIFACT", subjectId: "character-id", x: 800, y: 0,
+      title: "角色",
       width: 280, height: 180, zIndex: 2, groupId: null, locked: false, version: 5, agent: null,
       artifact: artifact("character-id", "CHARACTER", "角色", characterVersionId, {
         id: characterVersionId, versionNo: 1, schemaVersion: 1,

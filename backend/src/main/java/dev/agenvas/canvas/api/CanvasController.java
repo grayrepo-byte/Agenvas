@@ -23,12 +23,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 已认证的画布布局读取与原子命令 REST 边界。 */
+/** 已认证的画布展示状态读取与原子命令 REST 边界。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/canvas")
 public class CanvasController {
 
-    /** 验证项目权限、命令范围并提交布局变化。 */
+    /** 验证项目权限、命令范围并提交卡片展示变化。 */
     private final CanvasService canvas;
 
     /** 注入画布布局用例服务。
@@ -38,7 +38,7 @@ public class CanvasController {
         this.canvas = canvas;
     }
 
-    /** 返回数据库中的布局及卡片当前业务对象投影。 */
+    /** 返回数据库中的卡片展示状态及当前业务对象投影。 */
     @GetMapping("/items")
     public CanvasResponse list(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -46,7 +46,7 @@ public class CanvasController {
         return CanvasResponse.from(canvas.list(principal.userId(), projectId));
     }
 
-    /** 将同批拖动或缩放命令原子提交；任一命令失败时不保留部分布局。 */
+    /** 将同批画布命令原子提交；任一命令失败时不保留部分变化。 */
     @PostMapping("/commands")
     public CanvasResponse apply(
             @AuthenticationPrincipal AdminPrincipal principal,
@@ -80,6 +80,10 @@ public class CanvasController {
                     require(request.zIndex(), "zIndex"),
                     request.groupId(),
                     request.locked() != null && request.locked());
+            case UPDATE_TITLE -> new CanvasService.UpdateTitle(
+                    request.itemId(),
+                    require(request.expectedVersion(), "expectedVersion"),
+                    require(request.title(), "title"));
             case UPDATE_LAYOUT -> new CanvasService.UpdateLayout(
                     request.itemId(),
                     require(request.expectedVersion(), "expectedVersion"),
@@ -126,7 +130,8 @@ public class CanvasController {
      * @param itemId 目标或新建画布项 ID
      * @param artifactId PLACE_ARTIFACT 的产物 ID
      * @param agentId PLACE_AGENT 的 Agent ID
-     * @param expectedVersion 更新、锁定或删除时的预期布局版本
+     * @param expectedVersion 更新、锁定或删除时的预期画布项版本
+     * @param title UPDATE_TITLE 的新卡片展示标题
      * @param x 放置或更新后的横坐标
      * @param y 放置或更新后的纵坐标
      * @param width 放置或更新后的宽度
@@ -141,6 +146,7 @@ public class CanvasController {
             UUID artifactId,
             UUID agentId,
             @PositiveOrZero Long expectedVersion,
+            @Size(max = 160) String title,
             BigDecimal x,
             BigDecimal y,
             BigDecimal width,
@@ -155,6 +161,8 @@ public class CanvasController {
         PLACE_ARTIFACT,
         /** 创建 Agent 卡片。 */
         PLACE_AGENT,
+        /** 更新单张卡片的展示标题。 */
+        UPDATE_TITLE,
         /** 更新位置、尺寸、层级或分组。 */
         UPDATE_LAYOUT,
         /** 改变布局锁状态。 */
@@ -177,11 +185,12 @@ public class CanvasController {
     }
 
     /**
-     * 持久化布局和该卡片当前渲染所需的内容投影；artifact 与 agent 仅一个非空。
+     * 持久化卡片展示状态和当前渲染所需的内容投影；artifact 与 agent 仅一个非空。
      *
      * @param id 画布项 ID
      * @param subjectType 被展示对象类型
      * @param subjectId 被展示对象 ID
+     * @param title 当前卡片独立的展示标题
      * @param x 卡片横坐标
      * @param y 卡片纵坐标
      * @param width 卡片宽度
@@ -189,7 +198,7 @@ public class CanvasController {
      * @param zIndex 显示层级
      * @param groupId 所属画布分组
      * @param locked 布局是否锁定
-     * @param version 布局乐观锁版本
+     * @param version 卡片展示状态的乐观锁版本
      * @param artifact 产物卡片当前版本投影
      * @param agent Agent 卡片当前配置投影
      */
@@ -197,6 +206,7 @@ public class CanvasController {
             UUID id,
             CanvasItem.SubjectType subjectType,
             UUID subjectId,
+            String title,
             BigDecimal x,
             BigDecimal y,
             BigDecimal width,
@@ -215,6 +225,7 @@ public class CanvasController {
                     item.id(),
                     item.subjectType(),
                     item.subjectId(),
+                    item.title(),
                     item.x(),
                     item.y(),
                     item.width(),

@@ -12,7 +12,7 @@ function artifactCard(id: string, versionId: string, groupId: string | null = nu
   inputReferences: VersionedArtifact["currentVersion"]["inputReferences"] = [],
 ): CanvasItem & { artifact: VersionedArtifact } {
   return {
-    id: `card-${id}`, subjectType: "ARTIFACT", subjectId: id,
+    id: `card-${id}`, subjectType: "ARTIFACT", subjectId: id, title: id,
     x: 0, y: 0, width: 280, height: 180, zIndex: 0, groupId, locked: false, version: 0,
     agent: null,
     artifact: {
@@ -29,7 +29,7 @@ function artifactCard(id: string, versionId: string, groupId: string | null = nu
 
 function agentCard(bindingVersion = "version-a"): CanvasItem {
   return {
-    id: "card-agent", subjectType: "AGENT", subjectId: "agent-1",
+    id: "card-agent", subjectType: "AGENT", subjectId: "agent-1", title: "Agent",
     x: 400, y: 0, width: 320, height: 280, zIndex: 1, groupId: null,
     locked: false, version: 0, artifact: null,
     agent: {

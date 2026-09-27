@@ -18,7 +18,7 @@ public interface CanvasItemRepository {
     /** 插入由客户端指定稳定 ID 的展示项。 */
     boolean create(CanvasItem item);
 
-    /** 预期版本匹配时替换可变布局字段。 */
+    /** 预期版本匹配时替换可变展示字段。 */
     boolean update(UUID ownerId, CanvasItem item, long expectedVersion, Instant updatedAt);
 
     /** 仅删除画布展示关系，不删除其引用的业务对象。 */

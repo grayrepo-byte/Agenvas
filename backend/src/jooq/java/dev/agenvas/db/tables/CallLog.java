@@ -276,13 +276,13 @@ public class CallLog extends TableImpl<CallLogRecord> {
     @Override
     public List<Check<CallLogRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("call_log_check"), "(((((operation)::text = 'CHAT'::text) AND ((kind)::text = 'LLM'::text) AND (run_id IS NOT NULL) AND (step_index IS NOT NULL) AND (step_index >= 0)) OR (((operation)::text = ANY ((ARRAY['SUBMIT'::character varying, 'POLL'::character varying])::text[])) AND ((kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying])::text[])) AND (task_id IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("call_log_check1"), "(((((status)::text = 'RUNNING'::text) AND (responded_at IS NULL) AND (duration_ms IS NULL)) OR (((status)::text <> 'RUNNING'::text) AND (responded_at IS NOT NULL) AND (duration_ms IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("call_log_duration_ms_check"), "((duration_ms >= 0))", true),
             Internal.createCheck(this, DSL.name("call_log_kind_check"), "(((kind)::text = ANY ((ARRAY['LLM'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_operation_check"), "(((operation)::text = ANY ((ARRAY['CHAT'::character varying, 'SUBMIT'::character varying, 'POLL'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_status_check"), "(((status)::text = ANY ((ARRAY['RUNNING'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'UNKNOWN'::character varying])::text[])))", true),
-            Internal.createCheck(this, DSL.name("call_log_trace_id_check"), "((trace_id ~ '^[0-9a-f]{32}$'::text))", true)
+            Internal.createCheck(this, DSL.name("call_log_trace_id_check"), "((trace_id ~ '^[0-9a-f]{32}$'::text))", true),
+            Internal.createCheck(this, DSL.name("ck_call_log_operation_scope"), "(((((operation)::text = 'CHAT'::text) AND ((kind)::text = 'LLM'::text) AND (((run_id IS NOT NULL) AND (step_index IS NOT NULL) AND (step_index >= 0)) OR ((task_id IS NOT NULL) AND (run_id IS NULL) AND (step_index IS NULL)))) OR (((operation)::text = ANY ((ARRAY['SUBMIT'::character varying, 'POLL'::character varying])::text[])) AND ((kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying])::text[])) AND (task_id IS NOT NULL) AND (step_index IS NULL))))", true)
         );
     }
 

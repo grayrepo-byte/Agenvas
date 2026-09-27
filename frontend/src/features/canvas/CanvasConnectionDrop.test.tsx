@@ -34,7 +34,7 @@ const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
 function card(id: string, kind: Artifact["kind"], title: string, versionId: string,
   content: NonNullable<Artifact["currentVersion"]>["content"]): CanvasItem {
-  return { id: `${id}-card`, subjectType: "ARTIFACT", subjectId: id, x: 0, y: 0,
+  return { id: `${id}-card`, subjectType: "ARTIFACT", subjectId: id, title, x: 0, y: 0,
     width: 260, height: 150, zIndex: 0, groupId: null, locked: false, version: 3, agent: null,
     artifact: { id, projectId: "project-1", kind, title, currentVersionId: versionId,
       version: 3, createdAt: now, updatedAt: now,
@@ -51,6 +51,7 @@ const items: CanvasItem[] = [
     { order: 1, durationSeconds: 3, description: "Shot", camera: "wide", action: "walk",
       characterVersionIds: [], sceneVersionId: "33333333-3333-4333-8333-333333333333" }),
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
+    title: "Agent",
     width: 460, height: 600, zIndex: 1, groupId: null, locked: false, version: 4, artifact: null,
     agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
       name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,

@@ -4,7 +4,7 @@ import { ArrowsOutSimple, ArrowClockwise, CaretDown, Crop, Cube, DownloadSimple,
   Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush, Play, Scissors,
   SlidersHorizontal, Smiley, Sun, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
 import { assetContentUrl, assetThumbnailUrl, listDirectMediaTasks,
-  type Artifact, type Task } from "../../shared/api/client";
+  type Artifact, type CanvasItem, type Task } from "../../shared/api/client";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { isMediaTaskRunning, latestMediaTask, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
@@ -26,8 +26,8 @@ const EXTENSIONS = [
 ] as const;
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
-export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect, onUpload, children }: {
-  artifact: Artifact; selected: boolean; locked: boolean; onEdit: () => void;
+export function MediaCanvasCard({ artifact, item, selected, locked, onEdit, onInspect, onUpload, children }: {
+  artifact: Artifact; item: CanvasItem; selected: boolean; locked: boolean; onEdit: () => void;
   onInspect: () => void; onUpload: () => void; children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -58,8 +58,10 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
     return () => document.removeEventListener("pointerdown", close);
   }, [menuOpen]);
 
-  return <ArtifactCardFrame title={artifact.title} kindLabel={isImage ? "图片" : "视频"}
-    selected={selected} locked={locked} toolbarLabel="媒体卡片操作" toolbar={<>
+  return <ArtifactCardFrame title={item.title} kindLabel={isImage ? "图片" : "视频"}
+    selected={selected} locked={locked}
+    editableTitle={{ projectId: artifact.projectId, item }}
+    toolbarLabel="媒体卡片操作" toolbar={<>
         {isImage ? <>
           <button type="button" disabled title="智能编辑尚未接入"><MagicWand size={17} />智能编辑</button>
           <button type="button" disabled title="深度提取尚未接入"><Stack size={17} />深度提取</button>
@@ -85,7 +87,8 @@ export function MediaCanvasCard({ artifact, selected, locked, onEdit, onInspect,
           aria-label={isImage ? "下载图片" : "下载视频"}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
-      {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact} demo={demo} />
+      {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
+        title={item.title} demo={demo} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
           {metadata.data ? "图片尺寸刷新失败，请重试" : "图片尺寸读取失败，暂按原卡片尺寸显示"}
           <button type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
@@ -125,7 +128,9 @@ function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
  * Images load the archived original so a resized node stays sharp; no downscaled preview exists.
  * Videos keep loading only the cover frame until the user explicitly plays the original.
  */
-function MediaPreview({ artifact, assetId, demo }: { artifact: Artifact; assetId: string; demo: boolean }) {
+function MediaPreview({ artifact, assetId, title, demo }: {
+  artifact: Artifact; assetId: string; title: string; demo: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [playbackFailed, setPlaybackFailed] = useState(false);
@@ -141,11 +146,11 @@ function MediaPreview({ artifact, assetId, demo }: { artifact: Artifact; assetId
   }
 
   return <div className="media-card-preview">
-    {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={`${artifact.title} 的视频`}
+    {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={`${title} 的视频`}
       controls autoPlay playsInline preload="metadata" src={assetContentUrl(artifact.projectId, assetId)}
       onCanPlay={() => setBuffering(false)} onPlaying={() => setBuffering(false)} onWaiting={() => setBuffering(true)}
       onError={() => { setPlaybackFailed(true); setBuffering(false); }} />
-      : !failed ? <img alt={`${artifact.title} 的${video ? "视频封面" : "预览"}`}
+      : !failed ? <img alt={`${title} 的${video ? "视频封面" : "预览"}`}
         decoding="async" draggable={false} loading="lazy" onError={() => setFailed(true)}
         src={video ? assetThumbnailUrl(artifact.projectId, assetId)
           : assetContentUrl(artifact.projectId, assetId)} />

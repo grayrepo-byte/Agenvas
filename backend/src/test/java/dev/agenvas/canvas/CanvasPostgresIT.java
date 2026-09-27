@@ -69,21 +69,43 @@ class CanvasPostgresIT {
         ArtifactService.ArtifactView secondArtifact = createText(owner.userId(), project.id(), "Two");
         UUID firstItemId = UUID.randomUUID();
         UUID secondItemId = UUID.randomUUID();
+        UUID duplicateItemId = UUID.randomUUID();
 
         CanvasService.PlaceArtifact firstPlacement =
                 place(firstItemId, firstArtifact.artifact().id(), "20", "40");
         CanvasService.PlaceArtifact secondPlacement =
                 place(secondItemId, secondArtifact.artifact().id(), "360", "40");
-        canvasService.apply(owner.userId(), project.id(), List.of(firstPlacement, secondPlacement));
+        CanvasService.PlaceArtifact duplicatePlacement =
+                place(duplicateItemId, firstArtifact.artifact().id(), "700", "40");
+        canvasService.apply(owner.userId(), project.id(),
+                List.of(firstPlacement, secondPlacement, duplicatePlacement));
         canvasService.apply(owner.userId(), project.id(), List.of(firstPlacement));
-        assertThat(canvasService.list(owner.userId(), project.id())).hasSize(2);
+        assertThat(canvasService.list(owner.userId(), project.id())).hasSize(3);
+
+        canvasService.apply(owner.userId(), project.id(),
+                List.of(new CanvasService.UpdateTitle(firstItemId, 0, "  First card  ")));
+        canvasService.apply(owner.userId(), project.id(),
+                List.of(new CanvasService.UpdateTitle(firstItemId, 0, "First card")));
+        List<CanvasService.CanvasEntry> renamed = canvasService.list(owner.userId(), project.id());
+        assertThat(renamed.stream().filter(entry -> entry.item().id().equals(firstItemId))
+                .findFirst().orElseThrow().item().title()).isEqualTo("First card");
+        assertThat(renamed.stream().filter(entry -> entry.item().id().equals(duplicateItemId))
+                .findFirst().orElseThrow().item().title()).isEqualTo("One");
+        assertThat(artifactService.get(owner.userId(), project.id(),
+                firstArtifact.artifact().id()).artifact().title()).isEqualTo("One");
+        assertThatThrownByCode("CANVAS_VERSION_CONFLICT", () -> canvasService.apply(
+                owner.userId(), project.id(),
+                List.of(new CanvasService.UpdateTitle(firstItemId, 0, "Stale title"))));
+        assertThatThrownByCode("VALIDATION_ERROR", () -> canvasService.apply(
+                owner.userId(), project.id(),
+                List.of(new CanvasService.UpdateTitle(firstItemId, 1, "   "))));
 
         canvasService.apply(
                 owner.userId(),
                 project.id(),
                 List.of(new CanvasService.UpdateLayout(
                         firstItemId,
-                        0,
+                        1,
                         decimal("100"),
                         decimal("120"),
                         decimal("280"),
@@ -95,7 +117,8 @@ class CanvasPostgresIT {
                 .findFirst()
                 .orElseThrow();
         assertThat(saved.item().x()).isEqualByComparingTo("100");
-        assertThat(saved.item().version()).isEqualTo(1);
+        assertThat(saved.item().version()).isEqualTo(2);
+        assertThat(saved.item().title()).isEqualTo("First card");
         assertThat(saved.artifact().currentVersion().content().get("text").stringValue())
                 .isEqualTo("One");
 
@@ -107,7 +130,7 @@ class CanvasPostgresIT {
                         List.of(
                                 new CanvasService.UpdateLayout(
                                         firstItemId,
-                                        1,
+                                        2,
                                         decimal("200"),
                                         decimal("220"),
                                         decimal("280"),
@@ -128,7 +151,7 @@ class CanvasPostgresIT {
                 .findFirst()
                 .orElseThrow();
         assertThat(afterRollback.item().x()).isEqualByComparingTo("100");
-        assertThat(afterRollback.item().version()).isEqualTo(1);
+        assertThat(afterRollback.item().version()).isEqualTo(2);
 
         canvasService.apply(
                 owner.userId(),
@@ -152,10 +175,10 @@ class CanvasPostgresIT {
         canvasService.apply(
                 owner.userId(),
                 project.id(),
-                List.of(new CanvasService.Remove(firstItemId, 1)));
+                List.of(new CanvasService.Remove(firstItemId, 2)));
         assertThat(canvasService.list(owner.userId(), project.id()))
                 .extracting(entry -> entry.item().id())
-                .containsExactly(secondItemId);
+                .containsExactlyInAnyOrder(secondItemId, duplicateItemId);
         assertThat(artifactService
                         .get(owner.userId(), project.id(), firstArtifact.artifact().id())
                         .artifact()

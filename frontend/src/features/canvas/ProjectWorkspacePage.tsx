@@ -1324,7 +1324,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   const artifact = data.item.artifact;
   if (!artifact) return null;
   const cardProps = {
-    artifact, selected, locked: data.item.locked,
+    artifact, item: data.item, selected, locked: data.item.locked,
     onInspect: () => data.onInspect(data.item), onEdit: focusArtifactEditor,
     children: <NodeResizer isVisible={selected && !data.item.locked}
       {...(data.imageAspectRatio === undefined
