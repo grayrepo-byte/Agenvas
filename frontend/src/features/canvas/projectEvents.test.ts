@@ -177,6 +177,25 @@ describe("project event subscription", () => {
     stop();
   });
 
+  it("keeps CanvasItem and media-draft version waterlines independent", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, {
+      open: () => stream, loadSnapshot: async () => snapshot(2),
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout,
+    });
+    stream.emit({ ...event(1, 9), type: "canvas.item.selected_version.changed",
+      payload: { canvasItemId: aggregateId, selectedVersionId: crypto.randomUUID() } });
+    stream.emit({ ...event(2, 2), type: "media.draft.changed",
+      payload: { canvasItemId: aggregateId } });
+    expect(changes.map((value) => value.type)).toEqual([
+      "canvas.item.selected_version.changed", "media.draft.changed",
+    ]);
+    stop();
+  });
+
   it("delivers canvas item changes without leaving a silent cursor gap", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

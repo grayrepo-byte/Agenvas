@@ -11,10 +11,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,7 @@ class CanvasMediaContextPostgresIT {
 
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
+    @Autowired private AssetService assets;
     @Autowired private WebApplicationContext context;
     @Autowired private ObjectMapper mapper;
     @Autowired private JdbcClient jdbc;
@@ -149,6 +152,37 @@ class CanvasMediaContextPostgresIT {
                         + "and payload_json->>'canvasItemId'=:itemId")
                 .param("projectId", project.id()).param("itemId", secondCard.toString())
                 .query(Integer.class).single()).isEqualTo(1);
+
+        UUID uploadAssetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
+        JsonNode uploaded = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
+                        + firstCard + "/upload-version")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content("{\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
+                                + "\"assetId\":\"" + uploadAssetId + "\"}}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        UUID uploadedVersion = UUID.fromString(uploaded.path("selectedVersionId").asText());
+        assertThat(uploadedVersion).isNotEqualTo(firstVersion);
+        JsonNode replayedUpload = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
+                        + firstCard + "/upload-version")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content("{\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
+                                + "\"assetId\":\"" + uploadAssetId + "\"}}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(replayedUpload.path("selectedVersionId").asText())
+                .isEqualTo(uploadedVersion.toString());
+        assertThat(jdbc.sql("select count(*) from artifact_version where artifact_id=:id")
+                .param("id", artifactId).query(Integer.class).single()).isEqualTo(3);
+        assertThat(read(mvc, auth, base + "/artifacts/" + artifactId)
+                .path("resourceDefaultVersionId").asText()).isEqualTo(secondVersion.toString());
+
+        mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""
+                                + firstCard + "\",\"expectedVersion\":1}]}"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.sql("select canvas_item_id from task_artifact_target where task_id=:id")
+                .param("id", UUID.fromString(firstTask.path("id").asText()))
+                .query(UUID.class).optional()).isEmpty();
     }
 
     private UUID addVersion(UUID projectId, UUID artifactId, int versionNo) {

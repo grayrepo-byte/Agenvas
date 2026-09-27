@@ -370,6 +370,23 @@ describe("ProjectWorkspacePage", () => {
         await waitFor(() => expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true));
         queryClient.setQueryData(key, { staleView: true });
       }
+      const selectedCardDraftKey = ["media-draft", "project-1", "card-1"];
+      const selectedArtifactVersionsKey = ["artifact-versions", "project-1", "artifact-1"];
+      queryClient.setQueryData(selectedCardDraftKey, { staleView: true });
+      queryClient.setQueryData(selectedArtifactVersionsKey, { staleView: true });
+      sources[0]?.dispatchEvent(new MessageEvent("canvas.item.selected_version.changed", {
+        data: JSON.stringify({
+          projectId: "project-1", seq: 2, eventId: crypto.randomUUID(),
+          type: "canvas.item.selected_version.changed", schemaVersion: 1,
+          aggregateId: "card-1", aggregateVersion: 4,
+          payload: { canvasItemId: "card-1", artifactId: "artifact-1",
+            selectedVersionId: "version-2" }, occurredAt: "2026-09-24T00:00:00Z",
+        }),
+        lastEventId: "2",
+      }));
+      await waitFor(() => expect(queryClient.getQueryState(selectedCardDraftKey)?.isInvalidated)
+        .toBe(true));
+      expect(queryClient.getQueryState(selectedArtifactVersionsKey)?.isInvalidated).toBe(true);
       expect(sources).toHaveLength(1);
       const readsBeforeGap = snapshotReads;
       sources[0]?.dispatchEvent(new MessageEvent("task.status.changed", {

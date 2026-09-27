@@ -557,6 +557,32 @@ public class ArtifactService {
         return new TaskVersionResult(revision.id(), selected);
     }
 
+    /** Appends one user-uploaded media version without changing the resource-library default. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ArtifactVersion appendUserMediaVersionWithinChange(UUID ownerId, UUID projectId,
+            UUID artifactId, JsonNode content) {
+        projects.requireActiveProject(ownerId, projectId);
+        Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
+                .orElseThrow(this::notFound);
+        requireEditable(current);
+        if (current.kind() != Artifact.Kind.IMAGE && current.kind() != Artifact.Kind.VIDEO) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                    "请求参数无效", "只有图片和视频卡片可以追加上传版本。", false);
+        }
+        List<ArtifactVersion.InputReference> references =
+                contentValidator.validate(current.kind(), content);
+        requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.USER);
+        validateReferences(projectId, references);
+        validateMediaAsset(ownerId, projectId, current.kind(), content);
+        Instant now = clock.instant();
+        ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
+                artifactId, artifacts.nextVersionNo(projectId, artifactId),
+                INITIAL_SCHEMA_VERSION, content.deepCopy(), references,
+                ArtifactVersion.CreatedByKind.USER, null, now);
+        artifacts.appendVersion(revision);
+        return revision;
+    }
+
     /**
      * 任务版本归档结果及其是否通过并发前提成为当前选用版本。
      *

@@ -361,35 +361,27 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
 
     @Override
     public Optional<Task> findOccupyingMediaTask(UUID projectId, UUID artifactId) {
+        return findOccupyingMediaTask(projectId, TASK_ARTIFACT_TARGET.ARTIFACT_ID, artifactId);
+    }
+
+    @Override
+    public Optional<Task> findOccupyingDirectMediaTask(UUID projectId, UUID canvasItemId) {
+        return findOccupyingMediaTask(projectId, TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID,
+                canvasItemId);
+    }
+
+    private Optional<Task> findOccupyingMediaTask(UUID projectId, Field<UUID> targetField,
+            UUID targetId) {
         return dsl.select(TASK.fields()).from(TASK)
                 .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
                 .where(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK_ARTIFACT_TARGET.ARTIFACT_ID.eq(artifactId))
+                .and(targetField.eq(targetId))
                 .and(TASK.STATUS.in(Task.Status.PENDING.name(), Task.Status.READY.name(),
                                 Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
                                 Task.Status.WAITING_PROVIDER.name(), Task.Status.UNKNOWN.name())
                         .or(TASK.STATUS.eq(Task.Status.BLOCKED.name())
                                 .and(TASK.PROVIDER_REQUEST_ID.isNotNull())))
                 // 已由「新建尝试」处理过的原任务不再占用卡片，否则卡片会被永久占住。
-                .and(DSL.notExists(DSL.selectOne()
-                        .from(TASK_MANUAL_REPLACEMENT)
-                        .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID.eq(TASK.ID))))
-                .orderBy(TASK.CREATED_AT, TASK.ID)
-                .limit(1)
-                .fetchOptional(row -> mapTask(row.into(TASK)));
-    }
-
-    @Override
-    public Optional<Task> findOccupyingDirectMediaTask(UUID projectId, UUID canvasItemId) {
-        return dsl.select(TASK.fields()).from(TASK)
-                .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
-                .where(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID.eq(canvasItemId))
-                .and(TASK.STATUS.in(Task.Status.PENDING.name(), Task.Status.READY.name(),
-                                Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
-                                Task.Status.WAITING_PROVIDER.name(), Task.Status.UNKNOWN.name())
-                        .or(TASK.STATUS.eq(Task.Status.BLOCKED.name())
-                                .and(TASK.PROVIDER_REQUEST_ID.isNotNull())))
                 .and(DSL.notExists(DSL.selectOne()
                         .from(TASK_MANUAL_REPLACEMENT)
                         .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID.eq(TASK.ID))))
@@ -411,32 +403,27 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
 
     @Override
     public List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId) {
-        return dsl.select(TASK.fields()).from(TASK)
-                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
-                .where(PROJECT.OWNER_ID.eq(ownerId))
-                .and(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
-                .and(TASK_ARTIFACT_TARGET.ARTIFACT_ID.eq(artifactId))
-                // 卡片只呈现仍有效的任务：已被「重试」取代的原任务不再决定
-                // 卡片是否可再次运行。
-                .and(DSL.notExists(DSL.selectOne()
-                        .from(TASK_MANUAL_REPLACEMENT)
-                        .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID.eq(TASK.ID))))
-                .orderBy(TASK.CREATED_AT.desc(), TASK.ID.desc())
-                .limit(50)
-                .fetch(row -> mapTask(row.into(TASK)));
+        return listDirectForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.ARTIFACT_ID,
+                artifactId);
     }
 
     @Override
     public List<Task> listDirectForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        return listDirectForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID,
+                canvasItemId);
+    }
+
+    private List<Task> listDirectForTarget(UUID ownerId, UUID projectId,
+            Field<UUID> targetField, UUID targetId) {
         return dsl.select(TASK.fields()).from(TASK)
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
                 .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
                 .where(PROJECT.OWNER_ID.eq(ownerId))
                 .and(TASK.PROJECT_ID.eq(projectId))
                 .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
-                .and(TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID.eq(canvasItemId))
+                .and(targetField.eq(targetId))
+                // 卡片只呈现仍有效的任务：已被「重试」取代的原任务不再决定
+                // 卡片是否可再次运行。
                 .and(DSL.notExists(DSL.selectOne()
                         .from(TASK_MANUAL_REPLACEMENT)
                         .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID.eq(TASK.ID))))

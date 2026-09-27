@@ -14,19 +14,16 @@ const CANVAS_ITEM_ID = "canvas-image-1";
 const ASSET_ID = "uploaded-asset-1";
 const UPLOADED_VERSION_ID = "uploaded-version-1";
 const ORIGINAL_VERSION = 7;
-const REVISED_VERSION = 8;
 const NOW = "2026-09-26T00:00:00Z";
 const UPLOAD_URL = `/api/v1/projects/${PROJECT_ID}/assets`;
-const ARTIFACT_URL = `/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}`;
-const REVISION_URL = `/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}/revisions`;
-const SELECT_URL = `/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/select-version`;
+const CARD_UPLOAD_URL = `/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/upload-version`;
 const EMPTY_IMAGE: Artifact = {
   id: ARTIFACT_ID, projectId: PROJECT_ID, kind: "IMAGE", title: "空图片卡片",
   resourceDefaultVersionId: null, resourceDefaultVersion: null, version: ORIGINAL_VERSION,
   createdAt: NOW, updatedAt: NOW,
 };
 const REVISED_IMAGE: Artifact = {
-  ...EMPTY_IMAGE, resourceDefaultVersionId: UPLOADED_VERSION_ID, version: REVISED_VERSION,
+  ...EMPTY_IMAGE, resourceDefaultVersionId: UPLOADED_VERSION_ID,
   resourceDefaultVersion: {
     id: UPLOADED_VERSION_ID, versionNo: 1, schemaVersion: 1,
     content: { sourceType: "UPLOAD", assetId: ASSET_ID }, inputReferences: [],
@@ -86,17 +83,12 @@ describe("MediaCardUpload", () => {
     const operations: string[] = [];
     mockUpload(() => operations.push("upload"));
     server.use(
-      http.post(REVISION_URL, async ({ request }) => {
-        operations.push("revise");
-        expect(await request.json()).toEqual({ expectedVersion: ORIGINAL_VERSION,
+      http.post(CARD_UPLOAD_URL, async ({ request }) => {
+        operations.push("card-upload");
+        expect(await request.json()).toEqual({ expectedVersion: ITEM.version,
           content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
-        return HttpResponse.json(REVISED_IMAGE, { status: 201 });
-      }),
-      http.post(SELECT_URL, async ({ request }) => {
-        operations.push("select");
-        expect(await request.json()).toEqual({ versionId: UPLOADED_VERSION_ID,
-          expectedVersion: ITEM.version });
-        return HttpResponse.json(REVISED_IMAGE);
+        return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
+          selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
       }),
     );
     const onDone = mountUpload();
@@ -106,28 +98,52 @@ describe("MediaCardUpload", () => {
     submitUpload();
 
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(operations).toEqual(["upload", "revise", "select"]);
+    expect(operations).toEqual(["upload", "card-upload"]);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("retries selection without uploading bytes or creating the completed revision again", async () => {
+  it("retries the idempotent card operation once after a transient response failure", async () => {
     const operations: string[] = [];
-    let selections = 0;
+    let requests = 0;
     mockUpload(() => operations.push("upload"));
     server.use(
-      http.post(REVISION_URL, () => {
-        operations.push("revise");
-        return HttpResponse.json(REVISED_IMAGE, { status: 201 });
-      }),
-      http.post(SELECT_URL, async ({ request }) => {
-        operations.push("select");
-        selections++;
-        expect(await request.json()).toEqual({ versionId: UPLOADED_VERSION_ID,
-          expectedVersion: ITEM.version });
-        if (selections === 1) return HttpResponse.json({ title: "暂时不可用", detail: "选用请求暂时失败。",
+      http.post(CARD_UPLOAD_URL, async ({ request }) => {
+        operations.push("card-upload");
+        requests++;
+        expect(await request.json()).toEqual({ expectedVersion: ITEM.version,
+          content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
+        if (requests === 1) return HttpResponse.json({ title: "暂时不可用", detail: "响应暂时失败。",
           code: "SERVICE_UNAVAILABLE", retryable: true },
         { status: 503, headers: { "Content-Type": "application/problem+json" } });
-        return HttpResponse.json(REVISED_IMAGE);
+        return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
+          selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
+      }),
+    );
+    const onDone = mountUpload();
+    const user = userEvent.setup();
+    const input = screen.getByLabelText<HTMLInputElement>("选择图片");
+    await user.upload(input, imageFile());
+    submitUpload();
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(operations).toEqual(["upload", "card-upload", "card-upload"]);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("retains uploaded bytes for a manual retry after repeated transient failures", async () => {
+    const operations: string[] = [];
+    let failing = true;
+    mockUpload(() => operations.push("upload"));
+    server.use(
+      http.post(CARD_UPLOAD_URL, async ({ request }) => {
+        operations.push("card-upload");
+        expect(await request.json()).toEqual({ expectedVersion: ITEM.version,
+          content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
+        if (failing) return HttpResponse.json({ title: "响应失败", detail: "响应暂时不可用。",
+          code: "SERVICE_UNAVAILABLE", retryable: true },
+        { status: 503, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
+          selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
       }),
     );
     const onDone = mountUpload();
@@ -137,63 +153,24 @@ describe("MediaCardUpload", () => {
     await user.upload(input, file);
     submitUpload();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("选用请求暂时失败。");
+    expect(await screen.findByRole("alert")).toHaveTextContent("响应暂时不可用");
     expect(input.files?.[0]).toBe(file);
-    expect(onDone).not.toHaveBeenCalled();
+    failing = false;
     submitUpload();
-
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(operations).toEqual(["upload", "revise", "select", "select"]);
+    expect(operations).toEqual(["upload", "card-upload", "card-upload", "card-upload"]);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("recovers a committed revision after its response fails without submitting the upload or revision again", async () => {
-    const operations: string[] = [];
-    mockUpload(() => operations.push("upload"));
-    server.use(
-      http.post(REVISION_URL, async ({ request }) => {
-        operations.push("revise");
-        expect(await request.json()).toEqual({ expectedVersion: ORIGINAL_VERSION,
-          content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
-        return HttpResponse.json({ title: "响应失败", detail: "版本已经提交，响应暂时不可用。",
-          code: "SERVICE_UNAVAILABLE", retryable: true },
-        { status: 503, headers: { "Content-Type": "application/problem+json" } });
-      }),
-      http.get(ARTIFACT_URL, () => {
-        operations.push("read-current");
-        return HttpResponse.json(REVISED_IMAGE);
-      }),
-      http.post(SELECT_URL, async ({ request }) => {
-        operations.push("select");
-        expect(await request.json()).toEqual({ versionId: UPLOADED_VERSION_ID,
-          expectedVersion: ITEM.version });
-        return HttpResponse.json(REVISED_IMAGE);
-      }),
-    );
-    const onDone = mountUpload();
-    const user = userEvent.setup();
-    await user.upload(screen.getByLabelText("选择图片"), imageFile());
-    submitUpload();
-
-    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-    expect(operations).toEqual(["upload", "revise", "read-current", "select"]);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it.each(["revision", "selection"] as const)("retains the selected file after a %s conflict", async (conflictStage) => {
+  it("retains the selected file after a card conflict", async () => {
     const operations: string[] = [];
     const conflict = () => HttpResponse.json({ title: "版本冲突", detail: "卡片已被其他编辑更新。",
       code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
     { status: 409, headers: { "Content-Type": "application/problem+json" } });
     mockUpload(() => operations.push("upload"));
     server.use(
-      http.get(ARTIFACT_URL, () => HttpResponse.json(EMPTY_IMAGE)),
-      http.post(REVISION_URL, () => {
-        operations.push("revise");
-        return conflictStage === "revision" ? conflict() : HttpResponse.json(REVISED_IMAGE, { status: 201 });
-      }),
-      http.post(SELECT_URL, () => {
-        operations.push("select");
+      http.post(CARD_UPLOAD_URL, () => {
+        operations.push("card-upload");
         return conflict();
       }),
     );
@@ -210,6 +187,6 @@ describe("MediaCardUpload", () => {
     expect(input).toBeEnabled();
     expect(screen.getByRole("button", { name: "上传到此卡片" })).toBeEnabled();
     expect(onDone).not.toHaveBeenCalled();
-    expect(operations).toEqual(conflictStage === "revision" ? ["upload", "revise"] : ["upload", "revise", "select"]);
+    expect(operations).toEqual(["upload", "card-upload"]);
   });
 });

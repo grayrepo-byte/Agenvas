@@ -133,9 +133,12 @@ export function subscribeProjectEvents(
     cursor = parsed.seq;
     clearRetry();
     callbacks.onStatus("live");
-    const previousVersion = versions.get(parsed.aggregateId);
+    // One database identity can host independent aggregates (for example CanvasItem layout
+    // and its media draft), so their optimistic versions must never suppress each other.
+    const versionKey = `${parsed.type}:${parsed.aggregateId}`;
+    const previousVersion = versions.get(versionKey);
     if (previousVersion !== undefined && parsed.aggregateVersion < previousVersion) return;
-    versions.set(parsed.aggregateId, parsed.aggregateVersion);
+    versions.set(versionKey, parsed.aggregateVersion);
     callbacks.onChange(parsed);
   }
 

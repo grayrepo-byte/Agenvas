@@ -210,6 +210,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           if (event.type.startsWith("artifact.")) {
             void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
           }
+          if (event.type === "canvas.item.selected_version.changed"
+              && typeof event.payload.canvasItemId === "string") {
+            void queryClient.invalidateQueries({
+              queryKey: ["media-draft", projectId, event.payload.canvasItemId],
+            });
+            if (typeof event.payload.artifactId === "string") {
+              void queryClient.invalidateQueries({
+                queryKey: ["artifact-versions", projectId, event.payload.artifactId],
+              });
+            }
+          }
         }
         if (event.type === "project.changed") {
           void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });

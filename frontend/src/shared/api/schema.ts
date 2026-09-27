@@ -748,6 +748,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/upload-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 追加用户上传版本并只在此媒体卡片选用 */
+        post: operations["uploadCanvasItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/canvas/items": {
         parameters: {
             query?: never;
@@ -1524,6 +1544,11 @@ export interface components {
             versionId: string;
             /** Format: int64 */
             expectedVersion: number;
+        };
+        UploadCanvasItemVersionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            content: components["schemas"]["WritableArtifactContent"];
         };
         ArtifactInputReference: {
             /** Format: uuid */
@@ -3583,6 +3608,38 @@ export interface operations {
         responses: {
             /** @description 更新后的卡片 */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasItem"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    uploadCanvasItemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadCanvasItemVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 新版本已追加并在目标卡片选用，资源默认版本不变 */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

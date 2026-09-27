@@ -22,6 +22,7 @@ export type Asset = components["schemas"]["Asset"];
 export type ArtifactVersionList = components["schemas"]["ArtifactVersionList"];
 export type CreateArtifactRequest = components["schemas"]["CreateArtifactRequest"];
 export type ReviseArtifactRequest = components["schemas"]["ReviseArtifactRequest"];
+export type UploadCanvasItemVersionRequest = components["schemas"]["UploadCanvasItemVersionRequest"];
 export type Canvas = components["schemas"]["Canvas"];
 export type CanvasItem = components["schemas"]["CanvasItem"];
 export type CanvasCommand = components["schemas"]["CanvasCommand"];
@@ -451,6 +452,18 @@ export async function selectCanvasItemVersion(
   return writeJson<CanvasItem>(
     `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/select-version`,
     { method: "POST", body: JSON.stringify({ versionId, expectedVersion }) },
+  );
+}
+
+/** Appends an uploaded immutable version and selects it only on the addressed media card. */
+export async function uploadCanvasItemVersion(
+  projectId: string,
+  canvasItemId: string,
+  input: UploadCanvasItemVersionRequest,
+): Promise<CanvasItem> {
+  return writeJson<CanvasItem>(
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/upload-version`,
+    { method: "POST", body: JSON.stringify(input) },
   );
 }
 

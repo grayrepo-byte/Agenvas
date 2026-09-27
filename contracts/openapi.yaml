@@ -1010,6 +1010,30 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/upload-version:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
+    post:
+      operationId: uploadCanvasItemVersion
+      summary: 追加用户上传版本并只在此媒体卡片选用
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UploadCanvasItemVersionRequest"}
+      responses:
+        "201":
+          description: 新版本已追加并在目标卡片选用，资源默认版本不变
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CanvasItem"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/items:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -1984,6 +2008,13 @@ components:
       properties:
         versionId: {type: string, format: uuid}
         expectedVersion: {type: integer, format: int64, minimum: 0}
+    UploadCanvasItemVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, content]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        content: {$ref: "#/components/schemas/WritableArtifactContent"}
     ArtifactInputReference:
       type: object
       additionalProperties: false

@@ -21,6 +21,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -282,6 +283,50 @@ public class CanvasService {
             return ProjectEventService.Change.changed(toEntry(ownerId, selected),
                     new ProjectEventService.EventDraft("canvas.item.selected_version.changed", 1,
                             itemId, selected.version(), payload));
+        }).value();
+    }
+
+    /** Appends an uploaded media version and selects it only on the addressed card. */
+    @Transactional
+    public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
+            long expectedVersion, JsonNode content) {
+        return events.recordChange(ownerId, projectId, () -> {
+            projects.requireActiveProject(ownerId, projectId);
+            CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
+                    .orElseThrow(this::notFound);
+            if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
+            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
+                    current.subjectId());
+            if (artifact.artifact().kind() != Artifact.Kind.IMAGE
+                    && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+                throw validation("只有图片和视频卡片可以追加上传版本。");
+            }
+            if (current.version() == expectedVersion + 1 && current.selectedVersionId() != null) {
+                ArtifactVersion selected = artifacts.requireVersion(ownerId, projectId,
+                        current.subjectId(), current.selectedVersionId());
+                if (selected.createdByKind() == ArtifactVersion.CreatedByKind.USER
+                        && selected.content().equals(content)) {
+                    return ProjectEventService.Change.unchanged(toEntry(ownerId, current));
+                }
+            }
+            if (current.version() != expectedVersion) throw conflict();
+            ArtifactVersion revision = artifacts.appendUserMediaVersionWithinChange(ownerId,
+                    projectId, current.subjectId(), content);
+            if (!canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
+                    revision.id(), clock.instant())) {
+                throw conflict();
+            }
+            mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
+                    dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
+            CanvasItem selected = canvasItems.find(ownerId, projectId, itemId)
+                    .orElseThrow(this::notFound);
+            ObjectNode selectionPayload = objectMapper.createObjectNode();
+            selectionPayload.put("canvasItemId", itemId.toString());
+            selectionPayload.put("artifactId", current.subjectId().toString());
+            selectionPayload.put("selectedVersionId", revision.id().toString());
+            return ProjectEventService.Change.changed(toEntry(ownerId, selected),
+                    new ProjectEventService.EventDraft("canvas.item.selected_version.changed", 1,
+                            itemId, selected.version(), selectionPayload));
         }).value();
     }
 

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
-import { ApiError, getArtifact, reviseArtifact, selectCanvasItemVersion, uploadImageAsset,
+import { ApiError, listCanvasItems, uploadCanvasItemVersion, uploadImageAsset,
   type Artifact, type CanvasItem } from "../../shared/api/client";
 
 /** Upload fills this artifact and preserves completed stages if the next request fails. */
@@ -9,39 +9,25 @@ export function MediaCardUpload({ artifact, item, onDone }: {
 }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
-  const [expectedVersion, setExpectedVersion] = useState(artifact.version);
+  const [expectedVersion, setExpectedVersion] = useState(item.version);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const progress = useRef<{ file: File; assetId?: string; revised?: Artifact } | null>(null);
+  const progress = useRef<{ file: File; assetId?: string } | null>(null);
   const upload = useMutation({
     mutationFn: async (image: File) => {
       if (progress.current?.file !== image) progress.current = { file: image };
       const pending = progress.current;
       if (!pending.assetId) pending.assetId = (await uploadImageAsset(artifact.projectId, image)).id;
-      if (!pending.revised) {
-        try {
-          pending.revised = await reviseArtifact(artifact.projectId, artifact.id, {
-            expectedVersion, content: { sourceType: "UPLOAD", assetId: pending.assetId },
-          });
-        } catch (failure) {
-          if (failure instanceof ApiError && failure.status !== 409 && failure.status < 500) throw failure;
-          // A lost response is not proof the revision failed. Recover only this exact upload,
-          // and never select over a later, unrelated user result.
-          let current: Artifact;
-          try { current = await getArtifact(artifact.projectId, artifact.id); }
-          catch { throw failure; }
-          const content = current.resourceDefaultVersion?.content;
-          if (current.version <= expectedVersion || !content || !("assetId" in content)
-            || content.assetId !== pending.assetId || !("sourceType" in content)
-            || content.sourceType !== "UPLOAD") throw failure;
-          pending.revised = current;
-        }
+      const request = { expectedVersion,
+        content: { sourceType: "UPLOAD" as const, assetId: pending.assetId } };
+      try {
+        await uploadCanvasItemVersion(artifact.projectId, item.id, request);
+      } catch (failure) {
+        if (!(failure instanceof ApiError) || failure.status === 409 || failure.status < 500) throw failure;
+        // The server operation is idempotent for this card CAS and exact upload content, so one
+        // immediate retry safely resolves a response lost after commit without changing defaults.
+        await uploadCanvasItemVersion(artifact.projectId, item.id, request);
       }
-      const saved = pending.revised;
-      if (!saved.resourceDefaultVersionId) throw new Error("上传版本未返回，请刷新卡片核对结果。");
-      // Revision creates immutable bytes; selecting that version also switches the display to RESULT.
-      await selectCanvasItemVersion(
-        artifact.projectId, item.id, saved.resourceDefaultVersionId, item.version);
     },
     onSuccess: async () => {
       await Promise.all([
@@ -60,9 +46,10 @@ export function MediaCardUpload({ artifact, item, onDone }: {
   async function refreshVersion() {
     setRefreshing(true); setRefreshError(null);
     try {
-      const current = await getArtifact(artifact.projectId, artifact.id);
+      const current = (await listCanvasItems(artifact.projectId)).items
+        .find((candidate) => candidate.id === item.id);
+      if (!current) throw new Error("卡片已被删除");
       setExpectedVersion(current.version);
-      if (progress.current) progress.current.revised = undefined;
       upload.reset();
     } catch (failure) {
       setRefreshError(failure instanceof Error ? failure.message : "无法读取当前版本");
@@ -81,7 +68,7 @@ export function MediaCardUpload({ artifact, item, onDone }: {
     {upload.error instanceof ApiError && upload.error.status === 409 ? <button className="secondary-button"
       type="button" disabled={refreshing} onClick={() => void refreshVersion()}>
       {refreshing ? "读取中…" : "读取最新版本"}</button> : null}
-    {expectedVersion !== artifact.version ? <p role="status">已读取当前版本，可再次上传以追加新内容版本。</p> : null}
+    {expectedVersion !== item.version ? <p role="status">已读取当前卡片版本，可再次上传以追加新内容版本。</p> : null}
     {refreshError ? <p role="alert">{refreshError}</p> : null}
   </form>;
 }
