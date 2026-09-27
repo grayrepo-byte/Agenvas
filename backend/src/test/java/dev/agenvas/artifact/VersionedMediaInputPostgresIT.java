@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -54,6 +55,7 @@ class VersionedMediaInputPostgresIT {
     @Autowired private WebApplicationContext context;
     @Autowired private ObjectMapper mapper;
     @Autowired private MediaExecutionWorker worker;
+    @Autowired private JdbcClient jdbc;
 
     @Test
     void freezesOrderedStartAndEndFramesWithoutLegacySingularFields() throws Exception {
@@ -130,6 +132,65 @@ class VersionedMediaInputPostgresIT {
         assertThat(disconnected.path("draft").path("imageInputs").get(0).path("sources")).hasSize(1);
         assertThat(disconnected.path("draft").path("imageInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
+
+        String secondStartItemId = place(mvc, auth, base, start.artifactId(), 480);
+        mvc.perform(post(base + "/canvas-items/" + secondStartItemId + "/select-version")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content("{\"versionId\":\"" + start.versionId()
+                                + "\",\"expectedVersion\":0}"))
+                .andExpect(status().isOk());
+        JsonNode removalTarget = createArtifact(mvc, auth, base, "IMAGE", "Removal target");
+        String removalTargetItemId = place(mvc, auth, base,
+                removalTarget.path("id").asText(), 560);
+        String removalDraftPath = base + "/canvas-items/" + removalTargetItemId
+                + "/media-draft";
+        mvc.perform(put(removalDraftPath).with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"expectedVersion\":0,\"prompt\":\"Reference ￼\","
+                                + "\"imageInputs\":[{\"versionId\":\"" + start.versionId()
+                                + "\",\"role\":\"REFERENCE\",\"color\":\"#7C3AED\"}],"
+                                + "\"mentions\":[{\"versionId\":\"" + start.versionId()
+                                + "\",\"role\":\"REFERENCE\"}] }"))
+                .andExpect(status().isOk());
+        mvc.perform(post(base + "/canvas/connections").with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"sourceCanvasItemId\":\"" + start.canvasItemId()
+                                + "\",\"targetCanvasItemId\":\"" + removalTargetItemId
+                                + "\",\"sourceVersionId\":\"" + start.versionId()
+                                + "\",\"relationType\":\"MEDIA_INPUT\","
+                                + "\"expectedTargetDraftVersion\":1}"))
+                .andExpect(status().isCreated());
+        mvc.perform(post(base + "/canvas/connections").with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"sourceCanvasItemId\":\"" + secondStartItemId
+                                + "\",\"targetCanvasItemId\":\"" + removalTargetItemId
+                                + "\",\"sourceVersionId\":\"" + start.versionId()
+                                + "\",\"relationType\":\"MEDIA_INPUT\","
+                                + "\"expectedTargetDraftVersion\":2}"))
+                .andExpect(status().isCreated());
+        String removeInputPath = removalDraftPath + "/image-inputs/" + start.versionId()
+                + "/remove";
+        mvc.perform(post(removeInputPath).with(auth).with(csrf())
+                        .contentType("application/json").content("{\"expectedVersion\":2}"))
+                .andExpect(status().isConflict());
+        JsonNode removedInput = mapper.readTree(mvc.perform(post(removeInputPath)
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content("{\"expectedVersion\":3}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(removedInput.path("imageInputs")).isEmpty();
+        assertThat(removedInput.path("mentions")).isEmpty();
+        assertThat(removedInput.path("prompt").asText()).isEqualTo("Reference ");
+        JsonNode connectionsAfterInputRemoval = mapper.readTree(mvc.perform(
+                        get(base + "/canvas/connections").with(auth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(connectionsAfterInputRemoval.path("items")).isEmpty();
+        assertThat(jdbc.sql("select count(*) from project_event where project_id=:projectId "
+                        + "and type='media.draft.changed' and aggregate_id=:canvasItemId "
+                        + "and aggregate_version=4 and payload_json->>'draftVersion'='4' "
+                        + "and payload_json->>'removedConnectionCount'='2'")
+                .param("projectId", project.id())
+                .param("canvasItemId", UUID.fromString(removalTargetItemId))
+                .query(Long.class).single()).isEqualTo(1L);
 
         String duplicateItemId = UUID.randomUUID().toString();
         JsonNode duplicated = mapper.readTree(mvc.perform(post(base + "/canvas/items/"

@@ -2,6 +2,7 @@ package dev.agenvas.artifact.api;
 
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.MediaDraftRestoreService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import jakarta.validation.Valid;
@@ -26,10 +27,13 @@ import tools.jackson.databind.JsonNode;
 public class MediaDraftController {
     private final MediaDraftService drafts;
     private final MediaDraftRestoreService restore;
+    private final CanvasConnectionService connections;
 
-    public MediaDraftController(MediaDraftService drafts, MediaDraftRestoreService restore) {
+    public MediaDraftController(MediaDraftService drafts, MediaDraftRestoreService restore,
+            CanvasConnectionService connections) {
         this.drafts = drafts;
         this.restore = restore;
+        this.connections = connections;
     }
 
     @GetMapping
@@ -57,6 +61,16 @@ public class MediaDraftController {
                 request.versionId(), request.expectedVersion());
     }
 
+    /** Removes the image aggregate and every canvas line that currently owns it. */
+    @PostMapping("/image-inputs/{versionId}/remove")
+    public MediaDraft removeImageInput(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID canvasItemId,
+            @PathVariable UUID versionId,
+            @Valid @RequestBody RemoveImageInputRequest request) {
+        return connections.removeMediaInput(principal.userId(), projectId, canvasItemId,
+                versionId, request.expectedVersion());
+    }
+
     public record SaveDraftRequest(@PositiveOrZero long expectedVersion,
             @NotNull @Size(max = 20000) String prompt, JsonNode parameters,
             Integer durationSeconds, UUID capabilityId,
@@ -66,4 +80,5 @@ public class MediaDraftController {
 
     public record RestoreVersionInputsRequest(@NotNull UUID versionId,
             @PositiveOrZero long expectedVersion) {}
+    public record RemoveImageInputRequest(@PositiveOrZero long expectedVersion) {}
 }

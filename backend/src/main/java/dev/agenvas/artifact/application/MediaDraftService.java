@@ -340,6 +340,30 @@ public class MediaDraftService {
         return replaceInputsWithinChange(ownerId, before, inputs, mentions);
     }
 
+    /** Removes one exact-version input and every structured mention bound to it. */
+    public MediaDraft removeImageInputWithinChange(UUID ownerId, UUID projectId,
+            UUID canvasItemId, long expectedVersion, UUID imageVersionId) {
+        MediaDraft before = get(ownerId, projectId, canvasItemId);
+        if (before.version() != expectedVersion) {
+            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                    "草稿版本冲突", "移除图片前目标草稿已变化。", true);
+        }
+        if (before.imageInputs().stream().noneMatch(input ->
+                input.versionId().equals(imageVersionId))) {
+            throw invalid("媒体草稿中没有该图片输入。");
+        }
+        List<MediaDraft.ImageInput> inputs = new ArrayList<>();
+        for (MediaDraft.ImageInput input : before.imageInputs()) {
+            if (input.versionId().equals(imageVersionId)) continue;
+            inputs.add(new MediaDraft.ImageInput(input.versionId(), input.artifactId(),
+                    input.role(), inputs.size(), input.color(), input.sources()));
+        }
+        List<MediaDraft.PromptMention> mentions = before.mentions().stream()
+                .filter(mention -> !mention.versionId().equals(imageVersionId))
+                .toList();
+        return replaceInputsWithinChange(ownerId, before, inputs, mentions);
+    }
+
     private MediaDraft replaceInputsWithinChange(UUID ownerId, MediaDraft before,
             List<MediaDraft.ImageInput> inputs, List<MediaDraft.PromptMention> mentions) {
         Instant now = clock.instant();

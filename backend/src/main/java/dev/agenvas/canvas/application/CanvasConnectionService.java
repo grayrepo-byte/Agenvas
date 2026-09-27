@@ -151,6 +151,39 @@ public class CanvasConnectionService {
         }).value();
     }
 
+    /** Atomically clears one media input, all of its source lines and bound prompt mentions. */
+    @Transactional
+    public MediaDraft removeMediaInput(UUID ownerId, UUID projectId, UUID targetCanvasItemId,
+            UUID imageVersionId, long expectedDraftVersion) {
+        return events.recordChange(ownerId, projectId, () -> {
+            projects.requireActiveProject(ownerId, projectId);
+            MediaDraft before = drafts.get(ownerId, projectId, targetCanvasItemId);
+            MediaDraft.ImageInput input = before.imageInputs().stream()
+                    .filter(candidate -> candidate.versionId().equals(imageVersionId))
+                    .findFirst().orElseThrow(() -> invalid("媒体草稿中没有该图片输入。"));
+            MediaDraft updated = drafts.removeImageInputWithinChange(ownerId, projectId,
+                    targetCanvasItemId, expectedDraftVersion, imageVersionId);
+            List<UUID> connectionIds = input.sources().stream()
+                    .filter(source -> source.type() == MediaDraft.SourceType.CONNECTION)
+                    .map(MediaDraft.InputSource::connectionId)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            for (UUID connectionId : connectionIds) {
+                if (!connections.delete(projectId, connectionId)) {
+                    throw conflict("图片输入关联的连线已被其他操作删除。");
+                }
+            }
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("canvasItemId", targetCanvasItemId.toString());
+            payload.put("draftVersion", updated.version());
+            payload.put("imageVersionId", imageVersionId.toString());
+            payload.put("removedConnectionCount", connectionIds.size());
+            return ProjectEventService.Change.changed(updated,
+                    new ProjectEventService.EventDraft("media.draft.changed", 1,
+                            targetCanvasItemId, updated.version(), payload));
+        }).value();
+    }
+
     @Transactional(readOnly = true)
     public List<CanvasConnection> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);

@@ -207,6 +207,34 @@ Selection writeback result: partial — 实现方向合理，偶发问题根因�
 
 final result: passed
 
+## 媒体输入纯缩略图栏（2026-09-28）
+
+- source visual truth paths: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-a02c9c6a-b830-42a1-92f0-292f9f099e74.png`（934 × 661 px）与 `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-7921615a-6a70-4b5c-8268-5b09b67e06bc.png`（826 × 394 px）。
+- implementation source: `frontend/src/features/canvas/MediaDraftEditor.tsx` 与 `MediaDraftEditor.css`。
+- implementation screenshot path: Codex 内置浏览器的同屏比较捕获，过程预览页未持久化；参考图和实际 `MediaReferenceThumbnail` 在同一张 1280 × 720 浏览器截图内。
+- viewport / density: 1280 × 720 CSS px，默认 device scale；实际编辑器 576.94px 宽，缩略图与添加按钮均为 46 × 46 CSS px。
+- state: 8 张图片静止态、第二张连线图片关闭按钮聚焦态，以及关闭后剩余 7 张重新连续编号。
+- primary interactions tested: 聚焦显示关闭按钮；连线来源的关闭按钮辅助说明为“取消引入并断开画布连线”；点击关闭后缩略图消失并重新编号；真实浏览器从序号 1 拖到序号 5 后，可访问树与顺序输出均变为 `2,3,4,5,1,6,7,8`。
+- console errors checked: warning/error 为空。
+
+### Full-view comparison evidence
+
+参考图与实际组件同屏比较。两者均为添加按钮后跟紧凑、等宽的纯图片队列；实际组件不再显示图片名、版本说明或左右移动按钮，编辑器信息密度与目标红框一致。
+
+### Focused region comparison evidence
+
+- 字体与排版：图片栏只保留 10px 高对比序号；没有额外标题或版本文字，符合目标。
+- 间距与布局：46px 方形缩略图、8px 间距、10px 圆角；在 576px 编辑器中可横向滚动，添加按钮固定在左侧。
+- 颜色与 token：默认细灰边框；悬停/键盘聚焦使用该精确输入的稳定颜色，关闭按钮为深色底白色 X，悬停进入危险红色。
+- 图片质量：生产组件继续读取归档 Asset 内容地址并使用 `object-fit: cover`；同屏 fixture 直接复用了用户提供的真实截图素材，没有新增占位资产。
+- 文案与内容：可见区域没有图片描述与操作文字；辅助技术仍能读取图片版本、序号和“断开画布连线”的操作后果。
+
+### Findings and comparison history
+
+首次同屏比较未发现 P0/P1/P2。关闭按钮聚焦态清晰显示在右上角且不遮挡左上角序号；点击后的连续编号通过浏览器可访问树核对。补充真实指针拖拽与 12 张图片横向溢出验证：576px 可视宽度对应 694px 滚动宽度，`overflow-x: auto`，滚动条隐藏且添加按钮保持 sticky。未保留 P3 项。
+
+final result: passed
+
 ## CanvasItem 卡片标题原位编辑（2026-09-27）
 
 - source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-ce4a834f-25cb-4028-9c57-1cf561fa93d6.png`

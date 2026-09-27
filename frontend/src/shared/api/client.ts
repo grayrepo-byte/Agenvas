@@ -16,6 +16,7 @@ export type ArtifactList = components["schemas"]["ArtifactList"];
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
 export type RestoreMediaDraftVersionInputsRequest = components["schemas"]["RestoreMediaDraftVersionInputsRequest"];
+export type RemoveMediaDraftImageInputRequest = components["schemas"]["RemoveMediaDraftImageInputRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
@@ -371,6 +372,16 @@ export async function restoreMediaDraftVersionInputs(projectId: string, canvasIt
   input: RestoreMediaDraftVersionInputsRequest): Promise<MediaDraft> {
   return writeJson<MediaDraft>(
     `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft/restore-version-inputs`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** Atomically removes an exact image input together with every owning canvas line and mention. */
+export async function removeMediaDraftImageInput(projectId: string, canvasItemId: string,
+  versionId: string, input: RemoveMediaDraftImageInputRequest): Promise<MediaDraft> {
+  return writeJson<MediaDraft>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}`
+      + `/media-draft/image-inputs/${encodeURIComponent(versionId)}/remove`,
     { method: "POST", body: JSON.stringify(input) },
   );
 }

@@ -606,6 +606,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/image-inputs/{versionId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 原子移除精确图片输入、全部来源连线及其结构化标签 */
+        post: operations["removeMediaDraftImageInput"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/canvas/connections": {
         parameters: {
             query?: never;
@@ -1641,6 +1662,10 @@ export interface components {
         RestoreMediaDraftVersionInputsRequest: {
             /** Format: uuid */
             versionId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        RemoveMediaDraftImageInputRequest: {
             /** Format: int64 */
             expectedVersion: number;
         };
@@ -3605,6 +3630,38 @@ export interface operations {
         };
         responses: {
             /** @description 已恢复的媒体草稿；图片只保留手工来源 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeMediaDraftImageInput: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveMediaDraftImageInputRequest"];
+            };
+        };
+        responses: {
+            /** @description 已移除图片输入的媒体草稿 */
             200: {
                 headers: {
                     [name: string]: unknown;

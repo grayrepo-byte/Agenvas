@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, type RequestHandler } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -100,6 +100,12 @@ describe("MediaDraftEditor", () => {
           content: { assetId: "asset-image-v1" } }] })),
     ] });
     const user = userEvent.setup();
+    const referenceRow = await screen.findByLabelText("图片输入");
+    expect(within(referenceRow).getByText("1")).toBeVisible();
+    expect(within(referenceRow).queryByText("Image 1")).not.toBeInTheDocument();
+    expect(within(referenceRow).queryByText(/新图片 · v1/)).not.toBeInTheDocument();
+    expect(within(referenceRow).queryByRole("button", { name: /向左移动|向右移动/ }))
+      .not.toBeInTheDocument();
     const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
     await user.click(prompt);
     await user.type(prompt, "@");
@@ -111,21 +117,167 @@ describe("MediaDraftEditor", () => {
       prompt: `修改为红色衣服 \uFFFC`,
       mentions: [{ versionId: "image-v1", role: "REFERENCE" }],
     }));
-    await user.click(screen.getByRole("button", { name: /移除 新图片/ }));
+    await user.click(screen.getByRole("button", { name: /取消引入 新图片/ }));
     expect(within(prompt).queryByText("@Image 1")).not.toBeInTheDocument();
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
       prompt: "修改为红色衣服 ", mentions: [], imageInputs: [],
     }));
   });
 
-  it("keeps a connection-only image read-only until its canvas line is disconnected", async () => {
+  it("disconnects a connection-only image directly from its hover close button", async () => {
+    const removals: unknown[] = [];
     setup({ draft: { ...initialDraft,
       imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
         role: "REFERENCE", order: 0, color: "#F15CAF",
-        sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] } });
-    const remove = await screen.findByRole("button", { name: "移除 图片输入" });
-    expect(remove).toBeDisabled();
-    expect(remove).toHaveAttribute("title", "该图片仅由画布连线提供，请在画布上断开对应连线");
+        sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
+      handlers: [http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`,
+        async ({ request }) => {
+          removals.push(await request.json());
+          return HttpResponse.json({ ...initialDraft, version: 1 });
+        })] });
+    const user = userEvent.setup();
+    const remove = await screen.findByRole("button", { name: "取消引入 图片输入 1" });
+    expect(remove).toBeEnabled();
+    expect(remove).toHaveAttribute("title", "取消引入并断开画布连线");
+    await user.click(remove);
+    await waitFor(() => expect(removals).toEqual([{ expectedVersion: 0 }]));
+    await waitFor(() => expect(screen.queryByRole("button", {
+      name: "取消引入 图片输入 1",
+    })).not.toBeInTheDocument());
+  });
+
+  it("retries a failed atomic connection-input removal instead of saving an unrelated draft", async () => {
+    let attempts = 0;
+    setup({ draft: { ...initialDraft,
+      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+        role: "REFERENCE", order: 0, color: "#F15CAF",
+        sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
+      handlers: [http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`, () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json({ code: "TEMPORARY", detail: "暂时无法取消引入" }, { status: 503 })
+          : HttpResponse.json({ ...initialDraft, version: 1 });
+      })] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "取消引入 图片输入 1" }));
+    expect(await screen.findByText("取消引入失败")).toBeVisible();
+    await user.click(await screen.findByRole("button", { name: "重试取消引入" }));
+    await waitFor(() => expect(attempts).toBe(2));
+    await waitFor(() => expect(screen.queryByRole("button", {
+      name: "取消引入 图片输入 1",
+    })).not.toBeInTheDocument());
+  });
+
+  it("preserves prompt edits made while a connected image is being removed", async () => {
+    let releaseRemoval = () => {};
+    const removalGate = new Promise<void>((resolve) => { releaseRemoval = resolve; });
+    const { saves } = setup({ draft: { ...initialDraft,
+      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+        role: "REFERENCE", order: 0, color: "#F15CAF",
+        sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
+      handlers: [http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`, async () => {
+        await removalGate;
+        return HttpResponse.json({ ...initialDraft, version: 1 });
+      })] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "取消引入 图片输入 1" }));
+    const prompt = screen.getByRole("textbox", { name: "图片提示词" });
+    await user.clear(prompt);
+    await user.type(prompt, "继续输入提示词");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 700)); });
+    expect(saves).toHaveLength(0);
+    releaseRemoval();
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({
+      expectedVersion: 1, prompt: "继续输入提示词", imageInputs: [],
+    }));
+    expect(prompt).toHaveTextContent("继续输入提示词");
+  });
+
+  it("saves edits before retrying a connected-image removal that failed after typing", async () => {
+    let releaseFailure = () => {};
+    const failureGate = new Promise<void>((resolve) => { releaseFailure = resolve; });
+    let releaseSave = () => {};
+    const saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
+    let attempts = 0;
+    const saveRequests: SaveMediaDraftRequest[] = [];
+    setup({ draft: { ...initialDraft,
+      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+        role: "REFERENCE", order: 0, color: "#F15CAF",
+        sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
+      handlers: [
+        http.put(DRAFT_URL, async ({ request }) => {
+          const input = await request.json() as SaveMediaDraftRequest;
+          saveRequests.push(input);
+          if (saveRequests.length === 1) await saveGate;
+          return HttpResponse.json({ ...initialDraft, prompt: input.prompt,
+            imageInputs: input.imageInputs.map((item, order) => ({ ...item,
+              artifactId: "connected-artifact", order,
+              sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] })),
+            mentions: input.mentions, version: saveRequests.length === 1 ? 1 : 3 });
+        }),
+        http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`, async () => {
+          attempts += 1;
+          if (attempts === 1) {
+            await failureGate;
+            return HttpResponse.json({ code: "TEMPORARY", detail: "暂时无法取消引入" }, { status: 503 });
+          }
+          return HttpResponse.json({ ...initialDraft, prompt: "失败期间继续输入", version: 2 });
+        }),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "取消引入 图片输入 1" }));
+    const prompt = screen.getByRole("textbox", { name: "图片提示词" });
+    await user.clear(prompt);
+    await user.type(prompt, "失败期间继续输入");
+    releaseFailure();
+    await user.click(await screen.findByRole("button", { name: "重试取消引入" }));
+    await waitFor(() => expect(saveRequests[0]).toMatchObject({
+      expectedVersion: 0, prompt: "失败期间继续输入",
+    }));
+    await user.click(prompt);
+    await user.keyboard("{End}");
+    await user.type(prompt, "，保存时继续输入");
+    releaseSave();
+    await waitFor(() => expect(attempts).toBe(2));
+    await waitFor(() => expect(screen.queryByRole("button", {
+      name: "取消引入 图片输入 1",
+    })).not.toBeInTheDocument());
+    await waitFor(() => expect(saveRequests[1]).toMatchObject({
+      expectedVersion: 2, prompt: "失败期间继续输入，保存时继续输入", imageInputs: [],
+    }));
+    expect(prompt).toHaveTextContent("失败期间继续输入，保存时继续输入");
+  });
+
+  it("keeps image-only thumbnails keyboard and drag reorderable without visible move controls", async () => {
+    const { saves } = setup({ draft: { ...initialDraft, imageInputs: [
+      { versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE",
+        order: 0, color: "#F15CAF", sources: [{ id: "manual-1", type: "MANUAL", connectionId: null }] },
+      { versionId: "image-v2", artifactId: "reference-image", role: "REFERENCE",
+        order: 1, color: "#67C7F3", sources: [{ id: "manual-2", type: "MANUAL", connectionId: null }] },
+    ] }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{
+        ...artifact, id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v2",
+      }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+        HttpResponse.json({ items: [
+          { id: "image-v1", versionNo: 1, content: { assetId: "asset-image-v1" } },
+          { id: "image-v2", versionNo: 2, content: { assetId: "asset-image-v2" } },
+        ] })),
+    ] });
+    const user = userEvent.setup();
+    const first = await screen.findByLabelText("海边灯塔 · v1，序号 1");
+    expect(screen.queryByRole("button", { name: /向左移动|向右移动/ })).not.toBeInTheDocument();
+    await user.click(first);
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() => expect(saves.at(-1)?.imageInputs.map((input) => input.versionId))
+      .toEqual(["image-v2", "image-v1"]));
+    const movedFirst = screen.getByLabelText("海边灯塔 · v1，序号 2");
+    const movedSecond = screen.getByLabelText("海边灯塔 · v2，序号 1");
+    expect(movedFirst).toHaveAttribute("data-reorderable", "true");
+    fireEvent.pointerDown(movedFirst, { button: 0 });
+    fireEvent.pointerUp(movedSecond, { button: 0 });
+    await waitFor(() => expect(saves.at(-1)?.imageInputs.map((input) => input.versionId))
+      .toEqual(["image-v1", "image-v2"]));
   });
 
   it("shows read-only size and configured quality without inventing draft parameters", async () => {
@@ -279,10 +431,11 @@ describe("MediaDraftEditor", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
       imageInputs: [{ versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" }], durationSeconds: 4 }));
-    expect(screen.getByText("海边灯塔 · v1")).toBeVisible();
-    expect(screen.getByRole("img", { name: "海边灯塔 · v1" })).toHaveAttribute("src",
+    const firstFrame = screen.getByLabelText("海边灯塔 · v1，序号 1");
+    expect(within(firstFrame).getByText("1")).toBeVisible();
+    expect(firstFrame.querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
-    expect(screen.queryByRole("img", { name: /v2/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/海边灯塔 · v2，序号/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await user.click(screen.getByRole("button", { name: "使用 海边灯塔 · v2" }));
@@ -290,9 +443,9 @@ describe("MediaDraftEditor", () => {
       { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
       { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
     ], durationSeconds: 4 }));
-    expect(screen.getByRole("img", { name: "海边灯塔 · v2" })).toHaveAttribute("src",
+    expect(screen.getByLabelText("海边灯塔 · v2，序号 2").querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/content`);
-    await user.click(screen.getByRole("button", { name: "移除 海边灯塔 · v1" }));
+    await user.click(screen.getByRole("button", { name: "取消引入 海边灯塔 · v1" }));
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
       { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
     ], durationSeconds: 4 }));
@@ -344,7 +497,7 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "重试读取图片" }));
     expect(await screen.findByRole("option", { name: "海边灯塔 · v1" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("img", { name: "海边灯塔 · v1" })).toHaveAttribute("src",
+    expect(screen.getByLabelText("海边灯塔 · v1，序号 1").querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });

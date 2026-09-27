@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ArrowUp, CaretDown, Check, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
+import { ArrowUp, CaretDown, Check, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -10,7 +10,8 @@ import { readContentText } from "./artifactContent";
 import { ApiError, assetContentUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
   getMediaDraft, getMediaSettings,
   listArtifactVersions, listArtifacts, listDirectMediaTasks, runMediaDraft, saveMediaDraft,
-  type Artifact, type MediaCapability, type SaveMediaDraftRequest } from "../../shared/api/client";
+  removeMediaDraftImageInput,
+  type Artifact, type MediaCapability, type MediaDraft, type SaveMediaDraftRequest } from "../../shared/api/client";
 import "./MediaDraftEditor.css";
 
 const AUTOSAVE_DELAY_MS = 650;
@@ -47,6 +48,18 @@ function modelName(capability: MediaCapability) {
 function imageAssetId(content: unknown) {
   const value = readContentText(content, "assetId");
   return value.trim() ? value : null;
+}
+
+function fieldsFromDraft(draft: MediaDraft): DraftFields {
+  return {
+    prompt: draft.prompt, parameters: draft.parameters ?? {},
+    durationSeconds: draft.durationSeconds, capabilityId: draft.capabilityId,
+    videoInputMode: draft.videoInputMode,
+    imageInputs: (draft.imageInputs ?? []).map(({ versionId, role, color }) => ({
+      versionId, role, color,
+    })),
+    mentions: draft.mentions ?? [],
+  };
 }
 
 function readPromptEditor(root: HTMLElement) {
@@ -253,6 +266,47 @@ function PromptMentionEditor({ id, label, placeholder, prompt, mentions, referen
   </div>;
 }
 
+function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, connected,
+    busy, reorderable, onMove, onDragStart, onDragEnd, onDrop, onRemove }: {
+  index: number; color: string; thumbnailUrl?: string; accessibleLabel: string;
+  connected: boolean; busy: boolean; reorderable: boolean;
+  onMove: (delta: -1 | 1) => void; onDragStart: () => void;
+  onDragEnd: () => void; onDrop: () => void; onRemove: () => void;
+}) {
+  return <div className="media-draft-reference-chip"
+    style={{ "--reference-color": color } as CSSProperties}
+    aria-label={`${accessibleLabel}，序号 ${index + 1}`}
+    data-reorderable={reorderable ? "true" : undefined}
+    {...(reorderable ? { tabIndex: 0, "aria-keyshortcuts": "ArrowLeft ArrowRight" } : {})}
+    onPointerDown={(event) => {
+      if (!reorderable || event.button !== 0
+          || event.target instanceof Element && event.target.closest("button")) return;
+      onDragStart();
+    }}
+    onPointerUp={(event) => {
+      if (!reorderable || event.button !== 0
+          || event.target instanceof Element && event.target.closest("button")) return;
+      onDrop();
+      onDragEnd();
+    }}
+    onPointerCancel={onDragEnd}
+    onKeyDown={(event) => {
+      if (!reorderable || event.target !== event.currentTarget) return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        onMove(event.key === "ArrowLeft" ? -1 : 1);
+      }
+    }}>
+    {thumbnailUrl ? <img src={thumbnailUrl} alt="" draggable={false} />
+      : <ImageSquare className="media-draft-reference-fallback" size={25} aria-hidden="true" />}
+    <span className="media-draft-reference-index" aria-hidden="true">{index + 1}</span>
+    <button className="media-draft-reference-remove" type="button"
+      aria-label={`取消引入 ${accessibleLabel}`} disabled={busy}
+      title={connected ? "取消引入并断开画布连线" : "取消引入"}
+      onClick={onRemove}><X size={13} /></button>
+  </div>;
+}
+
 /**
  * Attachment chips, raised pickers and compact task rows adapt Beautiful UI's PromptBar / TaskRows.
  * https://github.com/slev12397/beautiful-ui (MIT, Shane Levine; see beautiful-ui-LICENSE.txt).
@@ -291,6 +345,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const [expectedVersion, setExpectedVersion] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [failedRemovalVersionId, setFailedRemovalVersionId] = useState<string | null>(null);
+  const draggedReferenceIndex = useRef<number | null>(null);
   const runIntent = useRef<RunIntent | null>(null);
   const [popover, setPopover] = useState<Popover | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -342,6 +398,50 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     },
     onError: (failure) => setError(failure),
   });
+  const removeConnectedInput = useMutation({
+    mutationFn: async ({ versionId, version = expectedVersion, allowDirty = false }: {
+      versionId: string; version?: number | null; allowDirty?: boolean;
+      preserveLocalChanges?: boolean;
+    }) => {
+      if (!draft.data || version === null || (dirty || save.isPending) && !allowDirty) {
+        throw new Error("请等待当前草稿保存完成后再取消图片输入。");
+      }
+      return removeMediaDraftImageInput(artifact.projectId, canvasItemId, versionId, {
+        expectedVersion: version,
+      });
+    },
+    onMutate: ({ versionId, preserveLocalChanges = false }) => {
+      setFailedRemovalVersionId(null);
+      setError(null);
+      return { versionId, fieldsAtStart: fieldsRef.current, preserveLocalChanges };
+    },
+    onSuccess: async (saved, _versionId, context) => {
+      const latest = fieldsRef.current;
+      let changedWhileRemoving = false;
+      let next = fieldsFromDraft(saved);
+      if (latest !== null && (context?.preserveLocalChanges === true
+        || latest !== context?.fieldsAtStart)) {
+        changedWhileRemoving = true;
+        next = { ...latest,
+          imageInputs: latest.imageInputs.filter((input) => input.versionId !== context.versionId),
+          ...removePromptReferences(latest.prompt, latest.mentions, context.versionId) };
+      }
+      fieldsRef.current = next;
+      setFields(next);
+      setExpectedVersion(saved.version);
+      setDirty(changedWhileRemoving);
+      setFailedRemovalVersionId(null);
+      queryClient.setQueryData(key, saved);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
+      ]);
+    },
+    onError: (failure, versionId) => {
+      setFailedRemovalVersionId(versionId.versionId);
+      setError(failure);
+    },
+  });
   const run = useMutation({
     mutationFn: () => {
       if (expectedVersion === null) throw new Error("请等待草稿读取完成");
@@ -374,23 +474,18 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     // An earlier GET can finish after a successful save wrote its newer result to the cache.
     // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
     if (expectedVersion !== null && draft.data.version < expectedVersion) return;
-    const initial = {
-      prompt: draft.data.prompt, parameters: draft.data.parameters ?? {},
-      durationSeconds: draft.data.durationSeconds, capabilityId: draft.data.capabilityId,
-      videoInputMode: draft.data.videoInputMode,
-      imageInputs: (draft.data.imageInputs ?? []).map(({ versionId, role, color }) => ({ versionId, role, color })),
-      mentions: draft.data.mentions ?? [],
-    };
+    const initial = fieldsFromDraft(draft.data);
     fieldsRef.current = initial;
     setFields(initial);
     setExpectedVersion(draft.data.version);
   }, [draft.data, dirty, save.isPending, run.isPending, error, expectedVersion]);
 
   useEffect(() => {
-    if (!dirty || !fields || expectedVersion === null || save.isPending || error) return;
+    if (!dirty || !fields || expectedVersion === null || save.isPending
+        || removeConnectedInput.isPending || error) return;
     const timer = window.setTimeout(() => save.mutate({ ...fields, expectedVersion }), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, fields, expectedVersion, save.isPending, error]);
+  }, [dirty, fields, expectedVersion, save.isPending, removeConnectedInput.isPending, error]);
 
   function edit(changes: Partial<DraftFields>) {
     runIntent.current = null;
@@ -402,6 +497,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       return next;
     });
     setDirty(true);
+    setFailedRemovalVersionId(null);
     if (!(error instanceof ApiError && error.status === CONFLICT_STATUS)) setError(null);
   }
 
@@ -412,6 +508,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         const fresh = await getMediaDraft(artifact.projectId, canvasItemId);
         queryClient.setQueryData(key, fresh);
         setExpectedVersion(fresh.version);
+        setFailedRemovalVersionId(null);
         setError(null);
       } catch (failure) {
         setError(failure instanceof Error ? failure : new Error("无法重新读取草稿"));
@@ -419,6 +516,22 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       return;
     }
     setError(null);
+    if (failedRemovalVersionId) {
+      if (dirty) {
+        try {
+          const fieldsBeingSaved = fields;
+          const saved = await save.mutateAsync({ ...fieldsBeingSaved, expectedVersion });
+          removeConnectedInput.mutate({ versionId: failedRemovalVersionId,
+            version: saved.version, allowDirty: true,
+            preserveLocalChanges: fieldsRef.current !== fieldsBeingSaved });
+        } catch {
+          // The save mutation exposes its own actionable error and retains local fields.
+        }
+        return;
+      }
+      removeConnectedInput.mutate({ versionId: failedRemovalVersionId });
+      return;
+    }
     save.mutate({ ...fields, expectedVersion });
   }
 
@@ -496,7 +609,9 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const qualityLabel = quality ? `${QUALITY_LABELS[quality]}画质` : "默认画质";
   const historyError = imageHistories.find((history) => history.error)?.error;
   const historyPending = resources.isPending || imageHistories.some((history) => history.isPending);
-  const saveLabel = save.isPending ? "保存中…" : dirty ? error ? "保存失败，本地输入已保留" : "待保存…" : "已保存";
+  const saveLabel = removeConnectedInput.isPending ? "正在取消引入…"
+    : failedRemovalVersionId ? "取消引入失败"
+      : save.isPending ? "保存中…" : dirty ? error ? "保存失败，本地输入已保留" : "待保存…" : "已保存";
   const currentFields = fields;
 
   function nextRole() {
@@ -515,6 +630,12 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   }
 
   function removeReference(versionId: string) {
+    const persisted = draft.data?.imageInputs.find((input) => input.versionId === versionId);
+    if (persisted?.sources.some((source) => source.type === "CONNECTION"
+        && source.connectionId)) {
+      removeConnectedInput.mutate({ versionId });
+      return;
+    }
     const nextPrompt = removePromptReferences(currentFields.prompt, currentFields.mentions, versionId);
     edit({ imageInputs: currentFields.imageInputs.filter((input) => input.versionId !== versionId),
       ...nextPrompt });
@@ -522,16 +643,23 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
 
   function moveReference(index: number, delta: -1 | 1) {
     const target = index + delta;
-    if (target < 0 || target >= currentFields.imageInputs.length || effectiveMode === "START_END") return;
+    moveReferenceTo(index, target);
+  }
+
+  function moveReferenceTo(index: number, target: number) {
+    if (target < 0 || target >= currentFields.imageInputs.length || index === target
+        || effectiveMode === "START_END") return;
     const next = [...currentFields.imageInputs];
-    [next[index], next[target]] = [next[target]!, next[index]!];
+    const [moving] = next.splice(index, 1);
+    if (!moving) return;
+    next.splice(target, 0, moving);
     edit({ imageInputs: next });
   }
 
-  function isConnectionOnly(versionId: string) {
+  function hasConnectionSource(versionId: string) {
     const persisted = draft.data?.imageInputs.find((input) => input.versionId === versionId);
-    return persisted !== undefined && persisted.sources.length > 0
-      && persisted.sources.every((source) => source.type === "CONNECTION");
+    return persisted?.sources.some((source) => source.type === "CONNECTION"
+      && source.connectionId) ?? false;
   }
 
   return <div className="media-draft-editor" aria-label="媒体生成编辑器">
@@ -587,24 +715,23 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           <p>按确认顺序添加，运行时固定精确版本。所选模型最多支持 {imageCapacity} 张图片。</p>
         </div> : null}
       </div>
-      {selectedReferences.map(({ input, choice }, index) => <div className="media-draft-reference-chip"
-        key={input.versionId} style={{ "--reference-color": input.color } as CSSProperties}>
-        <div className="media-draft-reference-replace">
-          {choice ? <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt={choice.label} /> : <ImageSquare size={25} />}
-          <span><strong>{input.role === "START_FRAME" ? "Start Frame" : input.role === "END_FRAME" ? "End Frame" : `Image ${index + 1}`}</strong>
-            <small>{choice?.label ?? "已固定图片版本"}</small></span>
-        </div>
-        <button type="button" className="media-draft-reference-move" aria-label={`向左移动 ${choice?.label ?? `Image ${index + 1}`}`}
-          disabled={index === 0 || effectiveMode === "START_END"} onClick={() => moveReference(index, -1)}><ArrowLeft size={12} /></button>
-        <button type="button" className="media-draft-reference-move" aria-label={`向右移动 ${choice?.label ?? `Image ${index + 1}`}`}
-          disabled={index === fields.imageInputs.length - 1 || effectiveMode === "START_END"} onClick={() => moveReference(index, 1)}><ArrowRight size={12} /></button>
-        <button className="media-draft-reference-remove" type="button"
-          aria-label={`移除 ${choice?.label ?? "图片输入"}`}
-          disabled={isConnectionOnly(input.versionId)}
-          title={isConnectionOnly(input.versionId)
-            ? "该图片仅由画布连线提供，请在画布上断开对应连线" : "移除图片输入"}
-          onClick={() => removeReference(input.versionId)}><X size={13} /></button>
-      </div>)}
+      {selectedReferences.map(({ input, choice }, index) => <MediaReferenceThumbnail
+        key={input.versionId} index={index} color={input.color}
+        accessibleLabel={choice?.label ?? `图片输入 ${index + 1}`}
+        {...(choice ? { thumbnailUrl: assetContentUrl(artifact.projectId, choice.assetId) } : {})}
+        connected={hasConnectionSource(input.versionId)}
+        busy={removeConnectedInput.isPending || dirty || save.isPending}
+        reorderable={effectiveMode !== "START_END"}
+        onMove={(delta) => moveReference(index, delta)}
+        onDragStart={() => { draggedReferenceIndex.current = index; }}
+        onDragEnd={() => { draggedReferenceIndex.current = null; }}
+        onDrop={() => {
+          if (draggedReferenceIndex.current !== null) {
+            moveReferenceTo(draggedReferenceIndex.current, index);
+            draggedReferenceIndex.current = null;
+          }
+        }}
+        onRemove={() => removeReference(input.versionId)} />)}
       {!fields.imageInputs.length ? <span className="media-draft-reference-hint">{effectiveMode === "TEXT"
         ? "纯文本视频不使用图片" : "添加图片作为精确版本输入"}</span> : null}
     </div>
@@ -696,7 +823,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === CONFLICT_STATUS
         ? "草稿有冲突；本地输入已保留。重新读取版本后可再保存。" : error.message}</span>
         <button className="media-draft-text-action" onClick={() => void retry()} type="button">
-          {error instanceof ApiError && error.status === CONFLICT_STATUS ? "重新读取版本" : "重试保存"}</button></div> : null}
+          {error instanceof ApiError && error.status === CONFLICT_STATUS ? "重新读取版本"
+            : failedRemovalVersionId ? "重试取消引入" : "重试保存"}</button></div> : null}
     </div>
   </div>;
 }
