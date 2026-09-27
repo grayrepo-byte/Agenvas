@@ -87,6 +87,37 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
 }
 
 describe("MediaDraftEditor", () => {
+  it("inserts an exact-version image token inside the prompt instead of a separate tag row", async () => {
+    const { saves } = setup({ draft: { ...initialDraft, prompt: "修改为红色衣服 ",
+      imageInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE",
+        order: 0, color: "#F15CAF",
+        sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }] }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{
+        ...artifact, id: "reference-image", title: "新图片", resourceDefaultVersionId: "image-v1",
+      }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+        HttpResponse.json({ items: [{ id: "image-v1", versionNo: 1,
+          content: { assetId: "asset-image-v1" } }] })),
+    ] });
+    const user = userEvent.setup();
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(prompt);
+    await user.type(prompt, "@");
+    const choices = await screen.findByRole("listbox", { name: "图片引用" });
+    await user.click(within(choices).getByRole("option", { name: /Image 1/ }));
+    expect(within(prompt).getByText("@Image 1")).toBeVisible();
+    expect(screen.queryByLabelText("图片标签")).not.toBeInTheDocument();
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({
+      prompt: `修改为红色衣服 \uFFFC`,
+      mentions: [{ versionId: "image-v1", role: "REFERENCE" }],
+    }));
+    await user.click(screen.getByRole("button", { name: /移除 新图片/ }));
+    expect(within(prompt).queryByText("@Image 1")).not.toBeInTheDocument();
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({
+      prompt: "修改为红色衣服 ", mentions: [], imageInputs: [],
+    }));
+  });
+
   it("keeps a connection-only image read-only until its canvas line is disconnected", async () => {
     setup({ draft: { ...initialDraft,
       imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
@@ -167,13 +198,13 @@ describe("MediaDraftEditor", () => {
     await user.clear(prompt);
     await user.type(prompt, "Keep this local prompt");
     await screen.findByText("保存失败，本地输入已保留");
-    expect(prompt).toHaveValue("Keep this local prompt");
+    expect(prompt).toHaveTextContent("Keep this local prompt");
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "重新读取版本" }));
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests[1]).toMatchObject({ expectedVersion: 4, prompt: "Keep this local prompt" });
     expect(await screen.findByText("已保存")).toBeVisible();
-    expect(prompt).toHaveValue("Keep this local prompt");
+    expect(prompt).toHaveTextContent("Keep this local prompt");
   });
 
   it("runs the saved default draft and invalidates the actual snapshot, canvas and draft caches", async () => {
@@ -372,7 +403,8 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "运行" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
-    await user.type(screen.getByLabelText("图片提示词"), " in the rain");
+    await user.click(screen.getByLabelText("图片提示词"));
+    await user.keyboard("{End} in the rain");
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0]).toMatchObject({ expectedVersion: 4, prompt: `${initialDraft.prompt} in the rain` });
   });
@@ -403,7 +435,7 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(saved).toHaveLength(1));
     await screen.findByText("已保存");
     await act(async () => { releaseStale?.(); await slowRefresh; });
-    expect(prompt).toHaveValue("Newer saved prompt");
+    expect(prompt).toHaveTextContent("Newer saved prompt");
     await user.type(prompt, " and next edit");
     await waitFor(() => expect(saved).toHaveLength(2));
     expect(saved[1]).toMatchObject({ expectedVersion: 1, prompt: "Newer saved prompt and next edit" });
@@ -447,6 +479,6 @@ describe("MediaDraftEditor", () => {
     })] });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "重试读取草稿" }));
-    expect(await screen.findByLabelText("图片提示词")).toHaveValue(initialDraft.prompt);
+    expect(await screen.findByLabelText("图片提示词")).toHaveTextContent(initialDraft.prompt);
   });
 });

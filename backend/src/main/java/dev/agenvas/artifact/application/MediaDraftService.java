@@ -28,6 +28,8 @@ public class MediaDraftService {
     private static final int MIN_VIDEO_SECONDS = 1;
     private static final int MAX_VIDEO_SECONDS = 30;
     private static final int MAX_IMAGE_INPUTS = 8;
+    // Each marker maps positionally to one exact-version structured prompt mention.
+    private static final char MENTION_MARKER = '\uFFFC';
     private static final String COLOR_PATTERN = "^#[0-9A-F]{6}$";
     private static final List<String> INPUT_COLORS = List.of(
             "#7C3AED", "#0EA5E9", "#F97316", "#10B981",
@@ -81,6 +83,10 @@ public class MediaDraftService {
                 ? List.of() : List.copyOf(requestedInputs);
         List<MediaDraft.PromptMention> mentions = requestedMentions == null
                 ? List.of() : List.copyOf(requestedMentions);
+        if (prompt.chars().filter(character -> character == MENTION_MARKER).count()
+                != mentions.size()) {
+            throw invalid("提示词中的图片标签与结构化引用不一致。");
+        }
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
         if (inputCommands.size() > MAX_IMAGE_INPUTS) {
@@ -337,8 +343,9 @@ public class MediaDraftService {
     private MediaDraft replaceInputsWithinChange(UUID ownerId, MediaDraft before,
             List<MediaDraft.ImageInput> inputs, List<MediaDraft.PromptMention> mentions) {
         Instant now = clock.instant();
+        String prompt = pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
         MediaDraft update = new MediaDraft(before.projectId(), before.canvasItemId(),
-                before.prompt(), before.parameters(), before.durationSeconds(),
+                prompt, before.parameters(), before.durationSeconds(),
                 before.capabilityId(), before.videoInputMode(), List.copyOf(inputs),
                 List.copyOf(mentions), before.displayMode(), before.version() + 1,
                 before.createdAt(), now);
@@ -348,6 +355,26 @@ public class MediaDraftService {
         }
         artifacts.replaceMediaInputs(update.projectId(), update.canvasItemId(), inputs, now);
         return update;
+    }
+
+    private String pruneRemovedMentions(String prompt,
+            List<MediaDraft.PromptMention> beforeMentions,
+            List<MediaDraft.PromptMention> remainingMentions) {
+        StringBuilder result = new StringBuilder(prompt.length());
+        int mentionIndex = 0;
+        List<MediaDraft.PromptMention> unmatched = new ArrayList<>(remainingMentions);
+        for (int index = 0; index < prompt.length(); index++) {
+            char character = prompt.charAt(index);
+            if (character != MENTION_MARKER) {
+                result.append(character);
+                continue;
+            }
+            MediaDraft.PromptMention mention = mentionIndex < beforeMentions.size()
+                    ? beforeMentions.get(mentionIndex) : null;
+            mentionIndex++;
+            if (mention != null && unmatched.remove(mention)) result.append(MENTION_MARKER);
+        }
+        return result.toString();
     }
 
     private MediaDraft.InputRole nextConnectionRole(Artifact.Kind kind, MediaDraft draft,

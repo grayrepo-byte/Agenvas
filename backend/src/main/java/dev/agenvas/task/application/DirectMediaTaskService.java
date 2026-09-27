@@ -34,6 +34,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final String COST_SOURCE = "PROVIDER_UNPRICED";
+    // The saved prompt stays structural; only the immutable Task input sent to providers is rendered.
+    private static final char MENTION_MARKER = '\uFFFC';
 
     private final TaskRepository tasks;
     private final MediaDraftService drafts;
@@ -128,7 +130,8 @@ public class DirectMediaTaskService {
             if (canvasItem.selectedVersionId() == null) input.putNull("parentVersionId");
             else input.put("parentVersionId", canvasItem.selectedVersionId().toString());
             input.put("draftVersion", draft.version());
-            input.put("prompt", draft.prompt());
+            String renderedPrompt = renderPrompt(draft);
+            input.put("prompt", renderedPrompt);
             input.put("providerConfigVersion", provider.configVersion());
             input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
@@ -144,6 +147,7 @@ public class DirectMediaTaskService {
                     ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
                     : draft.videoInputMode().name());
             frozen.put("prompt", draft.prompt());
+            frozen.put("renderedPrompt", renderedPrompt);
             frozen.set("parameters", draft.parameters().deepCopy());
             frozen.put("capabilityId", binding.capabilityId().toString());
             frozen.put("capabilityVersion", binding.capabilityVersion());
@@ -180,6 +184,41 @@ public class DirectMediaTaskService {
                             task.version(), payload));
             return ProjectEventService.Change.unchanged(task);
         }).value();
+    }
+
+    private String renderPrompt(MediaDraft draft) {
+        StringBuilder rendered = new StringBuilder(draft.prompt().length());
+        int mentionIndex = 0;
+        for (int index = 0; index < draft.prompt().length(); index++) {
+            char character = draft.prompt().charAt(index);
+            if (character != MENTION_MARKER) {
+                rendered.append(character);
+                continue;
+            }
+            if (mentionIndex >= draft.mentions().size()) {
+                throw invalid("提示词图片标签已损坏，请重新保存草稿。");
+            }
+            MediaDraft.PromptMention mention = draft.mentions().get(mentionIndex++);
+            rendered.append('@').append(switch (mention.role()) {
+                case START_FRAME -> "Start Frame";
+                case END_FRAME -> "End Frame";
+                case REFERENCE -> "Image " + referenceNumber(draft, mention);
+            });
+        }
+        if (mentionIndex != draft.mentions().size()) {
+            throw invalid("提示词图片标签已损坏，请重新保存草稿。");
+        }
+        return rendered.toString();
+    }
+
+    private int referenceNumber(MediaDraft draft, MediaDraft.PromptMention mention) {
+        for (int index = 0; index < draft.imageInputs().size(); index++) {
+            MediaDraft.ImageInput input = draft.imageInputs().get(index);
+            if (input.versionId().equals(mention.versionId()) && input.role() == mention.role()) {
+                return index + 1;
+            }
+        }
+        throw invalid("提示词图片标签没有对应的图片输入。");
     }
 
     /** Only queued direct work is guaranteed never to have reached the provider. */

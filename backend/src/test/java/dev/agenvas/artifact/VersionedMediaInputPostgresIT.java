@@ -75,7 +75,7 @@ class VersionedMediaInputPostgresIT {
         String videoItemId = place(mvc, auth, base, video.path("id").asText(), 640);
         String draftPath = base + "/canvas-items/" + videoItemId + "/media-draft";
         String input = """
-                {"expectedVersion":0,"prompt":"Move from @Start Frame to @End Frame",\
+                {"expectedVersion":0,"prompt":"Move from \uFFFC to \uFFFC",\
                 "durationSeconds":5,"videoInputMode":"START_END","imageInputs":[\
                 {"versionId":"%s","role":"START_FRAME","color":"#7C3AED"},\
                 {"versionId":"%s","role":"END_FRAME","color":"#0EA5E9"}],\
@@ -84,6 +84,11 @@ class VersionedMediaInputPostgresIT {
                 {"versionId":"%s","role":"END_FRAME"}]}
                 """.formatted(start.versionId(), end.versionId(),
                         start.versionId(), end.versionId());
+        mvc.perform(put(draftPath).with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content(input.replace("Move from \uFFFC to \uFFFC",
+                                "Move from @Start Frame to @End Frame")))
+                .andExpect(status().isBadRequest());
         JsonNode saved = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
                         .contentType("application/json").content(input))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -194,6 +199,11 @@ class VersionedMediaInputPostgresIT {
                                 + "\",\"expectedDraftVersion\":3}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode frozen = task.path("input").path("mediaInput");
+        assertThat(task.path("input").path("prompt").asText())
+                .isEqualTo("Move from @Start Frame to @End Frame");
+        assertThat(frozen.path("prompt").asText()).isEqualTo("Move from \uFFFC to \uFFFC");
+        assertThat(frozen.path("renderedPrompt").asText())
+                .isEqualTo("Move from @Start Frame to @End Frame");
         assertThat(frozen.path("mode").asText()).isEqualTo("START_END");
         assertThat(frozen.path("images")).hasSize(2);
         assertThat(frozen.path("images").get(0).path("versionId").asText())
@@ -232,7 +242,7 @@ class VersionedMediaInputPostgresIT {
                                 + "\",\"expectedVersion\":4}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(restored.path("prompt").asText())
-                .isEqualTo("Move from @Start Frame to @End Frame");
+                .isEqualTo("Move from \uFFFC to \uFFFC");
         assertThat(restored.path("imageInputs")).hasSize(2);
         assertThat(restored.path("imageInputs").get(0).path("sources")).hasSize(1);
         assertThat(restored.path("imageInputs").get(0).path("sources").get(0)

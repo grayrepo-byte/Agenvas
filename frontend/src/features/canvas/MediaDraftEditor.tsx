@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, ArrowUp, CaretDown, Check, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
@@ -29,9 +29,15 @@ const FIXED_MODELS: Readonly<Record<string, string>> = {
   MOCK_VIDEO: "Mock 视频演示",
 };
 const QUALITY_LABELS = { low: "低", medium: "中", high: "高" } as const;
+// Each object-replacement character occupies one position in the prompt and maps to the
+// structurally equivalent entry in mentions. Human-readable labels are a view of that pair.
+const MENTION_MARKER = "\uFFFC";
 type DraftFields = Omit<SaveMediaDraftRequest, "expectedVersion">;
 type Popover = "models" | "parameters" | "references";
 type RunIntent = { key: string; expectedDraftVersion: number };
+type PromptReference = DraftFields["imageInputs"][number] & {
+  label: string; thumbnailUrl?: string;
+};
 
 function modelName(capability: MediaCapability) {
   return FIXED_MODELS[capability.adapterId] ?? capability.settings.checkpoint
@@ -41,6 +47,210 @@ function modelName(capability: MediaCapability) {
 function imageAssetId(content: unknown) {
   const value = readContentText(content, "assetId");
   return value.trim() ? value : null;
+}
+
+function readPromptEditor(root: HTMLElement) {
+  let prompt = "";
+  const mentions: DraftFields["mentions"] = [];
+  function visit(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      prompt += (node.textContent ?? "").replaceAll("\u00A0", " ");
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    const versionId = node.dataset.mentionVersion;
+    const role = node.dataset.mentionRole as DraftFields["mentions"][number]["role"] | undefined;
+    if (versionId && role) {
+      prompt += MENTION_MARKER;
+      mentions.push({ versionId, role });
+      return;
+    }
+    if (node instanceof HTMLBRElement) {
+      prompt += "\n";
+      return;
+    }
+    const block = node.tagName === "DIV" || node.tagName === "P";
+    if (block && prompt && !prompt.endsWith("\n")) prompt += "\n";
+    node.childNodes.forEach(visit);
+  }
+  root.childNodes.forEach(visit);
+  return { prompt, mentions };
+}
+
+function mentionToken(reference: PromptReference) {
+  const token = document.createElement("span");
+  token.className = "media-draft-inline-mention";
+  token.contentEditable = "false";
+  token.dataset.mentionVersion = reference.versionId;
+  token.dataset.mentionRole = reference.role;
+  token.style.setProperty("--reference-color", reference.color);
+  if (reference.thumbnailUrl) {
+    const image = document.createElement("img");
+    image.src = reference.thumbnailUrl;
+    image.alt = "";
+    token.append(image);
+  }
+  const label = document.createElement("span");
+  label.textContent = `@${reference.label}`;
+  token.append(label);
+  return token;
+}
+
+function renderPromptEditor(root: HTMLElement, prompt: string,
+    mentions: DraftFields["mentions"], references: PromptReference[]) {
+  root.replaceChildren();
+  let mentionIndex = 0;
+  let text = "";
+  const flush = () => {
+    if (!text) return;
+    root.append(document.createTextNode(text));
+    text = "";
+  };
+  for (const character of prompt) {
+    if (character === MENTION_MARKER) {
+      flush();
+      const mention = mentions[mentionIndex++];
+      const reference = mention && references.find((candidate) =>
+        candidate.versionId === mention.versionId && candidate.role === mention.role);
+      if (reference) root.append(mentionToken(reference));
+      continue;
+    }
+    if (character === "\n") {
+      flush();
+      root.append(document.createElement("br"));
+    } else text += character;
+  }
+  flush();
+}
+
+function removePromptReferences(prompt: string, mentions: DraftFields["mentions"],
+    versionId: string) {
+  let mentionIndex = 0;
+  let nextPrompt = "";
+  const nextMentions: DraftFields["mentions"] = [];
+  for (const character of prompt) {
+    if (character !== MENTION_MARKER) {
+      nextPrompt += character;
+      continue;
+    }
+    const mention = mentions[mentionIndex++];
+    if (mention && mention.versionId !== versionId) {
+      nextPrompt += MENTION_MARKER;
+      nextMentions.push(mention);
+    }
+  }
+  return { prompt: nextPrompt, mentions: nextMentions };
+}
+
+function PromptMentionEditor({ id, label, placeholder, prompt, mentions, references, onChange }: {
+  id: string; label: string; placeholder: string; prompt: string;
+  mentions: DraftFields["mentions"]; references: PromptReference[];
+  onChange: (prompt: string, mentions: DraftFields["mentions"]) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const triggerRange = useRef<Range | null>(null);
+  const presentationRef = useRef("");
+  const [menu, setMenu] = useState<{ left: number; top: number; selected: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const current = readPromptEditor(editor);
+    const presentation = references.map((reference) => [reference.versionId, reference.role,
+      reference.label, reference.thumbnailUrl, reference.color].join(":")).join("|");
+    if (current.prompt !== prompt || JSON.stringify(current.mentions) !== JSON.stringify(mentions)
+        || presentationRef.current !== presentation) {
+      renderPromptEditor(editor, prompt, mentions, references);
+      presentationRef.current = presentation;
+    }
+  }, [prompt, mentions, references]);
+
+  function update(event: FormEvent<HTMLDivElement>) {
+    const editor = event.currentTarget;
+    const value = readPromptEditor(editor);
+    if (value.prompt.length > MAX_PROMPT_LENGTH) {
+      renderPromptEditor(editor, prompt, mentions, references);
+      return;
+    }
+    onChange(value.prompt, value.mentions);
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const container = range?.startContainer;
+    const offset = range?.startOffset ?? 0;
+    if (references.length && range?.collapsed && container?.nodeType === Node.TEXT_NODE
+        && (container.textContent ?? "").slice(offset - 1, offset) === "@") {
+      triggerRange.current = range.cloneRange();
+      const bounds = editor.getBoundingClientRect();
+      const caret = typeof range.getBoundingClientRect === "function"
+        ? range.getBoundingClientRect() : bounds;
+      setMenu({ left: Math.max(0, caret.left - bounds.left),
+        top: Math.max(30, caret.bottom - bounds.top + 8), selected: 0 });
+    } else {
+      triggerRange.current = null;
+      setMenu(null);
+    }
+  }
+
+  function insert(reference: PromptReference) {
+    const editor = editorRef.current;
+    const range = triggerRange.current;
+    if (!editor || !range) return;
+    const container = range.startContainer;
+    if (container.nodeType === Node.TEXT_NODE && range.startOffset > 0) {
+      range.setStart(container, range.startOffset - 1);
+      range.deleteContents();
+    }
+    const token = mentionToken(reference);
+    range.insertNode(token);
+    range.setStartAfter(token);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    editor.focus();
+    const value = readPromptEditor(editor);
+    onChange(value.prompt, value.mentions);
+    triggerRange.current = null;
+    setMenu(null);
+  }
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!menu) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setMenu(null);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setMenu({ ...menu, selected: (menu.selected + delta + references.length) % references.length });
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const reference = references[menu.selected];
+      if (reference) insert(reference);
+    }
+  }
+
+  return <div className="media-draft-prompt-shell">
+    <label className="media-draft-prompt-label" htmlFor={id}>{label}</label>
+    <div ref={editorRef} id={id} className="media-draft-prompt" role="textbox"
+      aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
+      data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
+    {menu ? <div className="media-draft-mention-menu" role="listbox" aria-label="图片引用"
+      style={{ left: menu.left, top: menu.top }}>
+      <span className="media-draft-mention-menu-title">Image</span>
+      {references.map((reference, index) => <button key={reference.versionId} type="button"
+        role="option" aria-selected={index === menu.selected}
+        aria-label={`${reference.label} ${reference.versionId}`}
+        onMouseDown={(event) => event.preventDefault()} onClick={() => insert(reference)}>
+        {reference.thumbnailUrl ? <img src={reference.thumbnailUrl} alt="" /> : <ImageSquare size={28} />}
+        <span>{reference.label}</span>
+      </button>)}
+    </div> : null}
+  </div>;
 }
 
 /**
@@ -252,6 +462,12 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     ? fields.videoInputMode ?? chosenCapability?.defaultVideoInputMode ?? null : null;
   const selectedReferences = fields.imageInputs.map((input) => ({ input,
     choice: imageChoices.find((choice) => choice.id === input.versionId) }));
+  const promptReferences: PromptReference[] = selectedReferences.map(({ input, choice }, index) => ({
+    ...input,
+    label: input.role === "START_FRAME" ? "Start Frame"
+      : input.role === "END_FRAME" ? "End Frame" : `Image ${index + 1}`,
+    ...(choice ? { thumbnailUrl: assetContentUrl(artifact.projectId, choice.assetId) } : {}),
+  }));
   const imageCapacity = chosenCapability?.maxReferenceImages ?? 0;
   const referenceLimitReached = fields.imageInputs.length >= imageCapacity;
   const allInputsAvailable = selectedReferences.every(({ choice }) => choice?.available);
@@ -299,8 +515,9 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   }
 
   function removeReference(versionId: string) {
+    const nextPrompt = removePromptReferences(currentFields.prompt, currentFields.mentions, versionId);
     edit({ imageInputs: currentFields.imageInputs.filter((input) => input.versionId !== versionId),
-      mentions: currentFields.mentions.filter((mention) => mention.versionId !== versionId) });
+      ...nextPrompt });
   }
 
   function moveReference(index: number, delta: -1 | 1) {
@@ -309,10 +526,6 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     const next = [...currentFields.imageInputs];
     [next[index], next[target]] = [next[target]!, next[index]!];
     edit({ imageInputs: next });
-  }
-
-  function addMention(input: DraftFields["imageInputs"][number]) {
-    edit({ mentions: [...currentFields.mentions, { versionId: input.versionId, role: input.role }] });
   }
 
   function isConnectionOnly(versionId: string) {
@@ -395,18 +608,11 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       {!fields.imageInputs.length ? <span className="media-draft-reference-hint">{effectiveMode === "TEXT"
         ? "纯文本视频不使用图片" : "添加图片作为精确版本输入"}</span> : null}
     </div>
-    <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{artifact.kind === "IMAGE" ? "图片提示词" : "视频提示词"}</label>
-    <textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
+    <PromptMentionEditor id={`${id}-prompt`}
+      label={artifact.kind === "IMAGE" ? "图片提示词" : "视频提示词"}
       placeholder={artifact.kind === "IMAGE" ? "描述你想创作的画面，让想象发生…" : "描述镜头、动作和运镜，让画面动起来…"}
-      value={fields.prompt} onChange={(event) => edit({ prompt: event.target.value })} />
-    {fields.imageInputs.length ? <div className="media-draft-mention-row" aria-label="图片标签">
-      {fields.imageInputs.map((input, index) => <button key={input.versionId} type="button"
-        style={{ "--reference-color": input.color } as CSSProperties} onClick={() => addMention(input)}>
-        @{input.role === "START_FRAME" ? "Start Frame" : input.role === "END_FRAME" ? "End Frame" : `Image ${index + 1}`}</button>)}
-      {fields.mentions.map((mention, index) => <span key={`${mention.versionId}-${index}`}>@
-        {mention.role === "START_FRAME" ? "Start Frame" : mention.role === "END_FRAME" ? "End Frame"
-          : `Image ${Math.max(1, fields.imageInputs.findIndex((input) => input.versionId === mention.versionId) + 1)}`}</span>)}
-    </div> : null}
+      prompt={fields.prompt} mentions={fields.mentions} references={promptReferences}
+      onChange={(prompt, mentions) => edit({ prompt, mentions })} />
     <div className="media-draft-toolbar">
       <div className="media-draft-popover-anchor media-draft-model-anchor">
         <button className="media-draft-toolbar-button media-draft-model-trigger" type="button"

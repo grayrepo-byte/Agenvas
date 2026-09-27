@@ -185,6 +185,28 @@ Edge label removal result: partial — 预览页真实渲染核对通过，完�
 
 Selection writeback result: partial — 实现方向合理，偶发问题根因与完整工作区行为仍待验证。
 
+## Prompt 图片引用内联（2026-09-28）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-b38eb9bb-3574-4324-b72b-5fdf77d728e6.png`；对照问题图为 `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-f414b0ad-e441-4c8b-888b-b5633d8d6842.png`。
+- implementation source: `frontend/src/features/canvas/MediaDraftEditor.tsx` 与 `MediaDraftEditor.css`。
+- implementation comparison capture: Codex 内置浏览器在 `http://localhost:5173/prompt-mention-preview.html` 打开临时核对页，用实际 `PromptMentionEditor` 捕获“已有内联标签 + 输入 @ 后菜单”和“选择后新增内联标签”两种状态；过程页核对后移除，截图以内联工具输出保留，未写入仓库。
+- viewport: 1280 × 720 CSS px；焦点编辑器 680px 宽，和现有媒体编辑器桌面宽度一致。
+- console errors checked: warning/error 为空。
+
+### Focused comparison evidence
+
+- 标签位置：`@Image 1` 与普通提示词处于同一可编辑文本流，不再存在独立 tag 行；与目标图红框语义一致。
+- 菜单行为：输入 `@` 后，菜单锚定光标下方，显示当前图片输入的缩略图和 `Image 1`；选择后原 `@` 被不可拆分 token 替换。
+- 视觉层级：token 使用紧凑圆角、真实缩略图位和图片输入的稳定颜色；菜单采用深色浮层、选中行和标题分隔，与目标图保持相同层级。
+- 数据行为：浏览器可访问树确认 token 属于“图片提示词”文本框；选择前后输入框 Value 均包含 `@Image 1`，菜单关闭后标签仍在原位。
+- 有意差异：沿用 Agenvas 现有 680px 编辑器、粉色强调色和既有工具栏，不复制参考产品品牌、模型名称或顶部辅助入口。
+
+### Findings
+
+未发现影响本次目标的 P0/P1/P2 差异。临时 fixture 的缩略图是仅用于核对布局的内联图形；生产组件继续读取已归档真实 Asset 缩略图，不引入演示资产。
+
+final result: passed
+
 ## CanvasItem 卡片标题原位编辑（2026-09-27）
 
 - source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-ce4a834f-25cb-4028-9c57-1cf561fa93d6.png`
