@@ -173,3 +173,14 @@ Selection clearing result: partial — RF 契约与 jsdom 页面测试通过，�
 - 未覆盖：完整工作区内的观感、1280px 窄宽度，以及尚未重新构建的本地镜像。
 
 Edge label removal result: partial — 预览页真实渲染核对通过，完整工作区未验收。
+
+## 选中状态回写简化（2026-09-27）
+
+- 用户反馈：点击节点选择会偶发不生效。
+- 已确认：原 onNodeClick 会覆盖追加选择；现在修饰键点击交给增量 select 变更处理，并移除 onSelectionChange 的整量回写。
+- 原因待验证：过期回写造成偶发失败仍是假设，现有 mock 测试未复现原始时序。
+- 解释修正：受控 selected 会同步到 nodeLookup，onSelectionChange 能观察到新增选择；多选分支不立即修改内部标记，不代表应用回传受控 nodes 后也不更新。
+- 本次复核：相关三个测试文件共 9 项通过；真实 React Flow 临时状态同步测试 1 项通过，测试已移除。默认 Cmd（macOS）/Ctrl（其他系统）用于点击追加，Shift 用于框选。
+- 未覆盖：完整工作区的真实点击、追加选择、框选，以及原始偶发失败的回归复现。
+
+Selection writeback result: partial — 实现方向合理，偶发问题根因与完整工作区行为仍待验证。

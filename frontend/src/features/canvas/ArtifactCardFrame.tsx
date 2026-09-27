@@ -11,7 +11,8 @@ export function ArtifactCardFrame({ title, kindLabel, selected, locked, toolbar,
   toolbar: ReactNode; toolbarLabel?: string; className?: string; children: ReactNode;
 }) {
   return <>
-    <NodeToolbar isVisible={selected ? undefined : false} position={Position.Top} offset={TOOLBAR_NODE_GAP}>
+    {/* Toolbar portals sit outside the node; exclude their gestures from viewport panning. */}
+    <NodeToolbar className="nopan" isVisible={selected ? undefined : false} position={Position.Top} offset={TOOLBAR_NODE_GAP}>
       <div className="artifact-card-toolbar nodrag nowheel" aria-label={toolbarLabel ?? `${kindLabel}卡片操作`}>
         {toolbar}
       </div>

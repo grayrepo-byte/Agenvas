@@ -68,3 +68,33 @@
 - 未通过的一项：拖动小地图时 `onMoveStart` 的事件为 null（小地图是程序化平移），因此当前不会清除选中。应用自己的程序化移动与小地图共用 null 事件，无法在守卫里区分；要覆盖它需要额外区分“节点拖动自动平移”等场景，本轮未做。
 
 未验证限制：以上是 React Flow 契约核对与 jsdom 页面测试；完整工作区里的真实点击、平移与底部编辑器退出未在浏览器中做视觉验收。本轮未运行 e2e 脚本、未重新构建本地镜像、未调用真实 Provider。
+
+### 2026-09-27 工具栏点击取消选中回归修复
+
+- 原因：`NodeToolbar` 通过 Portal 位于节点 DOM 外，未继承节点的平移隔离；鼠标按下按钮触发视口 `onMoveStart`，页面清空选择使工具栏在 click 前卸载。
+- 修复：共享 `ArtifactCardFrame` 的 `NodeToolbar` 容器增加 `nopan`，工具栏操作不再启动画布平移；画布取消选择的原有逻辑保持有效。无 API 合约或数据库迁移。
+- 回归：新增 `ArtifactCardFrameGestures.test.tsx`，使用真实 React Flow 和 NodeToolbar，模拟鼠标按下、松开、点击，断言工具栏保持挂载且按钮动作执行一次。修复前在“按钮仍在文档中”断言失败，修复后通过。
+- 定向验证：`pnpm test src/features/canvas/ArtifactCardFrame.test.tsx src/features/canvas/ArtifactCardFrameGestures.test.tsx src/features/canvas/CanvasSelectionClearing.test.tsx src/features/canvas/MediaCanvasCard.test.tsx src/features/canvas/ContentCanvasCard.test.tsx`，5 文件 26 项通过。
+- 限制：以上为 jsdom 组件验证；未运行全量测试、真实浏览器触控验收或真实 Provider 调用。
+
+### 2026-09-27 选中状态回写简化
+
+用户反馈：点击节点选择会偶发不生效。
+
+已确认的行为与待验证的原因：
+
+- 受控 `nodes` 更新会通过 `setNodes` / `adoptUserNodes` 同步到内部 `nodeLookup`，`onSelectionChange` 可以观察到同步后的选择。此前“受控 selected 不回写内部标记”和“回调从来看不到追加选择”的解释不正确。
+- `addSelectedNodes` 的多选分支只发送追加 select 变更，不立即修改内部标记；应用处理变更并回传受控 nodes 后，内部标记仍会同步。原探针中未见选中类名，不能证明完整受控链路不会更新。
+- 原 `onNodeClick` 无条件 `setSelectedIds([node.id])` 会覆盖追加选择；修饰键点击现在交给 React Flow 的 select 变更处理。默认追加键是 Cmd（macOS）或 Ctrl（其他系统）；Shift 用于框选，不是默认的点击追加键。
+- “过期的 onSelectionChange 整体回写造成偶发选择失败”仍是假设，现有测试未复现原始失败时序，不能据此确认根因或宣称偶发问题已消失。
+
+实现：保留 `handleNodesChange` 增量更新，移除 `onSelectionChange` / `handleSelectionChange` 对同一应用状态的整量回写；普通点击选中单张，修饰键点击由 React Flow 处理。选择仍由应用状态控制。
+
+验证范围：
+
+- `CanvasSelectionClearing.test.tsx` mock React Flow 并直接驱动页面回调，覆盖 select 变更、普通点击、Cmd 追加、用户视口移动与程序化移动。它不验证真实组件的事件顺序。
+- 本次复核运行选择清除、工具栏位置和工具栏手势三个测试文件，共 9 项通过。
+- 额外临时测试使用真实 React Flow：修改受控 selected 后，断言 nodeLookup 包含新增选择且 onSelectionChange 收到更新，1 项通过。临时测试已移除。
+- 此前记录的画布目录 180 项、类型检查与 lint 通过属于上一轮检查，本次复核未重复执行。此前一次工具栏测试失败发生于并行修改期间，原因未确认，不能直接归因为测试偶发。
+
+未验证限制：尚无能在旧实现失败、在新实现通过的原始偶发问题回归用例；完整工作区里的真实点击、Cmd/Ctrl 追加、框选与底部编辑器退出仍未在浏览器中验收。本次未运行全量测试、构建镜像或真实 Provider 调用。

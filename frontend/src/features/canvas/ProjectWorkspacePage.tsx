@@ -894,8 +894,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, []);
 
   /**
-   * React Flow 用 select 变更同步受控节点的选中态：点空白、点连线、框选都会走到这里。
-   * 只处理位置与尺寸的话，画布上已经取消选中，应用侧仍会保持高亮、底部编辑器也不会关闭。
+   * 应用状态是受控节点选中的权威源；单击、点空白、点连线、框选和追加选择通过 select 变更同步。
+   * 按增量更新，避免再用 onSelectionChange 的整量结果重复写入同一状态。
+   * 受控 nodes 更新后，React Flow 仍会同步内部选中标记；移除回写不代表内部标记不会更新。
    */
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -928,14 +929,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds([]);
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
-  const handleSelectionChange = useCallback(({ nodes: selectedNodes }:
-    { nodes: CanvasNode[] }) => {
-    const next = selectedNodes.map((node) => node.id);
-    const current = useCanvasStore.getState().selectedIds;
-    if (next.length === current.length && next.every((id, index) => id === current[index])) return;
-    setSelectedIds(next);
-  }, [setSelectedIds]);
-
   function submitText(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     addTextCard.mutate({ cardTitle: title, cardText: text });
@@ -1135,7 +1128,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {editAgent.error ? <WorkspaceError error={editAgent.error} /> : null}
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-sm font-semibold">选择与对齐</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Shift 或拖出选框选择多张卡片。</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">按住 Cmd（macOS）或 Ctrl（其他系统）点击追加选择；按住 Shift 拖出选框可选择多张卡片。</p>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入，落在另一张 Artifact 上可建立图片→角色/场景、角色/场景→镜头的精确版本引用，并为目标产物创建新版本（场景→镜头会替换原场景引用）。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是输入（指向历史版本时是虚线）、绿线是输出组、灰虚线是素材引用；连线不会触发生成。</p>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中蓝线或灰虚线按 Delete 或退格删除对应的输入绑定或素材引用。绿线由 Agent 输出组决定、必填场景引用只能替换，两者都不能单独删除。</p>
           <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">左对齐已选卡片</button>
@@ -1186,7 +1179,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               saveLayout.mutate({ item, patch });
             }
           }}
-          onNodeClick={(_, node) => setSelectedIds([node.id])}
+          onNodeClick={(event, node) => {
+            // 修饰键点击交给 React Flow 的 select 变更处理；默认 Cmd（macOS）/Ctrl（其他系统）追加，Shift 用于框选。
+            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+            setSelectedIds([node.id]);
+          }}
           onNodesChange={handleNodesChange}
           onNodeDoubleClick={(event, node) => {
             if (!node.data.item.artifact || (event.target instanceof Element &&
@@ -1197,7 +1194,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onEdgesChange={handleEdgesChange}
           onInit={(instance) => { flow.current = instance; }}
           onMoveStart={(event) => { if (event) clearSelection(); }}
-          onSelectionChange={handleSelectionChange}
           selectionOnDrag
           zoomOnDoubleClick={false}
         >

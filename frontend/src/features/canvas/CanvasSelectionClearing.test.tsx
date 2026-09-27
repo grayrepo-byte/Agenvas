@@ -17,6 +17,8 @@ type FlowProps = {
   onNodesChange?: (changes: SelectionChange[]) => void;
   onEdgesChange?: (changes: SelectionChange[]) => void;
   onMoveStart?: (event: unknown, viewport: { x: number; y: number; zoom: number }) => void;
+  onNodeClick?: (event: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean },
+    node: { id: string }) => void;
 };
 
 let flowProps: FlowProps = {};
@@ -131,6 +133,23 @@ describe("canvas selection clearing", () => {
     flowProps.onMoveStart?.({ type: "mousedown" }, { x: 0, y: 0, zoom: 1 });
     expect(selectedIds()).toEqual([]);
     await waitFor(() => expect(flowProps.edges?.[0]?.selected).toBeFalsy());
+  });
+
+  it("selects a single card on a plain click", async () => {
+    await renderFlow();
+    useCanvasStore.setState({ selectedIds: ["agent-card"] });
+    flowProps.onNodeClick?.({}, { id: "image-card" });
+    expect(selectedIds()).toEqual(["image-card"]);
+  });
+
+  it("leaves additive selection to the incremental changes on a modifier click", async () => {
+    await renderFlow();
+    useCanvasStore.setState({ selectedIds: ["image-card"] });
+    flowProps.onNodeClick?.({ metaKey: true }, { id: "agent-card" });
+    expect(selectedIds()).toEqual(["image-card"]);
+    // 模拟 React Flow 的追加 select 变更；受控 nodes 回传后的内部同步不在此 mock 测试范围内。
+    flowProps.onNodesChange?.([selectChange("agent-card", true)]);
+    expect(selectedIds()).toEqual(["image-card", "agent-card"]);
   });
 
   it("keeps the selection for a programmatic viewport move", async () => {
