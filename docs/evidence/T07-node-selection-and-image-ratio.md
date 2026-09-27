@@ -47,3 +47,24 @@
 再次核对运行部署后更正：本项目当前 Docker Web 入口为 `http://localhost:8088`（`agenvas-web-1`，Compose 路径指向本仓库），5173 实际是 Next.js 迁移前遗留的 Vite 进程。Chrome 访问 5173 同样被拒绝，但访问正确的 8088 成功加载 Agenvas 登录页并成功截图，因此此前使用了错误的服务地址，不能据此判断当前项目不可访问或截图权限不足。5173 的具体客户端拦截规则仍未定位；正确地址无需修改浏览器权限即可访问。此次只验证到登录页，画布的交互与截图验收仍待登录后完成。
 
 用户随后指定 Chrome“日常”实例及 `127.0.0.1:8088` 项目页，已使用其现有登录会话打开 Docker 画布并截图，确认该部署仍展示旧节点样式。按用户要求停止遗留 Vite 后，以 `corepack pnpm dev --hostname 127.0.0.1` 启动当前 Next.js，地址为 `http://127.0.0.1:5173`；Docker 部署未重启。Chrome 已加载当前工作区的项目画布并截图：选中图片完整展示，外圈贴合圆角且无白色缩放点；通过拖动画布空白处平移视口，确认工具栏保持在图片节点上方。该检查没有运行生成、改动媒体或保存节点布局；未覆盖所有比例、真实尺寸拖拽及锁定状态的视觉回归。
+
+## 2026-09-27 取消选中同步
+
+用户反馈：点击画布或移动画布后，被选中的卡片没有取消选中。
+
+定位到两处独立原因：
+
+- **React Flow 用 select 变更同步受控节点的选中态。** 点空白走 `resetSelectedElements`、拖出选框走 `getSelectionChanges`、点关系线走 `addSelectedEdges`，三者都会发出 `select` 变更并交给 `onNodesChange`；页面此前只处理 `position` 与 `dimensions`，所以画布上已经取消选中，应用侧的 `selectedIds` 仍保持原样——高亮、底部编辑器都不会退出。关系线一侧早就处理了 select 变更，节点一侧的缺失正是这个不对称。
+- **平移与缩放画布不发 select 变更。** 需要在视口移动时显式清除：新增 `clearSelection`，由 `onMoveStart` 在事件非空（用户发起的平移或缩放）时清除节点与关系线选中。程序化视口移动（`event` 为 null，例如“查看输出”后的 `fitView`）不清除，否则刚选中的输出卡片会被立刻清掉。
+
+涉及文件：`frontend/src/features/canvas/ProjectWorkspacePage.tsx`（`handleNodesChange` 接受 select 变更、`clearSelection`、`onMoveStart`）、`frontend/src/features/canvas/CanvasSelectionClearing.test.tsx`（新增）。
+
+实际检查：`corepack pnpm exec vitest run src/features/canvas` 28 个文件、179 项通过；`tsc --noEmit`、`eslint . --max-warnings=0`、`git diff --check` 通过。
+
+浏览器核对（临时预览页 + Chrome `--headless=new` + CDP 真实指针事件）6 项中 5 项通过：
+
+- 选中卡片时 React Flow 发出 `select: true`；点空白发出 `select: false` 且卡片确实回到未选中。
+- 中键拖动平移发出带事件的 `onMoveStart`，视口坐标随之变化。
+- 未通过的一项：拖动小地图时 `onMoveStart` 的事件为 null（小地图是程序化平移），因此当前不会清除选中。应用自己的程序化移动与小地图共用 null 事件，无法在守卫里区分；要覆盖它需要额外区分“节点拖动自动平移”等场景，本轮未做。
+
+未验证限制：以上是 React Flow 契约核对与 jsdom 页面测试；完整工作区里的真实点击、平移与底部编辑器退出未在浏览器中做视觉验收。本轮未运行 e2e 脚本、未重新构建本地镜像、未调用真实 Provider。

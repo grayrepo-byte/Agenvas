@@ -49,3 +49,30 @@
 浏览器核对使用的是一次性预览页，渲染真实的 `CanvasHandle`、真实 `styles.css` 与真实 React Flow，并按真实卡片表面复现了选中外圈，但没有登录、没有后端数据，也没有在完整工作区里跑一遍语义引用与 Agent 绑定写入。完整应用中的端到端手势仍需登录后核对，`frontend/e2e/manual-storyboard-browser.mjs` 已按新手势改写但本轮未运行（需要独立实例与 `AGENVAS_E2E_URL`、`AGENVAS_E2E_BOOTSTRAP_SECRET`）。本轮未调用真实媒体或模型 Provider。
 
 几何修正（圆点移出卡片、几何盒缩到 4px）之前构建过一次本地 Compose 镜像，该镜像不含本次修正；修正后只重跑了前端定向检查与浏览器核对，镜像需重新构建才能反映。
+
+## 2026-09-27 卡片级落点与双击不缩放
+
+按用户反馈定位并修正两个问题：
+
+- **双击空白画布会缩画布。** React Flow 的 `zoomOnDoubleClick` 默认为 true，d3 的 dblclick 缩放与应用用于打开添加菜单的 `onDoubleClickCapture` 同时生效。改为 `zoomOnDoubleClick={false}` 后双击只开菜单；添加菜单本身仍由应用自己的双击处理打开。
+- **连线必须对准左侧连接点。** 落点原来只按「指针到连接点的距离」（`connectionRadius` 80 流坐标单位）判定，大卡片中部离左侧连接点很远。现在手势期间用 `document.elementFromPoint` 命中指针下的卡片，`canvasTargetHandleId` 给出该卡片的落点 handle、`isCanvasConnectionValid` 判定合法性，松手时若 React Flow 没有解析到连接点就按这张卡片提交；指针所在的卡片由节点组件渲染高亮层（`canvas-connection-halo`，合法为强调色、非法为红色）。源卡片自身不作为落点，否则按下出口的那一刻就会闪出一次无效反馈。已有的连接点距离判定保留，落点在连接点附近仍走 React Flow 自己的提交路径。
+
+两条被否掉的实现路径（写在这里避免重复踩）：React Flow 节点的 `className` 只在首次接管用户节点时记录，动态改它不会反映到 DOM；`onNodeMouseEnter/Leave` 在「按下连接点时指针已经在源节点内」的场景不会再触发，因此按指针位置直接命中测试更可靠。
+
+涉及文件：`frontend/src/features/canvas/ProjectWorkspacePage.tsx`（`zoomOnDoubleClick`、手势跟踪与提交、节点数据里的 `connectionTarget`）、`frontend/src/features/canvas/CanvasHandle.tsx` 与 `canvasRelations.ts`（`canvasTargetHandleId`）、`frontend/src/styles.css`（高亮层）、`frontend/src/features/canvas/CanvasConnectionDrop.test.tsx`（新增）。
+
+实际检查：`corepack pnpm exec vitest run src/features/canvas` 27 个文件、175 项通过；`tsc --noEmit`、`eslint . --max-warnings=0`、`git diff --check` 通过。浏览器核对（临时预览页 + Chrome `--headless=new` + CDP 真实指针事件）15/15 项通过：双击空白画布缩放矩阵不变且仍打开添加菜单；从出口拖到目标卡片中部（距连接点 153px）松手即建立关系线；不可建立关系的卡片显示红色高亮且松手不提交；没有当前版本的卡片不成为落点；源卡片自身不作为落点、自连松手不产生连线；手势结束后高亮清除。
+
+未验证限制：浏览器核对使用的预览页没有后端，写入侧只核对「交付的连接对象」；完整工作区里的真实语义引用修订与 Agent 绑定写入由组件测试覆盖，未在浏览器中对真实服务端跑过。本轮未运行 `frontend/e2e/manual-storyboard-browser.mjs`，未重新构建本地 Compose 镜像，未调用真实 Provider。
+
+### 2026-09-27 关系线去掉文字
+
+用户反馈：取消连线上的文字说明（例如“输入”）。投影出的关系线此前带 `label`（“输入”“输入 · 历史版本”“Agent 输出组”“素材引用 · 角色”），现在三条投影分支都不再设置 `label`，关系类型只靠颜色与线型区分：蓝线是输入、绿线是输出组、灰虚线是素材引用。
+
+“绑定指向历史版本”原本只由文字表达，去掉后改用线型：输入绑定指向非当前版本时投影额外加 `relation-edge--input-binding-historical`，CSS 给这条蓝线 `stroke-dasharray: 4 4`（选中态仍是实线白色）。「选择与对齐」面板的说明同步改为“蓝线是输入（指向历史版本时是虚线）”。引用角色、绑定版本等具体信息在卡片详情与 Agent 配置里查看，信息没有丢失。
+
+涉及文件：`frontend/src/features/canvas/canvasRelations.ts` 及测试、`frontend/src/styles.css`、`frontend/src/features/canvas/ProjectWorkspacePage.tsx`（面板说明）。
+
+实际检查：`corepack pnpm exec vitest run src/features/canvas` 28 个文件、179 项通过（含“关系线不带 label”“历史版本绑定带虚线修饰类”的断言）；`tsc --noEmit`、`eslint . --max-warnings=0`、`git diff --check` 通过。浏览器核对 5/5：四条关系线全部渲染、线上没有任何 `.react-flow__edge-textwrapper` 文字、当前版本输入为实线蓝线、历史版本输入为虚线蓝线、素材引用仍为灰色虚线；截图逐条比色确认。
+
+未验证限制：浏览器核对使用无后端预览页（投影数据构造，未走服务端）；完整工作区里的观感、1280px 窄宽度与本地镜像未验收。

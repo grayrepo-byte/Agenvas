@@ -344,6 +344,21 @@ button:disabled {
   stroke: var(--accent);
 }
 
+/* 连线手势中指针所在的卡片：整卡给出反馈，落点不再要求对准左侧连接点。
+   由节点组件自己渲染高亮层，不依赖 React Flow 节点的 className——它只在首次接管时记录。 */
+.workspace-shell .canvas-connection-halo {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px var(--accent);
+  pointer-events: none;
+}
+
+.workspace-shell .canvas-connection-halo--invalid {
+  box-shadow: 0 0 0 2px var(--canvas-handle-invalid);
+}
+
 /* 关系线：颜色与线型由关系类型决定（className 由 projectCanvasRelations 给出），
    选中态在 CSS 里提亮加粗，因此这些样式不能再写成内联 style——内联会压过选中态。 */
 .workspace-shell .relation-edge .react-flow__edge-path {
@@ -352,6 +367,11 @@ button:disabled {
 
 .workspace-shell .relation-edge--input-binding .react-flow__edge-path {
   stroke: #2563eb;
+}
+
+/* 绑定指向历史版本：语义靠线型表达，不再在线上写文字。 */
+.workspace-shell .relation-edge--input-binding-historical .react-flow__edge-path {
+  stroke-dasharray: 4 4;
 }
 
 .workspace-shell .relation-edge--agent-output .react-flow__edge-path {

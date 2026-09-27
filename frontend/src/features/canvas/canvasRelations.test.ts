@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasItem } from "../../shared/api/client";
 import type { VersionedArtifact } from "./versionedArtifact";
-import { canvasRelationRemoval, inputBindingsAfterConnect, inputConnectionUpdate,
-  isCanvasConnectionValid, projectCanvasRelations, semanticConnectionRevision,
-  semanticReferenceRemoval } from "./canvasRelations";
+import { canvasRelationRemoval, canvasTargetHandleId, inputBindingsAfterConnect,
+  inputConnectionUpdate, isCanvasConnectionValid, projectCanvasRelations,
+  semanticConnectionRevision, semanticReferenceRemoval } from "./canvasRelations";
 
 const createdAt = "2026-09-24T00:00:00Z";
 
@@ -52,11 +52,12 @@ describe("canvas relation projection", () => {
     const edges = projectCanvasRelations([input, agentCard(), output]);
 
     expect(edges).toHaveLength(3);
-    expect(edges.map((edge) => [edge.source, edge.target, edge.label])).toEqual([
-      ["card-artifact-a", "card-agent", "输入"],
-      ["card-agent", "card-artifact-b", "Agent 输出组"],
-      ["card-artifact-a", "card-artifact-b", "素材引用 · source"],
+    expect(edges.map((edge) => [edge.source, edge.target])).toEqual([
+      ["card-artifact-a", "card-agent"],
+      ["card-agent", "card-artifact-b"],
+      ["card-artifact-a", "card-artifact-b"],
     ]);
+    expect(edges.every((edge) => edge.label === undefined)).toBe(true);
     expect(new Set(edges.map((edge) => edge.id)).size).toBe(3);
     expect(edges.map((edge) => edge.className)).toEqual([
       "relation-edge relation-edge--input-binding",
@@ -69,14 +70,15 @@ describe("canvas relation projection", () => {
     expect(edges[2]?.selectable).toBeUndefined();
   });
 
-  it("labels historical bindings and never misdraws a historical reference to current content", () => {
+  it("marks historical bindings with a dashed line and never misdraws them to newer content", () => {
     const current = artifactCard("artifact-a", "version-new");
     const output = artifactCard("artifact-b", "version-b", null, [
       { versionId: "version-old", role: "source", order: 0, kind: "TEXT" },
     ]);
     const edges = projectCanvasRelations([current, agentCard("version-old"), output]);
     expect(edges).toHaveLength(1);
-    expect(edges[0]?.label).toBe("输入 · 历史版本");
+    expect(edges[0]?.className).toBe(
+      "relation-edge relation-edge--input-binding relation-edge--input-binding-historical");
   });
 
   it("manual Artifact to Agent binding pins the selected current version without duplicates", () => {
@@ -259,6 +261,18 @@ describe("canvas connection validity", () => {
       source: image.id, sourceHandle: "artifact-output",
       target: character.id, targetHandle: "artifact-input",
     })).toBe(true);
+  });
+});
+
+describe("canvas target handle", () => {
+  it("names the single handle a card receives manual relations on", () => {
+    expect(canvasTargetHandleId(agentCard())).toBe("agent-input");
+    expect(canvasTargetHandleId(artifactCard("artifact-a", "version-a"))).toBe("artifact-input");
+    // 首次生成前允许当前媒体版本为空，这种卡片还不能接收引用。
+    const unversioned = artifactCard("artifact-c", "version-c");
+    unversioned.artifact!.currentVersionId = null as never;
+    unversioned.artifact!.currentVersion = null as never;
+    expect(canvasTargetHandleId(unversioned)).toBeNull();
   });
 });
 

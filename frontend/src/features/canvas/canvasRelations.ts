@@ -1,5 +1,6 @@
 import type { Connection, Edge } from "@xyflow/react";
 import type { Agent, CanvasItem, ReviseArtifactRequest } from "../../shared/api/client";
+import { hasCurrentVersion } from "./versionedArtifact";
 
 /** One entry of the immutable exact-version reference list a content version carries. */
 export type ArtifactInputReference =
@@ -38,8 +39,9 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         sourceHandle: "artifact-output",
         target: agentCard.id,
         targetHandle: "agent-input",
-        label: historical ? "输入 · 历史版本" : "输入",
-        className: "relation-edge relation-edge--input-binding",
+        // 关系线不带文字说明；指向历史版本的绑定用虚线区分（见 styles.css 的同名规则）。
+        className: `relation-edge relation-edge--input-binding${
+          historical ? " relation-edge--input-binding-historical" : ""}`,
       });
     }
     for (const output of outputGroups.get(agent.outputGroupId) ?? []) {
@@ -49,7 +51,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         sourceHandle: "agent-output",
         target: output.id,
         targetHandle: "artifact-input",
-        label: "Agent 输出组",
         className: "relation-edge relation-edge--agent-output",
         // 输出组成员资格由 Agent 的输出组决定，没有可单独删除的关系记录，因此不给选中与删除手势。
         deletable: false,
@@ -71,7 +72,6 @@ export function projectCanvasRelations(items: CanvasItem[]): Edge[] {
         sourceHandle: "artifact-output",
         target: output.id,
         targetHandle: "artifact-input",
-        label: `素材引用 · ${reference.role}`,
         className: "relation-edge relation-edge--reference",
       });
     }
@@ -153,6 +153,12 @@ export function isCanvasConnectionValid(items: CanvasItem[], connection: Connect
     return inputConnectionUpdate(items, connection) !== null;
   }
   return false;
+}
+
+/** The handle a card receives manual relations on; `null` means it can receive none yet. */
+export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifact-input" | null {
+  if (item.agent) return "agent-input";
+  return hasCurrentVersion(item.artifact) ? "artifact-input" : null;
 }
 
 /** What a user may remove behind a projected edge, or `null` when the edge is not an editable relation. */

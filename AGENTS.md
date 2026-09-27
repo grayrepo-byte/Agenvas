@@ -12,27 +12,31 @@
 
 核心功能必须可开源独立运行；不能要求作者的远程许可证、专属账户或闭源 Agent 服务。
 
-## 2. 按任务读取与实施
+## 2. 开发执行顺序
 
-实现行为变更前，读取涉及的代码及必要的规格章节、任务清单条目、已有 ADR 和 API 合约，确认输入、输出、依赖与验收方式。纯文案、注释或局部规则修改只需读取相关文件。
+1. **读取上下文**：实现行为变更前，读取涉及的代码及必要的规格章节、任务清单条目、已有 ADR 和 API 合约，确认输入、输出、依赖与验收方式。纯文案、注释或局部规则修改只需读取相关文件。
+2. **实施变更**：新增功能优先完成一个可验收的纵向切片，不批量生成没有行为的 Controller/Service/Repository 骨架；遵守下文对应领域的约束。
+3. **验证行为**：按第 13 节执行对应功能测试，以及本次变更涉及的专项检查。
+4. **同步文档**：涉及产品语义、接口契约或验收状态的改动，完成前同步相关规格、合约或任务清单；产品决策变更还须同步 ADR。没有完成的项保持未勾选，不用无意义的 TODO 代替实现。
+5. **据实汇报**：按第 14 节报告实际改动、检查结果与未验证的限制。
 
-新增功能优先完成一个可验收的纵向切片，不批量生成没有行为的 Controller/Service/Repository 骨架。
+通用编码规则：禁止使用魔法值，使用常量或枚举。前后端均适用。
 
-明确区分现有实现与规格计划。没有运行的测试写“未运行”，不得写“通过”。没有真实 Provider 测试的功能不得标注“真实生成已完成”。
+## 3. 架构与技术选型
 
-## 3. 固定技术决策
+本节规定架构边界与技术选型；工具链和依赖的具体版本统一以 `docs/dependency-baseline.md` 为准，本文件不重复维护版本号。
 
-前端：Vite 8 + React + TypeScript，React Flow，TanStack Query，Zustand，React Router，Tailwind/shadcn。前端只承担页面构建与客户端渲染；禁止 BFF、Server Action、SSR 数据访问或 Node 服务端，业务 API 仍全部由 Spring Boot 提供。
+前端：Vite + React + TypeScript，React Flow，TanStack Query，Zustand，React Router，Tailwind/shadcn。前端只承担页面构建与客户端渲染；业务 API 全部由 Spring Boot 提供。
 
-后端：Java 21，Spring Boot 4.0 系列与 Spring AI 2.0.1，Spring MVC，Spring Security，Spring Session JDBC，jOOQ（生成源码入库，见 ADR 0012），PostgreSQL 17，Flyway。
+后端：Java，Spring Boot 与 Spring AI，Spring MVC，Spring Security，Spring Session JDBC，jOOQ，PostgreSQL，Flyway。
 
 部署：单个 Spring Boot 应用、静态前端反代、PostgreSQL、本地文件卷。REST + SSE。
 
 首个真实媒体适配器：ComfyUI 固定模板；Mock 模式必须可脱离外部模型启动。
 
-精确依赖以经过构建和集成测试的 `docs/dependency-baseline.md` 为准。不自动升级大版本，不引入预览依赖，不抄不同 Spring AI 版本的内部 API。
+引入、调整依赖或使用版本相关 API 前，读取依赖基线及其中的验证范围。不自动升级大版本，不引入预览依赖，不抄不同 Spring AI 版本的内部 API。
 
-未经决策禁止增加前端 BFF/服务端业务逻辑、微服务、Redis/MQ、Kubernetes、向量数据库、第二套 ORM、完整剪辑器或多 Agent 并发协调。
+未经决策禁止增加前端 BFF、Server Action、SSR 数据访问、Node 服务端或其他前端服务端业务逻辑、微服务、Redis/MQ、Kubernetes、向量数据库、第二套 ORM、完整剪辑器或多 Agent 并发协调。
 
 ## 4. 核心模型不可混淆
 
@@ -111,15 +115,13 @@ API 类型从合约生成；生成文件禁止手改。组件不包含 Key，不
 
 预览用缩略图；视频默认不自动播放；避免整个画布的无关重渲染。文本输入期间不得误触画布删除快捷键。
 
-禁止使用魔法值，要么常量，要么枚举
-
 ## 10. 后端规范
 
 构造器注入，DTO 与实体分离，状态变化集中到状态机规则。Controller 与 Tool 复用应用服务。
 
 模块间不跨用对方的 Repository 或表常量；不建无需求的通用框架。shared 只放真正横切能力。
 
-禁止 catch 后返回成功/null。错误映射到稳定 code 与 HTTP 状态；不把堆栈传给用户或模型。
+禁止 catch 后返回成功/null。不把堆栈传给用户或模型；错误响应遵守第 11 节的统一约定。
 
 使用 Clock、Instant、UUID、BigDecimal 和类型化配置。执行器有上限、有关闭策略；网络和文件流正确释放。
 
@@ -131,8 +133,6 @@ SQL 参数化，排序字段白名单，查询包含项目/权限边界。检查
 
 开发阶段允许直接调整尚未发布的 API 与模型，不为旧实现保留兼容层；仍须遵守 Flyway 迁移、数据保护和合约同步要求。
 
-禁止使用魔法值，要么常量，要么枚举
-
 ## 11. 数据库与 API
 
 Flyway 迁移只增不改。关键唯一约束、外键、JSON Schema 版本必须落地；用真实 PostgreSQL 测试，不能用 H2 替代并发语义。
@@ -141,7 +141,7 @@ jOOQ 生成源码提交在 `backend/src/jooq/java`，构建期不连数据库；
 
 API 前缀 `/api/v1`；camelCase；字符串枚举；UUID 字符串；ISO 8601 UTC；金额十进制字符串。
 
-错误使用 ProblemDetail 风格与真实 HTTP 状态。禁止所有错误都返回 200。
+错误使用 ProblemDetail 风格、稳定 code 与真实 HTTP 状态。禁止所有错误都返回 200。
 
 `contracts/openapi.yaml` 是权威合约；改动时同步 Java 实现、生成 TS 和相关契约测试，记录破坏性变更的升级影响与迁移方式。
 
@@ -167,15 +167,13 @@ P0 禁止任意 URL 导入、动态 Custom Node 安装、任意工作流执行�
 
 每次修改功能必须跑对应功能的单元测试，全量测试必须人工手动处理，不每次自动跑全量测试，开发前不用跑全量测试作为基线，默认所有测试都是通过的
 
-Mock 必须明确标注；真实模型测试单列，不能用演示素材证明 Provider 已接通。
+Mock 必须明确标注；真实模型测试单列。
 
 ## 14. 完成汇报格式
 
 交付说明按实际改动写清：行为变化、涉及的文件/合约/迁移、实际运行的检查及结果、未验证的限制。
 
-未编译不能声称编译通过；未实测不能声称稳定；未进行真实调用不能声称模型支持已完成。
-
-涉及产品语义、接口契约或验收状态的改动，任务完成前同步相关规格、合约或任务清单。没有完成的项保持未勾选，不用无意义的 TODO 代替实现。
+明确区分现有实现与规格计划。没有运行的测试写“未运行”，不得写“通过”；未编译不能声称编译通过；未实测不能声称稳定；未进行真实 Provider 调用不能声称真实生成或模型支持已完成，不能用演示素材证明 Provider 已接通。
 
 ## Agent skills
 
