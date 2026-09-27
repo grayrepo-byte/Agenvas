@@ -98,3 +98,29 @@
 - 此前记录的画布目录 180 项、类型检查与 lint 通过属于上一轮检查，本次复核未重复执行。此前一次工具栏测试失败发生于并行修改期间，原因未确认，不能直接归因为测试偶发。
 
 未验证限制：尚无能在旧实现失败、在新实现通过的原始偶发问题回归用例；完整工作区里的真实点击、Cmd/Ctrl 追加、框选与底部编辑器退出仍未在浏览器中验收。本次未运行全量测试、构建镜像或真实 Provider 调用。
+
+### 2026-09-27 普通点击去除重复写入与真实组件回归
+
+- `onNodeClick` 不再无条件写入 selectedIds。普通点击未选中的节点、Cmd/Ctrl 追加与取消均由 React Flow 的 `onNodesChange` 更新应用状态。
+- 保留一个已有交互：多选后普通点击其中一张，收拢为单选。真实 React Flow 默认不会在这个场景发送取消其他节点的变更；直接删除整个回调时对应测试失败。因此回调只在此场景构造其他节点的取消选择变更，复用 `handleNodesChange`，不另行整量覆盖 selectedIds。
+- 程序选择及双击聚焦编辑的入口保持不变；不手动修改生产环境的 React Flow 内部节点。
+- `CanvasSelectionClearing.test.tsx` 增加真实 React Flow + 工作区回调的交互测试，覆盖普通点击替换、macOS Meta 与其他平台 Control 追加/取消、多选收拢、Shift 框选后点击替换、程序选择同步及空白取消。原 mock 用例继续验证页面回调处理。
+- jsdom 不提供真实布局：测试固定视口，并给内部节点补空的已测量 handleBounds，避免 React Flow 将所有未测量节点算入选框。节点尺寸仍来自工作区投影，选择事件与状态同步使用真实库实现；这些几何补偿不进入生产代码。
+- 实际检查：`pnpm test src/features/canvas/CanvasSelectionClearing.test.tsx src/features/canvas/ArtifactCardFrame.test.tsx src/features/canvas/ArtifactCardFrameGestures.test.tsx`，3 文件 14 项通过；`pnpm exec tsc --noEmit` 与两个改动 TSX 文件的 ESLint 通过。
+- 限制：未运行全量测试或真实浏览器验收；本轮证明上述确定性交互，不代表已经复现或确认原始偶发问题根因。无 API 合约或数据库迁移。
+
+### 2026-09-27 选择/手形工具与点击微移容差
+
+- 新增 `canvasInteraction.ts`：默认选择、Space 临时手形、V 返回选择，释放/失焦/页面隐藏清除临时状态；输入框、可编辑文本、输入法组合和系统组合键不切换工具。
+- 新增 `CanvasToolMenu.tsx`：参考用户图稿的深色竖条、粉色添加按钮、选择/手形图标及向左展开菜单；支持菜单勾选、方向键、Esc 和外部点击关闭。菜单选择持久生效，Space 仅临时覆盖。
+- 工作区按工具配置框选、平移、节点移动、连接和双击添加。手形模式下卡片内容和缩放控件不接收指针，拖动卡片表面用于平移，不改节点布局。现有用户平移清空选择的规则保留。
+- 点击/拖动节点阈值统一为 `CANVAS_POINTER_THRESHOLD = 3` 像素：此前默认点击容差 0、拖动阈值 1 导致 1 像素微移被吞掉。完整按下/微移/松开/click 回归覆盖 0、1 和 3 像素，均首次选中。
+- 实际检查：选择交互、工具栏位置、工具栏手势三个文件共 21 项通过；TypeScript 与四个修改/新增 TSX/TS 文件的定向 ESLint 通过。真实 React Flow 工作区测试覆盖 Space 从节点表面平移、不移动节点、松开恢复、输入保护及模式切换。
+- 内置浏览器打开临时组件预览，检查菜单布局、展开和手形勾选/图标状态；截图保存于 `/tmp/agenvas-canvas-tools.png`。这是独立组件预览，未连接后端，不能替代完整工作区验收。临时预览文件和服务已清理。
+- 规格与 ADR 0005 已同步。无 API/数据库变更；未运行全量测试或真实 Provider，完整工作区浏览器手势验收仍未完成。
+
+### 2026-09-27 空格短按与长按补充
+
+- 按用户确认，短按空格切换并保持手形工具，V 返回选择；长按仍临时切换，松开恢复此前工具。以命名常量 `SPACE_HOLD_THRESHOLD_MS = 200` 毫秒区分短按/长按，按下时立即提供手形工具，无需等阈值。
+- 按住空格期间发生 pointerdown 或键盘重复按键时，按临时手势处理；避免快速 Space + 拖动被误判成持久切换。失焦、页面隐藏或 V 取消临时状态，晚到 keyup 不会再切回手形。输入框里的空格不触发工具切换。
+- 定向验证：`canvasInteraction.test.ts` 和 `CanvasSelectionClearing.test.tsx` 共 24 项通过；TypeScript 与四个相关文件 ESLint 通过。未运行全量测试或本轮真实浏览器手势验收。无 API/数据库变更。

@@ -1,36 +1,48 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, waitFor } from "@testing-library/react";
-import type { Edge } from "@xyflow/react";
+import { act, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { NodeSelectionChange, ReactFlowProps } from "@xyflow/react";
 import { http, HttpResponse } from "msw";
+import { useLayoutEffect } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CanvasItem, ProjectSnapshot } from "../../shared/api/client";
 import { server } from "../../test/server";
+import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { useCanvasStore } from "./canvasStore";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
-type SelectionChange = { id: string; type: string; selected?: boolean };
-type FlowProps = {
-  nodes?: { id: string }[];
-  edges?: Edge[];
-  onNodesChange?: (changes: SelectionChange[]) => void;
-  onEdgesChange?: (changes: SelectionChange[]) => void;
-  onMoveStart?: (event: unknown, viewport: { x: number; y: number; zoom: number }) => void;
-  onNodeClick?: (event: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean },
-    node: { id: string }) => void;
-};
+type SelectionChange = NodeSelectionChange;
+type FlowProps = ReactFlowProps;
+const TEST_VIEWPORT = { width: 1400, height: 900 };
+const SELECTION_BOX = { startX: -10, startY: -10, endX: 900, endY: 700 };
+let renderRealFlow = false;
 
 let flowProps: FlowProps = {};
 
 // 选中态的同步依赖 React Flow 的变更通知，这里直接驱动页面对应的回调。
 vi.mock("@xyflow/react", async (importOriginal) => {
   const real = await importOriginal<typeof import("@xyflow/react")>();
+  function TestHandleMeasurements() {
+    const store = real.useStoreApi();
+    const nodes = real.useStore((state) => state.nodes);
+    useLayoutEffect(() => {
+      // jsdom has no element measurement. Empty measured handles prevent React Flow's
+      // initial-render fallback from treating every unmeasured node as inside the box.
+      for (const node of store.getState().nodeLookup.values()) {
+        node.internals.handleBounds ??= { source: [], target: [] };
+      }
+    }, [nodes, store]);
+    return null;
+  }
   return {
     ...real,
     ReactFlow: (props: FlowProps) => {
       flowProps = props;
-      return <div data-testid="flow" />;
+      // Keep a fixed viewport; node dimensions come from the actual workspace projection.
+      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} {...TEST_VIEWPORT}>
+        <TestHandleMeasurements />{props.children}
+      </real.ReactFlow> : <div data-testid="flow" />;
     },
   };
 });
@@ -70,10 +82,16 @@ function snapshot(): ProjectSnapshot {
     canvas: { items }, agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 beforeEach(() => {
   flowProps = {};
+  renderRealFlow = false;
   useCanvasStore.setState({ selectedIds: [] });
   server.use(
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
+    http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () => HttpResponse.json([])),
+    http.get("/api/v1/projects/:projectId/agents/:agentId/conversations", () => HttpResponse.json({ items: [], nextCursor: null })),
     http.get("/api/v1/auth/me", () => HttpResponse.json({
       id: "owner-id", loginName: "admin", role: "ADMIN" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({
@@ -130,24 +148,16 @@ describe("canvas selection clearing", () => {
     useCanvasStore.setState({ selectedIds: ["image-card"] });
     flowProps.onEdgesChange?.([selectChange(edgeId!, true)]);
     await waitFor(() => expect(flowProps.edges?.[0]?.selected).toBe(true));
-    flowProps.onMoveStart?.({ type: "mousedown" }, { x: 0, y: 0, zoom: 1 });
+    flowProps.onMoveStart?.(new MouseEvent("mousedown"), { x: 0, y: 0, zoom: 1 });
     expect(selectedIds()).toEqual([]);
     await waitFor(() => expect(flowProps.edges?.[0]?.selected).toBeFalsy());
   });
 
-  it("selects a single card on a plain click", async () => {
+  it("applies replacement and additive select changes", async () => {
     await renderFlow();
     useCanvasStore.setState({ selectedIds: ["agent-card"] });
-    flowProps.onNodeClick?.({}, { id: "image-card" });
+    flowProps.onNodesChange?.([selectChange("agent-card", false), selectChange("image-card", true)]);
     expect(selectedIds()).toEqual(["image-card"]);
-  });
-
-  it("leaves additive selection to the incremental changes on a modifier click", async () => {
-    await renderFlow();
-    useCanvasStore.setState({ selectedIds: ["image-card"] });
-    flowProps.onNodeClick?.({ metaKey: true }, { id: "agent-card" });
-    expect(selectedIds()).toEqual(["image-card"]);
-    // 模拟 React Flow 的追加 select 变更；受控 nodes 回传后的内部同步不在此 mock 测试范围内。
     flowProps.onNodesChange?.([selectChange("agent-card", true)]);
     expect(selectedIds()).toEqual(["image-card", "agent-card"]);
   });
@@ -156,6 +166,185 @@ describe("canvas selection clearing", () => {
     await renderFlow();
     useCanvasStore.setState({ selectedIds: ["image-card"] });
     flowProps.onMoveStart?.(null, { x: 0, y: 0, zoom: 1 });
+    expect(selectedIds()).toEqual(["image-card"]);
+  });
+});
+
+// Use the real library with the workspace callbacks: mocked select notifications cannot
+// expose differences between clicking an unselected node and one inside a multi-selection.
+function nodeElement(id: string) {
+  const element = document.querySelector(`[data-id="${id}"].react-flow__node`);
+  if (!(element instanceof HTMLElement)) throw new Error(`Missing node ${id}`);
+  return element;
+}
+async function renderInteractiveFlow() {
+  renderRealFlow = true;
+  await renderFlow();
+  await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
+}
+
+describe("workspace selection with real React Flow", () => {
+  it("selects and replaces nodes on ordinary clicks", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("image-card"));
+    expect(selectedIds()).toEqual(["image-card"]);
+    fireEvent.click(nodeElement("agent-card"));
+    expect(selectedIds()).toEqual(["agent-card"]);
+    await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
+    expect(nodeElement("image-card")).not.toHaveClass("selected");
+  });
+
+  it.each([
+    { platform: "Mac", key: "Meta", code: "MetaLeft", modifier: { metaKey: true } },
+    { platform: "Windows", key: "Control", code: "ControlLeft", modifier: { ctrlKey: true } },
+  ])("adds and toggles selection with $key on $platform", async ({ platform, key, code, modifier }) => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(platform);
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("image-card"));
+    fireEvent.keyDown(window, { key, code, ...modifier });
+    fireEvent.click(nodeElement("agent-card"), modifier);
+    expect(selectedIds()).toEqual(["image-card", "agent-card"]);
+    await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
+    fireEvent.click(nodeElement("image-card"), modifier);
+    expect(selectedIds()).toEqual(["agent-card"]);
+    fireEvent.keyUp(window, { key, code });
+  });
+
+  it("collapses a multi-selection when clicking one of its selected nodes", async () => {
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "agent-card"]));
+    await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
+    fireEvent.click(nodeElement("image-card"));
+    expect(selectedIds()).toEqual(["image-card"]);
+  });
+
+  it("box-selects nodes and replaces the box selection with an ordinary click", async () => {
+    await renderInteractiveFlow();
+    const pane = document.querySelector(".react-flow__pane");
+    if (!(pane instanceof HTMLElement)) throw new Error("Missing pane");
+    fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft", shiftKey: true });
+    const gesture = (type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number) => {
+      const event = createEvent[type](pane, { bubbles: true });
+      Object.defineProperties(event, {
+        clientX: { value: x }, clientY: { value: y }, button: { value: 0 },
+        isPrimary: { value: true }, pointerId: { value: 1 }, pointerType: { value: "mouse" },
+      });
+      fireEvent(pane, event);
+    };
+    gesture("pointerDown", SELECTION_BOX.startX, SELECTION_BOX.startY);
+    gesture("pointerMove", SELECTION_BOX.endX, SELECTION_BOX.endY);
+    gesture("pointerUp", SELECTION_BOX.endX, SELECTION_BOX.endY);
+    // Browsers dispatch click after pointerup; the pane consumes this selection-ending click.
+    fireEvent.click(pane);
+    fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
+    expect(selectedIds()).toEqual(["image-card", "agent-card"]);
+    fireEvent.click(nodeElement("character-card"));
+    expect(selectedIds()).toEqual(["character-card"]);
+  });
+
+  it("syncs programmatic selection and clears it on a pane click", async () => {
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
+    await waitFor(() => expect(nodeElement("image-card")).toHaveClass("selected"));
+    const pane = document.querySelector(".react-flow__pane");
+    if (!pane) throw new Error("Missing pane");
+    for (const type of ["pointerDown", "pointerUp"] as const) {
+      const event = createEvent[type](pane, { bubbles: true });
+      Object.defineProperties(event, { button: { value: 0 }, isPrimary: { value: true },
+        pointerId: { value: 1 }, clientX: { value: 0 }, clientY: { value: 0 } });
+      fireEvent(pane, event);
+    }
+    expect(selectedIds()).toEqual([]);
+    await waitFor(() => expect(nodeElement("image-card")).not.toHaveClass("selected"));
+  });
+});
+
+
+describe("canvas interaction tools", () => {
+  it("defaults to selection and temporarily pans with Space, releasing on blur", async () => {
+    await renderFlow();
+    expect(flowProps.panOnDrag).toBe(false);
+    expect(flowProps.selectionOnDrag).toBe(true);
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    expect(flowProps.panOnDrag).toBe(true);
+    expect(flowProps.selectionOnDrag).toBe(false);
+    expect(flowProps.nodes?.every((node) => node.draggable === false)).toBe(true);
+    fireEvent.keyDown(window, { key: " ", code: "Space", repeat: true });
+    fireEvent.keyUp(window, { key: " ", code: "Space" });
+    expect(flowProps.panOnDrag).toBe(false);
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    fireEvent.blur(window);
+    expect(flowProps.panOnDrag).toBe(false);
+  });
+
+  it("switches tools through the menu and V, preserving hand mode after Space", async () => {
+    await renderFlow();
+    fireEvent.click(screen.getByRole("button", { name: "画布工具" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
+    expect(flowProps.panOnDrag).toBe(true);
+    expect(flowProps.elementsSelectable).toBe(false);
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    fireEvent.keyUp(window, { key: " ", code: "Space" });
+    expect(flowProps.panOnDrag).toBe(true);
+    fireEvent.keyDown(window, { key: "v", code: "KeyV" });
+    expect(flowProps.panOnDrag).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "画布工具" }));
+    const menu = screen.getByRole("menu", { name: "画布工具模式" });
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("does not intercept Space or V while editing text", async () => {
+    await renderFlow();
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    fireEvent.keyDown(input, { key: " ", code: "Space" });
+    expect(flowProps.panOnDrag).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "画布工具" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
+    fireEvent.keyDown(input, { key: "v", code: "KeyV" });
+    expect(flowProps.panOnDrag).toBe(true);
+    input.remove();
+  });
+
+  it("pans from a card with Space without moving the card itself", async () => {
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
+    const position = flowProps.nodes?.find((node) => node.id === "image-card")?.position;
+    const viewport = document.querySelector(".react-flow__viewport");
+    const before = viewport?.getAttribute("style");
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    const node = nodeElement("image-card");
+    fireEvent.pointerDown(node);
+    const origin = 100;
+    const panDistance = 40;
+    for (const type of ["mouseDown", "mouseMove", "mouseUp"] as const) {
+      const target = type === "mouseDown" ? node : window;
+      const event = createEvent[type](target, { button: 0,
+        clientX: origin + (type === "mouseDown" ? 0 : panDistance), clientY: origin });
+      Object.defineProperty(event, "view", { value: window });
+      fireEvent(target, event);
+    }
+    expect(viewport?.getAttribute("style")).not.toBe(before);
+    expect(flowProps.nodes?.find((node) => node.id === "image-card")?.position).toEqual(position);
+    expect(selectedIds()).toEqual([]);
+    fireEvent.keyUp(window, { key: " ", code: "Space" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it.each([0, 1, CANVAS_POINTER_THRESHOLD])("selects on the first click after %i pixels of pointer drift", async (displacement) => {
+    await renderInteractiveFlow();
+    const node = nodeElement("image-card");
+    const origin = 100;
+    for (const type of ["mouseDown", "mouseMove", "mouseUp", "click"] as const) {
+      const target = type === "mouseMove" || type === "mouseUp" ? window : node;
+      const event = createEvent[type](target, {
+        button: 0, buttons: type === "mouseUp" || type === "click" ? 0 : 1,
+        clientX: origin + (type === "mouseDown" ? 0 : displacement), clientY: origin,
+      });
+      Object.defineProperty(event, "view", { value: window });
+      fireEvent(target, event);
+    }
     expect(selectedIds()).toEqual(["image-card"]);
   });
 });

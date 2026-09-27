@@ -51,7 +51,9 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCardUpload } from "./MediaCardUpload";
-import { Plus, X } from "@phosphor-icons/react";
+import { X } from "@phosphor-icons/react";
+import { CanvasToolMenu } from "./CanvasToolMenu";
+import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
 import { CanvasHandle } from "./CanvasHandle";
 import { canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
   isCanvasConnectionValid, projectCanvasRelations, semanticConnectionRevision,
@@ -143,6 +145,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<CanvasNode> | null>(null);
   const canvasElement = useRef<HTMLElement>(null);
+  const { tool, setTool, spaceHeld, selecting } = useCanvasInteraction();
   const creationMenuElement = useRef<HTMLDivElement>(null);
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
@@ -820,7 +823,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             // keeps its DOM-measured handle bounds for edges and drag-to-connect.
             measured: { width, height },
             style: { width, height },
-            draggable: !item.locked,
+            draggable: selecting && !item.locked,
             selected: selectedIds.includes(item.id),
             data: {
               item,
@@ -868,6 +871,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       imageRatios,
       projectId,
       selectedIds,
+      selecting,
       connectionTarget,
       snapshot.data?.activeRun,
     ],
@@ -1144,9 +1148,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           items={canvas.data?.items ?? []} /> : null}
       </aside> : null}
 
-      <section className="workspace-canvas" aria-label="项目画布" ref={canvasElement}
+      <section className={`workspace-canvas${selecting ? " is-select-tool" : " is-hand-tool"}`} aria-label="项目画布" ref={canvasElement}
         onDoubleClickCapture={(event) => {
-          if ((event.target as HTMLElement).classList.contains("react-flow__pane")) {
+          if (selecting && (event.target as HTMLElement).classList.contains("react-flow__pane")) {
             openCreationMenu(event.clientX, event.clientY);
           }
         }}>
@@ -1166,7 +1170,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           minZoom={0.25}
           nodes={nodes}
           nodeTypes={nodeTypes}
-          nodesConnectable
+          nodesConnectable={selecting}
+          elementsSelectable={selecting}
+          panOnDrag={!selecting}
+          panActivationKeyCode={null}
+          selectionKeyCode={selecting ? "Shift" : null}
+          nodeClickDistance={CANVAS_POINTER_THRESHOLD}
+          nodeDragThreshold={CANVAS_POINTER_THRESHOLD}
           onBeforeDelete={handleBeforeDelete}
           onConnect={(connection) => connectInputMutate(connection)}
           onConnectEnd={handleConnectEnd}
@@ -1180,13 +1190,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             }
           }}
           onNodeClick={(event, node) => {
-            // 修饰键点击交给 React Flow 的 select 变更处理；默认 Cmd（macOS）/Ctrl（其他系统）追加，Shift 用于框选。
-            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-            setSelectedIds([node.id]);
+            if (!selecting || event.metaKey || event.ctrlKey || event.shiftKey) return;
+            const current = useCanvasStore.getState().selectedIds;
+            // React Flow retains the group when clicking an already-selected node.
+            // Only this case needs extra deselection; ordinary selection comes from onNodesChange.
+            if (current.length > 1 && current.includes(node.id)) {
+              handleNodesChange(current.filter((id) => id !== node.id)
+                .map((id) => ({ id, type: "select", selected: false })));
+            }
           }}
           onNodesChange={handleNodesChange}
           onNodeDoubleClick={(event, node) => {
-            if (!node.data.item.artifact || (event.target instanceof Element &&
+            if (!selecting || !node.data.item.artifact || (event.target instanceof Element &&
               event.target.closest("button, a, input, textarea, select, summary"))) return;
             setSelectedIds([node.id]);
             window.requestAnimationFrame(focusArtifactEditor);
@@ -1194,17 +1209,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onEdgesChange={handleEdgesChange}
           onInit={(instance) => { flow.current = instance; }}
           onMoveStart={(event) => { if (event) clearSelection(); }}
-          selectionOnDrag
+          selectionOnDrag={selecting}
           zoomOnDoubleClick={false}
         >
           <Background color="#454545" gap={20} size={1.1} />
           <MiniMap pannable zoomable />
           <Controls position="bottom-right" />
         </ReactFlow>
-        <button aria-label="添加卡片" className="workspace-add-button" onClick={() => {
+        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        }} type="button"><Plus size={22} /></button>
+        }} />
         {creationMenu ? <div className="workspace-create-menu" role="menu"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y }}>

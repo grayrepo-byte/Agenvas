@@ -176,20 +176,71 @@ button:disabled {
   background: #46464b;
 }
 
-.workspace-add-button {
+.workspace-tool-rail {
   position: absolute;
   z-index: 10;
   top: 1rem;
   right: 1rem;
-  width: 2.5rem;
-  height: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.3rem;
+  border: 1px solid #383838;
+  border-radius: 1.8rem;
+  background: #171719;
+  box-shadow: 0 8px 24px #0006;
+}
+.workspace-add-button {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
   border: 1px solid #e354ae;
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--accent);
   color: white;
-  font-size: 1.5rem;
-  line-height: 1;
 }
+.workspace-tool-trigger {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  padding: 0.4rem 0 0.15rem;
+  border-radius: 1rem;
+  background: #2b2b2e;
+  color: #ededed;
+}
+.workspace-tool-trigger:hover { background: #39393d; }
+.workspace-tool-menu {
+  position: absolute;
+  right: calc(100% + 0.5rem);
+  bottom: 0;
+  width: 12.5rem;
+  padding: 0.4rem;
+  border: 1px solid #383838;
+  border-radius: 1rem;
+  background: #202022;
+  color: #ededed;
+  box-shadow: 0 8px 24px #0006;
+}
+.workspace-tool-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.35rem;
+  border-radius: 0.6rem;
+  font-size: 0.8rem;
+}
+.workspace-tool-menu button:hover, .workspace-tool-menu button:focus-visible { background: #333337; }
+.workspace-tool-menu button > span { width: 0.85rem; }
+.workspace-tool-menu kbd { margin-left: auto; color: #999; font: inherit; }
+.workspace-canvas.is-select-tool .react-flow__pane { cursor: default; }
+.workspace-canvas.is-hand-tool .react-flow__pane,
+.workspace-canvas.is-hand-tool .react-flow__node { cursor: grab; }
+.workspace-canvas.is-hand-tool .react-flow__pane.dragging { cursor: grabbing; }
 
 .workspace-bottom-editor {
   position: absolute;
@@ -634,3 +685,6 @@ button:disabled {
   color: #246b4d;
   background: #eaf7f0;
 }
+
+/* Hand mode pans from the card surface, including content and resize handles. */
+.workspace-canvas.is-hand-tool .react-flow__node * { pointer-events: none !important; }
