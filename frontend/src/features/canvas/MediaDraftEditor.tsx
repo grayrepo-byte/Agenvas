@@ -6,7 +6,7 @@ import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { readContentText } from "./artifactContent";
-import { ApiError, assetThumbnailUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
+import { ApiError, assetContentUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
   getMediaDraft, getMediaSettings,
   listArtifactVersions, listArtifacts, listDirectMediaTasks, runMediaDraft, saveMediaDraft,
   type Artifact, type MediaCapability, type SaveMediaDraftRequest } from "../../shared/api/client";
@@ -299,8 +299,8 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
               className="media-draft-reference-option" aria-label={`使用 ${choice.label}`}
               aria-pressed={choice.id === fields.inputImageVersionId} disabled={!choice.available}
               onClick={() => chooseReference(choice.id)}>
-              {/* Reference pixels always use archived thumbnails, never an original-file URL. */}
-              <img src={assetThumbnailUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />
+              {/* Reference pixels are archived images; image assets have no preview copy. */}
+              <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />
               <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? "当前选用版本" : "历史版本"}</small></span>
               {choice.id === fields.inputImageVersionId ? <Check size={15} /> : null}
             </button>)}
@@ -320,7 +320,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
           aria-expanded={popover === "references"} aria-controls={`${id}-references`}
           onClick={(event) => togglePopover("references", event.currentTarget)}>
           {selectedReference ?
-            <img src={assetThumbnailUrl(artifact.projectId, selectedReference.assetId)} alt={`${referenceLabel} 首帧缩略图`} />
+            <img src={assetContentUrl(artifact.projectId, selectedReference.assetId)} alt={`${referenceLabel} 首帧`} />
             : <ImageSquare size={25} />}
           <span><strong>{referenceLabel ?? "已固定图片版本"}</strong>
             <small>{selectedReference?.available && resources.isSuccess ? "视频首帧 · 点击替换"

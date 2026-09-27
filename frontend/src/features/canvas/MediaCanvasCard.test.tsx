@@ -70,7 +70,7 @@ describe("MediaCanvasCard", () => {
     } });
     expect(await screen.findByRole("alert")).toHaveTextContent("图片尺寸读取失败");
     expect(screen.getByRole("img", { name: "湖边 的预览" })).toHaveAttribute("src",
-      "/api/v1/projects/project-1/assets/image-asset/thumbnail");
+      "/api/v1/projects/project-1/assets/image-asset/content");
     metadataFailed = false;
     fireEvent.click(screen.getByRole("button", { name: "重试尺寸" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());

@@ -80,12 +80,15 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
   return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, "无法读取调用日志");
 }
 
-/** Same-origin private URLs retain session authorization without storing any media key. */
+/**
+ * Same-origin private URLs retain session authorization without storing any media key.
+ * Only VIDEO assets have a cover frame; IMAGE assets return 404 here.
+ */
 export function assetThumbnailUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/thumbnail`;
 }
 
-/** Explicit original-file action; canvas cards should use assetThumbnailUrl instead. */
+/** Private original bytes; image cards and reference previews load these directly. */
 export function assetContentUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content`;
 }

@@ -2,8 +2,6 @@ package dev.agenvas.asset.infrastructure;
 
 import dev.agenvas.asset.application.AssetProperties;
 import dev.agenvas.shared.error.ApiProblemException;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -53,14 +51,12 @@ public class LocalAssetStorage {
             TASK_LOCK_STRIPES[index] = new Object();
         }
     }
-    /** 原始图片和缩略图的最大归档字节数。 */
+    /** 原始图片和视频封面图的最大归档字节数。 */
     private static final long MAX_IMAGE_BYTES = 20L * 1024 * 1024;
     /** 原始视频的最大归档字节数。 */
     private static final long MAX_VIDEO_BYTES = 500L * 1024 * 1024;
     /** 图片与视频允许解码的最大像素面积。 */
     private static final long MAX_IMAGE_PIXELS = 40_000_000L;
-    /** 缩略图最长边，短边按比例缩放。 */
-    private static final int THUMBNAIL_EDGE = 480;
     /** 规范化后的私有归档根目录。 */
     private final Path root;
     /** 使用固定参数调用媒体探测和转码工具。 */
@@ -81,7 +77,7 @@ public class LocalAssetStorage {
     }
 
     /**
-     * 原图与缩略图都安装到稳定路径后才能写入数据库的结果。
+     * 原图安装到稳定路径后才能写入数据库的结果；图片不生成预览副本。
      *
      * @param objectKey 原图在项目目录下的相对键
      * @param contentType 按实际图像编码判定的 MIME 类型
@@ -89,13 +85,9 @@ public class LocalAssetStorage {
      * @param sha256 原图摘要
      * @param width 解码宽度
      * @param height 解码高度
-     * @param thumbnailKey PNG 缩略图相对键
-     * @param thumbnailByteSize 缩略图字节数
-     * @param thumbnailSha256 缩略图摘要
      */
     public record StoredImage(String objectKey, String contentType, long byteSize,
-            String sha256, int width, int height, String thumbnailKey,
-            long thumbnailByteSize, String thumbnailSha256) {}
+            String sha256, int width, int height) {}
 
     /**
      * 已探测的 MP4 和已提取 PNG 海报图，均以不可变键安装。
@@ -429,11 +421,8 @@ public class LocalAssetStorage {
     public StoredImage storeImage(UUID projectId, UUID assetId, InputStream source) {
         Path directory = root.resolve(projectId.toString());
         Path temporary = null;
-        Path thumbnailTemporary = null;
         Path stable = null;
-        Path thumbnailStable = null;
         boolean originalMoved = false;
-        boolean thumbnailMoved = false;
         boolean installed = false;
         try {
             directory = prepareProjectDirectory(projectId);
@@ -441,27 +430,17 @@ public class LocalAssetStorage {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             long size = copyBounded(source, temporary, digest, MAX_IMAGE_BYTES);
             ImageDetails details = inspectImage(temporary);
-            thumbnailTemporary = Files.createTempFile(directory, ".thumb-", ".tmp");
-            writeThumbnail(details.decoded(), thumbnailTemporary);
             String key = projectId + "/" + assetId + details.extension();
-            String thumbnailKey = projectId + "/" + assetId + ".thumb.png";
             stable = checkedPath(key);
-            thumbnailStable = checkedPath(thumbnailKey);
             try {
                 Files.move(temporary, stable, StandardCopyOption.ATOMIC_MOVE);
                 temporary = null;
                 originalMoved = true;
-                Files.move(thumbnailTemporary, thumbnailStable, StandardCopyOption.ATOMIC_MOVE);
-                thumbnailTemporary = null;
-                thumbnailMoved = true;
             } catch (AtomicMoveNotSupportedException exception) {
                 throw new IllegalStateException("Asset volume must support atomic file moves", exception);
             }
-            long thumbnailSize = Files.size(thumbnailStable);
-            String thumbnailHash = sha256(thumbnailStable);
             StoredImage result = new StoredImage(key, details.contentType(), size,
-                    HexFormat.of().formatHex(digest.digest()), details.width(), details.height(),
-                    thumbnailKey, thumbnailSize, thumbnailHash);
+                    HexFormat.of().formatHex(digest.digest()), details.width(), details.height());
             installed = true;
             return result;
         } catch (ApiProblemException exception) {
@@ -469,27 +448,23 @@ public class LocalAssetStorage {
         } catch (IOException | NoSuchAlgorithmException exception) {
             throw new IllegalStateException("Private asset archive failed", exception);
         } finally {
-            if (!installed) {
-                if (originalMoved) {
-                    cleanup(stable);
-                }
-                if (thumbnailMoved) {
-                    cleanup(thumbnailStable);
-                }
+            if (!installed && originalMoved) {
+                cleanup(stable);
             }
             cleanup(temporary);
-            cleanup(thumbnailTemporary);
         }
     }
 
-    /** 从任务固定路径重建崩溃前已安装的图片元数据；冲突文件或孤立缩略图会报错。 */
+    /**
+     * 从任务固定路径重建崩溃前已安装的图片元数据。图片不再生成缩略图，历史遗留的
+     * `.thumb.png` 只是未登记的孤儿文件，不参与恢复判定。
+     */
     public Optional<StoredImage> recoverImage(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;
         Path png = checkedPath(prefix + ".png");
         Path jpeg = checkedPath(prefix + ".jpg");
         boolean hasPng = Files.isRegularFile(png, LinkOption.NOFOLLOW_LINKS);
         boolean hasJpeg = Files.isRegularFile(jpeg, LinkOption.NOFOLLOW_LINKS);
-        Path thumbnail = checkedPath(prefix + ".thumb.png");
         if ((Files.exists(png, LinkOption.NOFOLLOW_LINKS) && !hasPng)
                 || (Files.exists(jpeg, LinkOption.NOFOLLOW_LINKS) && !hasJpeg)) {
             throw new IllegalStateException("Task image path is not a regular file");
@@ -498,13 +473,9 @@ public class LocalAssetStorage {
             throw new IllegalStateException("Conflicting task image files require investigation");
         }
         if (!hasPng && !hasJpeg) {
-            if (Files.exists(thumbnail, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IllegalStateException("Task image thumbnail has no original file");
-            }
             return Optional.empty();
         }
         Path original = hasPng ? png : jpeg;
-        Path temporary = null;
         try {
             long size = Files.size(original);
             if (size < 1 || size > MAX_IMAGE_BYTES) {
@@ -514,25 +485,11 @@ public class LocalAssetStorage {
             if (!original.getFileName().toString().endsWith(details.extension())) {
                 throw new IllegalStateException("Recovered task image extension differs from bytes");
             }
-            if (!Files.exists(thumbnail, LinkOption.NOFOLLOW_LINKS)) {
-                temporary = Files.createTempFile(original.getParent(), ".recover-thumb-", ".tmp");
-                writeThumbnail(details.decoded(), temporary);
-                Files.move(temporary, thumbnail, StandardCopyOption.ATOMIC_MOVE);
-                temporary = null;
-            }
-            if (!Files.isRegularFile(thumbnail, LinkOption.NOFOLLOW_LINKS)
-                    || Files.size(thumbnail) < 1 || Files.size(thumbnail) > MAX_IMAGE_BYTES
-                    || ImageIO.read(thumbnail.toFile()) == null) {
-                throw new IllegalStateException("Recovered task thumbnail is invalid");
-            }
             return Optional.of(new StoredImage(prefix + details.extension(),
                     details.contentType(), size, sha256(original), details.width(),
-                    details.height(), prefix + ".thumb.png", Files.size(thumbnail),
-                    sha256(thumbnail)));
+                    details.height()));
         } catch (IOException | NoSuchAlgorithmException failure) {
             throw new IllegalStateException("Cannot recover task image archive", failure);
-        } finally {
-            cleanup(temporary);
         }
     }
 
@@ -585,28 +542,6 @@ public class LocalAssetStorage {
             Files.deleteIfExists(path);
         } catch (IOException ignored) {
             // 有界孤儿文件可被后续恢复或清理；不能为其写 READY 数据库行。
-        }
-    }
-
-    /** 入库时生成最长边不超过 480 像素的 PNG 预览，画布读取时不重复解码原图。 */
-    private void writeThumbnail(BufferedImage source, Path target) throws IOException {
-        double scale = Math.min(1.0,
-                (double) THUMBNAIL_EDGE / Math.max(source.getWidth(), source.getHeight()));
-        int width = Math.max(1, (int) Math.round(source.getWidth() * scale));
-        int height = Math.max(1, (int) Math.round(source.getHeight() * scale));
-        BufferedImage thumbnail = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D graphics = thumbnail.createGraphics();
-        try {
-            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            graphics.drawImage(source, 0, 0, width, height, null);
-        } finally {
-            graphics.dispose();
-        }
-        try (OutputStream output = openArchiveOutput(target)) {
-            if (!ImageIO.write(thumbnail, "png", output)) {
-                throw new IllegalStateException("PNG thumbnail encoder unavailable");
-            }
         }
     }
 
@@ -690,7 +625,7 @@ public class LocalAssetStorage {
                         || decoded.getHeight() != height) {
                     throw invalid("图片解码失败。", "ASSET_INVALID_IMAGE");
                 }
-                return new ImageDetails(contentType, extension, width, height, decoded);
+                return new ImageDetails(contentType, extension, width, height);
             } catch (IOException | IndexOutOfBoundsException exception) {
                 throw invalid("图片解码失败。", "ASSET_INVALID_IMAGE");
             } finally {
@@ -705,13 +640,6 @@ public class LocalAssetStorage {
                 "素材无效", detail, false);
     }
 
-    /** 图像解码得到的媒体类型、尺寸及用于生成缩略图的像素缓冲。
-     * @param contentType 根据实际解码格式确定的 MIME 类型
-     * @param extension 与已验证格式对应的安全文件扩展名
-     * @param width 解码后的图像宽度
-     * @param height 解码后的图像高度
-     * @param decoded 已完整解码的首帧像素数据
-     */
-    private record ImageDetails(String contentType, String extension, int width, int height,
-            BufferedImage decoded) {}
+    /** 图像解码得到的媒体类型与尺寸。 */
+    private record ImageDetails(String contentType, String extension, int width, int height) {}
 }

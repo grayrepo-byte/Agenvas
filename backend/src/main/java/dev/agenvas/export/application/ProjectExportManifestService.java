@@ -161,7 +161,7 @@ public class ProjectExportManifestService {
      * @param width 媒体宽度；非图像时为空
      * @param height 媒体高度；非图像时为空
      * @param durationMs 视频时长；非视频时为空
-     * @param thumbnailSha256 缩略图摘要；无缩略图时为空
+     * @param thumbnailSha256 视频封面帧摘要；图片为空
      * @param createdAt 资产归档时间
      */
     public record AssetEntry(UUID id, Asset.MediaKind mediaKind, String contentType,

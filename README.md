@@ -21,8 +21,8 @@ Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操�
 - Run 创建固定输入与策略快照；同项目活动槽位由 PostgreSQL 行锁串行仲裁，同幂等键精确重放，同键异参冲突，终态释放槽位。
 - Task 及依赖持久化在数据库中；Worker 通过 `SKIP LOCKED` 竞争有期限的租约，旧 epoch 不能回写，网络处理在事务外执行，等待 Provider 时释放线程与租约。
 - UNKNOWN 任务可按需查看持久提交账本的关联键、attempt 状态与已知 Provider 请求 ID。新 ComfyUI attempt 可显式查询原 prompt：仅在 ID、client ID、endpoint 指纹与配置匹配时恢复原请求轮询；查不到仍为 UNKNOWN，不自动重提。旧 attempt 的关联键不证明已受理，也不具备此自动核对能力。
-- 画布侧栏可上传 PNG/JPEG/WebP 参考图：私有 Asset 按实际解码、20 MiB/40 MP 限制和 SHA-256 校验，原图及缩略图归档后才登记 READY；用户上传分支创建真实 IMAGE Artifact 卡片，不伪造生成 Task ID，可选中后绑定为 Agent 精确版本输入。生成视频归档使用 FFprobe/FFmpeg 验证 MP4 与首帧、500 MiB 上限，保存封面；任务键 MP4 归档可恢复。IMAGE/VIDEO 版本只引用同项目真实 Asset。按项目鉴权的原文件 GET/HEAD 支持单段 Range。图片原图、缩略图与 MP4 写入中途失败已有注入测试；真实物理磁盘耗尽及真实 Provider 仍未验证。
-- 已批准的 Mock 图片任务由后台调度自动推进；每张演示图都经过持久化提交 checkpoint、Provider attempt 与真实 Asset 归档，并在图像及元数据中明确标记为演示素材。全新输出的 IMAGE Artifact 也会在同一业务事务内放到 Agent 输出组的画布空位，画布默认加载缩略图，原图由用户显式打开。
+- 画布侧栏可上传 PNG/JPEG/WebP 参考图：私有 Asset 按实际解码、20 MiB/40 MP 限制和 SHA-256 校验，原图归档后才登记 READY（图片不生成缩略图副本）；用户上传分支创建真实 IMAGE Artifact 卡片，不伪造生成 Task ID，可选中后绑定为 Agent 精确版本输入。生成视频归档使用 FFprobe/FFmpeg 验证 MP4 与首帧、500 MiB 上限，保存封面；任务键 MP4 归档可恢复。IMAGE/VIDEO 版本只引用同项目真实 Asset。按项目鉴权的原文件 GET/HEAD 支持单段 Range。图片原图与 MP4 写入中途失败已有注入测试；真实物理磁盘耗尽及真实 Provider 仍未验证。
+- 已批准的 Mock 图片任务由后台调度自动推进；每张演示图都经过持久化提交 checkpoint、Provider attempt 与真实 Asset 归档，并在图像及元数据中明确标记为演示素材。全新输出的 IMAGE Artifact 也会在同一业务事务内放到 Agent 输出组的画布空位，画布直接加载归档原图。
 - 后台 Agent 回合调度会认领持久化 Task；默认确定性演示模型沿同一工具账本创建三个镜头、图片计划、视频计划和顺序导出提案。图片与视频分阶段人工审批；图片完成后逐镜头选定关键帧才提出视频计划。批准后的 Mock 视频从固定图片版本生成实际 H.264 MP4，明确标记非 AI 视频。导出提案固定镜头/视频版本及区间，但不会自动执行；用户在导出面板核对哈希并批准后才创建本地 FFmpeg 任务。模型响应与工具结果先入账，下一回合从账本重建；切换到 `AGENVAS_LLM_MODE=configured` 但未配置 ChatModel 时，Run 会进入 `BLOCKED`。
 - Artifact、Canvas、Agent 与 Run 命令写入项目序号事件；事件失败会回滚对应命令。项目快照在同一 PostgreSQL `REPEATABLE READ` 事务中读取画布、Agent、活动 Run/Task 与事件水位。
 - 一个项目由一个服务端事件轮询通道补发 SSE，客户端按序号去重并在缺口或过期时重取快照；每个连接的待发送队列与全局连接数都设有上限。

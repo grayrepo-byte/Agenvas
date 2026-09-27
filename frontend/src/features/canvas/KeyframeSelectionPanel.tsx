@@ -4,7 +4,7 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import "./AgentChatPanels.css";
 import {
   ApiError,
-  assetThumbnailUrl,
+  assetContentUrl,
   getArtifact,
   getShotKeyframeSelection,
   listRunTasks,
@@ -80,9 +80,9 @@ function KeyframeChoice({ projectId, runId, task }: {
   return <li className="agent-chat-keyframe-choice"
     data-selected={selected || undefined}>
     {assetId ?
-      <img alt={`镜头 ${shotId} 的关键帧`} className="agent-chat-keyframe-thumbnail"
+      <img alt={`镜头 ${shotId} 的关键帧`} className="agent-chat-keyframe-preview"
         decoding="async" loading="lazy"
-        src={assetThumbnailUrl(projectId, assetId)} /> : null}
+        src={assetContentUrl(projectId, assetId)} /> : null}
     <div className="agent-chat-keyframe-details">
       <p className="font-medium">镜头 {shotId} · 图片版本 {imageVersionId}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">来源任务 {task.id} · 提示词 {String(task.input.prompt ?? "")}</p>

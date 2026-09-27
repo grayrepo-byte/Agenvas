@@ -223,15 +223,15 @@ describe("MediaDraftEditor", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: "image-v1", durationSeconds: 4 }));
     expect(screen.getByText("海边灯塔 · v1")).toBeVisible();
-    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧缩略图" })).toHaveAttribute("src",
-      `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/thumbnail`);
+    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧" })).toHaveAttribute("src",
+      `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
     expect(screen.queryByRole("img", { name: /v2/ })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "替换视频首帧" }));
     await user.click(screen.getByRole("button", { name: "使用 海边灯塔 · v2" }));
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: "image-v2", durationSeconds: 4 }));
-    expect(screen.getByRole("img", { name: "海边灯塔 · v2 首帧缩略图" })).toHaveAttribute("src",
-      `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/thumbnail`);
+    expect(screen.getByRole("img", { name: "海边灯塔 · v2 首帧" })).toHaveAttribute("src",
+      `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/content`);
     await user.click(screen.getByRole("button", { name: "清除视频首帧" }));
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ inputImageVersionId: null, durationSeconds: 4 }));
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
@@ -256,7 +256,7 @@ describe("MediaDraftEditor", () => {
     expect(saves).toHaveLength(0);
   });
 
-  it("retries video image-history failures and restores the exact old thumbnail", async () => {
+  it("retries video image-history failures and restores the exact old frame", async () => {
     let attempts = 0;
     setup({ kind: "VIDEO", draft: { ...initialDraft, inputImageVersionId: "image-v1", durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
@@ -278,8 +278,8 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "重试读取图片" }));
     expect(await screen.findByRole("option", { name: "海边灯塔 · v1" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧缩略图" })).toHaveAttribute("src",
-      `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/thumbnail`);
+    expect(screen.getByRole("img", { name: "海边灯塔 · v1 首帧" })).toHaveAttribute("src",
+      `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 

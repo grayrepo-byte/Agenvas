@@ -451,7 +451,7 @@ describe("ProjectWorkspacePage", () => {
     expect((screen.getByLabelText("参考图片") as HTMLInputElement).files).toHaveLength(1);
     fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
     const preview = await screen.findByAltText("Product reference 的预览");
-    expect(preview).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+    expect(preview).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(preview.closest(".react-flow__node")).toHaveStyle({ visibility: "visible" });
     expect(uploaded).toBe(true);
     expect(created).toBe(true);
@@ -1134,7 +1134,7 @@ describe("ProjectWorkspacePage", () => {
       instruction: "只重做第二镜头", selectedItemIds: [agentItemId] }));
   });
 
-  it("shows an authorized thumbnail for a generated image without fetching the original", async () => {
+  it("loads the archived original for a generated image card", async () => {
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
     server.use(
@@ -1176,7 +1176,7 @@ describe("ProjectWorkspacePage", () => {
     // React Flow marks unmeasured nodes visibility:hidden in jsdom; the image still exists in the DOM.
     const preview = await screen.findByAltText("Demo still 的预览");
     expect(preview).toHaveAttribute("src",
-      `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+      `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(screen.getByText("打开原图").closest("a")).toHaveAttribute("href",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(screen.getByText("演示素材")).toBeInTheDocument();

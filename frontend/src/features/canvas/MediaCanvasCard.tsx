@@ -121,7 +121,10 @@ function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
   return errorCode ? <small>{errorCode}</small> : null;
 }
 
-/** Only thumbnails are fetched until the user explicitly opens or plays the original. */
+/**
+ * Images load the archived original so a resized node stays sharp; no downscaled preview exists.
+ * Videos keep loading only the cover frame until the user explicitly plays the original.
+ */
 function MediaPreview({ artifact, assetId, demo }: { artifact: Artifact; assetId: string; demo: boolean }) {
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -144,7 +147,8 @@ function MediaPreview({ artifact, assetId, demo }: { artifact: Artifact; assetId
       onError={() => { setPlaybackFailed(true); setBuffering(false); }} />
       : !failed ? <img alt={`${artifact.title} 的${video ? "视频封面" : "预览"}`}
         decoding="async" draggable={false} loading="lazy" onError={() => setFailed(true)}
-        src={assetThumbnailUrl(artifact.projectId, assetId)} />
+        src={video ? assetThumbnailUrl(artifact.projectId, assetId)
+          : assetContentUrl(artifact.projectId, assetId)} />
         : <div className="media-card-empty">{video ? <VideoCamera size={36} /> : <ImageIcon size={36} />}<span>{video ? "视频封面暂不可用" : "预览暂不可用"}</span>
           <button className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>重试预览</button></div>}
     {video && playing && buffering ? <div className="media-playback-loading">

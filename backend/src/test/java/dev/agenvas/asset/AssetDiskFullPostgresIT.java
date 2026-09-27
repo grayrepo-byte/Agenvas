@@ -146,14 +146,14 @@ class AssetDiskFullPostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
 
-        verifyThumbnailAndVideoWriteFailures(owner.userId(), project.id(), image);
+        verifyMediaWriteFailures(owner.userId(), project.id(), image);
     }
 
-    /** Other media write stages likewise leave neither partial files nor READY metadata. */
-    private void verifyThumbnailAndVideoWriteFailures(UUID ownerId, UUID projectId,
+    /** Original-image, MP4 and export write stages likewise leave no partial files or READY metadata. */
+    private void verifyMediaWriteFailures(UUID ownerId, UUID projectId,
             byte[] image) throws Exception {
         List<String> before = projectFiles(projectId);
-        storage.failNextThumbnailWrite();
+        storage.failNextIngestWrite();
         assertThatThrownBy(() -> assets.archiveImage(ownerId, projectId,
                 new ByteArrayInputStream(image))).isInstanceOf(IllegalStateException.class);
         assertThat(projectFiles(projectId)).containsExactlyElementsOf(before);
@@ -320,11 +320,6 @@ class AssetDiskFullPostgresIT {
         /** Arms one partial-write failure and automatically resets for the retry. */
         void failNextIngestWrite() {
             failNextPrefix.set(".ingest-");
-        }
-
-        /** Targets the preview PNG after the full original image has been written. */
-        void failNextThumbnailWrite() {
-            failNextPrefix.set(".thumb-");
         }
 
         /** Targets the MP4 temporary stream before probing or publication. */

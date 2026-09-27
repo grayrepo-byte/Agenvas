@@ -79,7 +79,7 @@ root:     docker compose up -d --build
 
 Compose 在真实 PostgreSQL 17.11 执行 Flyway V1–V15 且服务健康，反代的 setup-status 接口成功返回。身份与项目闭环、Artifact 不可变版本、CanvasItem 持久布局、Agent 配置与精确绑定，以及 Run 创建/精确重放/异参冲突/活动槽位冲突/取消释放槽位均通过 Nginx 实际请求验证。Task 的竞争认领、租约过期接管、fencing epoch、无长事务网络执行、提交 checkpoint 崩溃分类、取消晚到结果、UNKNOWN 快照可见性、Mock 结果的 Artifact CAS，以及全新输出槽位的完成/取消隔离由真实 PostgreSQL Testcontainers 集成测试验证。模型回合完整响应、工具账本与文本产物原子创建由假模型及真实 PostgreSQL Testcontainers 集成测试验证。项目事件写入失败回滚、并发序号无缺口、一致性快照，以及 SSE 历史补发、Last-Event-ID 优先级、未授权和过期游标均通过 PostgreSQL 集成测试。受保护接口未登录返回 HTTP 401，缺少 CSRF 的写请求返回 HTTP 403。
 
-V20 本地 Asset 上传、原子文件归档、项目事件与私有 GET/HEAD/Range，以及 V21 私有 PNG 缩略图生成、鉴权读取和画布新输出放置，已由 PostgreSQL Testcontainers 和 MockMvc 测试；媒体产物版本的真实同项目 Asset 引用也由 PostgreSQL 测试验证。这些不是 Compose 端到端或真实 Provider 测试。画布缩略图、演示素材标记及原图显式链接由 Vitest 组件测试验证。
+V20 本地 Asset 上传、原子文件归档、项目事件与私有 GET/HEAD/Range，以及 V21 私有预览文件、鉴权读取和画布新输出放置，已由 PostgreSQL Testcontainers 和 MockMvc 测试；媒体产物版本的真实同项目 Asset 引用也由 PostgreSQL 测试验证。这些不是 Compose 端到端或真实 Provider 测试。V48 起图片不再生成预览副本，`thumbnail_*` 与 `/thumbnail` 只服务视频封面，画布图片卡片加载归档原图，由 Vitest 组件测试验证。
 Mock 图片后台调度、实际 PNG 归档、同步成功/拒绝/UNKNOWN fixture，以及错误配置在提交前失败，由 `PlanResumeWorkerPostgresIT` 和 `MockImageSchedulerPostgresIT` 在 PostgreSQL Testcontainers 中验证；尚未执行浏览器端到端或真实模型黄金路径。
 Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前端组件测试验证；默认安装报告明确标记的演示模型。`MockStoryboardPostgresIT` 使用真实 PostgreSQL 验证无外部账户的三镜头、图片与视频分阶段审批、精确关键帧选择、三张 PNG 与三段 H.264 MP4 归档及 Run 完成；这不表示真实 ChatModel 或媒体 Provider 已接通。`AssetPostgresIT` 还验证 MP4 的私有 Range/HEAD、封面和错误媒体拒绝。容器镜像已成功构建，并实测其中 `libx264` 可编码。
 

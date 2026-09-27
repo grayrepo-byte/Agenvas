@@ -114,19 +114,19 @@ class AssetPostgresIT {
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
                         + "and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
-        AssetService.ThumbnailFile preview = assets.getThumbnail(owner.userId(),
-                project.id(), id);
-        assertThat(preview.asset().thumbnailByteSize()).isGreaterThan(0);
-        assertThat(ImageIO.read(preview.path().toFile()).getWidth()).isEqualTo(3);
+        // Images keep no derived preview: the canvas reads the archived original instead.
+        assertThat(archived.asset().thumbnailKey()).isNull();
+        assertThatThrownBy(() -> assets.getThumbnail(owner.userId(), project.id(), id))
+                .isInstanceOfSatisfying(ApiProblemException.class, error ->
+                        assertThat(error.code()).isEqualTo("ASSET_THUMBNAIL_NOT_FOUND"));
+        try (var projectFiles = Files.list(STORAGE_ROOT.resolve(project.id().toString()))) {
+            assertThat(projectFiles.map(file -> file.getFileName().toString())
+                    .filter(name -> name.endsWith(".thumb.png")).toList()).isEmpty();
+        }
 
-        MvcResult thumbnail = mvc.perform(get(path + "/" + id + "/thumbnail")
+        mvc.perform(get(path + "/" + id + "/thumbnail")
                         .with(authentication(asUser(owner))))
-                .andExpect(status().isOk()).andReturn();
-        assertThat(thumbnail.getRequest().isAsyncStarted()).isFalse();
-        assertThat(thumbnail.getResponse().getContentType()).isEqualTo("image/png");
-        assertThat(ImageIO.read(new ByteArrayInputStream(
-                thumbnail.getResponse().getContentAsByteArray())).getWidth())
-                .isEqualTo(3);
+                .andExpect(status().isNotFound());
         mvc.perform(get(path + "/" + id + "/thumbnail")
                         .with(authentication(asUser(new AdminPrincipal(
                                 UUID.randomUUID(), "foreign")))))
@@ -165,10 +165,9 @@ class AssetPostgresIT {
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
         Asset larger = assets.archiveImage(owner.userId(), project.id(),
                 new ByteArrayInputStream(imagePng(1000, 500)));
-        BufferedImage scaled = ImageIO.read(assets.getThumbnail(owner.userId(), project.id(),
-                larger.id()).path().toFile());
-        assertThat(scaled.getWidth()).isEqualTo(480);
-        assertThat(scaled.getHeight()).isEqualTo(240);
+        assertThat(larger.width()).isEqualTo(1000);
+        assertThat(larger.height()).isEqualTo(500);
+        assertThat(larger.thumbnailKey()).isNull();
         assertThatThrownBy(() -> storage.checkedPath("../escape.png"))
                 .isInstanceOf(IllegalStateException.class);
         Path outside = Files.createTempDirectory("asset-symlink-outside-");
@@ -307,8 +306,7 @@ class AssetPostgresIT {
         assertThat(file.asset().contentType()).isEqualTo("image/webp");
         assertThat(file.path().getFileName().toString()).endsWith(".webp");
         assertThat(Files.readAllBytes(file.path())).containsExactly(webp);
-        assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(), id)
-                .path().toFile())).isNotNull();
+        assertThat(file.asset().thumbnailKey()).isNull();
         MvcResult content = mvc.perform(get(path + "/" + id + "/content")
                         .with(authentication(asUser(owner))))
                 .andExpect(status().isOk()).andReturn();
@@ -373,7 +371,6 @@ class AssetPostgresIT {
         UUID taskId = UUID.randomUUID();
         UUID assetId = AssetService.taskImageAssetId(taskId);
         var staged = storage.storeImage(project.id(), assetId, new ByteArrayInputStream(png));
-        Files.delete(storage.checkedPath(staged.thumbnailKey()));
         assertThat(jdbc.sql("select count(*) from asset where id = :id")
                 .param("id", assetId).query(Integer.class).single()).isZero();
         AtomicInteger downloads = new AtomicInteger();
@@ -385,8 +382,7 @@ class AssetPostgresIT {
         assertThat(recovered.id()).isEqualTo(assetId);
         assertThat(recovered.sha256()).isEqualTo(staged.sha256());
         assertThat(downloads).hasValue(0);
-        assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(), assetId)
-                .path().toFile())).isNotNull();
+        assertThat(recovered.thumbnailKey()).isNull();
         Asset replay = assets.archiveTaskImage(owner.userId(), project.id(), taskId,
                 () -> {
                     downloads.incrementAndGet();

@@ -86,7 +86,7 @@ public class AssetController {
         return stream(principal, projectId, assetId, range, true);
     }
 
-    /** 仅读取已预生成且有大小上限的缩略图，不在 GET 请求中解码原图。 */
+    /** 仅读取已预生成的视频封面帧，不在 GET 请求中解码原视频；图片素材返回 404。 */
     @GetMapping("/{assetId}/thumbnail")
     public ResponseEntity<byte[]> thumbnail(
             @AuthenticationPrincipal AdminPrincipal principal,
