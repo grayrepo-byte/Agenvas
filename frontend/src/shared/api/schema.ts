@@ -515,7 +515,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 读取私有、预先生成的视频封面帧 PNG（图片素材返回 404） */
+        /** 读取私有、预先生成的 480px PNG 预览（图片预览或视频封面帧） */
         get: operations["getAssetThumbnail"];
         put?: never;
         post?: never;
@@ -3705,7 +3705,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 视频封面帧 */
+            /** @description 图片预览或视频封面帧 */
             200: {
                 headers: {
                     [name: string]: unknown;

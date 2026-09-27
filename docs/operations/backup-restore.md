@@ -5,7 +5,7 @@
 ## 备份范围
 
 1. PostgreSQL 数据库：项目、版本、Run/Task、Provider attempt、媒体连接及不可变能力版本、历史 origin 映射、幂等账本、审批、事件与会话。
-2. `asset-data` 卷：原始图片、视频、视频封面帧及任务键归档文件。
+2. `asset-data` 卷：原图、视频、缩略图及任务键归档文件。
 3. 当前部署的 `configs/`、`deploy/`、应用镜像或精确 Git revision、`.env` 中非密钥配置及模板/模型文件名和版本。
 4. 与该数据库对应的 `AGENVAS_CREDENTIAL_MASTER_KEY`、`AGENVAS_CREDENTIAL_KEY_VERSION`、`AGENVAS_CREDENTIAL_PREVIOUS_KEYS` 和外部 Provider 凭证。媒体连接与 LLM 连接的历史密文都可能引用旧密钥版本；密钥与数据库/资产备份**分开**加密存放，记录版本对应关系；不要把密钥放进项目导出或本仓库。
 

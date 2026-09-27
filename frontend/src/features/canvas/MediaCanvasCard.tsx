@@ -125,8 +125,9 @@ function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
 }
 
 /**
- * Images load the archived original so a resized node stays sharp; no downscaled preview exists.
- * Videos keep loading only the cover frame until the user explicitly plays the original.
+ * Image cards load the archived original so a resized node stays sharp; the archived 480px
+ * preview is kept for later list-style surfaces and is not used here. Videos keep loading only
+ * the cover frame until the user explicitly plays the original.
  */
 function MediaPreview({ artifact, assetId, title, demo }: {
   artifact: Artifact; assetId: string; title: string; demo: boolean;

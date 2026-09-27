@@ -30,7 +30,7 @@ public class AssetService {
     private final ProjectService projects;
     /** 保存 READY 素材元数据并按项目查询。 */
     private final AssetRepository assets;
-    /** 验证字节、解码媒体并安装不可变文件；视频额外提取封面帧。 */
+    /** 验证字节、解码媒体、生成缩略图并安装不可变文件。 */
     private final LocalAssetStorage storage;
     /** 将素材就绪状态与项目事件一起提交。 */
     private final ProjectEventService events;
@@ -58,7 +58,7 @@ public class AssetService {
         this.clock = clock;
     }
 
-    /** 流式接收用户图片，在字节、像素和解码校验通过后才写 READY；不生成预览副本。 */
+    /** 流式接收用户图片，在字节、像素和解码校验通过并生成缩略图后才写 READY。 */
     public Asset archiveImage(UUID ownerId, UUID projectId, InputStream input) {
         projects.requireActiveProject(ownerId, projectId);
         UUID assetId = UUID.randomUUID();
@@ -86,7 +86,8 @@ public class AssetService {
             Asset asset = existing.get();
             if (!asset.objectKey().equals(file.objectKey())
                     || !asset.sha256().equals(file.sha256())
-                    || asset.byteSize() != file.byteSize()) {
+                    || asset.byteSize() != file.byteSize()
+                    || !asset.thumbnailSha256().equals(file.thumbnailSha256())) {
                 throw new IllegalStateException("Task image bytes differ from READY metadata");
             }
             return asset;
@@ -119,14 +120,15 @@ public class AssetService {
         return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
 
-    /** 图片原图落盘后才在项目事件事务中创建 READY 元数据；图片不生成缩略图。 */
+    /** 图片原件与缩略图都已落盘后才在项目事件事务中创建 READY 元数据。 */
     private Asset publishImage(UUID ownerId, UUID projectId, UUID assetId,
             LocalAssetStorage.StoredImage stored, boolean discardOnFailure,
             boolean taskOutput) {
         Asset asset = new Asset(assetId, projectId, Asset.MediaKind.IMAGE,
                 stored.objectKey(), stored.contentType(), stored.byteSize(),
                 stored.sha256(), stored.width(), stored.height(), null,
-                null, null, null, now());
+                stored.thumbnailKey(), stored.thumbnailByteSize(),
+                stored.thumbnailSha256(), now());
         try {
             events.recordChange(ownerId, projectId, () -> {
                 if (taskOutput) {
@@ -146,7 +148,11 @@ public class AssetService {
             return asset;
         } catch (RuntimeException exception) {
             if (discardOnFailure) {
-                storage.discard(stored.objectKey());
+                try {
+                    storage.discard(stored.objectKey());
+                } finally {
+                    storage.discard(stored.thumbnailKey());
+                }
             }
             throw exception;
         }
@@ -270,10 +276,7 @@ public class AssetService {
         return asset;
     }
 
-    /**
-     * 使用与原素材相同的项目权限返回预先生成的视频封面帧。图片不生成缩略图，
-     * 因此图片素材访问此接口会返回 404。
-     */
+    /** 使用与原素材相同的项目权限返回预先生成的小型 PNG 缩略图。 */
     public ThumbnailFile getThumbnail(UUID ownerId, UUID projectId, UUID assetId) {
         Asset asset = get(ownerId, projectId, assetId).asset();
         if (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null) {
@@ -306,9 +309,9 @@ public class AssetService {
      */
     public record AssetFile(Asset asset, Path path) {}
 
-    /** 已鉴权的视频封面帧元数据和受大小限制的 PNG 文件路径。
+    /** 已鉴权的缩略图元数据和受大小限制的 PNG 文件路径。
      * @param asset 所属素材记录
-     * @param path 经项目授权及路径边界校验的封面帧文件
+     * @param path 经项目授权及路径边界校验的缩略图文件
      */
     public record ThumbnailFile(Asset asset, Path path) {}
 }

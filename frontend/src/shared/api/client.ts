@@ -82,13 +82,16 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
 
 /**
  * Same-origin private URLs retain session authorization without storing any media key.
- * Only VIDEO assets have a cover frame; IMAGE assets return 404 here.
+ * Archived 480px previews: video cards use the cover frame, image cards stay on the original.
  */
 export function assetThumbnailUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/thumbnail`;
 }
 
-/** Private original bytes; image cards and reference previews load these directly. */
+/**
+ * Private original bytes; image cards and reference previews load these directly so a resized
+ * node stays sharp. Image previews are still archived for later list-style use.
+ */
 export function assetContentUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content`;
 }

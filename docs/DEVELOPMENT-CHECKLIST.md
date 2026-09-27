@@ -311,15 +311,15 @@
 
 交付：本地 StorageGateway、上传检查、临时文件、hash、GET/HEAD/Range。
 
-PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的真实 Artifact/画布放置，以及任务键视频文件归档恢复的阶段性实现见 `docs/evidence/T19-local-image-archive-partial.md`、`docs/adr/0001-upload-image-provenance.md` 和 `docs/evidence/T23-mock-video-partial.md`；真实 PostgreSQL 插入故障已验证用户上传清理与任务键原字节恢复。图片原图及 MP4 临时写入的 ENOSPC 注入与原 Provider ID 重试见 `docs/evidence/T27-disk-full-injection.md`。格式/像素、路径及越权拒绝已在 PostgreSQL 与 HTTP 测试中覆盖；真实存储耗尽、生产网络与非稀疏大文件吞吐，以及浏览器端到端故障恢复尚未完成。
+PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的真实 Artifact/画布放置，以及任务键视频文件归档恢复的阶段性实现见 `docs/evidence/T19-local-image-archive-partial.md`、`docs/adr/0001-upload-image-provenance.md` 和 `docs/evidence/T23-mock-video-partial.md`；真实 PostgreSQL 插入故障已验证用户上传清理与任务键原字节恢复。图片原图、缩略图及 MP4 临时写入的 ENOSPC 注入与原 Provider ID 重试见 `docs/evidence/T27-disk-full-injection.md`。格式/像素、路径及越权拒绝已在 PostgreSQL 与 HTTP 测试中覆盖；真实存储耗尽、生产网络与非稀疏大文件吞吐，以及浏览器端到端故障恢复尚未完成。
 
-2026-09-27 图片改显原图：图片归档不再生成 480 像素预览副本，卡片、关键帧面板与视频首帧参考图直接读取归档原文件；`thumbnail_*` 与 `/thumbnail` 端点只服务视频封面，V48 只更新列注释。变更、定向检查与未完成的浏览器实测见 [图片改显归档原图](evidence/T19-image-original-display.md)。
+2026-09-27 图片卡片改显原图：卡片、关键帧面板与视频首帧参考图改为直接读取归档原文件；图片缩略图仍照常制作并保存，只是不再由这些界面加载。变更、定向检查与未完成的浏览器实测见 [图片卡片改显归档原图](evidence/T19-image-original-display.md)。
 
 下载路径现有 400 MiB 稀疏媒体在 `-Xmx128m` 下通过 Spring `ResourceHttpMessageConverter` 完整传输，单次写入有界；Range 跳过不能越过选定字节区间。该内存检查不等于生产网络压测或实际非稀疏磁盘吞吐测试。
 
 - [x] 恶意格式、超大像素、路径穿越、越权读取被拒绝（含静态项目目录符号链接；不覆盖有卷写入权的本地进程并发替换目录）。
 - [x] 下载流式执行，大文件不会整段加载到 JVM 内存（400 MiB、128 MiB JVM 堆、Spring 资源转换器完整读取；生产网络与磁盘吞吐仍待测）。
-- [x] 磁盘满或数据库失败不产生 READY 坏文件（ENOSPC 写入故障注入覆盖原图/MP4/导出，PostgreSQL INSERT 故障覆盖上传清理与任务键恢复；未演练物理磁盘耗尽）。
+- [x] 磁盘满或数据库失败不产生 READY 坏文件（ENOSPC 写入故障注入覆盖原图/缩略图/MP4/导出，PostgreSQL INSERT 故障覆盖上传清理与任务键恢复；未演练物理磁盘耗尽）。
 
 ### T20 ComfyUI 固定图像工作流
 
@@ -359,7 +359,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 交付：图片历史、选用版本、旧输入标记、结果 CAS。
 
-进展：假 ComfyUI 完成后首次下载返回无效图片、归档拒绝，只轮询原 prompt 并重新下载的 PostgreSQL 故障测试见 `docs/evidence/T20-comfyui-protocol-partial.md`。V24 持久技术重试账本覆盖带抖动退避、五次重试后 BLOCKED、成功清零；Task 固定资产 ID 的原图落盘后恢复、READY 资产复用及同进程双 Worker 竞争也有 PostgreSQL＋本地卷测试。独立进程交错写入和真实 Provider 尚未验证，本项保持未勾选。
+进展：假 ComfyUI 完成后首次下载返回无效图片、归档拒绝，只轮询原 prompt 并重新下载的 PostgreSQL 故障测试见 `docs/evidence/T20-comfyui-protocol-partial.md`。V24 持久技术重试账本覆盖带抖动退避、五次重试后 BLOCKED、成功清零；Task 固定资产 ID 的原图落盘后恢复、缩略图重建、READY 资产复用及同进程双 Worker 竞争也有 PostgreSQL＋本地卷测试。独立进程交错写入和真实 Provider 尚未验证，本项保持未勾选。
 
 输入选用补验：视频 Task 现固定人工关键帧选择版本，并在提交前与晚到结果选用前复核选择、图片和镜头当前版本；图片计划输入快照包含间接参考图版本，审批及图片 Task 均复核其当前状态。真实 PostgreSQL 下旧计划审批冲突、旧结果只归档、未提交任务阻断的测试见 `docs/evidence/T22-stale-media-input-selection.md`。前端阻断提示现覆盖三种输入过期来源，运行记录也区分原请求的技术核对/归档与用户新审批的重做；改选交互及所有并发交错未穷尽，T22 总门禁仍未完成。
 
@@ -436,7 +436,7 @@ Prompt 版本补充：新 Run 的策略快照固定系统 Prompt v2；历史无�
 
 依赖：T26。
 
-进展：已冻结 30 条 Creator 指令样本，分类、fixture 与预期判定由本地测试保护；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的 `approve_plan` 调用不能创建计划或媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run/审批落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 3 已补同一次假 ComfyUI 接收请求窗口内强杀真实提交进程、第二进程恢复 UNKNOWN 且不重提的测试，见 `docs/evidence/T27-comfy-accepted-process-kill.md`，响应丢失和独立进程恢复的早期证据另见 `docs/evidence/T27-comfy-response-loss.md` 与 `docs/evidence/T13-process-kill-smoke.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、MP4 及导出 MP4 归档写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 13 的 Artifact/Asset/Run/SSE 精确 ID 越权 HTTP 测试见 `docs/evidence/T27-resource-scope.md`；场景 15 已补单镜头 `1+1` 及三镜头 `3+3` 图片/视频审批的 Chrome 展示与持久 Task 数量跨层核对，见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
+进展：已冻结 30 条 Creator 指令样本，分类、fixture 与预期判定由本地测试保护；真实 PostgreSQL 的恶意绑定文本及实际 PNG 参考图测试证明伪造的 `approve_plan` 调用不能创建计划或媒体副作用，但 PNG 尚未发送给真实视觉模型，见 `docs/evidence/T27-creator-corpus-partial.md`。§22.2 场景 1–2 的 20 次并发 Run/审批落库证据见 `docs/evidence/T27-concurrent-run-and-approval.md`；场景 3 已补同一次假 ComfyUI 接收请求窗口内强杀真实提交进程、第二进程恢复 UNKNOWN 且不重提的测试，见 `docs/evidence/T27-comfy-accepted-process-kill.md`，响应丢失和独立进程恢复的早期证据另见 `docs/evidence/T27-comfy-response-loss.md` 与 `docs/evidence/T13-process-kill-smoke.md`；场景 5 的重复完成结果测试见 `docs/evidence/T27-duplicate-media-result.md`；场景 11 的图片原图、缩略图、MP4 及导出 MP4 归档写满注入见 `docs/evidence/T27-disk-full-injection.md`；场景 12 的归档后已受理请求核对、未提交任务阻断及历史归档测试见 `docs/evidence/T27-archived-project-late-result.md`；场景 13 的 Artifact/Asset/Run/SSE 精确 ID 越权 HTTP 测试见 `docs/evidence/T27-resource-scope.md`；场景 15 已补单镜头 `1+1` 及三镜头 `3+3` 图片/视频审批的 Chrome 展示与持久 Task 数量跨层核对，见 `docs/evidence/T27-plan-task-count-partial.md`。真实模型逐条执行、配置版本记录及失败报告尚未完成。
 
 - [ ] 主规格第 22 节的全部故障验收有可重复测试证据。
 - [ ] 至少 30 条固定 Agent 样本集，保存配置版本与失败报告。

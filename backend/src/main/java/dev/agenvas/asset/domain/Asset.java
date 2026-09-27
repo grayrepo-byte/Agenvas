@@ -16,9 +16,9 @@ import java.util.UUID;
  * @param width 解码得到的像素宽度
  * @param height 解码得到的像素高度
  * @param durationMs 视频时长毫秒数；图片为空
- * @param thumbnailKey 封面帧存储键；图片不生成预览，没有封面帧时为空
- * @param thumbnailByteSize 封面帧字节数
- * @param thumbnailSha256 封面帧 SHA-256 摘要
+ * @param thumbnailKey 缩略图存储键；没有预览时为空
+ * @param thumbnailByteSize 缩略图字节数
+ * @param thumbnailSha256 缩略图 SHA-256 摘要
  * @param createdAt READY 元数据创建时间
  */
 public record Asset(UUID id, UUID projectId, MediaKind mediaKind, String objectKey,

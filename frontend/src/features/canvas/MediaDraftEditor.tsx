@@ -299,7 +299,7 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
               className="media-draft-reference-option" aria-label={`使用 ${choice.label}`}
               aria-pressed={choice.id === fields.inputImageVersionId} disabled={!choice.available}
               onClick={() => chooseReference(choice.id)}>
-              {/* Reference pixels are archived images; image assets have no preview copy. */}
+              {/* Reference pixels are shown from the archived original, not the 480px preview. */}
               <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />
               <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? "当前选用版本" : "历史版本"}</small></span>
               {choice.id === fields.inputImageVersionId ? <Check size={15} /> : null}
