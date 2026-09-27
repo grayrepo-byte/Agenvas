@@ -838,6 +838,46 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/text-generations:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    get:
+      operationId: listDirectTextTasks
+      summary: 查询文字卡片最近的模型生成任务
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 最近任务，新任务在前；模型完整响应不会返回浏览器
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Task"}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      operationId: runDirectTextGeneration
+      summary: 固定提示词与当前文字版本并受理 USER_DIRECT Task
+      tags: [Tasks]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RunTextGenerationRequest"}
+      responses:
+        "200":
+          description: 已受理，或返回同一卡片正在执行的文字生成任务
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2380,6 +2420,14 @@ components:
       required: [expectedDraftVersion]
       properties:
         expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+    RunTextGenerationRequest:
+      type: object
+      additionalProperties: false
+      required: [prompt, expectedArtifactVersion, expectedCurrentVersionId]
+      properties:
+        prompt: {type: string, minLength: 1, maxLength: 20000}
+        expectedArtifactVersion: {type: integer, format: int64, minimum: 0}
+        expectedCurrentVersionId: {type: string, format: uuid}
     DirectMediaQueueStatus:
       type: object
       additionalProperties: false
@@ -2911,7 +2959,7 @@ components:
         updatedAt: {type: string, format: date-time}
     TaskKind:
       type: string
-      enum: [AGENT_TURN, IMAGE_GENERATION, VIDEO_GENERATION, MEDIA_EXPORT, ASSET_INGEST]
+      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, MEDIA_EXPORT, ASSET_INGEST]
     TaskStatus:
       type: string
       enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]

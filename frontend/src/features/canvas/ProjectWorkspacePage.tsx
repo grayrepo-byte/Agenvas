@@ -50,6 +50,7 @@ import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { StructuredArtifactEditor } from "./StructuredArtifactEditor";
 import { hasCurrentVersion } from "./versionedArtifact";
 import { MediaDraftEditor } from "./MediaDraftEditor";
+import { TextGenerationEditor } from "./TextGenerationEditor";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCardUpload } from "./MediaCardUpload";
@@ -1225,8 +1226,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                   selectedItems[0].artifact.kind === "VIDEO" ?
                   <MediaDraftEditor key={selectedItems[0].artifact.id}
                     artifact={selectedItems[0].artifact} /> : null}
+                {selectedItems[0].artifact.kind === "TEXT" ?
+                  <TextGenerationEditor key={selectedItems[0].artifact.id}
+                    artifact={selectedItems[0].artifact} /> : null}
                 {hasCurrentVersion(selectedItems[0].artifact) &&
-                  (["TEXT", "CHARACTER", "SCENE"] as const).some((kind) =>
+                  (["CHARACTER", "SCENE"] as const).some((kind) =>
                     kind === selectedItems[0]?.artifact?.kind) ?
                   <StructuredArtifactEditor key={selectedItems[0].artifact.id}
                     artifact={selectedItems[0].artifact} /> : null}

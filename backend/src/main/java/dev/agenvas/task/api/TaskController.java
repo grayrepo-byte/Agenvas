@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /** 按认证所有者暴露任务状态和人工重试；Worker 租约只在服务端使用。 */
 @RestController
@@ -112,6 +113,17 @@ public class TaskController {
          * @return REST 响应使用的任务视图
          */
         public static TaskResponse from(Task task) {
+            JsonNode input = task.input();
+            JsonNode output = task.output();
+            if (task.kind() == Task.Kind.TEXT_GENERATION) {
+                ObjectNode safeInput = (ObjectNode) task.input().deepCopy();
+                safeInput.remove("currentText");
+                input = safeInput;
+                // A RUNNING Task may contain the private full-response checkpoint. Only the
+                // terminal public artifact summary is returned to the browser.
+                output = task.status() == Task.Status.SUCCEEDED
+                        ? task.output().path("result") : null;
+            }
             return new TaskResponse(
                     task.id(),
                     task.projectId(),
@@ -121,8 +133,8 @@ public class TaskController {
                     task.kind(),
                     task.status(),
                     task.cancelRequested(),
-                    task.input(),
-                    task.output(),
+                    input,
+                    output,
                     task.providerId(),
                     task.providerRequestId(),
                     task.attemptNo(),

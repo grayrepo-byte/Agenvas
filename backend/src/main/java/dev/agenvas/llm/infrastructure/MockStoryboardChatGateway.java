@@ -41,6 +41,16 @@ public final class MockStoryboardChatGateway implements ChatGateway {
     @Override
     public Exchange call(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext) {
+        if (messages != null && !messages.isEmpty() && tools != null && tools.isEmpty()) {
+            String instruction = messages.getLast().getText();
+            String text = "演示文字，非真实模型生成。\n" + (instruction == null ? "" : instruction);
+            AssistantMessage assistant = new AssistantMessage(text.substring(0,
+                    Math.min(text.length(), 20_000)));
+            ChatResponseMetadata metadata = ChatResponseMetadata.builder()
+                    .id("mock-direct-text").model(MODEL_ID).build();
+            return new Exchange(configVersion,
+                    new ChatResponse(List.of(new Generation(assistant)), metadata));
+        }
         RedoScope redo = messages == null ? null : redoScope(messages);
         Set<String> requiredTools = redo == null ? REQUIRED_TOOLS
                 : Set.of("propose_generation_plan");

@@ -16,6 +16,7 @@ export type ArtifactList = components["schemas"]["ArtifactList"];
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
+export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
 export type Asset = components["schemas"]["Asset"];
 export type ArtifactVersionList = components["schemas"]["ArtifactVersionList"];
@@ -374,6 +375,23 @@ export async function runMediaDraft(projectId: string, artifactId: string,
 export async function listDirectMediaTasks(projectId: string, artifactId: string): Promise<Task[]> {
   return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run`,
     "无法读取卡片任务");
+}
+
+/** Pins the visible text version and sends one prompt to the configured text model. */
+export async function runDirectTextGeneration(projectId: string, artifactId: string,
+  input: RunTextGenerationRequest, idempotencyKey: string): Promise<Task> {
+  return writeJson<Task>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/text-generations`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input) },
+  );
+}
+
+export async function listDirectTextTasks(projectId: string, artifactId: string): Promise<Task[]> {
+  return readJson<Task[]>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/text-generations`,
+    "无法读取文字生成任务",
+  );
 }
 
 export async function cancelQueuedDirectMediaTask(projectId: string, taskId: string): Promise<Task> {

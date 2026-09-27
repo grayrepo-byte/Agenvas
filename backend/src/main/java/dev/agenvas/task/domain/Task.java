@@ -60,6 +60,8 @@ public record Task(
     public enum Kind {
         /** 调用模型并恢复受控工具回合。 */
         AGENT_TURN,
+        /** 用户从文字卡片直接调用模型并生成一个新的文字版本。 */
+        TEXT_GENERATION,
         /** 生成并归档图片。 */
         IMAGE_GENERATION,
         /** 根据已选关键帧生成并归档视频。 */

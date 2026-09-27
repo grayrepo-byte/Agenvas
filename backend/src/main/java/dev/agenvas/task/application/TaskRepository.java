@@ -136,6 +136,14 @@ public interface TaskRepository {
     /** 独立认领持久化模型回合，避免媒体 Worker 消费 LLM 工作。 */
     List<Task> claimDueAgentTurns(String workerId, int limit, Instant now, Instant leaseUntil);
 
+    /** 只认领文字卡片直接生成任务，避免通用 Worker 或 Agent Worker 误消费。 */
+    List<Task> claimDueTextGenerations(String workerId, int limit, Instant now,
+            Instant leaseUntil);
+
+    /** 在产物写入前保存完整模型响应；重启后相同任务不得再次调用模型。 */
+    boolean checkpointTextResponse(UUID taskId, String workerId, long leaseEpoch,
+            JsonNode response, Instant now);
+
     /** 业务副作用前锁定并核验活动模型回合租约；旧 epoch、过期或取消均返回 false。 */
     boolean lockActiveAgentTurnLease(UUID projectId, UUID runId, UUID taskId,
             String workerId, long leaseEpoch, Instant now);

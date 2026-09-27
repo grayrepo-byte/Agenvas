@@ -116,12 +116,9 @@ public class ConfiguredChatGateway implements ChatGateway {
         return modelDetails();
     }
 
-    /** 验证工具调用能力并复用同版本客户端；版本变化时重建并丢弃旧客户端。 */
+    /** 验证配置可用并复用同版本客户端；需要工具调用的 Agent 路径会另行校验能力。 */
     private SpringAiChatGateway requireConfigured(LlmProviderConfig config) {
         if (config != null) {
-            if (!config.toolCallingVerified()) {
-                throw new IllegalStateException("Configured LLM tool calling is unverified");
-            }
             RuntimeClient cached = activeClient;
             if (cached != null && cached.version() == config.version()) return cached.gateway();
             synchronized (this) {

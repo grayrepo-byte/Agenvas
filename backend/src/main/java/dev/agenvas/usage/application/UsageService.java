@@ -99,6 +99,68 @@ public class UsageService {
         return "llm:" + turn.runId() + ":" + turn.stepIndex() + ":" + stage;
     }
 
+    /** A direct text-card Task reserves one configured-model request before entering the queue. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reserveDirectTextTask(UUID ownerId, Task task) {
+        requireDirectText(task);
+        String source = llmMode.mode() == LlmModeProperties.Mode.MOCK
+                ? "MOCK_UNPRICED" : "PROVIDER_UNPRICED";
+        persist(ownerId, directTextEntry(task, UsageEntry.EntryType.RESERVATION,
+                source, null, null, task.input().path("modelId").asText(null), "reserve"));
+    }
+
+    /** The complete persisted model response settles the direct request before artifact mutation. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settleDirectTextTask(UUID ownerId, Task task, JsonNode response) {
+        requireDirectText(task);
+        UsageEntry reservation = ledger.findByOperationKey(
+                "llm-task:" + task.id() + ":reserve").orElseThrow(() ->
+                new IllegalStateException("Direct text Task has no usage reservation"));
+        JsonNode metadata = response.path("response").path("metadata");
+        JsonNode reported = metadata.path("usage");
+        persist(ownerId, directTextEntry(task, UsageEntry.EntryType.SETTLEMENT,
+                reservation.costSource(), tokenCount(reported, "promptTokens"),
+                tokenCount(reported, "completionTokens"),
+                metadata.path("model").asText(null), "settle"));
+    }
+
+    /** A request rejected before any durable model response releases its unknown-cost reservation. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releaseDirectTextTask(UUID ownerId, Task task) {
+        requireDirectText(task);
+        String prefix = "llm-task:" + task.id();
+        UsageEntry reservation = ledger.findByOperationKey(prefix + ":reserve").orElseThrow(() ->
+                new IllegalStateException("Direct text Task has no usage reservation"));
+        if (ledger.findByOperationKey(prefix + ":settle").isPresent()) return;
+        persist(ownerId, directTextEntry(task, UsageEntry.EntryType.RELEASE,
+                reservation.costSource(), null, null,
+                task.input().path("modelId").asText(null), "release"));
+    }
+
+    private UsageEntry directTextEntry(Task task, UsageEntry.EntryType type, String source,
+            Integer inputTokens, Integer outputTokens, String modelId, String stage) {
+        ObjectNode quantity = mapper.createObjectNode();
+        quantity.put("imageCount", 0);
+        quantity.put("videoCount", 0);
+        quantity.put("videoSeconds", "0");
+        quantity.put("exportCount", 0);
+        quantity.put("llmRequestCount", 1);
+        putNullableToken(quantity, "inputTokens", inputTokens);
+        putNullableToken(quantity, "outputTokens", outputTokens);
+        return new UsageEntry(UUID.randomUUID(), task.projectId(), null, task.id(),
+                "llm-task:" + task.id() + ":" + stage, type, quantity,
+                null, null, null, UsageEntry.CostStatus.UNKNOWN, source,
+                task.input().path("modelConfigVersion").asInt(), null,
+                modelId == null || modelId.isBlank() || modelId.length() > 160 ? null : modelId,
+                clock.instant());
+    }
+
+    private void requireDirectText(Task task) {
+        if (task.kind() != Task.Kind.TEXT_GENERATION || task.runId() != null) {
+            throw new IllegalArgumentException("Direct text usage requires a project Task");
+        }
+    }
+
     /** 仅接受非负且可表示为 int 的 Provider token 计数，其他值记为未知。 */
     private Integer tokenCount(JsonNode usage, String field) {
         JsonNode value = usage.path(field);

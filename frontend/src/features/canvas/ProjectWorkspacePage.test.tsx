@@ -35,6 +35,14 @@ function referenceCard(linked: boolean): CanvasItem {
   };
 }
 
+function textCard(): CanvasItem {
+  const item = referenceCard(false);
+  return { ...item, id: "text-card", subjectId: "text-id", width: 280, height: 180,
+    artifact: item.artifact ? { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",
+      currentVersionId: "text-v2", currentVersion: { ...item.artifact.currentVersion!, id: "text-v2",
+        content: { format: "PLAIN_TEXT", text: "直接在节点里写" }, inputReferences: [] } } : null };
+}
+
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     useCanvasStore.setState({ selectedIds: [] });
@@ -235,6 +243,44 @@ describe("ProjectWorkspacePage", () => {
     expect(await screen.findByLabelText("所选卡片编辑区")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+  });
+
+  it("uses the lower prompt for model generation and the toolbar for direct output editing", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
+      })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
+        id: "project-1", name: "Text project", status: "ACTIVE",
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [textCard()] })),
+      http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: true,
+        version: 2, endpoint: "https://model.example/v1", modelId: "text-model",
+        keyMask: "****", toolCallingVerified: false, updatedAt: "2026-09-27T00:00:00Z" })),
+      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
+        checkedAt: "2026-09-27T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
+        llmMode: "CONFIGURED", llmConfigured: true, llmToolCallingVerified: false,
+        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
+      })),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/text-generations", () =>
+        HttpResponse.json([])),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("article", { name: "Notes · 文字" }));
+    expect(screen.getByRole("region", { name: "文字正文" })).toHaveTextContent("直接在节点里写");
+    expect(screen.getByLabelText("所选卡片编辑区")).toBeInTheDocument();
+    expect(screen.getByLabelText("文字生成提示词")).toBeInTheDocument();
+    expect(await screen.findByText("text-model")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑内容" }));
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("直接在节点里写");
   });
 
   it("keeps one SSE connection across snapshots and invalidates auxiliary views after a gap", async () => {

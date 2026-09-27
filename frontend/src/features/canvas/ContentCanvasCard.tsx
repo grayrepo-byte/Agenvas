@@ -1,9 +1,13 @@
 import { Clock, FilmSlate, LinkSimple, LockSimple, MapPin, PencilSimple,
   SlidersHorizontal, Stack, TextT, UserCircle } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import type { Artifact } from "../../shared/api/client";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentNumber, readContentText as readText } from "./artifactContent";
+import { TextCanvasEditor } from "./TextCanvasEditor";
+import { TextVersionPicker } from "./TextVersionPicker";
+import { hasCurrentVersion } from "./versionedArtifact";
 import "./ContentCanvasCard.css";
 
 /**
@@ -50,9 +54,10 @@ function ContentField({ label, value }: { label: string; value: string }) {
   return <div className="content-card-field"><dt>{label}</dt><dd>{value}</dd></div>;
 }
 
-/** Structured content stays readable and selectable; editing and history are separate actions. */
+/** Text edits in place; structured content keeps its dedicated node-anchored editor. */
 export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspect,
   children }: ContentCanvasCardProps) {
+  const [editingText, setEditingText] = useState(false);
   const content = artifact.currentVersion?.content;
   const { label, icon: Icon } = presentation(artifact.kind);
   const text = readText(content, "text");
@@ -65,10 +70,16 @@ export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspec
 
   return <ArtifactCardFrame title={artifact.title} kindLabel={label} selected={selected} locked={locked}
     className="content-canvas-card" toolbar={<>
-        <button type="button" onClick={onEdit}><PencilSimple size={17} aria-hidden />编辑内容</button>
+        <button type="button" disabled={artifact.kind === "TEXT" && !hasCurrentVersion(artifact)}
+          onClick={artifact.kind === "TEXT"
+          ? () => setEditingText(true) : onEdit}>
+          <PencilSimple size={17} aria-hidden />编辑内容</button>
         <button type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />卡片详情</button>
       </>}>
       {children}
+      {artifact.kind === "TEXT" && hasCurrentVersion(artifact) && editingText
+        ? <TextCanvasEditor artifact={artifact} locked={locked}
+          onDone={() => setEditingText(false)} /> : <>
       <div className="content-card-bar">
         <Icon size={17} aria-hidden />
         <h3 title={header}>{header}</h3>
@@ -78,7 +89,6 @@ export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspec
       {emptyText ? <div className="content-card-empty">
         <TextT size={44} aria-hidden />
         <span>写下想法，让创作开始</span>
-        <button className="nodrag" type="button" onClick={onEdit}><PencilSimple size={15} aria-hidden />编辑文字</button>
       </div> : <div className="content-card-body nodrag nowheel nopan" tabIndex={0}
         role="region" aria-label={`${label}正文`}>
         {artifact.kind === "TEXT" ? <p className="content-card-text">{text}</p> : <dl>
@@ -101,10 +111,13 @@ export function ContentCanvasCard({ artifact, selected, locked, onEdit, onInspec
       </div>}
       <footer className="content-card-sources">
         <span className="content-card-chip"><Icon size={12} aria-hidden />{label}</span>
-        <span className="content-card-chip"><Stack size={12} aria-hidden />
-          {artifact.currentVersion ? `v${artifact.currentVersion.versionNo}` : "暂无版本"}</span>
+        {artifact.kind === "TEXT" && hasCurrentVersion(artifact)
+          ? <TextVersionPicker artifact={artifact} />
+          : <span className="content-card-chip"><Stack size={12} aria-hidden />
+            {artifact.currentVersion ? `v${artifact.currentVersion.versionNo}` : "暂无版本"}</span>}
         {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{references} 个引用</span> : null}
         {locked ? <LockSimple className="content-card-locked" size={13} aria-label="已锁定" /> : null}
       </footer>
+      </>}
   </ArtifactCardFrame>;
 }

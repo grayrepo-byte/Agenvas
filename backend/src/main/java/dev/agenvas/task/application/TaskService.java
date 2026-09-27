@@ -560,6 +560,83 @@ public class TaskService {
                 now.plus(properties.leaseDuration())), List.of());
     }
 
+    /** Claims only direct text-card model work; other workers never consume this kind. */
+    @Transactional
+    public List<Task> claimTextGenerations(String requestedWorkerId, int requestedLimit) {
+        if (shutdownGate.isClosing()) return List.of();
+        String workerId = validateWorkerId(requestedWorkerId);
+        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
+        if (limit < 1) throw validation("claim limit 必须为正数。");
+        Instant now = clock.instant();
+        return shutdownGate.claimOrEmpty(() -> tasks.claimDueTextGenerations(workerId, limit,
+                now, now.plus(properties.leaseDuration())), List.of());
+    }
+
+    /** Saves the complete direct model response before any Artifact version is appended. */
+    @Transactional
+    public JsonNode checkpointTextResponse(Task lease, String workerId, JsonNode response) {
+        if (lease.kind() != Task.Kind.TEXT_GENERATION || response == null
+                || !response.isObject()) {
+            throw validation("文字模型响应检查点无效。");
+        }
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        Instant now = clock.instant();
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (current.output() != null) {
+                if (!current.output().equals(response)) throw leaseLost();
+                return ProjectEventService.Change.unchanged(current.output());
+            }
+            if (!tasks.checkpointTextResponse(lease.id(), validateWorkerId(workerId),
+                    lease.leaseEpoch(), response, now)) {
+                throw leaseLost();
+            }
+            usage.settleDirectTextTask(ownerId, lease, response);
+            Task saved = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            events.append(ownerId, lease.projectId(), taskEvent(saved, false));
+            return ProjectEventService.Change.unchanged(saved.output());
+        }).value();
+    }
+
+    /** Appends generated text as an immutable version and selects it only if the pinned input is current. */
+    @Transactional
+    public ArtifactService.TaskVersionResult succeedWithTextArtifact(
+            Task lease, String workerId, JsonNode content) {
+        if (lease.kind() != Task.Kind.TEXT_GENERATION) {
+            throw validation("任务不是文字生成任务。");
+        }
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        Instant now = clock.instant();
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
+                    .orElseThrow(() -> validation("文字生成任务缺少目标快照。"));
+            boolean liveLease = current.status() == Task.Status.RUNNING
+                    && workerId.equals(current.leaseOwner())
+                    && current.leaseEpoch() == lease.leaseEpoch()
+                    && current.leaseUntil() != null && current.leaseUntil().isAfter(now)
+                    && !current.cancelRequested() && current.output() != null;
+            if (!liveLease) throw leaseLost();
+            ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
+                    ownerId, lease.projectId(), target.artifactId(), null,
+                    target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
+                    content, true);
+            ObjectNode summary = objectMapper.createObjectNode();
+            summary.put("artifactId", target.artifactId().toString());
+            summary.put("artifactVersionId", result.versionId().toString());
+            summary.put("selected", result.selected());
+            ObjectNode completedOutput = (ObjectNode) current.output().deepCopy();
+            completedOutput.set("result", summary);
+            if (!tasks.finish(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
+                    Task.Status.SUCCEEDED, completedOutput, null, now)) {
+                throw leaseLost();
+            }
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            events.append(ownerId, lease.projectId(), taskEvent(updated, false));
+            return ProjectEventService.Change.unchanged(result);
+        }).value();
+    }
+
     /** 仅当前 Worker 和 epoch 仍匹配且租约未过期时续租；长任务执行线程无需持有数据库事务。 */
     @Transactional
     public void heartbeat(UUID taskId, String workerId, long leaseEpoch) {
@@ -781,6 +858,11 @@ public class TaskService {
                     && (updated.status() == Task.Status.FAILED
                             || updated.status() == Task.Status.CANCELED)) {
                 usage.releaseExportTask(ownerId, updated);
+            }
+            if (updated.kind() == Task.Kind.TEXT_GENERATION && before.output() == null
+                    && (updated.status() == Task.Status.FAILED
+                            || updated.status() == Task.Status.CANCELED)) {
+                usage.releaseDirectTextTask(ownerId, updated);
             }
             events.append(ownerId, lease.projectId(), taskEvent(updated, false));
             blockWaitingRunForMedia(ownerId, updated);

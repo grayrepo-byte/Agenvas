@@ -607,6 +607,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/text-generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        /** 查询文字卡片最近的模型生成任务 */
+        get: operations["listDirectTextTasks"];
+        put?: never;
+        /** 固定提示词与当前文字版本并受理 USER_DIRECT Task */
+        post: operations["runDirectTextGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued": {
         parameters: {
             query?: never;
@@ -1850,6 +1871,13 @@ export interface components {
             /** Format: int64 */
             expectedDraftVersion: number;
         };
+        RunTextGenerationRequest: {
+            prompt: string;
+            /** Format: int64 */
+            expectedArtifactVersion: number;
+            /** Format: uuid */
+            expectedCurrentVersionId: string;
+        };
         DirectMediaQueueStatus: {
             /** Format: int64 */
             waitingAhead: number;
@@ -2340,7 +2368,7 @@ export interface components {
             updatedAt: string;
         };
         /** @enum {string} */
-        TaskKind: "AGENT_TURN" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "MEDIA_EXPORT" | "ASSET_INGEST";
+        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "MEDIA_EXPORT" | "ASSET_INGEST";
         /** @enum {string} */
         TaskStatus: "PENDING" | "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED";
         ManualUnknownAttemptRequest: {
@@ -3860,6 +3888,64 @@ export interface operations {
         };
         responses: {
             /** @description 已受理或返回同一卡片正在执行的任务；无需审批 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDirectTextTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近任务，新任务在前；模型完整响应不会返回浏览器 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runDirectTextGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunTextGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理，或返回同一卡片正在执行的文字生成任务 */
             200: {
                 headers: {
                     [name: string]: unknown;

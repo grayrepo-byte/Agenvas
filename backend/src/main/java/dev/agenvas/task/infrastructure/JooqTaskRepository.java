@@ -862,6 +862,30 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.AGENT_TURN);
     }
 
+    @Override
+    public List<Task> claimDueTextGenerations(
+            String workerId, int limit, Instant now, Instant leaseUntil) {
+        return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.TEXT_GENERATION);
+    }
+
+    @Override
+    public boolean checkpointTextResponse(UUID taskId, String workerId, long leaseEpoch,
+            JsonNode response, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.OUTPUT_JSON, JSONB.valueOf(response.toString()))
+                .set(TASK.VERSION, TASK.VERSION.plus(1))
+                .set(TASK.UPDATED_AT, utc(now))
+                .where(TASK.ID.eq(taskId))
+                .and(TASK.KIND.eq(Task.Kind.TEXT_GENERATION.name()))
+                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.LEASE_OWNER.eq(workerId))
+                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
+                .and(TASK.LEASE_UNTIL.gt(utc(now)))
+                .and(TASK.CANCEL_REQUESTED.isFalse())
+                .and(TASK.OUTPUT_JSON.isNull())
+                .execute() == 1;
+    }
+
     /** 在业务事务内锁住任务行，核验项目、Run、Worker、epoch、取消和租约期限。 */
     @Override
     public boolean lockActiveAgentTurnLease(UUID projectId, UUID runId, UUID taskId,
