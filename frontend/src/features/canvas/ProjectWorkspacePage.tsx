@@ -4,6 +4,8 @@ import {
   Controls,
   MiniMap,
   NodeResizer,
+  NodeToolbar,
+  Position,
   ReactFlow,
   type Connection,
   type Edge,
@@ -70,6 +72,7 @@ type CreationMenu = { x: number; y: number; point: CreationPoint };
 type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "agent-input" | "artifact-input"; valid: boolean };
+const EDITOR_NODE_GAP = 32;
 const CREATION_MENU_WIDTH = 184;
 const CREATION_MENU_HEIGHT = 330;
 const CREATION_MENU_MARGIN = 12;
@@ -87,7 +90,7 @@ const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
 };
 
 function focusArtifactEditor() {
-  document.querySelector<HTMLElement>(".workspace-bottom-editor [data-content-editor-focus], .workspace-bottom-editor .media-draft-prompt")?.focus();
+  document.querySelector<HTMLElement>(".workspace-media-editor [data-content-editor-focus], .workspace-media-editor .media-draft-prompt")?.focus();
 }
 const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string }> = [
   { kind: "TEXT", label: "文字" }, { kind: "IMAGE", label: "图片" },
@@ -1212,6 +1215,27 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           selectionOnDrag={selecting}
           zoomOnDoubleClick={false}
         >
+          {selectedItems.length === 1 && selectedItems[0]?.artifact ?
+            <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
+              className="nodrag nowheel nopan">
+              <div className="workspace-media-editor" aria-label="所选卡片编辑区">
+                <button aria-label="关闭编辑区" className="workspace-bottom-close"
+                  onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
+                {selectedItems[0].artifact.kind === "IMAGE" ||
+                  selectedItems[0].artifact.kind === "VIDEO" ?
+                  <MediaDraftEditor key={selectedItems[0].artifact.id}
+                    artifact={selectedItems[0].artifact} /> : null}
+                {hasCurrentVersion(selectedItems[0].artifact) &&
+                  (["TEXT", "CHARACTER", "SCENE"] as const).some((kind) =>
+                    kind === selectedItems[0]?.artifact?.kind) ?
+                  <StructuredArtifactEditor key={selectedItems[0].artifact.id}
+                    artifact={selectedItems[0].artifact} /> : null}
+                {hasCurrentVersion(selectedItems[0].artifact) &&
+                  selectedItems[0].artifact.kind === "SHOT" ?
+                  <ShotRedoEditor key={selectedItems[0].artifact.id}
+                    artifact={selectedItems[0].artifact} /> : null}
+              </div>
+            </NodeToolbar> : null}
           <Background color="#454545" gap={20} size={1.1} />
           <MiniMap pannable zoomable />
           <Controls position="bottom-right" />
@@ -1235,24 +1259,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <WorkspaceError error={connectInput.error} /></div> : null}
         {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
           <div className="canvas-message"><WorkspaceError error={(removeItem.error ?? toggleLocked.error)!} /></div> : null}
-        {selectedItems.length === 1 && selectedItems[0]?.artifact ?
-          <div className="workspace-bottom-editor workspace-media-editor" aria-label="所选卡片编辑区">
-            <button aria-label="关闭编辑区" className="workspace-bottom-close"
-              onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
-            {selectedItems[0].artifact.kind === "IMAGE" ||
-              selectedItems[0].artifact.kind === "VIDEO" ?
-              <MediaDraftEditor key={selectedItems[0].artifact.id}
-                artifact={selectedItems[0].artifact} /> : null}
-            {hasCurrentVersion(selectedItems[0].artifact) &&
-              (["TEXT", "CHARACTER", "SCENE"] as const).some((kind) =>
-                kind === selectedItems[0]?.artifact?.kind) ?
-              <StructuredArtifactEditor key={selectedItems[0].artifact.id}
-                artifact={selectedItems[0].artifact} /> : null}
-            {hasCurrentVersion(selectedItems[0].artifact) &&
-              selectedItems[0].artifact.kind === "SHOT" ?
-              <ShotRedoEditor key={selectedItems[0].artifact.id}
-                artifact={selectedItems[0].artifact} /> : null}
-          </div> : null}
         {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
           <button aria-label="关闭编辑区" className="workspace-bottom-close"
             onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>

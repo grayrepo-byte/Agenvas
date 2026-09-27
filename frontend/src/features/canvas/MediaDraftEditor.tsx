@@ -1,4 +1,4 @@
-import { ArrowUp, CaretDown, Check, CheckCircle, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowUp, CaretDown, Check, Coins, Cube, ImageSquare, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
@@ -9,7 +9,7 @@ import { readContentText } from "./artifactContent";
 import { ApiError, assetThumbnailUrl, cancelQueuedDirectMediaTask, getDirectMediaQueueStatus,
   getMediaDraft, getMediaSettings,
   listArtifactVersions, listArtifacts, listDirectMediaTasks, runMediaDraft, saveMediaDraft,
-  type Artifact, type MediaCapability, type SaveMediaDraftRequest, type Task } from "../../shared/api/client";
+  type Artifact, type MediaCapability, type SaveMediaDraftRequest } from "../../shared/api/client";
 import "./MediaDraftEditor.css";
 
 const AUTOSAVE_DELAY_MS = 650;
@@ -17,11 +17,6 @@ const MAX_PROMPT_LENGTH = 20000;
 const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
 const CONFLICT_STATUS = 409;
-const TASK_LABELS: Record<Task["status"], string> = {
-  PENDING: "等待执行", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
-  WAITING_PROVIDER: "正在生成", UNKNOWN: "结果未知", BLOCKED: "任务受阻",
-  SUCCEEDED: "生成完成", FAILED: "生成失败", CANCELED: "已取消",
-};
 const QUEUE_LABELS = {
   PROJECT_CAPACITY: "项目并发已满", CAPABILITY_CAPACITY: "能力并发已满",
   COMFY_SINGLE_SLOT: "ComfyUI 正在处理其他任务", WAITING_WORKER: "等待执行器", NOT_QUEUED: "未排队",
@@ -407,15 +402,9 @@ export function MediaDraftEditor({ artifact }: { artifact: Artifact }) {
       {artifact.kind === "VIDEO" && duration != null && !validDuration ? <p role="alert">请填写所选模型支持的整数秒时长。</p> : null}
       {artifact.kind === "VIDEO" && fields.inputImageVersionId && !historyPending && (!resources.isSuccess || !selectedReference?.available)
         ? <p role="alert">无法确认已固定的首帧版本。原选择已保留，请重试读取图片或替换首帧。</p> : null}
-      {latestTask ? <div className="media-draft-task-status">
-        <div className="media-draft-task-summary">
-          {occupied && latestTask.status !== "UNKNOWN" && latestTask.status !== "BLOCKED"
-            ? <CanvasLoadingState compact label={TASK_LABELS[latestTask.status]} />
-            : <span className={`media-draft-task-badge is-${latestTask.status.toLowerCase()}`} role="status">
-              {latestTask.status === "SUCCEEDED" ? <CheckCircle size={19} /> : <WarningCircle size={19} />}
-              {TASK_LABELS[latestTask.status]}{taskErrorDetail(latestTask.errorCode)}</span>}
-          <span className="media-draft-task-kind">本卡片直接生成 · {artifact.kind === "VIDEO" ? "视频" : "图片"}</span>
-        </div>
+      {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
+        ? <p role="alert">生成未完成{taskErrorDetail(latestTask.errorCode)}</p> : null}
+      {latestTask?.status === "READY" ? <div className="media-draft-task-status">
         {queue.data && latestTask.status === "READY" ? <span>前方 {queue.data.waitingAhead} 项 · {QUEUE_LABELS[queue.data.reason]}（排位可能变化）</span> : null}
         {queue.error && latestTask.status === "READY" ? <span role="alert">暂时无法读取排位，任务仍在排队。</span> : null}
         {latestTask.status === "READY" ? <button className="media-draft-text-action" type="button"

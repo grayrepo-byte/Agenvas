@@ -193,7 +193,7 @@ describe("MediaDraftEditor", () => {
     }));
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "取消排队" }));
-    expect(await screen.findByText("已取消")).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "取消排队" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
