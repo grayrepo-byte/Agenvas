@@ -10,6 +10,8 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnWorker;
@@ -19,6 +21,7 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.AgentImageInputFixture;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +69,8 @@ class AgentRevisionPostgresIT {
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
+    @Autowired private CanvasService canvas;
+    @Autowired private CanvasConnectionService connections;
     @Autowired private AgentRunService runs;
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
@@ -123,10 +128,9 @@ class AgentRevisionPostgresIT {
                 "Bound frame prompt");
         ArtifactService.ArtifactView image = artifacts.create(owner.userId(),
                 mediaProject.id(), Artifact.Kind.IMAGE, "Bound frame", mediaContent);
-        AgentInstance mediaAgent = agents.create(owner.userId(), mediaProject.id(),
-                "Media creator", "Revise the bound frame", List.of(
-                        new AgentInstanceService.BindingInput(image.artifact().id(),
-                                image.resourceDefaultVersion().id())));
+        AgentInstance mediaAgent = AgentImageInputFixture.connect(agents, canvas, connections,
+                owner.userId(), mediaProject.id(), image.artifact().id(),
+                image.resourceDefaultVersion().id(), "Media creator", "Revise the bound frame");
         AgentRun mediaRun = runs.create(owner.userId(), mediaProject.id(), mediaAgent.id(),
                 "Revise the bound frame", "media-revision-run").run();
         // 媒体产物是归档内容：即使同一 Run 的模型回合要求改写，也只能读到原版本。

@@ -18,11 +18,14 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.AgentImageInputFixture;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -83,6 +86,8 @@ class AssetPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private AssetService assets;
     @Autowired private AgentInstanceService agents;
+    @Autowired private CanvasService canvasService;
+    @Autowired private CanvasConnectionService connections;
     @Autowired private LocalAssetStorage storage;
     @Autowired private MediaToolRunner mediaTools;
     @Autowired private JdbcClient jdbc;
@@ -330,13 +335,6 @@ class AssetPostgresIT {
                 .isFalse();
         UUID artifactId = UUID.fromString(artifact.path("id").asText());
         UUID versionId = UUID.fromString(artifact.path("resourceDefaultVersionId").asText());
-        var agent = agents.create(owner.userId(), project.id(), "Reference creator",
-                "Use only the selected input", List.of(new AgentInstanceService.BindingInput(
-                        artifactId, versionId)));
-        assertThat(agent.bindings()).singleElement().satisfies(binding -> {
-            assertThat(binding.artifactId()).isEqualTo(artifactId);
-            assertThat(binding.selectedVersionId()).isEqualTo(versionId);
-        });
         mvc.perform(post("/api/v1/projects/" + project.id() + "/canvas/commands")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -352,6 +350,13 @@ class AssetPostgresIT {
         assertThat(mapper.readTree(canvas.getResponse().getContentAsString())
                 .path("items").path(0).path("artifact").path("resourceDefaultVersion")
                 .path("content").path("assetId").asText()).isEqualTo(id.toString());
+        var agent = AgentImageInputFixture.connect(agents, canvasService, connections,
+                owner.userId(), project.id(), artifactId, versionId,
+                "Reference creator", "Use only the selected input");
+        assertThat(agent.bindings()).singleElement().satisfies(binding -> {
+            assertThat(binding.artifactId()).isEqualTo(artifactId);
+            assertThat(binding.selectedVersionId()).isEqualTo(versionId);
+        });
 
         mvc.perform(multipart(path)
                         .file(new MockMultipartFile("file", "bad.webp", "image/webp",

@@ -7,6 +7,8 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnWorker;
@@ -17,6 +19,7 @@ import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.AgentImageInputFixture;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -73,6 +76,8 @@ class PromptInjectionPostgresIT {
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
     @Autowired private AgentInstanceService agents;
+    @Autowired private CanvasService canvas;
+    @Autowired private CanvasConnectionService connections;
     @Autowired private AgentRunService runs;
     @Autowired private AgentTurnWorker worker;
     @Autowired private TaskService tasks;
@@ -144,9 +149,9 @@ class PromptInjectionPostgresIT {
         content.put("assetId", assetId.toString());
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Untrusted reference image", content);
-        var agent = agents.create(owner.userId(), project.id(), "Image Creator",
-                "Use this reference image", List.of(new AgentInstanceService.BindingInput(
-                        image.artifact().id(), image.resourceDefaultVersion().id())));
+        var agent = AgentImageInputFixture.connect(agents, canvas, connections,
+                owner.userId(), project.id(), image.artifact().id(),
+                image.resourceDefaultVersion().id(), "Image Creator", "Use this reference image");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a safe three-shot plan", "image-injection-run").run();
 
