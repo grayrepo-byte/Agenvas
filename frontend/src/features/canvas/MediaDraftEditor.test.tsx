@@ -77,6 +77,7 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
     http.get(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/queue`, () =>
       HttpResponse.json({ waitingAhead: 2, reason: "PROJECT_CAPACITY" })),
     http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [] })),
+    http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [] })),
   );
   if (options.handlers) server.use(...options.handlers);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -284,8 +285,17 @@ describe("MediaDraftEditor", () => {
     const { saves } = setup();
     const user = userEvent.setup();
     await screen.findByLabelText("图片提示词");
-    expect(screen.getByRole("button", { name: "添加图片输入" })).toBeEnabled();
-    expect(screen.getByText("添加图片作为精确版本输入")).toBeVisible();
+    const addImage = screen.getByRole("button", { name: "添加图片输入" });
+    expect(addImage).toBeEnabled();
+    expect(screen.queryByText("添加图片作为精确版本输入")).not.toBeInTheDocument();
+    await user.click(addImage);
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    const imagePicker = screen.getByRole("dialog", { name: "输入图片版本" });
+    const selectedImages = screen.getByRole("list", { name: "已选择的图片" });
+    expect(imagePicker).toBeVisible();
+    expect(selectedImages).not.toContainElement(addImage);
+    expect(selectedImages).not.toContainElement(imagePicker);
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     const parameters = screen.getByRole("dialog", { name: "尺寸与画质设置" });
     expect(within(parameters).getByText("由模型决定")).toBeVisible();
@@ -296,6 +306,94 @@ describe("MediaDraftEditor", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveFocus();
+  });
+
+  it("shows the image-source choices when the add button is hovered", async () => {
+    setup();
+    const user = userEvent.setup();
+    await screen.findByLabelText("图片提示词");
+    const addImage = screen.getByRole("button", { name: "添加图片输入" });
+    await user.hover(addImage);
+    const menu = screen.getByRole("menu", { name: "图片来源" });
+    const uploadFromDevice = within(menu).getByRole("menuitem", { name: "从设备上传" });
+    expect(uploadFromDevice).toBeEnabled();
+    expect(within(menu).getByRole("menuitem", { name: "从资源库选择" })).toBeEnabled();
+    expect(within(menu).getByRole("menuitem", { name: "从画布选择" })).toBeEnabled();
+    const drawReference = within(menu).getByRole("menuitem", { name: "绘制引用图（暂未接入）" });
+    expect(drawReference).toBeDisabled();
+    uploadFromDevice.focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "图片来源" })).not.toBeInTheDocument();
+    expect(addImage).toHaveFocus();
+  });
+
+  it("uploads a device image as a reusable artifact and adds its exact version", async () => {
+    const artifactRequests: { key: string | null; body: unknown }[] = [];
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === `/api/v1/projects/${PROJECT_ID}/assets`) {
+        expect(init?.body).toBeInstanceOf(FormData);
+        return HttpResponse.json({ id: "uploaded-asset", mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const { saves } = setup({ handlers: [
+      http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, async ({ request }) => {
+        artifactRequests.push({ key: request.headers.get("Idempotency-Key"), body: await request.json() });
+        return HttpResponse.json({ ...artifact, id: "uploaded-artifact", title: "reference",
+          resourceDefaultVersionId: "uploaded-version" });
+      }),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("图片提示词");
+    await user.hover(screen.getByRole("button", { name: "添加图片输入" }));
+    const uploadInput = screen.getByLabelText("选择本地图片");
+    const openPicker = vi.spyOn(uploadInput, "click");
+    fireEvent.click(screen.getByRole("menuitem", { name: "从设备上传" }));
+    expect(openPicker).toHaveBeenCalledOnce();
+    fireEvent.change(uploadInput, { target: { files: [
+      new File(["image bytes"], "reference.png", { type: "image/png" }),
+    ] } });
+    await waitFor(() => expect(artifactRequests).toHaveLength(1));
+    expect(artifactRequests[0]).toMatchObject({ body: { kind: "IMAGE", title: "reference",
+      content: { sourceType: "UPLOAD", assetId: "uploaded-asset" } } });
+    expect(artifactRequests[0]?.key).toBeTruthy();
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [{
+      versionId: "uploaded-version", role: "REFERENCE", color: "#F15CAF",
+    }] }));
+  });
+
+  it("excludes the current card when choosing an image from the canvas", async () => {
+    const otherArtifact = { ...artifact, id: "other-artifact", title: "其他图片",
+      resourceDefaultVersionId: "other-version" };
+    const { saves } = setup({ handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [otherArtifact] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/other-artifact/versions`, () => HttpResponse.json({ items: [{
+        id: "other-version", versionNo: 2, content: { assetId: "other-asset" },
+      }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [
+        { id: CANVAS_ITEM_ID, subjectType: "ARTIFACT", subjectId: ARTIFACT_ID, title: "当前图片",
+          selectedVersionId: "self-version", selectedVersion: { id: "self-version", versionNo: 1,
+            content: { assetId: "self-asset" } }, artifact, agent: null },
+        { id: "other-canvas-item", subjectType: "ARTIFACT", subjectId: "other-artifact", title: "其他图片",
+          selectedVersionId: "other-version", selectedVersion: { id: "other-version", versionNo: 2,
+            content: { assetId: "other-asset" } }, artifact: otherArtifact, agent: null },
+        { id: "text-canvas-item", subjectType: "ARTIFACT", subjectId: "text-artifact", title: "文字卡片",
+          selectedVersionId: "text-version", selectedVersion: { id: "text-version", versionNo: 1,
+            content: { text: "hello" } }, artifact: { ...artifact, id: "text-artifact", kind: "TEXT" }, agent: null },
+      ] })),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("图片提示词");
+    await user.hover(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从画布选择" }));
+    const picker = await screen.findByRole("dialog", { name: "从画布选择图片" });
+    expect(within(picker).queryByRole("button", { name: /当前图片/ })).not.toBeInTheDocument();
+    expect(within(picker).queryByRole("button", { name: /文字卡片/ })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole("button", { name: "使用画布图片 其他图片" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [{
+      versionId: "other-version", role: "REFERENCE", color: "#F15CAF",
+    }] }));
   });
 
   it("filters enabled image models, exposes the fixed model and saves keyboard selection", async () => {
@@ -419,6 +517,7 @@ describe("MediaDraftEditor", () => {
     await screen.findByLabelText("视频提示词");
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     await screen.findByRole("option", { name: "海边灯塔 · v1" });
     expect(screen.queryByRole("option", { name: /v3/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "使用 海边灯塔 · v1" })).toBeVisible();
@@ -438,6 +537,7 @@ describe("MediaDraftEditor", () => {
     expect(screen.queryByLabelText(/海边灯塔 · v2，序号/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     await user.click(screen.getByRole("button", { name: "使用 海边灯塔 · v2" }));
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
       { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
@@ -468,6 +568,7 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     expect(screen.getByRole("combobox", { name: "输入图片版本" })).toHaveValue("");
     expect(screen.queryByRole("button", { name: /使用 新首帧 · v1/ })).not.toBeInTheDocument();
     expect(saves).toHaveLength(0);
@@ -492,6 +593,7 @@ describe("MediaDraftEditor", () => {
     const user = userEvent.setup();
     await screen.findByLabelText("视频提示词");
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     expect(await screen.findByText("无法读取图片版本。")).toBeVisible();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "重试读取图片" }));
@@ -513,6 +615,7 @@ describe("MediaDraftEditor", () => {
     const user = userEvent.setup();
     await screen.findByLabelText("视频提示词");
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     expect(await screen.findByText("暂无已生成或上传的图片，请先添加图片。")).toBeVisible();
     expect(screen.getAllByRole("option")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();

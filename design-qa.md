@@ -207,6 +207,56 @@ Selection writeback result: partial — 实现方向合理，偶发问题根因�
 
 final result: passed
 
+## 图片输入来源菜单与画布候选过滤（2026-09-28）
+
+- source visual truth paths: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-86442d18-b424-4796-bef2-d74f5c62f85c.png`（294 × 379 px）与 `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-7f3436ff-2adf-421f-8a26-e326322ca18c.png`（784 × 684 px）。
+- implementation source: `frontend/src/features/canvas/MediaDraftEditor.tsx` 与 `MediaDraftEditor.css`。
+- implementation comparison capture: 使用已登录 Chrome 在独立 Vite 预览 `http://localhost:5174/projects/<projectId>` 中核对；验收后恢复原 `5173` 页面并停止临时服务。截图以内联工具输出保留，未写入仓库。
+- viewport / density: 2560 × 1125 CSS px，浏览器默认 density；来源菜单实测约 220 × 168 CSS px。
+- primary interactions tested: 点击/键盘打开来源菜单、Esc 关闭并恢复焦点、进入画布图片选择、候选渲染与当前卡片过滤；组件测试补充覆盖鼠标 hover 打开。
+- console errors checked: warning/error 为空。
+
+### Focused comparison evidence
+
+- 来源层级：鼠标覆盖、键盘聚焦或单击“+”均可打开紧凑深色菜单，四个入口依次为“从设备上传”“从资源库选择”“从画布选择”“绘制引用图”，与参考图的结构一致。
+- 可用能力：设备上传、资源库与画布来源接入真实流程；P0 尚无绘制/局部重绘能力，因此“绘制引用图”明确显示“暂未接入”并禁用，不伪造可用操作。
+- 画布过滤：实测当前选中图片卡片 id 为 `77cfd3e7-163d-4a9e-8d43-94d26fba508e`，弹层只显示另外两张图片卡片的当前归档版本；组件测试同时断言排除当前 `canvasItemId` 和非图片卡片。同一 Artifact 的其他卡片仍按独立 CanvasItem 保留为候选。
+- 弹层几何：首次实测发现来源菜单被后声明的通用 popover 样式压缩为约 20px 高；提高专用选择器优先级后，菜单恢复为约 220 × 168px，四行完整可见且未被缩略图滚动区裁剪。
+- 键盘与焦点：在来源菜单或画布选择弹层按 Esc 后，弹层关闭、来源菜单不反弹，焦点回到“添加图片输入”按钮。
+
+### Findings
+
+未发现剩余 P0/P1/P2 差异。与参考图唯一有意差异是绘制入口的禁用说明，它准确反映当前产品能力边界。
+
+final result: passed
+
+## 媒体图片选择弹层与空态文案（2026-09-28）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-eb67149b-f2bc-4e29-9324-61259650ccd5.png`（735 × 311 px）。
+- implementation source: `frontend/src/features/canvas/MediaDraftEditor.tsx` 与 `MediaDraftEditor.css`。
+- implementation screenshot path: Codex 内置浏览器的同屏内联捕获，临时验证页不持久化，因此无独立文件路径。
+- viewport / density: 768 × 720 CSS px，默认 device scale；参考图和实际 680px 宽媒体编辑器在同一张 full-page 捕获中上下对照。
+- state: 无图空态和点击“+”后的图片版本选择弹层。
+- primary interactions tested: 单击添加、弹层自动聚焦、Esc 关闭并恢复焦点；浏览器 warning/error 为空。
+
+### Full-view comparison evidence
+
+对照捕获确认：“+”保留在 Prompt 下方原位，用户标记要取消的右侧“添加图片作为精确版本输入”已不再显示，提示词占位与底部工具栏未被推动。
+
+### Focused region comparison evidence
+
+- 字体与排版：删除多余的 11px 空态说明，不改变 Prompt、占位文字或工具栏字号。
+- 间距与布局：46 × 46px 添加按钮保持原定位；横向滚动收窄到独立缩略图列表，按钮及弹层不在滚动裁剪区内。
+- 颜色与 token：按钮边框、深色表面、粉色键盘焦点及弹层层级均复用现有 token。
+- 图像质量与资产：本次只修正布局和弹层可见性，没有新增或替换任何生产图片资产。
+- 文案与内容：只删除用户指定的右侧说明；选择弹层内仍保留精确版本和能力上限说明。
+
+### Findings and comparison history
+
+首次实测为 P0：点击后 `aria-expanded=true` 且弹层已存在于可访问树，但横向 `overflow-x: auto` 容器将向上展开的弹层完全裁掉。修复后只让缩略图列表横向滚动；二次捕获确认弹层在编辑器上方完整可见、可聚焦、可用 Esc 关闭。同屏空态对照未发现剩余 P0/P1/P2 差异。
+
+final result: passed
+
 ## 媒体输入纯缩略图栏（2026-09-28）
 
 - source visual truth paths: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-a02c9c6a-b830-42a1-92f0-292f9f099e74.png`（934 × 661 px）与 `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-7921615a-6a70-4b5c-8268-5b09b67e06bc.png`（826 × 394 px）。
