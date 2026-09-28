@@ -2,6 +2,8 @@
 
 2026-09-23。仓库新增了未经过真实模型验证的 `image-v1` 候选模板；随后增加默认关闭的 `image-to-video-v1` 候选模板（见 `T23-comfyui-video-candidate.md`）。当前本机未发现监听 8188 的 ComfyUI。此证据**不证明真实生图或图生视频已完成**。
 
+2026-09-28 更新：本文下述 V23 单槽行为是当时的历史证据，已由 V56 删除。当前 ComfyUI 没有全局产品并发门禁；`ComfyUiImagePostgresIT` 已改为验证第一个请求仍活动时第二个任务也能提交。真实 ComfyUI 的并发资源表现仍未验证。
+
 新增 `ComfyUiClient`，仅在 `agenvas.provider.mode=comfyui` 时启用。服务端配置精确 IPv4 origin，不接受用户或模型传入 URL；拒绝 DNS 主机、userinfo、路径、查询和片段，拒绝链路本地地址，公共地址需要 HTTPS，关闭 HTTP 代理与重定向。协议只访问固定 `/prompt`、`/history/{prompt_id}`、`/upload/image` 和 `/view` 路由。提交返回的 prompt_id 被解析为 UUID；查询空历史保留“尚未确定”语义，不触发重提。上传文件名由服务端生成并校验返回值；下载只允许安全根目录文件名，流式读取且有 500 MiB 上限。5xx/读写中断标成不确定传输错误，不能当作确定失败自动重试提交。`ComfyUiHistory` 对原 prompt_id 与模板固定输出节点解析历史：空历史仍等待，记录的执行错误（包括 `completed=false`）是确定失败，成功时只接受根输出目录的一张安全图片；不信任任意输出路径。
 
 `ComfyUiClientTest` 使用本地假 HTTP 服务覆盖提交/原 ID 查询、图片上传、同源输出、重定向拒绝、5xx 分类和危险 endpoint 拒绝；`ComfyUiHistoryTest` 覆盖空历史、完成/失败和不安全路径。持久任务层只认领已记录 providerRequestId 的 WAITING_PROVIDER 核对租约，支持延后核对和按 lease epoch 归档，不经过新提交检查点；`TaskRecoveryPostgresIT` 与 `TaskStaleShotPostgresIT` 在真实 PostgreSQL 验证重复核对不会增加 provider_attempt，旧轮询者不能写入，核对后的归档可完成原任务，取消后的晚到结果留在历史。

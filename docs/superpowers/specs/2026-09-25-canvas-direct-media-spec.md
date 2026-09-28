@@ -1,6 +1,6 @@
 # 画布交互重构与直接媒体运行规格
 
-状态：已确认的产品决策与测试入口汇总；已发布为 [GitHub Issue #1](https://github.com/grayrepo-byte/Agenvas/issues/1)；代码实施中，完整验收状态见 `docs/DEVELOPMENT-CHECKLIST.md`。
+状态：历史实施规格；已发布为 [GitHub Issue #1](https://github.com/grayrepo-byte/Agenvas/issues/1)。其中角色/场景/镜头与审批范围已由 ADR 0013 撤回，项目/能力/ComfyUI 并发配额又由 2026-09-28 的 ADR 0006 修订撤回；当前行为以 `docs/MVP-SPEC.md`、ADR 与 `docs/DEVELOPMENT-CHECKLIST.md` 为准。
 
 ## Problem Statement
 

@@ -158,8 +158,8 @@ class ManualUnknownRetryPostgresIT {
                         .header("Idempotency-Key", "foreign")
                         .contentType("application/json").content(body))
                 .andExpect(status().isNotFound());
-        // 切到 ComfyUI 适配器后，认领要走全局单槽判定：原 UNKNOWN 已被重试取代，必须让出名额，
-        // 否则替代任务会被它永久阻塞（这也是移除“必须核对”硬拒绝的前提）。
+        // 切到 ComfyUI 适配器后仍由通用认领路径处理；原 UNKNOWN 记录保留，
+        // 但不会阻塞用户显式创建的替代任务。
         jdbc.sql("update media_capability_version set adapter_id = 'COMFY_IMAGE_V1'").update();
         assertThat(taskRepository.claimDueBoundMedia("replacement-submitter", 1,
                 Instant.now(), Instant.now().plusSeconds(30))).singleElement()

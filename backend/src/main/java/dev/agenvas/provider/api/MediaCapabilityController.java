@@ -97,17 +97,6 @@ public class MediaCapabilityController {
         return response();
     }
 
-    @PutMapping("/media-connections/{connectionId}/capabilities/{capabilityId}/concurrency")
-    public ResponseEntity<MediaSettingsResponse> updateConcurrency(
-            @AuthenticationPrincipal AdminPrincipal administrator,
-            @PathVariable UUID connectionId, @PathVariable UUID capabilityId,
-            @Valid @RequestBody UpdateConcurrencyRequest request) {
-        Objects.requireNonNull(administrator, "Authenticated administrator required");
-        catalog.updateConcurrency(connectionId, capabilityId,
-                request.expectedVersion(), request.maxConcurrent());
-        return response();
-    }
-
     @PutMapping("/media-defaults/{kind}")
     public ResponseEntity<MediaSettingsResponse> setDefault(
             @AuthenticationPrincipal AdminPrincipal administrator,
@@ -146,8 +135,7 @@ public class MediaCapabilityController {
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
                 declaration.maxReferenceImages(), declaration.supportedVideoInputModes().stream()
                         .sorted().toList(), declaration.defaultVideoInputMode(),
-                declaration.supportsEndFrame(), catalog.maxConcurrent(capability.id()),
-                snapshot.mappingSha256(), settings.isMissingNode()
+                declaration.supportsEndFrame(), snapshot.mappingSha256(), settings.isMissingNode()
                         ? mapper.createObjectNode() : settings);
     }
 
@@ -162,9 +150,6 @@ public class MediaCapabilityController {
             @NotBlank @Size(max = 160) String name, boolean enabled,
             @NotBlank String adapterId, JsonNode settings) {}
     public record SetDefaultRequest(@Min(0) long expectedVersion, UUID capabilityId) {}
-    public record UpdateConcurrencyRequest(@Min(0) long expectedVersion,
-            @jakarta.validation.constraints.Min(1)
-            @jakarta.validation.constraints.Max(100) int maxConcurrent) {}
     public record MediaSettingsResponse(List<ConnectionView> connections,
             List<DefaultView> defaults) {}
     public record ConnectionView(UUID id, String name, String platform, boolean enabled,
@@ -175,7 +160,7 @@ public class MediaCapabilityController {
             int capabilityVersion, String adapterId, Task.Kind kind,
             int minimumSeconds, int maximumSeconds, int maxReferenceImages,
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
-            boolean supportsEndFrame, int maxConcurrent, String mappingSha256,
+            boolean supportsEndFrame, String mappingSha256,
             JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
 }

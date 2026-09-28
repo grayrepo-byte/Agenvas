@@ -219,9 +219,9 @@
 
 交付：取消请求、恢复扫描、Provider attempt 记录、UNKNOWN UI。
 
-2026-09-26 展示位置调整：画布不再常驻 UNKNOWN 横幅，历史/待核对调用及账本核对入口集中到 `/settings/calls`；所属 Agent 对话内的当次任务状态和风险确认保留。此调整不修改任务状态、名额与额度，也不自动重提请求。
+2026-09-26 展示位置调整：画布不再常驻 UNKNOWN 横幅，历史/待核对调用及账本核对入口集中到 `/settings/calls`；所属 Agent 对话内的当次任务状态和风险确认保留。此调整不修改任务状态与额度，也不自动重提请求。
 
-2026-09-26 产品决策变更：移除“核对原请求”能力与重复成本确认，UNKNOWN 改为卡片或所属对话上的单次显式重试。后端删除 `reconcile` 与 `attempts` 端点、`UnknownTaskReconciler` 及 ComfyUI 候选核对链，`new-attempt` 只接受 `expectedTaskVersion`；`ManualUnknownRetryService` 对 ComfyUI 的单槽硬拒绝一并移除，因为单槽门禁本就把“已被替代的 UNKNOWN”排除在占用之外。原 UNKNOWN 任务与提交记录仍完整保留，自被替代起不再占用媒体并发名额。规格 §12.7、AGENTS §6、ADR 0005/0006 与 OpenAPI 已同步；系统层崩溃恢复不自动重提的行为未变。
+2026-09-26 产品决策变更：移除“核对原请求”能力与重复成本确认，UNKNOWN 改为卡片或所属对话上的单次显式重试。后端删除 `reconcile` 与 `attempts` 端点、`UnknownTaskReconciler` 及 ComfyUI 候选核对链，`new-attempt` 只接受 `expectedTaskVersion`；`ManualUnknownRetryService` 对当时 ComfyUI 单槽的硬拒绝一并移除。原 UNKNOWN 任务与提交记录仍完整保留，自被替代起不再占用同卡片任务互斥。该单槽及其他共享容量门禁又在 2026-09-28 整体移除。规格 §12.7、AGENTS §6、ADR 0005/0006 与 OpenAPI 已同步；系统层崩溃恢复不自动重提的行为未变。
 
 - [x] SUBMITTING 崩溃不会自动重提。
 - [x] 取消后晚到结果不自动替换当前版本或唤醒下游。
@@ -230,7 +230,7 @@
 - [ ] 按项目权限读取单任务的提交关联键、attempt 状态与原 Provider 请求 ID，页面按需展开且不暴露工作线程信息。（同上，`/attempts` 端点已移除。）
 - [x] 新 ComfyUI 请求使用提交前持久化的关联键作为候选 prompt_id，并拒绝不一致回执；不把该 ID 当幂等保证。
 - [ ] 新 ComfyUI UNKNOWN 仅在候选 ID、原 endpoint 指纹、工作流配置及 Provider 返回的 prompt/client ID 全部匹配时恢复原请求轮询；空查询、旧 attempt、配置漂移和取消不自动重提。（2026-09-26 产品决策移除“核对原请求”，本项作废。）
-- [x] 重试可为 UNKNOWN 任务新建尝试，原 attempt 保留；新尝试、独立用量预留与待执行依赖重连已通过 PostgreSQL 并发测试；真实 ComfyUI 联调暂缓。2026-09-26 起不再要求显式的重复成本确认，改为界面上的单次重试；ComfyUI 的原单槽硬拒绝同时移除，被替代的原任务不再占用名额。
+- [x] 重试可为 UNKNOWN 任务新建尝试，原 attempt 保留；新尝试、独立用量预留与待执行依赖重连已通过 PostgreSQL 并发测试；真实 ComfyUI 联调暂缓。2026-09-26 起不再要求显式的重复成本确认，改为界面上的单次重试；被替代的原任务不再占用同卡片任务互斥。
 - [x] 实际中断进程并重启，验证提交 checkpoint 与租约恢复不重复提交。
 - [x] 进程中断期间的 SSE 客户端重连在浏览器端到端验证（隔离 Compose 中 stop/start server，页面自动恢复并接收新 Run 事件；见 `docs/evidence/T12-browser-process-reconnect.md`）。
 
@@ -332,7 +332,7 @@ PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的
 
 交付：受信任 image-v1、模板/节点/模型版本清单、submit/query/归档映射。
 
-进展：精确服务地址与固定 HTTP 路由、`image-v1` 候选模板、参考图到固定节点映射、从任务受理到提交/原 ID 核对/归档的假服务＋PostgreSQL 闭环，以及 V23 持久单槽调度见 `docs/evidence/T20-comfyui-protocol-partial.md`。真实 ComfyUI/模型和模板兼容性尚未验证，验收项保持未勾选。
+进展：精确服务地址与固定 HTTP 路由、`image-v1` 候选模板、参考图到固定节点映射、从任务受理到提交/原 ID 跟踪/归档的假服务＋PostgreSQL 闭环见 `docs/evidence/T20-comfyui-protocol-partial.md`。V23 持久单槽已由 V56 删除，活动 ComfyUI 请求不再阻塞其他卡片提交。真实 ComfyUI/模型、并发资源表现和模板兼容性尚未验证，验收项保持未勾选。
 
 Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模板模型名及 Provider 配置版本，默认仍为 Mock；见 `docs/evidence/T20-compose-provider-config-partial.md`。这只解除部署配置阻断，不作为真实兼容性证据。
 
@@ -520,7 +520,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 依据：[ADR 0005](adr/0005-canvas-interaction-redesign.md)、[ADR 0006](adr/0006-direct-media-task-boundary.md)、[ADR 0013](adr/0013-contract-to-direct-generation.md)、[ADR 0014](adr/0014-canvas-item-media-branches-and-versioned-image-inputs.md)、[领域词汇](../CONTEXT.md)和 `docs/MVP-SPEC.md` 第 6.9–6.10 节。以下均为新目标，不能用已撤回的 Agent 三镜头生成验收代替。
 
-实施进展：深色画布、四类菜单（文字、图片、视频、Agent）、底部编辑、资源抽屉、媒体草稿、直接 Task、数据库并发认领、单实例有界并行派发、队列状态与能力上限配置已进入代码。PostgreSQL 集成测试覆盖空版本媒体卡片、草稿 CAS、独立任务、Mock 结果版本、精确视频输入、项目并发上限和能力全局上限；调度器单测覆盖三个并行提交槽。前端交互测试覆盖菜单和编辑区。当前能力目录没有已知价格字段，因此直接运行展示费用未知、账本记未知金额；金额预留需在价格配置落地后补验。ComfyUI 原 UNKNOWN 占用全局单槽，用户重试后原任务被替代即让出名额。浏览器端到端、真实 Provider、跨 Worker 故障注入和完整容量矩阵仍待验收，因此下列综合验收项暂不勾选。
+实施进展：深色画布、四类菜单（文字、图片、视频、Agent）、底部编辑、资源抽屉、媒体草稿、直接 Task、数据库竞争认领、单实例有界并行派发和只读队列状态已进入代码。2026-09-28 删除项目级、能力级和 ComfyUI 单槽三层产品并发门禁及设置项；READY 只显示等待执行器，同卡片互斥、租约、fencing 和有界执行器保留。PostgreSQL 集成测试覆盖空版本媒体卡片、草稿 CAS、独立任务、Mock 结果版本、精确视频输入和跨项目/能力继续认领；ComfyUI 假服务覆盖活动请求重叠提交。当前能力目录没有已知价格字段，因此直接运行展示费用未知、账本记未知金额；金额预留需在价格配置落地后补验。浏览器端到端、真实 Provider、跨 Worker 故障注入和真实资源压力仍待验收，因此下列综合验收项暂不勾选。
 
 2026-09-27 Issue #7 基础切片：媒体草稿、展示版本和直连任务已归属 CanvasItem，Artifact 资源默认版本独立；同一 Artifact 多卡片可独立选择、上传、保存草稿并运行，成功结果只条件选用发起卡片。资源库放置按默认版本初始化且使用空草稿。V52 清空项目创作数据并保留管理员、加密、Provider、能力与 LLM 设置；V53 在首次启动清理旧项目资产目录并保存完成标记；V54 允许删除卡片后保留任务历史。OpenAPI/Java/生成 TypeScript/jOOQ 已同步。全量后端 125 个单元测试与 74 个 PostgreSQL 集成测试、前端 36 个文件 232 项测试及 lint/类型检查/构建通过；边界和未验证项见 [Issue #7 证据](evidence/issue-7-canvas-item-media-context.md)。下列包含后续能力的综合条目仍不勾选。
 
@@ -543,7 +543,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 - [ ] 图片 CanvasItem 到 Agent CanvasItem 的连线建立独立 Agent 图片绑定：固定精确版本、同版本多来源标题别名、字节只发送一次，受每模型图片数量/单图/总大小限制。Agent 设置只读展示与解绑，新增只能拖线；一个 AgentInstance 最多一张卡片，移除卡片不删除会话且不影响已冻结 AgentRun。
 - [ ] 直接媒体“运行”路径改为以 CanvasItem 为目标，Task 固定父版本、能力版本、提示词、参数、输入模式、有序图片版本/角色和结构化标签；ArtifactVersion 保存同一份冻结来源，删除旧 `referenceImageVersionId` / `keyframeVersionId`，不双写。结果自动选用比较最终图片顺序、模式和首尾角色，不比较来源数量。
 - [ ] 同一卡片跨来源任务互斥，排队/运行/UNKNOWN 时重复点击返回原任务；不同卡片与一个 AgentRun 可并行。点击时固定草稿、输入与能力版本；排队期间再编辑不改写任务。
-- [ ] 数据库认领实施默认每项目三个媒体任务上限、管理员配置的能力全局上限及 ComfyUI 原有全局单槽；UNKNOWN 占名额，超额持久排队并展示前方数量/原因。跨 Worker 并发认领用真实 PostgreSQL 验证。
+- [x] （2026-09-28 变更）删除项目级、能力级和 ComfyUI 单槽产品并发门禁；READY 只因有界 Worker 暂不可用而持久排队并展示前方数量与“等待执行器”。保留同卡片任务互斥、数据库租约、fencing 与进程内资源上限，并用真实 PostgreSQL 与假 ComfyUI 验证跨卡片继续认领和活动请求重叠提交。见 [验证记录](evidence/media-concurrency-removal.md)。
 - [ ] 受理时预留任务次数额度，已知价格预留估算金额；排队取消且未提交 Provider 时释放未消耗预留，UNKNOWN 不自动释放。任务取消、晚到结果、归档失败、旧 Worker、重复请求和跨项目引用有回归测试。
 - [ ] 同一图片/视频 Artifact 追加不可变结果版本，旧结果可手动选用；移除卡片不取消已受理任务，项目资源可找回草稿与历史。同步 OpenAPI、Flyway、生成 TS、浏览器验收；真实 Provider 单独实测后再标记。
 - [ ] 新 Flyway 迁移按已确认的本地开发策略清空全部项目创作数据，保留管理员、加密密钥、Provider 与模型设置；重新生成 jOOQ。项目导出清单覆盖 CanvasItem 展示版本/草稿/输入/来源/颜色/连线、Artifact 分支图和资源默认版本。同步 OpenAPI、Java、生成 TS、契约测试与破坏性升级说明。

@@ -315,7 +315,7 @@ public class TaskService {
                 now.plus(properties.leaseDuration())), List.of());
     }
 
-    /** 通过数据库中的跨实例门禁认领至多一个 ComfyUI 图片提交任务。 */
+    /** 认领至多一个旧版 ComfyUI 图片任务；跨实例仅靠行租约防止重复领取。 */
     @Transactional
     public List<Task> claimComfyImage(String requestedWorkerId) {
         if (shutdownGate.isClosing()) return List.of();
@@ -325,7 +325,7 @@ public class TaskService {
                 now.plus(properties.leaseDuration())), List.of());
     }
 
-    /** 仅在图片与视频共用的 ComfyUI 提交槽位空闲时认领一个视频任务。 */
+    /** 认领至多一个旧版 ComfyUI 视频任务；不再检查共享提交槽。 */
     @Transactional
     public List<Task> claimComfyVideo(String requestedWorkerId) {
         if (shutdownGate.isClosing()) return List.of();

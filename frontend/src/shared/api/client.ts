@@ -63,7 +63,6 @@ export type CreateMediaConnectionRequest = components["schemas"]["CreateMediaCon
 export type UpdateMediaConnectionRequest = components["schemas"]["UpdateMediaConnectionRequest"];
 export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCapabilityRequest"];
 export type UpdateMediaCapabilityRequest = components["schemas"]["UpdateMediaCapabilityRequest"];
-export type UpdateMediaConcurrencyRequest = components["schemas"]["UpdateMediaConcurrencyRequest"];
 export type SetMediaDefaultRequest = components["schemas"]["SetMediaDefaultRequest"];
 type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
@@ -218,14 +217,6 @@ export async function updateMediaCapability(connectionId: string, capabilityId: 
   return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}`, {
     method: "PUT", body: JSON.stringify(input),
   });
-}
-
-export async function updateMediaConcurrency(connectionId: string, capabilityId: string,
-  input: UpdateMediaConcurrencyRequest): Promise<MediaSettings> {
-  return writeJson<MediaSettings>(
-    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}/concurrency`,
-    { method: "PUT", body: JSON.stringify(input) },
-  );
 }
 
 export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION",

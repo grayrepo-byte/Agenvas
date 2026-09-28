@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -262,35 +261,22 @@ class MediaDraftPostgresIT {
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
             lastQueued = UUID.fromString(accepted.path("id").asText());
         }
-        for (int index = 0; index < 3; index++) {
+        JsonNode waiting = mapper.readTree(mvc.perform(get(base + "/tasks/" + lastQueued
+                        + "/queue").with(auth)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString());
+        assertThat(waiting.path("reason").asText()).isEqualTo("WAITING_WORKER");
+        assertThat(waiting.path("waitingAhead").asInt()).isEqualTo(3);
+        for (int index = 0; index < 4; index++) {
             assertThat(taskService.claimBoundMedia("capacity-worker-" + index, 1))
                     .hasSize(1);
         }
         assertThat(taskService.claimBoundMedia("capacity-worker-last", 1)).isEmpty();
-        JsonNode waiting = mapper.readTree(mvc.perform(get(base + "/tasks/" + lastQueued
-                        + "/queue").with(auth)).andExpect(status().isOk()).andReturn()
-                .getResponse().getContentAsString());
-        assertThat(waiting.path("reason").asText()).isEqualTo("PROJECT_CAPACITY");
         JsonNode snapshot = mapper.readTree(mvc.perform(get(base + "/snapshot")
                         .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(snapshot.path("activeRun").isNull()).isTrue();
         assertThat(snapshot.path("activeTasks").size()).isEqualTo(4);
 
-        UUID capabilityId = jdbc.sql("select capability_id from task where id=:id")
-                .param("id", lastQueued).query(UUID.class).single();
-        UUID connectionId = jdbc.sql("select connection_id from media_capability where id=:id")
-                .param("id", capabilityId).query(UUID.class).single();
-        long capabilityVersion = jdbc.sql("select version from media_capability where id=:id")
-                .param("id", capabilityId).query(Long.class).single();
-        mvc.perform(put("/api/v1/settings/media-connections/" + connectionId
-                        + "/capabilities/" + capabilityId + "/concurrency")
-                .with(authentication(new UsernamePasswordAuthenticationToken(owner, null,
-                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))))
-                .with(csrf()).contentType("application/json")
-                .content("{\"expectedVersion\":" + capabilityVersion
-                        + ",\"maxConcurrent\":1}"))
-                .andExpect(status().isOk());
         Project otherProject = projects.create(owner.userId(), "Capability queue",
                 Project.AspectRatio.LANDSCAPE_16_9);
         String otherBase = "/api/v1/projects/" + otherProject.id();
@@ -314,11 +300,9 @@ class MediaDraftPostgresIT {
                         .content("{\"canvasItemId\":\"" + otherItemId
                                 + "\",\"expectedDraftVersion\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(taskService.claimBoundMedia("capacity-worker-global", 1)).isEmpty();
-        JsonNode limitedQueue = mapper.readTree(mvc.perform(get(otherBase + "/tasks/"
-                        + limitedTask.path("id").asText() + "/queue").with(auth))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(limitedQueue.path("reason").asText()).isEqualTo("CAPABILITY_CAPACITY");
+        assertThat(taskService.claimBoundMedia("capacity-worker-global", 1)).singleElement()
+                .extracting(task -> task.id().toString())
+                .isEqualTo(limitedTask.path("id").asText());
     }
 
     private String place(MockMvc mvc,

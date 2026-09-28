@@ -65,7 +65,7 @@ public class TaskWorker {
     }
 
     /**
-     * 通过持久化的单槽门禁认领至多一个 ComfyUI 图片请求，避免跨实例并发提交。
+     * 认领至多一个旧版 ComfyUI 图片请求；任务行租约只防止重复领取，不限制其他请求并行。
      *
      * @param workerId 本次租约持有者标识
      * @param handler 已验证 ComfyUI origin 的图片适配器
@@ -117,7 +117,7 @@ public class TaskWorker {
     }
 
     /**
-     * 视频和图片共用 ComfyUI 的持久化单槽门禁，至多认领一个待提交视频任务。
+     * 认领至多一个旧版 ComfyUI 视频请求，不再与图片任务共享容量门禁。
      *
      * @param workerId 本次租约持有者标识
      * @param handler 已验证 ComfyUI origin 的视频适配器

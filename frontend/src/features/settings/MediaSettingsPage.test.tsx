@@ -38,7 +38,7 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
         adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION",
         minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 1,
         supportedVideoInputModes: [], defaultVideoInputMode: null,
-        supportsEndFrame: false, maxConcurrent: 2,
+        supportsEndFrame: false,
         mappingSha256: "a".repeat(64), settings: { quality: "high" },
         ...capabilityChanges,
       }],
@@ -69,29 +69,23 @@ describe("MediaSettingsPage", () => {
     await user.type(replacementKey, "new-key-draft");
     await user.click(within(connection).getByText("编辑能力参数"));
     const name = within(connection).getByRole("textbox", { name: "能力名称" });
-    const limit = within(connection).getByRole("spinbutton", { name: "全局并发上限" });
     await user.clear(name);
     await user.type(name, "Capability draft");
-    await user.clear(limit);
-    await user.type(limit, "3");
     settings = settingsFixture({ version: 2, name: "Remote connection" }, {
-      version: 5, name: "Remote capability", maxConcurrent: 6, settings: { quality: "low" },
+      version: 5, name: "Remote capability", settings: { quality: "low" },
     });
     await act(() => queryClient.invalidateQueries({ queryKey: ["settings", "media"] }));
     await waitFor(() => expect(within(connection).getByRole("button", { name: "保存连接" })).toBeDisabled());
     expect(connectionName).toHaveValue("Connection draft");
     expect(replacementKey).toHaveValue("new-key-draft");
     expect(name).toHaveValue("Capability draft");
-    expect(limit).toHaveValue(3);
     expect(within(connection).getByRole("button", { name: "保存能力" })).toBeDisabled();
-    expect(within(connection).getByRole("button", { name: "保存并发上限" })).toBeDisabled();
     await user.click(within(connection).getByRole("button", { name: "保存连接" }));
     expect(writes).toEqual([]);
     const row = name.closest("li");
     if (!row) throw new Error("Missing capability row");
     await user.click(within(row).getByRole("button", { name: "载入最新版本" }));
     expect(name).toHaveValue("Remote capability");
-    expect(limit).toHaveValue(6);
     expect(within(row).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("low");
     expect(connectionName).toHaveValue("Connection draft");
     await user.click(within(connection).getByRole("button", { name: "载入最新版本" }));
@@ -103,7 +97,7 @@ describe("MediaSettingsPage", () => {
     }]));
   });
 
-  it("advances only the saved capability baseline and preserves the other form's draft", async () => {
+  it("advances the saved capability baseline without exposing concurrency controls", async () => {
     let settings = settingsFixture();
     const writes: unknown[] = [];
     server.use(
@@ -115,38 +109,25 @@ describe("MediaSettingsPage", () => {
         settings = settingsFixture({}, { version: 5, name: "Updated portrait" });
         return HttpResponse.json(settings);
       }),
-      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait/concurrency", async ({ request }) => {
-        writes.push(await request.json());
-        settings = settingsFixture({}, { version: 6, name: "Updated portrait", maxConcurrent: 3 });
-        return HttpResponse.json(settings);
-      }),
     );
     mount();
     const user = userEvent.setup();
     await user.click(await screen.findByText("编辑能力参数"));
     const name = screen.getByRole("textbox", { name: "能力名称" });
-    const limit = screen.getByRole("spinbutton", { name: "全局并发上限" });
     await user.clear(name);
     await user.type(name, "Updated portrait");
-    await user.clear(limit);
-    await user.type(limit, "3");
     await user.click(screen.getByRole("button", { name: "保存能力" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "保存能力" })).toBeEnabled());
-    expect(limit).toHaveValue(3);
     await user.clear(name);
     await user.type(name, "Next unsaved name");
-    await user.click(screen.getByRole("button", { name: "保存并发上限" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存并发上限" })).toBeEnabled());
     expect(name).toHaveValue("Next unsaved name");
-    expect(writes).toEqual([
-      { expectedVersion: 4, name: "Updated portrait", enabled: true, adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } },
-      { expectedVersion: 5, maxConcurrent: 3 },
-    ]);
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Updated portrait", enabled: true,
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }]);
+    expect(screen.queryByText(/全局并发/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument();
   });
 
   it("keeps default actions visible and edits a capability inside its expandable row", async () => {
-    let concurrency: unknown;
     let defaultSelection: unknown;
     const settings: MediaSettings = {
       defaults: [
@@ -162,7 +143,7 @@ describe("MediaSettingsPage", () => {
           adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION",
           minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 1,
           supportedVideoInputModes: [], defaultVideoInputMode: null,
-          supportsEndFrame: false, maxConcurrent: 2,
+          supportsEndFrame: false,
           mappingSha256: "a".repeat(64), settings: { quality: "high" },
         }],
       }],
@@ -178,27 +159,18 @@ describe("MediaSettingsPage", () => {
           settings.defaults[1],
         ] });
       }),
-      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait/concurrency", async ({ request }) => {
-        concurrency = await request.json();
-        return HttpResponse.json(settings);
-      }),
     );
     mount();
     const user = userEvent.setup();
     const heading = await screen.findByRole("heading", { name: "Portrait" });
     const row = heading.closest("li");
     if (!row) throw new Error("Missing capability row");
-    expect(within(row).getByRole("spinbutton", { name: "全局并发上限" })).not.toBeVisible();
+    expect(within(row).queryByText(/全局并发/)).not.toBeInTheDocument();
     await user.click(within(row).getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(defaultSelection).toEqual({ expectedVersion: 2, capabilityId: "portrait" }));
     await waitFor(() => expect(within(row).getByRole("button", { name: "设为默认" })).toBeDisabled());
     await user.click(within(row).getByText("编辑能力参数"));
     expect(within(row).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("high");
-    const limit = within(row).getByRole("spinbutton", { name: "全局并发上限" });
-    await user.clear(limit);
-    await user.type(limit, "3");
-    await user.click(within(row).getByRole("button", { name: "保存并发上限" }));
-    await waitFor(() => expect(concurrency).toEqual({ expectedVersion: 4, maxConcurrent: 3 }));
   });
 
   it("offers a retry when media settings fail to load", async () => {
@@ -326,50 +298,6 @@ describe("MediaSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "保存连接" }));
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes[1]).toMatchObject({ expectedVersion: 1, name: "Local Comfy" });
-  });
-
-  it("keeps the capability CAS baseline after a concurrency conflict until explicit reload", async () => {
-    let settings = settingsFixture();
-    const writes: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait/concurrency", async ({ request }) => {
-        writes.push(await request.json());
-        if (writes.length === 1) {
-          settings = settingsFixture({}, { version: 5, name: "Remote portrait", maxConcurrent: 6 });
-          return HttpResponse.json({ title: "冲突", detail: "版本过期", code: "MEDIA_CAPABILITY_CONFLICT", status: 409 }, {
-            status: 409, headers: { "Content-Type": "application/problem+json" },
-          });
-        }
-        settings = settingsFixture({}, { version: 6, name: "Remote portrait", maxConcurrent: 6 });
-        return HttpResponse.json(settings);
-      }),
-    );
-    mount();
-    const user = userEvent.setup();
-    await user.click(await screen.findByText("编辑能力参数"));
-    const name = screen.getByRole("textbox", { name: "能力名称" });
-    const limit = screen.getByRole("spinbutton", { name: "全局并发上限" });
-    await user.clear(name);
-    await user.type(name, "Unsaved portrait");
-    await user.clear(limit);
-    await user.type(limit, "3");
-    await user.click(screen.getByRole("button", { name: "保存并发上限" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("版本过期");
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存并发上限" })).toBeDisabled());
-    expect(writes).toEqual([{ expectedVersion: 4, maxConcurrent: 3 }]);
-    expect(name).toHaveValue("Unsaved portrait");
-    expect(limit).toHaveValue(3);
-    expect(screen.getByRole("button", { name: "保存能力" })).toBeDisabled();
-    await user.click(await screen.findByRole("button", { name: "载入最新版本" }));
-    expect(name).toHaveValue("Remote portrait");
-    expect(limit).toHaveValue(6);
-    await user.click(screen.getByRole("button", { name: "保存并发上限" }));
-    await waitFor(() => expect(writes).toEqual([
-      { expectedVersion: 4, maxConcurrent: 3 }, { expectedVersion: 5, maxConcurrent: 6 },
-    ]));
   });
 
   it("publishes fixed ComfyUI video model filenames from the settings form", async () => {

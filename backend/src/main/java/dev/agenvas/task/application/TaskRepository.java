@@ -107,10 +107,10 @@ public interface TaskRepository {
     /** 仅认领 Mock 图片适配器能处理的到期图片任务。 */
     List<Task> claimDueImages(String workerId, int limit, Instant now, Instant leaseUntil);
 
-    /** 经数据库持久化的单外部任务槽位串行化 ComfyUI 图片认领。 */
+    /** 认领一个旧版 ComfyUI 图片任务，不附加跨任务容量门禁。 */
     List<Task> claimDueComfyImage(String workerId, Instant now, Instant leaseUntil);
 
-    /** ComfyUI 视频与图片提交共用同一个持久化槽位。 */
+    /** 认领一个旧版 ComfyUI 视频任务，不与图片任务共享容量槽。 */
     List<Task> claimDueComfyVideo(String workerId, Instant now, Instant leaseUntil);
 
     /** 只认领已批准且当前视频适配器可处理的任务。 */

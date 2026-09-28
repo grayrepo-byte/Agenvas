@@ -6,7 +6,6 @@ import static dev.agenvas.db.Tables.MEDIA_CAPABILITY_VERSION;
 import static dev.agenvas.db.Tables.MEDIA_PROVIDER_CONNECTION;
 import static dev.agenvas.db.Tables.PROJECT;
 import static dev.agenvas.db.Tables.PROVIDER_ATTEMPT;
-import static dev.agenvas.db.Tables.PROVIDER_DISPATCH_GATE;
 import static dev.agenvas.db.Tables.TASK;
 import static dev.agenvas.db.Tables.TASK_ARTIFACT_TARGET;
 import static dev.agenvas.db.Tables.TASK_DEPENDENCY;
@@ -48,14 +47,6 @@ import tools.jackson.databind.ObjectMapper;
 /** PostgreSQL 任务队列实现；使用短事务 SKIP LOCKED 认领和 lease_epoch 隔离旧 Worker。 */
 @Repository
 public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation {
-
-    private static final int DEFAULT_PROJECT_MEDIA_CAPACITY = 3;
-
-    /** 全局派发门禁是单行表，1 是唯一存在的门禁行。 */
-    private static final short PROVIDER_DISPATCH_GATE_ID = 1;
-
-    /** ComfyUI 适配器前缀；数据库用 LIKE 前缀匹配，Java 侧复用同一前缀做 startsWith。 */
-    private static final String COMFY_ADAPTER_PREFIX = "COMFY_";
 
     /** 人工替代审计行固定写入的确认码，与数据库约束的取值一致。 */
     private static final String CONFIRMATION_CODE_ACCEPT_POSSIBLE_DUPLICATE_COST =
@@ -457,55 +448,15 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         long ahead = dsl.selectCount()
                 .from(queued)
                 .join(current).on(current.ID.eq(taskId))
-                .where(queued.PROJECT_ID.eq(task.projectId()))
-                .and(queued.STATUS.eq(Task.Status.READY.name()))
+                .where(queued.STATUS.eq(Task.Status.READY.name()))
                 .and(queued.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
+                .and(queued.CAPABILITY_ID.isNotNull())
                 .and(DSL.row(queued.NEXT_ACTION_AT, queued.CREATED_AT, queued.ID)
                         .lt(DSL.row(current.NEXT_ACTION_AT, current.CREATED_AT, current.ID)))
                 .fetchSingle().value1().longValue();
-        var limits = dsl.select(TASK.CAPABILITY_ID, MEDIA_CAPABILITY.MAX_CONCURRENT,
-                        MEDIA_CAPABILITY_VERSION.ADAPTER_ID)
-                .from(TASK)
-                .join(MEDIA_CAPABILITY).on(MEDIA_CAPABILITY.ID.eq(TASK.CAPABILITY_ID))
-                .join(MEDIA_CAPABILITY_VERSION)
-                    .on(MEDIA_CAPABILITY_VERSION.CAPABILITY_ID.eq(TASK.CAPABILITY_ID)
-                        .and(MEDIA_CAPABILITY_VERSION.VERSION.eq(TASK.CAPABILITY_VERSION)))
-                .where(TASK.ID.eq(taskId))
-                .fetchSingle(record -> new QueueLimits(
-                        record.get(TASK.CAPABILITY_ID),
-                        record.get(MEDIA_CAPABILITY.MAX_CONCURRENT),
-                        record.get(MEDIA_CAPABILITY_VERSION.ADAPTER_ID)));
-        var active = TASK.as("active");
-        long projectOccupied = occupiedCount(active,
-                active.PROJECT_ID.eq(task.projectId()));
-        long capabilityOccupied = occupiedCount(active,
-                active.CAPABILITY_ID.eq(limits.capabilityId()));
-        long comfyOccupied = dsl.selectCount()
-                .from(active)
-                .join(MEDIA_CAPABILITY_VERSION)
-                    .on(MEDIA_CAPABILITY_VERSION.CAPABILITY_ID.eq(active.CAPABILITY_ID)
-                        .and(MEDIA_CAPABILITY_VERSION.VERSION.eq(active.CAPABILITY_VERSION)))
-                .where(MEDIA_CAPABILITY_VERSION.ADAPTER_ID
-                        .like(COMFY_ADAPTER_PREFIX + "%"))
-                .and(occupiedMedia(active))
-                .fetchSingle().value1().longValue();
-        String reason = projectOccupied >= DEFAULT_PROJECT_MEDIA_CAPACITY
-                ? "PROJECT_CAPACITY" : capabilityOccupied >= limits.maxConcurrent()
-                ? "CAPABILITY_CAPACITY" : limits.adapterId().startsWith(COMFY_ADAPTER_PREFIX)
-                && comfyOccupied > 0 ? "COMFY_SINGLE_SLOT" : "WAITING_WORKER";
-        return new QueueStatus(ahead, reason);
+        return new QueueStatus(ahead, "WAITING_WORKER");
     }
-
-    private long occupiedCount(dev.agenvas.db.tables.Task active, Condition scope) {
-        return dsl.selectCount()
-                .from(active)
-                .where(scope)
-                .and(occupiedMedia(active))
-                .fetchSingle().value1().longValue();
-    }
-
-    private record QueueLimits(UUID capabilityId, int maxConcurrent, String adapterId) {}
 
     @Override
     public boolean cancelQueuedDirect(UUID projectId, UUID taskId, Instant now) {
@@ -598,73 +549,10 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     @Override
     public List<Task> claimDueBoundMedia(String workerId, int limit, Instant now,
             Instant leaseUntil) {
-        // The same database gate coordinates fixed ComfyUI requests across app instances.
-        dsl.select(PROVIDER_DISPATCH_GATE.ID)
-                .from(PROVIDER_DISPATCH_GATE)
-                .where(PROVIDER_DISPATCH_GATE.ID.eq(PROVIDER_DISPATCH_GATE_ID))
-                .forUpdate()
-                .fetchSingle();
-        var active = TASK.as("active");
-        var capability = MEDIA_CAPABILITY.as("c");
-        var capabilityVersion = MEDIA_CAPABILITY_VERSION.as("av");
-        var activeCapabilityVersion = MEDIA_CAPABILITY_VERSION.as("active_av");
-        Field<Integer> projectOccupied = DSL.field(DSL.selectCount()
-                .from(active)
-                .where(active.PROJECT_ID.eq(TASK.PROJECT_ID))
-                .and(occupiedMedia(active)));
-        Field<Integer> capabilityOccupied = DSL.field(DSL.selectCount()
-                .from(active)
-                .where(active.CAPABILITY_ID.eq(TASK.CAPABILITY_ID))
-                .and(occupiedMedia(active)));
-        Field<Integer> maxConcurrent = DSL.field(DSL.select(capability.MAX_CONCURRENT)
-                .from(capability)
-                .where(capability.ID.eq(TASK.CAPABILITY_ID)));
         return claimDueKind(workerId, limit, now, leaseUntil, null,
                 TASK.CAPABILITY_ID.isNotNull()
                         .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
-                                Task.Kind.VIDEO_GENERATION.name()))
-                        .and(projectOccupied.lt(DEFAULT_PROJECT_MEDIA_CAPACITY))
-                        .and(capabilityOccupied.lt(maxConcurrent))
-                        .and(DSL.notExists(DSL.selectOne()
-                                        .from(capabilityVersion)
-                                        .where(capabilityVersion.CAPABILITY_ID
-                                                .eq(TASK.CAPABILITY_ID))
-                                        .and(capabilityVersion.VERSION
-                                                .eq(TASK.CAPABILITY_VERSION))
-                                        .and(capabilityVersion.ADAPTER_ID
-                                                .like(COMFY_ADAPTER_PREFIX + "%")))
-                                .or(DSL.notExists(DSL.selectOne()
-                                        .from(active)
-                                        .join(activeCapabilityVersion)
-                                            .on(activeCapabilityVersion.CAPABILITY_ID
-                                                    .eq(active.CAPABILITY_ID)
-                                                .and(activeCapabilityVersion.VERSION
-                                                        .eq(active.CAPABILITY_VERSION)))
-                                        .where(activeCapabilityVersion.ADAPTER_ID
-                                                .like(COMFY_ADAPTER_PREFIX + "%"))
-                                        .and(occupiedMedia(active))))));
-    }
-
-    /**
-     * 活动媒体任务的占用条件：提交中、等待外部结果、未确认和已受理的阻断任务都占用名额。
-     * UNKNOWN 一旦被人工重试取代就让出名额给替代任务，否则原任务会永久阻塞该项目与能力。
-     *
-     * @param active 已按 {@code active} 别名引用的 task 表；用全限定类型名避免与领域 Task 冲突
-     */
-    private static Condition occupiedMedia(dev.agenvas.db.tables.Task active) {
-        return active.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
-                        Task.Kind.VIDEO_GENERATION.name())
-                .and(DSL.or(active.STATUS.in(Task.Status.SUBMITTING.name(),
-                                        Task.Status.WAITING_PROVIDER.name()),
-                        active.STATUS.eq(Task.Status.UNKNOWN.name())
-                                .and(DSL.notExists(DSL.selectOne()
-                                        .from(TASK_MANUAL_REPLACEMENT)
-                                        .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID
-                                                .eq(active.ID)))),
-                        active.STATUS.eq(Task.Status.RUNNING.name())
-                                .and(active.LEASE_UNTIL.gt(DSL.currentOffsetDateTime())),
-                        active.STATUS.eq(Task.Status.BLOCKED.name())
-                                .and(active.PROVIDER_REQUEST_ID.isNotNull())));
+                                Task.Kind.VIDEO_GENERATION.name())));
     }
 
     @Override
@@ -682,50 +570,21 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 Task.Kind.IMAGE_GENERATION, TASK.CAPABILITY_ID.isNull());
     }
 
-    /** 通过数据库单槽门禁认领一个 ComfyUI 图片任务。 */
+    /** 认领一个旧版 ComfyUI 图片任务；不同 Worker 之间不设全局容量门禁。 */
     @Override
     public List<Task> claimDueComfyImage(String workerId, Instant now, Instant leaseUntil) {
         return claimDueComfy(workerId, now, leaseUntil, Task.Kind.IMAGE_GENERATION);
     }
 
-    /** 通过与图片共用的数据库单槽门禁认领一个 ComfyUI 视频任务。 */
+    /** 认领一个旧版 ComfyUI 视频任务；不同 Worker 之间不共享提交槽。 */
     @Override
     public List<Task> claimDueComfyVideo(String workerId, Instant now, Instant leaseUntil) {
         return claimDueComfy(workerId, now, leaseUntil, Task.Kind.VIDEO_GENERATION);
     }
 
-    /**
-     * 锁定全局派发门禁；任一 ComfyUI 请求仍活动或未被取代的 UNKNOWN 时不提交新请求。
-     * 这里比 {@link #occupiedMedia} 更保守（已受理的 RUNNING 也计入），但“已被替代的
-     * UNKNOWN 不占名额”这条规则必须与它保持一致，否则重试后的替代任务会被原任务永久阻塞。
-     */
     private List<Task> claimDueComfy(String workerId, Instant now, Instant leaseUntil,
             Task.Kind kind) {
-        dsl.select(PROVIDER_DISPATCH_GATE.ID)
-                .from(PROVIDER_DISPATCH_GATE)
-                .where(PROVIDER_DISPATCH_GATE.ID.eq(PROVIDER_DISPATCH_GATE_ID))
-                .forUpdate()
-                .fetchSingle();
-        long occupied = dsl.selectCount()
-                .from(TASK)
-                .where(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
-                        Task.Kind.VIDEO_GENERATION.name()))
-                .and(DSL.or(TASK.STATUS.in(Task.Status.SUBMITTING.name(),
-                                Task.Status.WAITING_PROVIDER.name()),
-                        TASK.STATUS.eq(Task.Status.UNKNOWN.name())
-                                .and(DSL.notExists(DSL.selectOne()
-                                        .from(TASK_MANUAL_REPLACEMENT)
-                                        .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID
-                                                .eq(TASK.ID)))),
-                        TASK.STATUS.eq(Task.Status.BLOCKED.name())
-                                .and(TASK.PROVIDER_REQUEST_ID.isNotNull()),
-                        TASK.STATUS.eq(Task.Status.RUNNING.name())
-                                .and(TASK.PROVIDER_REQUEST_ID.isNotNull()
-                                        .or(TASK.LEASE_UNTIL.gt(utc(now))))))
-                .fetchSingle().value1().longValue();
-        return occupied == 0
-                ? claimDueKind(workerId, 1, now, leaseUntil, kind, TASK.CAPABILITY_ID.isNull())
-                : List.of();
+        return claimDueKind(workerId, 1, now, leaseUntil, kind, TASK.CAPABILITY_ID.isNull());
     }
 
     /** 只认领到期视频任务，避免 Mock 图片路径误消费视频。 */

@@ -106,11 +106,6 @@ public class MediaCapability extends TableImpl<MediaCapabilityRecord> {
      */
     public final TableField<MediaCapabilityRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
 
-    /**
-     * The column <code>public.media_capability.max_concurrent</code>.
-     */
-    public final TableField<MediaCapabilityRecord, Integer> MAX_CONCURRENT = createField(DSL.name("max_concurrent"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("3"), SQLDataType.INTEGER)), this, "");
-
     private MediaCapability(Name alias, Table<MediaCapabilityRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -286,7 +281,6 @@ public class MediaCapability extends TableImpl<MediaCapabilityRecord> {
     @Override
     public List<Check<MediaCapabilityRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_media_capability_max_concurrent"), "(((max_concurrent >= 1) AND (max_concurrent <= 100)))", true),
             Internal.createCheck(this, DSL.name("media_capability_current_version_check"), "((current_version > 0))", true),
             Internal.createCheck(this, DSL.name("media_capability_name_check"), "((length(btrim((name)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("media_capability_version_check"), "((version >= 0))", true)

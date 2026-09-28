@@ -40,9 +40,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.imageio.ImageIO;
 import org.jooq.DSLContext;
@@ -61,7 +58,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Fake-server and real-PostgreSQL contract: approval precedes one prompt and saved-id polling. */
+/** Fake-server and real-PostgreSQL contract: approved prompts may overlap and poll saved ids. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
@@ -172,19 +169,7 @@ class ComfyUiImagePostgresIT {
         Task queuedSecond = directMedia.run(owner.userId(), project.id(),
                 secondCard.artifact().id(), secondItemId,
                 plainDraft.version(), "comfy-second-run");
-        CountDownLatch start = new CountDownLatch(1);
-        try (var pool = Executors.newFixedThreadPool(2)) {
-            Future<Integer> first = pool.submit(() -> {
-                start.await();
-                return mediaWorker.submitOnce("comfy-submitter-1");
-            });
-            Future<Integer> competing = pool.submit(() -> {
-                start.await();
-                return mediaWorker.submitOnce("comfy-submitter-2");
-            });
-            start.countDown();
-            assertThat(first.get() + competing.get()).isEqualTo(1);
-        }
+        assertThat(mediaWorker.submitOnce("comfy-submitter-1")).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(1);
         JsonNode graph = SUBMITTED_GRAPH.get();
         assertThat(graph.path("1").path("inputs").path("image").asText())
@@ -206,9 +191,11 @@ class ComfyUiImagePostgresIT {
                 .param("id", approved.id()).query(String.class).single())
                 .isEqualTo(client.originSha256());
         assertThat(clientRegistry.forOriginal(1, client.originSha256())).contains(client);
-        assertThat(mediaWorker.submitOnce("other-app-instance")).isZero();
+        // The first ComfyUI request is still active, but it is not a global product slot.
+        assertThat(mediaWorker.submitOnce("other-app-instance")).isEqualTo(1);
+        assertThat(SUBMISSIONS).hasValue(2);
         assertThat(tasks.get(owner.userId(), project.id(), queuedSecond.id()).status())
-                .isEqualTo(Task.Status.READY);
+                .isEqualTo(Task.Status.WAITING_PROVIDER);
         due(approved.id());
         assertThat(mediaWorker.pollOnce("comfy-poller")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), approved.id()).status())
@@ -222,7 +209,7 @@ class ComfyUiImagePostgresIT {
         assertThat(jdbc.sql("select failure_count from task_provider_poll_retry where task_id = :id")
                 .param("id", approved.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(DOWNLOADS).hasValue(1);
-        assertThat(SUBMISSIONS).hasValue(1);
+        assertThat(SUBMISSIONS).hasValue(2);
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
         due(approved.id());
@@ -233,17 +220,14 @@ class ComfyUiImagePostgresIT {
         assertThat(complete.output().path("selected").booleanValue()).isTrue();
         assertThat(QUERIES).hasValue(3);
         assertThat(DOWNLOADS).hasValue(2);
-        assertThat(SUBMISSIONS).hasValue(1);
+        assertThat(SUBMISSIONS).hasValue(2);
         assertThat(jdbc.sql("select count(*) from task_provider_poll_retry where task_id = :id")
                 .param("id", approved.id()).query(Integer.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(2);
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
                 .param("id", approved.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(mediaWorker.submitOnce("other-app-instance")).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(2);
-        assertThat(SUBMITTED_GRAPH.get().path("6").path("inputs")
-                .path("denoise").doubleValue()).isEqualTo(1.0);
         due(queuedSecond.id());
         ComfyUiClient differentOrigin = new ComfyUiClient(
                 new ComfyUiProperties("http://127.0.0.1:65534"), mapper);

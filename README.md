@@ -124,6 +124,6 @@ docs/           MVP 规格、依赖基线与开发验收清单
 - 已实现单管理员身份闭环，但尚未提供账户找回、多管理员或团队能力。
 - 已有 Run 创建、读取和取消 API，受控模型回合、工具账本、后台模型回合调度、只读运行历史，以及图片/视频计划的审批。默认 Mock LLM 可推进三镜头、图片审批、关键帧选择及视频审批，批准后的 Mock 图片和视频由后台 Worker 归档。可修订单个镜头并将共享场景新版本仅重绑该镜头，基于新镜头发起限定范围的 Mock Run，重新经历图片与视频审批。另有项目级无声顺序 MP4 导出、私有下载与脱敏项目 JSON/素材元数据清单；图片/视频 Task 已记录未定价用量的预留和唯一结算。ComfyUI 生图与图生视频候选模板已接入审批 Task、原请求核对与归档，并由假 HTTP 服务＋PostgreSQL 测试；真实模型/模板兼容、完整用量结算和发布门禁尚未完成。
 - 没有真实 LLM/ComfyUI/GPT Image 2/Seedance/Nano Banana 2 调用；Spring AI 聊天适配器及固定媒体适配器只经假 HTTP 端点验证协议，本地 FFmpeg 仅用于演示视频编码及媒体验证，这些都不能证明真实模型 Provider 已接通。
-- Flyway V1–V35 覆盖身份、项目、产物版本、画布、Agent/Run/Task、事件、工具账本、执行计划/审批、镜头关键帧选择、Provider 明确拒绝记录、私有 Asset/缩略图与视频时长、项目级导出任务、ComfyUI 持久单槽调度与历史地址版本、Provider 核对重试账本、媒体用量账本、版本化加密 LLM 配置、UNKNOWN 原请求核对标识、导出提案及只读任务队列统计索引；迁移仍只增不改。V35 前的视频 Asset 未自动回填时长，需重新归档后才能提交新的顺序导出。详见 `backend/src/main/resources/db/migration/`。
+- Flyway 已推进到 V56，覆盖当前画布、资源、直接生成、Provider 配置与任务恢复模型；V56 删除媒体能力并发字段和旧 ComfyUI 全局单槽表。迁移仍只增不改，详见 `backend/src/main/resources/db/migration/`。
 
 项目目标许可为 Apache-2.0；正式许可证、NOTICE 与第三方/模型许可证清单在 M6/T30 发布门禁完成前仍属于待办事项。安全报告边界见 [SECURITY.md](SECURITY.md)，当前支持范围与升级限制见 [0.1.0 发行说明草案](docs/release-notes/0.1.0-mvp-draft.md)。

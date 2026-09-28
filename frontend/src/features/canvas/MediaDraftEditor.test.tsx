@@ -28,7 +28,7 @@ const imageCapability: MediaCapability = {
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0,
   maximumSeconds: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
   defaultVideoInputMode: null, supportsEndFrame: false,
-  maxConcurrent: 2, mappingSha256: "a".repeat(64), settings: { quality: "high" },
+  mappingSha256: "a".repeat(64), settings: { quality: "high" },
 };
 const videoCapability: MediaCapability = {
   ...imageCapability, id: "video-capability", name: "镜头视频", adapterId: "ARK_SEEDANCE_2_I2V",
@@ -75,7 +75,7 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
     }),
     http.get(`${BASE}/run`, () => HttpResponse.json(tasks)),
     http.get(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/queue`, () =>
-      HttpResponse.json({ waitingAhead: 2, reason: "PROJECT_CAPACITY" })),
+      HttpResponse.json({ waitingAhead: 2, reason: "WAITING_WORKER" })),
     http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [] })),
     http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [] })),
   );
@@ -520,7 +520,7 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(invalidation).toHaveBeenCalledWith({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] }));
     expect(invalidation).toHaveBeenCalledWith({ queryKey: ["snapshot", PROJECT_ID] });
     expect(invalidation).toHaveBeenCalledWith({ queryKey: ["canvas", PROJECT_ID] });
-    expect(await screen.findByText(/前方 2 项/)).toHaveTextContent("项目并发已满");
+    expect(await screen.findByText(/前方 2 项/)).toHaveTextContent("等待执行器");
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 

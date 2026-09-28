@@ -28,8 +28,7 @@ const INPUT_COLORS = [
   "#D98BD9", "#E56B3F", "#4DB6E5", "#B8D84A", "#8C7AE6", "#E7A93D", "#4FC38D",
 ] as const;
 const QUEUE_LABELS = {
-  PROJECT_CAPACITY: "项目并发已满", CAPABILITY_CAPACITY: "能力并发已满",
-  COMFY_SINGLE_SLOT: "ComfyUI 正在处理其他任务", WAITING_WORKER: "等待执行器", NOT_QUEUED: "未排队",
+  WAITING_WORKER: "等待执行器", NOT_QUEUED: "未排队",
 } as const;
 const FIXED_MODELS: Readonly<Record<string, string>> = {
   OPENAI_GPT_IMAGE_2: "gpt-image-2", GOOGLE_NANO_BANANA_2: "gemini-3.1-flash-image",

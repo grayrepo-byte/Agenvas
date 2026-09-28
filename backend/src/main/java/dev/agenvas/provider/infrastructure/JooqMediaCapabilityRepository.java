@@ -197,24 +197,6 @@ public class JooqMediaCapabilityRepository {
                 .fetchOptional(this::mapCapability);
     }
 
-    public int maxConcurrent(UUID capabilityId) {
-        return dsl.select(MEDIA_CAPABILITY.MAX_CONCURRENT)
-                .from(MEDIA_CAPABILITY)
-                .where(MEDIA_CAPABILITY.ID.eq(capabilityId))
-                .fetchSingle(MEDIA_CAPABILITY.MAX_CONCURRENT);
-    }
-
-    public boolean updateMaxConcurrent(UUID capabilityId, long expectedVersion,
-            int maxConcurrent, Instant now) {
-        return dsl.update(MEDIA_CAPABILITY)
-                .set(MEDIA_CAPABILITY.MAX_CONCURRENT, maxConcurrent)
-                .set(MEDIA_CAPABILITY.VERSION, MEDIA_CAPABILITY.VERSION.plus(1))
-                .set(MEDIA_CAPABILITY.UPDATED_AT, atUtc(now))
-                .where(MEDIA_CAPABILITY.ID.eq(capabilityId))
-                .and(MEDIA_CAPABILITY.VERSION.eq(expectedVersion))
-                .execute() == 1;
-    }
-
     public List<Capability> capabilities(UUID connectionId) {
         return dsl.selectFrom(MEDIA_CAPABILITY)
                 .where(MEDIA_CAPABILITY.CONNECTION_ID.eq(connectionId))

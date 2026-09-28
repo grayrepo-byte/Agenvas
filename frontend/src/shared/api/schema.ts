@@ -273,26 +273,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}/concurrency": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connectionId: string;
-                capabilityId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /** 管理员按能力版本设置全局媒体并发上限 */
-        put: operations["updateMediaCapabilityConcurrency"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings/media-defaults/{kind}": {
         parameters: {
             query?: never;
@@ -1269,7 +1249,6 @@ export interface components {
             supportedVideoInputModes: components["schemas"]["VideoInputMode"][];
             defaultVideoInputMode: components["schemas"]["VideoInputMode"] | null;
             supportsEndFrame: boolean;
-            maxConcurrent: number;
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
@@ -1320,11 +1299,6 @@ export interface components {
             enabled: boolean;
             adapterId: string;
             settings?: components["schemas"]["FixedMediaAdapterSettings"];
-        };
-        UpdateMediaConcurrencyRequest: {
-            /** Format: int64 */
-            expectedVersion: number;
-            maxConcurrent: number;
         };
         SetMediaDefaultRequest: {
             /** Format: int64 */
@@ -1686,7 +1660,7 @@ export interface components {
             /** Format: int64 */
             waitingAhead: number;
             /** @enum {string} */
-            reason: "NOT_QUEUED" | "WAITING_WORKER" | "PROJECT_CAPACITY" | "CAPABILITY_CAPACITY" | "COMFY_SINGLE_SLOT";
+            reason: "NOT_QUEUED" | "WAITING_WORKER";
         };
         MediaDraft: {
             /** Format: uuid */
@@ -2986,37 +2960,6 @@ export interface operations {
                     "application/json": components["schemas"]["MediaSettings"];
                 };
             };
-            401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["Forbidden"];
-            409: components["responses"]["Conflict"];
-        };
-    };
-    updateMediaCapabilityConcurrency: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connectionId: string;
-                capabilityId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateMediaConcurrencyRequest"];
-            };
-        };
-        responses: {
-            /** @description 更新后的脱敏配置 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaSettings"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];

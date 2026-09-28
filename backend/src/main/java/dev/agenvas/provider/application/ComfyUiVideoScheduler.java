@@ -38,7 +38,7 @@ public class ComfyUiVideoScheduler {
         this.importer = importer;
     }
 
-    /** 先查询已保存请求，再尝试占用共享提交槽处理新的已批准任务。 */
+    /** 先查询已保存请求，再尝试认领一个新的已批准任务。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
         if (!importer.ready()) return;

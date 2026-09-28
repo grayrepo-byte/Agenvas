@@ -372,35 +372,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}/concurrency:
-    parameters:
-      - name: connectionId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: capabilityId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    put:
-      operationId: updateMediaCapabilityConcurrency
-      summary: 管理员按能力版本设置全局媒体并发上限
-      tags: [Settings]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/UpdateMediaConcurrencyRequest"}
-      responses:
-        "200":
-          description: 更新后的脱敏配置
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/MediaSettings"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/media-defaults/{kind}:
     parameters:
       - name: kind
@@ -1676,7 +1647,7 @@ components:
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
         minimumSeconds, maximumSeconds, maxReferenceImages, supportedVideoInputModes,
-        defaultVideoInputMode, supportsEndFrame, maxConcurrent, mappingSha256, settings]
+        defaultVideoInputMode, supportsEndFrame, mappingSha256, settings]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -1697,7 +1668,6 @@ components:
             - {$ref: "#/components/schemas/VideoInputMode"}
             - {type: "null"}
         supportsEndFrame: {type: boolean}
-        maxConcurrent: {type: integer, minimum: 1, maximum: 100}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     FixedMediaAdapterSettings:
@@ -1756,13 +1726,6 @@ components:
         enabled: {type: boolean}
         adapterId: {type: string, minLength: 1, maxLength: 80}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
-    UpdateMediaConcurrencyRequest:
-      type: object
-      additionalProperties: false
-      required: [expectedVersion, maxConcurrent]
-      properties:
-        expectedVersion: {type: integer, format: int64, minimum: 0}
-        maxConcurrent: {type: integer, minimum: 1, maximum: 100}
     SetMediaDefaultRequest:
       type: object
       additionalProperties: false
@@ -2211,8 +2174,7 @@ components:
         waitingAhead: {type: integer, format: int64, minimum: 0}
         reason:
           type: string
-          enum: [NOT_QUEUED, WAITING_WORKER, PROJECT_CAPACITY,
-            CAPABILITY_CAPACITY, COMFY_SINGLE_SLOT]
+          enum: [NOT_QUEUED, WAITING_WORKER]
     MediaDraft:
       type: object
       additionalProperties: false

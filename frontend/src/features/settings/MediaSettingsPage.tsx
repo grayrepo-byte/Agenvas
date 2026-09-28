@@ -4,7 +4,7 @@ import { ImageSquare, PlugsConnected, Plus, SlidersHorizontal, VideoCamera } fro
 import { Link, Navigate } from "react-router";
 import {
   ApiError, createMediaCapability, createMediaConnection, getCurrentUser,
-  getMediaSettings, setMediaDefault, updateMediaCapability, updateMediaConcurrency,
+  getMediaSettings, setMediaDefault, updateMediaCapability,
   updateMediaConnection,
   type MediaCapability, type MediaConnection, type MediaSettings,
 } from "../../shared/api/client";
@@ -16,8 +16,6 @@ import "./MediaSettingsPage.css";
 const settingsKey = ["settings", "media"] as const;
 const NAME_LIMIT = 160;
 const ORIGIN_LIMIT = 500;
-const MIN_CONCURRENT = 1;
-const MAX_CONCURRENT = 100;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_FORBIDDEN = 403;
 const HTTP_CONFLICT = 409;
@@ -151,7 +149,6 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
   const [name, setName] = useState(capability.name);
   const [adapterId, setAdapterId] = useState(capability.adapterId);
   const [modelNames, setModelNames] = useState<Record<string, string>>(capability.settings);
-  const [maxConcurrent, setMaxConcurrent] = useState(capability.maxConcurrent);
   const [error, setError] = useState("");
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
@@ -177,33 +174,13 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
       setError(errorMessage(cause));
     },
   });
-  const saveConcurrency = useMutation({
-    mutationFn: () => updateMediaConcurrency(connectionId, capability.id,
-      { expectedVersion: baseline.version, maxConcurrent }),
-    onSuccess: (result) => {
-      const saved = result.connections.find((item) => item.id === connectionId)
-        ?.capabilities.find((item) => item.id === capability.id);
-      if (saved) {
-        acceptBaseline(saved);
-        setMaxConcurrent(saved.maxConcurrent);
-      }
-      apply(result); setError("");
-    },
-    onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
-        void queryClient.invalidateQueries({ queryKey: settingsKey });
-      }
-      setError(errorMessage(cause));
-    },
-  });
   const sameKindAdapters = availableAdapters.filter((id) => adapterKind[id] === capability.kind);
-  const rowBusy = busy || save.isPending || saveConcurrency.isPending;
+  const rowBusy = busy || save.isPending;
   function loadLatest() {
     acceptBaseline(capability);
     setName(capability.name);
     setAdapterId(capability.adapterId);
     setModelNames(capability.settings);
-    setMaxConcurrent(capability.maxConcurrent);
     setError("");
   }
   const CapabilityIcon = capability.kind === "IMAGE_GENERATION" ? ImageSquare : VideoCamera;
@@ -219,8 +196,7 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
           </StatusBadge>
         </div>
         <p className="ui-muted">{capability.kind === "IMAGE_GENERATION" ? "图片" : "视频"} · {capability.adapterId} · v{capability.capabilityVersion}</p>
-        <p className="ui-muted">全局并发 {capability.maxConcurrent}
-          {capability.kind === "VIDEO_GENERATION" ? ` · ${capability.minimumSeconds}–${capability.maximumSeconds} 秒` : ""}
+        <p className="ui-muted">{capability.kind === "VIDEO_GENERATION" ? `${capability.minimumSeconds}–${capability.maximumSeconds} 秒` : "按执行器可用容量调度"}
           {capability.settings.quality ? ` · ${capability.settings.quality}` : ""}
         </p>
       </div>
@@ -256,22 +232,9 @@ function CapabilityRow({ connectionId, capability, isDefault, connectionEnabled,
             </button>
           </div>
         </form>
-        <form className="media-concurrency-form" onSubmit={(event) => {
-          event.preventDefault();
-          if (isStale || rowBusy) return;
-          setError(""); saveConcurrency.mutate();
-        }}>
-          <label className="ui-field">全局并发上限
-            <input type="number" min={MIN_CONCURRENT} max={MAX_CONCURRENT} value={maxConcurrent}
-              disabled={rowBusy} onChange={(event) => setMaxConcurrent(Number(event.target.value))} />
-          </label>
-          <button className="secondary-button" type="submit" disabled={rowBusy || isStale}>
-            {saveConcurrency.isPending ? "正在保存…" : "保存并发上限"}
-          </button>
-        </form>
       </div>
     </details>
-    {isStale ? <ConfigurationUpdatedNotice scope="能力参数与并发上限" disabled={rowBusy} onReload={loadLatest} /> : null}
+    {isStale ? <ConfigurationUpdatedNotice scope="能力参数" disabled={rowBusy} onReload={loadLatest} /> : null}
     {error ? <Notice tone="danger">{error}</Notice> : null}
   </li>;
 }

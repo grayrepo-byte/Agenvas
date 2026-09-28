@@ -54,8 +54,6 @@
 .media-settings-details summary:hover { background: #202020; color: #ededed; }
 .media-settings-details summary:focus-visible { outline: 2px solid #ff1ba6; outline-offset: -2px; }
 .media-settings-details-body { padding: 16px; border-top: 1px solid #2d2d2d; }
-.media-concurrency-form { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; border-top: 1px solid #2d2d2d; padding-top: 16px; }
-.media-concurrency-form .ui-field { max-width: 200px; }
 .media-capability-row > .ui-notice { margin: 12px; }
 .media-publish-form { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; }
 .media-capability-empty { font-size: 13px; margin: 14px 0; }

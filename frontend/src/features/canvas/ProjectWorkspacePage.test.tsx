@@ -69,7 +69,7 @@ describe("ProjectWorkspacePage", () => {
           capabilities: [{ id: "mock-image", name: "Mock 图片", enabled: true,
             version: 0, capabilityVersion: 1, adapterId: "MOCK_IMAGE",
             kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
-            maxConcurrent: 2, mappingSha256: "a".repeat(64), settings: {} }] }],
+            mappingSha256: "a".repeat(64), settings: {} }] }],
         defaults: [{ kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 0 }],
       })),
       http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({ items: [], nextCursor: null })),

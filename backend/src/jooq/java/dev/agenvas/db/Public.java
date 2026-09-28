@@ -38,7 +38,6 @@ import dev.agenvas.db.tables.MediaProviderConnectionVersion;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
-import dev.agenvas.db.tables.ProviderDispatchGate;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
 import dev.agenvas.db.tables.Task;
@@ -257,12 +256,6 @@ public class Public extends SchemaImpl {
     public final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
 
     /**
-     * Serializes the one-slot ComfyUI task claim; active submitted Tasks remain
-     * in task.
-     */
-    public final ProviderDispatchGate PROVIDER_DISPATCH_GATE = ProviderDispatchGate.PROVIDER_DISPATCH_GATE;
-
-    /**
      * The table <code>public.spring_session</code>.
      */
     public final SpringSession SPRING_SESSION = SpringSession.SPRING_SESSION;
@@ -369,7 +362,6 @@ public class Public extends SchemaImpl {
             Project.PROJECT,
             ProjectEvent.PROJECT_EVENT,
             ProviderAttempt.PROVIDER_ATTEMPT,
-            ProviderDispatchGate.PROVIDER_DISPATCH_GATE,
             SpringSession.SPRING_SESSION,
             SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES,
             Task.TASK,

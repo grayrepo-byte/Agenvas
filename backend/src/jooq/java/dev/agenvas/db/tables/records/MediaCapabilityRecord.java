@@ -133,20 +133,6 @@ public class MediaCapabilityRecord extends UpdatableRecordImpl<MediaCapabilityRe
         return (OffsetDateTime) get(7);
     }
 
-    /**
-     * Setter for <code>public.media_capability.max_concurrent</code>.
-     */
-    public void setMaxConcurrent(Integer value) {
-        set(8, value);
-    }
-
-    /**
-     * Getter for <code>public.media_capability.max_concurrent</code>.
-     */
-    public Integer getMaxConcurrent() {
-        return (Integer) get(8);
-    }
-
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -170,7 +156,7 @@ public class MediaCapabilityRecord extends UpdatableRecordImpl<MediaCapabilityRe
     /**
      * Create a detached, initialised MediaCapabilityRecord
      */
-    public MediaCapabilityRecord(UUID id, UUID connectionId, String name, Boolean enabled, Long version, Integer currentVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, Integer maxConcurrent) {
+    public MediaCapabilityRecord(UUID id, UUID connectionId, String name, Boolean enabled, Long version, Integer currentVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
         super(MediaCapability.MEDIA_CAPABILITY);
 
         setId(id);
@@ -181,7 +167,6 @@ public class MediaCapabilityRecord extends UpdatableRecordImpl<MediaCapabilityRe
         setCurrentVersion(currentVersion);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
-        setMaxConcurrent(maxConcurrent);
         resetChangedOnNotNull();
     }
 }

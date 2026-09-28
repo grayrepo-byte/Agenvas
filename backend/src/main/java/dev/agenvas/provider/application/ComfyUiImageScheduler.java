@@ -35,7 +35,7 @@ public class ComfyUiImageScheduler {
         this.importer = importer;
     }
 
-    /** 先轮询已保存的原请求；数据库槽位确认后才允许提交新任务。 */
+    /** 先轮询已保存的原请求，再尝试认领一个新任务；不同请求没有共享容量门禁。 */
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public void tick() {
         if (!importer.ready()) return;
