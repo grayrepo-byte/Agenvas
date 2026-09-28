@@ -134,11 +134,12 @@ export function isCanvasConnectionValid(items: CanvasItem[], connection: Connect
 
 /**
  * 卡片用于接线的连接点；`null` 表示当前还接不了。Agent 接收显式输入绑定，
- * 有已选版本的媒体卡接收持久化的图片输入连线（见 [isCanvasConnectionValid]）。
+ * Artifact 卡片使用统一输入点；目标类型与来源版本由 [isCanvasConnectionValid] 统一校验。
+ * 媒体空产物没有当前版本，但仍可在草稿中接收图片输入连线。
  */
 export function canvasTargetHandleId(item: CanvasItem): "agent-input" | "artifact-input" | null {
   if (item.agent) return "agent-input";
-  return canvasItemVersionId(item) ? "artifact-input" : null;
+  return item.artifact ? "artifact-input" : null;
 }
 
 /** What a user may remove behind a projected edge, or `null` when the edge is not an editable relation. */

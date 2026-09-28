@@ -221,11 +221,12 @@ describe("canvas target handle", () => {
   it("names the single handle a card receives manual relations on", () => {
     expect(canvasTargetHandleId(agentCard())).toBe("agent-input");
     expect(canvasTargetHandleId(artifactCard("artifact-a", "version-a"))).toBe("artifact-input");
-    // 首次生成前允许当前媒体版本为空，这种卡片还不能接收引用。
+    // 首次生成前允许媒体版本为空，但草稿仍能接收图片输入连线。
     const unversioned = artifactCard("artifact-c", "version-c");
+    unversioned.artifact!.kind = "IMAGE";
     unversioned.artifact!.resourceDefaultVersionId = null as never;
     unversioned.artifact!.resourceDefaultVersion = null as never;
-    expect(canvasTargetHandleId(unversioned)).toBeNull();
+    expect(canvasTargetHandleId(unversioned)).toBe("artifact-input");
   });
 });
 

@@ -48,6 +48,12 @@ function card(id: string, kind: Artifact["kind"], title: string, versionId: stri
 const items: CanvasItem[] = [
   card("image-id", "IMAGE", "参考图", imageVersionId,
     { sourceType: "UPLOAD", assetId: "asset-id" }),
+  { id: "empty-image-id-card", subjectType: "ARTIFACT", subjectId: "empty-image-id",
+    title: "空白图片", x: 300, y: 200, width: 260, height: 150, zIndex: 0, groupId: null,
+    locked: false, selectedVersionId: null, selectedVersion: null, version: 1, agent: null,
+    artifact: { id: "empty-image-id", projectId: "project-1", kind: "IMAGE", title: "空白图片",
+      resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 1,
+      createdAt: now, updatedAt: now } },
   card("text-id", "TEXT", "文字", "22222222-2222-4222-8222-222222222222",
     { format: "PLAIN_TEXT", text: "正文" }),
   card("video-id", "VIDEO", "视频", "33333333-3333-4333-8333-333333333333",
@@ -178,6 +184,19 @@ describe("canvas connection drop target", () => {
     await waitFor(() => expect(canvasConnections).toHaveLength(1));
     expect(canvasConnections[0]).toMatchObject({
       sourceCanvasItemId: "image-id-card", targetCanvasItemId: "video-id-card",
+      sourceVersionId: imageVersionId, relationType: "MEDIA_INPUT",
+      expectedTargetDraftVersion: 0,
+    });
+    expect(revisions).toHaveLength(0);
+    expect(agentPatches).toHaveLength(0);
+  });
+
+  it("persists a media input connection when dropped on an empty image draft card", async () => {
+    await renderFlow();
+    await dropOn("empty-image-id-card");
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(canvasConnections[0]).toMatchObject({
+      sourceCanvasItemId: "image-id-card", targetCanvasItemId: "empty-image-id-card",
       sourceVersionId: imageVersionId, relationType: "MEDIA_INPUT",
       expectedTargetDraftVersion: 0,
     });
