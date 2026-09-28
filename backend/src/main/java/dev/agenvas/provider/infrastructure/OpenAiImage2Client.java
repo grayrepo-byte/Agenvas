@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.http.OutboundTimeouts;
@@ -11,6 +12,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -36,9 +38,11 @@ public class OpenAiImage2Client {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiImage2Client.class);
     /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
     public static final String DEFAULT_MODEL = "gpt-image-2";
+    public static final int MAX_REFERENCE_BYTES = 20 * 1024 * 1024;
+    public static final long MAX_REFERENCE_TOTAL_BYTES = 60L * 1024 * 1024;
     private static final URI OFFICIAL_BASE = URI.create("https://api.openai.com/v1/");
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-    private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_IMAGE_BYTES = MAX_REFERENCE_BYTES;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     /**
      * 等待响应首字节的上限。同步图片生成要数十秒到数分钟才吐第一个字节，读超时必须覆盖整次
@@ -102,22 +106,38 @@ public class OpenAiImage2Client {
     }
 
     public MediaPayload edit(String key, String model, String prompt, String quality, String size,
-            byte[] referencePng, String baseUrl) {
-        if (referencePng == null || referencePng.length == 0
-                || referencePng.length > MAX_IMAGE_BYTES) {
-            throw new IllegalArgumentException("Pinned reference PNG size is invalid");
-        }
-        RequestBody body = new MultipartBody.Builder().setType(MultipartBody.FORM)
+            List<byte[]> referencePngs, String baseUrl) {
+        validateReferences(referencePngs);
+        MultipartBody.Builder body = new MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("model", model)
                 .addFormDataPart("prompt", prompt)
                 .addFormDataPart("quality", quality)
                 .addFormDataPart("size", size)
                 .addFormDataPart("n", "1")
-                .addFormDataPart("output_format", "png")
-                .addFormDataPart("image", "reference.png",
-                        RequestBody.create(referencePng, MediaType.parse("image/png")))
-                .build();
-        return send(key, baseUrl, "images/edits", body);
+                .addFormDataPart("output_format", "png");
+        for (int index = 0; index < referencePngs.size(); index++) {
+            body.addFormDataPart("image[]", "reference-" + (index + 1) + ".png",
+                    RequestBody.create(referencePngs.get(index), MediaType.parse("image/png")));
+        }
+        return send(key, baseUrl, "images/edits", body.build());
+    }
+
+    private static void validateReferences(List<byte[]> references) {
+        if (references == null || references.isEmpty()
+                || references.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES) {
+            throw new IllegalArgumentException("Pinned reference PNG count is invalid");
+        }
+        long total = 0;
+        for (byte[] reference : references) {
+            if (reference == null || reference.length == 0
+                    || reference.length > MAX_REFERENCE_BYTES) {
+                throw new IllegalArgumentException("Pinned reference PNG size is invalid");
+            }
+            total += reference.length;
+            if (total > MAX_REFERENCE_TOTAL_BYTES) {
+                throw new IllegalArgumentException("Pinned reference PNG total size is invalid");
+            }
+        }
     }
 
     private MediaPayload send(String key, String baseUrl, String path, RequestBody body) {

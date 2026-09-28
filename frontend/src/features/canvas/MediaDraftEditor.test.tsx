@@ -308,6 +308,48 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveFocus();
   });
 
+  it("keeps a stale resource batch atomic and refreshes candidates after rejection", async () => {
+    let resourceReads = 0;
+    let saveAttempts = 0;
+    setup({ handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => {
+        resourceReads += 1;
+        return HttpResponse.json({ items: [{ ...artifact, id: "reference-image",
+          title: "森林远景", resourceDefaultVersionId: "image-v2" }] });
+      }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+        HttpResponse.json({ items: [
+          { id: "image-v1", versionNo: 1, content: { assetId: "asset-forest-old" } },
+          { id: "image-v2", versionNo: 2, content: { assetId: "asset-forest-current" } },
+        ] })),
+      http.put(DRAFT_URL, () => {
+        saveAttempts += 1;
+        return HttpResponse.json({ code: "ARTIFACT_VERSION_NOT_AVAILABLE",
+          detail: "所选图片版本已不可用" }, { status: 400 });
+      }),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("图片提示词");
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    const search = screen.getByRole("searchbox", { name: "搜索资源图片" });
+    await user.type(search, "森林");
+    await user.click(await screen.findByRole("checkbox", { name: "选择 森林远景 · v1" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 森林远景 · v2" }));
+    expect(within(screen.getByRole("list", { name: "已选择的图片" })).queryByRole("listitem"))
+      .not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加所选图片（2）" }));
+
+    expect(await screen.findByText("整批未添加；资源已刷新，请重新选择。")).toBeVisible();
+    expect(saveAttempts).toBe(1);
+    expect(within(screen.getByRole("list", { name: "已选择的图片" })).queryByRole("listitem"))
+      .not.toBeInTheDocument();
+    await waitFor(() => expect(resourceReads).toBeGreaterThan(1));
+    expect(screen.getByRole("checkbox", { name: "选择 森林远景 · v1" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("checkbox", { name: "选择 森林远景 · v2" })).toHaveAttribute("aria-checked", "false");
+  });
+
   it("shows the image-source choices when the add button is hovered", async () => {
     setup();
     const user = userEvent.setup();
@@ -518,31 +560,36 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
-    await screen.findByRole("option", { name: "海边灯塔 · v1" });
-    expect(screen.queryByRole("option", { name: /v3/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "使用 海边灯塔 · v1" })).toBeVisible();
-    await user.selectOptions(screen.getByRole("combobox", { name: "输入图片版本" }), "image-v1");
-    await user.keyboard("{Escape}");
+    const search = screen.getByRole("searchbox", { name: "搜索资源图片" });
+    await user.type(search, "v1");
+    expect(await screen.findByRole("checkbox", { name: "选择 海边灯塔 · v1" })).toBeVisible();
+    expect(screen.queryByRole("checkbox", { name: /v2/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /v3/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "选择 海边灯塔 · v1" }));
+    await user.clear(search);
+    await user.click(screen.getByRole("checkbox", { name: "选择 海边灯塔 · v2" }));
+    expect(saves).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "添加所选图片（2）" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
+      { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
+      { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
+    ] }));
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     expect(screen.getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("min", "2");
     expect(screen.getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("max", "10");
     await user.type(screen.getByRole("spinbutton", { name: "时长（秒）" }), "4");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
-      imageInputs: [{ versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" }], durationSeconds: 4 }));
+      imageInputs: [
+        { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
+        { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
+      ], durationSeconds: 4 }));
     const firstFrame = screen.getByLabelText("海边灯塔 · v1，序号 1");
     expect(within(firstFrame).getByText("1")).toBeVisible();
     expect(firstFrame.querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
-    expect(screen.queryByLabelText(/海边灯塔 · v2，序号/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("海边灯塔 · v2，序号 2")).toBeVisible();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
-    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
-    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
-    await user.click(screen.getByRole("button", { name: "使用 海边灯塔 · v2" }));
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
-      { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
-      { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
-    ], durationSeconds: 4 }));
     expect(screen.getByLabelText("海边灯塔 · v2，序号 2").querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/content`);
     await user.click(screen.getByRole("button", { name: "取消引入 海边灯塔 · v1" }));
@@ -569,8 +616,8 @@ describe("MediaDraftEditor", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
-    expect(screen.getByRole("combobox", { name: "输入图片版本" })).toHaveValue("");
-    expect(screen.queryByRole("button", { name: /使用 新首帧 · v1/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索资源图片" })).toHaveValue("");
+    expect(screen.queryByRole("checkbox", { name: /选择 新首帧 · v1/ })).not.toBeInTheDocument();
     expect(saves).toHaveLength(0);
   });
 
@@ -597,7 +644,7 @@ describe("MediaDraftEditor", () => {
     expect(await screen.findByText("无法读取图片版本。")).toBeVisible();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "重试读取图片" }));
-    expect(await screen.findByRole("option", { name: "海边灯塔 · v1" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "选择 海边灯塔 · v1" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.getByLabelText("海边灯塔 · v1，序号 1").querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-old-frame/content`);
@@ -617,7 +664,7 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     expect(await screen.findByText("暂无已生成或上传的图片，请先添加图片。")).toBeVisible();
-    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 

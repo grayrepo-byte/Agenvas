@@ -12,6 +12,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,7 +67,10 @@ class OpenAiImage2ClientTest {
             String body = new String(exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.ISO_8859_1);
             assertThat(body).contains("name=\"model\"", "gpt-image-2",
-                    "name=\"image\"", "filename=\"reference.png\"", "Avoid: clouds");
+                    "name=\"image[]\"", "filename=\"reference-1.png\"",
+                    "filename=\"reference-2.png\"", "Avoid: clouds");
+            assertThat(body.indexOf("FIRST-REFERENCE"))
+                    .isLessThan(body.indexOf("SECOND-REFERENCE"));
             edits.incrementAndGet();
             respond(exchange, 200, result);
         });
@@ -75,11 +79,24 @@ class OpenAiImage2ClientTest {
             assertThat(generated.stream().readAllBytes()).isEqualTo(png);
         }
         try (var edited = client.edit("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge\nAvoid: clouds", "high",
-                "1024x1024", png, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                "1024x1024", List.of(
+                        "FIRST-REFERENCE".getBytes(StandardCharsets.UTF_8),
+                        "SECOND-REFERENCE".getBytes(StandardCharsets.UTF_8)),
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(edited.stream().readAllBytes()).isEqualTo(png);
         }
         assertThat(generations).hasValue(1);
         assertThat(edits).hasValue(1);
+    }
+
+    @Test
+    void referenceCountBeyondPublishedCapabilityIsRejectedBeforeNetwork() {
+        assertThatThrownBy(() -> client.edit("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "draw", "medium", "1024x1024",
+                List.of(new byte[] {1}, new byte[] {2}, new byte[] {3}, new byte[] {4},
+                        new byte[] {5}),
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

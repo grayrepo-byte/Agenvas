@@ -7,8 +7,10 @@ import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -41,7 +43,8 @@ class GoogleNanoBananaClientTest {
                     IMPATIENT_TIMEOUT, IMPATIENT_TIMEOUT);
             assertThatThrownBy(() -> impatient.generate("test-key",
                     GoogleNanoBananaClient.DEFAULT_MODEL,
-                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1", null, null))
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1",
+                    List.of()))
                     .isInstanceOfSatisfying(GoogleNanoBananaClient.Uncertain.class,
                             failure -> assertThat(failure.reasonCode())
                                     .isEqualTo(ProviderFailureCodes.CALL_TIMEOUT));
@@ -66,7 +69,8 @@ class GoogleNanoBananaClientTest {
             GoogleNanoBananaClient client = new GoogleNanoBananaClient(new ObjectMapper());
             assertThatThrownBy(() -> client.generate("test-key",
                     GoogleNanoBananaClient.DEFAULT_MODEL,
-                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1", null, null))
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1",
+                    List.of()))
                     .isInstanceOfSatisfying(GoogleNanoBananaClient.Uncertain.class,
                             failure -> assertThat(failure.reasonCode())
                                     .isEqualTo(ProviderFailureCodes.SUBMISSION_UNKNOWN));
@@ -95,15 +99,18 @@ class GoogleNanoBananaClientTest {
         try {
             GoogleNanoBananaClient client = new GoogleNanoBananaClient(new ObjectMapper());
             assertThatThrownBy(() -> client.generate("test-key", GoogleNanoBananaClient.DEFAULT_MODEL,
-                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1", null, null))
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1",
+                    List.of()))
                     .isInstanceOf(GoogleNanoBananaClient.Rejected.class);
             status.set(429);
             assertThatThrownBy(() -> client.generate("test-key", GoogleNanoBananaClient.DEFAULT_MODEL,
-                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1", null, null))
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1",
+                    List.of()))
                     .isInstanceOf(GoogleNanoBananaClient.Uncertain.class);
             status.set(302);
             assertThatThrownBy(() -> client.generate("test-key", GoogleNanoBananaClient.DEFAULT_MODEL,
-                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1", null, null))
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "draw", "1:1",
+                    List.of()))
                     .isInstanceOf(GoogleNanoBananaClient.Uncertain.class);
             assertThat(redirected).hasValue(0);
         } finally {
@@ -127,11 +134,70 @@ class GoogleNanoBananaClientTest {
             GoogleNanoBananaClient client = new GoogleNanoBananaClient(new ObjectMapper());
             assertThatThrownBy(() -> client.generate("test-key", "gemini-2.5-flash-image",
                     "http://127.0.0.1:" + server.getAddress().getPort(),
-                    "draw", "1:1", null, null))
+                    "draw", "1:1", List.of()))
                     .isInstanceOf(GoogleNanoBananaClient.Rejected.class);
             assertThat(matched).hasValue(1);
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void orderedReferencesBecomeOrderedInlineDataParts() throws IOException {
+        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicInteger calls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models/gemini-3.1-flash-image:generateContent", exchange -> {
+            var body = mapper.readTree(exchange.getRequestBody().readAllBytes());
+            var parts = body.path("contents").path(0).path("parts");
+            assertThat(parts.size()).isEqualTo(3);
+            assertThat(parts.path(0).path("text").asText()).isEqualTo("compose");
+            assertThat(Base64.getDecoder().decode(
+                    parts.path(1).path("inlineData").path("data").asText()))
+                    .isEqualTo("FIRST".getBytes(StandardCharsets.UTF_8));
+            assertThat(Base64.getDecoder().decode(
+                    parts.path(2).path("inlineData").path("data").asText()))
+                    .isEqualTo("SECOND".getBytes(StandardCharsets.UTF_8));
+            calls.incrementAndGet();
+            byte[] response = ("{\"candidates\":[{\"content\":{\"parts\":[{"
+                    + "\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\""
+                    + Base64.getEncoder().encodeToString(png)
+                    + "\"}}]}}]}").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(response);
+            }
+        });
+        server.start();
+        try {
+            GoogleNanoBananaClient client = new GoogleNanoBananaClient(mapper);
+            try (var generated = client.generate("test-key",
+                    GoogleNanoBananaClient.DEFAULT_MODEL,
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "compose", "1:1",
+                    List.of(
+                            new GoogleNanoBananaClient.InputImage(
+                                    "FIRST".getBytes(StandardCharsets.UTF_8), "image/png"),
+                            new GoogleNanoBananaClient.InputImage(
+                                    "SECOND".getBytes(StandardCharsets.UTF_8), "image/jpeg")))) {
+                assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+            }
+            assertThat(calls).hasValue(1);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void referenceCountBeyondPublishedCapabilityIsRejectedBeforeNetwork() {
+        GoogleNanoBananaClient client = new GoogleNanoBananaClient(new ObjectMapper());
+        List<GoogleNanoBananaClient.InputImage> references = java.util.stream.IntStream
+                .range(0, 15)
+                .mapToObj(index -> new GoogleNanoBananaClient.InputImage(
+                        new byte[] {(byte) index}, "image/png"))
+                .toList();
+        assertThatThrownBy(() -> client.generate("key", GoogleNanoBananaClient.DEFAULT_MODEL,
+                null, "draw", "1:1", references))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

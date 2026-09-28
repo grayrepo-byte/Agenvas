@@ -8,6 +8,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.GoogleNanoBananaClient;
@@ -17,15 +18,16 @@ import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
-/** One approved Nano Banana 2 image generation or single-reference edit. */
+/** One approved Nano Banana 2 image generation with ordered reference images. */
 @Component
 public class GoogleNanoBananaAdapter implements MediaAdapter {
-    private static final long MAX_REFERENCE_BYTES = 10L * 1024 * 1024;
     private static final Set<String> INPUT_MIME_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
     private final JooqMediaCapabilityRepository catalog;
     private final CredentialCipher cipher;
@@ -61,7 +63,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         }
         try {
             aspectRatio(context);
-            if (!FrozenMediaInputs.images(context.lease()).isEmpty()) reference(context);
+            references(context);
             return null;
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
@@ -75,13 +77,11 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         String prompt = context.lease().input().path("prompt").asText();
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
-        Reference reference = !FrozenMediaInputs.images(context.lease()).isEmpty()
-                ? reference(context) : null;
+        List<GoogleNanoBananaClient.InputImage> references = references(context);
         try {
             return new Submission.Completed(client.generate(key, configuredModel,
                     snapshot.connectionVersion().origin(), prompt, aspectRatio(context),
-                    reference == null ? null : reference.bytes(),
-                    reference == null ? null : reference.mimeType()));
+                    references));
         } catch (GoogleNanoBananaClient.Rejected rejected) {
             return new Submission.Rejected("GOOGLE_IMAGE_REJECTED");
         } catch (GoogleNanoBananaClient.Uncertain uncertain) {
@@ -135,30 +135,51 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         };
     }
 
-    /** Never accept a URL or an image outside the exact project and pinned version. */
-    private Reference reference(AttemptContext context) {
+    /** Never accept URLs or images outside the exact project and frozen order. */
+    private List<GoogleNanoBananaClient.InputImage> references(AttemptContext context) {
         Task task = context.lease();
-        UUID versionId = FrozenMediaInputs.first(task).versionId();
+        List<FrozenMediaInputs.Image> inputs = FrozenMediaInputs.images(task);
+        if (inputs.size() > MediaAdapterRegistry.GOOGLE_MAX_REFERENCE_IMAGES) {
+            throw new IllegalArgumentException("Pinned reference image count is unsupported");
+        }
+        long totalBytes = 0;
+        List<GoogleNanoBananaClient.InputImage> result = new ArrayList<>(inputs.size());
+        for (FrozenMediaInputs.Image input : inputs) {
+            GoogleNanoBananaClient.InputImage reference = reference(context, task, input);
+            totalBytes += reference.bytes().length;
+            if (totalBytes > GoogleNanoBananaClient.MAX_REFERENCE_TOTAL_BYTES) {
+                throw new IllegalArgumentException("Pinned reference image total size is invalid");
+            }
+            result.add(reference);
+        }
+        return List.copyOf(result);
+    }
+
+    private GoogleNanoBananaClient.InputImage reference(AttemptContext context, Task task,
+            FrozenMediaInputs.Image input) {
         ArtifactVersion version = artifacts.requireImageVersionForTask(context.ownerId(),
-                task.projectId(), versionId);
+                task.projectId(), input.versionId());
+        if (!version.artifactId().equals(input.artifactId())) {
+            throw new IllegalArgumentException("Pinned reference artifact identity changed");
+        }
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());
         AssetService.AssetFile file = assets.get(context.ownerId(), task.projectId(), assetId);
         Asset asset = file.asset();
         if (asset.mediaKind() != Asset.MediaKind.IMAGE || asset.byteSize() < 1
-                || asset.byteSize() > MAX_REFERENCE_BYTES
+                || asset.byteSize() > GoogleNanoBananaClient.MAX_REFERENCE_BYTES
                 || !INPUT_MIME_TYPES.contains(asset.contentType())) {
             throw new IllegalArgumentException("Pinned reference image is unsupported");
         }
         try {
             byte[] bytes = Files.readAllBytes(file.path());
-            if (bytes.length != asset.byteSize() || bytes.length > MAX_REFERENCE_BYTES) {
+            if (bytes.length != asset.byteSize()
+                    || bytes.length > GoogleNanoBananaClient.MAX_REFERENCE_BYTES) {
                 throw new IllegalArgumentException("Pinned reference image size changed");
             }
-            return new Reference(bytes, asset.contentType());
+            return new GoogleNanoBananaClient.InputImage(bytes, asset.contentType());
         } catch (IOException invalid) {
             throw new IllegalArgumentException("Pinned reference image cannot be read", invalid);
         }
     }
 
-    private record Reference(byte[] bytes, String mimeType) {}
 }

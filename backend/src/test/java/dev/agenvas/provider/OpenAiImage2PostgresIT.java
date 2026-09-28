@@ -26,7 +26,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,10 +98,13 @@ class OpenAiImage2PostgresIT {
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
         AdminPrincipal owner = identities.setup("openai-image-integration-secret",
                 "openai-admin", "openai-password-123");
-        Fixture edited = fixture(owner.userId(), "Reference edit", true);
+        Fixture edited = fixture(owner.userId(), "Reference edit", 2);
         Task editTask = approve(owner.userId(), edited);
-        assertThat(editTask.input().path("mediaInput").path("images").get(0)
-                .path("versionId").asText()).isNotBlank();
+        assertThat(editTask.input().path("mediaInput").path("images").size()).isEqualTo(2);
+        assertThat(editTask.input().path("mediaInput").path("images").path(0)
+                .path("order").asInt()).isZero();
+        assertThat(editTask.input().path("mediaInput").path("images").path(1)
+                .path("order").asInt()).isEqualTo(1);
         assertThat(worker.submitOnce("openai-edit-worker")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), edited.project().id(), editTask.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
@@ -122,7 +127,7 @@ class OpenAiImage2PostgresIT {
                 .findFirst().orElseThrow().item().selectedVersionId())
                 .isEqualTo(completedVersionId);
 
-        Fixture generated = fixture(owner.userId(), "Lost generation", false);
+        Fixture generated = fixture(owner.userId(), "Lost generation", 0);
         Task uncertain = approve(owner.userId(), generated);
         DROP_NEXT_GENERATION.set(true);
         assertThat(worker.submitOnce("openai-unknown-worker")).isEqualTo(1);
@@ -139,15 +144,16 @@ class OpenAiImage2PostgresIT {
         assertThat(worker.submitOnce("openai-second-worker")).isZero();
         assertThat(GENERATIONS).hasValue(1);
 
-        Fixture foreign = fixture(owner.userId(), "Foreign reference", false);
+        Fixture foreign = fixture(owner.userId(), "Foreign reference", 0);
         Task foreignTask = approve(owner.userId(), foreign);
         // 跨项目参考图：另一个项目里那张参考图的精确版本。
         jdbc.sql("update task set input_json=jsonb_set(input_json, '{mediaInput,images}', "
                         + "jsonb_build_array(jsonb_build_object('artifactId', :artifactId, "
                         + "'versionId', :versionId, 'role', 'REFERENCE', 'order', 0))) "
                         + "where id=:id")
-                .param("artifactId", edited.referenceImage().artifact().id().toString())
-                .param("versionId", edited.referenceImage().resourceDefaultVersion().id().toString())
+                .param("artifactId", edited.referenceImages().get(0).artifact().id().toString())
+                .param("versionId", edited.referenceImages().get(0).resourceDefaultVersion()
+                        .id().toString())
                 .param("id", foreignTask.id()).update();
         assertThat(worker.submitOnce("openai-foreign-worker")).isEqualTo(1);
         Task blocked = tasks.get(owner.userId(), foreign.project().id(), foreignTask.id());
@@ -159,7 +165,7 @@ class OpenAiImage2PostgresIT {
         // 中转站只回结果 URL 时也必须下载并归档成 Asset，而不是判成 UNKNOWN。
         URL_RESULT.set(true);
         try {
-            Fixture linked = fixture(owner.userId(), "Linked result", false);
+            Fixture linked = fixture(owner.userId(), "Linked result", 0);
             Task linkedTask = approve(owner.userId(), linked);
             assertThat(worker.submitOnce("openai-url-worker")).isEqualTo(1);
             Task linkedDone = tasks.get(owner.userId(), linked.project().id(), linkedTask.id());
@@ -178,11 +184,11 @@ class OpenAiImage2PostgresIT {
         }
     }
 
-    /** 一张空图片卡片、其草稿和直连受理结果；有参考图时同时准备同项目的图片版本。 */
-    private Fixture fixture(UUID ownerId, String name, boolean reference) {
+    /** 一张空图片卡片、其草稿和直连受理结果；参考图按传入顺序固定。 */
+    private Fixture fixture(UUID ownerId, String name, int referenceCount) {
         Project project = projects.create(ownerId, name, Project.AspectRatio.LANDSCAPE_16_9);
-        ArtifactService.ArtifactView referenceImage = null;
-        if (reference) {
+        List<ArtifactService.ArtifactView> referenceImages = new ArrayList<>();
+        for (int index = 0; index < referenceCount; index++) {
             UUID assetId = ImageAssetFixture.archive(assets, ownerId, project.id());
             ObjectNode image = mapper.createObjectNode();
             image.put("assetId", assetId.toString());
@@ -191,21 +197,25 @@ class OpenAiImage2PostgresIT {
             image.put("providerConfigVersion", 1);
             image.put("workflowVersion", "fixture");
             image.putObject("parameters");
-            referenceImage = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
-                    "Reference", image);
+            referenceImages.add(artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
+                    "Reference " + (index + 1), image));
         }
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE, "Concept", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, ownerId, project.id(), card.artifact().id());
-        long draftVersion = dev.agenvas.support.CanvasMediaFixture.save(drafts,
-                ownerId, project.id(), canvasItemId, 0,
-                "A detailed cinematic studio scene",
-                referenceImage == null ? null : referenceImage.resourceDefaultVersion().id(),
-                null, null).version();
+        List<MediaDraftService.SaveImageInput> inputs = referenceImages.stream()
+                .map(reference -> new MediaDraftService.SaveImageInput(
+                        reference.resourceDefaultVersion().id(),
+                        dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE,
+                        "#7C3AED"))
+                .toList();
+        long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
+                "A detailed cinematic studio scene", mapper.createObjectNode(), null, null,
+                null, inputs, List.of()).version();
         Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), canvasItemId,
                 draftVersion,
                 "openai-" + UUID.randomUUID());
-        return new Fixture(project, card, referenceImage, task);
+        return new Fixture(project, card, List.copyOf(referenceImages), task);
     }
 
     private Task approve(UUID ownerId, Fixture fixture) {
@@ -221,11 +231,18 @@ class OpenAiImage2PostgresIT {
                     exchange.close();
                     return;
                 }
-                respond(exchange);
+                respond(exchange, exchange.getRequestBody().readAllBytes());
             });
             server.createContext("/v1/images/edits", exchange -> {
                 EDITS.incrementAndGet();
-                respond(exchange);
+                byte[] body = exchange.getRequestBody().readAllBytes();
+                String multipart = new String(body, StandardCharsets.ISO_8859_1);
+                assertThat(multipart).contains("name=\"image[]\"",
+                        "filename=\"reference-1.png\"",
+                        "filename=\"reference-2.png\"");
+                assertThat(multipart.indexOf("filename=\"reference-1.png\""))
+                        .isLessThan(multipart.indexOf("filename=\"reference-2.png\""));
+                respond(exchange, body);
             });
             // 结果托管端点与 API 不同路径，且不接收凭证。
             server.createContext("/cdn/result.png", exchange -> {
@@ -243,8 +260,7 @@ class OpenAiImage2PostgresIT {
         }
     }
 
-    private static void respond(HttpExchange exchange) throws IOException {
-        byte[] body = exchange.getRequestBody().readAllBytes();
+    private static void respond(HttpExchange exchange, byte[] body) throws IOException {
         assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
                 .isEqualTo("Bearer fake-secret");
         assertThat(body).isNotEmpty();
@@ -267,5 +283,5 @@ class OpenAiImage2PostgresIT {
     }
 
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            ArtifactService.ArtifactView referenceImage, Task task) {}
+            List<ArtifactService.ArtifactView> referenceImages, Task task) {}
 }

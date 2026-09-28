@@ -61,10 +61,12 @@ class MediaCloudCapabilityPostgresIT {
         var videoSpec = mapper.readTree(catalog.capabilitySnapshot(video.id()).specJson());
         var googleSpec = mapper.readTree(catalog.capabilitySnapshot(nanoBanana.id()).specJson());
         assertThat(imageSpec.path("modelId").asText()).isEqualTo("gpt-image-2");
+        assertThat(imageSpec.path("maxReferenceImages").asInt()).isEqualTo(4);
         assertThat(imageSpec.path("settings").path("quality").asText()).isEqualTo("high");
         assertThat(videoSpec.path("modelId").asText()).isEqualTo("doubao-seedance-2-0-260128");
         assertThat(videoSpec.path("generateAudio").booleanValue()).isFalse();
         assertThat(googleSpec.path("modelId").asText()).isEqualTo("gemini-3.1-flash-image");
+        assertThat(googleSpec.path("maxReferenceImages").asInt()).isEqualTo(14);
         assertThat(googleSpec.path("imageSize").asText()).isEqualTo("1K");
         assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0))
                 .anyMatch(candidate -> candidate.binding().capabilityId().equals(nanoBanana.id())

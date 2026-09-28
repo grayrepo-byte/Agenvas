@@ -8,6 +8,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -21,12 +22,14 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
-/** Generates or edits one image with the approved fixed connection and image version. */
+/** Generates or edits one image with the approved ordered image versions. */
 @Component
 public class OpenAiImage2Adapter implements MediaAdapter {
     private final JooqMediaCapabilityRepository catalog;
@@ -64,7 +67,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         try {
             size(context);
             if (!FrozenMediaInputs.images(context.lease()).isEmpty()) {
-                referencePng(context);
+                referencePngs(context);
             }
             return null;
         } catch (RuntimeException invalid) {
@@ -85,7 +88,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
             return new Submission.Completed(!FrozenMediaInputs.images(context.lease()).isEmpty()
-                    ? client.edit(key, model, prompt, quality, size(context), referencePng(context),
+                    ? client.edit(key, model, prompt, quality, size(context), referencePngs(context),
                             snapshot.connectionVersion().origin())
                     : client.generate(key, model, prompt, quality, size(context),
                             snapshot.connectionVersion().origin()));
@@ -136,12 +139,37 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         };
     }
 
-    /** Resolve only the exact same-project image version approved in the task input. */
-    private byte[] referencePng(AttemptContext context) {
+    /** Resolve every exact same-project version in the task's frozen order. */
+    private List<byte[]> referencePngs(AttemptContext context) {
         Task task = context.lease();
-        UUID versionId = FrozenMediaInputs.first(task).versionId();
+        List<FrozenMediaInputs.Image> inputs = FrozenMediaInputs.images(task);
+        if (inputs.isEmpty()
+                || inputs.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES) {
+            throw new IllegalArgumentException("Pinned reference image count is unsupported");
+        }
+        String outputSize = size(context);
+        int width = outputSize.startsWith("1536") ? 1536 : 1024;
+        int height = outputSize.endsWith("1536") ? 1536 : 1024;
+        long totalBytes = 0;
+        List<byte[]> result = new ArrayList<>(inputs.size());
+        for (FrozenMediaInputs.Image input : inputs) {
+            byte[] png = referencePng(context, task, input, width, height);
+            totalBytes += png.length;
+            if (totalBytes > OpenAiImage2Client.MAX_REFERENCE_TOTAL_BYTES) {
+                throw new IllegalArgumentException("Pinned reference PNG total size is invalid");
+            }
+            result.add(png);
+        }
+        return List.copyOf(result);
+    }
+
+    private byte[] referencePng(AttemptContext context, Task task,
+            FrozenMediaInputs.Image input, int width, int height) {
         ArtifactVersion version = artifacts.requireImageVersionForTask(context.ownerId(),
-                task.projectId(), versionId);
+                task.projectId(), input.versionId());
+        if (!version.artifactId().equals(input.artifactId())) {
+            throw new IllegalArgumentException("Pinned reference artifact identity changed");
+        }
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());
         AssetService.AssetFile file = assets.get(context.ownerId(), task.projectId(), assetId);
         if (file.asset().mediaKind() != Asset.MediaKind.IMAGE) {
@@ -150,8 +178,6 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         try {
             BufferedImage source = ImageIO.read(file.path().toFile());
             if (source == null) throw new IllegalArgumentException("Reference cannot be decoded");
-            int width = size(context).startsWith("1536") ? 1536 : 1024;
-            int height = size(context).endsWith("1536") ? 1536 : 1024;
             BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D graphics = output.createGraphics();
             try {
@@ -169,7 +195,8 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 graphics.dispose();
             }
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            if (!ImageIO.write(output, "png", bytes) || bytes.size() > 20 * 1024 * 1024) {
+            if (!ImageIO.write(output, "png", bytes)
+                    || bytes.size() > OpenAiImage2Client.MAX_REFERENCE_BYTES) {
                 throw new IllegalArgumentException("Reference PNG exceeds adapter bound");
             }
             return bytes.toByteArray();

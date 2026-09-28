@@ -86,6 +86,20 @@ class VersionedMediaInputPostgresIT {
                 {"versionId":"%s","role":"END_FRAME"}]}
                 """.formatted(start.versionId(), end.versionId(),
                         start.versionId(), end.versionId());
+        String staleVersionId = UUID.randomUUID().toString();
+        mvc.perform(put(draftPath).with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"expectedVersion\":0,\"prompt\":\"Atomic batch\","
+                                + "\"imageInputs\":[{\"versionId\":\"" + start.versionId()
+                                + "\",\"role\":\"START_FRAME\",\"color\":\"#7C3AED\"},"
+                                + "{\"versionId\":\"" + staleVersionId
+                                + "\",\"role\":\"END_FRAME\",\"color\":\"#0EA5E9\"}]}"))
+                .andExpect(status().isBadRequest());
+        JsonNode unchangedAfterRejectedBatch = mapper.readTree(mvc.perform(get(draftPath)
+                        .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString());
+        assertThat(unchangedAfterRejectedBatch.path("version").asLong()).isZero();
+        assertThat(unchangedAfterRejectedBatch.path("imageInputs")).isEmpty();
         mvc.perform(put(draftPath).with(auth).with(csrf())
                         .contentType("application/json")
                         .content(input.replace("Move from \uFFFC to \uFFFC",

@@ -25,9 +25,10 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -97,16 +98,23 @@ class GoogleNanoBananaPostgresIT {
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
         AdminPrincipal owner = identities.setup("google-image-integration-secret",
                 "google-admin", "google-password-123");
-        Fixture edited = fixture(owner.userId(), "Reference edit", true);
+        Fixture edited = fixture(owner.userId(), "Reference edit", 2);
         Task editTask = approve(owner.userId(), edited);
-        assertThat(editTask.input().path("mediaInput").path("images").get(0)
-                .path("versionId").asText()).isNotBlank();
+        assertThat(editTask.input().path("mediaInput").path("images").size()).isEqualTo(2);
+        assertThat(editTask.input().path("mediaInput").path("images").path(0)
+                .path("order").asInt()).isZero();
+        assertThat(editTask.input().path("mediaInput").path("images").path(1)
+                .path("order").asInt()).isEqualTo(1);
         assertThat(worker.submitOnce("google-edit-worker")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), edited.project().id(), editTask.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(EDITS).hasValue(1);
         assertThat(GENERATIONS).hasValue(0);
         assertThat(LAST_REQUEST.get().path("contents").path(0).path("parts").path(1)
+                .path("inlineData").path("mimeType").asText()).isEqualTo("image/png");
+        assertThat(LAST_REQUEST.get().path("contents").path(0).path("parts").size())
+                .isEqualTo(3);
+        assertThat(LAST_REQUEST.get().path("contents").path(0).path("parts").path(2)
                 .path("inlineData").path("mimeType").asText()).isEqualTo("image/png");
         assertThat(LAST_REQUEST.get().path("generationConfig").path("responseFormat")
                 .path("image").path("aspectRatio").asText()).isEqualTo("16:9");
@@ -123,7 +131,7 @@ class GoogleNanoBananaPostgresIT {
                 .findFirst().orElseThrow().item().selectedVersionId())
                 .isEqualTo(completedVersionId);
 
-        Fixture generated = fixture(owner.userId(), "Lost generation", false);
+        Fixture generated = fixture(owner.userId(), "Lost generation", 0);
         Task uncertain = approve(owner.userId(), generated);
         DROP_NEXT_GENERATION.set(true);
         assertThat(worker.submitOnce("google-unknown-worker")).isEqualTo(1);
@@ -136,15 +144,16 @@ class GoogleNanoBananaPostgresIT {
         assertThat(worker.submitOnce("google-second-worker")).isZero();
         assertThat(GENERATIONS).hasValue(1);
 
-        Fixture foreign = fixture(owner.userId(), "Foreign reference", false);
+        Fixture foreign = fixture(owner.userId(), "Foreign reference", 0);
         Task foreignTask = approve(owner.userId(), foreign);
         // 跨项目参考图：另一个项目里那张参考图的精确版本。
         jdbc.sql("update task set input_json=jsonb_set(input_json, '{mediaInput,images}', "
                         + "jsonb_build_array(jsonb_build_object('artifactId', :artifactId, "
                         + "'versionId', :versionId, 'role', 'REFERENCE', 'order', 0))) "
                         + "where id=:id")
-                .param("artifactId", edited.referenceImage().artifact().id().toString())
-                .param("versionId", edited.referenceImage().resourceDefaultVersion().id().toString())
+                .param("artifactId", edited.referenceImages().get(0).artifact().id().toString())
+                .param("versionId", edited.referenceImages().get(0).resourceDefaultVersion()
+                        .id().toString())
                 .param("id", foreignTask.id()).update();
         assertThat(worker.submitOnce("google-foreign-worker")).isEqualTo(1);
         Task blocked = tasks.get(owner.userId(), foreign.project().id(), foreignTask.id());
@@ -154,11 +163,11 @@ class GoogleNanoBananaPostgresIT {
         assertThat(EDITS).hasValue(1);
     }
 
-    /** 一张空图片卡片、其草稿和直连受理结果；有参考图时同时准备同项目的图片版本。 */
-    private Fixture fixture(UUID ownerId, String name, boolean reference) {
+    /** 一张空图片卡片、其草稿和直连受理结果；参考图按传入顺序固定。 */
+    private Fixture fixture(UUID ownerId, String name, int referenceCount) {
         Project project = projects.create(ownerId, name, Project.AspectRatio.LANDSCAPE_16_9);
-        ArtifactService.ArtifactView referenceImage = null;
-        if (reference) {
+        List<ArtifactService.ArtifactView> referenceImages = new ArrayList<>();
+        for (int index = 0; index < referenceCount; index++) {
             UUID assetId = ImageAssetFixture.archive(assets, ownerId, project.id());
             ObjectNode image = mapper.createObjectNode();
             image.put("assetId", assetId.toString());
@@ -167,21 +176,25 @@ class GoogleNanoBananaPostgresIT {
             image.put("providerConfigVersion", 1);
             image.put("workflowVersion", "fixture");
             image.putObject("parameters");
-            referenceImage = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
-                    "Reference", image);
+            referenceImages.add(artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,
+                    "Reference " + (index + 1), image));
         }
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE, "Concept", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, ownerId, project.id(), card.artifact().id());
-        long draftVersion = dev.agenvas.support.CanvasMediaFixture.save(drafts,
-                ownerId, project.id(), canvasItemId, 0,
-                "A detailed cinematic studio scene",
-                referenceImage == null ? null : referenceImage.resourceDefaultVersion().id(),
-                null, null).version();
+        List<MediaDraftService.SaveImageInput> inputs = referenceImages.stream()
+                .map(reference -> new MediaDraftService.SaveImageInput(
+                        reference.resourceDefaultVersion().id(),
+                        dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE,
+                        "#7C3AED"))
+                .toList();
+        long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
+                "A detailed cinematic studio scene", mapper.createObjectNode(), null, null,
+                null, inputs, List.of()).version();
         Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), canvasItemId,
                 draftVersion,
                 "google-" + UUID.randomUUID());
-        return new Fixture(project, card, referenceImage, task);
+        return new Fixture(project, card, List.copyOf(referenceImages), task);
     }
 
     private Task approve(UUID ownerId, Fixture fixture) {
@@ -227,5 +240,5 @@ class GoogleNanoBananaPostgresIT {
     }
 
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            ArtifactService.ArtifactView referenceImage, Task task) {}
+            List<ArtifactService.ArtifactView> referenceImages, Task task) {}
 }

@@ -503,16 +503,16 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 - [x] 管理员界面保存多连接、多能力、默认值及服务端加密密钥；V40 一次性导入 Mock/ComfyUI 配置与可精确匹配的历史任务来源，无法匹配的旧请求保持阻断或未知。PostgreSQL 迁移及目录集成测试通过；未进行真实 ComfyUI 调用。
 - [x] 按[ADR 0003](adr/0003-integer-business-video-seconds.md)统一视频创作时长、Task 和用量的整数秒字段（原记录含新镜头、计划与导出区间，已随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 撤回，2026-09-27）；保留素材探测毫秒精度，验证旧整数/小数与已受理任务迁移。V36 升级、v1 冻结任务与用量、Mock/假 ComfyUI 及前端表单有回归测试；`backend ./mvnw verify`（57 个集成测试）、前端类型检查/lint/73 个测试/构建通过，真实 Provider 未运行。
 - [x] 图片/视频任务在受理时展示并固定所选能力版本；统一内核执行、恢复和归档 Mock/ComfyUI。`backend ./mvnw verify`（63 项、0 失败）、前端类型检查/lint/77 项测试/构建通过；ComfyUI 使用本地假服务，真实 Provider 未运行。
-- [x] GPT Image 2 固定适配器完成生成与参考图编辑的本地假服务协议、PostgreSQL 和前端任务链路验收；跨项目参考图在网络前拒绝，响应丢失保持 UNKNOWN，不自动重提。真实渠道已跑通文字生图并对齐了同步生成所需的读超时与租约，见 `docs/evidence/T21-openai-image-sync-result.md`；参考图编辑（`images/edits`）仍只有本地假服务验证。
+- [x] GPT Image 2 固定适配器完成生成与有序多参考编辑的本地假服务协议、PostgreSQL 和前端任务链路验收；最多 4 张冻结图片按顺序使用重复的 `image[]` multipart 字段提交，跨项目参考图在网络前拒绝，响应丢失保持 UNKNOWN，不自动重提。真实渠道已跑通文字生图并对齐了同步生成所需的读超时与租约，见 `docs/evidence/T21-openai-image-sync-result.md`；多参考编辑（`images/edits`）仍只有本地假服务验证。
 
 2026-09-27 超时复发与原因码：真实渠道再次实测到 216 秒返回、而当时上限为 180 秒，已生成并计费的结果再次被丢弃。两个同步图片客户端的读/整次调用上限提到 5 分钟；本地一旦得到确定结论（读超时、连接中断、结果下载失败、响应不符合固定协议）就**当场**按具体原因码写入 UNKNOWN，不再停在 `SUBMITTING` 空等 30 分钟租约；每个失败点都有稳定原因码（`ProviderFailureCodes`），适配器原样透传，前端统一展示可读中文原因。租约过期扫描保留为进程被杀的兜底，写笼统的 `PROVIDER_SUBMISSION_UNKNOWN`。新增不变量：`agenvas.task.lease-duration` 必须同时大于调用耗时与客户端超时。已运行：`OpenAiImage2ClientTest`、`GoogleNanoBananaClientTest`、`OutboundTimeoutsTest`、`TaskSubmissionUnknownPostgresIT`、`OpenAiImage2PostgresIT`、`GoogleNanoBananaPostgresIT`、`ArkSeedancePostgresIT`、`TaskRecoveryPostgresIT`、`ManualUnknownRetryPostgresIT`、后端单元套件 125 项；前端 `typecheck`/`lint` 与 261 项测试通过。**未做真实 Provider 调用**，「216 秒结果能正常归档」由上限提升与上述验证推断，未实测。详见 `docs/evidence/T21-openai-image-sync-result.md`。
 - [x] OpenAI 图片连接可选自定义 HTTPS API Base URL；历史空地址仍走官方 `/v1`，已受理任务固定连接版本，拒绝不安全地址、私网 DNS 和重定向。自定义公开网关的真实生成未运行。
 - [x] 火山方舟 Seedance 固定首帧图生视频适配器完成 4–15 整数秒、异步原任务 ID 轮询、过期 URL 重查或无法刷新时阻断、带音轨结果去音归档、恶意地址阻断、下载失败后重试与创建响应丢失 UNKNOWN 的本地假服务及 PostgreSQL 验收；无真实方舟调用。
 - [x] 分别记录真实调用状态：GPT Image 2 **已运行**，经第三方中转站（grsai，模型 `gpt-image-2.5`）完成一次真实文字生图并归档 Asset，生成耗时约 35 秒；此为兼容中转站而非 OpenAI 官方端点。Seedance **未运行**。管理员界面保持“已配置、未实测”，不把本地假服务或 Mock 结果标记为真实生成成功。
 
-后续 Google Nano Banana 2 固定图片适配器见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)：`GOOGLE` 连接、固定 `gemini-3.1-flash-image` 模型、文字生图和单张同项目参考图、项目画幅、管理员配置及 V41 平台约束已接入。假 Google HTTP 服务与 PostgreSQL 覆盖成功归档、断线 UNKNOWN 不重提、越权参考图预检拒绝；真实 Google API 调用 **未运行**，真实模型兼容、生成效果与费用尚未验收。
+后续 Google Nano Banana 2 固定图片适配器见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)：`GOOGLE` 连接、默认 `gemini-3.1-flash-image` 模型、文字生图和最多 14 张同项目有序参考图、项目画幅、管理员配置及 V41 平台约束已接入。假 Google HTTP 服务与 PostgreSQL 覆盖两张冻结参考图顺序提交、成功归档、断线 UNKNOWN 不重提、越权参考图预检拒绝；真实 Google API 调用 **未运行**，真实模型兼容、生成效果与费用尚未验收。
 
-- [ ] 使用真实 Google Key 完成 Nano Banana 2 生图和单图编辑，并验证输出、计费及 UNKNOWN 人工处置。
+- [ ] 使用真实 Google Key 完成 Nano Banana 2 生图和多参考生成，并验证顺序语义、输出、计费及 UNKNOWN 人工处置。
 
 本轮全量检查：`backend ./mvnw verify` 为 67 项、0 失败；前端类型检查、lint、78 项测试与构建通过。全量后新增的固定云 DNS 共用校验和 Seedance 过期地址断言另经定向测试验证；本地假服务不等于真实 Provider 验收。
 
@@ -524,7 +524,11 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 2026-09-27 Issue #7 基础切片：媒体草稿、展示版本和直连任务已归属 CanvasItem，Artifact 资源默认版本独立；同一 Artifact 多卡片可独立选择、上传、保存草稿并运行，成功结果只条件选用发起卡片。资源库放置按默认版本初始化且使用空草稿。V52 清空项目创作数据并保留管理员、加密、Provider、能力与 LLM 设置；V53 在首次启动清理旧项目资产目录并保存完成标记；V54 允许删除卡片后保留任务历史。OpenAPI/Java/生成 TypeScript/jOOQ 已同步。全量后端 125 个单元测试与 74 个 PostgreSQL 集成测试、前端 36 个文件 232 项测试及 lint/类型检查/构建通过；边界和未验证项见 [Issue #7 证据](evidence/issue-7-canvas-item-media-context.md)。下列包含后续能力的综合条目仍不勾选。
 
-2026-09-28 Issue #6 核心切片：已加入 CanvasItem 独占的有序精确版本图片输入、多来源引用计数与持久化连线、视频输入模式、结构化图片标签、卡片分支复制、冻结任务/版本来源、历史输入完整恢复及导出 schema v2；OpenAPI、V55 与生成源码已同步。后续按图稿补上设备多文件上传、来源菜单及排除当前卡片的画布选择；资源库多选/搜索、模型切换影响预览及 Agent 图片发送限制等仍待实现，因此下列综合条目继续不勾选。详见 [Issue #6 证据](evidence/issue-6-versioned-media-inputs.md) 与根目录 `design-qa.md`。
+2026-09-28 Issue #6 核心切片：已加入 CanvasItem 独占的有序精确版本图片输入、多来源引用计数与持久化连线、视频输入模式、结构化图片标签、卡片分支复制、冻结任务/版本来源、历史输入完整恢复及导出 schema v2；OpenAPI、V55 与生成源码已同步。后续按图稿补上设备多文件上传的完整验收、模型切换影响预览及 Agent 图片发送限制等能力，因此下列综合条目继续不勾选。详见 [Issue #6 证据](evidence/issue-6-versioned-media-inputs.md) 与根目录 `design-qa.md`。
+
+2026-09-28 多参考 Provider 切片：OpenAI GPT Image 2 与 Google Nano Banana 2 已从冻结 Task 读取全部有序图片并分别按官方 `image[]` multipart 与 Gemini `inlineData` parts 提交，能力上限为 4／14；数量、重复版本、冻结顺序、同项目 Artifact 身份、单图与总字节均在网络前校验。ComfyUI 保持单图。本轮复用现有 `maxReferenceImages` 合约与 V55 数据模型，无 OpenAPI、Flyway 或生成 TypeScript 变更；真实多参考 Provider 调用仍未运行。
+
+2026-09-28 资源完整性选择切片：资源库面板已支持名称/版本搜索、历史版本、能力剩余容量内的有序多选和明确确认；确认前不修改图片栏，确认使用单次草稿 CAS。任一候选失效时整批不添加并刷新资源和历史版本。真实 PostgreSQL 测试确认混合有效/失效版本不会推进草稿版本或留下部分输入；该综合条目仍因设备上传端到端验收等剩余项不勾选。
 
 - [ ] 工作区改为深色点状全画布；取消左侧创建栏；空白双击与悬浮“+”打开同一四类菜单（文字、图片、视频、Agent），键盘可达，边缘避让，新卡片精确落在交互位置；右下角缩放控件可用。
 - [ ] 单选 Artifact 显示按类型切换的底部编辑区，空选隐藏，多选显示批量操作；文字、图片、视频字段与现有业务 Schema 对齐。Agent 使用卡片内对话/历史/设置，配置指令与本次运行指令分开；每次确认发送为独立 Run。

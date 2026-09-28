@@ -23,7 +23,10 @@ const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
 const CONFLICT_STATUS = 409;
 const MAX_ARTIFACT_TITLE_LENGTH = 160;
-const INPUT_COLORS = ["#F15CAF", "#67C7F3", "#F1B95C", "#8DD17E", "#A98AF7", "#F27979", "#56C8B5", "#D98BD9"] as const;
+const INPUT_COLORS = [
+  "#F15CAF", "#67C7F3", "#F1B95C", "#8DD17E", "#A98AF7", "#F27979", "#56C8B5",
+  "#D98BD9", "#E56B3F", "#4DB6E5", "#B8D84A", "#8C7AE6", "#E7A93D", "#4FC38D",
+] as const;
 const QUEUE_LABELS = {
   PROJECT_CAPACITY: "项目并发已满", CAPABILITY_CAPACITY: "能力并发已满",
   COMFY_SINGLE_SLOT: "ComfyUI 正在处理其他任务", WAITING_WORKER: "等待执行器", NOT_QUEUED: "未排队",
@@ -41,6 +44,11 @@ type DraftFields = Omit<SaveMediaDraftRequest, "expectedVersion">;
 type Popover = "models" | "parameters" | "assetReferences" | "canvasReferences";
 type RunIntent = { key: string; expectedDraftVersion: number };
 type UploadProgress = { assetId?: string; createKey: string };
+type AssetReferenceCommit = {
+  fieldsAtStart: DraftFields;
+  nextFields: DraftFields;
+  request: SaveMediaDraftRequest;
+};
 type PromptReference = DraftFields["imageInputs"][number] & {
   label: string; thumbnailUrl?: string;
 };
@@ -370,6 +378,9 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const [uploading, setUploading] = useState(false);
   const [failedUploads, setFailedUploads] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState<Error | null>(null);
+  const [assetSearch, setAssetSearch] = useState("");
+  const [assetSelection, setAssetSelection] = useState<string[]>([]);
+  const [assetSelectionError, setAssetSelectionError] = useState<Error | null>(null);
   const id = useId();
   const canvas = useQuery({
     queryKey: ["canvas", artifact.projectId],
@@ -460,6 +471,38 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     },
     onError: (failure) => setError(failure),
   });
+  const commitAssetReferences = useMutation({
+    mutationFn: ({ request }: AssetReferenceCommit) =>
+      saveMediaDraft(artifact.projectId, canvasItemId, request),
+    onMutate: () => setAssetSelectionError(null),
+    onSuccess: (saved, input) => {
+      const latest = fieldsRef.current;
+      const changedWhileSaving = latest !== null && latest !== input.fieldsAtStart;
+      const next = changedWhileSaving
+        ? { ...latest, imageInputs: input.nextFields.imageInputs }
+        : input.nextFields;
+      fieldsRef.current = next;
+      setFields(next);
+      setExpectedVersion(saved.version);
+      setDirty(changedWhileSaving);
+      setError(null);
+      setAssetSelection([]);
+      setAssetSelectionError(null);
+      setPopover(null);
+      queryClient.setQueryData(key, saved);
+      suppressReferenceSourceFocusOpen.current = true;
+      triggerRef.current?.focus();
+      suppressReferenceSourceFocusOpen.current = false;
+    },
+    onError: async (failure) => {
+      setAssetSelection([]);
+      setAssetSelectionError(failure instanceof Error ? failure : new Error("资源选择保存失败"));
+      await Promise.all([
+        resources.refetch(),
+        ...imageHistories.map((history) => history.refetch()),
+      ]);
+    },
+  });
   const removeConnectedInput = useMutation({
     mutationFn: async ({ versionId, version = expectedVersion, allowDirty = false }: {
       versionId: string; version?: number | null; allowDirty?: boolean;
@@ -532,7 +575,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   useEffect(() => {
     // Run submission and result selection may advance the draft CAS version. Refresh only clean
     // fields; an in-flight save, local edit or conflict must keep its current input intact.
-    if (!draft.data || dirty || save.isPending || run.isPending || error) return;
+    if (!draft.data || dirty || save.isPending || commitAssetReferences.isPending
+        || run.isPending || error) return;
     // An earlier GET can finish after a successful save wrote its newer result to the cache.
     // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
     if (expectedVersion !== null && draft.data.version < expectedVersion) return;
@@ -540,14 +584,17 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     fieldsRef.current = initial;
     setFields(initial);
     setExpectedVersion(draft.data.version);
-  }, [draft.data, dirty, save.isPending, run.isPending, error, expectedVersion]);
+  }, [draft.data, dirty, save.isPending, commitAssetReferences.isPending,
+    run.isPending, error, expectedVersion]);
 
   useEffect(() => {
     if (!dirty || !fields || expectedVersion === null || save.isPending
+        || commitAssetReferences.isPending
         || removeConnectedInput.isPending || error) return;
     const timer = window.setTimeout(() => save.mutate({ ...fields, expectedVersion }), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, fields, expectedVersion, save.isPending, removeConnectedInput.isPending, error]);
+  }, [dirty, fields, expectedVersion, save.isPending, commitAssetReferences.isPending,
+    removeConnectedInput.isPending, error]);
 
   function edit(changes: Partial<DraftFields>) {
     runIntent.current = null;
@@ -667,7 +714,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
     && duration <= Math.min(MAX_VIDEO_SECONDS, chosenCapability?.maximumSeconds ?? MAX_VIDEO_SECONDS);
-  const canRun = !dirty && !save.isPending && !error && !run.isPending
+  const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
+    && !error && !run.isPending
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
     && fields.prompt.trim().length > 0 && !occupied
     && semanticInputsValid && allInputsAvailable
@@ -678,8 +726,14 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const qualityLabel = quality ? `${QUALITY_LABELS[quality]}画质` : "默认画质";
   const historyError = imageHistories.find((history) => history.error)?.error;
   const historyPending = resources.isPending || imageHistories.some((history) => history.isPending);
+  const normalizedAssetSearch = assetSearch.trim().toLocaleLowerCase();
+  const filteredImageChoices = normalizedAssetSearch
+    ? imageChoices.filter((choice) => choice.label.toLocaleLowerCase().includes(normalizedAssetSearch))
+    : imageChoices;
+  const remainingAssetCapacity = Math.max(0, imageCapacity - fields.imageInputs.length);
   const saveLabel = removeConnectedInput.isPending ? "正在取消引入…"
     : failedRemovalVersionId ? "取消引入失败"
+      : commitAssetReferences.isPending ? "正在添加资源…"
       : save.isPending ? "保存中…" : dirty ? error ? "保存失败，本地输入已保留" : "待保存…" : "已保存";
   const currentFields = fields;
 
@@ -690,7 +744,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     return null;
   }
 
-  function appendReferences(versionIds: string[], baseFields = currentFields) {
+  function fieldsWithReferences(versionIds: string[], baseFields = currentFields) {
     const nextInputs = [...baseFields.imageInputs];
     for (const versionId of versionIds) {
       if (nextInputs.some((input) => input.versionId === versionId)
@@ -702,11 +756,45 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         ?? INPUT_COLORS[nextInputs.length % INPUT_COLORS.length]!;
       nextInputs.push({ versionId, role, color });
     }
-    if (nextInputs.length !== baseFields.imageInputs.length) edit({ imageInputs: nextInputs });
+    return nextInputs.length === baseFields.imageInputs.length
+      ? baseFields : { ...baseFields, imageInputs: nextInputs };
+  }
+
+  function appendReferences(versionIds: string[], baseFields = currentFields) {
+    const next = fieldsWithReferences(versionIds, baseFields);
+    if (next !== baseFields) edit({ imageInputs: next.imageInputs });
   }
 
   function chooseReference(versionId: string) {
     appendReferences([versionId]);
+  }
+
+  function openAssetReferences() {
+    setAssetSearch("");
+    setAssetSelection([]);
+    setAssetSelectionError(null);
+    setPopover("assetReferences");
+  }
+
+  function toggleAssetReference(versionId: string) {
+    setAssetSelectionError(null);
+    setAssetSelection((current) => {
+      if (current.includes(versionId)) return current.filter((candidate) => candidate !== versionId);
+      const remaining = Math.max(0, imageCapacity - currentFields.imageInputs.length);
+      return current.length >= remaining ? current : [...current, versionId];
+    });
+  }
+
+  function confirmAssetReferences() {
+    if (!assetSelection.length || expectedVersion === null || save.isPending
+        || commitAssetReferences.isPending) return;
+    const nextFields = fieldsWithReferences(assetSelection);
+    if (nextFields === currentFields) return;
+    commitAssetReferences.mutate({
+      fieldsAtStart: currentFields,
+      nextFields,
+      request: { ...nextFields, expectedVersion },
+    });
   }
 
   async function uploadFiles(files: File[]) {
@@ -823,7 +911,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         <input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept="image/*" multiple aria-label="选择本地图片" onChange={handleUploadSelection} />
         <button className="media-draft-reference-add" type="button"
-          disabled={!chosenCapability || referenceLimitReached || effectiveMode === "TEXT" || uploading}
+          disabled={!chosenCapability || referenceLimitReached || effectiveMode === "TEXT" || uploading
+            || commitAssetReferences.isPending}
           aria-label="添加图片输入"
           title={uploading ? "正在上传图片" : effectiveMode === "TEXT" ? "纯文本模式不接受图片" : referenceLimitReached ? `所选模型最多支持 ${imageCapacity} 张图片` : "添加引用图片"}
           aria-haspopup="menu"
@@ -849,7 +938,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           }}><UploadSimple size={17} /><span>从设备上传</span></button>
           <button type="button" role="menuitem" onClick={() => {
             setReferenceSourcesOpen(false);
-            setPopover("assetReferences");
+            openAssetReferences();
           }}>
             <ImagesSquare size={17} /><span>从资源库选择</span>
           </button>
@@ -867,32 +956,49 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         {popover === "assetReferences" ? <div className="media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-asset-references`} role="dialog" aria-label="输入图片版本">
           <p className="media-draft-popover-title">选择精确图片版本</p>
-          <label htmlFor={`${id}-input-image`}>输入图片版本</label>
-          <select id={`${id}-input-image`} value=""
-            onChange={(event) => { if (event.target.value) chooseReference(event.target.value); }}>
-            <option value="">选择同项目图片，可连续添加</option>
-            {imageChoices.map((choice) => <option key={choice.id} value={choice.id} disabled={!choice.available}>{choice.label}</option>)}
-          </select>
-          <div className="media-draft-reference-options">
-            {imageChoices.map((choice) => <button key={choice.id} type="button"
-              className="media-draft-reference-option" aria-label={`使用 ${choice.label}`}
-              aria-pressed={fields.imageInputs.some((input) => input.versionId === choice.id)}
-              disabled={!choice.available || fields.imageInputs.some((input) => input.versionId === choice.id)}
-              onClick={() => chooseReference(choice.id)}>
+          <label htmlFor={`${id}-asset-search`}>搜索资源图片</label>
+          <input id={`${id}-asset-search`} type="search" value={assetSearch}
+            placeholder="搜索名称或版本"
+            onChange={(event) => setAssetSearch(event.target.value)} />
+          <div className="media-draft-reference-options" role="group" aria-label="可选图片版本">
+            {filteredImageChoices.map((choice) => {
+              const alreadyAdded = fields.imageInputs.some((input) => input.versionId === choice.id);
+              const selected = assetSelection.includes(choice.id);
+              const selectionFull = !selected && assetSelection.length >= remainingAssetCapacity;
+              return <button key={choice.id} type="button" role="checkbox"
+              className="media-draft-reference-option" aria-label={`选择 ${choice.label}`}
+              aria-checked={alreadyAdded || selected}
+              disabled={!choice.available || alreadyAdded || selectionFull || commitAssetReferences.isPending}
+              onClick={() => toggleAssetReference(choice.id)}>
               {/* Reference pixels are shown from the archived original, not the 480px preview. */}
               <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />
               <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? "当前选用版本" : "历史版本"}</small></span>
-              {fields.imageInputs.some((input) => input.versionId === choice.id) ? <Check size={15} /> : null}
-            </button>)}
+              {alreadyAdded || selected ? <Check size={15} /> : null}
+            </button>;
+            })}
           </div>
           {historyPending ? <CanvasLoadingState compact label="正在读取图片版本" /> : null}
           {!historyPending && !resources.error && !historyError && !imageChoices.length ? <p>暂无已生成或上传的图片，请先添加图片。</p> : null}
+          {!historyPending && !resources.error && !historyError && imageChoices.length > 0
+            && !filteredImageChoices.length ? <p>没有匹配的图片版本。</p> : null}
           {resources.error || historyError ? <div role="alert">无法读取图片版本。
             <button className="media-draft-text-action" onClick={() => {
               void resources.refetch();
-              imageHistories.forEach((history) => { if (history.error) void history.refetch(); });
+              imageHistories.forEach((history) => { void history.refetch(); });
             }} type="button">重试读取图片</button></div> : null}
-          <p>按确认顺序添加，运行时固定精确版本。所选模型最多支持 {imageCapacity} 张图片。</p>
+          {assetSelectionError ? <div className="media-draft-reference-error" role="alert">
+            整批未添加；资源已刷新，请重新选择。
+          </div> : null}
+          <p>按勾选顺序添加，运行时固定精确版本。本次还可选择 {Math.max(0,
+            remainingAssetCapacity - assetSelection.length)} 张。</p>
+          <div className="media-draft-reference-actions">
+            <button type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>取消</button>
+            <button type="button" className="is-primary"
+              disabled={!assetSelection.length || save.isPending || commitAssetReferences.isPending}
+              onClick={confirmAssetReferences}>
+              {commitAssetReferences.isPending ? "正在添加…" : `添加所选图片（${assetSelection.length}）`}
+            </button>
+          </div>
         </div> : null}
         {popover === "canvasReferences" ? <div className="media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-canvas-references`} role="dialog" aria-label="从画布选择图片">
@@ -922,7 +1028,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           accessibleLabel={choice?.label ?? `图片输入 ${index + 1}`}
           {...(choice ? { thumbnailUrl: assetContentUrl(artifact.projectId, choice.assetId) } : {})}
           connected={hasConnectionSource(input.versionId)}
-          busy={removeConnectedInput.isPending || dirty || save.isPending}
+          busy={removeConnectedInput.isPending || commitAssetReferences.isPending || dirty || save.isPending}
           reorderable={effectiveMode !== "START_END"}
           onMove={(delta) => moveReference(index, delta)}
           onDragStart={() => { draggedReferenceIndex.current = index; }}

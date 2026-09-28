@@ -27,13 +27,15 @@ public class MediaDraftService {
     private static final int MAX_PROMPT_LENGTH = 20_000;
     private static final int MIN_VIDEO_SECONDS = 1;
     private static final int MAX_VIDEO_SECONDS = 30;
-    private static final int MAX_IMAGE_INPUTS = 8;
+    private static final int MAX_IMAGE_INPUTS = 14;
     // Each marker maps positionally to one exact-version structured prompt mention.
     private static final char MENTION_MARKER = '\uFFFC';
     private static final String COLOR_PATTERN = "^#[0-9A-F]{6}$";
     private static final List<String> INPUT_COLORS = List.of(
             "#7C3AED", "#0EA5E9", "#F97316", "#10B981",
-            "#EC4899", "#EAB308", "#6366F1", "#14B8A6");
+            "#EC4899", "#EAB308", "#6366F1", "#14B8A6",
+            "#DC2626", "#0891B2", "#9333EA", "#65A30D",
+            "#C2410C", "#4F46E5");
 
     private final ProjectService projects;
     private final ArtifactService artifactService;
@@ -90,7 +92,7 @@ public class MediaDraftService {
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
         if (inputCommands.size() > MAX_IMAGE_INPUTS) {
-            throw invalid("单张卡片最多保存 8 个图片输入。");
+            throw invalid("单张卡片最多保存 14 个图片输入。");
         }
         MediaDraft.VideoInputMode mode = kind == Artifact.Kind.IMAGE ? null
                 : requestedMode == null ? MediaDraft.VideoInputMode.START_END : requestedMode;

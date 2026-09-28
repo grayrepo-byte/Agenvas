@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.http.OutboundTimeouts;
@@ -11,6 +12,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
+import java.util.Set;
 import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -30,6 +33,10 @@ public class GoogleNanoBananaClient {
     private static final URI OFFICIAL = URI.create("https://generativelanguage.googleapis.com");
     /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
     public static final String DEFAULT_MODEL = "gemini-3.1-flash-image";
+    public static final int MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
+    public static final long MAX_REFERENCE_TOTAL_BYTES = 60L * 1024 * 1024;
+    private static final Set<String> REFERENCE_MIME_TYPES = Set.of(
+            "image/png", "image/jpeg", "image/webp");
     private static final String IMAGE_SIZE = "1K";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     /**
@@ -65,16 +72,17 @@ public class GoogleNanoBananaClient {
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,
-            String aspectRatio, byte[] reference, String referenceMimeType) {
+            String aspectRatio, List<InputImage> references) {
+        validateReferences(references);
         ObjectNode body = mapper.createObjectNode();
         ObjectNode content = body.putArray("contents").addObject();
         content.put("role", "user");
         ArrayNode parts = content.putArray("parts");
         parts.addObject().put("text", prompt);
-        if (reference != null) {
+        for (InputImage reference : references) {
             ObjectNode inline = parts.addObject().putObject("inlineData");
-            inline.put("mimeType", referenceMimeType);
-            inline.put("data", Base64.getEncoder().encodeToString(reference));
+            inline.put("mimeType", reference.mimeType());
+            inline.put("data", Base64.getEncoder().encodeToString(reference.bytes()));
         }
         ObjectNode config = body.putObject("generationConfig");
         config.putArray("responseModalities").add("TEXT").add("IMAGE");
@@ -124,6 +132,28 @@ public class GoogleNanoBananaClient {
                     "Google image response could not be decoded");
         }
     }
+
+    private static void validateReferences(List<InputImage> references) {
+        if (references == null
+                || references.size() > MediaAdapterRegistry.GOOGLE_MAX_REFERENCE_IMAGES) {
+            throw new IllegalArgumentException("Pinned reference image count is invalid");
+        }
+        long total = 0;
+        for (InputImage reference : references) {
+            if (reference == null || reference.bytes() == null
+                    || reference.bytes().length == 0
+                    || reference.bytes().length > MAX_REFERENCE_BYTES
+                    || !REFERENCE_MIME_TYPES.contains(reference.mimeType())) {
+                throw new IllegalArgumentException("Pinned reference image is invalid");
+            }
+            total += reference.bytes().length;
+            if (total > MAX_REFERENCE_TOTAL_BYTES) {
+                throw new IllegalArgumentException("Pinned reference image total size is invalid");
+            }
+        }
+    }
+
+    public record InputImage(byte[] bytes, String mimeType) {}
 
     private static MediaPayload image(JsonNode response) {
         JsonNode candidates = response.path("candidates");

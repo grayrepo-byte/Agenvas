@@ -2,7 +2,9 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.task.domain.Task;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
@@ -11,11 +13,21 @@ final class FrozenMediaInputs {
     private FrozenMediaInputs() {}
 
     static List<Image> images(Task task) {
+        JsonNode images = task.input().path("mediaInput").path("images");
+        if (!images.isArray()) {
+            throw new IllegalArgumentException("Frozen media input images are invalid");
+        }
         List<Image> result = new ArrayList<>();
-        for (JsonNode image : task.input().path("mediaInput").path("images")) {
+        Set<UUID> versions = new HashSet<>();
+        for (int index = 0; index < images.size(); index++) {
+            JsonNode image = images.path(index);
+            UUID versionId = UUID.fromString(image.path("versionId").asText());
+            if (image.path("order").asInt(-1) != index || !versions.add(versionId)) {
+                throw new IllegalArgumentException(
+                        "Frozen media input order or version identity is invalid");
+            }
             result.add(new Image(UUID.fromString(image.path("artifactId").asText()),
-                    UUID.fromString(image.path("versionId").asText()),
-                    image.path("role").asText(), image.path("order").asInt()));
+                    versionId, image.path("role").asText(), index));
         }
         return List.copyOf(result);
     }
