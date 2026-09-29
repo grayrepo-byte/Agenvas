@@ -4,7 +4,9 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
@@ -29,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Accepts a user's saved media draft as one immutable, unapproved direct Task. */
+/** Accepts a user's saved media draft as one immutable Task per requested media output. */
 @Service
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
@@ -41,6 +43,7 @@ public class DirectMediaTaskService {
     private final MediaDraftService drafts;
     private final ArtifactService artifacts;
     private final CanvasItemQueryService canvasItems;
+    private final CanvasService canvas;
     private final MediaCapabilityService capabilities;
     private final ProviderProperties provider;
     private final ProjectEventService events;
@@ -50,6 +53,7 @@ public class DirectMediaTaskService {
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, CanvasItemQueryService canvasItems,
+            CanvasService canvas,
             MediaCapabilityService capabilities,
             ProviderProperties provider, ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock) {
@@ -57,6 +61,7 @@ public class DirectMediaTaskService {
         this.drafts = drafts;
         this.artifacts = artifacts;
         this.canvasItems = canvasItems;
+        this.canvas = canvas;
         this.capabilities = capabilities;
         this.provider = provider;
         this.events = events;
@@ -76,8 +81,10 @@ public class DirectMediaTaskService {
             // The project event row lock serializes acceptance with all other card commands.
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
+                String priorSourceCanvasItemId = prior.input().path("sourceCanvasItemId")
+                        .asText(prior.input().path("canvasItemId").asText());
                 if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
-                        || !prior.input().path("canvasItemId").asText().equals(canvasItemId.toString())
+                        || !priorSourceCanvasItemId.equals(canvasItemId.toString())
                         || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion) {
                     throw conflict("相同幂等键已用于不同卡片或草稿版本。");
                 }
@@ -123,66 +130,91 @@ public class DirectMediaTaskService {
             // A default binding must also support the draft's exact duration.
             binding = capabilities.resolve(binding.capabilityId(), kind, seconds);
             validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding));
-            ObjectNode input = mapper.createObjectNode();
-            input.put("schemaVersion", 2);
-            input.put("artifactId", artifactId.toString());
-            input.put("canvasItemId", canvasItemId.toString());
-            if (canvasItem.selectedVersionId() == null) input.putNull("parentVersionId");
-            else input.put("parentVersionId", canvasItem.selectedVersionId().toString());
-            input.put("draftVersion", draft.version());
+            ImageGenerationParameters imageParameters = kind == Task.Kind.IMAGE_GENERATION
+                    ? ImageGenerationParameters.parse(draft.parameters()) : null;
+            if (imageParameters != null) {
+                var policy = capabilities.inputPolicy(binding);
+                imageParameters.requireSupported(policy.supportedImageAspectRatios(),
+                        policy.supportedImageResolutions(), policy.supportedImageQualities(),
+                        policy.supportsTransparentBackground());
+            }
             String renderedPrompt = renderPrompt(draft);
-            input.put("prompt", renderedPrompt);
-            input.put("providerConfigVersion", provider.configVersion());
-            input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
                     .connectionVersion().originSha256();
-            if (originHash != null) input.put("providerOriginSha256", originHash);
-            if (kind == Task.Kind.VIDEO_GENERATION) {
-                input.put("durationSeconds", seconds);
-            }
-            ObjectNode frozen = input.putObject("mediaInput");
-            if (canvasItem.selectedVersionId() == null) frozen.putNull("parentVersionId");
-            else frozen.put("parentVersionId", canvasItem.selectedVersionId().toString());
-            frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
-                    ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
-                    : draft.videoInputMode().name());
-            frozen.put("prompt", draft.prompt());
-            frozen.put("renderedPrompt", renderedPrompt);
-            frozen.set("parameters", draft.parameters().deepCopy());
-            frozen.put("capabilityId", binding.capabilityId().toString());
-            frozen.put("capabilityVersion", binding.capabilityVersion());
-            if (kind == Task.Kind.VIDEO_GENERATION) frozen.put("durationSeconds", seconds);
-            ArrayNode images = frozen.putArray("images");
-            for (MediaDraft.ImageInput imageInput : draft.imageInputs()) {
-                ArtifactVersion image = artifacts.requireImageVersionForTask(ownerId, projectId,
-                        imageInput.versionId());
-                ObjectNode imageNode = images.addObject();
-                imageNode.put("artifactId", image.artifactId().toString());
-                imageNode.put("versionId", image.id().toString());
-                imageNode.put("role", imageInput.role().name());
-                imageNode.put("order", imageInput.order());
-            }
-            frozen.set("mentions", mapper.valueToTree(draft.mentions()));
             Instant now = clock.instant();
-            Task task = new Task(UUID.randomUUID(), projectId, null, commandKey, kind,
-                    Task.Status.READY, false, input, hash(input.toString()), null, null, null,
-                    1, now, null, null, 0, 0, null, now, now, null);
-            tasks.create(task, List.of());
-            tasks.bindMediaTask(task.id(), binding);
-            tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                    artifactId, canvasItem.selectedVersionId(), target.version(), null,
-                    canvasItemId));
-            drafts.setDisplayModeWithinChange(projectId, canvasItemId,
-                    MediaDraft.DisplayMode.DRAFT);
-            usage.reserveMediaTask(ownerId, task, COST_SOURCE);
-            ObjectNode payload = mapper.createObjectNode();
-            payload.put("taskId", task.id().toString());
-            payload.put("artifactId", artifactId.toString());
-            payload.put("status", task.status().name());
-            events.append(ownerId, projectId,
-                    new ProjectEventService.EventDraft("task.status.changed", 1, task.id(),
-                            task.version(), payload));
-            return ProjectEventService.Change.unchanged(task);
+            int outputCount = imageParameters == null ? 1 : imageParameters.generationCount();
+            boolean newNodes = imageParameters != null
+                    && imageParameters.openNewNodeOnGenerate();
+            Task primary = null;
+            for (int outputIndex = 0; outputIndex < outputCount; outputIndex++) {
+                CanvasItem outputCard = canvasItem;
+                if (newNodes) {
+                    outputCard = canvas.forkMediaOutputWithinChange(ownerId, projectId,
+                            canvasItemId, UUID.randomUUID(), draft.version(), outputIndex);
+                }
+                ObjectNode input = mapper.createObjectNode();
+                input.put("schemaVersion", 3);
+                input.put("artifactId", artifactId.toString());
+                input.put("sourceCanvasItemId", canvasItemId.toString());
+                input.put("canvasItemId", outputCard.id().toString());
+                if (outputCard.selectedVersionId() == null) input.putNull("parentVersionId");
+                else input.put("parentVersionId", outputCard.selectedVersionId().toString());
+                input.put("draftVersion", draft.version());
+                input.put("generationIndex", outputIndex);
+                input.put("generationCount", outputCount);
+                input.put("prompt", renderedPrompt);
+                input.put("providerConfigVersion", provider.configVersion());
+                input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
+                if (originHash != null) input.put("providerOriginSha256", originHash);
+                if (kind == Task.Kind.VIDEO_GENERATION) input.put("durationSeconds", seconds);
+                ObjectNode frozen = input.putObject("mediaInput");
+                if (outputCard.selectedVersionId() == null) frozen.putNull("parentVersionId");
+                else frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
+                frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
+                        ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
+                        : draft.videoInputMode().name());
+                frozen.put("prompt", draft.prompt());
+                frozen.put("renderedPrompt", renderedPrompt);
+                frozen.set("parameters", imageParameters == null
+                        ? draft.parameters().deepCopy() : imageParameters.toJson(mapper));
+                frozen.put("capabilityId", binding.capabilityId().toString());
+                frozen.put("capabilityVersion", binding.capabilityVersion());
+                if (kind == Task.Kind.VIDEO_GENERATION) frozen.put("durationSeconds", seconds);
+                ArrayNode images = frozen.putArray("images");
+                for (MediaDraft.ImageInput imageInput : draft.imageInputs()) {
+                    ArtifactVersion image = artifacts.requireImageVersionForTask(ownerId, projectId,
+                            imageInput.versionId());
+                    ObjectNode imageNode = images.addObject();
+                    imageNode.put("artifactId", image.artifactId().toString());
+                    imageNode.put("versionId", image.id().toString());
+                    imageNode.put("role", imageInput.role().name());
+                    imageNode.put("order", imageInput.order());
+                }
+                frozen.set("mentions", mapper.valueToTree(draft.mentions()));
+                String stepKey = outputIndex == 0 ? commandKey
+                        : "image-batch:" + hash(commandKey).substring(0, 32) + ":" + outputIndex;
+                Task task = new Task(UUID.randomUUID(), projectId, null, stepKey, kind,
+                        Task.Status.READY, false, input, hash(input.toString()), null, null, null,
+                        1, now, null, null, 0, 0, null, now, now, null);
+                tasks.create(task, List.of());
+                tasks.bindMediaTask(task.id(), binding);
+                tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
+                        artifactId, outputCard.selectedVersionId(), target.version(), null,
+                        outputCard.id()));
+                drafts.setDisplayModeWithinChange(projectId, outputCard.id(),
+                        MediaDraft.DisplayMode.DRAFT);
+                usage.reserveMediaTask(ownerId, task, COST_SOURCE);
+                ObjectNode payload = mapper.createObjectNode();
+                payload.put("taskId", task.id().toString());
+                payload.put("artifactId", artifactId.toString());
+                payload.put("canvasItemId", outputCard.id().toString());
+                payload.put("status", task.status().name());
+                events.append(ownerId, projectId,
+                        new ProjectEventService.EventDraft("task.status.changed", 1, task.id(),
+                                task.version(), payload));
+                if (primary == null) primary = task;
+            }
+            return ProjectEventService.Change.unchanged(java.util.Objects.requireNonNull(primary));
         }).value();
     }
 

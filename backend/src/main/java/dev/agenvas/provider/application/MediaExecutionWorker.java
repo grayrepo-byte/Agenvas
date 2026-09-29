@@ -20,6 +20,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -210,6 +211,11 @@ public class MediaExecutionWorker {
                     task.input().path("providerConfigVersion").asInt());
             content.put("workflowVersion", task.input().path("workflowVersion").asText());
             ObjectNode parameters = content.putObject("parameters");
+            JsonNode frozenParameters = task.input().path("mediaInput").path("parameters");
+            if (frozenParameters.isObject()) {
+                frozenParameters.properties().forEach(entry ->
+                        parameters.set(entry.getKey(), entry.getValue().deepCopy()));
+            }
             parameters.put("adapterId", attempt.binding().adapterId());
             parameters.put("capabilityId", attempt.binding().capabilityId().toString());
             parameters.put("providerRequestId", attempt.originalRequestId() != null

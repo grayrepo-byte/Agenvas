@@ -660,7 +660,7 @@ export interface paths {
         /** 查询此卡片最近的直接媒体任务 */
         get: operations["listDirectMediaTasks"];
         put?: never;
-        /** 固定已保存的媒体草稿并直接受理 USER_DIRECT Task */
+        /** 固定已保存的媒体草稿并直接受理 USER_DIRECT Task；图片可创建 1/2/4 个独立任务 */
         post: operations["runMediaDraft"];
         delete?: never;
         options?: never;
@@ -1249,6 +1249,10 @@ export interface components {
             supportedVideoInputModes: components["schemas"]["VideoInputMode"][];
             defaultVideoInputMode: components["schemas"]["VideoInputMode"] | null;
             supportsEndFrame: boolean;
+            supportedImageAspectRatios: ("AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9")[];
+            supportedImageResolutions: ("1K" | "2K" | "4K")[];
+            supportedImageQualities: ("low" | "medium" | "high")[];
+            supportsTransparentBackground: boolean;
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
@@ -1500,9 +1504,7 @@ export interface components {
         };
         ManifestMediaDraft: {
             prompt: string;
-            parameters: {
-                [key: string]: unknown;
-            };
+            parameters: components["schemas"]["ImageGenerationParameters"];
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
@@ -1623,9 +1625,7 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
             prompt: string;
-            parameters: {
-                [key: string]: unknown;
-            };
+            parameters: components["schemas"]["ImageGenerationParameters"];
             durationSeconds?: number | null;
             /** Format: uuid */
             capabilityId?: string | null;
@@ -1668,9 +1668,7 @@ export interface components {
             /** Format: uuid */
             canvasItemId: string;
             prompt: string;
-            parameters: {
-                [key: string]: unknown;
-            };
+            parameters: components["schemas"]["ImageGenerationParameters"];
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
@@ -1685,6 +1683,19 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description 图片草稿的原子生成参数；视频草稿使用空对象。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
+        ImageGenerationParameters: {
+            /** @enum {string} */
+            aspectRatio?: "AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
+            /** @enum {string} */
+            resolution?: "1K" | "2K" | "4K";
+            /** @enum {string} */
+            quality?: "low" | "medium" | "high";
+            transparentBackground?: boolean;
+            /** @enum {integer} */
+            generationCount?: 1 | 2 | 4;
+            openNewNodeOnGenerate?: boolean;
         };
         /** @enum {string} */
         VideoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
@@ -3749,7 +3760,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 已受理或返回同一卡片正在执行的任务；无需审批 */
+            /** @description 已受理批次的主任务，或返回同一卡片正在执行的任务；兄弟任务通过任务列表查询，无需审批 */
             200: {
                 headers: {
                     [name: string]: unknown;

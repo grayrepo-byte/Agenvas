@@ -1,6 +1,7 @@
 package dev.agenvas.provider.domain;
 
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.Map;
@@ -21,30 +22,41 @@ public final class MediaAdapterRegistry {
     public record Declaration(MediaPlatform platform, Task.Kind kind, int minimumSeconds,
             int maximumSeconds, boolean originRequired, int maxReferenceImages,
             Set<String> supportedVideoInputModes, String defaultVideoInputMode,
-            boolean supportsEndFrame) {}
+            boolean supportsEndFrame, Set<String> supportedImageAspectRatios,
+            Set<String> supportedImageResolutions, Set<String> supportedImageQualities,
+            boolean supportsTransparentBackground) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.of(
-            "MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4),
+            "MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4,
+                    ImageGenerationParameters.ASPECT_RATIOS,
+                    ImageGenerationParameters.RESOLUTIONS,
+                    ImageGenerationParameters.QUALITIES, true),
             "MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, true),
-            "COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1),
+            "COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1,
+                    Set.of("AUTO", "1:1", "9:16", "16:9"), Set.of("1K"), Set.of(), false),
             "COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, false),
             "OPENAI_GPT_IMAGE_2", image(MediaPlatform.OPENAI, false,
-                    OPENAI_MAX_REFERENCE_IMAGES),
+                    OPENAI_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
+                    ImageGenerationParameters.RESOLUTIONS,
+                    ImageGenerationParameters.QUALITIES, true),
             "GOOGLE_NANO_BANANA_2", image(MediaPlatform.GOOGLE, false,
-                    GOOGLE_MAX_REFERENCE_IMAGES),
+                    GOOGLE_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
+                    ImageGenerationParameters.RESOLUTIONS, Set.of(), false),
             "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, false));
 
     private static Declaration image(MediaPlatform platform, boolean originRequired,
-            int maxReferenceImages) {
+            int maxReferenceImages, Set<String> aspectRatios, Set<String> resolutions,
+            Set<String> qualities, boolean transparentBackground) {
         return new Declaration(platform, Task.Kind.IMAGE_GENERATION, 0, 0, originRequired,
-                maxReferenceImages, Set.of(), null, false);
+                maxReferenceImages, Set.of(), null, false, aspectRatios, resolutions,
+                qualities, transparentBackground);
     }
 
     private static Declaration video(MediaPlatform platform, int minimumSeconds,
             int maximumSeconds, boolean originRequired, boolean supportsEndFrame) {
         return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
                 maximumSeconds, originRequired, 0, Set.of("START_END"), "START_END",
-                supportsEndFrame);
+                supportsEndFrame, Set.of(), Set.of(), Set.of(), false);
     }
 
     private final Map<String, MediaAdapter> implementations;

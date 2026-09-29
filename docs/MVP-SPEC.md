@@ -480,6 +480,8 @@ TEXT：`format`、`text`。
 
 生成 IMAGE / VIDEO：`assetId`、`prompt`、`negativePrompt`（可选）、`providerConfigVersion`、`workflowVersion`、`parameters`、`sourceTaskId`。版本记录另有 `baseVersionId` 和 `frozenInput`：后者保存任务受理时的媒体输入模式、按角色或顺序排列的精确图片版本、结构化标签及其他生成语义。Task 与成功结果必须使用同一份快照，不能从之后变化的 CanvasItem 草稿反推来源。
 
+图片草稿的 `parameters` 使用结构化原子参数：比例 `AUTO / 1:1 / 2:3 / 3:2 / 9:16 / 16:9 / 3:4 / 4:3 / 21:9`、分辨率 `1K / 2K / 4K`、画质 `low / medium / high`、透明背景开关、生成数量 `1 / 2 / 4` 以及“生成时新建节点”开关。能力合约必须声明自己实际支持的比例、分辨率、画质和透明背景；草稿选择不受支持的值时禁止运行，切换能力导致参数回退时先向用户确认。受理后所有字段均冻结进 Task，执行器不得再从当前能力默认值反推。
+
 用户上传参考图的 IMAGE 使用互斥分支 `sourceType: UPLOAD`、`assetId`，不伪造生成 Task/Provider 字段；详见 [ADR 0001](adr/0001-upload-image-provenance.md)。旧的单图 `referenceImageVersionId` / `keyframeVersionId` 不进入新 Schema，也不双写；纯文本、首尾帧和全能参考均由 `frozenInput` 的判别联合表达。
 
 所有 Schema 有明确必填项、字段长度和枚举约束。客户端与模型都不能提供 storage_key、owner_id、任务状态等受保护字段。
@@ -493,6 +495,8 @@ TEXT：`format`、`text`。
 自动选用结果必须满足 compare-and-set 条件：发起 CanvasItem 仍存在、当前选用版本仍等于任务固定的父版本，且有序图片版本、视频模式和首尾角色未变化。提示词、参数或标签的后续编辑不阻止自动选用，新结果选用后这些草稿编辑继续保留。条件不满足或发起卡片已移除时，结果只进入共享 Artifact 历史，不修改其他 CanvasItem 或资源默认版本。
 
 同一个 Artifact 的多个 CanvasItem 各自钉住展示版本、媒体草稿和图片输入，可以并行运行并向共享历史追加不同分支。资源默认版本只通过资源库中的明确操作更新；从资源库重新放置不会继承任一既有 CanvasItem 的草稿或任务状态。
+
+图片一次运行按 `generationCount` 创建 1、2 或 4 个独立持久 Task，UI 数量必须与真实 Task 数量一致，不能用一条 Task 伪装多个结果。关闭“生成时新建节点”时，所有结果追加到同一 Artifact 历史，只有首个满足上述 CAS 条件的结果自动选用到来源卡片，其余保留在历史；开启时，受理事务先为每个结果复制一个独立 CanvasItem 工作分支并把 Task 分别绑定到这些目标，来源卡片不被占用。每个结果独立计费、取消、UNKNOWN 与归档；一个结果失败不改写其他结果状态。
 
 ### 7.6 删除语义
 
@@ -818,6 +822,8 @@ Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不
 
 能力目录还必须声明图片参考上限，以及视频支持的输入模式、默认模式和每种模式自己的限制；首尾帧模式单独声明是否支持尾帧，全能参考模式单独声明最大图片数，纯文本模式不接收图片。能力合约支持有序多图不等于固定适配器已经支持：每个适配器只有在外部协议映射、顺序传输、大小校验和测试完成后才能提高上限，未升级适配器继续声明 1。管理员发布新的能力版本导致已有草稿不兼容时，草稿保持原样并禁止运行，不在后台静默裁剪。
 
+图片能力同时声明支持的比例、分辨率、画质与透明背景。OpenAI GPT Image 2 映射全部产品比例、1K/2K/4K、低/中/高画质和透明背景；Google Nano Banana 2 映射全部产品比例及 1K/2K/4K，但不伪造画质覆盖或透明背景；固定 ComfyUI 模板只声明模板已映射的 `AUTO / 1:1 / 9:16 / 16:9` 与 1K。生成数量由应用层拆为独立 Task，不依赖 Provider 的批量返回语义。
+
 OpenAI 图片连接可由管理员配置自定义 HTTPS API Base URL，留空使用官方 `/v1`；地址属于连接版本，已批准任务固定历史版本。服务端拒绝私网 DNS 目标与重定向。自定义公开网关的真实生成尚未运行。
 
 后续固定渠道增加 Google Nano Banana 2 图片生成与有序多参考生成，使用 Gemini `generateContent` 和默认模型 `gemini-3.1-flash-image`；当前产品上限为 14 张，并复用上述版本、任务与 UNKNOWN 边界。Google 真实调用状态单独记录，详见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)。
@@ -930,7 +936,7 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 | GET `/projects/{id}/runs/{runId}` | Run、输入快照与策略快照 |
 | GET `/projects/{id}/runs/{runId}/actions` | 最多 40 条已提交工具执行的公开业务摘要；不返回模型消息、参数或完整结果 |
 | POST `/projects/{id}/runs/{runId}/cancel` | 请求停止，幂等 |
-| POST `/projects/{id}/canvas-items/{canvasItemId}/run` | 固定该卡片已保存的媒体草稿、父版本与精确图片输入并直接受理 `USER_DIRECT` 媒体任务；幂等，返回同一卡片正在执行的任务 |
+| POST `/projects/{id}/canvas-items/{canvasItemId}/run` | 固定该卡片已保存的媒体草稿、父版本与精确图片输入并直接受理 `USER_DIRECT` 媒体任务；图片按生成数量创建 1/2/4 个独立任务，可分别绑定原卡片或预先复制的新节点；幂等响应返回批次主任务 |
 | POST `/projects/{id}/artifacts/{artifactId}/text-generations` | 固定提示词与当前文字版本并直接受理 `USER_DIRECT` 文本任务 |
 | GET `/projects/{id}/tasks/{taskId}` | 任务状态 |
 | POST `/projects/{id}/tasks/{taskId}/new-attempt` | 为结果未知的任务在额度内创建独立的新尝试 |

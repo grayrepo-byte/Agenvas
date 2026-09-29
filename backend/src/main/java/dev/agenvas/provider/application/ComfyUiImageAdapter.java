@@ -2,10 +2,10 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
-import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.PortInput;
@@ -126,11 +126,18 @@ public class ComfyUiImageAdapter implements MediaAdapter {
 
     /** Normalize the exact pinned reference image; the fixed graph always receives one PNG. */
     private byte[] inputImage(UUID ownerId, Task task, boolean reference) {
-        Project.AspectRatio ratio = projects.get(ownerId, task.projectId()).aspectRatio();
-        int width = ratio == Project.AspectRatio.PORTRAIT_9_16 ? 576
-                : ratio == Project.AspectRatio.SQUARE_1_1 ? 768 : 1024;
-        int height = ratio == Project.AspectRatio.PORTRAIT_9_16 ? 1024
-                : ratio == Project.AspectRatio.SQUARE_1_1 ? 768 : 576;
+        ImageGenerationParameters parameters = ImageGenerationParameters.parse(
+                task.input().path("mediaInput").path("parameters"));
+        String ratio = parameters.aspectRatio();
+        if (ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+            ratio = switch (projects.get(ownerId, task.projectId()).aspectRatio()) {
+                case LANDSCAPE_16_9 -> "16:9";
+                case PORTRAIT_9_16 -> "9:16";
+                case SQUARE_1_1 -> "1:1";
+            };
+        }
+        int width = "9:16".equals(ratio) ? 576 : "1:1".equals(ratio) ? 768 : 1024;
+        int height = "9:16".equals(ratio) ? 1024 : "1:1".equals(ratio) ? 768 : 576;
         BufferedImage source = null;
         if (reference) {
             UUID versionId = FrozenMediaInputs.first(task).versionId();

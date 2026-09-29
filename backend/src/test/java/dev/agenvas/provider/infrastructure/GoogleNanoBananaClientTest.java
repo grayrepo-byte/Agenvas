@@ -153,6 +153,8 @@ class GoogleNanoBananaClientTest {
             var parts = body.path("contents").path(0).path("parts");
             assertThat(parts.size()).isEqualTo(3);
             assertThat(parts.path(0).path("text").asText()).isEqualTo("compose");
+            assertThat(body.path("generationConfig").path("responseFormat").path("image")
+                    .path("imageSize").asText()).isEqualTo("4K");
             assertThat(Base64.getDecoder().decode(
                     parts.path(1).path("inlineData").path("data").asText()))
                     .isEqualTo("FIRST".getBytes(StandardCharsets.UTF_8));
@@ -175,6 +177,7 @@ class GoogleNanoBananaClientTest {
             try (var generated = client.generate("test-key",
                     GoogleNanoBananaClient.DEFAULT_MODEL,
                     "http://127.0.0.1:" + server.getAddress().getPort(), "compose", "1:1",
+                    "4K",
                     List.of(
                             new GoogleNanoBananaClient.InputImage(
                                     "FIRST".getBytes(StandardCharsets.UTF_8), "image/png"),

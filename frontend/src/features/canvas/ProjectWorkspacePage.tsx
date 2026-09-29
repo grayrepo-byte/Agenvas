@@ -1245,7 +1245,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         >
           {selectedItems.length === 1 && selectedItems[0]?.artifact ?
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
-              className="nodrag nowheel nopan">
+              className="workspace-media-toolbar nodrag nowheel nopan">
               <div className="workspace-media-editor" aria-label="所选卡片编辑区">
                 <button aria-label="关闭编辑区" className="workspace-bottom-close"
                   onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>

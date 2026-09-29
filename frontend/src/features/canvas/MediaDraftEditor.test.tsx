@@ -28,13 +28,17 @@ const imageCapability: MediaCapability = {
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0,
   maximumSeconds: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
   defaultVideoInputMode: null, supportsEndFrame: false,
+  supportedImageAspectRatios: ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"],
+  supportedImageResolutions: ["1K", "2K", "4K"], supportedImageQualities: ["low", "medium", "high"],
+  supportsTransparentBackground: true,
   mappingSha256: "a".repeat(64), settings: { quality: "high" },
 };
 const videoCapability: MediaCapability = {
   ...imageCapability, id: "video-capability", name: "镜头视频", adapterId: "ARK_SEEDANCE_2_I2V",
   kind: "VIDEO_GENERATION", minimumSeconds: 2, maximumSeconds: 10,
   maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
-  defaultVideoInputMode: "START_END", supportsEndFrame: true, settings: {},
+  defaultVideoInputMode: "START_END", supportsEndFrame: true, supportedImageAspectRatios: [],
+  supportedImageResolutions: [], supportedImageQualities: [], supportsTransparentBackground: false, settings: {},
 };
 const settings: MediaSettings = {
   connections: [{ id: "connection", name: "我的媒体连接", platform: "OPENAI", enabled: true,
@@ -281,7 +285,7 @@ describe("MediaDraftEditor", () => {
       .toEqual(["image-v1", "image-v2"]));
   });
 
-  it("shows read-only size and configured quality without inventing draft parameters", async () => {
+  it("persists image ratio, resolution, quality, count, transparency and output placement", async () => {
     const { saves } = setup();
     const user = userEvent.setup();
     await screen.findByLabelText("图片提示词");
@@ -298,11 +302,17 @@ describe("MediaDraftEditor", () => {
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     const parameters = screen.getByRole("dialog", { name: "尺寸与画质设置" });
-    expect(within(parameters).getByText("由模型决定")).toBeVisible();
-    expect(within(parameters).getByText("高")).toBeVisible();
-    expect(within(parameters).queryByRole("combobox")).not.toBeInTheDocument();
-    expect(within(parameters).queryByRole("spinbutton")).not.toBeInTheDocument();
-    expect(saves).toHaveLength(0);
+    await user.click(within(parameters).getByRole("button", { name: "9:16" }));
+    await user.click(within(parameters).getByRole("button", { name: "2K" }));
+    await user.click(within(parameters).getByRole("button", { name: "低" }));
+    await user.click(within(parameters).getByRole("button", { name: "4" }));
+    await user.click(within(parameters).getByRole("switch", { name: "透明背景" }));
+    await user.click(within(parameters).getByRole("switch", { name: "生成时新建节点" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({
+      aspectRatio: "9:16", resolution: "2K", quality: "low", transparentBackground: true,
+      generationCount: 4, openNewNodeOnGenerate: true,
+    }));
+    expect(screen.getByText("9:16 · 2K · 低 · 4 张")).toBeVisible();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveFocus();
@@ -456,7 +466,9 @@ describe("MediaDraftEditor", () => {
       await user.keyboard("{ArrowDown}{Enter}");
       await waitFor(() => expect(saves).toHaveLength(1));
       expect(saves[0]).toEqual({ expectedVersion: 0, prompt: initialDraft.prompt,
-        parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+        parameters: { aspectRatio: "AUTO", resolution: "1K", quality: "high",
+          transparentBackground: false, generationCount: 1, openNewNodeOnGenerate: false },
+        videoInputMode: null, imageInputs: [], mentions: [],
         durationSeconds: null, capabilityId: imageCapability.id });
       await user.click(screen.getByRole("button", { name: "选择生成模型" }));
       outerEscape.mockClear();

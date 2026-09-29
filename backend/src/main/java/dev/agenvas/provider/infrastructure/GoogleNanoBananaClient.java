@@ -1,6 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.http.OutboundTimeouts;
@@ -37,7 +38,6 @@ public class GoogleNanoBananaClient {
     public static final long MAX_REFERENCE_TOTAL_BYTES = 60L * 1024 * 1024;
     private static final Set<String> REFERENCE_MIME_TYPES = Set.of(
             "image/png", "image/jpeg", "image/webp");
-    private static final String IMAGE_SIZE = "1K";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     /**
      * 单次读取上限；工厂要求显式传入，不能漏成 0（0 表示不限）。
@@ -72,8 +72,13 @@ public class GoogleNanoBananaClient {
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,
-            String aspectRatio, List<InputImage> references) {
+            String aspectRatio, String imageSize, List<InputImage> references) {
         validateReferences(references);
+        if (!ImageGenerationParameters.ASPECT_RATIOS.contains(aspectRatio)
+                || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(aspectRatio)
+                || !ImageGenerationParameters.RESOLUTIONS.contains(imageSize)) {
+            throw new IllegalArgumentException("Google image dimensions are invalid");
+        }
         ObjectNode body = mapper.createObjectNode();
         ObjectNode content = body.putArray("contents").addObject();
         content.put("role", "user");
@@ -88,7 +93,7 @@ public class GoogleNanoBananaClient {
         config.putArray("responseModalities").add("TEXT").add("IMAGE");
         ObjectNode image = config.putObject("responseFormat").putObject("image");
         image.put("aspectRatio", aspectRatio);
-        image.put("imageSize", IMAGE_SIZE);
+        image.put("imageSize", imageSize);
         // 能力配置的地址；留空表示沿用官方端点。
         URI target = origin == null || origin.isBlank() ? OFFICIAL : URI.create(origin);
         String path = "/v1/models/" + model + ":generateContent";
@@ -131,6 +136,11 @@ public class GoogleNanoBananaClient {
             throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
                     "Google image response could not be decoded");
         }
+    }
+
+    MediaPayload generate(String key, String model, String origin, String prompt,
+            String aspectRatio, List<InputImage> references) {
+        return generate(key, model, origin, prompt, aspectRatio, "1K", references);
     }
 
     private static void validateReferences(List<InputImage> references) {

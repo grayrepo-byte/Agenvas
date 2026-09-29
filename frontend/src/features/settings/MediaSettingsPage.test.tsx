@@ -39,9 +39,11 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
         minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 1,
         supportedVideoInputModes: [], defaultVideoInputMode: null,
         supportsEndFrame: false,
+        supportedImageAspectRatios: ["AUTO", "1:1"], supportedImageResolutions: ["1K", "2K", "4K"],
+        supportedImageQualities: ["low", "medium", "high"], supportsTransparentBackground: true,
         mappingSha256: "a".repeat(64), settings: { quality: "high" },
         ...capabilityChanges,
-      }],
+      } as MediaCapability],
     }],
   };
 }
@@ -144,6 +146,8 @@ describe("MediaSettingsPage", () => {
           minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 1,
           supportedVideoInputModes: [], defaultVideoInputMode: null,
           supportsEndFrame: false,
+          supportedImageAspectRatios: ["AUTO", "1:1"], supportedImageResolutions: ["1K", "2K", "4K"],
+          supportedImageQualities: ["low", "medium", "high"], supportsTransparentBackground: true,
           mappingSha256: "a".repeat(64), settings: { quality: "high" },
         }],
       }],

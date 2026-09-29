@@ -269,6 +269,10 @@ button:disabled {
   box-shadow: none;
 }
 
+/* React Flow gives every NodeToolbar the same inline z-index. The editor's upward-opening
+   parameter panels must stay above the selected card's action toolbar at narrower widths. */
+.react-flow__node-toolbar.workspace-media-toolbar { z-index: 1002 !important; }
+
 .workspace-media-editor > .workspace-bottom-close { z-index: 2; top: 10px; right: 12px; }
 
 /* 连接点分两层：外层是 React Flow 的几何盒，中心必须留在卡片边框上，尺寸要小——React Flow

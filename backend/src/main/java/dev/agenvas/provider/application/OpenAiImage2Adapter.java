@@ -2,10 +2,10 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
-import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
@@ -79,7 +79,8 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         Snapshot snapshot = snapshot(context);
         String key = credential(snapshot);
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
-        String quality = settings.path("quality").asText("medium");
+        ImageGenerationParameters parameters = parameters(context);
+        String quality = parameters.quality();
         String configuredModel = settings.path("model").asText("");
         String model = configuredModel.isEmpty() ? OpenAiImage2Client.DEFAULT_MODEL
                 : configuredModel;
@@ -89,9 +90,9 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         try {
             return new Submission.Completed(!FrozenMediaInputs.images(context.lease()).isEmpty()
                     ? client.edit(key, model, prompt, quality, size(context), referencePngs(context),
-                            snapshot.connectionVersion().origin())
+                            parameters.transparentBackground(), snapshot.connectionVersion().origin())
                     : client.generate(key, model, prompt, quality, size(context),
-                            snapshot.connectionVersion().origin()));
+                            parameters.transparentBackground(), snapshot.connectionVersion().origin()));
         } catch (OpenAiImage2Client.Rejected rejected) {
             return new Submission.Rejected("OPENAI_IMAGE_REJECTED");
         } catch (OpenAiImage2Client.Uncertain uncertain) {
@@ -130,12 +131,51 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     }
 
     private String size(AttemptContext context) {
-        Project.AspectRatio ratio = projects.get(context.ownerId(),
-                context.lease().projectId()).aspectRatio();
-        return switch (ratio) {
-            case LANDSCAPE_16_9 -> "1536x1024";
-            case PORTRAIT_9_16 -> "1024x1536";
-            case SQUARE_1_1 -> "1024x1024";
+        ImageGenerationParameters parameters = parameters(context);
+        String ratio = parameters.aspectRatio();
+        if (ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+            ratio = switch (projects.get(context.ownerId(), context.lease().projectId()).aspectRatio()) {
+                case LANDSCAPE_16_9 -> "16:9";
+                case PORTRAIT_9_16 -> "9:16";
+                case SQUARE_1_1 -> "1:1";
+            };
+        }
+        return openAiSize(ratio, parameters.resolution());
+    }
+
+    private ImageGenerationParameters parameters(AttemptContext context) {
+        return ImageGenerationParameters.parse(
+                context.lease().input().path("mediaInput").path("parameters"));
+    }
+
+    static String openAiSize(String ratio, String resolution) {
+        String key = resolution + ":" + ratio;
+        return switch (key) {
+            case "1K:1:1" -> "1024x1024";
+            case "1K:2:3" -> "832x1248";
+            case "1K:3:2" -> "1248x832";
+            case "1K:3:4" -> "912x1216";
+            case "1K:4:3" -> "1216x912";
+            case "1K:9:16" -> "720x1280";
+            case "1K:16:9" -> "1280x720";
+            case "1K:21:9" -> "1344x576";
+            case "2K:1:1" -> "2048x2048";
+            case "2K:2:3" -> "1664x2496";
+            case "2K:3:2" -> "2496x1664";
+            case "2K:3:4" -> "1824x2432";
+            case "2K:4:3" -> "2432x1824";
+            case "2K:9:16" -> "1440x2560";
+            case "2K:16:9" -> "2560x1440";
+            case "2K:21:9" -> "2688x1152";
+            case "4K:1:1" -> "2880x2880";
+            case "4K:2:3" -> "2336x3504";
+            case "4K:3:2" -> "3504x2336";
+            case "4K:3:4" -> "2448x3264";
+            case "4K:4:3" -> "3264x2448";
+            case "4K:9:16" -> "2160x3840";
+            case "4K:16:9" -> "3840x2160";
+            case "4K:21:9" -> "3808x1632";
+            default -> throw new IllegalArgumentException("Unsupported GPT Image dimensions");
         };
     }
 
@@ -148,8 +188,9 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             throw new IllegalArgumentException("Pinned reference image count is unsupported");
         }
         String outputSize = size(context);
-        int width = outputSize.startsWith("1536") ? 1536 : 1024;
-        int height = outputSize.endsWith("1536") ? 1536 : 1024;
+        String[] dimensions = outputSize.split("x", 2);
+        int width = Integer.parseInt(dimensions[0]);
+        int height = Integer.parseInt(dimensions[1]);
         long totalBytes = 0;
         List<byte[]> result = new ArrayList<>(inputs.size());
         for (FrozenMediaInputs.Image input : inputs) {

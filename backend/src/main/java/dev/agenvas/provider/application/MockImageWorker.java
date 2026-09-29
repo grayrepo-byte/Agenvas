@@ -2,6 +2,8 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
+import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.GenerationRequest;
@@ -43,11 +45,12 @@ public class MockImageWorker {
     private final ProviderProperties provider;
     /** 构造生成产物正文。 */
     private final ObjectMapper mapper;
+    private final ProjectService projects;
 
     /** 装配图片演示 Worker 所需的任务、资产和本地生成服务。 */
     public MockImageWorker(TaskService tasks, AssetService assets, GenerationGateway gateway,
             MockProviderProperties properties, ProviderProperties provider,
-            ObjectMapper mapper, CallLogService callLogs) {
+            ObjectMapper mapper, CallLogService callLogs, ProjectService projects) {
         this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.assets = assets;
@@ -55,6 +58,7 @@ public class MockImageWorker {
         this.properties = properties;
         this.provider = provider;
         this.mapper = mapper;
+        this.projects = projects;
     }
 
     /** 每轮最多认领一个图片生成任务，不处理视频或模型回合任务。 */
@@ -96,7 +100,7 @@ public class MockImageWorker {
         }
         UUID ownerId = tasks.ownerForWorker(task);
         Asset asset = assets.archiveImage(ownerId, task.projectId(),
-                new ByteArrayInputStream(renderDemoImage(task.id())));
+                new ByteArrayInputStream(renderDemoImage(task)));
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", asset.id().toString());
         content.put("prompt", task.input().path("prompt").asText("Mock image"));
@@ -107,6 +111,11 @@ public class MockImageWorker {
         content.put("workflowVersion", task.input().path("workflowVersion").asText());
         content.put("sourceTaskId", task.id().toString());
         ObjectNode parameters = content.putObject("parameters");
+        var frozenParameters = task.input().path("mediaInput").path("parameters");
+        if (frozenParameters.isObject()) {
+            frozenParameters.properties().forEach(entry ->
+                    parameters.set(entry.getKey(), entry.getValue().deepCopy()));
+        }
         parameters.put("mock", true);
         parameters.put("displayLabel", "演示素材");
         parameters.put("providerRequestId", result.providerRequestId());
@@ -114,22 +123,43 @@ public class MockImageWorker {
     }
 
     /** 根据任务 ID 生成可复现的合成 PNG，图面明确标出演示且不使用模型或 GPU。 */
-    private byte[] renderDemoImage(UUID taskId) {
-        BufferedImage image = new BufferedImage(640, 360, BufferedImage.TYPE_INT_RGB);
+    private byte[] renderDemoImage(Task task) {
+        ImageGenerationParameters parameters = ImageGenerationParameters.parse(
+                task.input().path("mediaInput").path("parameters"));
+        String ratio = parameters.aspectRatio();
+        if (ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+            ratio = switch (projects.get(tasks.ownerForWorker(task), task.projectId()).aspectRatio()) {
+                case LANDSCAPE_16_9 -> "16:9";
+                case PORTRAIT_9_16 -> "9:16";
+                case SQUARE_1_1 -> "1:1";
+            };
+        }
+        String[] size = OpenAiImage2Adapter.openAiSize(ratio, parameters.resolution())
+                .split("x", 2);
+        int width = Integer.parseInt(size[0]);
+        int height = Integer.parseInt(size[1]);
+        BufferedImage image = new BufferedImage(width, height,
+                parameters.transparentBackground() ? BufferedImage.TYPE_INT_ARGB
+                        : BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = image.createGraphics();
         try {
-            int hue = taskId.hashCode();
+            int hue = task.id().hashCode();
             Color top = new Color(30 + (hue & 63), 32, 74 + ((hue >>> 6) & 63));
             Color bottom = new Color(105, 70 + ((hue >>> 12) & 63), 114);
-            graphics.setPaint(new GradientPaint(0, 0, top, 640, 360, bottom));
-            graphics.fillRect(0, 0, 640, 360);
+            if (!parameters.transparentBackground()) {
+                graphics.setPaint(new GradientPaint(0, 0, top, width, height, bottom));
+                graphics.fillRect(0, 0, width, height);
+            }
             graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            graphics.setColor(Color.WHITE);
-            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 62));
-            graphics.drawString("DEMO IMAGE", 82, 184);
-            graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 23));
-            graphics.drawString("AGENVAS  /  NOT AI GENERATED", 112, 230);
+            graphics.setColor(parameters.transparentBackground() ? new Color(245, 55, 170)
+                    : Color.WHITE);
+            int titleSize = Math.max(24, Math.min(width, height) / 10);
+            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, titleSize));
+            graphics.drawString("DEMO IMAGE", Math.max(20, width / 10), height / 2);
+            graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, Math.max(14, titleSize / 3)));
+            graphics.drawString("AGENVAS / NOT AI GENERATED", Math.max(20, width / 10),
+                    height / 2 + titleSize);
         } finally {
             graphics.dispose();
         }

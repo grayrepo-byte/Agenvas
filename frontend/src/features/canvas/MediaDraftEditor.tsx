@@ -13,7 +13,7 @@ import { ApiError, assetContentUrl, cancelQueuedDirectMediaTask, createArtifact,
   listArtifactVersions, listArtifacts, listCanvasItems, listDirectMediaTasks, runMediaDraft, saveMediaDraft,
   removeMediaDraftImageInput,
   uploadImageAsset, type Artifact, type MediaCapability, type MediaDraft,
-  type SaveMediaDraftRequest } from "../../shared/api/client";
+  type ImageGenerationParameters, type SaveMediaDraftRequest } from "../../shared/api/client";
 import "./MediaDraftEditor.css";
 
 const AUTOSAVE_DELAY_MS = 650;
@@ -36,6 +36,14 @@ const FIXED_MODELS: Readonly<Record<string, string>> = {
   MOCK_VIDEO: "Mock 视频演示",
 };
 const QUALITY_LABELS = { low: "低", medium: "中", high: "高" } as const;
+const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9", "AUTO"] as const;
+const RESOLUTION_OPTIONS = ["1K", "2K", "4K"] as const;
+const QUALITY_OPTIONS = ["low", "medium", "high"] as const;
+const GENERATION_COUNT_OPTIONS = [1, 2, 4] as const;
+const ASPECT_RATIO_LABELS: Readonly<Record<(typeof ASPECT_RATIO_OPTIONS)[number], string>> = {
+  "1:1": "1:1", "2:3": "2:3", "3:2": "3:2", "9:16": "9:16", "16:9": "16:9",
+  "3:4": "3:4", "4:3": "4:3", "21:9": "21:9", AUTO: "自动",
+};
 // Each object-replacement character occupies one position in the prompt and maps to the
 // structurally equivalent entry in mentions. Human-readable labels are a view of that pair.
 const MENTION_MARKER = "\uFFFC";
@@ -51,6 +59,29 @@ type AssetReferenceCommit = {
 type PromptReference = DraftFields["imageInputs"][number] & {
   label: string; thumbnailUrl?: string;
 };
+type ImageParameters = Required<ImageGenerationParameters>;
+
+function normalizedImageParameters(raw: ImageGenerationParameters | undefined,
+  capability?: MediaCapability): ImageParameters {
+  const supportedRatios = capability?.supportedImageAspectRatios ?? ["AUTO"];
+  const supportedResolutions = capability?.supportedImageResolutions ?? ["1K"];
+  const supportedQualities = capability?.supportedImageQualities ?? [];
+  const configuredQuality = capability?.settings.quality;
+  const aspectRatio = raw?.aspectRatio && supportedRatios.includes(raw.aspectRatio)
+    ? raw.aspectRatio : supportedRatios.includes("AUTO") ? "AUTO" : supportedRatios[0] ?? "AUTO";
+  const resolution = raw?.resolution && supportedResolutions.includes(raw.resolution)
+    ? raw.resolution : supportedResolutions[0] ?? "1K";
+  const quality = raw?.quality && (supportedQualities.length === 0 || supportedQualities.includes(raw.quality))
+    ? raw.quality : configuredQuality ?? supportedQualities[0] ?? "medium";
+  return {
+    aspectRatio, resolution, quality,
+    transparentBackground: capability?.supportsTransparentBackground
+      ? raw?.transparentBackground ?? false : false,
+    generationCount: raw?.generationCount === 2 || raw?.generationCount === 4
+      ? raw.generationCount : 1,
+    openNewNodeOnGenerate: raw?.openNewNodeOnGenerate ?? false,
+  };
+}
 
 function modelName(capability: MediaCapability) {
   return FIXED_MODELS[capability.adapterId] ?? capability.settings.checkpoint
@@ -649,7 +680,15 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   }
 
   function chooseCapability(capabilityId: string | null) {
-    edit({ capabilityId });
+    if (!fields) return;
+    const nextCapabilityId = capabilityId ?? defaultCapabilityId;
+    const nextCapability = availableCapabilities.find((candidate) => candidate.id === nextCapabilityId);
+    const nextImageParameters = artifact.kind === "IMAGE"
+      ? normalizedImageParameters(fields.parameters, nextCapability) : null;
+    if (nextImageParameters && Object.keys(fields.parameters).length > 0
+        && JSON.stringify(nextImageParameters) !== JSON.stringify(normalizedImageParameters(fields.parameters, chosenCapability))
+        && !window.confirm("切换模型会将不受支持的图片参数调整为该模型的默认值。是否继续？")) return;
+    edit({ capabilityId, ...(nextImageParameters ? { parameters: nextImageParameters } : {}) });
     setPopover(null);
     triggerRef.current?.focus();
   }
@@ -713,16 +752,29 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
     && duration <= Math.min(MAX_VIDEO_SECONDS, chosenCapability?.maximumSeconds ?? MAX_VIDEO_SECONDS);
+  const imageParameters = normalizedImageParameters(fields.parameters, chosenCapability);
+  const supportedImageAspectRatios = chosenCapability?.supportedImageAspectRatios ?? ["AUTO"];
+  const supportedImageResolutions = chosenCapability?.supportedImageResolutions ?? ["1K"];
+  const supportedImageQualities = chosenCapability?.supportedImageQualities ?? [];
+  const imageParametersSupported = artifact.kind !== "IMAGE" || Boolean(chosenCapability)
+    && supportedImageAspectRatios.includes(imageParameters.aspectRatio)
+    && supportedImageResolutions.includes(imageParameters.resolution)
+    && (supportedImageQualities.length === 0
+      || supportedImageQualities.includes(imageParameters.quality))
+    && (!imageParameters.transparentBackground || chosenCapability!.supportsTransparentBackground);
   const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
     && !error && !run.isPending
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
     && fields.prompt.trim().length > 0 && !occupied
-    && semanticInputsValid && allInputsAvailable
+    && semanticInputsValid && allInputsAvailable && imageParametersSupported
     && (artifact.kind === "IMAGE" || validDuration);
-  const isTemplate = chosenCapability?.adapterId.startsWith("COMFY_");
-  const dimensionLabel = isTemplate ? "模板默认" : "由模型决定";
-  const quality = chosenCapability?.settings.quality;
-  const qualityLabel = quality ? `${QUALITY_LABELS[quality]}画质` : "默认画质";
+  const dimensionLabel = artifact.kind === "IMAGE"
+    ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
+    : chosenCapability?.adapterId.startsWith("COMFY_") ? "模板默认" : "由模型决定";
+  const qualityLabel = artifact.kind === "IMAGE"
+    ? supportedImageQualities.length
+      ? QUALITY_LABELS[imageParameters.quality] : "模型默认"
+    : chosenCapability?.settings.quality ? `${QUALITY_LABELS[chosenCapability.settings.quality]}画质` : "默认画质";
   const historyError = imageHistories.find((history) => history.error)?.error;
   const historyPending = resources.isPending || imageHistories.some((history) => history.isPending);
   const normalizedAssetSearch = assetSearch.trim().toLocaleLowerCase();
@@ -1079,13 +1131,50 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         <button className="media-draft-toolbar-button" type="button" aria-label="尺寸与画质"
           aria-expanded={popover === "parameters"} aria-controls={`${id}-parameters`}
           onClick={(event) => togglePopover("parameters", event.currentTarget)}>
-          <SlidersHorizontal size={16} /><span>{artifact.kind === "VIDEO" ? `${duration ?? "—"} 秒 · ` : ""}{dimensionLabel} · {qualityLabel}</span><CaretDown size={12} />
+          <SlidersHorizontal size={16} /><span>{artifact.kind === "VIDEO" ? `${duration ?? "—"} 秒 · ` : ""}{dimensionLabel} · {qualityLabel}{artifact.kind === "IMAGE" ? ` · ${imageParameters.generationCount} 张` : ""}</span><CaretDown size={12} />
         </button>
         {popover === "parameters" ? <div className="media-draft-popover media-draft-parameters" ref={popoverRef}
           tabIndex={-1} id={`${id}-parameters`} role="dialog" aria-label="尺寸与画质设置">
           <p className="media-draft-popover-title">生成参数</p>
-          <dl><div><dt>比例 / 尺寸</dt><dd>{dimensionLabel}</dd></div><div><dt>画质</dt><dd>{quality ? QUALITY_LABELS[quality] : "模板默认"}</dd></div></dl>
-          <p>尺寸与画质来自所选模型的固定配置，当前草稿不支持单独修改。</p>
+          {artifact.kind === "IMAGE" ? <div className="media-draft-image-parameters">
+            <fieldset><legend>比例</legend><div className="media-draft-choice-grid media-draft-aspect-grid">
+              {ASPECT_RATIO_OPTIONS.filter((value) => supportedImageAspectRatios.includes(value))
+                .map((value) => <button key={value} type="button" aria-pressed={imageParameters.aspectRatio === value}
+                  onClick={() => edit({ parameters: { ...imageParameters, aspectRatio: value } })}>
+                  <span className={`media-draft-ratio-icon ratio-${value.replace(":", "-").toLowerCase()}`} aria-hidden="true" />
+                  <small>{ASPECT_RATIO_LABELS[value]}</small>
+                </button>)}
+            </div></fieldset>
+            <fieldset><legend>分辨率</legend><div className="media-draft-segmented">
+              {RESOLUTION_OPTIONS.filter((value) => supportedImageResolutions.includes(value))
+                .map((value) => <button key={value} type="button" aria-pressed={imageParameters.resolution === value}
+                  onClick={() => edit({ parameters: { ...imageParameters, resolution: value } })}>{value}</button>)}
+            </div></fieldset>
+            <div className="media-draft-switch-row"><span>透明背景</span><button type="button" role="switch"
+              aria-label="透明背景"
+              aria-checked={imageParameters.transparentBackground}
+              disabled={!chosenCapability?.supportsTransparentBackground}
+              title={chosenCapability?.supportsTransparentBackground ? undefined : "所选模型不支持透明背景"}
+              onClick={() => edit({ parameters: { ...imageParameters,
+                transparentBackground: !imageParameters.transparentBackground } })}><span /></button></div>
+            <fieldset><legend>画质</legend>{supportedImageQualities.length
+              ? <div className="media-draft-segmented">{QUALITY_OPTIONS
+                .filter((value) => supportedImageQualities.includes(value))
+                .map((value) => <button key={value} type="button" aria-pressed={imageParameters.quality === value}
+                  onClick={() => edit({ parameters: { ...imageParameters, quality: value } })}>{QUALITY_LABELS[value]}</button>)}</div>
+              : <p className="media-draft-fixed-parameter">由所选模型固定</p>}</fieldset>
+            <fieldset><legend>生成数量</legend><div className="media-draft-segmented">
+              {GENERATION_COUNT_OPTIONS.map((value) => <button key={value} type="button"
+                aria-pressed={imageParameters.generationCount === value}
+                onClick={() => edit({ parameters: { ...imageParameters, generationCount: value } })}>{value}</button>)}
+            </div></fieldset>
+            <div className="media-draft-switch-row"><span><strong>生成时新建节点</strong><small>每个结果使用独立工作分支</small></span>
+              <button type="button" role="switch" aria-label="生成时新建节点"
+                aria-checked={imageParameters.openNewNodeOnGenerate}
+                onClick={() => edit({ parameters: { ...imageParameters,
+                  openNewNodeOnGenerate: !imageParameters.openNewNodeOnGenerate } })}><span /></button></div>
+          </div> : <><dl><div><dt>比例 / 尺寸</dt><dd>{dimensionLabel}</dd></div><div><dt>画质</dt><dd>{qualityLabel}</dd></div></dl>
+            <p>尺寸与画质来自所选模型的固定配置。</p></>}
           {artifact.kind === "VIDEO" ? <div className="media-draft-duration"><label htmlFor={`${id}-duration`}>时长（秒）</label>
             <input id={`${id}-duration`} aria-describedby={chosenCapability ? `${id}-duration-help` : undefined}
               min={Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)}

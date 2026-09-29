@@ -59,6 +59,7 @@ export type DiagnoseLlmRequest = components["schemas"]["DiagnoseLlmRequest"];
 export type MediaSettings = components["schemas"]["MediaSettings"];
 export type MediaConnection = components["schemas"]["MediaConnection"];
 export type MediaCapability = components["schemas"]["MediaCapability"];
+export type ImageGenerationParameters = components["schemas"]["ImageGenerationParameters"];
 export type CreateMediaConnectionRequest = components["schemas"]["CreateMediaConnectionRequest"];
 export type UpdateMediaConnectionRequest = components["schemas"]["UpdateMediaConnectionRequest"];
 export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCapabilityRequest"];

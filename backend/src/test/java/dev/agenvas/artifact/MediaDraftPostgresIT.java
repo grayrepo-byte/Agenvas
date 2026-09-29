@@ -194,6 +194,76 @@ class MediaDraftPostgresIT {
         mvc.perform(post(base + "/tasks/" + nextRun.path("id").asText() + "/cancel-queued")
                 .with(auth).with(csrf())).andExpect(status().isOk());
 
+        long canvasCountBeforeBatch = jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
+                .param("projectId", project.id()).query(Long.class).single();
+        JsonNode batchDraft = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"expectedVersion\":" + runningDraft.path("version").asLong()
+                                + ",\"prompt\":\"Two portrait studies\",\"parameters\":{"
+                                + "\"aspectRatio\":\"9:16\",\"resolution\":\"2K\","
+                                + "\"quality\":\"high\",\"transparentBackground\":false,"
+                                + "\"generationCount\":2,\"openNewNodeOnGenerate\":true},"
+                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode batchPrimary = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
+                        .header("Idempotency-Key", "direct-image-two-new-nodes")
+                        .contentType("application/json").content("{\"canvasItemId\":\""
+                                + canvasItemId + "\",\"expectedDraftVersion\":"
+                                + batchDraft.path("version").asLong() + "}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        List<UUID> batchTaskIds = jdbc.sql("select id from task where project_id=:projectId "
+                        + "and input_json->>'sourceCanvasItemId'=:source "
+                        + "and input_json->>'generationCount'='2'")
+                .param("projectId", project.id()).param("source", canvasItemId)
+                .query(UUID.class).list();
+        assertThat(batchTaskIds).hasSize(2).contains(UUID.fromString(batchPrimary.path("id").asText()));
+        assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
+                .param("projectId", project.id()).query(Long.class).single())
+                .isEqualTo(canvasCountBeforeBatch + 2);
+        for (UUID batchTaskId : batchTaskIds) {
+            mvc.perform(post(base + "/tasks/" + batchTaskId + "/cancel-queued")
+                    .with(auth).with(csrf())).andExpect(status().isOk());
+        }
+
+        JsonNode sameCardBatchDraft = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"expectedVersion\":" + batchDraft.path("version").asLong()
+                                + ",\"prompt\":\"Two alternatives in one history\",\"parameters\":{"
+                                + "\"aspectRatio\":\"1:1\",\"resolution\":\"1K\","
+                                + "\"quality\":\"medium\",\"transparentBackground\":false,"
+                                + "\"generationCount\":2,\"openNewNodeOnGenerate\":false},"
+                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        String sameCardKey = "direct-image-two-same-card";
+        String sameCardBody = "{\"canvasItemId\":\"" + canvasItemId
+                + "\",\"expectedDraftVersion\":"
+                + sameCardBatchDraft.path("version").asLong() + "}";
+        JsonNode sameCardPrimary = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
+                        .header("Idempotency-Key", sameCardKey).contentType("application/json")
+                        .content(sameCardBody)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString());
+        JsonNode sameCardReplay = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
+                        .header("Idempotency-Key", sameCardKey).contentType("application/json")
+                        .content(sameCardBody)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString());
+        assertThat(sameCardReplay.path("id").asText())
+                .isEqualTo(sameCardPrimary.path("id").asText());
+        List<UUID> sameCardTaskIds = jdbc.sql("select id from task where project_id=:projectId "
+                        + "and input_json->>'sourceCanvasItemId'=:source "
+                        + "and input_json->>'generationCount'='2' "
+                        + "and input_json->'mediaInput'->'parameters'->>'openNewNodeOnGenerate'='false'")
+                .param("projectId", project.id()).param("source", canvasItemId)
+                .query(UUID.class).list();
+        assertThat(sameCardTaskIds).hasSize(2)
+                .contains(UUID.fromString(sameCardPrimary.path("id").asText()));
+        assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
+                .param("projectId", project.id()).query(Long.class).single())
+                .isEqualTo(canvasCountBeforeBatch + 2);
+        for (UUID sameCardTaskId : sameCardTaskIds) {
+            mvc.perform(post(base + "/tasks/" + sameCardTaskId + "/cancel-queued")
+                    .with(auth).with(csrf())).andExpect(status().isOk());
+        }
+
         JsonNode video = mapper.readTree(mvc.perform(post(base + "/artifacts")
                         .with(auth).with(csrf()).contentType("application/json")
                         .header("Idempotency-Key", "draft-video-create")

@@ -57,6 +57,7 @@ class OpenAiImage2ClientTest {
             assertThat(body.path("model").asText()).isEqualTo("gpt-image-2");
             assertThat(body.path("quality").asText()).isEqualTo("medium");
             assertThat(body.path("size").asText()).isEqualTo("1536x1024");
+            assertThat(body.path("background").asText()).isEqualTo("transparent");
             generations.incrementAndGet();
             respond(exchange, 200, result);
         });
@@ -67,6 +68,7 @@ class OpenAiImage2ClientTest {
             String body = new String(exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.ISO_8859_1);
             assertThat(body).contains("name=\"model\"", "gpt-image-2",
+                    "name=\"background\"", "opaque",
                     "name=\"image[]\"", "filename=\"reference-1.png\"",
                     "filename=\"reference-2.png\"", "Avoid: clouds");
             assertThat(body.indexOf("FIRST-REFERENCE"))
@@ -75,13 +77,13 @@ class OpenAiImage2ClientTest {
             respond(exchange, 200, result);
         });
 
-        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "medium", "1536x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+        try (var generated = client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "medium", "1536x1024", true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(generated.stream().readAllBytes()).isEqualTo(png);
         }
         try (var edited = client.edit("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge\nAvoid: clouds", "high",
                 "1024x1024", List.of(
                         "FIRST-REFERENCE".getBytes(StandardCharsets.UTF_8),
-                        "SECOND-REFERENCE".getBytes(StandardCharsets.UTF_8)),
+                        "SECOND-REFERENCE".getBytes(StandardCharsets.UTF_8)), false,
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(edited.stream().readAllBytes()).isEqualTo(png);
         }

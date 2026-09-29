@@ -2,6 +2,7 @@ package dev.agenvas.artifact.application;
 
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
@@ -80,6 +81,9 @@ public class MediaDraftService {
                 ? mapper.createObjectNode() : parameters;
         if (!normalizedParameters.isObject()) {
             throw invalid("媒体参数必须是对象。");
+        }
+        if (kind == Artifact.Kind.IMAGE) {
+            ImageGenerationParameters.parse(normalizedParameters);
         }
         List<SaveImageInput> inputCommands = requestedInputs == null
                 ? List.of() : List.copyOf(requestedInputs);

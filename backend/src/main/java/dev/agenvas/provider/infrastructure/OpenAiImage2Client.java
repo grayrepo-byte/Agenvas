@@ -92,12 +92,13 @@ public class OpenAiImage2Client {
     }
 
     public MediaPayload generate(String key, String model, String prompt, String quality,
-            String size, String baseUrl) {
+            String size, boolean transparentBackground, String baseUrl) {
         ObjectNode body = mapper.createObjectNode();
         body.put("model", model);
         body.put("prompt", prompt);
         body.put("quality", quality);
         body.put("size", size);
+        body.put("background", transparentBackground ? "transparent" : "opaque");
         body.put("n", 1);
         body.put("output_format", "png");
         return send(key, baseUrl, "images/generations",
@@ -105,14 +106,20 @@ public class OpenAiImage2Client {
                         MediaType.parse("application/json")));
     }
 
+    MediaPayload generate(String key, String model, String prompt, String quality,
+            String size, String baseUrl) {
+        return generate(key, model, prompt, quality, size, false, baseUrl);
+    }
+
     public MediaPayload edit(String key, String model, String prompt, String quality, String size,
-            List<byte[]> referencePngs, String baseUrl) {
+            List<byte[]> referencePngs, boolean transparentBackground, String baseUrl) {
         validateReferences(referencePngs);
         MultipartBody.Builder body = new MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("model", model)
                 .addFormDataPart("prompt", prompt)
                 .addFormDataPart("quality", quality)
                 .addFormDataPart("size", size)
+                .addFormDataPart("background", transparentBackground ? "transparent" : "opaque")
                 .addFormDataPart("n", "1")
                 .addFormDataPart("output_format", "png");
         for (int index = 0; index < referencePngs.size(); index++) {
@@ -120,6 +127,11 @@ public class OpenAiImage2Client {
                     RequestBody.create(referencePngs.get(index), MediaType.parse("image/png")));
         }
         return send(key, baseUrl, "images/edits", body.build());
+    }
+
+    MediaPayload edit(String key, String model, String prompt, String quality, String size,
+            List<byte[]> referencePngs, String baseUrl) {
+        return edit(key, model, prompt, quality, size, referencePngs, false, baseUrl);
     }
 
     private static void validateReferences(List<byte[]> references) {

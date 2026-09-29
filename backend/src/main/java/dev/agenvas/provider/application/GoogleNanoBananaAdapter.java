@@ -2,10 +2,10 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
-import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
@@ -81,7 +81,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         try {
             return new Submission.Completed(client.generate(key, configuredModel,
                     snapshot.connectionVersion().origin(), prompt, aspectRatio(context),
-                    references));
+                    parameters(context).resolution(), references));
         } catch (GoogleNanoBananaClient.Rejected rejected) {
             return new Submission.Rejected("GOOGLE_IMAGE_REJECTED");
         } catch (GoogleNanoBananaClient.Uncertain uncertain) {
@@ -126,13 +126,18 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     }
 
     private String aspectRatio(AttemptContext context) {
-        Project.AspectRatio ratio = projects.get(context.ownerId(),
-                context.lease().projectId()).aspectRatio();
-        return switch (ratio) {
+        String configured = parameters(context).aspectRatio();
+        if (!ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(configured)) return configured;
+        return switch (projects.get(context.ownerId(), context.lease().projectId()).aspectRatio()) {
             case LANDSCAPE_16_9 -> "16:9";
             case PORTRAIT_9_16 -> "9:16";
             case SQUARE_1_1 -> "1:1";
         };
+    }
+
+    private ImageGenerationParameters parameters(AttemptContext context) {
+        return ImageGenerationParameters.parse(
+                context.lease().input().path("mediaInput").path("parameters"));
     }
 
     /** Never accept URLs or images outside the exact project and frozen order. */

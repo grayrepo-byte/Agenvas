@@ -135,7 +135,11 @@ public class MediaCapabilityController {
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
                 declaration.maxReferenceImages(), declaration.supportedVideoInputModes().stream()
                         .sorted().toList(), declaration.defaultVideoInputMode(),
-                declaration.supportsEndFrame(), snapshot.mappingSha256(), settings.isMissingNode()
+                declaration.supportsEndFrame(),
+                declaration.supportedImageAspectRatios().stream().sorted().toList(),
+                declaration.supportedImageResolutions().stream().sorted().toList(),
+                declaration.supportedImageQualities().stream().sorted().toList(),
+                declaration.supportsTransparentBackground(), snapshot.mappingSha256(), settings.isMissingNode()
                         ? mapper.createObjectNode() : settings);
     }
 
@@ -160,7 +164,9 @@ public class MediaCapabilityController {
             int capabilityVersion, String adapterId, Task.Kind kind,
             int minimumSeconds, int maximumSeconds, int maxReferenceImages,
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
-            boolean supportsEndFrame, String mappingSha256,
+            boolean supportsEndFrame, List<String> supportedImageAspectRatios,
+            List<String> supportedImageResolutions, List<String> supportedImageQualities,
+            boolean supportsTransparentBackground, String mappingSha256,
             JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
 }

@@ -902,7 +902,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: runMediaDraft
-      summary: 固定已保存的媒体草稿并直接受理 USER_DIRECT Task
+      summary: 固定已保存的媒体草稿并直接受理 USER_DIRECT Task；图片可创建 1/2/4 个独立任务
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -916,7 +916,7 @@ paths:
             schema: {$ref: "#/components/schemas/RunMediaDraftRequest"}
       responses:
         "200":
-          description: 已受理或返回同一卡片正在执行的任务；无需审批
+          description: 已受理批次的主任务，或返回同一卡片正在执行的任务；兄弟任务通过任务列表查询，无需审批
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Task"}
@@ -1647,7 +1647,9 @@ components:
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
         minimumSeconds, maximumSeconds, maxReferenceImages, supportedVideoInputModes,
-        defaultVideoInputMode, supportsEndFrame, mappingSha256, settings]
+        defaultVideoInputMode, supportsEndFrame, supportedImageAspectRatios,
+        supportedImageResolutions, supportedImageQualities, supportsTransparentBackground,
+        mappingSha256, settings]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -1668,6 +1670,19 @@ components:
             - {$ref: "#/components/schemas/VideoInputMode"}
             - {type: "null"}
         supportsEndFrame: {type: boolean}
+        supportedImageAspectRatios:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
+        supportedImageResolutions:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [1K, 2K, 4K]}
+        supportedImageQualities:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [low, medium, high]}
+        supportsTransparentBackground: {type: boolean}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     FixedMediaAdapterSettings:
@@ -1956,7 +1971,7 @@ components:
         imageInputs, mentions, displayMode, version]
       properties:
         prompt: {type: string}
-        parameters: {type: object, additionalProperties: true}
+        parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
         durationSeconds: {type: [integer, "null"]}
         capabilityId: {type: [string, "null"], format: uuid}
         videoInputMode:
@@ -2124,7 +2139,7 @@ components:
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         prompt: {type: string, maxLength: 20000}
-        parameters: {type: object, additionalProperties: true}
+        parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
         capabilityId: {type: [string, "null"], format: uuid}
         videoInputMode:
@@ -2184,7 +2199,7 @@ components:
         projectId: {type: string, format: uuid}
         canvasItemId: {type: string, format: uuid}
         prompt: {type: string, maxLength: 20000}
-        parameters: {type: object, additionalProperties: true}
+        parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 30}
         capabilityId: {type: [string, "null"], format: uuid}
         videoInputMode:
@@ -2201,6 +2216,17 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
+    ImageGenerationParameters:
+      type: object
+      additionalProperties: false
+      description: 图片草稿的原子生成参数；视频草稿使用空对象。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
+      properties:
+        aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
+        resolution: {type: string, enum: [1K, 2K, 4K]}
+        quality: {type: string, enum: [low, medium, high]}
+        transparentBackground: {type: boolean}
+        generationCount: {type: integer, enum: [1, 2, 4]}
+        openNewNodeOnGenerate: {type: boolean}
     VideoInputMode:
       type: string
       enum: [TEXT, START_END, GENERAL_REFERENCE]

@@ -152,6 +152,55 @@ public class CanvasService {
             dev.agenvas.artifact.domain.MediaDraft draft) {}
 
     /**
+     * Creates one task-owned output branch beside a source card while the caller holds the
+     * project-event transaction. The source draft is copied, but its tasks and connections are not.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem forkMediaOutputWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
+            int outputIndex) {
+        if (outputIndex < 0 || outputIndex >= 4) {
+            throw validation("图片输出序号必须在 0 到 3 之间。");
+        }
+        projects.requireActiveProject(ownerId, projectId);
+        CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
+                .orElseThrow(this::notFound);
+        if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
+            throw validation("只有媒体卡片可以创建输出分支。");
+        }
+        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
+                source.subjectId());
+        if (artifact.artifact().kind() != Artifact.Kind.IMAGE) {
+            throw validation("只有图片生成支持新节点输出。");
+        }
+        List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
+        BigDecimal y = source.y().add(
+                source.height().add(OUTPUT_GAP).multiply(BigDecimal.valueOf(outputIndex)));
+        for (int attempt = 0; attempt < 100 && overlapsAny(x, y, existing); attempt++) {
+            y = y.add(source.height()).add(OUTPUT_GAP);
+        }
+        if (overlapsAny(x, y, existing)) throw validation("新图片节点附近没有可用位置。");
+        validateGeometry(x, y, source.width(), source.height(),
+                Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1));
+        int zIndex = Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex)
+                .max().orElse(-1) + 1);
+        CanvasItem target = placement(targetItemId, projectId,
+                CanvasItem.SubjectType.ARTIFACT, source.subjectId(), source.selectedVersionId(),
+                source.title(), x, y, source.width(), source.height(), zIndex,
+                source.groupId(), false);
+        if (!canvasItems.create(target)) throw conflict();
+        mediaDrafts.duplicateWithinChange(ownerId, projectId, sourceItemId, targetItemId,
+                expectedSourceDraftVersion);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("sourceCanvasItemId", sourceItemId.toString());
+        payload.put("targetCanvasItemId", targetItemId.toString());
+        events.append(ownerId, projectId, new ProjectEventService.EventDraft(
+                "canvas.item.duplicated", 1, targetItemId, target.version(), payload));
+        return target;
+    }
+
+    /**
      * 在调用方任务事务内将新产物放入 Agent 输出分组；已有卡片包括锁定卡片均不移动、不修改。
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
@@ -257,6 +306,10 @@ public class CanvasService {
                 && x.add(OUTPUT_WIDTH).add(OUTPUT_GAP).compareTo(existing.x()) > 0
                 && y.compareTo(existing.y().add(existing.height()).add(OUTPUT_GAP)) < 0
                 && y.add(OUTPUT_HEIGHT).add(OUTPUT_GAP).compareTo(existing.y()) > 0;
+    }
+
+    private boolean overlapsAny(BigDecimal x, BigDecimal y, List<CanvasItem> existing) {
+        return existing.stream().anyMatch(item -> overlaps(x, y, item));
     }
 
     /**

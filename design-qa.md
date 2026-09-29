@@ -207,6 +207,34 @@ Selection writeback result: partial — 实现方向合理，偶发问题根因�
 
 final result: passed
 
+## 图片生成原子参数面板（2026-09-29）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-4bf65822-2165-43d5-b96d-d888ea8df76b.png`（1148 × 560 px）。
+- implementation source: `frontend/src/features/canvas/MediaDraftEditor.tsx`、`MediaDraftEditor.css`、`ProjectWorkspacePage.tsx` 与 `frontend/src/styles.css`。
+- implementation comparison capture: 已登录 Chrome 在真实项目 `/projects/7416dce1-9e6b-4508-a1c4-1ded65ff868d` 打开图片卡片；另用临时同屏页把参考图与真实项目 iframe 放入同一张捕获，验收后通过补丁删除临时页并恢复 Vite 文件访问配置。截图以内联工具输出保留，未写入仓库。
+- viewport / density: 默认桌面视口 2560 × 1194 CSS px；另以浏览器视口能力实测 1280 × 900 CSS px 并在结束前恢复默认设置。
+- state: 默认 `AUTO / 1K / medium / 1 / 新节点关闭`；交互态为 `9:16 / 2K / low / 4 / 新节点开启`，摘要同步为 `9:16 · 2K · 低 · 4 张`。测试后已恢复默认草稿。
+- primary interactions tested: 展开/关闭参数面板，选择比例、分辨率、画质、生成数量，切换新节点输出，自动保存与工具栏摘要联动；透明背景开关的提交由组件测试覆盖，本轮浏览器未改变该值。
+- console checked: 本次组件没有 warning/error；页面存在一条既有 React Flow `nodeTypes/edgeTypes` 对象未 memoize 的警告，与本次面板无关，已如实保留。
+
+### Full-view comparison evidence
+
+同屏捕获确认两侧均采用深色浮层、横向比例图标、分段式分辨率/画质/数量和右侧开关。实现沿用 Agenvas 中文文案、粉色强调色与现有 680px 编辑器，不复制参考产品品牌、模型名称或英文标签。能力不支持的选项不会显示，属于真实 Provider 契约差异。
+
+### Focused region comparison evidence
+
+- 字体与排版：标题和分组标签采用现有 11–12px 层级；当前值使用高对比白色和中等字重，非当前值降级为灰色。
+- 间距与布局：参数层宽 540px；比例为 9 列紧凑图标，分辨率、画质、数量为等分段控件。最终高度上限 520px，在默认与 1280px 桌面视口中均完整显示六组参数，无需滚动才能找到“生成时新建节点”。
+- 颜色与 token：浮层、分段背景、选中块、禁用态和粉色开关复用既有媒体编辑器 token；透明背景关闭态与参考一致。
+- 文案与内容：参考图的 Scale / Resolution / Quality / Generation Count / Open New Node 分别映射为比例、分辨率、画质、生成数量和生成时新建节点；新增副文案明确每个结果使用独立工作分支。
+- 能力真实性：OpenAI 展示全部当前映射选项；Google/ComfyUI 不展示未映射画质、透明背景或尺寸，界面不会伪造 Provider 支持。
+
+### Findings and comparison history
+
+首次真实浏览器捕获发现两个 P2：通用 420px 弹层高度使底部两组需要滚动，且图片输入“+”按钮因较高层级穿透到参数面板。参数层改为 `min(520px, 70vh)` 并提高自身层级后解决。随后 1280px 实测发现卡片顶部操作工具栏与编辑器浮层同为 React Flow `z-index: 1001`，会覆盖比例行；为编辑器 NodeToolbar 增加专用类并提升到 1002，复测确认重叠区域由参数层完整覆盖。最终未发现剩余 P0/P1/P2 差异。
+
+final result: passed
+
 ## 图片输入来源菜单与画布候选过滤（2026-09-28）
 
 - source visual truth paths: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-86442d18-b424-4796-bef2-d74f5c62f85c.png`（294 × 379 px）与 `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-7f3436ff-2adf-421f-8a26-e326322ca18c.png`（784 × 684 px）。
