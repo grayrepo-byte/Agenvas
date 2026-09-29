@@ -3,6 +3,7 @@ package dev.agenvas.artifact.application;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
+import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
@@ -82,9 +83,8 @@ public class MediaDraftService {
         if (!normalizedParameters.isObject()) {
             throw invalid("媒体参数必须是对象。");
         }
-        if (kind == Artifact.Kind.IMAGE) {
-            ImageGenerationParameters.parse(normalizedParameters);
-        }
+        if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(normalizedParameters);
+        else VideoGenerationParameters.parse(normalizedParameters);
         List<SaveImageInput> inputCommands = requestedInputs == null
                 ? List.of() : List.copyOf(requestedInputs);
         List<MediaDraft.PromptMention> mentions = requestedMentions == null
@@ -99,7 +99,10 @@ public class MediaDraftService {
             throw invalid("单张卡片最多保存 14 个图片输入。");
         }
         MediaDraft.VideoInputMode mode = kind == Artifact.Kind.IMAGE ? null
-                : requestedMode == null ? MediaDraft.VideoInputMode.START_END : requestedMode;
+                : requestedMode == null
+                        ? inputCommands.isEmpty() ? MediaDraft.VideoInputMode.TEXT
+                                : MediaDraft.VideoInputMode.GENERAL_REFERENCE
+                        : requestedMode;
         if (kind == Artifact.Kind.IMAGE && durationSeconds != null) {
             throw invalid("图片草稿不能指定视频时长。");
         }
@@ -374,9 +377,14 @@ public class MediaDraftService {
             List<MediaDraft.ImageInput> inputs, List<MediaDraft.PromptMention> mentions) {
         Instant now = clock.instant();
         String prompt = pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
+        MediaDraft.VideoInputMode mode = before.videoInputMode();
+        if (mode != null && inputs.isEmpty()) mode = MediaDraft.VideoInputMode.TEXT;
+        else if (mode == MediaDraft.VideoInputMode.TEXT && !inputs.isEmpty()) {
+            mode = MediaDraft.VideoInputMode.GENERAL_REFERENCE;
+        }
         MediaDraft update = new MediaDraft(before.projectId(), before.canvasItemId(),
                 prompt, before.parameters(), before.durationSeconds(),
-                before.capabilityId(), before.videoInputMode(), List.copyOf(inputs),
+                before.capabilityId(), mode, List.copyOf(inputs),
                 List.copyOf(mentions), before.displayMode(), before.version() + 1,
                 before.createdAt(), now);
         if (!artifacts.updateMediaDraft(update, before.version())) {
@@ -424,7 +432,10 @@ public class MediaDraftService {
             }
             throw invalid("首尾帧模式已经包含首帧和尾帧。");
         }
-        throw invalid("纯文本视频模式不能建立图片输入连线。");
+        if (draft.videoInputMode() == MediaDraft.VideoInputMode.TEXT && inputs.isEmpty()) {
+            return MediaDraft.InputRole.REFERENCE;
+        }
+        throw invalid("当前视频模式不能建立图片输入连线。");
     }
 
     private Artifact requireMediaCanvas(UUID ownerId, UUID projectId, UUID canvasItemId) {

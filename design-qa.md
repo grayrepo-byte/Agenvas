@@ -207,6 +207,140 @@ Selection writeback result: partial — 实现方向合理，偶发问题根因�
 
 final result: passed
 
+## 媒体单结果节点与派生线（2026-09-30）
+
+- implementation source: `frontend/src/features/canvas/ProjectWorkspacePage.tsx`、`MediaCanvasCard.tsx`、`ArtifactVersionHistory.tsx` 与 `canvasRelations.ts`。
+- live environment: 用户已登录的 Chrome，当前 Compose 项目 `7416dce1-9e6b-4508-a1c4-1ded65ff868d`，server/web/PostgreSQL 均 healthy。
+- state: 选中已有图片并执行本地“水平镜像”，来源节点和结果节点同屏显示。
+- primary interactions tested: 打开扩展菜单、运行水平镜像、等待任务完成、选中结果节点、打开卡片详情。
+
+### Browser evidence
+
+执行前可访问树包含 8 个节点和 5 条连线；执行后新增独立图片节点 `909cea25-f84a-4dfb-92db-b7dac0abf118`，并新增从来源节点 `77cfd3e7-163d-4a9e-8d43-94d26fba508e` 指向结果节点的派生线。来源节点仍引用 Asset `367d8fc5-8270-3dd5-b7ff-f8f673bd686e`，结果完成后引用新 Asset `8615c9a8-e7f3-3f72-bc52-872f145b2e2a`，因此没有原位覆盖。
+
+结果节点显示与来源相同的 Prompt 编辑器、模型选择、尺寸画质、智能编辑、深度提取、扩展、重新生成、复制、详情和下载能力。详情标题为“图片 · 已有结果”，没有媒体版本列表或版本切换入口。DOM 核对派生线带有 `relation-edge--derivation`、`selectable` 和 `tabindex=0`；删除与重连的持久化语义由 `ImageOperationDerivationPostgresIT` 验证，未在用户现有项目中删除数据。
+
+final result: passed
+
+## 图片后处理派生节点（2026-09-29）
+
+- implementation source: `frontend/src/features/canvas/canvasRelations.ts`、`MediaCanvasCard.tsx`、`styles.css`，以及后端图片处理受理链路。
+- browser / viewport: 用户已登录的 Chrome 日常配置，当前 `http://localhost:8088/projects/7416dce1-9e6b-4508-a1c4-1ded65ff868d` 项目页。
+- state: 来源图片节点已选中，扩展菜单展开；执行“水平镜像”本地操作。
+- primary interactions tested: 点击一次水平镜像，等待本地 Task 完成，并重新读取 Chrome 可访问树。
+
+### Findings
+
+操作前画布有 7 个节点和 4 条线；操作完成后出现第 8 个图片节点与第 5 条线，新增线精确连接来源节点和结果节点。来源节点仍指向原 Asset，结果节点指向新 Asset；没有发生原节点图片覆盖。派生线为粉色实线、不可选择、不可单独删除，视觉上与灰色虚线图片输入及绿色 Agent 输出保持区分。
+
+final result: passed
+
+## 视频节点输入模式与比例（2026-09-29）
+
+- source visual truth paths: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-e53e4689-c87c-498b-841b-4c717eefcb45.png`（1000 × 780 px）与 `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-4f69a4bd-28dd-4047-8db8-7e57f18b2070.png`（611 × 512 px）。
+- implementation source: `frontend/src/features/canvas/MediaDraftEditor.tsx` 与 `MediaDraftEditor.css`。
+- implementation comparison capture: 使用已登录 Chrome 在真实项目 `/projects/7416dce1-9e6b-4508-a1c4-1ded65ff868d` 验收；为避免把当前工作区迁移或草稿写入用户数据库，前端连接当前源码后端与生产库克隆。截图以内联工具证据保留，未写入仓库；验收后恢复原服务并删除临时数据库。
+- viewport / density: Chrome 2560 × 1131 px，浏览器默认 density；为完整展示节点与编辑器，把 React Flow 画布缩放至适配视图。
+- states: 无图片时“文生视频”选中，“全能参考 / 首尾帧”置灰；加入首张资源图片后自动切换“全能参考”，此时“文生视频”置灰、“首尾帧”可用；比例由“自动”切换并保存为“9:16”。
+- primary interactions tested: 打开模式菜单、从资源库勾选精确图片版本、添加第一张图片、自动模式切换、打开参数面板、选择 9:16、自动保存与工具栏摘要联动、Esc 关闭参数弹层并恢复触发按钮焦点。
+- console checked: Chrome warning/error 为空。
+
+### Comparison status
+
+- 字体与排版：真实画布中的 11–12px 标签、图标与辅助文案延续图片节点层级；模式名称、用途说明和禁用原因可以同时辨认。
+- 间距与布局：模式入口位于底部工具栏；模式菜单为紧凑纵向列表，比例面板为横向四等分圆角网格。2560px 桌面视口下弹层完整显示且未被卡片或底部编辑器裁切。
+- 颜色与 token：复用现有深色表面、灰色禁用态、粉色选中态与边框 token；“全能参考”和 9:16 的选中态均有清晰高对比反馈，没有移植参考产品品牌配色。
+- 图像质量与资产：没有新增或替换生产图像资产。
+- 文案与内容：实现“文生视频 / 全能参考 / 首尾帧”及明确禁用原因；无图和有图两种状态的引导文案与实际可用性一致。
+- 可访问性：模式和比例入口在辅助树中分别暴露为 pop-up button / button，禁用选项有真实 disabled 状态；Esc 关闭比例弹层后焦点回到“尺寸与画质”按钮。未在本轮执行屏幕阅读器语音输出与完整 Tab 顺序遍历。
+
+### Findings
+
+Chrome 实测确认需求中的三条核心行为全部成立：无图默认“文生视频”并禁用图片模式；首图加入后自动改为“全能参考”；比例 9:16 保存后工具栏摘要同步。弹层圆角、深色层级、粉色强调和禁用灰阶与图片节点风格一致，未发现影响本次目标的 P0/P1/P2 差异。
+
+本轮没有运行视频生成任务或真实 Provider 调用，因此结果只证明输入模式、能力约束、草稿保存和比例交互，不证明最终视频质量或第三方能力接通。
+
+final result: passed
+
+## AI 打光专用面板（2026-09-29）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-9d86cdd6-f1ed-4231-afdf-6e0743ce75d8.png`（629 × 470 px）。
+- implementation source: `frontend/src/features/canvas/RelightPanel.tsx`、`MediaCanvasCard.tsx` 与 `frontend/src/styles.css`。
+- implementation screenshot path: Codex 内置浏览器捕获，页面为 `http://localhost:5174/projects/00405cde-13b5-4728-9ab2-64b766bdfb3e`；捕获以内联工具证据保留，未写入仓库。
+- viewport / density: 1440 × 900 与 1280 × 900 CSS px，浏览器默认 density；面板目标宽 590px，来源图按 629 × 470 归一化比较。
+- state: 默认黄金时刻（+10 / 3200K）与月光预设（-24 / 8200K）；隔离环境无云端密钥，因此能力选择显示明确空态、提交禁用。
+- primary interactions tested: 打开/关闭层级、六预设选择、预设联动亮度与色温、当前图片即时预览、1280px 适配；组件测试覆盖补充描述与完整 RELIGHT 请求体。
+- console errors checked: warning/error 为空。
+
+### Full-view / focused comparison evidence
+
+- 字体与内容：保留设计稿的“打光”“预设风格”“亮度”“色温”和描述占位文案，沿用 Agenvas 中文 UI 字体；能力选择是为了满足真实 OpenAI/Google 契约而保留的有意差异。
+- 间距与布局：桌面维持左侧 220px 预览与双滑杆、右侧两列六预设与描述框、右下圆形粉色提交按钮。面板使用页面级 Portal，位于画布中央且不受卡片缩放裁切。
+- 颜色与 token：深灰分层、细边框、圆角、白色滑块、暖冷色温轨道和粉色主操作与设计稿及现有画布一致。
+- 图片质量：预览与所有预设都使用卡片当前归档图片，不内置演示占位；CSS 滤镜仅为选项预览，提交后由 AI 生成真实新版本。
+- 交互可见性：左侧光圈可点击设置归一化光源位置；选择预设会同步滑杆与预览，AI 能力缺失时提交不可用且原因可见。
+
+### Findings and comparison history
+
+首次 1440px 捕获发现 P1：面板虽然声明 fixed，但 React Flow 工具栏的变换祖先使它落入节点坐标系，上半部越出视口并被裁切。修正为 `createPortal(..., document.body)`，同时为 Portal 内按钮补充独立样式。1440px 与 1280px 复测均完整显示，月光预设状态正确，未发现剩余 P0/P1/P2 差异。
+
+真实 OpenAI/Google 付费生成仍未执行；本次视觉验收只证明面板与请求契约，不证明第三方最终打光质量。
+
+final result: passed
+
+## 图片后处理工具栏与重打光/深度能力（2026-09-29）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-3c3e2732-a92b-49e9-b8b3-0f773cd5277b.png`（587 × 546 px）；重点为选中图片顶部操作条、深度提取入口与纵向编辑菜单。
+- implementation source: `frontend/src/features/canvas/MediaCanvasCard.tsx`、`ArtifactCardFrame.tsx`、`ArtifactCardFrame.css` 与 `frontend/src/styles.css`。
+- implementation comparison capture: Codex 内置浏览器打开隔离 QA 项目 `http://localhost:5174/projects/6a128fb8-de2d-47fe-9c76-6913f0cb2646`，使用当前工作区前端、当前后端和独立 PostgreSQL；截图以内联工具输出保留，临时服务与数据库在验收后清理。
+- viewport / density: 1440 × 900 与最小支持桌面宽度 1280 × 900 CSS px，浏览器默认 density。
+- states: 有图卡片选中工具栏、完整扩展菜单、AI 重新打光与图层分离能力面板、真实本地深度任务完成后的新版本。
+- console checked: warning/error 为空。
+
+### Full-view / focused comparison evidence
+
+- 顶部工具条保持参考图的深色胶囊结构；智能编辑与深度提取是一级入口，其余能力收进单一“扩展”菜单。Agenvas 仍保留重新生成、复制、详情与下载等已有卡片动作。
+- 菜单采用参考图的窄深色纵向列表和左图标结构，并补充右侧能力来源标签：三视图、图层分离、表情调整、重新打光、画笔标注、移除背景、AI 扩图、局部擦除和视角调整标为 `AI`；放大、裁剪、旋转、镜像标为 `本地`。七个原占位入口现均可打开真实参数面板，不再显示 `后续`。
+- “AI 重新打光”面板明确写明“使用 OpenAI / Google 图片能力”，提供能力选择与灯光描述；隔离环境没有云端连接时提交按钮保持禁用。
+- 图层分离面板在 1440 × 900 下完整显示主体层（透明背景）/背景层选择、能力选择和可选说明；无透明输出能力时明确提示配置支持透明背景的 OpenAI / Google 能力，提交按钮禁用。浏览器 warning/error 为空。
+- 深度提取在浏览器中从 Mock 源图片发起真实持久任务，服务端加载 Depth Anything V2 Small ONNX，完成后归档新 Asset/ArtifactVersion 并自动切换卡片显示；最终灰度深度图在画布中可见。
+- 1280px 和 1440px 下菜单、面板、卡片和底部 Prompt 编辑器均可读，工具栏不越出视口。
+
+### Findings and comparison history
+
+首次 1440px 捕获发现一个 P2：扩展菜单的最后两项虽存在于辅助树，但被更高层级的底部 Prompt 编辑器盖住。实现改为只在菜单或处理面板打开时，把对应 React Flow 顶部工具栏从默认层级提升到 `1003`；复测 13 项完整可见，常态工具栏层级不变。最终未发现剩余 P0/P1/P2 差异。
+
+云端 OpenAI/Google 未做真实付费调用；重打光验收覆盖能力边界、输入面板和禁用空态，不把 Mock/截图当成 Provider 接通证据。
+
+final result: passed
+
+## 图片框选裁剪（2026-09-29）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-48d894c8-8b05-47ae-a83b-0a8122aa3898.png`（403 × 676 px）；功能目标是直接在原图上框选，而不是输入左、上、宽、高百分比。
+- implementation source: `frontend/src/features/canvas/CropPanel.tsx`、`CropPanel.css` 与 `MediaCanvasCard.tsx`。
+- implementation comparison capture: 已登录 Chrome 打开真实项目 `/projects/7416dce1-9e6b-4508-a1c4-1ded65ff868d`，从图片节点“扩展 → 裁剪”进入；截图以内联工具证据保留，未写入仓库。
+- viewport / density: Chrome 2560 × 1131 px，浏览器默认 density；参考图为局部功能裁切，因此按裁剪图片、选框和底部工具条三个内容区域比较，不比较画布位置与素材内容。
+- states: 默认原始比例；切换 9:16 后的竖向选框；键盘方向键缩小右下角后的焦点态。
+- primary interactions tested: 打开裁剪工作区、整框移动（组件指针测试）、八个边角手柄呈现、比例切换、键盘微调、取消/确定入口与归一化裁剪参数提交。
+- console checked: Chrome warning/error 为空。
+
+### Full-view and focused comparison evidence
+
+- 字体与排版：底部工具条继续使用 Agenvas 中文 UI 字体与 13px 控件层级；“取消 / 原始比例 / 确定”的信息结构与参考一致。
+- 间距与布局：原图居中，框选区域直接覆盖图片；外围画布使用模糊暗化，底部胶囊工具条与图片保持 16px 间距，不被节点编辑器或 React Flow 工具栏覆盖。
+- 颜色与 token：白色边框和手柄提供高对比命中提示，未选区域使用半透明黑色遮罩，确认操作沿用产品粉色主操作 token。
+- 图片质量：裁剪预览直接读取当前 CanvasItem 已归档原图内容 URL，使用 `object-fit: contain`，不生成截图替身、不替换生产素材。
+- 文案与内容：提供原始比例、自由、1:1、4:3、3:4、16:9 和 9:16；确定后仍提交既有归一化 `x / y / width / height` 契约。
+- 可访问性：裁剪工作区为命名 dialog；移动区与八个手柄均是具名 button，方向键可微调；Esc 和“取消”关闭，比例为具名 select。
+
+### Findings and comparison history
+
+首次实现直接采用参考图的框选模型，替换原有四个百分比数字输入。Chrome 对照确认默认横向原图与 9:16 竖向选框都完整可见；比例切换后几何从 638 × 426 px 调整为 239 × 426 px，键盘微调后变为 232 × 412 px。未发现影响本次目标的 P0/P1/P2 差异。
+
+本轮未点击真实项目中的“确定”，避免创建图片处理 Task；归一化请求体和受理路径由组件测试覆盖，因此视觉验收不声称后端实际裁剪结果已生成。
+
+final result: passed
+
 ## 图片生成原子参数面板（2026-09-29）
 
 - source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-4bf65822-2165-43d5-b96d-d888ea8df76b.png`（1148 × 560 px）。

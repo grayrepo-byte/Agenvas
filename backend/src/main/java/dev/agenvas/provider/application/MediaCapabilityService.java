@@ -71,6 +71,9 @@ public class MediaCapabilityService {
         }
         String normalizedName = requireName(name);
         MediaPlatform normalizedPlatform = requirePlatform(platform);
+        if (normalizedPlatform == MediaPlatform.LOCAL) {
+            throw invalid("本地图片处理是应用内置能力，不能创建重复连接");
+        }
         String normalizedOrigin = validatedOrigin(normalizedPlatform, origin);
         validateCredential(normalizedPlatform, apiKey, true);
         String hash = sha256(normalizedName + "\u0000" + normalizedPlatform.name() + "\u0000"
@@ -99,6 +102,7 @@ public class MediaCapabilityService {
     public Connection updateConnection(UUID id, long expectedVersion, String name,
             boolean enabled, String origin, String apiKey) {
         Connection current = getConnection(id);
+        rejectSystemManaged(current);
         if (current.version() != expectedVersion) {
             throw conflict("连接已被其他操作修改");
         }
@@ -193,6 +197,7 @@ public class MediaCapabilityService {
     private Capability publishCapabilityWithId(UUID id, UUID connectionId,
             String name, String adapterId, JsonNode settings) {
         Connection connection = getConnection(connectionId);
+        rejectSystemManaged(connection);
         MediaAdapterRegistry.Declaration declaration = registry.declaration(adapterId);
         if (!connection.enabled()) {
             throw conflict("连接已停用");
@@ -232,6 +237,7 @@ public class MediaCapabilityService {
         if (!current.connection().id().equals(connectionId)) {
             throw invalid("能力不属于此连接");
         }
+        rejectSystemManaged(current.connection());
         if (current.capability().version() != expectedVersion) {
             throw conflict("能力已被其他操作修改");
         }
@@ -363,6 +369,7 @@ public class MediaCapabilityService {
     @Transactional
     public Connection setConnectionEnabled(UUID connectionId, long expectedVersion,
             boolean enabled) {
+        rejectSystemManaged(getConnection(connectionId));
         if (!repository.updateConnectionEnabled(connectionId, expectedVersion, enabled,
                 clock.instant())) {
             throw conflict("连接已被其他操作修改");
@@ -388,6 +395,9 @@ public class MediaCapabilityService {
             UUID capabilityId) {
         Task.Kind mediaKind = requireMediaKind(kind);
         Snapshot snapshot = enabledSnapshot(capabilityId);
+        if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(snapshot.adapterId())) {
+            throw invalid("本地图片处理能力不能设为普通图片生成默认能力");
+        }
         if (registry.declaration(snapshot.adapterId()).kind() != mediaKind) {
             throw invalid("默认能力与媒体类型不匹配");
         }
@@ -415,6 +425,8 @@ public class MediaCapabilityService {
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
+                .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
+                        snapshot.adapterId()))
                 .filter(snapshot -> registry.supports(snapshot.adapterId(),
                         new PortInput(mediaKind, durationSeconds, null)))
                 .map(snapshot -> new Candidate(binding(snapshot), snapshot.connection().name(),
@@ -430,6 +442,8 @@ public class MediaCapabilityService {
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
+                .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
+                        snapshot.adapterId()))
                 .map(snapshot -> {
                     var declaration = registry.declaration(snapshot.adapterId());
                     return new Candidate(binding(snapshot), snapshot.connection().name(),
@@ -482,6 +496,12 @@ public class MediaCapabilityService {
                 snapshot.connection().currentVersion(), snapshot.capability().id(),
                 snapshot.capability().currentVersion(), snapshot.adapterId(),
                 snapshot.mappingSha256());
+    }
+
+    private static void rejectSystemManaged(Connection connection) {
+        if (connection.platform() == MediaPlatform.LOCAL) {
+            throw invalid("本地图片处理是应用管理的内置能力，不能修改");
+        }
     }
 
     private static Task.Kind requireMediaKind(Task.Kind kind) {

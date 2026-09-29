@@ -15,6 +15,10 @@ import org.springframework.stereotype.Component;
 @Component
 public final class MediaAdapterRegistry {
 
+    public static final String LOCAL_IMAGE_PROCESSOR = "LOCAL_IMAGE_PROCESSOR";
+    public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
+    public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
+
     /** Product bounds verified against each fixed third-party request protocol. */
     public static final int OPENAI_MAX_REFERENCE_IMAGES = 4;
     public static final int GOOGLE_MAX_REFERENCE_IMAGES = 14;
@@ -27,22 +31,29 @@ public final class MediaAdapterRegistry {
             boolean supportsTransparentBackground) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.of(
+            LOCAL_IMAGE_PROCESSOR, image(MediaPlatform.LOCAL, false, 1,
+                    ImageGenerationParameters.ASPECT_RATIOS,
+                    ImageGenerationParameters.RESOLUTIONS,
+                    ImageGenerationParameters.QUALITIES, true),
             "MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4,
                     ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS,
                     ImageGenerationParameters.QUALITIES, true),
-            "MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, true),
+            "MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, 4,
+                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true),
             "COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1,
                     Set.of("AUTO", "1:1", "9:16", "16:9"), Set.of("1K"), Set.of(), false),
-            "COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, false),
-            "OPENAI_GPT_IMAGE_2", image(MediaPlatform.OPENAI, false,
+            "COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, 1,
+                    Set.of("START_END"), "START_END", false),
+            OPENAI_GPT_IMAGE_2, image(MediaPlatform.OPENAI, false,
                     OPENAI_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS,
                     ImageGenerationParameters.QUALITIES, true),
-            "GOOGLE_NANO_BANANA_2", image(MediaPlatform.GOOGLE, false,
+            GOOGLE_NANO_BANANA_2, image(MediaPlatform.GOOGLE, false,
                     GOOGLE_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS, Set.of(), false),
-            "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, false));
+            "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 1,
+                    Set.of("START_END"), "START_END", false));
 
     private static Declaration image(MediaPlatform platform, boolean originRequired,
             int maxReferenceImages, Set<String> aspectRatios, Set<String> resolutions,
@@ -53,9 +64,10 @@ public final class MediaAdapterRegistry {
     }
 
     private static Declaration video(MediaPlatform platform, int minimumSeconds,
-            int maximumSeconds, boolean originRequired, boolean supportsEndFrame) {
+            int maximumSeconds, boolean originRequired, int maxReferenceImages,
+            Set<String> inputModes, String defaultInputMode, boolean supportsEndFrame) {
         return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
-                maximumSeconds, originRequired, 0, Set.of("START_END"), "START_END",
+                maximumSeconds, originRequired, maxReferenceImages, inputModes, defaultInputMode,
                 supportsEndFrame, Set.of(), Set.of(), Set.of(), false);
     }
 

@@ -108,6 +108,8 @@ agenvas:
       fixture: ${AGENVAS_MOCK_FIXTURE:SUCCESS}
       scheduler-enabled: ${AGENVAS_MOCK_IMAGE_SCHEDULER_ENABLED:true}
       video-scheduler-enabled: ${AGENVAS_MOCK_VIDEO_SCHEDULER_ENABLED:true}
+    local-image:
+      depth-model: ${AGENVAS_DEPTH_MODEL:}
   storage:
     root: ${AGENVAS_STORAGE_ROOT:data/assets}
   export:

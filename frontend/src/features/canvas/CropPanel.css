@@ -1,0 +1,175 @@
+.crop-backdrop {
+  position: fixed;
+  z-index: 2200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #090909b8;
+  backdrop-filter: blur(3px);
+}
+
+.crop-dialog {
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  max-width: calc(100vw - 48px);
+  color: #f4f4f4;
+  outline: none;
+}
+
+.crop-image-shell {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #181818;
+  box-shadow: 0 24px 72px #000b;
+  line-height: 0;
+  touch-action: none;
+}
+
+.crop-image-shell > img {
+  display: block;
+  width: auto;
+  max-width: min(760px, calc(100vw - 48px));
+  height: auto;
+  max-height: calc(100vh - 168px);
+  object-fit: contain;
+  user-select: none;
+}
+
+.crop-selection {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px #0009, 0 0 0 1px #0005 inset;
+  line-height: normal;
+  cursor: move;
+}
+
+.crop-selection.is-dragging { cursor: grabbing; }
+
+.crop-selection-surface,
+.crop-handle {
+  position: absolute;
+  display: block;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  touch-action: none;
+}
+
+.crop-selection-surface { inset: 7px; cursor: move; }
+.crop-selection-surface:focus-visible { outline: 1px dashed #fff; outline-offset: -5px; }
+
+.crop-handle::after {
+  position: absolute;
+  content: "";
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 1px 4px #0008;
+}
+
+.crop-handle-n,
+.crop-handle-s { left: 50%; width: 42px; height: 22px; transform: translateX(-50%); cursor: ns-resize; }
+.crop-handle-n { top: -12px; }
+.crop-handle-s { bottom: -12px; }
+.crop-handle-n::after,
+.crop-handle-s::after { top: 8px; left: 8px; width: 26px; height: 5px; }
+
+.crop-handle-e,
+.crop-handle-w { top: 50%; width: 22px; height: 42px; transform: translateY(-50%); cursor: ew-resize; }
+.crop-handle-e { right: -12px; }
+.crop-handle-w { left: -12px; }
+.crop-handle-e::after,
+.crop-handle-w::after { top: 8px; left: 8px; width: 5px; height: 26px; }
+
+.crop-handle-nw,
+.crop-handle-ne,
+.crop-handle-se,
+.crop-handle-sw { width: 28px; height: 28px; }
+.crop-handle-nw { top: -14px; left: -14px; cursor: nwse-resize; }
+.crop-handle-ne { top: -14px; right: -14px; cursor: nesw-resize; }
+.crop-handle-se { right: -14px; bottom: -14px; cursor: nwse-resize; }
+.crop-handle-sw { bottom: -14px; left: -14px; cursor: nesw-resize; }
+.crop-handle-nw::after,
+.crop-handle-ne::after,
+.crop-handle-se::after,
+.crop-handle-sw::after {
+  top: 8px;
+  left: 8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.crop-handle:focus-visible { outline: 2px solid #ff4bac; outline-offset: 2px; }
+
+.crop-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 50px;
+  border: 1px solid #444;
+  border-radius: 999px;
+  padding: 6px 8px;
+  background: #242424f5;
+  box-shadow: 0 14px 34px #0008;
+}
+
+.crop-toolbar button,
+.crop-ratio-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  color: #ededed;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.crop-toolbar button { padding: 0 14px; cursor: pointer; }
+.crop-toolbar button:hover:not(:disabled) { background: #343434; }
+.crop-toolbar button:focus-visible,
+.crop-ratio-control:focus-within { outline: 2px solid #fff; outline-offset: 2px; }
+.crop-toolbar button:disabled { opacity: .56; cursor: progress; }
+.crop-toolbar-divider { width: 1px; height: 22px; background: #4b4b4b; }
+.crop-ratio-control { padding: 0 8px 0 12px; }
+.crop-ratio-control select {
+  min-width: 92px;
+  border: 0;
+  padding: 0 22px 0 0;
+  background: transparent;
+  color: #ededed;
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+}
+.crop-ratio-control select option { background: #242424; color: #ededed; }
+.crop-toolbar .crop-confirm { min-width: 86px; background: #ff2e9d; color: #fff; font-weight: 650; }
+.crop-toolbar .crop-confirm:hover:not(:disabled) { background: #ff4bac; }
+.crop-error {
+  max-width: 520px;
+  margin: -6px 0 0;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: #3a1f24;
+  color: #ffb3ba;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .crop-backdrop { padding: 14px; }
+  .crop-image-shell > img { max-width: calc(100vw - 28px); max-height: calc(100vh - 154px); }
+  .crop-toolbar { gap: 3px; }
+  .crop-toolbar button { padding: 0 10px; }
+  .crop-ratio-control { padding-left: 8px; }
+}

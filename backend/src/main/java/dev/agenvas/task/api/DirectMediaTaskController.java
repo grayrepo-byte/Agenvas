@@ -3,7 +3,9 @@ package dev.agenvas.task.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskRepository;
+import dev.agenvas.task.domain.ImageOperation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.util.UUID;
 import java.util.List;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
 
 /** A deliberate click runs the saved card draft without Agent approval. */
 @RestController
@@ -38,6 +41,27 @@ public class DirectMediaTaskController {
 
     public record RunRequest(@jakarta.validation.constraints.NotNull UUID canvasItemId,
             @PositiveOrZero long expectedDraftVersion) {}
+
+    @PostMapping("/artifacts/{artifactId}/image-operations")
+    public TaskController.TaskResponse runImageOperation(
+            @AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID artifactId,
+            @RequestHeader("Idempotency-Key") String commandKey,
+            @Valid @RequestBody ImageOperationRequest request) {
+        return TaskController.TaskResponse.from(direct.runImageOperation(principal.userId(),
+                projectId, artifactId, request.canvasItemId(), request.sourceVersionId(),
+                request.expectedCanvasItemVersion(), request.operation(), request.instruction(),
+                request.capabilityId(), request.parameters(), commandKey));
+    }
+
+    public record ImageOperationRequest(
+            @NotNull UUID canvasItemId,
+            @NotNull UUID sourceVersionId,
+            @PositiveOrZero long expectedCanvasItemVersion,
+            @NotNull ImageOperation operation,
+            @jakarta.validation.constraints.Size(max = 4000) String instruction,
+            UUID capabilityId,
+            @NotNull JsonNode parameters) {}
 
     @GetMapping("/artifacts/{artifactId}/run")
     public List<TaskController.TaskResponse> list(

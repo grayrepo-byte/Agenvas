@@ -14,17 +14,15 @@ class ImageGenerationParametersTest {
     void fillsCompatibleDefaultsAndRoundTripsEveryAtomicControl() {
         var defaults = ImageGenerationParameters.parse(mapper.createObjectNode());
         assertThat(defaults).isEqualTo(new ImageGenerationParameters(
-                "AUTO", "1K", "medium", false, 1, false));
+                "AUTO", "1K", "medium", false, 1));
 
         var selected = ImageGenerationParameters.parse(mapper.readTree("""
                 {"aspectRatio":"9:16","resolution":"4K","quality":"high",
-                 "transparentBackground":true,"generationCount":4,
-                 "openNewNodeOnGenerate":true}
+                 "transparentBackground":true,"generationCount":4}
                 """));
         assertThat(selected.toJson(mapper)).isEqualTo(mapper.readTree("""
                 {"aspectRatio":"9:16","resolution":"4K","quality":"high",
-                 "transparentBackground":true,"generationCount":4,
-                 "openNewNodeOnGenerate":true}
+                 "transparentBackground":true,"generationCount":4}
                 """));
     }
 

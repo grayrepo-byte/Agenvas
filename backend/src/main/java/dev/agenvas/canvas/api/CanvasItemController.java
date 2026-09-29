@@ -26,16 +26,6 @@ public class CanvasItemController {
         this.canvas = canvas;
     }
 
-    @PostMapping("/select-version")
-    public CanvasController.CanvasItemResponse selectVersion(
-            @AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId,
-            @PathVariable UUID canvasItemId,
-            @Valid @RequestBody SelectVersionRequest request) {
-        return CanvasController.CanvasItemResponse.from(canvas.selectVersion(principal.userId(),
-                projectId, canvasItemId, request.versionId(), request.expectedVersion()));
-    }
-
     @PostMapping("/upload-version")
     @ResponseStatus(HttpStatus.CREATED)
     public CanvasController.CanvasItemResponse uploadVersion(
@@ -44,12 +34,11 @@ public class CanvasItemController {
             @PathVariable UUID canvasItemId,
             @Valid @RequestBody UploadVersionRequest request) {
         return CanvasController.CanvasItemResponse.from(canvas.uploadVersion(principal.userId(),
-                projectId, canvasItemId, request.expectedVersion(), request.content()));
+                projectId, canvasItemId, request.targetItemId(), request.expectedVersion(),
+                request.content()));
     }
 
-    public record SelectVersionRequest(@NotNull UUID versionId,
-            @PositiveOrZero long expectedVersion) {}
-
-    public record UploadVersionRequest(@PositiveOrZero long expectedVersion,
+    public record UploadVersionRequest(@NotNull UUID targetItemId,
+            @PositiveOrZero long expectedVersion,
             @NotNull JsonNode content) {}
 }

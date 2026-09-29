@@ -18,6 +18,7 @@ export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest
 export type RestoreMediaDraftVersionInputsRequest = components["schemas"]["RestoreMediaDraftVersionInputsRequest"];
 export type RemoveMediaDraftImageInputRequest = components["schemas"]["RemoveMediaDraftImageInputRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
+export type RunImageOperationRequest = components["schemas"]["RunImageOperationRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
 export type Asset = components["schemas"]["Asset"];
@@ -423,6 +424,16 @@ export async function runMediaDraft(projectId: string, artifactId: string,
   );
 }
 
+/** Pins the visible image, creates a connected result branch, and dispatches post-processing. */
+export async function runImageOperation(projectId: string, artifactId: string,
+  input: RunImageOperationRequest, idempotencyKey: string): Promise<Task> {
+  return writeJson<Task>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/image-operations`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input) },
+  );
+}
+
 export async function listDirectMediaTasks(projectId: string, artifactId: string,
   canvasItemId: string): Promise<Task[]> {
   const query = new URLSearchParams({ canvasItemId });
@@ -497,20 +508,7 @@ export async function setArtifactResourceDefaultVersion(
   );
 }
 
-/** Selects a historical revision for one media card without changing the resource default. */
-export async function selectCanvasItemVersion(
-  projectId: string,
-  canvasItemId: string,
-  versionId: string,
-  expectedVersion: number,
-): Promise<CanvasItem> {
-  return writeJson<CanvasItem>(
-    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/select-version`,
-    { method: "POST", body: JSON.stringify({ versionId, expectedVersion }) },
-  );
-}
-
-/** Appends an uploaded immutable version and selects it only on the addressed media card. */
+/** Uploads immutable media into a new result node derived from the addressed node. */
 export async function uploadCanvasItemVersion(
   projectId: string,
   canvasItemId: string,

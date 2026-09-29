@@ -78,6 +78,9 @@ public class CanvasConnectionService {
                     || !sourceVersionId.equals(source.selectedVersionId())) {
                 throw conflict("拖拽期间来源图片版本已变化，请重新连接。");
             }
+            if (relationType == CanvasConnection.RelationType.MEDIA_DERIVATION) {
+                throw invalid("媒体派生线只能由媒体变更命令创建。");
+            }
             artifacts.requireVersion(ownerId, projectId, source.subjectId(), sourceVersionId);
             List<CanvasConnection> current = connections.list(ownerId, projectId);
             if (current.stream().anyMatch(connection ->
@@ -123,6 +126,33 @@ public class CanvasConnectionService {
         }).value();
     }
 
+    /** Records removable media lineage without turning it into a draft input. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasConnection createMediaDerivationWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, UUID targetItemId, UUID sourceVersionId) {
+        projects.requireActiveProject(ownerId, projectId);
+        CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId, sourceItemId);
+        CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
+        Artifact sourceArtifact = artifacts.get(ownerId, projectId, source.subjectId()).artifact();
+        Artifact targetArtifact = artifacts.get(ownerId, projectId, target.subjectId()).artifact();
+        if ((sourceArtifact.kind() != Artifact.Kind.IMAGE
+                        && sourceArtifact.kind() != Artifact.Kind.VIDEO)
+                || targetArtifact.kind() != sourceArtifact.kind()
+                || !source.subjectId().equals(target.subjectId())
+                || !sourceVersionId.equals(source.selectedVersionId())
+                || !sourceVersionId.equals(target.selectedVersionId())) {
+            throw invalid("媒体派生线必须连接同一媒体产物中固定来源版本与新结果节点。");
+        }
+        Instant now = clock.instant();
+        CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
+                sourceItemId, targetItemId, CanvasConnection.RelationType.MEDIA_DERIVATION,
+                sourceVersionId, 0, now, now);
+        connections.create(connection);
+        events.append(ownerId, projectId, connectionEvent(connection,
+                "canvas.connection.created"));
+        return connection;
+    }
+
     @Transactional
     public ConnectionResult disconnect(UUID ownerId, UUID projectId, UUID connectionId,
             Long expectedTargetDraftVersion, Long expectedTargetAgentVersion) {
@@ -136,7 +166,8 @@ public class CanvasConnectionService {
                 if (expectedTargetDraftVersion == null) throw invalid("断开媒体连线缺少草稿版本。");
                 draft = drafts.removeConnectionInputWithinChange(ownerId, projectId,
                         connection.targetCanvasItemId(), expectedTargetDraftVersion, connectionId);
-            } else {
+            } else if (connection.relationType()
+                    == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
                 CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId,
                         connection.targetCanvasItemId());
                 if (expectedTargetAgentVersion == null) throw invalid("断开 Agent 连线缺少 Agent 版本。");
@@ -262,7 +293,9 @@ public class CanvasConnectionService {
             UUID current = queue.removeFirst();
             if (!visited.add(current)) continue;
             if (current.equals(target)) return true;
-            graph.stream().filter(edge -> edge.sourceCanvasItemId().equals(current))
+            graph.stream().filter(edge -> edge.relationType()
+                            != CanvasConnection.RelationType.MEDIA_DERIVATION
+                            && edge.sourceCanvasItemId().equals(current))
                     .map(CanvasConnection::targetCanvasItemId).forEach(queue::addLast);
         }
         return false;

@@ -1,6 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
@@ -55,11 +54,11 @@ function mockUpload(onUpload: () => void) {
   });
 }
 
-function mountUpload() {
+function mountUpload(initialFile = imageFile()) {
   const onDone = vi.fn();
   const client = createQueryClient();
   render(<QueryClientProvider client={client}>
-    <MediaCardUpload artifact={EMPTY_IMAGE} item={ITEM} onDone={onDone} />
+    <MediaCardUpload artifact={EMPTY_IMAGE} item={ITEM} initialFile={initialFile} onDone={onDone} />
   </QueryClientProvider>);
   return onDone;
 }
@@ -69,7 +68,7 @@ function imageFile() {
 }
 
 function submitUpload() {
-  const button = screen.getByRole("button", { name: "上传到此卡片" });
+  const button = screen.getByRole("button", { name: "重试上传" });
   expect(button).toBeEnabled();
   // jsdom does not connect userEvent's FileList to native required validation.
   // Dispatch the form event as in the workspace's existing upload tests.
@@ -79,23 +78,19 @@ function submitUpload() {
 }
 
 describe("MediaCardUpload", () => {
-  it("fills the existing empty IMAGE and selects the exact revision with its returned CAS version", async () => {
+  it("uploads the chosen file immediately and uses a client-stable target id", async () => {
     const operations: string[] = [];
     mockUpload(() => operations.push("upload"));
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
-        expect(await request.json()).toEqual({ expectedVersion: ITEM.version,
-          content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
+        expect(await request.json()).toEqual({ targetItemId: expect.any(String),
+          expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
         return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
           selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
       }),
     );
     const onDone = mountUpload();
-    const user = userEvent.setup();
-
-    await user.upload(screen.getByLabelText("选择图片"), imageFile());
-    submitUpload();
 
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
     expect(operations).toEqual(["upload", "card-upload"]);
@@ -110,8 +105,8 @@ describe("MediaCardUpload", () => {
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
         requests++;
-        expect(await request.json()).toEqual({ expectedVersion: ITEM.version,
-          content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
+        expect(await request.json()).toEqual({ targetItemId: expect.any(String),
+          expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
         if (requests === 1) return HttpResponse.json({ title: "暂时不可用", detail: "响应暂时失败。",
           code: "SERVICE_UNAVAILABLE", retryable: true },
         { status: 503, headers: { "Content-Type": "application/problem+json" } });
@@ -120,10 +115,6 @@ describe("MediaCardUpload", () => {
       }),
     );
     const onDone = mountUpload();
-    const user = userEvent.setup();
-    const input = screen.getByLabelText<HTMLInputElement>("选择图片");
-    await user.upload(input, imageFile());
-    submitUpload();
 
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
     expect(operations).toEqual(["upload", "card-upload", "card-upload"]);
@@ -137,8 +128,8 @@ describe("MediaCardUpload", () => {
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
-        expect(await request.json()).toEqual({ expectedVersion: ITEM.version,
-          content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
+        expect(await request.json()).toEqual({ targetItemId: expect.any(String),
+          expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
         if (failing) return HttpResponse.json({ title: "响应失败", detail: "响应暂时不可用。",
           code: "SERVICE_UNAVAILABLE", retryable: true },
         { status: 503, headers: { "Content-Type": "application/problem+json" } });
@@ -147,14 +138,9 @@ describe("MediaCardUpload", () => {
       }),
     );
     const onDone = mountUpload();
-    const user = userEvent.setup();
-    const file = imageFile();
-    const input = screen.getByLabelText<HTMLInputElement>("选择图片");
-    await user.upload(input, file);
-    submitUpload();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("响应暂时不可用");
-    expect(input.files?.[0]).toBe(file);
+    expect(screen.getByText("已选择：reference.webp")).toBeInTheDocument();
     failing = false;
     submitUpload();
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
@@ -175,17 +161,11 @@ describe("MediaCardUpload", () => {
       }),
     );
     const onDone = mountUpload();
-    const user = userEvent.setup();
-    const file = imageFile();
-    const input = screen.getByLabelText<HTMLInputElement>("选择图片");
-    await user.upload(input, file);
-    submitUpload();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("卡片已有更新，文件已保留");
-    expect(input.files).toHaveLength(1);
-    expect(input.files?.[0]).toBe(file);
-    expect(input).toBeEnabled();
-    expect(screen.getByRole("button", { name: "上传到此卡片" })).toBeEnabled();
+    expect(screen.getByText("已选择：reference.webp")).toBeInTheDocument();
+    expect(screen.getByLabelText("更换图片")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重试上传" })).toBeEnabled();
     expect(onDone).not.toHaveBeenCalled();
     expect(operations).toEqual(["upload", "card-upload"]);
   });

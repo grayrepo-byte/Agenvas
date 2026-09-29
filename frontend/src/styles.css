@@ -441,6 +441,11 @@ button:disabled {
   stroke-dasharray: 4 4;
 }
 
+.workspace-shell .relation-edge--derivation .react-flow__edge-path {
+  stroke: #ec4899;
+  stroke-width: 2;
+}
+
 .workspace-shell .relation-edge.selected .react-flow__edge-path {
   stroke: #fff;
   stroke-width: 3.5;
@@ -508,6 +513,235 @@ button:disabled {
 .media-extension-menu { position: absolute; top: calc(100% + 12px); left: 0; width: 220px; max-height: min(520px, calc(100vh - 190px)); overflow: auto; padding: 7px; border: 1px solid #444; border-radius: 14px; background: #262626; box-shadow: 0 16px 32px #0008; }
 .media-extension-menu button { width: 100%; justify-content: flex-start; gap: 10px; height: 36px; border-radius: 7px; padding: 0 8px; font-size: 12px; }
 .media-extension-menu small { margin-left: auto; color: #aaa; font-size: 10px; }
+.media-operation-panel { position: absolute; top: calc(100% + 12px); left: 0; z-index: 10; display: grid; gap: 13px; width: min(360px, calc(100vw - 48px)); padding: 16px; border: 1px solid #484848; border-radius: 16px; background: #242424; color: #f1f1f1; box-shadow: 0 18px 38px #0009; }
+.media-operation-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.media-operation-panel header div { display: grid; gap: 3px; }
+.media-operation-panel header strong { font-size: 14px; }
+.media-operation-panel header span { color: #aaa; font-size: 11px; }
+.artifact-card-toolbar .media-operation-panel header button { width: 28px; min-width: 28px; height: 28px; padding: 0; }
+.media-operation-panel > label { display: grid; gap: 6px; color: #ccc; font-size: 11px; }
+.media-operation-panel :is(select, textarea, input) { width: 100%; border: 1px solid #505050; border-radius: 9px; background: #181818; color: #f2f2f2; font: inherit; outline: none; }
+.media-operation-panel :is(select, input) { height: 36px; padding: 0 10px; }
+.media-operation-panel textarea { min-height: 82px; padding: 9px 10px; resize: vertical; line-height: 1.5; }
+.media-operation-panel :is(select, textarea, input):focus { border-color: #a86ce2; box-shadow: 0 0 0 2px #a86ce233; }
+.media-operation-panel fieldset { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; padding: 0; border: 0; }
+.media-operation-panel legend { grid-column: 1 / -1; margin-bottom: 6px; color: #ccc; font-size: 11px; }
+.media-operation-panel fieldset label { display: grid; gap: 5px; color: #999; font-size: 10px; }
+.media-operation-panel fieldset small { grid-column: 1 / -1; color: #ff8e96; }
+.media-operation-panel > p { margin: 0; color: #ff9aa1; font-size: 11px; line-height: 1.4; }
+.media-operation-panel footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.artifact-card-toolbar .media-operation-panel footer button { height: 34px; border-radius: 9px; background: #333; }
+.artifact-card-toolbar .media-operation-panel footer button.is-primary { background: #f0f0f0; color: #181818; }
+.artifact-card-toolbar .media-operation-panel footer button.is-primary:hover:not(:disabled) { background: #fff; }
+.relight-dialog {
+  position: fixed;
+  z-index: 2000;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(590px, calc(100vw - 32px));
+  min-height: 444px;
+  max-height: calc(100vh - 32px);
+  padding: 17px 17px 13px;
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  border: 1px solid #454545;
+  border-radius: 21px;
+  background: #242424;
+  color: #f2f2f2;
+  box-shadow: 0 24px 70px #000b;
+}
+.relight-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  color: #eee;
+  font: inherit;
+  cursor: pointer;
+}
+.relight-dialog button:disabled { opacity: .48; cursor: not-allowed; }
+.relight-dialog button:focus-visible,
+.relight-dialog :is(select, textarea, input):focus-visible { outline: 2px solid #f08acb; outline-offset: 2px; }
+.relight-dialog-header { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
+.relight-dialog-header strong { font-size: 15px; font-weight: 650; }
+.relight-dialog-header button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  color: #aaa;
+}
+.relight-dialog-header button:hover { color: #fff; background: #333; }
+.relight-dialog-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; margin-top: 9px; }
+.relight-controls { display: flex; min-width: 0; flex-direction: column; gap: 13px; }
+.relight-preview-stage {
+  display: grid;
+  place-items: center;
+  width: 220px;
+  height: 220px;
+  overflow: hidden;
+  border-radius: 17px;
+  background: #303030;
+  cursor: crosshair;
+}
+.relight-preview-orbit {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: #3b3834;
+}
+.relight-preview-orbit img {
+  display: block;
+  width: 82px;
+  height: 146px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 2px 13px #0007;
+  transition: filter 120ms ease;
+}
+.relight-source-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ffb269;
+  box-shadow: 0 0 0 3px #f7c99722, 0 0 12px #f7a85e;
+  pointer-events: none;
+}
+.relight-slider-label { display: grid; gap: 7px; color: #aaa; font-size: 11px; }
+.relight-slider-label > span { display: flex; align-items: center; justify-content: space-between; }
+.relight-slider-label output { color: #f0f0f0; font-size: 13px; font-weight: 650; }
+.relight-slider-label input[type="range"] {
+  width: 100%;
+  height: 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: #404040;
+  accent-color: #f4f4f4;
+  cursor: pointer;
+}
+.relight-slider-label input[type="range"]::-webkit-slider-thumb { width: 17px; height: 17px; }
+.relight-temperature input[type="range"] {
+  background: linear-gradient(90deg, #a86408 0%, #9b8456 42%, #587b89 100%);
+}
+.relight-style-section { display: flex; min-width: 0; flex-direction: column; }
+.relight-section-label { margin-bottom: 8px; color: #aaa; font-size: 12px; }
+.relight-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 218px;
+  padding-right: 7px;
+  overflow-y: auto;
+  scrollbar-color: #6a6a6a transparent;
+  scrollbar-width: thin;
+}
+.relight-preset-grid button {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 70px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 0;
+  background: #171717;
+}
+.relight-preset-grid button:hover:not(:disabled),
+.relight-preset-grid button.is-selected {
+  border-color: #b4caff;
+  background: #171717;
+}
+.relight-preset-grid img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.relight-preset-grid span {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 14px 7px 5px;
+  background: linear-gradient(transparent, #111d);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+}
+.relight-style-section textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 74px;
+  margin-top: 18px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 12px;
+  resize: none;
+  background: #343434;
+  color: #f2f2f2;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+}
+.relight-style-section textarea::placeholder { color: #777; }
+.relight-style-section textarea:focus { border-color: #777; }
+.relight-error { margin: 9px 0 0; color: #ff9aa1; font-size: 11px; }
+.relight-dialog-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 13px;
+}
+.relight-capability-select { display: grid; gap: 4px; color: #888; font-size: 10px; }
+.relight-capability-select select {
+  box-sizing: border-box;
+  max-width: 250px;
+  height: 30px;
+  border: 1px solid #454545;
+  border-radius: 8px;
+  padding: 0 28px 0 9px;
+  background: #2b2b2b;
+  color: #ccc;
+  font: inherit;
+  font-size: 11px;
+}
+.relight-submit-group { display: flex; align-items: center; gap: 9px; }
+.relight-submit-group > span { display: inline-flex; align-items: center; gap: 4px; color: #ddd; font-size: 11px; }
+.relight-submit-group .relight-submit {
+  width: 35px;
+  min-width: 35px;
+  height: 35px;
+  padding: 0;
+  background: #f2178f;
+  color: #fff;
+  box-shadow: 0 6px 18px #f2178f44;
+}
+.relight-submit-group .relight-submit:hover:not(:disabled) { background: #ff329e; }
+
+@media (max-width: 660px), (max-height: 560px) {
+  .relight-dialog { top: 16px; min-height: 0; transform: translateX(-50%); }
+  .relight-dialog-body { grid-template-columns: 180px minmax(0, 1fr); gap: 14px; }
+  .relight-preview-stage { width: 180px; height: 180px; }
+  .relight-preview-orbit { width: 150px; height: 150px; }
+  .relight-preview-orbit img { width: 68px; height: 122px; }
+}
+
+@media (max-width: 500px) {
+  .relight-dialog-body { grid-template-columns: 1fr; }
+  .relight-preview-stage { width: 100%; }
+  .relight-dialog-footer { align-items: stretch; }
+  .relight-capability-select { min-width: 0; }
+  .relight-capability-select select { max-width: 100%; }
+}
 .media-inspector { z-index: 21; bottom: auto; max-height: calc(100vh - 110px); }
 .media-card-upload-form { display: flex; flex-direction: column; gap: 20px; padding-top: 20px; font-size: 13px; }
 .media-card-upload-form [role="alert"] { color: #fda4af; line-height: 1.6; }

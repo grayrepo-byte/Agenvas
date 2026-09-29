@@ -2,6 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
@@ -70,7 +71,7 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         if (!workflow.supportsDurationSeconds(durationSeconds)) {
             throw new IllegalStateException("Approved duration exceeds fixed I2V template");
         }
-        Project.AspectRatio ratio = projects.get(context.ownerId(), task.projectId()).aspectRatio();
+        Project.AspectRatio ratio = ratio(context);
         UUID requestKey = UUID.fromString(context.requestKey());
         String uploaded = client.uploadImage(requestKey,
                 pinnedInputImage(context.ownerId(), task, workflow, ratio), "png");
@@ -123,6 +124,20 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
             throw new IllegalStateException("Pinned media adapter identity differs");
         }
         return snapshot;
+    }
+
+    private Project.AspectRatio ratio(AttemptContext context) {
+        String requested = VideoGenerationParameters.parse(context.lease().input()
+                .path("mediaInput").path("parameters")).aspectRatio();
+        if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) {
+            return projects.get(context.ownerId(), context.lease().projectId()).aspectRatio();
+        }
+        return switch (requested) {
+            case VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO -> Project.AspectRatio.LANDSCAPE_16_9;
+            case VideoGenerationParameters.PORTRAIT_ASPECT_RATIO -> Project.AspectRatio.PORTRAIT_9_16;
+            case VideoGenerationParameters.SQUARE_ASPECT_RATIO -> Project.AspectRatio.SQUARE_1_1;
+            default -> throw new IllegalArgumentException("Unsupported video aspect ratio");
+        };
     }
 
     private ComfyUiVideoWorkflow workflow(Snapshot snapshot) {

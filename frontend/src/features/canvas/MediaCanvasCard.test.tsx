@@ -10,7 +10,9 @@ import { MediaCanvasCard } from "./MediaCanvasCard";
 
 // React Flow positions the toolbar; this component test exercises its actual controls and media state.
 vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
-  NodeToolbar: ({ children, isVisible }: { children: ReactNode; isVisible?: boolean }) => isVisible !== false ? children : null }));
+  NodeToolbar: ({ children, isVisible, className }: {
+    children: ReactNode; isVisible?: boolean; className?: string;
+  }) => isVisible !== false ? <div className={`react-flow__node-toolbar ${className ?? ""}`}>{children}</div> : null }));
 
 const artifact: Artifact = { id: "image-1", projectId: "project-1", kind: "IMAGE", title: "湖边",
   resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0,
@@ -49,17 +51,253 @@ describe("MediaCanvasCard", () => {
     );
   });
 
-  it("offers upload into the empty card and keeps unsupported extensions visibly disabled", async () => {
+  it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
     const { onUpload, onInspect } = showCard();
+    const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
     fireEvent.click(await screen.findByRole("button", { name: "上传图片" }));
-    expect(onUpload).toHaveBeenCalledOnce();
+    expect(pickerClick).toHaveBeenCalledOnce();
+    pickerClick.mockRestore();
+    const file = new File(["image"], "reference.webp", { type: "image/webp" });
+    fireEvent.change(screen.getByLabelText("选择要上传的图片"), { target: { files: [file] } });
+    expect(onUpload).toHaveBeenCalledWith(file);
     fireEvent.click(screen.getByRole("button", { name: "扩展" }));
-    expect(screen.getByRole("button", { name: /高清放大.*未接入/ })).toBeDisabled();
+    expect(screen.getByLabelText("图片扩展功能").closest(".react-flow__node-toolbar"))
+      .toHaveClass("artifact-card-toolbar-raised");
+    expect(screen.getByRole("button", { name: /高清放大.*本地/ })).toBeDisabled();
     fireEvent.keyDown(screen.getByRole("button", { name: "扩展" }), { key: "Escape" });
     expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "卡片详情" }));
     expect(onInspect).toHaveBeenCalledOnce();
+  });
+
+  it("submits depth extraction against the exact visible image version", async () => {
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [], defaults: [],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test",
+      })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "depth-task", status: "READY", errorCode: null });
+      }),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "深度提取" }));
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      canvasItemId: "item-1", sourceVersionId: "image-version",
+      expectedCanvasItemVersion: 0, operation: "DEPTH_MAP", parameters: {},
+    })));
+  });
+
+  it("opens direct-manipulation cropping and submits the selected rectangle", async () => {
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test",
+      })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "crop-task", status: "READY", errorCode: null });
+      }),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    fireEvent.click(screen.getByRole("button", { name: /裁剪.*本地/ }));
+    expect(screen.getByRole("dialog", { name: "裁剪图片" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "当前图片裁剪预览" })).toHaveAttribute("src",
+      "/api/v1/projects/project-1/assets/image-asset/content");
+    fireEvent.change(screen.getByRole("combobox", { name: "裁剪比例" }), {
+      target: { value: "1:1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确定" }));
+
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      canvasItemId: "item-1", sourceVersionId: "image-version", operation: "CROP",
+      parameters: { x: 0.22, y: 0.08, width: 0.56, height: 0.84 },
+    })));
+  });
+
+  it("opens the dedicated relight design and submits its AI lighting controls", async () => {
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
+          id: "relight-capability", name: "GPT Image", enabled: true,
+          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+        }] }], defaults: [],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test",
+      })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "relight-task", status: "READY", errorCode: null });
+      }),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    fireEvent.click(screen.getByRole("button", { name: /重新打光.*AI/ }));
+    expect(screen.getByRole("dialog", { name: "打光" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "当前图片打光预览" })).toHaveAttribute("src",
+      "/api/v1/projects/project-1/assets/image-asset/content");
+    fireEvent.click(screen.getByRole("button", { name: "月光" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "补充打光描述" }), {
+      target: { value: "让人物轮廓更清晰" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始打光" }));
+
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      canvasItemId: "item-1", sourceVersionId: "image-version", operation: "RELIGHT",
+      capabilityId: "relight-capability", instruction: "让人物轮廓更清晰",
+      parameters: { lightingPreset: "MOONLIGHT", brightness: -24,
+        colorTemperature: 8200, lightX: 0.15, lightY: 0.75 },
+    })));
+  });
+
+  it("exposes all seven AI image operations instead of disabled placeholders", async () => {
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
+          id: "ai-capability", name: "GPT Image", enabled: true,
+          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          supportsTransparentBackground: true,
+        }] }], defaults: [],
+      })),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    for (const label of ["三视图", "图层分离", "表情调整", "画笔标注", "移除背景", "局部擦除", "视角调整"]) {
+      expect(screen.getByRole("button", { name: new RegExp(`${label}.*AI`) })).toBeEnabled();
+    }
+    expect(screen.queryByText("后续")).not.toBeInTheDocument();
+  });
+
+  it("submits expression editing through the selected AI image capability", async () => {
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
+          id: "expression-capability", name: "GPT Image", enabled: true,
+          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          supportsTransparentBackground: true,
+        }] }], defaults: [],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test",
+      })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "expression-task", status: "READY", errorCode: null });
+      }),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    fireEvent.click(screen.getByRole("button", { name: /表情调整.*AI/ }));
+    const submit = screen.getByRole("button", { name: "开始处理" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "目标表情" }), {
+      target: { value: "自然微笑，嘴唇闭合" },
+    });
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      canvasItemId: "item-1", sourceVersionId: "image-version",
+      operation: "EXPRESSION_EDIT", capabilityId: "expression-capability",
+      instruction: "自然微笑，嘴唇闭合", parameters: {},
+    })));
+  });
+
+  it("requires a transparent-capable model only for the foreground layer", async () => {
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [{ id: "providers", enabled: true, platform: "OPENAI", capabilities: [
+          { id: "opaque-capability", name: "Opaque model", enabled: true,
+            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: false },
+          { id: "transparent-capability", name: "Transparent model", enabled: true,
+            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: true },
+        ] }], defaults: [],
+      })),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    fireEvent.click(screen.getByRole("button", { name: /图层分离.*AI/ }));
+    const capability = screen.getByRole("combobox", { name: "图片能力" });
+    expect(capability).toHaveValue("transparent-capability");
+    expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "输出图层" }), {
+      target: { value: "BACKGROUND" },
+    });
+    expect(screen.getByRole("option", { name: "Opaque model" })).toBeInTheDocument();
   });
 
   it("keeps the full preview available when original dimensions fail and allows retry", async () => {

@@ -18,7 +18,7 @@ final class VideoDuration {
             }
             return Duration.ofMillis(milliseconds.longValue());
         }
-        if (schemaVersion == 2) {
+        if (schemaVersion == 2 || schemaVersion == 3) {
             JsonNode seconds = input.path("durationSeconds");
             if (!seconds.isIntegralNumber() || seconds.longValue() < 1
                     || seconds.longValue() > 30) {

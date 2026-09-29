@@ -106,11 +106,15 @@ class CanvasMediaContextPostgresIT {
                 "first-card-run");
         JsonNode secondTask = run(mvc, auth, base, artifactId, secondCard,
                 "second-card-run");
+        UUID firstResultCard = UUID.fromString(firstTask.path("input").path("canvasItemId").asText());
+        UUID secondResultCard = UUID.fromString(secondTask.path("input").path("canvasItemId").asText());
+        assertThat(firstResultCard).isNotEqualTo(firstCard);
+        assertThat(secondResultCard).isNotEqualTo(secondCard);
         assertThat(secondTask.path("id").asText()).isNotEqualTo(firstTask.path("id").asText());
         assertThat(taskIds(read(mvc, auth, base + "/artifacts/" + artifactId
-                + "/run?canvasItemId=" + firstCard))).containsExactly(firstTask.path("id").asText());
+                + "/run?canvasItemId=" + firstResultCard))).containsExactly(firstTask.path("id").asText());
         assertThat(taskIds(read(mvc, auth, base + "/artifacts/" + artifactId
-                + "/run?canvasItemId=" + secondCard))).containsExactly(secondTask.path("id").asText());
+                + "/run?canvasItemId=" + secondResultCard))).containsExactly(secondTask.path("id").asText());
         assertThat(jdbc.sql("select expected_current_version_id from task_artifact_target "
                         + "where task_id=:taskId")
                 .param("taskId", UUID.fromString(firstTask.path("id").asText()))
@@ -125,20 +129,11 @@ class CanvasMediaContextPostgresIT {
         JsonNode canvas = read(mvc, auth, base + "/canvas/items");
         assertThat(selectedVersion(canvas, firstCard)).isEqualTo(firstVersion.toString());
         assertThat(selectedVersion(canvas, secondCard)).isEqualTo(secondVersion.toString());
-
-        mvc.perform(post(base + "/canvas-items/" + secondCard + "/select-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"versionId\":\"" + firstVersion
-                                + "\",\"expectedVersion\":0}"))
-                .andExpect(status().isOk());
-        JsonNode selected = read(mvc, auth, base + "/canvas/items");
-        assertThat(selectedVersion(selected, firstCard)).isEqualTo(firstVersion.toString());
-        assertThat(selectedVersion(selected, secondCard)).isEqualTo(firstVersion.toString());
         JsonNode snapshot = read(mvc, auth, base + "/snapshot");
         assertThat(selectedVersion(snapshot.path("canvas"), firstCard))
                 .isEqualTo(firstVersion.toString());
         assertThat(selectedVersion(snapshot.path("canvas"), secondCard))
-                .isEqualTo(firstVersion.toString());
+                .isEqualTo(secondVersion.toString());
         JsonNode unchangedResource = read(mvc, auth, base + "/artifacts/" + artifactId);
         assertThat(unchangedResource.path("resourceDefaultVersionId").asText())
                 .isEqualTo(secondVersion.toString());
@@ -147,17 +142,13 @@ class CanvasMediaContextPostgresIT {
                         + "and type='media.draft.changed' and payload_json->>'canvasItemId'=:itemId")
                 .param("projectId", project.id()).param("itemId", firstCard.toString())
                 .query(Integer.class).single()).isEqualTo(1);
-        assertThat(jdbc.sql("select count(*) from project_event where project_id=:projectId "
-                        + "and type='canvas.item.selected_version.changed' "
-                        + "and payload_json->>'canvasItemId'=:itemId")
-                .param("projectId", project.id()).param("itemId", secondCard.toString())
-                .query(Integer.class).single()).isEqualTo(1);
-
         UUID uploadAssetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
+        UUID uploadTarget = UUID.randomUUID();
         JsonNode uploaded = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
                         + firstCard + "/upload-version")
                         .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
+                        .content("{\"targetItemId\":\"" + uploadTarget
+                                + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
                                 + "\"assetId\":\"" + uploadAssetId + "\"}}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID uploadedVersion = UUID.fromString(uploaded.path("selectedVersionId").asText());
@@ -165,11 +156,13 @@ class CanvasMediaContextPostgresIT {
         JsonNode replayedUpload = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
                         + firstCard + "/upload-version")
                         .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
+                        .content("{\"targetItemId\":\"" + uploadTarget
+                                + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
                                 + "\"assetId\":\"" + uploadAssetId + "\"}}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(replayedUpload.path("selectedVersionId").asText())
                 .isEqualTo(uploadedVersion.toString());
+        assertThat(replayedUpload.path("id").asText()).isEqualTo(uploadTarget.toString());
         assertThat(jdbc.sql("select count(*) from artifact_version where artifact_id=:id")
                 .param("id", artifactId).query(Integer.class).single()).isEqualTo(3);
         assertThat(read(mvc, auth, base + "/artifacts/" + artifactId)
@@ -178,11 +171,11 @@ class CanvasMediaContextPostgresIT {
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
                         .contentType("application/json")
                         .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""
-                                + firstCard + "\",\"expectedVersion\":1}]}"))
+                                + firstCard + "\",\"expectedVersion\":0}]}"))
                 .andExpect(status().isOk());
         assertThat(jdbc.sql("select canvas_item_id from task_artifact_target where task_id=:id")
                 .param("id", UUID.fromString(firstTask.path("id").asText()))
-                .query(UUID.class).optional()).isEmpty();
+                .query(UUID.class).single()).isEqualTo(firstResultCard);
     }
 
     private UUID addVersion(UUID projectId, UUID artifactId, int versionNo) {

@@ -40,6 +40,12 @@ const videoCapability: MediaCapability = {
   defaultVideoInputMode: "START_END", supportsEndFrame: true, supportedImageAspectRatios: [],
   supportedImageResolutions: [], supportedImageQualities: [], supportsTransparentBackground: false, settings: {},
 };
+const versatileVideoCapability: MediaCapability = {
+  ...videoCapability, id: "versatile-video-capability", name: "全能视频",
+  maxReferenceImages: 4,
+  supportedVideoInputModes: ["TEXT", "START_END", "GENERAL_REFERENCE"],
+  defaultVideoInputMode: "TEXT", supportsEndFrame: true,
+};
 const settings: MediaSettings = {
   connections: [{ id: "connection", name: "我的媒体连接", platform: "OPENAI", enabled: true,
     version: 0, connectionVersion: 1, origin: null, keyMask: null,
@@ -285,7 +291,7 @@ describe("MediaDraftEditor", () => {
       .toEqual(["image-v1", "image-v2"]));
   });
 
-  it("persists image ratio, resolution, quality, count, transparency and output placement", async () => {
+  it("persists image ratio, resolution, quality, count and transparency", async () => {
     const { saves } = setup();
     const user = userEvent.setup();
     await screen.findByLabelText("图片提示词");
@@ -307,11 +313,11 @@ describe("MediaDraftEditor", () => {
     await user.click(within(parameters).getByRole("button", { name: "低" }));
     await user.click(within(parameters).getByRole("button", { name: "4" }));
     await user.click(within(parameters).getByRole("switch", { name: "透明背景" }));
-    await user.click(within(parameters).getByRole("switch", { name: "生成时新建节点" }));
     await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({
       aspectRatio: "9:16", resolution: "2K", quality: "low", transparentBackground: true,
-      generationCount: 4, openNewNodeOnGenerate: true,
+      generationCount: 4,
     }));
+    expect(within(parameters).getByText("每个生成结果都会创建独立节点")).toBeVisible();
     expect(screen.getByText("9:16 · 2K · 低 · 4 张")).toBeVisible();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -467,7 +473,7 @@ describe("MediaDraftEditor", () => {
       await waitFor(() => expect(saves).toHaveLength(1));
       expect(saves[0]).toEqual({ expectedVersion: 0, prompt: initialDraft.prompt,
         parameters: { aspectRatio: "AUTO", resolution: "1K", quality: "high",
-          transparentBackground: false, generationCount: 1, openNewNodeOnGenerate: false },
+          transparentBackground: false, generationCount: 1 },
         videoInputMode: null, imageInputs: [], mentions: [],
         durationSeconds: null, capabilityId: imageCapability.id });
       await user.click(screen.getByRole("button", { name: "选择生成模型" }));
@@ -609,6 +615,55 @@ describe("MediaDraftEditor", () => {
       { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
     ], durationSeconds: 4 }));
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+  });
+
+  it("defaults an empty video draft to text-to-video and disables image-required modes", async () => {
+    const videoSettings: MediaSettings = {
+      connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: versatileVideoCapability.id, version: 0 }],
+    };
+    const { saves } = setup({ kind: "VIDEO", settings: videoSettings });
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({
+      videoInputMode: "TEXT", parameters: { aspectRatio: "AUTO" }, imageInputs: [],
+    }));
+    expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent("文生视频");
+    await user.click(screen.getByRole("button", { name: "选择视频输入模式" }));
+    expect(screen.getByRole("menuitemradio", { name: /文生视频/ })).toBeEnabled();
+    expect(screen.getByRole("menuitemradio", { name: /全能参考/ })).toBeDisabled();
+    expect(screen.getByRole("menuitemradio", { name: /首尾帧/ })).toBeDisabled();
+  });
+
+  it("switches the first image to general reference and persists a video aspect ratio", async () => {
+    const videoSettings: MediaSettings = {
+      connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: versatileVideoCapability.id, version: 0 }],
+    };
+    const { saves } = setup({ kind: "VIDEO", settings: videoSettings, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+        id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v1" }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+        HttpResponse.json({ items: [{ id: "image-v1", versionNo: 1,
+          content: { assetId: "asset-image-v1" } }] })),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("视频提示词");
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 海边灯塔 · v1" }));
+    await user.click(screen.getByRole("button", { name: "添加所选图片（1）" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({
+      videoInputMode: "GENERAL_REFERENCE",
+      imageInputs: [{ versionId: "image-v1", role: "REFERENCE" }],
+    }));
+    expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent("全能参考");
+
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const parameters = screen.getByRole("dialog", { name: "尺寸与画质设置" });
+    await user.click(within(parameters).getByRole("button", { name: "9:16" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "9:16" }));
+    expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveTextContent("9:16");
   });
 
   it("retains an unavailable pinned video frame without silently using the current version", async () => {

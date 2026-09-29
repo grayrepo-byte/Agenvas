@@ -20,6 +20,7 @@ const HTTP_UNAUTHORIZED = 401;
 const HTTP_FORBIDDEN = 403;
 const HTTP_CONFLICT = 409;
 const platformAdapters: Record<MediaConnection["platform"], string[]> = {
+  LOCAL: ["LOCAL_IMAGE_PROCESSOR"],
   MOCK: ["MOCK_IMAGE", "MOCK_VIDEO"],
   COMFYUI: ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"],
   OPENAI: ["OPENAI_GPT_IMAGE_2"],
@@ -102,6 +103,7 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
 }
 
 const adapterKind: Record<string, "IMAGE_GENERATION" | "VIDEO_GENERATION"> = {
+  LOCAL_IMAGE_PROCESSOR: "IMAGE_GENERATION",
   MOCK_IMAGE: "IMAGE_GENERATION", MOCK_VIDEO: "VIDEO_GENERATION",
   COMFY_IMAGE_V1: "IMAGE_GENERATION", COMFY_VIDEO_V1: "VIDEO_GENERATION",
   OPENAI_GPT_IMAGE_2: "IMAGE_GENERATION", GOOGLE_NANO_BANANA_2: "IMAGE_GENERATION",
@@ -342,7 +344,8 @@ function ConnectionCard({ connection, settings, apply }: {
     },
   });
   const busy = save.isPending || addCapability.isPending || mutate.isPending;
-  const availableAdapters = platformAdapters[connection.platform];
+  const systemManaged = connection.platform === "LOCAL";
+  const availableAdapters = systemManaged ? [] : platformAdapters[connection.platform];
 
   function loadLatest() {
     acceptBaseline(connection);
@@ -359,6 +362,26 @@ function ConnectionCard({ connection, settings, apply }: {
     setError("");
     save.mutate();
   }
+
+  if (systemManaged) return <Panel className="media-connection-card"
+    title={connection.name}
+    description={<span>LOCAL · 应用内置</span>}
+    actions={<StatusBadge tone="success">已启用</StatusBadge>}>
+    <p className="media-connection-status ui-muted">
+      仅供画布图片后处理使用，不参与普通图片生成模型选择，也不能在设置中停用或改写。
+    </p>
+    <ul className="media-capabilities-list">
+      {connection.capabilities.map((capability) => <li key={capability.id}
+        className="media-capability-row">
+        <div className="media-capability-heading">
+          <span className="media-settings-icon"><ImageSquare size={20} /></span>
+          <div className="media-capability-title"><h4>{capability.name}</h4>
+            <p className="ui-muted">{capability.adapterId} · v{capability.capabilityVersion}</p>
+          </div>
+        </div>
+      </li>)}
+    </ul>
+  </Panel>;
 
   return <Panel className="media-connection-card"
     title={connection.name}

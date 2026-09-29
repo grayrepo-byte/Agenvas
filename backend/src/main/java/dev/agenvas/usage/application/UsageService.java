@@ -214,6 +214,8 @@ public class UsageService {
                                                 task.errorCode())
                                         && !"PROVIDER_UNSUPPORTED_INPUT".equals(task.errorCode())
                                         && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(
+                                                task.errorCode())
+                                        && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(
                                                 task.errorCode()))))
                 || task.providerRequestId() != null) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");
@@ -276,12 +278,16 @@ public class UsageService {
         int configVersion = task.input().path("providerConfigVersion").asInt(-1);
         String workflowVersion = task.input().path("workflowVersion").asText("");
         if (configVersion < 1 || workflowVersion.isBlank()
-                || !("MOCK_UNPRICED".equals(source) || "PROVIDER_UNPRICED".equals(source))) {
+                || !("MOCK_UNPRICED".equals(source) || "PROVIDER_UNPRICED".equals(source)
+                        || "LOCAL_NO_COST".equals(source))) {
             throw new IllegalStateException("Media usage configuration snapshot is invalid");
         }
+        boolean localNoCost = "LOCAL_NO_COST".equals(source);
+        BigDecimal knownZero = localNoCost ? BigDecimal.ZERO : null;
         return new UsageEntry(UUID.randomUUID(), task.projectId(), task.runId(), task.id(),
-                operationKey, type, quantity, null, null, null,
-                UsageEntry.CostStatus.UNKNOWN, source, configVersion,
+                operationKey, type, quantity, knownZero, knownZero, null,
+                localNoCost ? UsageEntry.CostStatus.KNOWN : UsageEntry.CostStatus.UNKNOWN,
+                source, configVersion,
                 workflowVersion, null, clock.instant());
     }
 

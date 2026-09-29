@@ -24,6 +24,7 @@
 | Spring AI BOM / `spring-ai-client-chat` / `spring-ai-starter-model-openai` | 2.0.1 |
 | OkHttp（LLM 出站固定目标与 DNS/重定向控制） | 4.12.0；与 Spring AI 2.0.1 当前解析版本一致 |
 | TwelveMonkeys ImageIO WebP reader | 3.15.2；用于实际 WebP 解码，见 [项目仓库](https://github.com/haraldk/TwelveMonkeys) |
+| ONNX Runtime Java CPU | 1.30.0；仅用于服务端本地 Depth Anything V2 Small 推理，Maven 包包含 Linux/macOS x64/aarch64 与 Windows x64 原生库；模型权重不随应用分发 |
 | jOOQ（Boot 4 starter + codegen 插件） | 3.19.37（Boot 4.0.8 依赖管理）；生成源码提交在 `backend/src/jooq/java`，见 [ADR 0012](adr/0012-jooq-persistence.md) |
 | springdoc OpenAPI WebMVC UI | 3.0.3（按规格保持 3.0.x） |
 | Spring MVC / Security / Session JDBC starter / Actuator / jOOQ starter / Validation | Boot 4.0.8 依赖管理 |

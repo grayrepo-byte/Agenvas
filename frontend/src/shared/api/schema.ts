@@ -660,7 +660,7 @@ export interface paths {
         /** 查询此卡片最近的直接媒体任务 */
         get: operations["listDirectMediaTasks"];
         put?: never;
-        /** 固定已保存的媒体草稿并直接受理 USER_DIRECT Task；图片可创建 1/2/4 个独立任务 */
+        /** 固定已保存的媒体草稿，为每个结果创建独立节点并受理 USER_DIRECT Task */
         post: operations["runMediaDraft"];
         delete?: never;
         options?: never;
@@ -683,6 +683,26 @@ export interface paths {
         put?: never;
         /** 固定提示词与当前文字版本并受理 USER_DIRECT Task */
         post: operations["runDirectTextGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/image-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 固定来源图片并创建相连的独立结果节点后受理图片后处理任务 */
+        post: operations["runImageOperation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -789,26 +809,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/select-version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                canvasItemId: components["parameters"]["CanvasItemId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 乐观选择此媒体卡片展示的历史版本 */
-        post: operations["selectCanvasItemVersion"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/upload-version": {
         parameters: {
             query?: never;
@@ -821,7 +821,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 追加用户上传版本并只在此媒体卡片选用 */
+        /** 基于来源媒体节点上传内容并创建独立结果节点 */
         post: operations["uploadCanvasItemVersion"];
         delete?: never;
         options?: never;
@@ -1219,7 +1219,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
+            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
             enabled: boolean;
             /** Format: int64 */
             version: number;
@@ -1524,7 +1524,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT";
+            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT" | "MEDIA_DERIVATION";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -1649,6 +1649,42 @@ export interface components {
             /** Format: int64 */
             expectedDraftVersion: number;
         };
+        RunImageOperationRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+            /** @enum {string} */
+            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "BRUSH_MARKUP" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
+            instruction?: string | null;
+            /** Format: uuid */
+            capabilityId?: string | null;
+            parameters: components["schemas"]["ImageOperationParameters"];
+        };
+        ImageOperationParameters: {
+            /** @enum {integer} */
+            scale?: 2 | 4;
+            x?: number;
+            y?: number;
+            width?: number;
+            height?: number;
+            /** @enum {integer} */
+            quarterTurns?: 1 | 2 | 3;
+            /** @enum {string} */
+            aspectRatio?: "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
+            /** @enum {string} */
+            lightingPreset?: "GOLDEN_HOUR" | "BLUE_HOUR" | "OVERCAST_SOFT" | "MOONLIGHT" | "SOFT_STUDIO" | "NEON_NIGHT";
+            brightness?: number;
+            colorTemperature?: number;
+            lightX?: number;
+            lightY?: number;
+            /** @enum {string} */
+            layerTarget?: "FOREGROUND" | "BACKGROUND";
+            /** @enum {string} */
+            viewAngle?: "FRONT" | "LEFT_THREE_QUARTER" | "RIGHT_THREE_QUARTER" | "LEFT_PROFILE" | "RIGHT_PROFILE" | "HIGH_ANGLE" | "LOW_ANGLE" | "BACK";
+        };
         RunTextGenerationRequest: {
             prompt: string;
             /** Format: int64 */
@@ -1684,7 +1720,7 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description 图片草稿的原子生成参数；视频草稿使用空对象。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
+        /** @description 媒体草稿的原子生成参数；图片使用全部字段，视频只使用 aspectRatio。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
         ImageGenerationParameters: {
             /** @enum {string} */
             aspectRatio?: "AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
@@ -1695,7 +1731,6 @@ export interface components {
             transparentBackground?: boolean;
             /** @enum {integer} */
             generationCount?: 1 | 2 | 4;
-            openNewNodeOnGenerate?: boolean;
         };
         /** @enum {string} */
         VideoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
@@ -1740,7 +1775,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT";
+            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT" | "MEDIA_DERIVATION";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -1808,6 +1843,8 @@ export interface components {
             expectedVersion: number;
         };
         UploadCanvasItemVersionRequest: {
+            /** Format: uuid */
+            targetItemId: string;
             /** Format: int64 */
             expectedVersion: number;
             content: components["schemas"]["WritableArtifactContent"];
@@ -3760,7 +3797,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 已受理批次的主任务，或返回同一卡片正在执行的任务；兄弟任务通过任务列表查询，无需审批 */
+            /** @description 已受理批次的主任务，或按相同幂等键返回原任务；兄弟任务分别绑定独立结果节点 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3819,6 +3856,39 @@ export interface operations {
         };
         responses: {
             /** @description 已受理，或返回同一卡片正在执行的文字生成任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    runImageOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunImageOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理并创建结果节点，或按相同幂等键返回原任务 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3973,38 +4043,6 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
-    selectCanvasItemVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                canvasItemId: components["parameters"]["CanvasItemId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SelectArtifactVersionRequest"];
-            };
-        };
-        responses: {
-            /** @description 更新后的卡片 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CanvasItem"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
     uploadCanvasItemVersion: {
         parameters: {
             query?: never;
@@ -4021,7 +4059,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 新版本已追加并在目标卡片选用，资源默认版本不变 */
+            /** @description 新版本已追加并由新结果节点固定，来源节点不变 */
             201: {
                 headers: {
                     [name: string]: unknown;

@@ -902,7 +902,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: runMediaDraft
-      summary: 固定已保存的媒体草稿并直接受理 USER_DIRECT Task；图片可创建 1/2/4 个独立任务
+      summary: 固定已保存的媒体草稿，为每个结果创建独立节点并受理 USER_DIRECT Task
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -916,7 +916,7 @@ paths:
             schema: {$ref: "#/components/schemas/RunMediaDraftRequest"}
       responses:
         "200":
-          description: 已受理批次的主任务，或返回同一卡片正在执行的任务；兄弟任务通过任务列表查询，无需审批
+          description: 已受理批次的主任务，或按相同幂等键返回原任务；兄弟任务分别绑定独立结果节点
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Task"}
@@ -957,6 +957,34 @@ paths:
       responses:
         "200":
           description: 已受理，或返回同一卡片正在执行的文字生成任务
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/image-operations:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    post:
+      operationId: runImageOperation
+      summary: 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
+      tags: [Tasks]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RunImageOperationRequest"}
+      responses:
+        "200":
+          description: 已受理并创建结果节点，或按相同幂等键返回原任务
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Task"}
@@ -1067,37 +1095,13 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/select-version:
-    parameters:
-      - {$ref: "#/components/parameters/ProjectId"}
-      - {$ref: "#/components/parameters/CanvasItemId"}
-    post:
-      operationId: selectCanvasItemVersion
-      summary: 乐观选择此媒体卡片展示的历史版本
-      tags: [Canvas]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/SelectArtifactVersionRequest"}
-      responses:
-        "200":
-          description: 更新后的卡片
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/CanvasItem"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/upload-version:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/CanvasItemId"}
     post:
       operationId: uploadCanvasItemVersion
-      summary: 追加用户上传版本并只在此媒体卡片选用
+      summary: 基于来源媒体节点上传内容并创建独立结果节点
       tags: [Canvas]
       requestBody:
         required: true
@@ -1106,7 +1110,7 @@ paths:
             schema: {$ref: "#/components/schemas/UploadCanvasItemVersionRequest"}
       responses:
         "201":
-          description: 新版本已追加并在目标卡片选用，资源默认版本不变
+          description: 新版本已追加并由新结果节点固定，来源节点不变
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CanvasItem"}
@@ -1631,7 +1635,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
-        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
+        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
@@ -1991,7 +1995,7 @@ components:
         id: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT]}
+        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT, MEDIA_DERIVATION]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
     SetupStatus:
@@ -2173,6 +2177,45 @@ components:
       properties:
         canvasItemId: {type: string, format: uuid}
         expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+    RunImageOperationRequest:
+      type: object
+      additionalProperties: false
+      required: [canvasItemId, sourceVersionId, expectedCanvasItemVersion, operation, parameters]
+      properties:
+        canvasItemId: {type: string, format: uuid}
+        sourceVersionId: {type: string, format: uuid}
+        expectedCanvasItemVersion: {type: integer, format: int64, minimum: 0}
+        operation:
+          type: string
+          enum: [SMART_EDIT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
+            EXPRESSION_EDIT, BRUSH_MARKUP, REMOVE_BACKGROUND, OBJECT_REMOVE, VIEW_ANGLE,
+            DEPTH_MAP, UPSCALE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
+        instruction: {type: [string, "null"], maxLength: 4000}
+        capabilityId: {type: [string, "null"], format: uuid}
+        parameters: {$ref: "#/components/schemas/ImageOperationParameters"}
+    ImageOperationParameters:
+      type: object
+      additionalProperties: false
+      properties:
+        scale: {type: integer, enum: [2, 4]}
+        x: {type: number, minimum: 0, maximum: 1}
+        y: {type: number, minimum: 0, maximum: 1}
+        width: {type: number, exclusiveMinimum: 0, maximum: 1}
+        height: {type: number, exclusiveMinimum: 0, maximum: 1}
+        quarterTurns: {type: integer, enum: [1, 2, 3]}
+        aspectRatio: {type: string, enum: ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
+        lightingPreset:
+          type: string
+          enum: [GOLDEN_HOUR, BLUE_HOUR, OVERCAST_SOFT, MOONLIGHT, SOFT_STUDIO, NEON_NIGHT]
+        brightness: {type: integer, minimum: -100, maximum: 100}
+        colorTemperature: {type: integer, minimum: 2000, maximum: 10000}
+        lightX: {type: number, minimum: 0, maximum: 1}
+        lightY: {type: number, minimum: 0, maximum: 1}
+        layerTarget: {type: string, enum: [FOREGROUND, BACKGROUND]}
+        viewAngle:
+          type: string
+          enum: [FRONT, LEFT_THREE_QUARTER, RIGHT_THREE_QUARTER, LEFT_PROFILE,
+            RIGHT_PROFILE, HIGH_ANGLE, LOW_ANGLE, BACK]
     RunTextGenerationRequest:
       type: object
       additionalProperties: false
@@ -2219,14 +2262,13 @@ components:
     ImageGenerationParameters:
       type: object
       additionalProperties: false
-      description: 图片草稿的原子生成参数；视频草稿使用空对象。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
+      description: 媒体草稿的原子生成参数；图片使用全部字段，视频只使用 aspectRatio。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
       properties:
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
         resolution: {type: string, enum: [1K, 2K, 4K]}
         quality: {type: string, enum: [low, medium, high]}
         transparentBackground: {type: boolean}
         generationCount: {type: integer, enum: [1, 2, 4]}
-        openNewNodeOnGenerate: {type: boolean}
     VideoInputMode:
       type: string
       enum: [TEXT, START_END, GENERAL_REFERENCE]
@@ -2279,7 +2321,7 @@ components:
         projectId: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT]}
+        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT, MEDIA_DERIVATION]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
@@ -2360,8 +2402,9 @@ components:
     UploadCanvasItemVersionRequest:
       type: object
       additionalProperties: false
-      required: [expectedVersion, content]
+      required: [targetItemId, expectedVersion, content]
       properties:
+        targetItemId: {type: string, format: uuid}
         expectedVersion: {type: integer, format: int64, minimum: 0}
         content: {$ref: "#/components/schemas/WritableArtifactContent"}
     ArtifactInputReference:

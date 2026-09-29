@@ -35,6 +35,9 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ARK_CREATE_UNCERTAIN: "提交结果未确认",
   OPENAI_IMAGE_REJECTED: "上游拒绝了请求（参数或凭证）",
   GOOGLE_IMAGE_REJECTED: "上游拒绝了请求（参数或凭证）",
+  LOCAL_DEPTH_MODEL_UNAVAILABLE: "本地深度模型未配置或文件不可用",
+  LOCAL_IMAGE_PROCESSING_FAILED: "本地图片处理失败",
+  LOCAL_IMAGE_ENCODING_FAILED: "本地图片编码失败",
 };
 
 /** @returns 可读原因；没有登记时返回 null，由调用方回退展示原始错误码。 */

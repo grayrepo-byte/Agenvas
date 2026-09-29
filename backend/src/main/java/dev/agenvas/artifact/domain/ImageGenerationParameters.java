@@ -13,8 +13,7 @@ public record ImageGenerationParameters(
         String resolution,
         String quality,
         boolean transparentBackground,
-        int generationCount,
-        boolean openNewNodeOnGenerate) {
+        int generationCount) {
 
     public static final String AUTO_ASPECT_RATIO = "AUTO";
     public static final String DEFAULT_RESOLUTION = "1K";
@@ -27,12 +26,12 @@ public record ImageGenerationParameters(
     public static final Set<Integer> GENERATION_COUNTS = Set.of(1, 2, 4);
     private static final Set<String> FIELDS = Set.of(
             "aspectRatio", "resolution", "quality", "transparentBackground",
-            "generationCount", "openNewNodeOnGenerate");
+            "generationCount");
 
     public static ImageGenerationParameters parse(JsonNode input) {
         if (input == null || input.isMissingNode() || input.isNull()) {
             return new ImageGenerationParameters(AUTO_ASPECT_RATIO, DEFAULT_RESOLUTION,
-                    DEFAULT_QUALITY, false, 1, false);
+                    DEFAULT_QUALITY, false, 1);
         }
         if (!input.isObject()) {
             throw invalid("图片生成参数必须是对象。");
@@ -45,13 +44,12 @@ public record ImageGenerationParameters(
         String quality = text(input, "quality", DEFAULT_QUALITY);
         boolean transparent = bool(input, "transparentBackground", false);
         int count = integer(input, "generationCount", 1);
-        boolean openNewNode = bool(input, "openNewNodeOnGenerate", false);
         if (!ASPECT_RATIOS.contains(aspectRatio)) throw invalid("不支持的图片比例。");
         if (!RESOLUTIONS.contains(resolution)) throw invalid("不支持的图片分辨率。");
         if (!QUALITIES.contains(quality)) throw invalid("图片画质必须为 low、medium 或 high。");
         if (!GENERATION_COUNTS.contains(count)) throw invalid("图片生成数量只能为 1、2 或 4。");
         return new ImageGenerationParameters(aspectRatio, resolution, quality, transparent,
-                count, openNewNode);
+                count);
     }
 
     public ObjectNode toJson(ObjectMapper mapper) {
@@ -61,7 +59,6 @@ public record ImageGenerationParameters(
         result.put("quality", quality);
         result.put("transparentBackground", transparentBackground);
         result.put("generationCount", generationCount);
-        result.put("openNewNodeOnGenerate", openNewNodeOnGenerate);
         return result;
     }
 

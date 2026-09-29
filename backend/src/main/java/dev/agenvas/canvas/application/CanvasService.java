@@ -160,7 +160,7 @@ public class CanvasService {
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
             int outputIndex) {
         if (outputIndex < 0 || outputIndex >= 4) {
-            throw validation("图片输出序号必须在 0 到 3 之间。");
+            throw validation("媒体输出序号必须在 0 到 3 之间。");
         }
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
@@ -170,8 +170,9 @@ public class CanvasService {
         }
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                 source.subjectId());
-        if (artifact.artifact().kind() != Artifact.Kind.IMAGE) {
-            throw validation("只有图片生成支持新节点输出。");
+        if (artifact.artifact().kind() != Artifact.Kind.IMAGE
+                && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+            throw validation("只有图片和视频支持新节点输出。");
         }
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
         BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
@@ -197,6 +198,20 @@ public class CanvasService {
         payload.put("targetCanvasItemId", targetItemId.toString());
         events.append(ownerId, projectId, new ProjectEventService.EventDraft(
                 "canvas.item.duplicated", 1, targetItemId, target.version(), payload));
+        return target;
+    }
+
+    /** Creates the result node and a removable lineage edge when the source has media content. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem forkMediaDerivationWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
+            int outputIndex) {
+        CanvasItem target = forkMediaOutputWithinChange(ownerId, projectId, sourceItemId,
+                targetItemId, expectedSourceDraftVersion, outputIndex);
+        if (target.selectedVersionId() != null) {
+            connections.createMediaDerivationWithinChange(ownerId, projectId, sourceItemId,
+                    target.id(), target.selectedVersionId());
+        }
         return target;
     }
 
@@ -344,91 +359,62 @@ public class CanvasService {
                 .value();
     }
 
-    /** Switches only one media card's displayed immutable version; its draft and resource default stay. */
-    @Transactional
-    public CanvasEntry selectVersion(UUID ownerId, UUID projectId, UUID itemId,
-            UUID versionId, long expectedVersion) {
-        return events.recordChange(ownerId, projectId, () -> {
-            projects.requireActiveProject(ownerId, projectId);
-            CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
-                    .orElseThrow(this::notFound);
-            if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
-            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
-                    current.subjectId());
-            if (artifact.artifact().kind() != Artifact.Kind.IMAGE
-                    && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
-                throw validation("只有图片和视频卡片可以独立选择展示版本。");
-            }
-            artifacts.requireVersion(ownerId, projectId, current.subjectId(), versionId);
-            if (java.util.Objects.equals(current.selectedVersionId(), versionId)
-                    && (current.version() == expectedVersion
-                            || current.version() == expectedVersion + 1)) {
-                return ProjectEventService.Change.unchanged(toEntry(ownerId, current));
-            }
-            if (current.version() != expectedVersion
-                    || !canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
-                            versionId, clock.instant())) {
-                throw conflict();
-            }
-            mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
-                    dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
-            CanvasItem selected = canvasItems.find(ownerId, projectId, itemId)
-                    .orElseThrow(this::notFound);
-            ObjectNode payload = objectMapper.createObjectNode();
-            payload.put("canvasItemId", itemId.toString());
-            payload.put("selectedVersionId", versionId.toString());
-            return ProjectEventService.Change.changed(toEntry(ownerId, selected),
-                    new ProjectEventService.EventDraft("canvas.item.selected_version.changed", 1,
-                            itemId, selected.version(), payload));
-        }).value();
-    }
-
-    /** Appends an uploaded media version and selects it only on the addressed card. */
+    /** Uploads media into a new result node; the source node is never overwritten. */
     @Transactional
     public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
-            long expectedVersion, JsonNode content) {
+            UUID targetItemId, long expectedVersion, JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
                     .orElseThrow(this::notFound);
             if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
+            CanvasItem replay = canvasItems.find(ownerId, projectId, targetItemId).orElse(null);
+            if (replay != null) {
+                if (replay.subjectType() != CanvasItem.SubjectType.ARTIFACT
+                        || !replay.subjectId().equals(current.subjectId())
+                        || replay.selectedVersionId() == null) throw conflict();
+                ArtifactVersion replayVersion = artifacts.requireVersion(ownerId, projectId,
+                        replay.subjectId(), replay.selectedVersionId());
+                if (!replayVersion.content().equals(content)
+                        || replayVersion.createdByKind() != ArtifactVersion.CreatedByKind.USER) {
+                    throw conflict();
+                }
+                return ProjectEventService.Change.unchanged(toEntry(ownerId, replay));
+            }
+            if (current.version() != expectedVersion) throw conflict();
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
             if (artifact.artifact().kind() != Artifact.Kind.IMAGE
                     && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
                 throw validation("只有图片和视频卡片可以追加上传版本。");
             }
-            if (current.version() == expectedVersion + 1 && current.selectedVersionId() != null) {
-                ArtifactVersion selected = artifacts.requireVersion(ownerId, projectId,
-                        current.subjectId(), current.selectedVersionId());
-                if (selected.createdByKind() == ArtifactVersion.CreatedByKind.USER
-                        && selected.content().equals(content)) {
-                    return ProjectEventService.Change.unchanged(toEntry(ownerId, current));
-                }
-            }
-            if (current.version() != expectedVersion) throw conflict();
+            var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
+            CanvasItem target = forkMediaDerivationWithinChange(ownerId, projectId, itemId,
+                    targetItemId, sourceDraft.version(), 0);
             ArtifactVersion revision = artifacts.appendUserMediaVersionWithinChange(ownerId,
                     projectId, current.subjectId(), content);
-            if (!canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
+            if (!canvasItems.selectVersion(ownerId, projectId, target.id(), target.version(),
                     revision.id(), clock.instant())) {
                 throw conflict();
             }
-            mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
+            mediaDrafts.setDisplayModeWithinChange(projectId, target.id(),
                     dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
-            CanvasItem selected = canvasItems.find(ownerId, projectId, itemId)
+            CanvasItem selected = canvasItems.find(ownerId, projectId, target.id())
                     .orElseThrow(this::notFound);
             ObjectNode selectionPayload = objectMapper.createObjectNode();
-            selectionPayload.put("canvasItemId", itemId.toString());
+            selectionPayload.put("canvasItemId", target.id().toString());
+            selectionPayload.put("sourceCanvasItemId", itemId.toString());
             selectionPayload.put("artifactId", current.subjectId().toString());
             selectionPayload.put("selectedVersionId", revision.id().toString());
-            return ProjectEventService.Change.changed(toEntry(ownerId, selected),
+            events.append(ownerId, projectId,
                     new ProjectEventService.EventDraft("canvas.item.selected_version.changed", 1,
-                            itemId, selected.version(), selectionPayload));
+                            target.id(), selected.version(), selectionPayload));
+            return ProjectEventService.Change.unchanged(toEntry(ownerId, selected));
         }).value();
     }
 
     /**
-     * Selects a generated result only when the originating card still presents the task's parent.
+     * Fixes a generated result only when the pre-created result node still presents the task parent.
      * Layout and title edits deliberately do not invalidate this content comparison.
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)

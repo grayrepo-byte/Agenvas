@@ -1,0 +1,141 @@
+package dev.agenvas.task;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.domain.CanvasConnection;
+import dev.agenvas.identity.application.AdminPrincipal;
+import dev.agenvas.identity.application.IdentityService;
+import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
+import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.task.application.DirectMediaTaskService;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.ImageOperation;
+import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.ImageAssetFixture;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+/** Real PostgreSQL proof that an image operation owns a derived card, never the source card. */
+@Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@SpringBootTest(classes = AgenvasApplication.class, properties = {
+        "agenvas.identity.bootstrap-secret=image-derivation-integration-secret",
+        "agenvas.llm.scheduler-enabled=false",
+        "agenvas.provider.comfyui.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false"})
+class ImageOperationDerivationPostgresIT {
+
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    @Autowired private IdentityService identities;
+    @Autowired private ProjectService projects;
+    @Autowired private ArtifactService artifacts;
+    @Autowired private AssetService assets;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
+    @Autowired private CanvasConnectionService connections;
+    @Autowired private DirectMediaTaskService directMedia;
+    @Autowired private TaskService tasks;
+    @Autowired private MediaExecutionWorker worker;
+    @Autowired private ObjectMapper mapper;
+
+    @Test
+    void createsConnectedResultBranchAndSelectsOnlyThatBranch() {
+        AdminPrincipal owner = identities.setup("image-derivation-integration-secret", "derivation-admin",
+                "derivation-password-123");
+        Project project = projects.create(owner.userId(), "Image derivation",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        UUID sourceAssetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
+        ObjectNode content = mapper.createObjectNode();
+        content.put("assetId", sourceAssetId.toString());
+        content.put("sourceType", "UPLOAD");
+        var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Source image", content);
+        UUID sourceVersionId = image.resourceDefaultVersion().id();
+        UUID sourceCardId = dev.agenvas.support.CanvasMediaFixture.place(canvas,
+                owner.userId(), project.id(), image.artifact().id());
+
+        ObjectNode crop = mapper.createObjectNode();
+        crop.put("x", 0);
+        crop.put("y", 0);
+        crop.put("width", 0.5);
+        crop.put("height", 1);
+        Task accepted = directMedia.runImageOperation(owner.userId(), project.id(),
+                image.artifact().id(), sourceCardId, sourceVersionId, 0,
+                ImageOperation.CROP, "", null, crop, "crop-derived-node");
+        UUID targetCardId = UUID.fromString(accepted.input().path("canvasItemId").asText());
+
+        assertThat(targetCardId).isNotEqualTo(sourceCardId);
+        assertThat(accepted.input().path("sourceCanvasItemId").asText())
+                .isEqualTo(sourceCardId.toString());
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(2)
+                .allSatisfy(entry -> assertThat(entry.item().selectedVersionId())
+                        .isEqualTo(sourceVersionId));
+        assertThat(connections.list(owner.userId(), project.id())).singleElement()
+                .satisfies(connection -> {
+                    assertThat(connection.sourceCanvasItemId()).isEqualTo(sourceCardId);
+                    assertThat(connection.targetCanvasItemId()).isEqualTo(targetCardId);
+                    assertThat(connection.sourceArtifactVersionId()).isEqualTo(sourceVersionId);
+                    assertThat(connection.relationType())
+                            .isEqualTo(CanvasConnection.RelationType.MEDIA_DERIVATION);
+                });
+
+        Task replay = directMedia.runImageOperation(owner.userId(), project.id(),
+                image.artifact().id(), sourceCardId, sourceVersionId, 0,
+                ImageOperation.CROP, "", null, crop, "crop-derived-node");
+        assertThat(replay.id()).isEqualTo(accepted.id());
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
+        assertThat(connections.list(owner.userId(), project.id())).hasSize(1);
+
+        assertThat(worker.submitOnce("local-image-derivation-worker")).isEqualTo(1);
+        Task completed = tasks.get(owner.userId(), project.id(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.output().path("selected").asBoolean()).isTrue();
+        UUID resultVersionId = UUID.fromString(
+                completed.output().path("artifactVersionId").asText());
+        var cards = canvas.list(owner.userId(), project.id());
+        assertThat(cards.stream().filter(entry -> entry.item().id().equals(sourceCardId))
+                .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(sourceVersionId);
+        assertThat(cards.stream().filter(entry -> entry.item().id().equals(targetCardId))
+                .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(resultVersionId);
+
+        CanvasConnection lineage = connections.list(owner.userId(), project.id()).getFirst();
+        connections.disconnect(owner.userId(), project.id(), lineage.id(), null, null);
+        assertThat(connections.list(owner.userId(), project.id())).isEmpty();
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
+
+        long targetDraftVersion = drafts.get(owner.userId(), project.id(), targetCardId).version();
+        connections.connect(owner.userId(), project.id(), sourceCardId, targetCardId,
+                sourceVersionId, CanvasConnection.RelationType.MEDIA_INPUT,
+                targetDraftVersion);
+        assertThat(connections.list(owner.userId(), project.id())).singleElement()
+                .extracting(CanvasConnection::relationType)
+                .isEqualTo(CanvasConnection.RelationType.MEDIA_INPUT);
+    }
+}

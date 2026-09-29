@@ -116,6 +116,9 @@ class MediaDraftPostgresIT {
                         .contentType("application/json").content(runPayload))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(duplicate.path("id").asText()).isEqualTo(taskId.toString());
+        String resultCanvasItemId = run.path("input").path("canvasItemId").asText();
+        assertThat(resultCanvasItemId).isNotEqualTo(canvasItemId);
+        String resultDraftPath = base + "/canvas-items/" + resultCanvasItemId + "/media-draft";
         JsonNode queue = mapper.readTree(mvc.perform(get(base + "/tasks/" + taskId + "/queue")
                         .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
@@ -135,12 +138,12 @@ class MediaDraftPostgresIT {
                 .getResponse().getContentAsString());
         JsonNode completedCard = java.util.stream.StreamSupport.stream(
                         completedCanvas.path("items").spliterator(), false)
-                .filter(item -> canvasItemId.equals(item.path("id").asText()))
+                .filter(item -> resultCanvasItemId.equals(item.path("id").asText()))
                 .findFirst().orElseThrow();
         assertThat(completedCard.path("selectedVersionId").isTextual()).isTrue();
         assertThat(completedCard.path("selectedVersion").path("createdByKind").asText())
                 .isEqualTo("TASK");
-        JsonNode resultDraft = mapper.readTree(mvc.perform(get(draftPath).with(auth))
+        JsonNode resultDraft = mapper.readTree(mvc.perform(get(resultDraftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(resultDraft.path("displayMode").asText()).isEqualTo("RESULT");
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
@@ -149,30 +152,18 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isOk());
         JsonNode edited = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(edited.path("displayMode").asText()).isEqualTo("RESULT");
+        assertThat(edited.path("displayMode").asText()).isEqualTo("DRAFT");
         assertThat(edited.path("prompt").asText()).isEqualTo("Second concept");
-        var selectedResponse = mvc.perform(post(base + "/canvas-items/" + canvasItemId
-                        + "/select-version")
-                .with(auth).with(csrf()).contentType("application/json")
-                .content("{\"versionId\":\"" + completedCard.path("selectedVersionId").asText()
-                        + "\",\"expectedVersion\":0}"))
-                .andReturn().getResponse();
-        assertThat(selectedResponse.getStatus())
-                .as(selectedResponse.getContentAsString()).isEqualTo(200);
-        JsonNode restoredResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(restoredResult.path("displayMode").asText()).isEqualTo("RESULT");
-        assertThat(restoredResult.path("prompt").asText()).isEqualTo("Second concept");
         JsonNode retainedResult = mapper.readTree(mvc.perform(put(draftPath)
                         .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":" + restoredResult.path("version").asLong()
+                        .content("{\"expectedVersion\":" + edited.path("version").asLong()
                                 + ",\"prompt\":\"Next concept\",\"parameters\":{},"
                                 + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(retainedResult.path("displayMode").asText()).isEqualTo("RESULT");
+        assertThat(retainedResult.path("displayMode").asText()).isEqualTo("DRAFT");
         JsonNode reloadedResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(reloadedResult.path("displayMode").asText()).isEqualTo("RESULT");
+        assertThat(reloadedResult.path("displayMode").asText()).isEqualTo("DRAFT");
         assertThat(reloadedResult.path("prompt").asText()).isEqualTo("Next concept");
         assertThat(reloadedResult.path("version").asLong())
                 .isEqualTo(retainedResult.path("version").asLong());
@@ -202,7 +193,7 @@ class MediaDraftPostgresIT {
                                 + ",\"prompt\":\"Two portrait studies\",\"parameters\":{"
                                 + "\"aspectRatio\":\"9:16\",\"resolution\":\"2K\","
                                 + "\"quality\":\"high\",\"transparentBackground\":false,"
-                                + "\"generationCount\":2,\"openNewNodeOnGenerate\":true},"
+                                + "\"generationCount\":2},"
                                 + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode batchPrimary = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
@@ -231,7 +222,7 @@ class MediaDraftPostgresIT {
                                 + ",\"prompt\":\"Two alternatives in one history\",\"parameters\":{"
                                 + "\"aspectRatio\":\"1:1\",\"resolution\":\"1K\","
                                 + "\"quality\":\"medium\",\"transparentBackground\":false,"
-                                + "\"generationCount\":2,\"openNewNodeOnGenerate\":false},"
+                                + "\"generationCount\":2},"
                                 + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String sameCardKey = "direct-image-two-same-card";
@@ -251,14 +242,14 @@ class MediaDraftPostgresIT {
         List<UUID> sameCardTaskIds = jdbc.sql("select id from task where project_id=:projectId "
                         + "and input_json->>'sourceCanvasItemId'=:source "
                         + "and input_json->>'generationCount'='2' "
-                        + "and input_json->'mediaInput'->'parameters'->>'openNewNodeOnGenerate'='false'")
+                        + "and input_json->>'prompt'='Two alternatives in one history'")
                 .param("projectId", project.id()).param("source", canvasItemId)
                 .query(UUID.class).list();
         assertThat(sameCardTaskIds).hasSize(2)
                 .contains(UUID.fromString(sameCardPrimary.path("id").asText()));
         assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
                 .param("projectId", project.id()).query(Long.class).single())
-                .isEqualTo(canvasCountBeforeBatch + 2);
+                .isEqualTo(canvasCountBeforeBatch + 4);
         for (UUID sameCardTaskId : sameCardTaskIds) {
             mvc.perform(post(base + "/tasks/" + sameCardTaskId + "/cancel-queued")
                     .with(auth).with(csrf())).andExpect(status().isOk());

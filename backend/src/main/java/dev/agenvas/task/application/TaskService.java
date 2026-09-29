@@ -13,6 +13,7 @@ import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
@@ -618,7 +619,8 @@ public class TaskService {
             payload.put("artifactId", artifactId.toString());
             payload.put("artifactVersionId", result.versionId().toString());
             payload.put("selected", result.selected());
-            payload.put("possibleExternalCost", true);
+            payload.put("possibleExternalCost", !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
+                    tasks.mediaBinding(lease.id()).map(binding -> binding.adapterId()).orElse(null)));
             events.append(ownerId, lease.projectId(),
                     new ProjectEventService.EventDraft("task.status.changed", 1,
                             lease.id(), updated.version(), payload));
@@ -680,7 +682,8 @@ public class TaskService {
                 && !"MEDIA_CAPABILITY_CHANGED".equals(errorCode)
                 && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(errorCode)
                 && !"PROVIDER_UNSUPPORTED_INPUT".equals(errorCode)
-                && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)) {
+                && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)
+                && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)) {
             throw validation("不支持的提交前阻断原因。");
         }
         Instant now = clock.instant();
@@ -1025,6 +1028,15 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        if (input.has("imageOperation")) {
+            try {
+                artifacts.requireImageVersionForTask(ownerId, task.projectId(), UUID.fromString(
+                        input.path("imageOperation").path("sourceVersionId").asText()));
+                return true;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) {
+                return false;
+            }
+        }
         boolean cardOwnedDirectTask = input.hasNonNull("canvasItemId");
         if (cardOwnedDirectTask && input.has("mediaInput")) {
             try {

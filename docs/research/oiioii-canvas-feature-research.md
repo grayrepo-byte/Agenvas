@@ -136,7 +136,28 @@ OiiOii 的公开定位不是纯节点工作流，而是“Agent 驱动的动画�
 6. **任务状态证据很弱**：只能确认 Task List、并发宣传和 credits 用量入口；取消、失败、UNKNOWN、显式重试与灾难恢复语义均未验证。
 7. **协作证据也较弱**：可确认分享链接、发布入口和默认私有；不能确认实时协同、权限角色、评论或审核流。
 
-## 5. 不应据此推出的结论
+## 5. Agenvas 图片后处理实施状态（2026-09-29）
+
+本节是 Agenvas 的实现核对，不是对 OiiOii 的新增事实判断。当前只考虑图片：
+
+| OiiOii 图片动作 | Agenvas 状态 | 执行位置 |
+| --- | --- | --- |
+| Smart Edit | 已接入持久任务和参数面板 | OpenAI / Google 图片能力 |
+| Relight | 已接入持久任务和参数面板 | OpenAI / Google 图片能力；不降级为亮度滤镜 |
+| Outpaint | 已接入目标画幅和补充说明 | OpenAI / Google 图片能力 |
+| Depth Extraction | 已接真实模型适配器；部署者须安装模型 | 本地 Depth Anything V2 Small ONNX |
+| Upscale 2x/4x | 已接入 | 本地双三次插值；不宣称 AI 超分 |
+| Crop | 已接入归一化裁剪范围 | 本地 |
+| Rotate & Flip | 已接入 90° 旋转和水平镜像；后端也支持垂直镜像 | 本地 |
+| Character/Face/Props turnaround（三视图） | 已接目标画幅与可选主体说明，输出单张正/侧/背三联图 | OpenAI / Google 图片能力 |
+| 图层分离 | 已接主体层/背景层单独输出；主体层要求透明背景能力，不宣称输出 PSD | OpenAI / Google 图片能力 |
+| 表情调整、Brush Markup、Remove、Angles、背景移除 | 已接结构化参数或文字说明；Brush Markup 为 AI 生成标注，不是手绘蒙版 | OpenAI / Google 图片能力 |
+| Scene grid | 未实现；不属于本轮菜单中的七项图片处理 | — |
+| Rev-Prompt | 未实现 | — |
+
+这些操作都固定 CanvasItem 当前图片版本，结果创建新的不可变版本；父版本发生变化时，晚到结果只进入历史。视频去字幕、视频高清、补拍、音频分离等仍不在当前图片范围内。Rev-Prompt 仍未实现。架构决定见 [ADR 0015](../adr/0015-image-post-processing-local-first.md)。
+
+## 6. 不应据此推出的结论
 
 - 不能因为官网列出 25+ 模型，就断言所有模型在所有地区、套餐和时间点均可用。
 - 不能因为存在 Replace、完整镜头历史和“非破坏性”宣传，就断言其底层版本模型、并发冲突和自动选用规则与 Agenvas 相同。
@@ -144,7 +165,7 @@ OiiOii 的公开定位不是纯节点工作流，而是“Agent 驱动的动画�
 - 不能因为存在 Share/Publish，就断言其支持实时多人编辑或细粒度权限。
 - 不能因为支持 MP4/图片下载，就断言其支持项目级数据备份和迁移。
 
-## 6. 第一方来源索引
+## 7. 第一方来源索引
 
 - [OiiOii AI Animation Canvas](https://www.oiioii.ai/features/canvas)
 - [OiiOii AI Video Generation](https://www.oiioii.ai/features/video-generation)

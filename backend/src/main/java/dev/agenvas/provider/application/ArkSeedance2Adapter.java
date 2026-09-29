@@ -2,6 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
@@ -262,10 +263,13 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     private String ratio(AttemptContext context) {
+        String requested = VideoGenerationParameters.parse(context.lease().input()
+                .path("mediaInput").path("parameters")).aspectRatio();
+        if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) return requested;
         return switch (aspect(context)) {
-            case LANDSCAPE_16_9 -> "16:9";
-            case PORTRAIT_9_16 -> "9:16";
-            case SQUARE_1_1 -> "1:1";
+            case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
+            case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
+            case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
         };
     }
 

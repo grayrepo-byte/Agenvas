@@ -147,12 +147,7 @@ class VersionedMediaInputPostgresIT {
         assertThat(disconnected.path("draft").path("imageInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
 
-        String secondStartItemId = place(mvc, auth, base, start.artifactId(), 480);
-        mvc.perform(post(base + "/canvas-items/" + secondStartItemId + "/select-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"versionId\":\"" + start.versionId()
-                                + "\",\"expectedVersion\":0}"))
-                .andExpect(status().isOk());
+        String secondStartItemId = duplicateMediaItem(mvc, auth, base, start, 480);
         JsonNode removalTarget = createArtifact(mvc, auth, base, "IMAGE", "Removal target");
         String removalTargetItemId = place(mvc, auth, base,
                 removalTarget.path("id").asText(), 560);
@@ -340,12 +335,7 @@ class VersionedMediaInputPostgresIT {
                                 + "\"bindings\":[]}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String agentItemId = placeAgent(mvc, auth, base, agent.path("id").asText(), 1600);
-        String secondEndItemId = place(mvc, auth, base, end.artifactId(), 1920);
-        mvc.perform(post(base + "/canvas-items/" + secondEndItemId + "/select-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"versionId\":\"" + end.versionId()
-                                + "\",\"expectedVersion\":0}"))
-                .andExpect(status().isOk());
+        String secondEndItemId = duplicateMediaItem(mvc, auth, base, end, 1920);
         JsonNode firstAgentLink = mapper.readTree(mvc.perform(post(base + "/canvas/connections")
                         .with(auth).with(csrf()).contentType("application/json")
                         .content("{\"sourceCanvasItemId\":\"" + end.canvasItemId()
@@ -392,21 +382,38 @@ class VersionedMediaInputPostgresIT {
                         .with(auth).with(csrf()).contentType("application/json")
                         .content("{\"expectedVersion\":0,\"prompt\":\"" + prompt + "\"}"))
                 .andExpect(status().isOk());
-        mvc.perform(post(base + "/artifacts/" + artifactId + "/run")
+        JsonNode task = mapper.readTree(mvc.perform(post(base + "/artifacts/" + artifactId + "/run")
                         .with(auth).with(csrf()).header("Idempotency-Key", "run-" + itemId)
                         .contentType("application/json")
                         .content("{\"canvasItemId\":\"" + itemId
                                 + "\",\"expectedDraftVersion\":1}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        String resultItemId = task.path("input").path("canvasItemId").asText();
+        assertThat(resultItemId).isNotEqualTo(itemId);
         assertThat(worker.submitOnce("input-worker-" + itemId)).isEqualTo(1);
         JsonNode canvas = mapper.readTree(mvc.perform(get(base + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode card = java.util.stream.StreamSupport.stream(
                         canvas.path("items").spliterator(), false)
-                .filter(item -> itemId.equals(item.path("id").asText()))
+                .filter(item -> resultItemId.equals(item.path("id").asText()))
                 .findFirst().orElseThrow();
-        return new GeneratedImage(artifactId, itemId, card.path("selectedVersionId").asText(),
+        return new GeneratedImage(artifactId, resultItemId,
+                card.path("selectedVersionId").asText(),
                 card.path("version").asLong());
+    }
+
+    private String duplicateMediaItem(MockMvc mvc, RequestPostProcessor auth, String base,
+            GeneratedImage source, int x) throws Exception {
+        String targetItemId = UUID.randomUUID().toString();
+        mvc.perform(post(base + "/canvas/items/" + source.canvasItemId() + "/duplicate")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content("{\"targetItemId\":\"" + targetItemId
+                                + "\",\"expectedSourceVersion\":"
+                                + source.canvasItemVersion()
+                                + ",\"expectedSourceDraftVersion\":1,\"x\":" + x
+                                + ",\"y\":0,\"width\":280,\"height\":240,\"zIndex\":1}"))
+                .andExpect(status().isCreated());
+        return targetItemId;
     }
 
     private JsonNode createArtifact(MockMvc mvc, RequestPostProcessor auth,

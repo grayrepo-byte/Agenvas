@@ -19,6 +19,12 @@ function agentImageEdge(source: CanvasItem, target: CanvasItem,
     relationType: "AGENT_IMAGE_INPUT" };
 }
 
+function mediaDerivation(source: CanvasItem, target: CanvasItem,
+  sourceVersionId: string): CanvasConnection {
+  return { ...mediaConnection(source, target, sourceVersionId), id: "media-derivation",
+    relationType: "MEDIA_DERIVATION" };
+}
+
 /** Typed cards mirror the API projection; no relation state is created in React Flow. */
 function artifactCard(id: string, versionId: string, groupId: string | null = null,
   inputReferences: VersionedArtifact["resourceDefaultVersion"]["inputReferences"] = [],
@@ -158,6 +164,25 @@ describe("canvas relation projection", () => {
     expect(inputBindingsAfterConnect(input, agentCard("version-old"))).toEqual([
       { artifactId: "artifact-a", selectedVersionId: "version-card" },
     ]);
+  });
+
+  it("projects media derivation as removable lineage rather than a draft input", () => {
+    const source = mediaCard("artifact-a", "version-a", "version-a");
+    const result = mediaCard("artifact-a", "version-a", "version-result");
+    result.id = "card-result";
+    const connection = mediaDerivation(source, result, "version-a");
+    const edge = projectCanvasRelations([source, result], [connection])[0];
+
+    expect(edge).toMatchObject({
+      source: source.id,
+      target: result.id,
+      className: "relation-edge relation-edge--derivation",
+    });
+    expect(canvasRelationRemoval([source, result], [connection], edge!)).toEqual({
+      kind: "mediaConnection", connection,
+    });
+    expect(result.selectedVersionId).toBe("version-result");
+    expect(source.selectedVersionId).toBe("version-a");
   });
 
   it("draws a shared Artifact binding from the card displaying the pinned version", () => {

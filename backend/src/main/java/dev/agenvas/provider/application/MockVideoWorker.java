@@ -2,6 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
@@ -9,6 +10,8 @@ import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.GenerationGateway;
 import dev.agenvas.provider.domain.GenerationRequest;
 import dev.agenvas.provider.domain.GenerationResult;
+import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
@@ -36,6 +39,7 @@ public class MockVideoWorker {
     private final ArtifactService artifacts;
     /** 读取输入图片资产并幂等归档输出视频。 */
     private final AssetService assets;
+    private final ProjectService projects;
     /** 通过受控 FFmpeg 参数合成演示视频。 */
     private final MediaToolRunner mediaTools;
     /** 产生本地演示结果，不依赖外部媒体 Provider。 */
@@ -49,12 +53,14 @@ public class MockVideoWorker {
 
     /** 组装演示视频 Worker 的任务、素材和固定媒体工具依赖。 */
     public MockVideoWorker(TaskService tasks, ArtifactService artifacts, AssetService assets,
+            ProjectService projects,
             MediaToolRunner mediaTools, GenerationGateway gateway,
             MockProviderProperties fixture, ProviderProperties provider, ObjectMapper mapper, CallLogService callLogs) {
         this.worker = new TaskWorker(tasks, callLogs);
         this.tasks = tasks;
         this.artifacts = artifacts;
         this.assets = assets;
+        this.projects = projects;
         this.mediaTools = mediaTools;
         this.gateway = gateway;
         this.fixture = fixture;
@@ -101,18 +107,24 @@ public class MockVideoWorker {
         }
         UUID ownerId = tasks.ownerForWorker(task);
         var firstImage = task.input().path("mediaInput").path("images").get(0);
-        if (firstImage == null) {
-            throw new IllegalStateException("Mock video renderer requires a frozen image input");
+        AssetService.AssetFile input = null;
+        if (firstImage != null) {
+            UUID imageId = UUID.fromString(firstImage.path("artifactId").asText());
+            UUID imageVersionId = UUID.fromString(firstImage.path("versionId").asText());
+            ArtifactVersion image = artifacts.requireVersion(ownerId, task.projectId(),
+                    imageId, imageVersionId);
+            UUID imageAssetId = UUID.fromString(image.content().path("assetId").asText());
+            input = assets.get(ownerId, task.projectId(), imageAssetId);
+            if (input.asset().mediaKind() != Asset.MediaKind.IMAGE) {
+                throw new IllegalStateException("Pinned video input is not an archived image");
+            }
         }
-        UUID imageId = UUID.fromString(firstImage.path("artifactId").asText());
-        UUID imageVersionId = UUID.fromString(firstImage.path("versionId").asText());
-        ArtifactVersion image = artifacts.requireVersion(ownerId, task.projectId(),
-                imageId, imageVersionId);
-        UUID imageAssetId = UUID.fromString(image.content().path("assetId").asText());
-        AssetService.AssetFile input = assets.get(ownerId, task.projectId(), imageAssetId);
-        if (input.asset().mediaKind() != Asset.MediaKind.IMAGE) {
-            throw new IllegalStateException("Pinned video input is not an archived image");
-        }
+        String ratio = resolvedRatio(ownerId, task);
+        int[] dimensions = switch (ratio) {
+            case VideoGenerationParameters.PORTRAIT_ASPECT_RATIO -> new int[] {360, 640};
+            case VideoGenerationParameters.SQUARE_ASPECT_RATIO -> new int[] {512, 512};
+            default -> new int[] {640, 360};
+        };
         Duration duration = VideoDuration.fromFrozenTask(task.input());
         Path rendered;
         try {
@@ -124,14 +136,22 @@ public class MockVideoWorker {
             String seconds = task.input().path("schemaVersion").asInt(1) == 2
                     ? Long.toString(duration.toSeconds())
                     : String.format(Locale.ROOT, "%.3f", duration.toMillis() / 1_000.0);
-            mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
-                    "-loop", "1", "-framerate", "24", "-i", input.path().toString(),
-                    "-t", seconds,
-                    "-vf", "scale=640:360:force_original_aspect_ratio=decrease,"
-                            + "pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-                    "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
-                    "-movflags", "+faststart",
-                    "-y", rendered.toString()));
+            String size = dimensions[0] + "x" + dimensions[1];
+            List<String> command = input == null
+                    ? List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                            "-f", "lavfi", "-i", "color=c=#24233d:s=" + size + ":r=24",
+                            "-t", seconds, "-vf", "format=yuv420p", "-an", "-c:v", "libx264",
+                            "-preset", "veryfast", "-crf", "25", "-movflags", "+faststart",
+                            "-y", rendered.toString())
+                    : List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                            "-loop", "1", "-framerate", "24", "-i", input.path().toString(),
+                            "-t", seconds, "-vf", "scale=" + dimensions[0] + ":"
+                                    + dimensions[1] + ":force_original_aspect_ratio=decrease,"
+                                    + "pad=" + dimensions[0] + ":" + dimensions[1]
+                                    + ":(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
+                            "-movflags", "+faststart", "-y", rendered.toString());
+            mediaTools.ffmpeg(command);
             Asset archived = assets.archiveTaskVideo(ownerId, task.projectId(), task.id(),
                     () -> {
                         try {
@@ -150,6 +170,8 @@ public class MockVideoWorker {
             content.put("workflowVersion", task.input().path("workflowVersion").asText());
             content.put("sourceTaskId", task.id().toString());
             ObjectNode parameters = content.putObject("parameters");
+            task.input().path("mediaInput").path("parameters").properties().forEach(entry ->
+                    parameters.set(entry.getKey(), entry.getValue().deepCopy()));
             parameters.put("mock", true);
             parameters.put("displayLabel", "演示视频（非 AI 生成）");
             parameters.put("providerRequestId", result.providerRequestId());
@@ -161,5 +183,17 @@ public class MockVideoWorker {
                 // Temporary output is never the durable archived Asset.
             }
         }
+    }
+
+    private String resolvedRatio(UUID ownerId, Task task) {
+        String requested = VideoGenerationParameters.parse(
+                task.input().path("mediaInput").path("parameters")).aspectRatio();
+        if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) return requested;
+        Project.AspectRatio projectRatio = projects.get(ownerId, task.projectId()).aspectRatio();
+        return switch (projectRatio) {
+            case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
+            case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
+            case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
+        };
     }
 }

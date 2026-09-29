@@ -108,7 +108,7 @@ type CanvasNodeData = {
   onRemove: (item: CanvasItem) => void;
   onToggleLocked: (item: CanvasItem) => void;
   onInspect: (item: CanvasItem) => void;
-  onUpload: (item: CanvasItem) => void;
+  onUpload: (item: CanvasItem, file: File) => void;
   onDuplicate: (item: CanvasItem) => void;
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
   updatingAgent: boolean;
@@ -155,7 +155,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [inspectingId, setInspectingId] = useState<string | null>(null);
-  const [uploadingItem, setUploadingItem] = useState<CanvasItem | null>(null);
+  const [uploadRequest, setUploadRequest] = useState<{
+    id: string; item: CanvasItem; file: File;
+  } | null>(null);
   const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; artifactId?: string } | null>(null);
@@ -643,6 +645,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           expectedTargetAgentVersion: target.agent.version,
         });
       }
+      if (connection.relationType === "MEDIA_DERIVATION") {
+        return disconnectCanvasConnection(projectId, connection.id, {});
+      }
       const targetDraft = await getMediaDraft(projectId, connection.targetCanvasItemId);
       return disconnectCanvasConnection(projectId, connection.id, {
         expectedTargetDraftVersion: targetDraft.version,
@@ -842,11 +847,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [connectInputMutate, trackConnectionTarget]);
 
   const handleInspect = useCallback((item: CanvasItem) => {
-    setToolsKind(null); setResourcesOpen(false); setUploadingItem(null); setInspectingId(item.id);
+    setToolsKind(null); setResourcesOpen(false); setUploadRequest(null); setInspectingId(item.id);
   }, []);
-  const handleUpload = useCallback((item: CanvasItem) => {
+  const handleUpload = useCallback((item: CanvasItem, file: File) => {
     // Each opening has a distinct identity, so an older upload cannot close a newer session.
-    setToolsKind(null); setResourcesOpen(false); setInspectingId(null); setUploadingItem({ ...item });
+    setToolsKind(null); setResourcesOpen(false); setInspectingId(null);
+    setUploadRequest({ id: crypto.randomUUID(), item: { ...item }, file });
   }, []);
 
   const handleShowOutputs = useCallback((agent: Agent) => {
@@ -1040,7 +1046,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   function chooseCreationKind(kind: CreationKind) {
     const point = creationMenu?.point;
     if (!point) return;
-    setInspectingId(null); setUploadingItem(null);
+    setInspectingId(null); setUploadRequest(null);
     setCreationMenu(null);
     setResourcesOpen(false);
     setCreationPoint(point);
@@ -1080,10 +1086,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
         <div className="flex items-center gap-3">
           <button className="secondary-button" onClick={() => {
-            setToolsKind(null); setInspectingId(null); setUploadingItem(null); setResourcesOpen(true);
+            setToolsKind(null); setInspectingId(null); setUploadRequest(null); setResourcesOpen(true);
           }} type="button">资源</button>
           <button className="secondary-button" onClick={() => {
-            setResourcesOpen(false); setInspectingId(null); setUploadingItem(null); setToolsKind("UPLOAD");
+            setResourcesOpen(false); setInspectingId(null); setUploadRequest(null); setToolsKind("UPLOAD");
           }} type="button">导入素材</button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <a className="secondary-button" download={`agenvas-project-${projectId}.json`}
@@ -1298,8 +1304,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         return <aside className="workspace-drawer media-inspector" aria-label="卡片详情">
           <div className="workspace-drawer-heading"><h2>{item.artifact.title}</h2>
             <button className="node-action" aria-label="关闭卡片详情" type="button" onClick={() => setInspectingId(null)}><X size={16} /></button></div>
-          <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {inspectedVersion ? `v${inspectedVersion.versionNo}` : "暂无结果"}</p>
-          <ArtifactVersionHistory artifact={item.artifact} item={item} />
+          <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {inspectedVersion ? "已有结果" : "暂无结果"}</p>
+          {item.artifact.kind === "TEXT" ? <ArtifactVersionHistory artifact={item.artifact} /> : null}
           {inspectedVersion?.inputReferences.length ? <div className="mt-4 text-xs">
             <h3>输入引用（{inspectedVersion.inputReferences.length} 个精确版本）</h3><ul className="mt-2 space-y-2">
               {inspectedVersion.inputReferences.map((reference) =>
@@ -1314,15 +1320,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div>
           {removeItem.error ? <WorkspaceError error={removeItem.error} /> : null}
           {toggleLocked.error ? <WorkspaceError error={toggleLocked.error} /> : null}
-          <p className="mt-3 text-xs text-[var(--muted)]">移除卡片后，内容和历史版本仍保留在项目资源中。</p>
+          <p className="mt-3 text-xs text-[var(--muted)]">移除节点不会删除已归档内容。</p>
         </aside>;
       })() : null}
-      {uploadingItem?.artifact ? <aside className="workspace-drawer" aria-label="上传到图片卡片">
+      {uploadRequest?.item.artifact ? <aside className="workspace-drawer" aria-label="上传到图片卡片">
         <div className="workspace-drawer-heading"><h2>上传图片</h2>
-          <button className="node-action" type="button" aria-label="关闭图片上传" onClick={() => setUploadingItem(null)}><X size={16} /></button></div>
-        <MediaCardUpload key={`${uploadingItem.id}:${uploadingItem.artifact.version}`} artifact={uploadingItem.artifact}
-          item={uploadingItem}
-          onDone={() => setUploadingItem((current) => current === uploadingItem ? null : current)} />
+          <button className="node-action" type="button" aria-label="关闭图片上传" onClick={() => setUploadRequest(null)}><X size={16} /></button></div>
+        <MediaCardUpload key={uploadRequest.id} artifact={uploadRequest.item.artifact}
+          item={uploadRequest.item} initialFile={uploadRequest.file}
+          onDone={() => setUploadRequest((current) => current === uploadRequest ? null : current)} />
       </aside> : null}
       <div className="workspace-narrow-warning">画布编辑需要至少 1280px 宽度；当前仅提供只读预览。</div>
     </main>
@@ -1354,7 +1360,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {halo}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO"
         ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
-          onUpload={() => data.onUpload(data.item)} onDuplicate={() => data.onDuplicate(data.item)} />
+          onUpload={(file) => data.onUpload(data.item, file)} onDuplicate={() => data.onDuplicate(data.item)} />
         : <ContentCanvasCard {...cardProps} />}
     </>
   );

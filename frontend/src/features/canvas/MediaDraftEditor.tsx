@@ -1,5 +1,5 @@
 import { ArrowUp, BoundingBox, CaretDown, Check, Coins, Cube, ImagesSquare, ImageSquare,
-  PaintBrush, Plus, SlidersHorizontal, UploadSimple, X } from "@phosphor-icons/react";
+  PaintBrush, Plus, SlidersHorizontal, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -37,6 +37,7 @@ const FIXED_MODELS: Readonly<Record<string, string>> = {
 };
 const QUALITY_LABELS = { low: "低", medium: "中", high: "高" } as const;
 const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9", "AUTO"] as const;
+const VIDEO_ASPECT_RATIO_OPTIONS = ["AUTO", "16:9", "9:16", "1:1"] as const;
 const RESOLUTION_OPTIONS = ["1K", "2K", "4K"] as const;
 const QUALITY_OPTIONS = ["low", "medium", "high"] as const;
 const GENERATION_COUNT_OPTIONS = [1, 2, 4] as const;
@@ -44,11 +45,16 @@ const ASPECT_RATIO_LABELS: Readonly<Record<(typeof ASPECT_RATIO_OPTIONS)[number]
   "1:1": "1:1", "2:3": "2:3", "3:2": "3:2", "9:16": "9:16", "16:9": "16:9",
   "3:4": "3:4", "4:3": "4:3", "21:9": "21:9", AUTO: "自动",
 };
+const VIDEO_MODE_OPTIONS = [
+  { value: "TEXT", label: "文生视频", description: "只使用文字描述生成", needsImage: false },
+  { value: "GENERAL_REFERENCE", label: "全能参考", description: "按顺序参考一张或多张图片", needsImage: true },
+  { value: "START_END", label: "首尾帧", description: "固定首帧，可选尾帧", needsImage: true },
+] as const;
 // Each object-replacement character occupies one position in the prompt and maps to the
 // structurally equivalent entry in mentions. Human-readable labels are a view of that pair.
 const MENTION_MARKER = "\uFFFC";
 type DraftFields = Omit<SaveMediaDraftRequest, "expectedVersion">;
-type Popover = "models" | "parameters" | "assetReferences" | "canvasReferences";
+type Popover = "models" | "modes" | "parameters" | "assetReferences" | "canvasReferences";
 type RunIntent = { key: string; expectedDraftVersion: number };
 type UploadProgress = { assetId?: string; createKey: string };
 type AssetReferenceCommit = {
@@ -60,6 +66,8 @@ type PromptReference = DraftFields["imageInputs"][number] & {
   label: string; thumbnailUrl?: string;
 };
 type ImageParameters = Required<ImageGenerationParameters>;
+type VideoInputMode = NonNullable<MediaDraft["videoInputMode"]>;
+type VideoParameters = { aspectRatio: (typeof VIDEO_ASPECT_RATIO_OPTIONS)[number] };
 
 function normalizedImageParameters(raw: ImageGenerationParameters | undefined,
   capability?: MediaCapability): ImageParameters {
@@ -79,8 +87,29 @@ function normalizedImageParameters(raw: ImageGenerationParameters | undefined,
       ? raw?.transparentBackground ?? false : false,
     generationCount: raw?.generationCount === 2 || raw?.generationCount === 4
       ? raw.generationCount : 1,
-    openNewNodeOnGenerate: raw?.openNewNodeOnGenerate ?? false,
   };
+}
+
+function normalizedVideoParameters(raw: ImageGenerationParameters | undefined): VideoParameters {
+  const aspectRatio = VIDEO_ASPECT_RATIO_OPTIONS.find((candidate) => candidate === raw?.aspectRatio);
+  return { aspectRatio: aspectRatio ?? "AUTO" };
+}
+
+function preferredImageVideoMode(capability?: MediaCapability): VideoInputMode {
+  if (capability?.supportedVideoInputModes.includes("GENERAL_REFERENCE")) return "GENERAL_REFERENCE";
+  if (capability?.supportedVideoInputModes.includes("START_END")) return "START_END";
+  return "GENERAL_REFERENCE";
+}
+
+function inputsForVideoMode(inputs: DraftFields["imageInputs"], mode: VideoInputMode) {
+  if (mode === "GENERAL_REFERENCE") {
+    return inputs.map((input) => ({ ...input, role: "REFERENCE" as const }));
+  }
+  if (mode === "START_END") {
+    return inputs.slice(0, 2).map((input, index) => ({ ...input,
+      role: index === 0 ? "START_FRAME" as const : "END_FRAME" as const }));
+  }
+  return [];
 }
 
 function modelName(capability: MediaCapability) {
@@ -417,6 +446,17 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     queryFn: () => listCanvasItems(artifact.projectId),
     enabled: popover === "canvasReferences",
   });
+  const mediaKind = artifact.kind === "IMAGE" ? "IMAGE_GENERATION" : "VIDEO_GENERATION";
+  const availableCapabilities = (settings.data?.connections ?? [])
+    .filter((connection) => connection.enabled && connection.platform !== "LOCAL")
+    .flatMap((connection) => connection.capabilities.filter((capability) =>
+      capability.enabled && capability.kind === mediaKind).map((capability) => ({
+        ...capability, connectionName: connection.name,
+        realGenerationTested: connection.realGenerationTested, mock: connection.platform === "MOCK",
+      })));
+  const defaultCapabilityId = settings.data?.defaults.find((item) => item.kind === mediaKind)?.capabilityId;
+  const chosenCapability = availableCapabilities.find((item) =>
+    item.id === (fields?.capabilityId ?? defaultCapabilityId));
 
   useEffect(() => () => {
     if (referenceSourcesCloseTimer.current !== null) {
@@ -626,6 +666,23 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   }, [dirty, fields, expectedVersion, save.isPending, commitAssetReferences.isPending,
     removeConnectedInput.isPending, error]);
 
+  useEffect(() => {
+    if (artifact.kind !== "VIDEO" || !fields || dirty || save.isPending
+        || commitAssetReferences.isPending || removeConnectedInput.isPending) return;
+    const hasImages = fields.imageInputs.length > 0;
+    const desiredMode = hasImages
+      ? fields.videoInputMode === null || fields.videoInputMode === "TEXT"
+        ? preferredImageVideoMode(chosenCapability) : fields.videoInputMode
+      : "TEXT";
+    const parameters = normalizedVideoParameters(fields.parameters);
+    if (fields.videoInputMode !== desiredMode
+        || JSON.stringify(fields.parameters) !== JSON.stringify(parameters)) {
+      edit({ videoInputMode: desiredMode,
+        imageInputs: inputsForVideoMode(fields.imageInputs, desiredMode), parameters });
+    }
+  }, [artifact.kind, chosenCapability, commitAssetReferences.isPending, dirty, fields,
+    removeConnectedInput.isPending, save.isPending]);
+
   function edit(changes: Partial<DraftFields>) {
     runIntent.current = null;
     if (!run.isPending) run.reset();
@@ -688,7 +745,17 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     if (nextImageParameters && Object.keys(fields.parameters).length > 0
         && JSON.stringify(nextImageParameters) !== JSON.stringify(normalizedImageParameters(fields.parameters, chosenCapability))
         && !window.confirm("切换模型会将不受支持的图片参数调整为该模型的默认值。是否继续？")) return;
-    edit({ capabilityId, ...(nextImageParameters ? { parameters: nextImageParameters } : {}) });
+    const nextVideoMode = artifact.kind === "VIDEO" && fields.imageInputs.length > 0
+      && (!fields.videoInputMode || fields.videoInputMode === "TEXT"
+        || !nextCapability?.supportedVideoInputModes.includes(fields.videoInputMode))
+      ? preferredImageVideoMode(nextCapability) : fields.videoInputMode;
+    const nextVideoInputs = nextVideoMode && artifact.kind === "VIDEO"
+      ? inputsForVideoMode(fields.imageInputs, nextVideoMode) : fields.imageInputs;
+    if (nextVideoInputs.length < fields.imageInputs.length
+        && !window.confirm("切换模型会移除当前模式无法使用的多余图片。是否继续？")) return;
+    edit({ capabilityId, ...(nextImageParameters ? { parameters: nextImageParameters } : {}),
+      ...(artifact.kind === "VIDEO" ? { parameters: normalizedVideoParameters(fields.parameters),
+        videoInputMode: nextVideoMode, imageInputs: nextVideoInputs } : {}) });
     setPopover(null);
     triggerRef.current?.focus();
   }
@@ -715,16 +782,6 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     return assetId ? [{ canvasItemId: item.id, versionId: item.selectedVersion.id,
       title: item.title, versionNo: item.selectedVersion.versionNo, assetId }] : [];
   });
-  const mediaKind = artifact.kind === "IMAGE" ? "IMAGE_GENERATION" : "VIDEO_GENERATION";
-  const availableCapabilities = (settings.data?.connections ?? [])
-    .filter((connection) => connection.enabled)
-    .flatMap((connection) => connection.capabilities.filter((capability) =>
-      capability.enabled && capability.kind === mediaKind).map((capability) => ({
-        ...capability, connectionName: connection.name,
-        realGenerationTested: connection.realGenerationTested, mock: connection.platform === "MOCK",
-      })));
-  const defaultCapabilityId = settings.data?.defaults.find((item) => item.kind === mediaKind)?.capabilityId;
-  const chosenCapability = availableCapabilities.find((item) => item.id === (fields.capabilityId ?? defaultCapabilityId));
   const effectiveMode = artifact.kind === "VIDEO"
     ? fields.videoInputMode ?? chosenCapability?.defaultVideoInputMode ?? null : null;
   const selectedReferences = fields.imageInputs.map((input) => ({ input,
@@ -753,6 +810,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
     && duration <= Math.min(MAX_VIDEO_SECONDS, chosenCapability?.maximumSeconds ?? MAX_VIDEO_SECONDS);
   const imageParameters = normalizedImageParameters(fields.parameters, chosenCapability);
+  const videoParameters = normalizedVideoParameters(fields.parameters);
   const supportedImageAspectRatios = chosenCapability?.supportedImageAspectRatios ?? ["AUTO"];
   const supportedImageResolutions = chosenCapability?.supportedImageResolutions ?? ["1K"];
   const supportedImageQualities = chosenCapability?.supportedImageQualities ?? [];
@@ -762,15 +820,17 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     && (supportedImageQualities.length === 0
       || supportedImageQualities.includes(imageParameters.quality))
     && (!imageParameters.transparentBackground || chosenCapability!.supportsTransparentBackground);
+  const videoModeSupported = artifact.kind !== "VIDEO" || effectiveMode !== null
+    && (chosenCapability?.supportedVideoInputModes.includes(effectiveMode) ?? false);
   const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
     && !error && !run.isPending
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
     && fields.prompt.trim().length > 0 && !occupied
-    && semanticInputsValid && allInputsAvailable && imageParametersSupported
+    && semanticInputsValid && allInputsAvailable && imageParametersSupported && videoModeSupported
     && (artifact.kind === "IMAGE" || validDuration);
   const dimensionLabel = artifact.kind === "IMAGE"
     ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
-    : chosenCapability?.adapterId.startsWith("COMFY_") ? "模板默认" : "由模型决定";
+    : ASPECT_RATIO_LABELS[videoParameters.aspectRatio];
   const qualityLabel = artifact.kind === "IMAGE"
     ? supportedImageQualities.length
       ? QUALITY_LABELS[imageParameters.quality] : "模型默认"
@@ -788,19 +848,21 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       : save.isPending ? "保存中…" : dirty ? error ? "保存失败，本地输入已保留" : "待保存…" : "已保存";
   const currentFields = fields;
 
-  function nextRole(inputs = currentFields.imageInputs) {
-    if (artifact.kind === "IMAGE" || effectiveMode === "GENERAL_REFERENCE") return "REFERENCE" as const;
-    if (effectiveMode === "START_END") return inputs.some((input) => input.role === "START_FRAME")
+  function nextRole(inputs = currentFields.imageInputs, mode = effectiveMode) {
+    if (artifact.kind === "IMAGE" || mode === "GENERAL_REFERENCE") return "REFERENCE" as const;
+    if (mode === "START_END") return inputs.some((input) => input.role === "START_FRAME")
       ? "END_FRAME" as const : "START_FRAME" as const;
     return null;
   }
 
   function fieldsWithReferences(versionIds: string[], baseFields = currentFields) {
     const nextInputs = [...baseFields.imageInputs];
+    const nextMode = artifact.kind === "VIDEO" && nextInputs.length === 0
+      ? preferredImageVideoMode(chosenCapability) : effectiveMode;
     for (const versionId of versionIds) {
       if (nextInputs.some((input) => input.versionId === versionId)
           || nextInputs.length >= imageCapacity) continue;
-      const role = nextRole(nextInputs);
+      const role = nextRole(nextInputs, nextMode);
       if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) continue;
       const used = new Set(nextInputs.map((input) => input.color));
       const color = INPUT_COLORS.find((candidate) => !used.has(candidate))
@@ -808,12 +870,14 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       nextInputs.push({ versionId, role, color });
     }
     return nextInputs.length === baseFields.imageInputs.length
-      ? baseFields : { ...baseFields, imageInputs: nextInputs };
+      ? baseFields : { ...baseFields, imageInputs: nextInputs,
+        ...(artifact.kind === "VIDEO" ? { videoInputMode: nextMode } : {}) };
   }
 
   function appendReferences(versionIds: string[], baseFields = currentFields) {
     const next = fieldsWithReferences(versionIds, baseFields);
-    if (next !== baseFields) edit({ imageInputs: next.imageInputs });
+    if (next !== baseFields) edit({ imageInputs: next.imageInputs,
+      ...(artifact.kind === "VIDEO" ? { videoInputMode: next.videoInputMode } : {}) });
   }
 
   function chooseReference(versionId: string) {
@@ -905,8 +969,20 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       return;
     }
     const nextPrompt = removePromptReferences(currentFields.prompt, currentFields.mentions, versionId);
-    edit({ imageInputs: currentFields.imageInputs.filter((input) => input.versionId !== versionId),
-      ...nextPrompt });
+    const remaining = currentFields.imageInputs.filter((input) => input.versionId !== versionId);
+    const nextMode = artifact.kind === "VIDEO" && remaining.length === 0 ? "TEXT" : effectiveMode;
+    edit({ imageInputs: remaining,
+      ...(artifact.kind === "VIDEO" ? { videoInputMode: nextMode } : {}), ...nextPrompt });
+  }
+
+  function chooseVideoMode(mode: VideoInputMode) {
+    if (artifact.kind !== "VIDEO" || mode === "TEXT" && currentFields.imageInputs.length > 0) return;
+    const nextInputs = inputsForVideoMode(currentFields.imageInputs, mode);
+    if (nextInputs.length < currentFields.imageInputs.length
+        && !window.confirm("首尾帧模式最多保留前两张图片。是否继续？")) return;
+    edit({ videoInputMode: mode, imageInputs: nextInputs });
+    setPopover(null);
+    triggerRef.current?.focus();
   }
 
   function moveReference(index: number, delta: -1 | 1) {
@@ -936,11 +1012,6 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       <span className="media-draft-tab-unavailable" aria-disabled="true" title="请使用画布中的 Agent 卡片运行 Agent">Agent</span>
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
-    {artifact.kind === "VIDEO" && chosenCapability?.supportedVideoInputModes.length ? <div className="media-draft-mode-row" aria-label="视频输入模式">
-      {chosenCapability.supportedVideoInputModes.map((mode) => <button key={mode} type="button"
-        aria-pressed={effectiveMode === mode} onClick={() => edit({ videoInputMode: mode })}>
-        {mode === "TEXT" ? "纯文本" : mode === "START_END" ? "首尾帧" : "全能参考"}</button>)}
-    </div> : null}
     <div className="media-draft-reference-row" aria-label="图片输入">
       <div className="media-draft-popover-anchor"
         onPointerEnter={(event) => {
@@ -962,10 +1033,10 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         <input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept="image/*" multiple aria-label="选择本地图片" onChange={handleUploadSelection} />
         <button className="media-draft-reference-add" type="button"
-          disabled={!chosenCapability || referenceLimitReached || effectiveMode === "TEXT" || uploading
+          disabled={!chosenCapability || referenceLimitReached || uploading
             || commitAssetReferences.isPending}
           aria-label="添加图片输入"
-          title={uploading ? "正在上传图片" : effectiveMode === "TEXT" ? "纯文本模式不接受图片" : referenceLimitReached ? `所选模型最多支持 ${imageCapacity} 张图片` : "添加引用图片"}
+          title={uploading ? "正在上传图片" : referenceLimitReached ? `所选模型最多支持 ${imageCapacity} 张图片` : "添加图片后自动切换到支持图片的视频模式"}
           aria-haspopup="menu"
           aria-expanded={referenceSourcesOpen && !popover}
           aria-controls={`${id}-reference-sources`}
@@ -1099,6 +1170,32 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       prompt={fields.prompt} mentions={fields.mentions} references={promptReferences}
       onChange={(prompt, mentions) => edit({ prompt, mentions })} />
     <div className="media-draft-toolbar">
+      {artifact.kind === "VIDEO" ? <div className="media-draft-popover-anchor media-draft-mode-anchor">
+        <button className="media-draft-toolbar-button media-draft-mode-trigger" type="button"
+          aria-label="选择视频输入模式" aria-haspopup="menu" aria-expanded={popover === "modes"}
+          aria-controls={`${id}-modes`} onClick={(event) => togglePopover("modes", event.currentTarget)}>
+          <VideoCamera size={17} /><span>{VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label
+            ?? "选择输入模式"}</span><CaretDown size={12} />
+        </button>
+        {popover === "modes" ? <div className="media-draft-popover media-draft-modes" ref={popoverRef}
+          id={`${id}-modes`} role="menu" aria-label="视频输入模式">
+          <p className="media-draft-popover-title">视频生成模式</p>
+          {VIDEO_MODE_OPTIONS.map((option) => {
+            const missingImage = option.needsImage && fields.imageInputs.length === 0;
+            const hasImagesForText = option.value === "TEXT" && fields.imageInputs.length > 0;
+            const unsupported = !chosenCapability?.supportedVideoInputModes.includes(option.value);
+            const disabled = missingImage || hasImagesForText || unsupported;
+            const reason = missingImage ? "添加图片后可用" : hasImagesForText ? "移除图片后自动切换"
+              : unsupported ? "当前模型不支持" : option.description;
+            return <button key={option.value} className="media-draft-model-option" role="menuitemradio"
+              type="button" aria-checked={effectiveMode === option.value} disabled={disabled}
+              title={reason} onClick={() => chooseVideoMode(option.value)}>
+              <span><strong>{option.label}</strong><small>{reason}</small></span>
+              {effectiveMode === option.value ? <Check size={16} /> : null}
+            </button>;
+          })}
+        </div> : null}
+      </div> : null}
       <div className="media-draft-popover-anchor media-draft-model-anchor">
         <button className="media-draft-toolbar-button media-draft-model-trigger" type="button"
           aria-label="选择生成模型" aria-haspopup="menu" aria-expanded={popover === "models"}
@@ -1168,13 +1265,19 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
                 aria-pressed={imageParameters.generationCount === value}
                 onClick={() => edit({ parameters: { ...imageParameters, generationCount: value } })}>{value}</button>)}
             </div></fieldset>
-            <div className="media-draft-switch-row"><span><strong>生成时新建节点</strong><small>每个结果使用独立工作分支</small></span>
-              <button type="button" role="switch" aria-label="生成时新建节点"
-                aria-checked={imageParameters.openNewNodeOnGenerate}
-                onClick={() => edit({ parameters: { ...imageParameters,
-                  openNewNodeOnGenerate: !imageParameters.openNewNodeOnGenerate } })}><span /></button></div>
-          </div> : <><dl><div><dt>比例 / 尺寸</dt><dd>{dimensionLabel}</dd></div><div><dt>画质</dt><dd>{qualityLabel}</dd></div></dl>
-            <p>尺寸与画质来自所选模型的固定配置。</p></>}
+            <p className="media-draft-fixed-parameter">每个生成结果都会创建独立节点</p>
+          </div> : <div className="media-draft-video-parameters">
+            <fieldset><legend>比例</legend><div className="media-draft-choice-grid media-draft-video-aspect-grid">
+              {VIDEO_ASPECT_RATIO_OPTIONS.map((value) => <button key={value} type="button"
+                aria-pressed={videoParameters.aspectRatio === value}
+                aria-label={ASPECT_RATIO_LABELS[value]}
+                onClick={() => edit({ parameters: { aspectRatio: value } })}>
+                <span className={`media-draft-ratio-icon ratio-${value.replace(":", "-").toLowerCase()}`} aria-hidden="true" />
+                <small>{ASPECT_RATIO_LABELS[value]}</small>
+              </button>)}
+            </div></fieldset>
+            <p className="media-draft-fixed-parameter">画质由所选视频模型固定</p>
+          </div>}
           {artifact.kind === "VIDEO" ? <div className="media-draft-duration"><label htmlFor={`${id}-duration`}>时长（秒）</label>
             <input id={`${id}-duration`} aria-describedby={chosenCapability ? `${id}-duration-help` : undefined}
               min={Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)}
@@ -1202,6 +1305,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         <button className="media-draft-text-action" type="button" onClick={() => void directTasks.refetch()}>重试检查任务</button></div> : null}
       {settings.isSuccess && fields.capabilityId && !chosenCapability ? <p role="status">所选模型不可用，请选择其他模型。</p> : null}
       {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <p role="status">尚未配置默认模型，请选择可用模型或先在媒体设置中配置。</p> : null}
+      {artifact.kind === "VIDEO" && chosenCapability && effectiveMode && !videoModeSupported
+        ? <p role="alert">当前模型不支持{VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label}，请切换模型或添加/移除图片。</p> : null}
       {settings.error ? <div role="alert">无法读取模型配置。
         <button className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">重试读取模型</button></div> : null}
       {artifact.kind === "VIDEO" && duration != null && !validDuration ? <p role="alert">请填写所选模型支持的整数秒时长。</p> : null}

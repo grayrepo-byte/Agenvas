@@ -26,13 +26,15 @@ export function projectCanvasRelations(items: CanvasItem[], connections: CanvasC
   for (const connection of connections) {
     const source = items.find((item) => item.id === connection.sourceCanvasItemId);
     const historical = !source || canvasItemVersionId(source) !== connection.sourceArtifactVersionId;
+    const derivation = connection.relationType === "MEDIA_DERIVATION";
     edges.push({
       id: `canvas-connection:${connection.id}`,
       source: connection.sourceCanvasItemId,
       sourceHandle: "artifact-output",
       target: connection.targetCanvasItemId,
       targetHandle: connection.relationType === "AGENT_IMAGE_INPUT" ? "agent-input" : "artifact-input",
-      className: `relation-edge relation-edge--reference${historical ? " relation-edge--input-binding-historical" : ""}`,
+      className: `relation-edge ${derivation ? "relation-edge--derivation" : "relation-edge--reference"}${
+        historical ? " relation-edge--input-binding-historical" : ""}`,
     });
   }
   for (const agentCard of agentCards) {
@@ -149,8 +151,8 @@ export type CanvasRelationRemoval =
 
 /**
  * Resolves the relation a selected edge stands for, so deleting a line writes through the same
- * application services a card action would use. Agent bindings and persisted media connections are
- * removable; output-group membership and frozen generation provenance are projections and return `null`.
+ * application services a card action would use. Agent bindings, references, and derivation lines are
+ * removable; only output-group membership is a projection and returns `null`.
  */
 export function canvasRelationRemoval(items: CanvasItem[], connectionsOrEdge: CanvasConnection[] | Edge,
   maybeEdge?: Edge): CanvasRelationRemoval | null {

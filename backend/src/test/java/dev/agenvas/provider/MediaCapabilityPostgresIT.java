@@ -104,6 +104,25 @@ class MediaCapabilityPostgresIT {
                         error -> assertThat(error.code()).isEqualTo("PROVIDER_UNSUPPORTED_CAPABILITY"));
     }
 
+    @Test
+    void localImageProcessorIsSystemManagedAndExcludedFromGenerationCatalog() {
+        UUID connectionId = UUID.fromString("00000000-0000-4000-8000-000000000201");
+        UUID capabilityId = UUID.fromString("00000000-0000-4000-8000-000000000202");
+        var connection = catalog.getConnection(connectionId);
+
+        assertThat(catalog.publishedCandidates()).noneMatch(candidate ->
+                candidate.binding().capabilityId().equals(capabilityId));
+        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0)).noneMatch(candidate ->
+                candidate.binding().capabilityId().equals(capabilityId));
+        assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION,
+                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capabilityId))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.setConnectionEnabled(connectionId,
+                connection.version(), false)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.publishCapability(connectionId, "Duplicate",
+                "LOCAL_IMAGE_PROCESSOR")).isInstanceOf(ApiProblemException.class);
+    }
+
     private tools.jackson.databind.JsonNode imageSettings() {
         return mapper.readTree("{\"checkpoint\":\"image.safetensors\"}");
     }
