@@ -30,7 +30,7 @@ const imageCapability: MediaCapability = {
   defaultVideoInputMode: null, supportsEndFrame: false,
   supportedImageAspectRatios: ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"],
   supportedImageResolutions: ["1K", "2K", "4K"], supportedImageQualities: ["low", "medium", "high"],
-  supportsTransparentBackground: true,
+  supportsTransparentBackground: true, supportsImageMask: true,
   mappingSha256: "a".repeat(64), settings: { quality: "high" },
 };
 const videoCapability: MediaCapability = {
@@ -38,7 +38,8 @@ const videoCapability: MediaCapability = {
   kind: "VIDEO_GENERATION", minimumSeconds: 2, maximumSeconds: 10,
   maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
   defaultVideoInputMode: "START_END", supportsEndFrame: true, supportedImageAspectRatios: [],
-  supportedImageResolutions: [], supportedImageQualities: [], supportsTransparentBackground: false, settings: {},
+  supportedImageResolutions: [], supportedImageQualities: [], supportsTransparentBackground: false,
+  supportsImageMask: false, settings: {},
 };
 const versatileVideoCapability: MediaCapability = {
   ...videoCapability, id: "versatile-video-capability", name: "全能视频",
@@ -317,7 +318,7 @@ describe("MediaDraftEditor", () => {
       aspectRatio: "9:16", resolution: "2K", quality: "low", transparentBackground: true,
       generationCount: 4,
     }));
-    expect(within(parameters).getByText("每个生成结果都会创建独立节点")).toBeVisible();
+    expect(within(parameters).getByText("空节点首个结果留在当前节点，其余结果创建独立节点")).toBeVisible();
     expect(screen.getByText("9:16 · 2K · 低 · 4 张")).toBeVisible();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -517,7 +518,7 @@ describe("MediaDraftEditor", () => {
     expect(prompt).toHaveTextContent("Keep this local prompt");
   });
 
-  it("runs the saved default draft and invalidates the actual snapshot, canvas and draft caches", async () => {
+  it("runs the saved draft and refreshes the result node and derivation line immediately", async () => {
     const { client, setTasks } = setup();
     const invalidation = vi.spyOn(client, "invalidateQueries");
     let submitted: unknown;
@@ -538,6 +539,7 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(invalidation).toHaveBeenCalledWith({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] }));
     expect(invalidation).toHaveBeenCalledWith({ queryKey: ["snapshot", PROJECT_ID] });
     expect(invalidation).toHaveBeenCalledWith({ queryKey: ["canvas", PROJECT_ID] });
+    expect(invalidation).toHaveBeenCalledWith({ queryKey: ["canvas-connections", PROJECT_ID] });
     expect(await screen.findByText(/前方 2 项/)).toHaveTextContent("等待执行器");
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });

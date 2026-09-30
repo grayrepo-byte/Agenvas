@@ -281,6 +281,24 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         return (UUID) get(17);
     }
 
+    /**
+     * Setter for <code>public.canvas_item.media_selection_epoch</code>. Content
+     * selection revision, independent of layout CAS; prevents late tasks from
+     * replacing user selections.
+     */
+    public void setMediaSelectionEpoch(Long value) {
+        set(18, value);
+    }
+
+    /**
+     * Getter for <code>public.canvas_item.media_selection_epoch</code>. Content
+     * selection revision, independent of layout CAS; prevents late tasks from
+     * replacing user selections.
+     */
+    public Long getMediaSelectionEpoch() {
+        return (Long) get(18);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -304,7 +322,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     /**
      * Create a detached, initialised CanvasItemRecord
      */
-    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId, String title, UUID selectedVersionId) {
+    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId, String title, UUID selectedVersionId, Long mediaSelectionEpoch) {
         super(CanvasItem.CANVAS_ITEM);
 
         setId(id);
@@ -325,6 +343,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         setAgentInstanceId(agentInstanceId);
         setTitle(title);
         setSelectedVersionId(selectedVersionId);
+        setMediaSelectionEpoch(mediaSelectionEpoch);
         resetChangedOnNotNull();
     }
 }

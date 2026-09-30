@@ -207,6 +207,62 @@ Selection writeback result: partial — 实现方向合理，偶发问题根因�
 
 final result: passed
 
+## 图片智能编辑蒙版与参考图（2026-09-30）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-c33615fa-7315-4f39-9690-1cccbc2e5e79.png`（600 × 672 px）。
+- implementation source: `frontend/src/features/canvas/SmartEditDialog.tsx`、`MediaCanvasCard.tsx` 与 `frontend/src/styles.css`。
+- implementation comparison capture: 用户已登录的 Chrome 在真实 Compose 项目 `/projects/7416dce1-9e6b-4508-a1c4-1ded65ff868d` 中以内联截图捕获，未写入仓库；参考图与实际截图在同一验收上下文中逐项对照。
+- viewport / density: Chrome 标准窗口 2560 × 1307 px 捕获，默认缩放与 density。
+- state: 一张画布图片进入智能编辑，选中 `Image 2` 参考图，填写“把背景替换成海边，保留人物姿态与服装细节”，并在图片上绘制涂抹蒙版；未点击发送。
+- primary interactions tested: 打开/退出编辑器、涂抹、框选、添加/擦除模式切换、笔刷尺寸、撤销/重做、画布固定版本引用、提示词输入和发送可用态。
+- console checked: Chrome 扩展调试通道因请求头策略加载失败而不可用，未取得 console 记录；Chrome 可访问树、屏幕交互和 Compose 日志未见可见错误，不将其表述为 console 零错误。
+
+### Full-view comparison evidence
+
+参考与实现均采用画布上方居中的胶囊工具栏、居中的当前图片、画布下方的大圆角提示词编辑器。实现保留 Agenvas 的深灰表面、细边框、14–18px 圆角和粉色主操作色；背景继续显示暗化后的真实节点关系，以保留编辑对象来源，不复制参考产品品牌或模型名称。
+
+### Focused region comparison evidence
+
+- 字体与排版：工具栏使用紧凑 12–13px 文案；涂抹/框选的当前态以粉色胶囊标示，提示词与状态说明保持现有编辑器层级。
+- 间距与布局：工具栏悬浮于图片上方，图片在可用工作区等比 contain；底部编辑器完整容纳引用、上传、已选缩略图、提示词、模型与发送按钮，未与图片或节点工具栏重叠。
+- 颜色与 token：选区使用半透明高饱和粉色，既能看清范围，也保留底图判断；撤销/重做禁用态和深色边框沿用产品 token。
+- 图片与蒙版质量：编辑预览直接读取当前 CanvasItem 固定 Asset；蒙版画布最长边限制为 1024 以控制内存，提交时生成二值 PNG，选中区域为透明编辑区。
+- 文案与内容：引用候选来自其他 CanvasItem 的固定不可变版本及资源库默认版本，按选择顺序显示为 Image 2、Image 3；上传参考图会归档为资源，不使用临时 URL 冒充输入。
+
+### Findings and comparison history
+
+第一次 Chrome 捕获仍展示旧通用“修改说明”面板，确认是浏览器未刷新生产 bundle；刷新后新全屏编辑器正确接管入口。随后引用弹层显示空态，定位为仅查询 Artifact 默认版本，无法覆盖“一个节点固定一个媒体结果”的现行模型；改为合并 CanvasItem 固定版本与资源库默认版本并去重，复测显示 5 张可选参考图。最终未发现剩余 P0/P1/P2 视觉或交互差异。
+
+final result: passed
+
+## 三视图细分入口与参数面板（2026-09-30）
+
+- source visual truth path: `/var/folders/7l/h9bn2gjd57sfkx0v0nmp1bkw0000gn/T/codex-clipboard-2229b757-1432-4070-a2ec-5b6425407c0e.png`（752 × 496 px）。
+- implementation source: `frontend/src/features/canvas/MediaCanvasCard.tsx` 与 `frontend/src/styles.css`。
+- implementation screenshot path: 用户已登录 Chrome 的内联 CUA 捕获；工具未提供可持久化的截图文件路径。参考图与实现截图在同一验收上下文中逐区核对。
+- viewport / density: Chrome 捕获约 2560 × 1131 px，默认 device scale；参考图按原始尺寸查看。
+- state: 图片节点扩展菜单展开、三视图二级菜单展开；随后分别核对“脸部三视图”面板和切换到“场景宫格图”后的面板。
+- primary interactions tested: 指针移入后点击三视图仍保持二级菜单；选择脸部三视图打开面板；四类单选卡均可见；切换场景宫格图后标题同步更新，推荐比例从 16:9 自动切换为 1:1；未点击“开始处理”，因此没有触发真实 Provider 费用。
+- console errors checked: 本轮未单独读取 Chrome 控制台，不声明控制台无错误。
+
+### Full-view comparison evidence
+
+实现保留 Agenvas 图片节点既有圆角、深色表面、粉色强调色和紧凑工具栏，只把参考图中的三视图分流结构移植到现有“扩展”菜单。二级菜单在主菜单右侧展开，四个选项顺序、信息层级和目标图一致；面板继续使用项目现有页面级 Portal，未被下方 Prompt 编辑器遮挡。
+
+### Focused region comparison evidence
+
+- 字体与排版：一级和二级菜单均沿用图片节点现有 12px 菜单字号与图标尺寸；面板标题随选中类型变化，四类说明使用次级文字层级。
+- 间距与布局：二级菜单保持紧凑纵向列表，右侧对齐一级入口；参数面板使用四张等宽单选卡，在窄视口可回流，不侵入画布节点内容。
+- 颜色与 token：菜单和面板复用现有深灰表面、细灰描边、白色主文字与粉色选中态，没有引入新的孤立色值。
+- 图像质量与资产：本次只新增信息架构和参数选择，没有生成或替换图片资产；图标复用现有 Phosphor 图标集。
+- 文案与内容：四类明确为“角色三视图、脸部三视图、道具三视图、场景宫格图”，面板补充各自输出结构；参考图中的费用数字未照搬，因为 Agenvas 的费用预检由提交前能力检查统一承担。
+
+### Findings and comparison history
+
+首次 Chrome 实测发现 P1 交互问题：指针移入已打开二级菜单后再点击一级入口，会因 toggle 逻辑立即关闭菜单。改为点击始终打开，并增加 `pointerEnter + click` 回归测试；二次实测确认四类入口、面板选中态和比例联动均可用。最终未发现剩余 P0/P1/P2 视觉或交互差异。
+
+final result: passed
+
 ## 媒体单结果节点与派生线（2026-09-30）
 
 - implementation source: `frontend/src/features/canvas/ProjectWorkspacePage.tsx`、`MediaCanvasCard.tsx`、`ArtifactVersionHistory.tsx` 与 `canvasRelations.ts`。

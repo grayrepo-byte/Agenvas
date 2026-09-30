@@ -25,17 +25,18 @@ function itemFor(shownArtifact: Artifact): CanvasItem {
     selectedVersion: shownArtifact.resourceDefaultVersion, version: 0, artifact: shownArtifact, agent: null };
 }
 
-function showCard(shownArtifact: Artifact = artifact) {
-  const onUpload = vi.fn();
+function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
   const onInspect = vi.fn();
   const onEdit = vi.fn();
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   render(<QueryClientProvider client={client}>
-    <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected locked={false} onEdit={onEdit}
-      onUpload={onUpload} onInspect={onInspect}>{null}</MediaCanvasCard>
+    <div onClick={onCardClick}>
+      <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected locked={false} onEdit={onEdit}
+        onInspect={onInspect}>{null}</MediaCanvasCard>
+    </div>
   </QueryClientProvider>);
-  return { onUpload, onInspect, onEdit };
+  return { onInspect, onEdit, onCardClick };
 }
 
 describe("MediaCanvasCard", () => {
@@ -52,14 +53,12 @@ describe("MediaCanvasCard", () => {
   });
 
   it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
-    const { onUpload, onInspect } = showCard();
+    const { onInspect, onCardClick } = showCard();
     const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
     fireEvent.click(await screen.findByRole("button", { name: "上传图片" }));
     expect(pickerClick).toHaveBeenCalledOnce();
+    expect(onCardClick).not.toHaveBeenCalled();
     pickerClick.mockRestore();
-    const file = new File(["image"], "reference.webp", { type: "image/webp" });
-    fireEvent.change(screen.getByLabelText("选择要上传的图片"), { target: { files: [file] } });
-    expect(onUpload).toHaveBeenCalledWith(file);
     fireEvent.click(screen.getByRole("button", { name: "扩展" }));
     expect(screen.getByLabelText("图片扩展功能").closest(".react-flow__node-toolbar"))
       .toHaveClass("artifact-card-toolbar-raised");
@@ -203,7 +202,7 @@ describe("MediaCanvasCard", () => {
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "ai-capability", name: "GPT Image", enabled: true,
           kind: "IMAGE_GENERATION", maxReferenceImages: 1,
-          supportsTransparentBackground: true,
+          supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
       })),
     );
@@ -214,10 +213,134 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    for (const label of ["三视图", "图层分离", "表情调整", "画笔标注", "移除背景", "局部擦除", "视角调整"]) {
+    expect(screen.getByRole("button", { name: "三视图" })).toBeEnabled();
+    for (const label of ["图层分离", "表情调整", "画笔标注", "移除背景", "局部擦除", "视角调整"]) {
       expect(screen.getByRole("button", { name: new RegExp(`${label}.*AI`) })).toBeEnabled();
     }
     expect(screen.queryByText("后续")).not.toBeInTheDocument();
+  });
+
+  it("opens the full smart editor and submits ordered project references with its prompt", async () => {
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
+          id: "smart-capability", name: "GPT Image", enabled: true,
+          kind: "IMAGE_GENERATION", maxReferenceImages: 4,
+          supportsTransparentBackground: true, supportsImageMask: true,
+        }] }], defaults: [],
+      })),
+      http.get("/api/v1/projects/project-1/artifacts", () => HttpResponse.json({ items: [{
+        id: "reference-artifact", projectId: "project-1", kind: "IMAGE", title: "海边参考",
+        resourceDefaultVersionId: "reference-version", resourceDefaultVersion: {
+          id: "reference-version", versionNo: 1, schemaVersion: 1,
+          content: { sourceType: "UPLOAD", assetId: "reference-asset" }, inputReferences: [],
+          createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+        }, version: 0, createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
+      }] })),
+      http.get("/api/v1/projects/project-1/canvas/items", () => HttpResponse.json({ items: [{
+        id: "reference-item", subjectType: "ARTIFACT", subjectId: "reference-artifact",
+        title: "海边参考", x: 0, y: 0, width: 400, height: 300, zIndex: 0,
+        groupId: null, locked: false, selectedVersionId: "reference-version",
+        selectedVersion: {
+          id: "reference-version", versionNo: 1, schemaVersion: 1,
+          content: { sourceType: "UPLOAD", assetId: "reference-asset" }, inputReferences: [],
+          createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+        }, version: 0, artifact: {
+          id: "reference-artifact", projectId: "project-1", kind: "IMAGE", title: "海边参考",
+          resourceDefaultVersionId: "reference-version", resourceDefaultVersion: null,
+          version: 0, createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
+        }, agent: null,
+      }] })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test",
+      })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "smart-task", status: "READY", errorCode: null });
+      }),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "智能编辑" }));
+    expect(screen.getByRole("dialog", { name: "智能编辑图片" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "涂抹" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "框选" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "引用" }));
+    fireEvent.click(await screen.findByRole("button", { name: "海边参考" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "智能编辑提示词" }), {
+      target: { value: "把背景替换成参考图中的海边，人物保持不变" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始智能编辑" }));
+
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      operation: "SMART_EDIT", instruction: "把背景替换成参考图中的海边，人物保持不变",
+      capabilityId: "smart-capability", referenceVersionIds: ["reference-version"],
+      maskAssetId: null, parameters: {},
+    })));
+  });
+
+  it("chooses a dedicated three-view type and freezes it into the task", async () => {
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+        id: "image-asset", width: 1200, height: 800,
+      })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+        connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
+          id: "three-view-capability", name: "GPT Image", enabled: true,
+          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          supportsTransparentBackground: true, supportsImageMask: true,
+        }] }], defaults: [],
+      })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+        headerName: "X-XSRF-TOKEN", token: "test",
+      })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "three-view-task", status: "READY", errorCode: null });
+      }),
+    );
+    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    const threeViewEntry = screen.getByRole("button", { name: "三视图" });
+    fireEvent.pointerEnter(threeViewEntry);
+    fireEvent.click(threeViewEntry);
+    expect(screen.getByRole("menu", { name: "三视图类型" })).toBeInTheDocument();
+    for (const label of ["角色三视图", "脸部三视图", "道具三视图", "场景宫格图"]) {
+      expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeEnabled();
+    }
+    fireEvent.click(screen.getByRole("menuitem", { name: /脸部三视图/ }));
+    expect(screen.getByRole("dialog", { name: "脸部三视图" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /脸部三视图/ })).toBeChecked();
+    fireEvent.change(screen.getByRole("textbox", { name: "主体说明（可选）" }), {
+      target: { value: "保留发饰和妆容" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      canvasItemId: "item-1", sourceVersionId: "image-version", operation: "THREE_VIEW",
+      capabilityId: "three-view-capability", instruction: "保留发饰和妆容",
+      parameters: { aspectRatio: "16:9", threeViewType: "FACE" },
+    })));
   });
 
   it("submits expression editing through the selected AI image capability", async () => {
@@ -233,7 +356,7 @@ describe("MediaCanvasCard", () => {
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "expression-capability", name: "GPT Image", enabled: true,
           kind: "IMAGE_GENERATION", maxReferenceImages: 1,
-          supportsTransparentBackground: true,
+          supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
       })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
@@ -277,9 +400,11 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "providers", enabled: true, platform: "OPENAI", capabilities: [
           { id: "opaque-capability", name: "Opaque model", enabled: true,
-            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: false },
+            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: false,
+            supportsImageMask: false },
           { id: "transparent-capability", name: "Transparent model", enabled: true,
-            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: true },
+            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: true,
+            supportsImageMask: true },
         ] }], defaults: [],
       })),
     );

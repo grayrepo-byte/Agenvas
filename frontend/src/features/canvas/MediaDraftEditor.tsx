@@ -633,6 +633,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
         queryClient.invalidateQueries({ queryKey: tasksKey }),
         queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: key }),
       ]);
     },
@@ -1009,7 +1010,6 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   return <div className="media-draft-editor" aria-label="媒体生成编辑器">
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
-      <span className="media-draft-tab-unavailable" aria-disabled="true" title="请使用画布中的 Agent 卡片运行 Agent">Agent</span>
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
     <div className="media-draft-reference-row" aria-label="图片输入">
@@ -1265,7 +1265,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
                 aria-pressed={imageParameters.generationCount === value}
                 onClick={() => edit({ parameters: { ...imageParameters, generationCount: value } })}>{value}</button>)}
             </div></fieldset>
-            <p className="media-draft-fixed-parameter">每个生成结果都会创建独立节点</p>
+            <p className="media-draft-fixed-parameter">空节点首个结果留在当前节点，其余结果创建独立节点</p>
           </div> : <div className="media-draft-video-parameters">
             <fieldset><legend>比例</legend><div className="media-draft-choice-grid media-draft-video-aspect-grid">
               {VIDEO_ASPECT_RATIO_OPTIONS.map((value) => <button key={value} type="button"

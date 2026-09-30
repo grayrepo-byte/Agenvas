@@ -40,6 +40,7 @@ public class OpenAiImage2Client {
     public static final String DEFAULT_MODEL = "gpt-image-2";
     public static final int MAX_REFERENCE_BYTES = 20 * 1024 * 1024;
     public static final long MAX_REFERENCE_TOTAL_BYTES = 60L * 1024 * 1024;
+    public static final int MAX_MASK_BYTES = 4 * 1024 * 1024;
     private static final URI OFFICIAL_BASE = URI.create("https://api.openai.com/v1/");
     private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = MAX_REFERENCE_BYTES;
@@ -112,8 +113,10 @@ public class OpenAiImage2Client {
     }
 
     public MediaPayload edit(String key, String model, String prompt, String quality, String size,
-            List<byte[]> referencePngs, boolean transparentBackground, String baseUrl) {
+            List<byte[]> referencePngs, byte[] maskPng, boolean transparentBackground,
+            String baseUrl) {
         validateReferences(referencePngs);
+        validateMask(maskPng);
         MultipartBody.Builder body = new MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("model", model)
                 .addFormDataPart("prompt", prompt)
@@ -126,7 +129,17 @@ public class OpenAiImage2Client {
             body.addFormDataPart("image[]", "reference-" + (index + 1) + ".png",
                     RequestBody.create(referencePngs.get(index), MediaType.parse("image/png")));
         }
+        if (maskPng != null) {
+            body.addFormDataPart("mask", "edit-mask.png",
+                    RequestBody.create(maskPng, MediaType.parse("image/png")));
+        }
         return send(key, baseUrl, "images/edits", body.build());
+    }
+
+    public MediaPayload edit(String key, String model, String prompt, String quality, String size,
+            List<byte[]> referencePngs, boolean transparentBackground, String baseUrl) {
+        return edit(key, model, prompt, quality, size, referencePngs, null,
+                transparentBackground, baseUrl);
     }
 
     MediaPayload edit(String key, String model, String prompt, String quality, String size,
@@ -149,6 +162,15 @@ public class OpenAiImage2Client {
             if (total > MAX_REFERENCE_TOTAL_BYTES) {
                 throw new IllegalArgumentException("Pinned reference PNG total size is invalid");
             }
+        }
+    }
+
+    private static void validateMask(byte[] mask) {
+        if (mask == null) return;
+        if (mask.length < 8 || mask.length > MAX_MASK_BYTES
+                || mask[0] != (byte) 0x89 || mask[1] != 'P'
+                || mask[2] != 'N' || mask[3] != 'G') {
+            throw new IllegalArgumentException("OpenAI edit mask must be a bounded PNG");
         }
     }
 

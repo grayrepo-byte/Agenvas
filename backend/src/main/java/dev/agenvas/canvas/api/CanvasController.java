@@ -3,6 +3,7 @@ package dev.agenvas.canvas.api;
 import dev.agenvas.agent.api.AgentInstanceController.AgentResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactVersionResponse;
+import dev.agenvas.artifact.api.ArtifactController.ArtifactVersionListResponse;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.identity.application.AdminPrincipal;
@@ -82,6 +83,28 @@ public class CanvasController {
 
     public record DuplicateCanvasItemResponse(CanvasItemResponse item,
             dev.agenvas.artifact.domain.MediaDraft draft) {}
+
+    /** Node-scoped history prevents siblings and image edits from appearing as regeneration versions. */
+    @GetMapping("/items/{itemId}/media-versions")
+    public ArtifactVersionListResponse mediaVersions(
+            @AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID itemId) {
+        return new ArtifactVersionListResponse(
+                canvas.listMediaVersions(principal.userId(), projectId, itemId).stream()
+                        .map(ArtifactVersionResponse::from).toList());
+    }
+
+    @PostMapping("/items/{itemId}/select-media-version")
+    public CanvasItemResponse selectMediaVersion(
+            @AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID itemId,
+            @Valid @RequestBody SelectMediaVersionRequest request) {
+        return CanvasItemResponse.from(canvas.selectMediaVersion(principal.userId(), projectId,
+                itemId, request.versionId(), request.expectedVersion()));
+    }
+
+    public record SelectMediaVersionRequest(@NotNull UUID versionId,
+            @PositiveOrZero long expectedVersion) {}
 
     /** 按命令类型提取必填字段并转换为封闭的应用层命令。 */
     private CanvasService.CanvasCommand toCommand(CanvasCommandRequest request) {

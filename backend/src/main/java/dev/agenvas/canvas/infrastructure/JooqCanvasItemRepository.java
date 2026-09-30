@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.infrastructure;
 
 import static dev.agenvas.db.Tables.CANVAS_ITEM;
+import static dev.agenvas.db.Tables.CANVAS_ITEM_MEDIA_VERSION;
 import static dev.agenvas.db.Tables.PROJECT;
 
 import dev.agenvas.canvas.application.CanvasItemRepository;
@@ -105,6 +106,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
             long expectedVersion, UUID selectedVersionId, Instant updatedAt) {
         return dsl.update(CANVAS_ITEM)
                 .set(CANVAS_ITEM.SELECTED_VERSION_ID, selectedVersionId)
+                .set(CANVAS_ITEM.MEDIA_SELECTION_EPOCH, CANVAS_ITEM.MEDIA_SELECTION_EPOCH.plus(1))
                 .set(CANVAS_ITEM.VERSION, CANVAS_ITEM.VERSION.plus(1))
                 .set(CANVAS_ITEM.UPDATED_AT, atUtc(updatedAt))
                 .where(CANVAS_ITEM.ID.eq(itemId))
@@ -114,6 +116,39 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                         .where(PROJECT.ID.eq(CANVAS_ITEM.PROJECT_ID))
                         .and(PROJECT.OWNER_ID.eq(ownerId))))
                 .execute() == 1;
+    }
+
+    @Override
+    public long mediaSelectionEpoch(UUID ownerId, UUID projectId, UUID itemId) {
+        return dsl.select(CANVAS_ITEM.MEDIA_SELECTION_EPOCH).from(CANVAS_ITEM)
+                .join(PROJECT).on(PROJECT.ID.eq(CANVAS_ITEM.PROJECT_ID))
+                .where(CANVAS_ITEM.PROJECT_ID.eq(projectId)).and(CANVAS_ITEM.ID.eq(itemId))
+                .and(PROJECT.OWNER_ID.eq(ownerId))
+                .fetchOptional(CANVAS_ITEM.MEDIA_SELECTION_EPOCH).orElseThrow();
+    }
+
+    @Override
+    public void addMediaVersion(UUID projectId, UUID itemId, UUID versionId, Instant createdAt) {
+        dsl.insertInto(CANVAS_ITEM_MEDIA_VERSION)
+                .set(CANVAS_ITEM_MEDIA_VERSION.PROJECT_ID, projectId)
+                .set(CANVAS_ITEM_MEDIA_VERSION.CANVAS_ITEM_ID, itemId)
+                .set(CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID, versionId)
+                .set(CANVAS_ITEM_MEDIA_VERSION.CREATED_AT, atUtc(createdAt))
+                .onConflict(CANVAS_ITEM_MEDIA_VERSION.CANVAS_ITEM_ID,
+                        CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID).doNothing().execute();
+    }
+
+    @Override
+    public List<UUID> mediaVersionIds(UUID ownerId, UUID projectId, UUID itemId) {
+        return dsl.select(CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID)
+                .from(CANVAS_ITEM_MEDIA_VERSION)
+                .join(PROJECT).on(PROJECT.ID.eq(CANVAS_ITEM_MEDIA_VERSION.PROJECT_ID))
+                .where(CANVAS_ITEM_MEDIA_VERSION.PROJECT_ID.eq(projectId))
+                .and(CANVAS_ITEM_MEDIA_VERSION.CANVAS_ITEM_ID.eq(itemId))
+                .and(PROJECT.OWNER_ID.eq(ownerId))
+                .orderBy(CANVAS_ITEM_MEDIA_VERSION.CREATED_AT.desc(),
+                        CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID)
+                .fetch(CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID);
     }
 
     /** 以预期画布项版本更新标题、坐标、尺寸、分组或锁定状态。 */

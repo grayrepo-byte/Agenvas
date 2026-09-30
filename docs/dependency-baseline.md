@@ -24,7 +24,7 @@
 | Spring AI BOM / `spring-ai-client-chat` / `spring-ai-starter-model-openai` | 2.0.1 |
 | OkHttp（LLM 出站固定目标与 DNS/重定向控制） | 4.12.0；与 Spring AI 2.0.1 当前解析版本一致 |
 | TwelveMonkeys ImageIO WebP reader | 3.15.2；用于实际 WebP 解码，见 [项目仓库](https://github.com/haraldk/TwelveMonkeys) |
-| ONNX Runtime Java CPU | 1.30.0；仅用于服务端本地 Depth Anything V2 Small 推理，Maven 包包含 Linux/macOS x64/aarch64 与 Windows x64 原生库；模型权重不随应用分发 |
+| ONNX Runtime Java CPU | 1.30.0；仅用于服务端本地 Depth Anything V2 Small 推理，Maven 包包含 Linux/macOS x64/aarch64 与 Windows x64 原生库；Compose server 镜像内置固定提交、SHA-256 校验的 27.3 MB INT8 ONNX |
 | jOOQ（Boot 4 starter + codegen 插件） | 3.19.37（Boot 4.0.8 依赖管理）；生成源码提交在 `backend/src/jooq/java`，见 [ADR 0012](adr/0012-jooq-persistence.md) |
 | springdoc OpenAPI WebMVC UI | 3.0.3（按规格保持 3.0.x） |
 | Spring MVC / Security / Session JDBC starter / Actuator / jOOQ starter / Validation | Boot 4.0.8 依赖管理 |
@@ -52,14 +52,14 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 | 用途 | 精确镜像 | 多架构 digest |
 |---|---|---|
 | 前端构建 | `node:24.21.0-alpine` | `sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1` |
-| 后端构建 | `maven:3.9.12-eclipse-temurin-21-alpine` | `sha256:8b2f036477a5bc9fbeb16cfb7301c484d7fff727b1c4907301ac665526bd7a8e` |
-| 后端运行 | `eclipse-temurin:21.0.9_10-jre-alpine` | `sha256:08eecc477dbe3f2e33daac27f36e41daf7f4ec51d2f3396006e54fa41832c74c` |
+| 后端构建 | `maven:3.9.12-eclipse-temurin-21-noble` | `sha256:c3c9d3ac4ce8431a3995c0318b8d390f448e693dd4fabc16e9b68d2e1f3d7b46` |
+| 后端运行 | `eclipse-temurin:21.0.9_10-jre-noble` | `sha256:d3eb69add1874bc785382d6282db53a67841f602a1139dee6c4a1221d8c56568` |
 | Web/Nginx | `nginx:1.28.0-alpine` | `sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284` |
 | 数据库基础镜像 | `postgres:17.11-alpine` | `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` |
 
 所有运行容器使用非 root 用户；server 和 web 使用只读根文件系统及受限 tmpfs。默认宿主端口只绑定 `127.0.0.1`。
 
-三个运行镜像均在固定基础镜像上执行 `apk upgrade --no-cache`，用同一 Alpine 稳定分支的安全修复构建；实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。数据库镜像额外用 Alpine `su-exec` 替换官方入口脚本所调用的 `gosu`；本机已验证初始化和 `pg_isready`。Trivy 0.74.0 仍会读到底层镜像中已被替换的旧 `gosu`，CI 仅对 PostgreSQL 镜像的 `usr/local/bin/gosu` 路径做精确排除，其余路径不排除；此例外的负责人、证据和到期日见 `docs/security-exceptions.md`。
+Web 与数据库运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。数据库镜像额外用 Alpine `su-exec` 替换官方入口脚本所调用的 `gosu`；本机已验证初始化和 `pg_isready`。Trivy 0.74.0 仍会读到底层镜像中已被替换的旧 `gosu`，CI 仅对 PostgreSQL 镜像的 `usr/local/bin/gosu` 路径做精确排除，其余路径不排除；此例外的负责人、证据和到期日见 `docs/security-exceptions.md`。
 
 ## 初始基线验证（历史记录）
 
@@ -93,7 +93,7 @@ Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前
 
 ## FFmpeg 分发说明
 
-运行镜像增加 Alpine `ffmpeg` 6.1.2-r2。构建后镜像内 `ffmpeg -version` 显示 `--enable-gpl --enable-version3 --enable-libx264`，且 `libx264` 编码烟测成功。该系统二进制并非 Agenvas 的 Apache-2.0 代码；依据 [FFmpeg 官方许可证说明](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html)，这些构建选项意味着分发前必须单独核对 GPLv3 对应文本、源码和构建信息。当前仅完成技术确认，许可证分发审核尚未完成。
+server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当前 ARM64 镜像显示 `--enable-gpl`、`--enable-libx264`，且编码器列表包含 `libx264`/`libx264rgb`。该系统二进制并非 Agenvas 的 Apache-2.0 代码；依据 [FFmpeg 官方许可证说明](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html)，分发前必须单独核对许可证文本、对应源码与构建信息。此前 Alpine 6.1.2-r2 的验证只属于历史镜像，不能代替当前 Noble 镜像审核。
 
 媒体集成测试不再固定 macOS Homebrew 路径，使用服务端固定路径发现（`/usr/bin`、`/opt/homebrew/bin`、`/usr/local/bin`）；Ubuntu CI 后端 job 显式安装 `ffmpeg`/`ffprobe` 所在系统包。当前主机定向测试已运行，GitHub Ubuntu job 尚未在此工作区验证。
 - SSE 通过 Testcontainers 中真实 Tomcat HTTP 和 Nginx 配置验证；浏览器全链路弱网压测仍属于发布前门禁。

@@ -51,7 +51,8 @@ public class DirectMediaTaskController {
         return TaskController.TaskResponse.from(direct.runImageOperation(principal.userId(),
                 projectId, artifactId, request.canvasItemId(), request.sourceVersionId(),
                 request.expectedCanvasItemVersion(), request.operation(), request.instruction(),
-                request.capabilityId(), request.parameters(), commandKey));
+                request.capabilityId(), request.referenceVersionIds(), request.maskAssetId(),
+                request.parameters(), commandKey));
     }
 
     public record ImageOperationRequest(
@@ -61,6 +62,8 @@ public class DirectMediaTaskController {
             @NotNull ImageOperation operation,
             @jakarta.validation.constraints.Size(max = 4000) String instruction,
             UUID capabilityId,
+            @jakarta.validation.constraints.Size(max = 15) List<UUID> referenceVersionIds,
+            UUID maskAssetId,
             @NotNull JsonNode parameters) {}
 
     @GetMapping("/artifacts/{artifactId}/run")

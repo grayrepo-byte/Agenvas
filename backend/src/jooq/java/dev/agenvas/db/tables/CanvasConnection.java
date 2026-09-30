@@ -87,8 +87,10 @@ public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
 
     /**
      * The column <code>public.canvas_connection.relation_type</code>.
+     * MEDIA_INPUT and AGENT_IMAGE_INPUT are editable inputs; MEDIA_DERIVATION
+     * is removable media lineage.
      */
-    public final TableField<CanvasConnectionRecord, String> RELATION_TYPE = createField(DSL.name("relation_type"), SQLDataType.VARCHAR(32).nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, String> RELATION_TYPE = createField(DSL.name("relation_type"), SQLDataType.VARCHAR(32).nullable(false), this, "MEDIA_INPUT and AGENT_IMAGE_INPUT are editable inputs; MEDIA_DERIVATION is removable media lineage.");
 
     /**
      * The column
@@ -254,7 +256,7 @@ public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
     public List<Check<CanvasConnectionRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_canvas_connection_distinct_items"), "((source_canvas_item_id <> target_canvas_item_id))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_connection_type"), "(((relation_type)::text = ANY ((ARRAY['MEDIA_INPUT'::character varying, 'AGENT_IMAGE_INPUT'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_connection_type"), "(((relation_type)::text = ANY ((ARRAY['MEDIA_INPUT'::character varying, 'AGENT_IMAGE_INPUT'::character varying, 'MEDIA_DERIVATION'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_connection_version"), "((version >= 0))", true)
         );
     }

@@ -136,6 +136,7 @@ public class CanvasService {
                     source.selectedVersionId(), source.title(), x, y, width, height,
                     zIndex, source.groupId(), false);
             if (!canvasItems.create(target)) throw conflict();
+            rememberInitialMediaVersion(target);
             var draft = mediaDrafts.duplicateWithinChange(ownerId, projectId,
                     sourceItemId, targetItemId, expectedSourceDraftVersion);
             ObjectNode payload = objectMapper.createObjectNode();
@@ -151,6 +152,86 @@ public class CanvasService {
     public record DuplicateResult(CanvasEntry item,
             dev.agenvas.artifact.domain.MediaDraft draft) {}
 
+    /** Lists this node's immutable results, excluding results owned by other work branches. */
+    @Transactional(readOnly = true)
+    public List<ArtifactVersion> listMediaVersions(UUID ownerId, UUID projectId, UUID itemId) {
+        projects.get(ownerId, projectId);
+        CanvasItem item = requireMediaItem(ownerId, projectId, itemId, false);
+        Set<UUID> ids = new HashSet<>(canvasItems.mediaVersionIds(ownerId, projectId, itemId));
+        return artifacts.listVersions(ownerId, projectId, item.subjectId()).stream()
+                .filter(version -> ids.contains(version.id())).toList();
+    }
+
+    /** Switches only this card's result; drafts, pinned references and library defaults stay independent. */
+    @Transactional
+    public CanvasEntry selectMediaVersion(UUID ownerId, UUID projectId, UUID itemId,
+            UUID versionId, long expectedVersion) {
+        return events.recordChange(ownerId, projectId, () -> {
+            projects.requireActiveProject(ownerId, projectId);
+            CanvasItem item = requireMediaItem(ownerId, projectId, itemId, true);
+            if (item.version() != expectedVersion) throw conflict();
+            if (!canvasItems.mediaVersionIds(ownerId, projectId, itemId).contains(versionId)) {
+                throw validation("只能选用当前节点的媒体版本。");
+            }
+            artifacts.requireVersion(ownerId, projectId, item.subjectId(), versionId);
+            if (!canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
+                    versionId, clock.instant())) throw conflict();
+            mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
+                    dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
+            CanvasItem selected = canvasItems.find(ownerId, projectId, itemId).orElseThrow(this::notFound);
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("canvasItemId", itemId.toString());
+            payload.put("selectedVersionId", versionId.toString());
+            return ProjectEventService.Change.changed(toEntry(ownerId, selected),
+                    new ProjectEventService.EventDraft("canvas.item.selected_version.changed", 1,
+                            itemId, selected.version(), payload));
+        }).value();
+    }
+
+    @Transactional(readOnly = true)
+    public long mediaSelectionEpoch(UUID ownerId, UUID projectId, UUID itemId) {
+        requireMediaItem(ownerId, projectId, itemId, false);
+        return canvasItems.mediaSelectionEpoch(ownerId, projectId, itemId);
+    }
+
+    /** Missing task destinations are a normal late-result condition, not a transaction failure. */
+    @Transactional(readOnly = true)
+    public boolean hasArtifactItem(UUID ownerId, UUID projectId, UUID itemId, UUID artifactId) {
+        return canvasItems.find(ownerId, projectId, itemId)
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                        && item.subjectId().equals(artifactId)).isPresent();
+    }
+
+    /** Late results still belong to node history; removing the node leaves Artifact audit history. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void recordTaskMediaVersionWithinChange(UUID ownerId, UUID projectId, UUID itemId,
+            UUID artifactId, UUID versionId) {
+        CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
+        if (item == null) return;
+        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
+                || !item.subjectId().equals(artifactId)) throw validation("媒体任务目标不匹配。");
+        ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
+        canvasItems.addMediaVersion(projectId, itemId, versionId, version.createdAt());
+    }
+
+    private CanvasItem requireMediaItem(UUID ownerId, UUID projectId, UUID itemId, boolean lock) {
+        CanvasItem item = (lock ? canvasItems.findForUpdate(ownerId, projectId, itemId)
+                : canvasItems.find(ownerId, projectId, itemId)).orElseThrow(this::notFound);
+        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
+            throw validation("只有图片和视频节点拥有媒体版本。");
+        }
+        Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
+        if (kind != Artifact.Kind.IMAGE && kind != Artifact.Kind.VIDEO) {
+            throw validation("只有图片和视频节点拥有媒体版本。");
+        }
+        return item;
+    }
+
+    private void rememberInitialMediaVersion(CanvasItem item) {
+        if (item.selectedVersionId() != null) canvasItems.addMediaVersion(item.projectId(),
+                item.id(), item.selectedVersionId(), item.createdAt());
+    }
+
     /**
      * Creates one task-owned output branch beside a source card while the caller holds the
      * project-event transaction. The source draft is copied, but its tasks and connections are not.
@@ -159,6 +240,15 @@ public class CanvasService {
     public CanvasItem forkMediaOutputWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
             int outputIndex) {
+        return createMediaOutputWithinChange(ownerId, projectId, sourceItemId, targetItemId,
+                expectedSourceDraftVersion, outputIndex, MediaOutputDraft.COPY_SOURCE);
+    }
+
+    private enum MediaOutputDraft { COPY_SOURCE, EMPTY }
+
+    private CanvasItem createMediaOutputWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
+            int outputIndex, MediaOutputDraft draftInitialization) {
         if (outputIndex < 0 || outputIndex >= 4) {
             throw validation("媒体输出序号必须在 0 到 3 之间。");
         }
@@ -174,6 +264,9 @@ public class CanvasService {
                 && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
             throw validation("只有图片和视频支持新节点输出。");
         }
+        if (draftInitialization == MediaOutputDraft.EMPTY
+                && mediaDrafts.get(ownerId, projectId, sourceItemId).version()
+                        != expectedSourceDraftVersion) throw conflict();
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
         BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
         BigDecimal y = source.y().add(
@@ -191,8 +284,13 @@ public class CanvasService {
                 source.title(), x, y, source.width(), source.height(), zIndex,
                 source.groupId(), false);
         if (!canvasItems.create(target)) throw conflict();
-        mediaDrafts.duplicateWithinChange(ownerId, projectId, sourceItemId, targetItemId,
-                expectedSourceDraftVersion);
+        if (draftInitialization == MediaOutputDraft.EMPTY) {
+            // Operation inputs live in the immutable Task, not in the result node's next draft.
+            mediaDrafts.initializeWithinChange(projectId, targetItemId, false);
+        } else {
+            mediaDrafts.duplicateWithinChange(ownerId, projectId, sourceItemId, targetItemId,
+                    expectedSourceDraftVersion);
+        }
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("sourceCanvasItemId", sourceItemId.toString());
         payload.put("targetCanvasItemId", targetItemId.toString());
@@ -201,13 +299,13 @@ public class CanvasService {
         return target;
     }
 
-    /** Creates the result node and a removable lineage edge when the source has media content. */
+    /** Creates a derivation with a fresh draft; immutable Task provenance retains operation inputs. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem forkMediaDerivationWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
             int outputIndex) {
-        CanvasItem target = forkMediaOutputWithinChange(ownerId, projectId, sourceItemId,
-                targetItemId, expectedSourceDraftVersion, outputIndex);
+        CanvasItem target = createMediaOutputWithinChange(ownerId, projectId, sourceItemId,
+                targetItemId, expectedSourceDraftVersion, outputIndex, MediaOutputDraft.EMPTY);
         if (target.selectedVersionId() != null) {
             connections.createMediaDerivationWithinChange(ownerId, projectId, sourceItemId,
                     target.id(), target.selectedVersionId());
@@ -359,7 +457,7 @@ public class CanvasService {
                 .value();
     }
 
-    /** Uploads media into a new result node; the source node is never overwritten. */
+    /** Fills an empty media node; uploads from a completed node derive a new result node. */
     @Transactional
     public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
             UUID targetItemId, long expectedVersion, JsonNode content) {
@@ -369,10 +467,9 @@ public class CanvasService {
                     .orElseThrow(this::notFound);
             if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
             CanvasItem replay = canvasItems.find(ownerId, projectId, targetItemId).orElse(null);
-            if (replay != null) {
+            if (replay != null && replay.selectedVersionId() != null) {
                 if (replay.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                        || !replay.subjectId().equals(current.subjectId())
-                        || replay.selectedVersionId() == null) throw conflict();
+                        || !replay.subjectId().equals(current.subjectId())) throw conflict();
                 ArtifactVersion replayVersion = artifacts.requireVersion(ownerId, projectId,
                         replay.subjectId(), replay.selectedVersionId());
                 if (!replayVersion.content().equals(content)
@@ -381,6 +478,8 @@ public class CanvasService {
                 }
                 return ProjectEventService.Change.unchanged(toEntry(ownerId, replay));
             }
+            boolean fillsCurrent = targetItemId.equals(itemId);
+            if (replay != null && !fillsCurrent) throw conflict();
             if (current.version() != expectedVersion) throw conflict();
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
@@ -388,11 +487,18 @@ public class CanvasService {
                     && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
                 throw validation("只有图片和视频卡片可以追加上传版本。");
             }
-            var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
-            CanvasItem target = forkMediaDerivationWithinChange(ownerId, projectId, itemId,
-                    targetItemId, sourceDraft.version(), 0);
+            CanvasItem target;
+            if (fillsCurrent) {
+                if (current.selectedVersionId() != null) throw conflict();
+                target = current;
+            } else {
+                var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
+                target = forkMediaDerivationWithinChange(ownerId, projectId, itemId,
+                        targetItemId, sourceDraft.version(), 0);
+            }
             ArtifactVersion revision = artifacts.appendUserMediaVersionWithinChange(ownerId,
                     projectId, current.subjectId(), content);
+            canvasItems.addMediaVersion(projectId, target.id(), revision.id(), revision.createdAt());
             if (!canvasItems.selectVersion(ownerId, projectId, target.id(), target.version(),
                     revision.id(), clock.instant())) {
                 throw conflict();
@@ -414,18 +520,23 @@ public class CanvasService {
     }
 
     /**
-     * Fixes a generated result only when the pre-created result node still presents the task parent.
+     * Selects a generated result only when the node's selection and working draft still match.
      * Layout and title edits deliberately do not invalidate this content comparison.
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public boolean selectTaskResultWithinChange(UUID ownerId, UUID projectId, UUID itemId,
-            UUID artifactId, UUID expectedParentVersionId, UUID resultVersionId) {
+            UUID artifactId, UUID expectedParentVersionId, UUID resultVersionId,
+            Long expectedSelectionEpoch, Long expectedDraftVersion) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (current == null
                 || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
                 || !current.subjectId().equals(artifactId)
                 || !java.util.Objects.equals(current.selectedVersionId(),
-                        expectedParentVersionId)) {
+                        expectedParentVersionId)
+                || (expectedSelectionEpoch != null && canvasItems.mediaSelectionEpoch(
+                        ownerId, projectId, itemId) != expectedSelectionEpoch)
+                || (expectedDraftVersion != null && mediaDrafts.get(ownerId, projectId,
+                        itemId).version() != expectedDraftVersion)) {
             return false;
         }
         if (!canvasItems.selectVersion(ownerId, projectId, itemId, current.version(),
@@ -745,6 +856,7 @@ public class CanvasService {
         if (artifact.artifact().kind() == Artifact.Kind.IMAGE
                 || artifact.artifact().kind() == Artifact.Kind.VIDEO) {
             mediaDrafts.initializeWithinChange(projectId, item.id(), item.selectedVersionId() != null);
+            rememberInitialMediaVersion(item);
         }
     }
 

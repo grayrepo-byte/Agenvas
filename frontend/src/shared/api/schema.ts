@@ -660,7 +660,7 @@ export interface paths {
         /** 查询此卡片最近的直接媒体任务 */
         get: operations["listDirectMediaTasks"];
         put?: never;
-        /** 固定已保存的媒体草稿，为每个结果创建独立节点并受理 USER_DIRECT Task */
+        /** 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task */
         post: operations["runMediaDraft"];
         delete?: never;
         options?: never;
@@ -701,7 +701,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 固定来源图片并创建相连的独立结果节点后受理图片后处理任务 */
+        /**
+         * 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
+         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。
+         */
         post: operations["runImageOperation"];
         delete?: never;
         options?: never;
@@ -821,8 +824,51 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 基于来源媒体节点上传内容并创建独立结果节点 */
+        /**
+         * 向空媒体节点上传首个结果，或从已有结果派生新节点
+         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入。
+         */
         post: operations["uploadCanvasItemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/items/{itemId}/media-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /** 读取当前媒体节点的结果历史，不包含其他节点的派生结果 */
+        get: operations["listCanvasMediaVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/items/{itemId}/select-media-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 以节点 CAS 选用该节点的历史版本，保留草稿及精确输入引用 */
+        post: operations["selectCanvasMediaVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1253,6 +1299,7 @@ export interface components {
             supportedImageResolutions: ("1K" | "2K" | "4K")[];
             supportedImageQualities: ("low" | "medium" | "high")[];
             supportsTransparentBackground: boolean;
+            supportsImageMask: boolean;
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
@@ -1389,7 +1436,7 @@ export interface components {
         };
         ProjectExportManifest: {
             /** @constant */
-            schemaVersion: 2;
+            schemaVersion: 3;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -1501,6 +1548,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             mediaDraft: components["schemas"]["ManifestMediaDraft"] | null;
+            mediaVersionIds: string[];
         };
         ManifestMediaDraft: {
             prompt: string;
@@ -1661,6 +1709,9 @@ export interface components {
             instruction?: string | null;
             /** Format: uuid */
             capabilityId?: string | null;
+            referenceVersionIds?: string[];
+            /** Format: uuid */
+            maskAssetId?: string | null;
             parameters: components["schemas"]["ImageOperationParameters"];
         };
         ImageOperationParameters: {
@@ -1674,6 +1725,8 @@ export interface components {
             quarterTurns?: 1 | 2 | 3;
             /** @enum {string} */
             aspectRatio?: "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
+            /** @enum {string} */
+            threeViewType?: "CHARACTER" | "FACE" | "PROP" | "SCENE_GRID";
             /** @enum {string} */
             lightingPreset?: "GOLDEN_HOUR" | "BLUE_HOUR" | "OVERCAST_SOFT" | "MOONLIGHT" | "SOFT_STUDIO" | "NEON_NIGHT";
             brightness?: number;
@@ -1837,6 +1890,12 @@ export interface components {
             content: components["schemas"]["WritableArtifactContent"];
         };
         SelectArtifactVersionRequest: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        SelectMediaVersionRequest: {
             /** Format: uuid */
             versionId: string;
             /** Format: int64 */
@@ -4059,8 +4118,66 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 新版本已追加并由新结果节点固定，来源节点不变 */
+            /** @description 空节点固定首个上传结果；已有结果时由新节点固定，来源节点不变 */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasItem"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listCanvasMediaVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 节点拥有的不可变版本，包括未自动选用的晚到结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactVersionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    selectCanvasMediaVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectMediaVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新后的节点；不修改资源默认版本或其他节点 */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

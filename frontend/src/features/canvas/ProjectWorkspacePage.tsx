@@ -54,7 +54,6 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
-import { MediaCardUpload } from "./MediaCardUpload";
 import { X } from "@phosphor-icons/react";
 import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
@@ -108,7 +107,6 @@ type CanvasNodeData = {
   onRemove: (item: CanvasItem) => void;
   onToggleLocked: (item: CanvasItem) => void;
   onInspect: (item: CanvasItem) => void;
-  onUpload: (item: CanvasItem, file: File) => void;
   onDuplicate: (item: CanvasItem) => void;
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
   updatingAgent: boolean;
@@ -116,6 +114,9 @@ type CanvasNodeData = {
   imageAspectRatio: number | undefined;
   /** Connection gesture feedback: this card is under the pointer and will accept, or reject, the line. */
   connectionTarget: "valid" | "invalid" | null;
+  /** Drag feedback is visual only; contextual actions require a completed selection gesture. */
+  dragHighlighted: boolean;
+  showSelectionActions: boolean;
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
@@ -155,15 +156,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [inspectingId, setInspectingId] = useState<string | null>(null);
-  const [uploadRequest, setUploadRequest] = useState<{
-    id: string; item: CanvasItem; file: File;
-  } | null>(null);
   const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; artifactId?: string } | null>(null);
   const drafts = useCanvasStore((state) => state.drafts);
   const saveState = useCanvasStore((state) => state.saveState);
   const selectedIds = useCanvasStore((state) => state.selectedIds);
+  const [draggingIds, setDraggingIds] = useState<string[]>([]);
   const updateDraft = useCanvasStore((state) => state.updateDraft);
   const clearDraft = useCanvasStore((state) => state.clearDraft);
   const setSaveState = useCanvasStore((state) => state.setSaveState);
@@ -214,6 +213,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     if (initialEventSequence.current === null || typeof EventSource === "undefined") return;
     return subscribeProjectEvents(projectId, initialEventSequence.current, {
       onChange: (event) => {
+        if (event.type.startsWith("canvas.") || event.type === "task.status.changed") {
+          void queryClient.invalidateQueries({ queryKey: ["canvas-media-versions", projectId] });
+        }
         if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
             event.type === "agent.instance.changed") {
           void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
@@ -289,6 +291,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
+        void queryClient.invalidateQueries({ queryKey: ["canvas-media-versions", projectId] });
         void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
       },
       onStatus: setEventStatus,
@@ -296,24 +299,26 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, snapshot.isSuccess]);
 
   const saveLayout = useMutation({
-    mutationFn: ({ item, patch }: { item: CanvasItem; patch: Partial<LayoutPatch> }) => {
-      const draft = useCanvasStore.getState().drafts[item.id];
-      const command: CanvasCommand = {
-        type: "UPDATE_LAYOUT",
-        itemId: item.id,
-        expectedVersion: item.version,
-        x: patch.x ?? draft?.x ?? item.x,
-        y: patch.y ?? draft?.y ?? item.y,
-        ...persistableNodeSize(effectiveNodeSize(item, patch)),
-        zIndex: item.zIndex,
-        groupId: item.groupId,
-      };
-      return applyCanvasCommands(projectId, [command]);
+    mutationFn: (updates: { item: CanvasItem; patch: Partial<LayoutPatch> }[]) => {
+      const commands: CanvasCommand[] = updates.map(({ item, patch }) => {
+        const draft = useCanvasStore.getState().drafts[item.id];
+        return {
+          type: "UPDATE_LAYOUT",
+          itemId: item.id,
+          expectedVersion: item.version,
+          x: patch.x ?? draft?.x ?? item.x,
+          y: patch.y ?? draft?.y ?? item.y,
+          ...persistableNodeSize(effectiveNodeSize(item, patch)),
+          zIndex: item.zIndex,
+          groupId: item.groupId,
+        };
+      });
+      return applyCanvasCommands(projectId, commands);
     },
     onMutate: () => setSaveState("saving"),
     onSuccess: (saved, variables) => {
       queryClient.setQueryData(["canvas", projectId], saved);
-      clearDraft(variables.item.id);
+      for (const { item } of variables) clearDraft(item.id);
       setSaveState("saved");
     },
     onError: setSaveError,
@@ -745,7 +750,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (!item) return;
       const effectiveLayout = { ...layout, ...effectiveNodeSize(item, layout) };
       updateDraft(itemId, effectiveLayout);
-      saveLayoutMutate({ item, patch: effectiveLayout });
+      saveLayoutMutate([{ item, patch: effectiveLayout }]);
     },
     [canvas.data?.items, effectiveNodeSize, saveLayoutMutate, updateDraft],
   );
@@ -847,12 +852,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [connectInputMutate, trackConnectionTarget]);
 
   const handleInspect = useCallback((item: CanvasItem) => {
-    setToolsKind(null); setResourcesOpen(false); setUploadRequest(null); setInspectingId(item.id);
-  }, []);
-  const handleUpload = useCallback((item: CanvasItem, file: File) => {
-    // Each opening has a distinct identity, so an older upload cannot close a newer session.
-    setToolsKind(null); setResourcesOpen(false); setInspectingId(null);
-    setUploadRequest({ id: crypto.randomUUID(), item: { ...item }, file });
+    setToolsKind(null); setResourcesOpen(false); setInspectingId(item.id);
   }, []);
 
   const handleShowOutputs = useCallback((agent: Agent) => {
@@ -890,7 +890,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onRemove: handleRemove,
               onToggleLocked: handleToggleLocked,
               onInspect: handleInspect,
-              onUpload: handleUpload,
               onDuplicate: handleDuplicate,
               onUpdateAgent: handleUpdateAgent,
               updatingAgent: editAgent.isPending,
@@ -899,12 +898,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               connectionTarget: connectionTarget?.itemId === item.id
                 ? (connectionTarget.valid ? "valid" : "invalid")
                 : null,
+              dragHighlighted: draggingIds.includes(item.id),
+              showSelectionActions: draggingIds.length === 0,
             },
           };
         }),
     [
       canvas.data?.items,
       drafts,
+      draggingIds,
       editAgent.isPending,
       editAgent.error,
       effectiveNodeSize,
@@ -913,7 +915,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleShowOutputs,
       handleToggleLocked,
       handleInspect,
-      handleUpload,
       handleDuplicate,
       handleUpdateAgent,
       imageRatios,
@@ -1046,7 +1047,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   function chooseCreationKind(kind: CreationKind) {
     const point = creationMenu?.point;
     if (!point) return;
-    setInspectingId(null); setUploadRequest(null);
+    setInspectingId(null);
     setCreationMenu(null);
     setResourcesOpen(false);
     setCreationPoint(point);
@@ -1086,10 +1087,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
         <div className="flex items-center gap-3">
           <button className="secondary-button" onClick={() => {
-            setToolsKind(null); setInspectingId(null); setUploadRequest(null); setResourcesOpen(true);
+            setToolsKind(null); setInspectingId(null); setResourcesOpen(true);
           }} type="button">资源</button>
           <button className="secondary-button" onClick={() => {
-            setResourcesOpen(false); setInspectingId(null); setUploadRequest(null); setToolsKind("UPLOAD");
+            setResourcesOpen(false); setInspectingId(null); setToolsKind("UPLOAD");
           }} type="button">导入素材</button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <a className="secondary-button" download={`agenvas-project-${projectId}.json`}
@@ -1214,17 +1215,26 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           selectionKeyCode={selecting ? "Shift" : null}
           nodeClickDistance={CANVAS_POINTER_THRESHOLD}
           nodeDragThreshold={CANVAS_POINTER_THRESHOLD}
+          selectNodesOnDrag={false}
           onBeforeDelete={handleBeforeDelete}
           onConnect={(connection) => connectInputMutate(connection)}
           onConnectEnd={handleConnectEnd}
           onConnectStart={handleConnectStart}
-          onNodeDragStop={(_, node) => {
-            const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
-            if (item) {
-              const patch = { x: node.position.x, y: node.position.y, ...effectiveNodeSize(item) };
+          onNodeDragStart={(_, node, draggedNodes) => {
+            setDraggingIds(draggedNodes.length ? draggedNodes.map((dragged) => dragged.id) : [node.id]);
+            setSelectedEdgeIds([]);
+          }}
+          onNodeDragStop={(_, node, draggedNodes) => {
+            setDraggingIds([]);
+            clearSelection();
+            const updates = (draggedNodes.length ? draggedNodes : [node]).flatMap((dragged) => {
+              const item = canvas.data?.items.find((candidate) => candidate.id === dragged.id);
+              if (!item) return [];
+              const patch = { x: dragged.position.x, y: dragged.position.y, ...effectiveNodeSize(item) };
               updateDraft(item.id, patch);
-              saveLayout.mutate({ item, patch });
-            }
+              return [{ item, patch }];
+            });
+            if (updates.length) saveLayout.mutate(updates);
           }}
           onNodeClick={(event, node) => {
             if (!selecting || event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -1249,7 +1259,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           selectionOnDrag={selecting}
           zoomOnDoubleClick={false}
         >
-          {selectedItems.length === 1 && selectedItems[0]?.artifact ?
+          {draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
               className="workspace-media-toolbar nodrag nowheel nopan">
               <div className="workspace-media-editor" aria-label="所选卡片编辑区">
@@ -1285,7 +1295,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <WorkspaceError error={connectInput.error} /></div> : null}
         {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
           <div className="canvas-message"><WorkspaceError error={(removeItem.error ?? toggleLocked.error)!} /></div> : null}
-        {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
+        {draggingIds.length === 0 && selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
           <button aria-label="关闭编辑区" className="workspace-bottom-close"
             onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
           <span>{selectedItems.length} 张卡片已选中</span>
@@ -1323,13 +1333,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <p className="mt-3 text-xs text-[var(--muted)]">移除节点不会删除已归档内容。</p>
         </aside>;
       })() : null}
-      {uploadRequest?.item.artifact ? <aside className="workspace-drawer" aria-label="上传到图片卡片">
-        <div className="workspace-drawer-heading"><h2>上传图片</h2>
-          <button className="node-action" type="button" aria-label="关闭图片上传" onClick={() => setUploadRequest(null)}><X size={16} /></button></div>
-        <MediaCardUpload key={uploadRequest.id} artifact={uploadRequest.item.artifact}
-          item={uploadRequest.item} initialFile={uploadRequest.file}
-          onDone={() => setUploadRequest((current) => current === uploadRequest ? null : current)} />
-      </aside> : null}
       <div className="workspace-narrow-warning">画布编辑需要至少 1280px 宽度；当前仅提供只读预览。</div>
     </main>
   );
@@ -1339,13 +1342,15 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   const halo = data.connectionTarget
     ? <span className={`canvas-connection-halo canvas-connection-halo--${data.connectionTarget}`} />
     : null;
-  if (data.item.agent) return <>{halo}<AgentChatCard data={data} selected={selected} /></>;
+  const highlighted = selected || data.dragHighlighted;
+  if (data.item.agent) return <>{halo}<AgentChatCard data={data} selected={highlighted} /></>;
   const artifact = data.item.artifact;
   if (!artifact) return null;
   const cardProps = {
-    artifact, item: data.item, selected, locked: data.item.locked,
+    artifact, item: data.item, selected: highlighted, locked: data.item.locked,
+    toolbarVisible: data.showSelectionActions,
     onInspect: () => data.onInspect(data.item),
-    children: <NodeResizer isVisible={selected && !data.item.locked}
+    children: <NodeResizer isVisible={selected && data.showSelectionActions && !data.item.locked}
       {...(data.imageAspectRatio === undefined
         ? { minHeight: MIN_ARTIFACT_CARD_SIZE, minWidth: MIN_ARTIFACT_CARD_SIZE,
           maxWidth: CANVAS_MAX_SIZE, maxHeight: CANVAS_MAX_SIZE }
@@ -1360,7 +1365,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {halo}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO"
         ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
-          onUpload={(file) => data.onUpload(data.item, file)} onDuplicate={() => data.onDuplicate(data.item)} />
+          onDuplicate={() => data.onDuplicate(data.item)} />
         : <ContentCanvasCard {...cardProps} />}
     </>
   );

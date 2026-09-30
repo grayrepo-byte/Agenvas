@@ -117,7 +117,7 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(duplicate.path("id").asText()).isEqualTo(taskId.toString());
         String resultCanvasItemId = run.path("input").path("canvasItemId").asText();
-        assertThat(resultCanvasItemId).isNotEqualTo(canvasItemId);
+        assertThat(resultCanvasItemId).isEqualTo(canvasItemId);
         String resultDraftPath = base + "/canvas-items/" + resultCanvasItemId + "/media-draft";
         JsonNode queue = mapper.readTree(mvc.perform(get(base + "/tasks/" + taskId + "/queue")
                         .with(auth)).andExpect(status().isOk()).andReturn()
@@ -152,7 +152,7 @@ class MediaDraftPostgresIT {
                 .andExpect(status().isOk());
         JsonNode edited = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(edited.path("displayMode").asText()).isEqualTo("DRAFT");
+        assertThat(edited.path("displayMode").asText()).isEqualTo("RESULT");
         assertThat(edited.path("prompt").asText()).isEqualTo("Second concept");
         JsonNode retainedResult = mapper.readTree(mvc.perform(put(draftPath)
                         .with(auth).with(csrf()).contentType("application/json")
@@ -160,10 +160,10 @@ class MediaDraftPostgresIT {
                                 + ",\"prompt\":\"Next concept\",\"parameters\":{},"
                                 + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(retainedResult.path("displayMode").asText()).isEqualTo("DRAFT");
+        assertThat(retainedResult.path("displayMode").asText()).isEqualTo("RESULT");
         JsonNode reloadedResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(reloadedResult.path("displayMode").asText()).isEqualTo("DRAFT");
+        assertThat(reloadedResult.path("displayMode").asText()).isEqualTo("RESULT");
         assertThat(reloadedResult.path("prompt").asText()).isEqualTo("Next concept");
         assertThat(reloadedResult.path("version").asLong())
                 .isEqualTo(retainedResult.path("version").asLong());
@@ -210,7 +210,7 @@ class MediaDraftPostgresIT {
         assertThat(batchTaskIds).hasSize(2).contains(UUID.fromString(batchPrimary.path("id").asText()));
         assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
                 .param("projectId", project.id()).query(Long.class).single())
-                .isEqualTo(canvasCountBeforeBatch + 2);
+                .isEqualTo(canvasCountBeforeBatch + 1);
         for (UUID batchTaskId : batchTaskIds) {
             mvc.perform(post(base + "/tasks/" + batchTaskId + "/cancel-queued")
                     .with(auth).with(csrf())).andExpect(status().isOk());
@@ -249,7 +249,7 @@ class MediaDraftPostgresIT {
                 .contains(UUID.fromString(sameCardPrimary.path("id").asText()));
         assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
                 .param("projectId", project.id()).query(Long.class).single())
-                .isEqualTo(canvasCountBeforeBatch + 4);
+                .isEqualTo(canvasCountBeforeBatch + 2);
         for (UUID sameCardTaskId : sameCardTaskIds) {
             mvc.perform(post(base + "/tasks/" + sameCardTaskId + "/cancel-queued")
                     .with(auth).with(csrf())).andExpect(status().isOk());

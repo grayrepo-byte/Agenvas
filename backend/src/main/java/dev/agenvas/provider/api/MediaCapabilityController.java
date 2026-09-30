@@ -139,7 +139,8 @@ public class MediaCapabilityController {
                 declaration.supportedImageAspectRatios().stream().sorted().toList(),
                 declaration.supportedImageResolutions().stream().sorted().toList(),
                 declaration.supportedImageQualities().stream().sorted().toList(),
-                declaration.supportsTransparentBackground(), snapshot.mappingSha256(), settings.isMissingNode()
+                declaration.supportsTransparentBackground(), declaration.supportsImageMask(),
+                snapshot.mappingSha256(), settings.isMissingNode()
                         ? mapper.createObjectNode() : settings);
     }
 
@@ -166,7 +167,7 @@ public class MediaCapabilityController {
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, List<String> supportedImageAspectRatios,
             List<String> supportedImageResolutions, List<String> supportedImageQualities,
-            boolean supportsTransparentBackground, String mappingSha256,
+            boolean supportsTransparentBackground, boolean supportsImageMask, String mappingSha256,
             JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
 }

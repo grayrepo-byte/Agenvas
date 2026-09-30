@@ -21,15 +21,20 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.ImageOperation;
 import dev.agenvas.usage.application.UsageService;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,10 +51,13 @@ public class DirectMediaTaskService {
     private static final int MAX_RELIGHT_BRIGHTNESS = 100;
     private static final int MIN_RELIGHT_COLOR_TEMPERATURE = 2000;
     private static final int MAX_RELIGHT_COLOR_TEMPERATURE = 10000;
+    private static final long MAX_OPENAI_MASK_BYTES = 4L * 1024 * 1024;
     private static final Set<String> RELIGHT_PRESETS = Set.of(
             "GOLDEN_HOUR", "BLUE_HOUR", "OVERCAST_SOFT", "MOONLIGHT",
             "SOFT_STUDIO", "NEON_NIGHT");
     private static final Set<String> LAYER_TARGETS = Set.of("FOREGROUND", "BACKGROUND");
+    private static final Set<String> THREE_VIEW_TYPES = Set.of(
+            "CHARACTER", "FACE", "PROP", "SCENE_GRID");
     private static final Set<String> VIEW_ANGLES = Set.of(
             "FRONT", "LEFT_THREE_QUARTER", "RIGHT_THREE_QUARTER", "LEFT_PROFILE",
             "RIGHT_PROFILE", "HIGH_ANGLE", "LOW_ANGLE", "BACK");
@@ -172,13 +180,20 @@ public class DirectMediaTaskService {
             int outputCount = imageParameters == null ? 1 : imageParameters.generationCount();
             Task primary = null;
             for (int outputIndex = 0; outputIndex < outputCount; outputIndex++) {
-                CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId,
-                        projectId, canvasItemId, UUID.randomUUID(), draft.version(), outputIndex);
+                // Regeneration adds a version to the current node. Additional batch outputs
+                // keep independent nodes; only image edits create derivation relationships.
+                CanvasItem outputCard = outputIndex == 0
+                        ? canvasItem
+                        : canvas.forkMediaOutputWithinChange(ownerId, projectId, canvasItemId,
+                                UUID.randomUUID(), draft.version(), outputIndex);
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", 3);
                 input.put("artifactId", artifactId.toString());
                 input.put("sourceCanvasItemId", canvasItemId.toString());
                 input.put("canvasItemId", outputCard.id().toString());
+                input.put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId,
+                        projectId, outputCard.id()));
+                input.put("resultDraftVersion", drafts.get(ownerId, projectId, outputCard.id()).version());
                 if (outputCard.selectedVersionId() == null) input.putNull("parentVersionId");
                 else input.put("parentVersionId", outputCard.selectedVersionId().toString());
                 input.put("draftVersion", draft.version());
@@ -245,7 +260,8 @@ public class DirectMediaTaskService {
     public Task runImageOperation(UUID ownerId, UUID projectId, UUID artifactId,
             UUID canvasItemId, UUID sourceVersionId, long expectedCanvasItemVersion,
             ImageOperation operation, String instruction, UUID capabilityId,
-            JsonNode requestedParameters, String commandKey) {
+            List<UUID> referenceVersionIds, UUID maskAssetId, JsonNode requestedParameters,
+            String commandKey) {
         if (canvasItemId == null || sourceVersionId == null || operation == null
                 || expectedCanvasItemVersion < 0 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
@@ -253,6 +269,17 @@ public class DirectMediaTaskService {
         }
         ObjectNode operationParameters = normalizeOperationParameters(operation,
                 requestedParameters);
+        List<UUID> normalizedReferenceIds = referenceVersionIds == null
+                ? List.of() : List.copyOf(referenceVersionIds);
+        if (new HashSet<>(normalizedReferenceIds).size() != normalizedReferenceIds.size()) {
+            throw invalid("智能编辑参考图不能重复。");
+        }
+        if (operation != ImageOperation.SMART_EDIT
+                && (!normalizedReferenceIds.isEmpty() || maskAssetId != null)) {
+            throw invalid("只有智能编辑支持额外参考图和蒙版。");
+        }
+        ArrayNode requestedReferenceIds = mapper.createArrayNode();
+        normalizedReferenceIds.forEach(id -> requestedReferenceIds.add(id.toString()));
         String normalizedInstruction = instruction == null ? "" : instruction.trim();
         if (normalizedInstruction.length() > 4000) throw invalid("编辑说明不能超过 4000 字符。");
         if (operation.instructionRequired() && normalizedInstruction.isBlank()) {
@@ -279,6 +306,9 @@ public class DirectMediaTaskService {
                         || !saved.path("capabilityId").asText()
                                 .equals(requestedCapabilityId.toString())
                         || !saved.path("instruction").asText().equals(normalizedInstruction)
+                        || !saved.path("referenceVersionIds").equals(requestedReferenceIds)
+                        || !saved.path("maskAssetId").asText("")
+                                .equals(maskAssetId == null ? "" : maskAssetId.toString())
                         || prior.input().path("sourceCanvasItemVersion").asLong(-1)
                                 != expectedCanvasItemVersion
                         || !saved.path("parameters").equals(operationParameters)) {
@@ -306,25 +336,56 @@ public class DirectMediaTaskService {
             MediaCapabilityBinding binding = operation.cloud()
                     ? cloudImageBinding(capabilityId) : capabilities.resolve(
                             LOCAL_IMAGE_CAPABILITY_ID, Task.Kind.IMAGE_GENERATION, 0);
+            var inputPolicy = capabilities.inputPolicy(binding);
+            if (1 + normalizedReferenceIds.size() > inputPolicy.maxReferenceImages()) {
+                throw invalid("所选 AI 图片能力无法接收这么多参考图。");
+            }
+            List<ArtifactVersion> referenceVersions = new ArrayList<>(
+                    normalizedReferenceIds.size());
+            for (UUID referenceVersionId : normalizedReferenceIds) {
+                if (referenceVersionId.equals(sourceVersionId)) {
+                    throw invalid("来源图片已经是智能编辑的第一张输入，无需重复引用。");
+                }
+                referenceVersions.add(artifacts.requireImageVersionForTask(ownerId, projectId,
+                        referenceVersionId));
+            }
+            if (maskAssetId != null) {
+                if (!inputPolicy.supportsImageMask()) {
+                    throw invalid("所选 AI 图片能力不支持显式蒙版编辑。");
+                }
+                validateImageMask(ownerId, projectId, maskAssetId);
+            }
             boolean transparentOutput = requiresTransparentOutput(operation,
                     operationParameters);
-            if (transparentOutput
-                    && !capabilities.inputPolicy(binding).supportsTransparentBackground()) {
+            if (transparentOutput && !inputPolicy.supportsTransparentBackground()) {
                 throw invalid("所选 AI 图片能力不支持透明背景输出。");
             }
             String prompt = operationPrompt(operation, normalizedInstruction,
                     operationParameters);
+            if (!referenceVersions.isEmpty()) {
+                prompt += " Image 1 is the source to edit. Images 2 through "
+                        + (referenceVersions.size() + 1)
+                        + " are additional visual references; use only the traits explicitly requested "
+                        + "and keep unrelated source content unchanged.";
+            }
+            if (maskAssetId != null) {
+                prompt += " Apply the requested change only in the transparent mask-guided area and "
+                        + "preserve every unmasked pixel as closely as possible.";
+            }
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
                     canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0);
             Instant now = clock.instant();
             ObjectNode input = mapper.createObjectNode();
-            input.put("schemaVersion", 5);
+            input.put("schemaVersion", 6);
             input.put("artifactId", artifactId.toString());
             input.put("sourceCanvasItemId", canvasItemId.toString());
             input.put("sourceCanvasItemVersion", expectedCanvasItemVersion);
             input.put("canvasItemId", outputCard.id().toString());
             input.put("canvasItemVersion", outputCard.version());
+            input.put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId,
+                    projectId, outputCard.id()));
+            input.put("resultDraftVersion", drafts.get(ownerId, projectId, outputCard.id()).version());
             input.put("parentVersionId", sourceVersionId.toString());
             input.put("prompt", prompt);
             input.put("providerConfigVersion", provider.configVersion());
@@ -337,6 +398,9 @@ public class DirectMediaTaskService {
             frozenOperation.put("sourceVersionId", sourceVersionId.toString());
             frozenOperation.put("capabilityId", requestedCapabilityId.toString());
             frozenOperation.put("instruction", normalizedInstruction);
+            frozenOperation.set("referenceVersionIds", requestedReferenceIds.deepCopy());
+            if (maskAssetId == null) frozenOperation.putNull("maskAssetId");
+            else frozenOperation.put("maskAssetId", maskAssetId.toString());
             frozenOperation.set("parameters", operationParameters.deepCopy());
             ObjectNode frozen = input.putObject("mediaInput");
             frozen.put("parentVersionId", sourceVersionId.toString());
@@ -354,11 +418,20 @@ public class DirectMediaTaskService {
             generationParameters.put("generationCount", 1);
             frozen.put("capabilityId", binding.capabilityId().toString());
             frozen.put("capabilityVersion", binding.capabilityVersion());
-            ObjectNode image = frozen.putArray("images").addObject();
+            ArrayNode images = frozen.putArray("images");
+            ObjectNode image = images.addObject();
             image.put("artifactId", artifactId.toString());
             image.put("versionId", sourceVersionId.toString());
             image.put("role", MediaDraft.InputRole.REFERENCE.name());
             image.put("order", 0);
+            int referenceOrder = 1;
+            for (ArtifactVersion reference : referenceVersions) {
+                ObjectNode referenceImage = images.addObject();
+                referenceImage.put("artifactId", reference.artifactId().toString());
+                referenceImage.put("versionId", reference.id().toString());
+                referenceImage.put("role", MediaDraft.InputRole.REFERENCE.name());
+                referenceImage.put("order", referenceOrder++);
+            }
             frozen.putArray("mentions");
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.IMAGE_GENERATION, Task.Status.READY, false, input,
@@ -453,15 +526,26 @@ public class DirectMediaTaskService {
                 if (turns < 1 || turns > 3) throw invalid("旋转只支持 90、180 或 270 度。");
                 result.put("quarterTurns", turns);
             }
-            case OUTPAINT, THREE_VIEW -> {
+            case OUTPAINT -> {
                 String ratio = source.path("aspectRatio").asText("");
                 if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
                         || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                    throw invalid(operation == ImageOperation.OUTPAINT
-                            ? "扩图需要选择明确的目标画幅。"
-                            : "三视图需要选择明确的输出画幅。");
+                    throw invalid("扩图需要选择明确的目标画幅。");
                 }
                 result.put("aspectRatio", ratio);
+            }
+            case THREE_VIEW -> {
+                String ratio = source.path("aspectRatio").asText("");
+                if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
+                        || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+                    throw invalid("三视图需要选择明确的输出画幅。");
+                }
+                String type = source.path("threeViewType").asText("");
+                if (!THREE_VIEW_TYPES.contains(type)) {
+                    throw invalid("三视图类型不受支持。");
+                }
+                result.put("aspectRatio", ratio);
+                result.put("threeViewType", type);
             }
             case LAYER_SPLIT -> {
                 String target = source.path("layerTarget").asText("FOREGROUND");
@@ -498,10 +582,7 @@ public class DirectMediaTaskService {
                     + parameters.path("aspectRatio").asText() + ". Preserve the original image exactly "
                     + "inside the expanded canvas and continue its scene, perspective, lighting, and style."
                     + (instruction.isBlank() ? "" : " Additional instruction: " + instruction);
-            case THREE_VIEW -> "Create one clean professional three-view turnaround sheet from the "
-                    + "provided image, showing the same subject at equal scale in front, side, and back "
-                    + "orthographic views. Preserve identity, proportions, clothing, materials, and colors. "
-                    + "Use a simple neutral background and do not add labels or unrelated objects."
+            case THREE_VIEW -> threeViewPrompt(parameters.path("threeViewType").asText())
                     + (instruction.isBlank() ? "" : " Subject guidance: " + instruction);
             case LAYER_SPLIT -> "FOREGROUND".equals(parameters.path("layerTarget").asText())
                     ? "Extract the primary foreground subject from the provided image as a clean isolated "
@@ -557,6 +638,53 @@ public class DirectMediaTaskService {
             case "BACK" -> "a straight-on back view";
             default -> throw invalid("目标视角不受支持。");
         };
+    }
+
+    private String threeViewPrompt(String type) {
+        return switch (type) {
+            case "CHARACTER" -> "Create one clean professional full-body character turnaround sheet from "
+                    + "the provided image. Show the same character at equal scale in straight front, exact "
+                    + "side profile, and straight back orthographic views. Keep a neutral standing pose and "
+                    + "preserve identity, body proportions, hairstyle, clothing construction, accessories, "
+                    + "materials, and colors. Use a simple neutral background, even lighting, clear separation "
+                    + "between views, and no labels or unrelated objects.";
+            case "FACE" -> "Create one clean professional facial turnaround sheet from the provided image. "
+                    + "Show the same head and shoulders at equal scale in straight front, three-quarter, and "
+                    + "exact side profile views. Preserve facial identity, skull and face proportions, skin "
+                    + "tone, hairstyle, makeup, expression, and accessories. Use a simple neutral background, "
+                    + "even lighting, aligned eye level, clear separation between views, and no labels.";
+            case "PROP" -> "Create one clean professional prop turnaround sheet from the provided image. "
+                    + "Show the exact same object at equal scale in straight front, exact side, and straight "
+                    + "back orthographic views. Preserve geometry, construction, materials, textures, colors, "
+                    + "wear, and functional details. Use a simple neutral background, even lighting, clear "
+                    + "separation between views, and do not add hands, people, labels, or unrelated objects.";
+            case "SCENE_GRID" -> "Create one coherent 2 by 2 environment reference grid from the provided "
+                    + "scene. The four panels must show the same location as a wide establishing view, a "
+                    + "reverse view, a medium view, and a key-detail view. Preserve the spatial layout, "
+                    + "architecture, landmarks, materials, colors, time of day, weather, and lighting across "
+                    + "all panels. Use clean equal gutters and do not add labels, characters, or unrelated "
+                    + "objects unless they are already essential to the source scene.";
+            default -> throw invalid("三视图类型不受支持。");
+        };
+    }
+
+    /** A provider mask is an immutable, project-scoped PNG with a real alpha channel. */
+    private void validateImageMask(UUID ownerId, UUID projectId, UUID maskAssetId) {
+        AssetService.AssetFile file = assets.get(ownerId, projectId, maskAssetId);
+        Asset mask = file.asset();
+        if (mask.mediaKind() != Asset.MediaKind.IMAGE
+                || !"image/png".equals(mask.contentType())
+                || mask.byteSize() < 1 || mask.byteSize() > MAX_OPENAI_MASK_BYTES) {
+            throw invalid("智能编辑蒙版必须是小于 4 MiB 的 PNG 图片。");
+        }
+        try {
+            BufferedImage decoded = ImageIO.read(file.path().toFile());
+            if (decoded == null || !decoded.getColorModel().hasAlpha()) {
+                throw invalid("智能编辑蒙版必须包含透明通道。");
+            }
+        } catch (IOException unreadable) {
+            throw invalid("智能编辑蒙版无法读取。");
+        }
     }
 
     private String relightPresetPrompt(String preset) {

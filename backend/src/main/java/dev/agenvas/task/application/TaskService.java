@@ -583,9 +583,15 @@ public class TaskService {
                     lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
                     selectResult && canvasItemId == null);
             if (canvasItemId != null) {
+                canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(),
+                        canvasItemId, artifactId, result.versionId());
                 boolean cardSelected = selectResult && canvas.selectTaskResultWithinChange(
                         ownerId, lease.projectId(), canvasItemId, artifactId,
-                        target.expectedCurrentVersionId(), result.versionId());
+                        target.expectedCurrentVersionId(), result.versionId(),
+                        lease.input().has("resultSelectionEpoch")
+                                ? lease.input().path("resultSelectionEpoch").asLong() : null,
+                        lease.input().has("resultDraftVersion")
+                                ? lease.input().path("resultDraftVersion").asLong() : null);
                 result = new ArtifactService.TaskVersionResult(result.versionId(), cardSelected);
             }
             ObjectNode output = objectMapper.createObjectNode();
@@ -1041,6 +1047,8 @@ public class TaskService {
         if (cardOwnedDirectTask && input.has("mediaInput")) {
             try {
                 UUID canvasItemId = UUID.fromString(input.path("canvasItemId").asText());
+                if (!canvas.hasArtifactItem(ownerId, task.projectId(), canvasItemId,
+                        UUID.fromString(input.path("artifactId").asText()))) return false;
                 MediaDraft current = mediaDrafts.get(ownerId, task.projectId(), canvasItemId);
                 JsonNode frozen = input.path("mediaInput");
                 String currentMode = task.kind() == Task.Kind.IMAGE_GENERATION

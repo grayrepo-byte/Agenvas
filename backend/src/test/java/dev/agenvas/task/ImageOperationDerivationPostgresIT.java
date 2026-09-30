@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasConnectionService;
@@ -15,11 +16,13 @@ import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.ImageOperation;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,6 +66,7 @@ class ImageOperationDerivationPostgresIT {
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private TaskService tasks;
     @Autowired private MediaExecutionWorker worker;
+    @Autowired private MediaCapabilityService capabilities;
     @Autowired private ObjectMapper mapper;
 
     @Test
@@ -80,6 +84,20 @@ class ImageOperationDerivationPostgresIT {
         UUID sourceVersionId = image.resourceDefaultVersion().id();
         UUID sourceCardId = dev.agenvas.support.CanvasMediaFixture.place(canvas,
                 owner.userId(), project.id(), image.artifact().id());
+        var reference = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Reference", content);
+        var parameters = mapper.createObjectNode();
+        parameters.put("aspectRatio", "16:9");
+        parameters.put("resolution", "2K");
+        parameters.put("quality", "high");
+        parameters.put("generationCount", 4);
+        MediaDraft sourceDraft = drafts.save(owner.userId(), project.id(), sourceCardId, 0,
+                "Previous prompt \uFFFC", parameters, null,
+                capabilities.defaultFor(Task.Kind.IMAGE_GENERATION).capabilityId(), null,
+                List.of(new MediaDraftService.SaveImageInput(reference.resourceDefaultVersion().id(),
+                        MediaDraft.InputRole.REFERENCE, "#7C3AED")),
+                List.of(new MediaDraft.PromptMention(reference.resourceDefaultVersion().id(),
+                        MediaDraft.InputRole.REFERENCE)));
 
         ObjectNode crop = mapper.createObjectNode();
         crop.put("x", 0);
@@ -88,8 +106,11 @@ class ImageOperationDerivationPostgresIT {
         crop.put("height", 1);
         Task accepted = directMedia.runImageOperation(owner.userId(), project.id(),
                 image.artifact().id(), sourceCardId, sourceVersionId, 0,
-                ImageOperation.CROP, "", null, crop, "crop-derived-node");
+                ImageOperation.CROP, "", null, List.of(), null, crop, "crop-derived-node");
         UUID targetCardId = UUID.fromString(accepted.input().path("canvasItemId").asText());
+        assertFreshDraft(owner, project, targetCardId, MediaDraft.DisplayMode.DRAFT);
+        assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
+        assertThat(accepted.input().path("resultDraftVersion").asLong()).isZero();
 
         assertThat(targetCardId).isNotEqualTo(sourceCardId);
         assertThat(accepted.input().path("sourceCanvasItemId").asText())
@@ -108,7 +129,7 @@ class ImageOperationDerivationPostgresIT {
 
         Task replay = directMedia.runImageOperation(owner.userId(), project.id(),
                 image.artifact().id(), sourceCardId, sourceVersionId, 0,
-                ImageOperation.CROP, "", null, crop, "crop-derived-node");
+                ImageOperation.CROP, "", null, List.of(), null, crop, "crop-derived-node");
         assertThat(replay.id()).isEqualTo(accepted.id());
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
         assertThat(connections.list(owner.userId(), project.id())).hasSize(1);
@@ -124,6 +145,12 @@ class ImageOperationDerivationPostgresIT {
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(sourceVersionId);
         assertThat(cards.stream().filter(entry -> entry.item().id().equals(targetCardId))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(resultVersionId);
+        assertThat(canvas.listMediaVersions(owner.userId(), project.id(), sourceCardId))
+                .extracting(version -> version.id()).containsExactly(sourceVersionId);
+        assertThat(canvas.listMediaVersions(owner.userId(), project.id(), targetCardId))
+                .extracting(version -> version.id()).containsExactly(resultVersionId);
+        assertFreshDraft(owner, project, targetCardId, MediaDraft.DisplayMode.RESULT);
+        assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
 
         CanvasConnection lineage = connections.list(owner.userId(), project.id()).getFirst();
         connections.disconnect(owner.userId(), project.id(), lineage.id(), null, null);
@@ -137,5 +164,19 @@ class ImageOperationDerivationPostgresIT {
         assertThat(connections.list(owner.userId(), project.id())).singleElement()
                 .extracting(CanvasConnection::relationType)
                 .isEqualTo(CanvasConnection.RelationType.MEDIA_INPUT);
+    }
+
+    private void assertFreshDraft(AdminPrincipal owner, Project project, UUID cardId,
+            MediaDraft.DisplayMode displayMode) {
+        MediaDraft draft = drafts.get(owner.userId(), project.id(), cardId);
+        assertThat(draft.prompt()).isEmpty();
+        assertThat(draft.parameters().isEmpty()).isTrue();
+        assertThat(draft.capabilityId()).isNull();
+        assertThat(draft.durationSeconds()).isNull();
+        assertThat(draft.videoInputMode()).isNull();
+        assertThat(draft.imageInputs()).isEmpty();
+        assertThat(draft.mentions()).isEmpty();
+        assertThat(draft.displayMode()).isEqualTo(displayMode);
+        assertThat(draft.version()).isZero();
     }
 }

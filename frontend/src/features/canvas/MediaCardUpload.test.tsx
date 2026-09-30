@@ -78,13 +78,13 @@ function submitUpload() {
 }
 
 describe("MediaCardUpload", () => {
-  it("uploads the chosen file immediately and uses a client-stable target id", async () => {
+  it("uploads the chosen file immediately into the empty source node", async () => {
     const operations: string[] = [];
     mockUpload(() => operations.push("upload"));
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
-        expect(await request.json()).toEqual({ targetItemId: expect.any(String),
+        expect(await request.json()).toEqual({ targetItemId: CANVAS_ITEM_ID,
           expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
         return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
           selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
@@ -105,7 +105,7 @@ describe("MediaCardUpload", () => {
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
         requests++;
-        expect(await request.json()).toEqual({ targetItemId: expect.any(String),
+        expect(await request.json()).toEqual({ targetItemId: CANVAS_ITEM_ID,
           expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
         if (requests === 1) return HttpResponse.json({ title: "暂时不可用", detail: "响应暂时失败。",
           code: "SERVICE_UNAVAILABLE", retryable: true },
@@ -128,7 +128,7 @@ describe("MediaCardUpload", () => {
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
-        expect(await request.json()).toEqual({ targetItemId: expect.any(String),
+        expect(await request.json()).toEqual({ targetItemId: CANVAS_ITEM_ID,
           expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
         if (failing) return HttpResponse.json({ title: "响应失败", detail: "响应暂时不可用。",
           code: "SERVICE_UNAVAILABLE", retryable: true },

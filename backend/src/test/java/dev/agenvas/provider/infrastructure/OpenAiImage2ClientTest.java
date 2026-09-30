@@ -70,7 +70,8 @@ class OpenAiImage2ClientTest {
             assertThat(body).contains("name=\"model\"", "gpt-image-2",
                     "name=\"background\"", "opaque",
                     "name=\"image[]\"", "filename=\"reference-1.png\"",
-                    "filename=\"reference-2.png\"", "Avoid: clouds");
+                    "filename=\"reference-2.png\"", "name=\"mask\"",
+                    "filename=\"edit-mask.png\"", "Avoid: clouds");
             assertThat(body.indexOf("FIRST-REFERENCE"))
                     .isLessThan(body.indexOf("SECOND-REFERENCE"));
             edits.incrementAndGet();
@@ -83,7 +84,8 @@ class OpenAiImage2ClientTest {
         try (var edited = client.edit("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge\nAvoid: clouds", "high",
                 "1024x1024", List.of(
                         "FIRST-REFERENCE".getBytes(StandardCharsets.UTF_8),
-                        "SECOND-REFERENCE".getBytes(StandardCharsets.UTF_8)), false,
+                        "SECOND-REFERENCE".getBytes(StandardCharsets.UTF_8)),
+                new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10}, false,
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(edited.stream().readAllBytes()).isEqualTo(png);
         }
@@ -97,6 +99,11 @@ class OpenAiImage2ClientTest {
                 "draw", "medium", "1024x1024",
                 List.of(new byte[] {1}, new byte[] {2}, new byte[] {3}, new byte[] {4},
                         new byte[] {5}),
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> client.edit("key", OpenAiImage2Client.DEFAULT_MODEL,
+                "draw", "medium", "1024x1024", List.of(new byte[] {1}),
+                new byte[] {'J', 'P', 'E', 'G'}, false,
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
                 .isInstanceOf(IllegalArgumentException.class);
     }

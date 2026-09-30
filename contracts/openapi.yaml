@@ -902,7 +902,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: runMediaDraft
-      summary: 固定已保存的媒体草稿，为每个结果创建独立节点并受理 USER_DIRECT Task
+      summary: 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -971,6 +971,7 @@ paths:
     post:
       operationId: runImageOperation
       summary: 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
+      description: 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -1101,7 +1102,8 @@ paths:
       - {$ref: "#/components/parameters/CanvasItemId"}
     post:
       operationId: uploadCanvasItemVersion
-      summary: 基于来源媒体节点上传内容并创建独立结果节点
+      summary: 向空媒体节点上传首个结果，或从已有结果派生新节点
+      description: 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入。
       tags: [Canvas]
       requestBody:
         required: true
@@ -1110,7 +1112,48 @@ paths:
             schema: {$ref: "#/components/schemas/UploadCanvasItemVersionRequest"}
       responses:
         "201":
-          description: 新版本已追加并由新结果节点固定，来源节点不变
+          description: 空节点固定首个上传结果；已有结果时由新节点固定，来源节点不变
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CanvasItem"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas/items/{itemId}/media-versions:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: itemId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listCanvasMediaVersions
+      summary: 读取当前媒体节点的结果历史，不包含其他节点的派生结果
+      tags: [Canvas]
+      responses:
+        "200":
+          description: 节点拥有的不可变版本，包括未自动选用的晚到结果
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ArtifactVersionList"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/projects/{projectId}/canvas/items/{itemId}/select-media-version:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: itemId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: selectCanvasMediaVersion
+      summary: 以节点 CAS 选用该节点的历史版本，保留草稿及精确输入引用
+      tags: [Canvas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SelectMediaVersionRequest"}
+      responses:
+        "200":
+          description: 更新后的节点；不修改资源默认版本或其他节点
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CanvasItem"}
@@ -1653,6 +1696,7 @@ components:
         minimumSeconds, maximumSeconds, maxReferenceImages, supportedVideoInputModes,
         defaultVideoInputMode, supportsEndFrame, supportedImageAspectRatios,
         supportedImageResolutions, supportedImageQualities, supportsTransparentBackground,
+        supportsImageMask,
         mappingSha256, settings]
       properties:
         id: {type: string, format: uuid}
@@ -1687,6 +1731,7 @@ components:
           uniqueItems: true
           items: {type: string, enum: [low, medium, high]}
         supportsTransparentBackground: {type: boolean}
+        supportsImageMask: {type: boolean}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     FixedMediaAdapterSettings:
@@ -1847,7 +1892,7 @@ components:
       required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
         canvasItems, connections]
       properties:
-        schemaVersion: {type: integer, const: 2}
+        schemaVersion: {type: integer, const: 3}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -1949,7 +1994,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, subjectType, subjectId, selectedVersionId, title, x, y, width,
-        height, zIndex, groupId, locked, version, mediaDraft]
+        height, zIndex, groupId, locked, version, mediaVersionIds, mediaDraft]
       properties:
         id: {type: string, format: uuid}
         subjectType: {$ref: "#/components/schemas/CanvasSubjectType"}
@@ -1968,6 +2013,10 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/ManifestMediaDraft"}
             - {type: "null"}
+        mediaVersionIds:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
     ManifestMediaDraft:
       type: object
       additionalProperties: false
@@ -2192,6 +2241,12 @@ components:
             DEPTH_MAP, UPSCALE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
         instruction: {type: [string, "null"], maxLength: 4000}
         capabilityId: {type: [string, "null"], format: uuid}
+        referenceVersionIds:
+          type: array
+          maxItems: 15
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        maskAssetId: {type: [string, "null"], format: uuid}
         parameters: {$ref: "#/components/schemas/ImageOperationParameters"}
     ImageOperationParameters:
       type: object
@@ -2204,6 +2259,7 @@ components:
         height: {type: number, exclusiveMinimum: 0, maximum: 1}
         quarterTurns: {type: integer, enum: [1, 2, 3]}
         aspectRatio: {type: string, enum: ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
+        threeViewType: {type: string, enum: [CHARACTER, FACE, PROP, SCENE_GRID]}
         lightingPreset:
           type: string
           enum: [GOLDEN_HOUR, BLUE_HOUR, OVERCAST_SOFT, MOONLIGHT, SOFT_STUDIO, NEON_NIGHT]
@@ -2393,6 +2449,13 @@ components:
         title: {type: string, minLength: 1, maxLength: 160}
         content: {$ref: "#/components/schemas/WritableArtifactContent"}
     SelectArtifactVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [versionId, expectedVersion]
+      properties:
+        versionId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+    SelectMediaVersionRequest:
       type: object
       additionalProperties: false
       required: [versionId, expectedVersion]

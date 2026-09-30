@@ -68,6 +68,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             size(context);
             if (!FrozenMediaInputs.images(context.lease()).isEmpty()) {
                 referencePngs(context);
+                maskPng(context);
             }
             return null;
         } catch (RuntimeException invalid) {
@@ -90,7 +91,8 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         try {
             return new Submission.Completed(!FrozenMediaInputs.images(context.lease()).isEmpty()
                     ? client.edit(key, model, prompt, quality, size(context), referencePngs(context),
-                            parameters.transparentBackground(), snapshot.connectionVersion().origin())
+                            maskPng(context), parameters.transparentBackground(),
+                            snapshot.connectionVersion().origin())
                     : client.generate(key, model, prompt, quality, size(context),
                             parameters.transparentBackground(), snapshot.connectionVersion().origin()));
         } catch (OpenAiImage2Client.Rejected rejected) {
@@ -243,6 +245,54 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             return bytes.toByteArray();
         } catch (IOException invalid) {
             throw new IllegalArgumentException("Reference cannot be read", invalid);
+        }
+    }
+
+    /** Resizes the immutable alpha mask with the same contain transform as the first input image. */
+    private byte[] maskPng(AttemptContext context) {
+        String maskAssetId = context.lease().input().path("imageOperation")
+                .path("maskAssetId").asText("");
+        if (maskAssetId.isBlank()) return null;
+        AssetService.AssetFile file = assets.get(context.ownerId(),
+                context.lease().projectId(), UUID.fromString(maskAssetId));
+        Asset mask = file.asset();
+        if (mask.mediaKind() != Asset.MediaKind.IMAGE
+                || !"image/png".equals(mask.contentType())
+                || mask.byteSize() < 1 || mask.byteSize() > OpenAiImage2Client.MAX_MASK_BYTES) {
+            throw new IllegalArgumentException("Pinned image edit mask is unsupported");
+        }
+        String[] dimensions = size(context).split("x", 2);
+        int width = Integer.parseInt(dimensions[0]);
+        int height = Integer.parseInt(dimensions[1]);
+        try {
+            BufferedImage source = ImageIO.read(file.path().toFile());
+            if (source == null || !source.getColorModel().hasAlpha()) {
+                throw new IllegalArgumentException("Pinned image edit mask has no alpha channel");
+            }
+            BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D graphics = output.createGraphics();
+            try {
+                graphics.setColor(new Color(255, 255, 255, 255));
+                graphics.fillRect(0, 0, width, height);
+                double scale = Math.min((double) width / source.getWidth(),
+                        (double) height / source.getHeight());
+                int scaledWidth = Math.max(1, (int) Math.round(source.getWidth() * scale));
+                int scaledHeight = Math.max(1, (int) Math.round(source.getHeight() * scale));
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                graphics.drawImage(source, (width - scaledWidth) / 2,
+                        (height - scaledHeight) / 2, scaledWidth, scaledHeight, null);
+            } finally {
+                graphics.dispose();
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            if (!ImageIO.write(output, "png", bytes)
+                    || bytes.size() > OpenAiImage2Client.MAX_MASK_BYTES) {
+                throw new IllegalArgumentException("Pinned image edit mask exceeds provider bound");
+            }
+            return bytes.toByteArray();
+        } catch (IOException unreadable) {
+            throw new IllegalArgumentException("Pinned image edit mask cannot be read", unreadable);
         }
     }
 }

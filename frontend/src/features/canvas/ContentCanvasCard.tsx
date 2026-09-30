@@ -20,6 +20,7 @@ type ContentCanvasCardProps = {
   artifact: Artifact;
   item: CanvasItem;
   selected: boolean;
+  toolbarVisible?: boolean;
   locked: boolean;
   onInspect: () => void;
   children: ReactNode;
@@ -29,7 +30,7 @@ type ContentCanvasCardProps = {
 const TEXT_PRESENTATION = { label: "文字", icon: TextT };
 
 /** Text edits in place; the persisted content is shown as written. */
-export function ContentCanvasCard({ artifact, item, selected, locked, onInspect,
+export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, locked, onInspect,
   children }: ContentCanvasCardProps) {
   const [editingText, setEditingText] = useState(false);
   const content = artifact.resourceDefaultVersion?.content;
@@ -40,6 +41,7 @@ export function ContentCanvasCard({ artifact, item, selected, locked, onInspect,
   const emptyText = !text.trim();
 
   return <ArtifactCardFrame title={item.title} kindLabel={label} selected={selected} locked={locked}
+    toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
         <button type="button" disabled={!hasCurrentVersion(artifact)}
           onClick={() => setEditingText(true)}>

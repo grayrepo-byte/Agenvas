@@ -125,7 +125,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(3);
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();
@@ -140,7 +140,12 @@ class ProjectExportManifestPostgresIT {
         assertThat(versionHistory.get(1).path("baseVersionId").asText())
                 .isEqualTo(versionHistory.get(0).path("id").asText());
         assertThat(manifest.path("canvasItems").size()).isEqualTo(2);
+        JsonNode sourceCard = findById(manifest.path("canvasItems"), sourceItemId);
+        assertThat(sourceCard.path("mediaVersionIds").size()).isEqualTo(1);
+        assertThat(sourceCard.path("mediaVersionIds").get(0).asText())
+                .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
         JsonNode targetCard = findById(manifest.path("canvasItems"), targetItemId);
+        assertThat(targetCard.path("mediaVersionIds").isEmpty()).isTrue();
         assertThat(targetCard.path("selectedVersionId").isNull()).isTrue();
         JsonNode input = targetCard.path("mediaDraft").path("imageInputs").get(0);
         assertThat(input.path("versionId").asText())

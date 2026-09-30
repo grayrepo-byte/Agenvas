@@ -6,7 +6,7 @@ import { useLayoutEffect } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasItem, ProjectSnapshot } from "../../shared/api/client";
+import type { CanvasCommand, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { useCanvasStore } from "./canvasStore";
@@ -40,7 +40,8 @@ vi.mock("@xyflow/react", async (importOriginal) => {
     ReactFlow: (props: FlowProps) => {
       flowProps = props;
       // Keep a fixed viewport; node dimensions come from the actual workspace projection.
-      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} {...TEST_VIEWPORT}>
+      // jsdom has no viewport bounds; disable edge auto-pan so drag coordinates remain deterministic.
+      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} autoPanOnNodeDrag={false} {...TEST_VIEWPORT}>
         <TestHandleMeasurements />{props.children}
       </real.ReactFlow> : <div data-testid="flow" />;
     },
@@ -89,7 +90,7 @@ afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
   flowProps = {};
   renderRealFlow = false;
-  useCanvasStore.setState({ selectedIds: [] });
+  useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
   server.use(
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
     http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () => HttpResponse.json([])),
@@ -101,6 +102,8 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId", () => HttpResponse.json(snapshot().project)),
     http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json(snapshot())),
     http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+    http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({
+      items: items.flatMap((item) => item.artifact ? [item.artifact] : []) })),
     http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
@@ -185,6 +188,122 @@ async function renderInteractiveFlow() {
   await renderFlow();
   await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
 }
+
+/** Exercise the library's actual click suppression and drag threshold, rather than only its callbacks. */
+function nodeMouseGesture(type: "mouseDown" | "mouseMove" | "mouseUp", node: HTMLElement,
+  displacement: number) {
+  const origin = 100;
+  const target = type === "mouseDown" ? node : window;
+  const event = createEvent[type](target, {
+    button: 0, buttons: type === "mouseUp" ? 0 : 1,
+    clientX: origin + displacement, clientY: origin,
+  });
+  Object.defineProperty(event, "view", { value: window });
+  fireEvent(target, event);
+}
+
+function observeLayoutSaves(fail = false) {
+  const batches: CanvasCommand[][] = [];
+  server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
+    const body = await request.json() as { commands: CanvasCommand[] };
+    batches.push(body.commands);
+    if (fail) return HttpResponse.json({ code: "VERSION_CONFLICT", title: "布局冲突" }, { status: 409 });
+    return HttpResponse.json({ items: items.map((item) => {
+      const command = body.commands.find((candidate) => candidate.itemId === item.id);
+      return command?.type === "UPDATE_LAYOUT"
+        ? { ...item, x: command.x, y: command.y, width: command.width, height: command.height,
+          version: item.version + 1 } : item;
+    }) });
+  }));
+  return batches;
+}
+
+describe("node click and drag gestures", () => {
+  it("highlights an unselected node only while dragging, saves on release, and accepts the next click", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const node = nodeElement("image-card");
+    nodeMouseGesture("mouseDown", node, 0);
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
+    expect(node.querySelector(".artifact-canvas-card")).toHaveClass("is-selected");
+    expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(selectedIds()).toEqual([]);
+    expect(saves).toHaveLength(0);
+    nodeMouseGesture("mouseMove", node, 40);
+    nodeMouseGesture("mouseUp", node, 40);
+    // The browser's click following a completed drag must not open the editor.
+    fireEvent.click(node);
+    expect(selectedIds()).toEqual([]);
+    expect(node.querySelector(".artifact-canvas-card")).not.toHaveClass("is-selected");
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card",
+      expectedVersion: 3, x: 36, y: 0 })]);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+    fireEvent.click(node);
+    expect(selectedIds()).toEqual(["image-card"]);
+    expect(await screen.findByLabelText("媒体卡片操作")).toBeVisible();
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeVisible();
+  });
+
+  it("hides the existing toolbar and editor when dragging a selected text node, then clears selection", async () => {
+    observeLayoutSaves();
+    await renderInteractiveFlow();
+    const node = nodeElement("text-card");
+    fireEvent.click(node);
+    expect(await screen.findByLabelText("文字卡片操作")).toBeVisible();
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeVisible();
+    nodeMouseGesture("mouseDown", node, 0);
+    nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
+    expect(node.querySelector(".artifact-canvas-card")).toHaveClass("is-selected");
+    expect(screen.queryByLabelText("文字卡片操作")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    nodeMouseGesture("mouseMove", node, 40);
+    nodeMouseGesture("mouseUp", node, 40);
+    expect(selectedIds()).toEqual([]);
+    expect(node).not.toHaveClass("selected");
+  });
+
+  it("keeps a group highlighted during drag, clears it on release, and saves every moved node together", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "agent-card"]));
+    expect(await screen.findByLabelText("批量操作")).toBeVisible();
+    const node = nodeElement("image-card");
+    nodeMouseGesture("mouseDown", node, 0);
+    nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
+    expect(node.querySelector(".artifact-canvas-card")).toHaveClass("is-selected");
+    expect(nodeElement("agent-card").querySelector(".agent-chat-card"))
+      .toHaveClass("agent-chat-card--selected");
+    expect(screen.queryByLabelText("批量操作")).not.toBeInTheDocument();
+    nodeMouseGesture("mouseMove", node, 40);
+    nodeMouseGesture("mouseUp", node, 40);
+    expect(selectedIds()).toEqual([]);
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([
+      expect.objectContaining({ itemId: "image-card", x: 36, y: 0 }),
+      expect.objectContaining({ itemId: "agent-card", x: 436, y: 0 }),
+    ]);
+  });
+
+  it("releases drag highlighting even when layout saving fails and retains the unsaved position", async () => {
+    observeLayoutSaves(true);
+    await renderInteractiveFlow();
+    const node = nodeElement("image-card");
+    nodeMouseGesture("mouseDown", node, 0);
+    nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
+    nodeMouseGesture("mouseMove", node, 40);
+    nodeMouseGesture("mouseUp", node, 40);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
+    expect(selectedIds()).toEqual([]);
+    expect(node.querySelector(".artifact-canvas-card")).not.toHaveClass("is-selected");
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(useCanvasStore.getState().drafts["image-card"]).toMatchObject({ x: 36, y: 0 });
+  });
+});
 
 describe("workspace selection with real React Flow", () => {
   it("selects and replaces nodes on ordinary clicks", async () => {
@@ -347,7 +466,14 @@ describe("canvas interaction tools", () => {
       });
       Object.defineProperty(event, "view", { value: window });
       fireEvent(target, event);
+      if (type !== "click") {
+        expect(selectedIds()).toEqual([]);
+        expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+      }
     }
     expect(selectedIds()).toEqual(["image-card"]);
+    expect(await screen.findByLabelText("媒体卡片操作")).toBeVisible();
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeVisible();
   });
 });

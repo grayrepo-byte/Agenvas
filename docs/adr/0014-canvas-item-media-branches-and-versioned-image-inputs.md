@@ -1,6 +1,6 @@
 # ADR 0014：CanvasItem 独立媒体分支与版本化多图输入
 
-状态：部分由 [ADR 0016](0016-media-nodes-are-single-results.md) 取代（媒体节点版本选择和原位结果写入已撤回；CanvasItem 草稿归属及精确输入引用继续有效）。本决策替代 [ADR 0005](0005-canvas-interaction-redesign.md) 中 Artifact 级媒体草稿、图片仅文生图、视频单图输入及移除卡片不影响关系的决定，并替代 [ADR 0013](0013-contract-to-direct-generation.md) 中保留 `keyframeVersionId` 的决定。
+状态：媒体操作和节点历史按 [ADR 0017](0017-operation-specific-media-versioning.md) 修订；CanvasItem 草稿归属及精确输入引用继续有效。本决策替代 [ADR 0005](0005-canvas-interaction-redesign.md) 中 Artifact 级媒体草稿、图片仅文生图、视频单图输入及移除卡片不影响关系的决定，并替代 [ADR 0013](0013-contract-to-direct-generation.md) 中保留 `keyframeVersionId` 的决定。
 
 ## 背景
 

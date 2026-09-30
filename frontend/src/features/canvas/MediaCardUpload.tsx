@@ -3,9 +3,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, listCanvasItems, uploadCanvasItemVersion, uploadImageAsset,
   type Artifact, type CanvasItem } from "../../shared/api/client";
 
-/** Upload derives a new media node and preserves completed stages if the next request fails. */
-export function MediaCardUpload({ artifact, item, initialFile, onDone }: {
-  artifact: Artifact; item: CanvasItem; initialFile: File; onDone: () => void;
+/** Upload fills an empty media node, and only derives when the source already has a result. */
+export function MediaCardUpload({ artifact, item, initialFile, onDone, compact = false }: {
+  artifact: Artifact; item: CanvasItem; initialFile: File; onDone: () => void; compact?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(initialFile);
@@ -13,13 +13,19 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone }: {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const initialUploadStarted = useRef(false);
-  const progress = useRef<{ file: File; assetId?: string } | null>({ file: initialFile });
+  const progress = useRef<{ file: File; targetItemId: string; assetId?: string } | null>({
+    file: initialFile,
+    targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
+  });
   const upload = useMutation({
     mutationFn: async (image: File) => {
-      if (progress.current?.file !== image) progress.current = { file: image };
+      if (progress.current?.file !== image) progress.current = {
+        file: image,
+        targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
+      };
       const pending = progress.current;
       if (!pending.assetId) pending.assetId = (await uploadImageAsset(artifact.projectId, image)).id;
-      const request = { targetItemId: crypto.randomUUID(), expectedVersion,
+      const request = { targetItemId: pending.targetItemId, expectedVersion,
         content: { sourceType: "UPLOAD" as const, assetId: pending.assetId } };
       try {
         await uploadCanvasItemVersion(artifact.projectId, item.id, request);
@@ -32,6 +38,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone }: {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["media-draft", artifact.projectId, item.id] }),
         queryClient.invalidateQueries({ queryKey: ["artifact-versions", artifact.projectId, artifact.id] }),
@@ -60,8 +67,24 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone }: {
       setRefreshError(failure instanceof Error ? failure.message : "无法读取当前版本");
     } finally { setRefreshing(false); }
   }
+  const errorMessage = upload.error instanceof ApiError && upload.error.status === 409
+    ? "卡片已有更新，文件已保留；读取最新版本后可重新上传。"
+    : upload.error?.message;
+  if (compact) return <div className="media-card-upload-status nodrag nowheel nopan">
+    {upload.isPending ? <p role="status">正在上传图片…</p> : null}
+    {upload.error ? <div className="media-card-error" role="alert">
+      <span>{errorMessage}</span>
+      <button type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
+        {refreshing ? "读取中…" : "重试上传"}
+      </button>
+      {upload.error instanceof ApiError && upload.error.status === 409 ? <button type="button"
+        disabled={refreshing} onClick={() => void refreshVersion()}>读取最新版本</button> : null}
+    </div> : null}
+    {refreshError ? <p className="media-card-error" role="alert">{refreshError}</p> : null}
+  </div>;
   return <form className="media-card-upload-form" onSubmit={submit}>
-    <p>基于「{artifact.title}」上传图片，并创建一个新节点。</p>
+    <p>{item.selectedVersionId ? `基于「${artifact.title}」上传图片，并创建一个新节点。`
+      : `上传图片到「${artifact.title}」。`}</p>
     <p className="text-xs text-[var(--muted)]">已选择：{file?.name}</p>
     <label>更换图片<input type="file" accept="image/png,image/jpeg,image/webp"
       disabled={upload.isPending} onChange={(event) => {
@@ -73,9 +96,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone }: {
     <p className="text-xs text-[var(--muted)]">PNG、JPEG、WebP · 最大 20 MiB / 40 MP</p>
     <button className="primary-button" type="submit" disabled={!file || upload.isPending || refreshing}>
       {upload.isPending ? "正在上传…" : upload.error ? "重试上传" : "上传并创建节点"}</button>
-    {upload.error ? <p role="alert">{upload.error instanceof ApiError && upload.error.status === 409
-      ? "卡片已有更新，文件已保留；读取最新版本后可重新上传。"
-      : upload.error.message}</p> : null}
+    {upload.error ? <p role="alert">{errorMessage}</p> : null}
     {upload.error instanceof ApiError && upload.error.status === 409 ? <button className="secondary-button"
       type="button" disabled={refreshing} onClick={() => void refreshVersion()}>
       {refreshing ? "读取中…" : "读取最新版本"}</button> : null}

@@ -29,6 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
+    private static final int MANIFEST_SCHEMA_VERSION = 3;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
@@ -78,7 +79,7 @@ public class ProjectExportManifestService {
                 .toList();
         List<ConnectionEntry> connectionEntries = connections.list(ownerId, projectId).stream()
                 .map(this::connectionEntry).toList();
-        return new Manifest(2, clock.instant(), project.eventSeq(),
+        return new Manifest(MANIFEST_SCHEMA_VERSION, clock.instant(), project.eventSeq(),
                 new ProjectEntry(project.id(), project.name(), project.aspectRatio(),
                         project.status(), project.createdAt()),
                 catalog.artifacts().stream().map(artifact -> artifactEntry(
@@ -114,13 +115,17 @@ public class ProjectExportManifestService {
             CanvasService.CanvasEntry entry) {
         CanvasItem item = entry.item();
         MediaDraftEntry draft = null;
+        List<UUID> mediaVersionIds = List.of();
         if (entry.artifact() != null
                 && entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
             draft = mediaDraftEntry(mediaDrafts.get(ownerId, projectId, item.id()));
+            mediaVersionIds = canvas.listMediaVersions(ownerId, projectId, item.id()).stream()
+                    .map(ArtifactVersion::id).toList();
         }
         return new CanvasItemEntry(item.id(), item.subjectType(), item.subjectId(),
                 item.selectedVersionId(), item.title(), item.x(), item.y(), item.width(),
-                item.height(), item.zIndex(), item.groupId(), item.locked(), item.version(), draft);
+                item.height(), item.zIndex(), item.groupId(), item.locked(), item.version(),
+                mediaVersionIds, draft);
     }
 
     private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
@@ -201,7 +206,8 @@ public class ProjectExportManifestService {
     public record CanvasItemEntry(UUID id, CanvasItem.SubjectType subjectType, UUID subjectId,
             UUID selectedVersionId, String title, java.math.BigDecimal x,
             java.math.BigDecimal y, java.math.BigDecimal width, java.math.BigDecimal height,
-            int zIndex, UUID groupId, boolean locked, long version, MediaDraftEntry mediaDraft) {}
+            int zIndex, UUID groupId, boolean locked, long version,
+            List<UUID> mediaVersionIds, MediaDraftEntry mediaDraft) {}
 
     /** Complete safe generation state for one image or video card. */
     public record MediaDraftEntry(String prompt, JsonNode parameters, Integer durationSeconds,

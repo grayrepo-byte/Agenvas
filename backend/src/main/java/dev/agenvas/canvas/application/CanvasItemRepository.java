@@ -28,6 +28,15 @@ public interface CanvasItemRepository {
     boolean selectVersion(UUID ownerId, UUID projectId, UUID itemId, long expectedVersion,
             UUID selectedVersionId, Instant updatedAt);
 
+    /** Content-only revision: dragging or renaming a card must not invalidate generation. */
+    long mediaSelectionEpoch(UUID ownerId, UUID projectId, UUID itemId);
+
+    /** Adds a card-owned immutable result, including archived but unselected task outputs. */
+    void addMediaVersion(UUID projectId, UUID itemId, UUID versionId, Instant createdAt);
+
+    /** Only this card's results; sibling and derived card results are deliberately excluded. */
+    List<UUID> mediaVersionIds(UUID ownerId, UUID projectId, UUID itemId);
+
     /** 仅删除画布展示关系，不删除其引用的业务对象。 */
     boolean delete(UUID ownerId, UUID projectId, UUID itemId, long expectedVersion);
 }

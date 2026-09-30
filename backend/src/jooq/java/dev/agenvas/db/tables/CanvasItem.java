@@ -11,6 +11,7 @@ import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
+import dev.agenvas.db.tables.CanvasItemMediaVersion.CanvasItemMediaVersionPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
@@ -163,6 +164,13 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
      */
     public final TableField<CanvasItemRecord, UUID> SELECTED_VERSION_ID = createField(DSL.name("selected_version_id"), SQLDataType.UUID, this, "Version displayed by this card. Media cards own this independently of the Artifact default.");
 
+    /**
+     * The column <code>public.canvas_item.media_selection_epoch</code>. Content
+     * selection revision, independent of layout CAS; prevents late tasks from
+     * replacing user selections.
+     */
+    public final TableField<CanvasItemRecord, Long> MEDIA_SELECTION_EPOCH = createField(DSL.name("media_selection_epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "Content selection revision, independent of layout CAS; prevents late tasks from replacing user selections.");
+
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -300,6 +308,19 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
         return _artifactVersion;
     }
 
+    private transient CanvasItemMediaVersionPath _canvasItemMediaVersion;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_item_media_version</code> table
+     */
+    public CanvasItemMediaVersionPath canvasItemMediaVersion() {
+        if (_canvasItemMediaVersion == null)
+            _canvasItemMediaVersion = new CanvasItemMediaVersionPath(this, null, Keys.CANVAS_ITEM_MEDIA_VERSION__CANVAS_ITEM_MEDIA_VERSION_PROJECT_ID_CANVAS_ITEM_ID_FKEY.getInverseKey());
+
+        return _canvasItemMediaVersion;
+    }
+
     private transient CanvasConnectionPath _fkCanvasConnectionSource;
 
     /**
@@ -362,7 +383,8 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "(((((subject_type)::text = 'ARTIFACT'::text) AND (artifact_id = subject_id) AND (agent_instance_id IS NULL)) OR (((subject_type)::text = 'AGENT'::text) AND (artifact_id IS NULL) AND (agent_instance_id = subject_id))))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = ANY ((ARRAY['ARTIFACT'::character varying, 'AGENT'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_title"), "(((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 160)))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_version_non_negative"), "((version >= 0))", true)
+            Internal.createCheck(this, DSL.name("ck_canvas_item_version_non_negative"), "((version >= 0))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_media_selection_epoch"), "((media_selection_epoch >= 0))", true)
         );
     }
 

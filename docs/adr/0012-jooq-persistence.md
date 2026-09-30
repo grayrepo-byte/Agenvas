@@ -20,7 +20,7 @@ MyBatis-Plus 在本仓库中从未被使用：`grep -rn "^import.*baomidou\|^imp
 
 **2. 移除 MyBatis-Plus starter 及其版本属性。**
 
-**3. jOOQ 生成源码提交入库，构建期不连数据库。** 这是被部署形态倒逼的：`deploy/docker/server.Dockerfile` 在 `maven:3.9.12-eclipse-temurin-21-alpine` 里执行 `./mvnw verify -DskipITs`，容器内没有 Docker daemon 也没有 PostgreSQL。构建期 codegen 只有两条路，都不可行：
+**3. jOOQ 生成源码提交入库，构建期不连数据库。** 这是被部署形态倒逼的：`deploy/docker/server.Dockerfile` 在固定的 Maven/Temurin 21 构建镜像里执行 `./mvnw verify -DskipITs`，容器内没有 Docker daemon 也没有 PostgreSQL。构建期 codegen 只有两条路，都不可行：
 
 - **离线 codegen（`DDLDatabase` 解析 Flyway 迁移）**：已实测失败。jOOQ 3.19 开源版解析 `CREATE FUNCTION ... LANGUAGE plpgsql` 时抛出 `Feature only supported in pro edition`，而本仓库的迁移含触发器函数（`reject_artifact_version_mutation` 等）。
 - **构建期连真实 PostgreSQL**：镜像构建环境不存在该数据库。

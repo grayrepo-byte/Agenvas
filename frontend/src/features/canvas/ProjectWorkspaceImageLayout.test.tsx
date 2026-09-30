@@ -18,7 +18,8 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
   ReactFlow: ({ nodes = [], onNodeDragStop, onNodesChange }: ReactFlowProps<TestNode>) => <div>
     {nodes.map((node) => <div key={node.id} data-testid={node.id} style={node.style}>
       <button onClick={(event) => onNodeDragStop?.(event.nativeEvent,
-        { ...node, position: { x: 140, y: 180 } }, [node])}>drag {node.id}</button>
+        { ...node, position: { x: 140, y: 180 } },
+        [{ ...node, position: { x: 140, y: 180 } }])}>drag {node.id}</button>
       <button onClick={() => node.data.onResizeEnd(node.id,
         { x: 10, y: 30, width: 500, height: 25 })}>resize {node.id}</button>
       <button onClick={() => onNodesChange?.([{ type: "dimensions", id: node.id,

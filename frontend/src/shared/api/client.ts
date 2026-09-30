@@ -28,6 +28,7 @@ export type ReviseArtifactRequest = components["schemas"]["ReviseArtifactRequest
 export type UploadCanvasItemVersionRequest = components["schemas"]["UploadCanvasItemVersionRequest"];
 export type Canvas = components["schemas"]["Canvas"];
 export type CanvasItem = components["schemas"]["CanvasItem"];
+export type SelectMediaVersionRequest = components["schemas"]["SelectMediaVersionRequest"];
 export type CanvasCommand = components["schemas"]["CanvasCommand"];
 export type CanvasConnection = components["schemas"]["CanvasConnection"];
 export type CanvasConnectionList = components["schemas"]["CanvasConnectionList"];
@@ -414,6 +415,19 @@ export async function duplicateCanvasItem(projectId: string, sourceItemId: strin
   );
 }
 
+/** Result history belonging to one media node. */
+export async function listCanvasMediaVersions(projectId: string, itemId: string): Promise<ArtifactVersionList> {
+  return readJson<ArtifactVersionList>(
+    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`, "无法读取媒体版本");
+}
+
+export async function selectCanvasMediaVersion(projectId: string, itemId: string,
+  input: SelectMediaVersionRequest): Promise<CanvasItem> {
+  return writeJson<CanvasItem>(
+    `/api/v1/projects/${projectId}/canvas/items/${itemId}/select-media-version`,
+    { method: "POST", body: JSON.stringify(input) });
+}
+
 /** The saved draft is fixed into a direct media Task on one explicit click. */
 export async function runMediaDraft(projectId: string, artifactId: string,
   input: RunMediaDraftRequest, idempotencyKey: string): Promise<Task> {
@@ -508,7 +522,7 @@ export async function setArtifactResourceDefaultVersion(
   );
 }
 
-/** Uploads immutable media into a new result node derived from the addressed node. */
+/** Fills an empty media node, or derives a new node when the source already has a result. */
 export async function uploadCanvasItemVersion(
   projectId: string,
   canvasItemId: string,

@@ -8,17 +8,18 @@ const TOOLBAR_NODE_GAP = 32;
 
 /** Shared media/content surface and node-anchored toolbar; callers own their content and actions. */
 export function ArtifactCardFrame({ title, kindLabel, selected, locked, toolbar, toolbarLabel,
-  toolbarRaised = false, editableTitle, className = "", children }: {
+  toolbarRaised = false, toolbarVisible = true, editableTitle, className = "", children }: {
   title: string; kindLabel: string; selected: boolean; locked: boolean;
   toolbar: ReactNode; toolbarLabel?: string;
   toolbarRaised?: boolean;
+  toolbarVisible?: boolean;
   editableTitle?: { projectId: string; item: CanvasItem };
   className?: string; children: ReactNode;
 }) {
   return <>
     {/* Toolbar portals sit outside the node; exclude their gestures from viewport panning. */}
     <NodeToolbar className={`nopan${toolbarRaised ? " artifact-card-toolbar-raised" : ""}`}
-      isVisible={selected ? undefined : false} position={Position.Top} offset={TOOLBAR_NODE_GAP}>
+      isVisible={selected && toolbarVisible ? undefined : false} position={Position.Top} offset={TOOLBAR_NODE_GAP}>
       <div className="artifact-card-toolbar nodrag nowheel" aria-label={toolbarLabel ?? `${kindLabel}卡片操作`}>
         {toolbar}
       </div>

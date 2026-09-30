@@ -18,6 +18,7 @@ import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
+import dev.agenvas.db.tables.CanvasItemMediaVersion;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
 import dev.agenvas.db.tables.CreativeDataResetMarker;
 import dev.agenvas.db.tables.IdempotencyRecord;
@@ -134,6 +135,12 @@ public class Tables {
      * Manual and connection reasons that keep a deduplicated media input alive.
      */
     public static final CanvasItemMediaInputSource CANVAS_ITEM_MEDIA_INPUT_SOURCE = CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE;
+
+    /**
+     * Card-local immutable result history; switching a card never updates
+     * pinned inputs or library defaults.
+     */
+    public static final CanvasItemMediaVersion CANVAS_ITEM_MEDIA_VERSION = CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION;
 
     /**
      * The table <code>public.comfyui_config_version</code>.

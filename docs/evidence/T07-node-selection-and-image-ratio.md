@@ -124,3 +124,13 @@
 - 按用户确认，短按空格切换并保持手形工具，V 返回选择；长按仍临时切换，松开恢复此前工具。以命名常量 `SPACE_HOLD_THRESHOLD_MS = 200` 毫秒区分短按/长按，按下时立即提供手形工具，无需等阈值。
 - 按住空格期间发生 pointerdown 或键盘重复按键时，按临时手势处理；避免快速 Space + 拖动被误判成持久切换。失焦、页面隐藏或 V 取消临时状态，晚到 keyup 不会再切回手形。输入框里的空格不触发工具切换。
 - 定向验证：`canvasInteraction.test.ts` 和 `CanvasSelectionClearing.test.tsx` 共 24 项通过；TypeScript 与四个相关文件 ESLint 通过。未运行全量测试或本轮真实浏览器手势验收。无 API/数据库变更。
+
+### 2026-09-30 节点点击与拖动分离
+
+- 用户决定：点击才显示工具栏与编辑区；拖动时保留节点选中外圈，松手取消外圈及选择。移动不超过 3 屏幕像素沿用点击微移容差，超过阈值由 React Flow 的拖动回调进入临时反馈。
+- `ProjectWorkspacePage` 关闭 `selectNodesOnDrag`，不把未选中节点的拖动反馈写入普通 `selectedIds`。拖动节点 ID 独立投影为卡片外圈；拖动期间隐藏所有节点工具栏、外置编辑区和多选批量栏，已选中节点也如此。松手立即清除临时反馈及节点/线选择，不等待保存。后续独立点击及 Cmd/Ctrl 追加、框选仍使用原选择逻辑。
+- `ArtifactCardFrame`、`ContentCanvasCard`、`MediaCanvasCard` 增加工具栏显隐参数，将卡片外圈与工具栏分开控制。多节点拖动在结束时一次提交所有移动节点的布局；缩放仍使用同一布局保存路径，保存失败保留草稿和错误状态。`ProjectWorkspaceImageLayout` 测试模拟的批次节点现在提供真实结束位置。
+- 新增 4 项真实 React Flow 工作区测试，覆盖未选中节点拖动期间仅外圈、松手后的 click 抑制及下一次点击恢复、已有文字选择的工具栏/编辑区隐藏、多选组高亮与批量布局、保存冲突后外圈取消而位置草稿保留。既有 0/1/3 像素微移测试补充按下/微移期间不显示浮层、点击完成才显示的断言。
+- jsdom 无实际视口边界，测试关闭节点拖动边缘自动平移，避免虚拟零尺寸视口改变位置断言；生产自动平移保留。首次定向验证中该几何问题使一个位置断言失败，调整测试视口补偿后重跑通过。
+- 实际检查：`node_modules/.bin/vitest run` 定向运行 `CanvasSelectionClearing.test.tsx`、`ProjectWorkspaceImageLayout.test.tsx`、`ArtifactCardFrame.test.tsx`、`ArtifactCardFrameGestures.test.tsx`、`ContentCanvasCard.test.tsx`、`MediaCanvasCard.test.tsx`、`CanvasKeyboardDeletion.test.tsx`、`CanvasConnectionDrop.test.tsx`、`ProjectWorkspacePage.test.tsx`，9 个文件 86 项通过；补充点击微移浮层断言后 `CanvasSelectionClearing.test.tsx` 22 项再次通过。`tsc --noEmit`、6 个修改 TSX 文件的 `eslint --max-warnings=0`、`vite build`、`git diff --check` 通过。
+- MVP 规格、ADR 0005 和任务清单同步，无 API 合约或数据库迁移变更。本轮未运行全量测试、后端测试、浏览器端到端、触屏或真实浏览器手势验收，未调用真实 Provider、未部署。
