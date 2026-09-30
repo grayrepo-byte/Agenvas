@@ -420,23 +420,19 @@ button:disabled {
   stroke-dasharray: none;
 }
 
-/* Normalized dash lengths give one light per edge. Negative offset travels along the Bezier
-   from source to target, including edges whose target is left of or above the source. */
-.canvas-relation-flow {
-  --canvas-flow-start: 0;
-  --canvas-flow-end: -100;
-}
+/* A moving elliptical gradient reveals the curve with a bright center and transparent ends.
+   Alpha compositing blends back into each relation's own color, without hard dash boundaries. */
 .canvas-relation-flow path {
   fill: none;
-  stroke: color-mix(in srgb, var(--canvas-relation-color) 50%, var(--ui-text));
   stroke-linecap: round;
-  animation: canvas-relation-flow 2.8s linear infinite;
 }
-.canvas-relation-flow__glow { stroke-width: 8; stroke-dasharray: 14 86; opacity: .18; }
-.canvas-relation-flow__trail { stroke-width: 3; stroke-dasharray: 12 88; opacity: .65; }
-.canvas-relation-flow__head { --canvas-flow-start: -12; --canvas-flow-end: -112; stroke-width: 4; stroke-dasharray: 2 98; }
-@keyframes canvas-relation-flow { from { stroke-dashoffset: var(--canvas-flow-start); } to { stroke-dashoffset: var(--canvas-flow-end); } }
-@media (prefers-reduced-motion: reduce) { .canvas-relation-flow { display: none; } .canvas-relation-flow path { animation: none; } }
+.canvas-relation-flow__glow { stroke: var(--canvas-relation-color); stroke-width: 7; opacity: .2; }
+.canvas-relation-flow__core {
+  stroke: color-mix(in srgb, var(--canvas-relation-color) 30%, var(--ui-text));
+  stroke-width: 2.5;
+  opacity: .95;
+}
+@media (prefers-reduced-motion: reduce) { .canvas-relation-flow { display: none; } }
 
 /* Keep resize hit areas interactive; the card owns the only visible selection outline. */
 .workspace-shell .react-flow__resize-control.line { border: 0; background: transparent; }
