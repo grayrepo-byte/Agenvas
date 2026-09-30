@@ -36,7 +36,7 @@
   text-align: left; cursor: pointer; white-space: normal; overflow-wrap: anywhere;
   transition: background var(--ui-duration), color var(--ui-duration);
 }
-.ui-dropdown.ui-dropdown :is([role="menuitem"], [role="menuitemradio"], [role="option"]):is(:hover, :focus-visible, [data-active="true"]):not(:disabled) { background: var(--ui-hover); }
+.ui-dropdown.ui-dropdown :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):is(:hover, :focus-visible, [data-active="true"]):not(:disabled) { background: var(--ui-hover); }
 .ui-dropdown.ui-dropdown :is([aria-checked="true"], [aria-selected="true"], [aria-current="true"]) { background: var(--ui-selected); }
 .ui-dropdown.ui-dropdown button:focus-visible { outline: 1px solid var(--ui-focus); outline-offset: -1px; }
 .ui-dropdown.ui-dropdown button:disabled { cursor: not-allowed; opacity: .45; }

@@ -59,6 +59,10 @@ import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { ImageSquare, Sparkle, TextT, VideoCamera, MusicNotes, X, type Icon } from "@phosphor-icons/react";
 import { CanvasToolMenu } from "./CanvasToolMenu";
+import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
+import { CanvasRelationEdge } from "./CanvasRelationEdge";
+import { displayCanvasRelations } from "./canvasEdgeDisplay";
+import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
 import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
 import { CanvasHandle } from "./CanvasHandle";
 import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
@@ -82,6 +86,9 @@ const MEDIA_VIEW_MARGIN = 24;
 const MEDIA_EDITOR_VIEW_WIDTH = 680;
 const MEDIA_MAX_INITIAL_ZOOM = 1;
 const MEDIA_FOCUS_DELAY_MS = 150;
+const MEDIA_FOCUS_DURATION_MS = 360;
+/** Smooth pan/zoom on one path; unlike a zoom flight, it never pulls away from the card first. */
+const mediaFocusEase = (progress: number) => progress * progress * (3 - 2 * progress);
 const MAX_AGENT_TITLE_LENGTH = 120;
 const AUDIO_AGENT_INSTRUCTION = "协助用户创作音频提示词、对白与 MV 方案。绑定的音频只提供归档元数据和生成描述，不代表你已听到或分析了声音。不能调用媒体生成；需要生成音频或视频时，请引导用户在对应卡片中运行。";
 const CREATION_MENU_WIDTH = 208;
@@ -138,6 +145,7 @@ type CanvasNodeData = {
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
+const edgeTypes = { canvasRelation: CanvasRelationEdge };
 
 /** Safe client-side validation message for unsupported canvas connection gestures. */
 class CanvasConnectionError extends Error {}
@@ -186,6 +194,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
+  const displaySettings = useCanvasDisplayPreferences(currentUser.data?.id, projectId);
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
     queryFn: () => getProjectSnapshot(projectId),
@@ -1006,9 +1015,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    * them back on the prop. Selection is therefore the only locally owned part of a line.
    */
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
-  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? [])
-    .map((edge) => selectedEdgeIds.includes(edge.id) ? { ...edge, selected: true } : edge),
-    [canvas.data?.items, canvasConnections.data?.items, selectedEdgeIds]);
+  const projectedRelations = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? []),
+    [canvas.data?.items, canvasConnections.data?.items]);
+  const relationEdges = useMemo(() => displayCanvasRelations(projectedRelations, selectedIds, selectedEdgeIds,
+    displaySettings.preferences), [projectedRelations, selectedIds, selectedEdgeIds, displaySettings.preferences]);
   const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
     setSelectedEdgeIds((current) => {
       const next = new Set(current);
@@ -1135,24 +1145,40 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const selectedMedia = draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact && selectedItems[0].artifact.kind !== "TEXT"
     ? selectedItems[0] : undefined;
   const mediaFocus = useRef<string | null>(null);
+  const selectedMediaId = selectedMedia?.id;
+  const mediaFocusTarget = useRef<(CreationPoint & { id: string; width: number; height: number }) | null>(null);
+  mediaFocusTarget.current = selectedMedia
+    ? { id: selectedMedia.id, x: selectedMedia.x, y: selectedMedia.y, ...effectiveNodeSize(selectedMedia) } : null;
   useEffect(() => {
-    if (!selectedMedia) { mediaFocus.current = null; return; }
-    if (mediaFocus.current === selectedMedia.id || !flow.current || !canvasElement.current) return;
-    const timer = window.setTimeout(() => {
-      if (!flow.current || !canvasElement.current) return;
-      mediaFocus.current = selectedMedia.id;
+    if (!selectedMediaId) { mediaFocus.current = null; return; }
+    if (mediaFocus.current === selectedMediaId) return;
+    let animating = false;
+    // Wait for the editor's first layout, not a fixed delay. Read the latest projected size;
+    // background snapshots and draft saves must not restart an in-progress focus animation.
+    const frame = window.requestAnimationFrame(() => {
+      const target = mediaFocusTarget.current;
+      const instance = flow.current;
+      if (target?.id !== selectedMediaId || !instance || !canvasElement.current) return;
       const bounds = canvasElement.current.getBoundingClientRect();
-      const zoom = Math.min(MEDIA_MAX_INITIAL_ZOOM,
-        (bounds.width - MEDIA_VIEW_MARGIN * 2) / Math.max(MEDIA_EDITOR_VIEW_WIDTH, selectedMedia.width),
-        (bounds.height - MEDIA_EDITOR_VIEW_HEIGHT - MEDIA_TOOLBAR_VIEW_HEIGHT - MEDIA_VIEW_MARGIN * 2) / effectiveNodeSize(selectedMedia).height);
+      const zoom = Math.min(instance.getZoom(), MEDIA_MAX_INITIAL_ZOOM,
+        (bounds.width - MEDIA_VIEW_MARGIN * 2) / Math.max(MEDIA_EDITOR_VIEW_WIDTH, target.width),
+        (bounds.height - MEDIA_EDITOR_VIEW_HEIGHT - MEDIA_TOOLBAR_VIEW_HEIGHT - MEDIA_VIEW_MARGIN * 2) / target.height);
       if (zoom <= 0) return;
+      mediaFocus.current = target.id;
+      const duration = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : MEDIA_FOCUS_DURATION_MS;
+      animating = duration > 0;
       // NodeToolbars stay in CSS pixels while the card zooms. Reserve the editor's space.
-      void flow.current.setCenter(selectedMedia.x + selectedMedia.width / 2,
-        selectedMedia.y + effectiveNodeSize(selectedMedia).height / 2
-          + (MEDIA_EDITOR_VIEW_HEIGHT - MEDIA_TOOLBAR_VIEW_HEIGHT) / (2 * zoom), { zoom });
-    }, MEDIA_FOCUS_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [selectedMedia, effectiveNodeSize]);
+      void instance.setCenter(target.x + target.width / 2,
+        target.y + target.height / 2 + (MEDIA_EDITOR_VIEW_HEIGHT - MEDIA_TOOLBAR_VIEW_HEIGHT) / (2 * zoom),
+        { zoom, duration, ease: mediaFocusEase, interpolate: "linear" }).then(() => { animating = false; });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      // A new selection, closing the editor or starting a drag interrupts at the current view.
+      // React Flow's immediate viewport update interrupts its existing d3 transition.
+      if (animating && flow.current) void flow.current.setViewport(flow.current.getViewport());
+    };
+  }, [selectedMediaId]);
 
   const canBindSelection =
     selectedItems.filter((item) => item.agent !== null).length === 1 &&
@@ -1288,6 +1314,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           connectionRadius={CANVAS_CONNECTION_RADIUS}
           deleteKeyCode={CANVAS_DELETE_KEY_CODES}
           edges={relationEdges}
+          edgeTypes={edgeTypes}
           fitView
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
           minZoom={0.25}
@@ -1366,7 +1393,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        }} />
+        }}>
+          <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
+            persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
+            disabled={!displaySettings.ready} />
+        </CanvasToolMenu>
+        {displaySettings.persistenceError ? <div className="canvas-message" role="alert">
+          {displaySettings.persistenceError}
+          <button type="button" className="node-action" onClick={displaySettings.retrySave}>重试保存设置</button>
+        </div> : null}
         {creationMenu ? <DropdownMenu className="workspace-create-menu" role="menu" aria-label="添加卡片"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>

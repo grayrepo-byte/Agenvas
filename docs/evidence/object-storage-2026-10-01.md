@@ -27,6 +27,10 @@
 
 Nginx 1.28.0 Alpine 容器中的 `nginx -t` 通过；媒体上传独立放宽至 501 MiB、禁用请求缓冲，媒体读取禁用响应缓冲，其他 API 仍保留原限制。实际 500 MiB 视频上传及完整反代链路未压测。`git diff --check` 通过。
 
+## 合并 main 验证
+
+将 main 的媒体聚焦和画布连线显示设置整合进存储分支，开发清单的追加冲突保留双方记录。合并后的 `ProjectWorkspacePage`、`CanvasDisplaySettings`、`CanvasSelectionClearing`、`MediaDraftEditor`、`StorageSettingsPage` 5 个定向文件共 85 个测试通过；类型检查、lint、构建和差异格式检查通过。构建仍有既有画布大包提示，测试环境报告未实现的媒体 pause 提示，但无失败。后端及迁移未因合并变化，本轮未重复后端测试；未运行全量测试，未部署或使用真实云账号。
+
 ## 未验证与限制
 
 真实云账户连接、供应商策略差异、大文件吞吐和弱网压力未实测，假 HTTP 不是云端验收。全量测试未完成：首次前端调用因参数分隔符误启了全量运行，发现后立即中止；之后使用明确文件过滤执行上述定向测试。未进行真实生成 Provider 调用。

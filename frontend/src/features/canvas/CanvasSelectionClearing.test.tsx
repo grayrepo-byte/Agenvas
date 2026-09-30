@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { NodeSelectionChange, ReactFlowProps } from "@xyflow/react";
+import type { NodeSelectionChange, ReactFlowInstance, ReactFlowProps } from "@xyflow/react";
 import { http, HttpResponse } from "msw";
 import { useLayoutEffect } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -19,6 +19,10 @@ const SELECTION_BOX = { startX: -10, startY: -10, endX: 900, endY: 700 };
 let renderRealFlow = false;
 
 let flowProps: FlowProps = {};
+const focusProbe = vi.hoisted(() => ({
+  center: vi.fn<ReactFlowInstance["setCenter"]>().mockResolvedValue(true),
+  viewport: vi.fn<ReactFlowInstance["setViewport"]>().mockResolvedValue(true), zoom: 1,
+}));
 
 // 选中态的同步依赖 React Flow 的变更通知，这里直接驱动页面对应的回调。
 vi.mock("@xyflow/react", async (importOriginal) => {
@@ -41,7 +45,9 @@ vi.mock("@xyflow/react", async (importOriginal) => {
       flowProps = props;
       // Keep a fixed viewport; node dimensions come from the actual workspace projection.
       // jsdom has no viewport bounds; disable edge auto-pan so drag coordinates remain deterministic.
-      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} autoPanOnNodeDrag={false} {...TEST_VIEWPORT}>
+      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} autoPanOnNodeDrag={false} {...TEST_VIEWPORT}
+        onInit={(instance) => props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport,
+          getZoom: () => focusProbe.zoom })}>
         <TestHandleMeasurements />{props.children}
       </real.ReactFlow> : <div data-testid="flow" />;
     },
@@ -85,11 +91,14 @@ function snapshot(): ProjectSnapshot {
     canvas: { items }, connections: [], agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 beforeEach(() => {
   flowProps = {};
   renderRealFlow = false;
+  focusProbe.center.mockClear();
+  focusProbe.viewport.mockClear();
+  focusProbe.zoom = 1;
   useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
   server.use(
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
@@ -188,6 +197,53 @@ async function renderInteractiveFlow() {
   await renderFlow();
   await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
 }
+
+describe("media selection focus", () => {
+  async function openMedia() {
+    const originalBounds = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("workspace-canvas")
+        ? new DOMRect(0, 0, TEST_VIEWPORT.width, TEST_VIEWPORT.height)
+        : originalBounds.call(this);
+    });
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("image-card"));
+    await waitFor(() => expect(focusProbe.center).toHaveBeenCalledTimes(1));
+  }
+
+  it("animates the card and editor focus instead of jumping the viewport", async () => {
+    await openMedia();
+    const options = focusProbe.center.mock.calls[0]?.[2];
+    expect(options?.duration).toBeGreaterThan(0);
+    expect(options?.interpolate).toBe("linear");
+    expect(options?.ease?.(0)).toBe(0);
+    expect(options?.ease?.(1)).toBe(1);
+    expect(selectedIds()).toEqual(["image-card"]);
+    fireEvent.click(nodeElement("image-card"));
+    expect(focusProbe.center).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a zoomed-out view when the card and editor already fit", async () => {
+    focusProbe.zoom = 0.6;
+    await openMedia();
+    expect(focusProbe.center.mock.calls[0]?.[2]?.zoom).toBe(0.6);
+  });
+
+  it("honors reduced motion when positioning the card and editor", async () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    await openMedia();
+    expect(focusProbe.center.mock.calls[0]?.[2]?.duration).toBe(0);
+  });
+
+  it.each(["close", "pan"])("interrupts the current animation when the user chooses to %s", async (action) => {
+    focusProbe.center.mockImplementationOnce(() => new Promise(() => undefined));
+    await openMedia();
+    if (action === "close") fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
+    else act(() => flowProps.onMoveStart?.(new MouseEvent("mousedown"), { x: 0, y: 0, zoom: 1 }));
+    await waitFor(() => expect(focusProbe.viewport).toHaveBeenCalledTimes(1));
+    expect(selectedIds()).toEqual([]);
+  });
+});
 
 /** Exercise the library's actual click suppression and drag threshold, rather than only its callbacks. */
 function nodeMouseGesture(type: "mouseDown" | "mouseMove" | "mouseUp", node: HTMLElement,

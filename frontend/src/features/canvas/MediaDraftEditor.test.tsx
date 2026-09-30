@@ -539,7 +539,7 @@ describe("MediaDraftEditor", () => {
       const menu = screen.getByRole("menu", { name: "生成模型" });
       expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(2);
       expect(within(menu).getByText(/gpt-image-2/)).toBeVisible();
-      expect(within(menu).getByText("尚未完成真实生成验证")).toBeVisible();
+      expect(within(menu).queryByText(/真实生成验证/)).not.toBeInTheDocument();
       expect(within(menu).queryByText("镜头视频")).not.toBeInTheDocument();
       expect(within(menu).queryByText("停用模型")).not.toBeInTheDocument();
       expect(within(menu).queryByText("隐藏模型")).not.toBeInTheDocument();
