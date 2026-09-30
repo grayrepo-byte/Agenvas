@@ -481,7 +481,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     .flatMap((connection) => connection.capabilities.filter((capability) =>
       capability.enabled && capability.kind === mediaKind).map((capability) => ({
         ...capability, connectionName: connection.name,
-        realGenerationTested: connection.realGenerationTested, mock: connection.platform === "MOCK",
+        mock: connection.platform === "MOCK",
       })));
   const defaultCapabilityId = settings.data?.defaults.find((item) => item.kind === mediaKind)?.capabilityId;
   const chosenCapability = availableCapabilities.find((item) =>
@@ -1319,8 +1319,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             className="media-draft-model-option" role="menuitemradio" aria-checked={fields.capabilityId === capability.id}
             onClick={() => chooseCapability(capability.id)}>
             <span><strong>{capability.name}</strong><small>{capability.connectionName} · {modelName(capability)}</small>
-              <small className={capability.mock ? "media-draft-model-mock" : ""}>{capability.mock ? "Mock 演示"
-                : capability.realGenerationTested ? "已完成真实生成验证" : "尚未完成真实生成验证"}</small></span>
+              {capability.mock ? <small className="media-draft-model-mock">Mock 演示</small> : null}</span>
             {fields.capabilityId === capability.id ? <Check size={16} /> : null}
           </button>)}
           {settings.isPending ? <p role="status">正在读取可用模型…</p> : null}
