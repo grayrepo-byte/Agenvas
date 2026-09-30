@@ -7,6 +7,7 @@ import { ApiError, getCurrentUser, getTask, listCallLogs, type CallLog, type Cal
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
+import { CallDebugDetails } from "./CallDebugDetails";
 import "./CallLogsPage.css";
 
 const PAGE_SIZE = 20;
@@ -17,7 +18,7 @@ const FORBIDDEN_STATUS = 403;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const LOCAL_DATE_TIME_LENGTH = 19;
 const TABLE_COLUMN_COUNT = 7;
-const KIND_LABELS: Record<CallLog["kind"], string> = { LLM: "文本模型", IMAGE: "图片", VIDEO: "视频" };
+const KIND_LABELS: Record<CallLog["kind"], string> = { LLM: "文本模型", IMAGE: "图片", VIDEO: "视频", AUDIO: "音频" };
 const STATUS_LABELS: Record<CallLog["status"], string> = { RUNNING: "调用中", SUCCEEDED: "成功", FAILED: "失败", UNKNOWN: "未知" };
 const OPERATION_LABELS: Record<CallLog["operation"], string> = { CHAT: "模型对话", SUBMIT: "提交生成", POLL: "查询结果", LEGACY: "历史任务" };
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
@@ -32,7 +33,7 @@ function readFilters(params: URLSearchParams): CallLogFilters {
   const page = Number(params.get("page") ?? FIRST_PAGE);
   return {
     projectId: params.get("projectId") || undefined,
-    kind: kind === "LLM" || kind === "IMAGE" || kind === "VIDEO" ? kind : undefined,
+    kind: kind === "LLM" || kind === "IMAGE" || kind === "VIDEO" || kind === "AUDIO" ? kind : undefined,
     status: status === "RUNNING" || status === "SUCCEEDED" || status === "FAILED" || status === "UNKNOWN" ? status : undefined,
     traceId: params.get("traceId") || undefined,
     from: params.get("from") || undefined,
@@ -163,6 +164,7 @@ function CallLogDetails({ log }: { log: CallLog }) {
       <Detail label="调用记录 ID" value={log.id} /><Detail label="Run ID" value={log.runId} />
       <Detail label="Task ID" value={log.taskId} /><Detail label="错误码" value={log.errorCode} />
     </dl>
+    {!log.historical ? <CallDebugDetails id={log.id} /> : null}
     {log.taskId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
   </>;
 }

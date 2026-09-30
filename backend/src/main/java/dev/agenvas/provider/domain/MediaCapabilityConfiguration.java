@@ -15,7 +15,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Versioned administrator defaults, prices and narrower limits within a compiled protocol. */
 public final class MediaCapabilityConfiguration {
     public static final Set<String> FIELDS = Set.of("defaultParameters", "defaultDurationSeconds",
-            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "pricing");
+            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "pricing");
     private static final Set<String> PRICE_FIELDS = Set.of("amount", "currency", "unit");
     private static final Set<String> CURRENCIES = Set.of("CNY", "USD");
     private static final String PRICE_PATTERN = "[0-9]{1,10}(\\.[0-9]{1,6})?";
@@ -25,7 +25,7 @@ public final class MediaCapabilityConfiguration {
     public static void normalize(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter,
             JsonNode source, ObjectNode target) {
         var policy = policy(adapter, source);
-        for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages")) {
+        for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios")) {
             if (source.has(field)) target.set(field, source.get(field));
         }
         if (source.has("defaultDurationSeconds")) {
@@ -46,6 +46,8 @@ public final class MediaCapabilityConfiguration {
                         adapter.supportedImageResolutions(), adapter.supportedImageQualities(),
                         adapter.supportsTransparentBackground());
                 target.set("defaultParameters", parsed.toJson(mapper));
+            } else if (adapter.kind() == Task.Kind.AUDIO_GENERATION) {
+                target.set("defaultParameters", dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parameters).toJson(mapper));
             } else {
                 target.set("defaultParameters", VideoGenerationParameters.parse(parameters).toJson(mapper));
             }
@@ -61,7 +63,8 @@ public final class MediaCapabilityConfiguration {
                 throw invalid("价格应为非负十进制金额（最多六位小数），币种为 CNY 或 USD");
             }
             Set<String> units = adapter.kind() == Task.Kind.IMAGE_GENERATION
-                    ? Set.of("IMAGE") : Set.of("VIDEO", "SECOND");
+                    ? Set.of("IMAGE") : adapter.kind() == Task.Kind.AUDIO_GENERATION
+                    ? Set.of("AUDIO", "SECOND") : Set.of("VIDEO", "SECOND");
             if (!units.contains(price.path("unit").asText())) throw invalid("价格单位与媒体类型不匹配");
             ObjectNode normalized = target.putObject("pricing");
             normalized.put("amount", new BigDecimal(price.path("amount").asText()).toPlainString());
@@ -83,7 +86,7 @@ public final class MediaCapabilityConfiguration {
                 adapter.defaultVideoInputMode(), adapter.supportsEndFrame(),
                 adapter.supportedImageAspectRatios(), adapter.supportedImageResolutions(),
                 adapter.supportedImageQualities(), adapter.supportsTransparentBackground(),
-                adapter.supportsImageMask());
+                adapter.supportsImageMask(), integer(settings, "maxReferenceAudios", adapter.maxReferenceAudios(), 0, adapter.maxReferenceAudios()));
     }
 
     private static int integer(JsonNode source, String field, int fallback, int minimum, int maximum) {

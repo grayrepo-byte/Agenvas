@@ -109,7 +109,7 @@ public class MediaCapabilityController {
     private ResponseEntity<MediaSettingsResponse> response() {
         List<ConnectionView> connections = catalog.connections().stream().map(this::view).toList();
         List<DefaultView> defaults = Arrays.stream(new Task.Kind[] {
-                Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION})
+                Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION})
                 .map(kind -> new DefaultView(kind, catalog.defaultCapabilityId(kind),
                         catalog.defaultVersion(kind))).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
@@ -133,7 +133,7 @@ public class MediaCapabilityController {
         return new CapabilityView(capability.id(), capability.name(), capability.enabled(),
                 capability.version(), capability.currentVersion(), snapshot.adapterId(),
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
-                declaration.maxReferenceImages(), declaration.supportedVideoInputModes().stream()
+                declaration.maxReferenceImages(), declaration.maxReferenceAudios(), declaration.supportedVideoInputModes().stream()
                         .sorted().toList(), declaration.defaultVideoInputMode(),
                 declaration.supportsEndFrame(),
                 declaration.supportedImageAspectRatios().stream().sorted().toList(),
@@ -163,7 +163,7 @@ public class MediaCapabilityController {
             List<CapabilityView> capabilities) {}
     public record CapabilityView(UUID id, String name, boolean enabled, long version,
             int capabilityVersion, String adapterId, Task.Kind kind,
-            int minimumSeconds, int maximumSeconds, int maxReferenceImages,
+            int minimumSeconds, int maximumSeconds, int maxReferenceImages, int maxReferenceAudios,
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, List<String> supportedImageAspectRatios,
             List<String> supportedImageResolutions, List<String> supportedImageQualities,

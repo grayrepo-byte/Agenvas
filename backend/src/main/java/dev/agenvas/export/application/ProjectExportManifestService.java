@@ -29,7 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
-    private static final int MANIFEST_SCHEMA_VERSION = 3;
+    private static final int MANIFEST_SCHEMA_VERSION = 4;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
@@ -131,7 +131,7 @@ public class ProjectExportManifestService {
     private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
         return new MediaDraftEntry(draft.prompt(), copy(draft.parameters()),
                 draft.durationSeconds(), draft.capabilityId(), draft.videoInputMode(),
-                draft.imageInputs(), draft.mentions(), draft.displayMode(), draft.version());
+                draft.mediaInputs(), draft.mentions(), draft.displayMode(), draft.version());
     }
 
     private ConnectionEntry connectionEntry(CanvasConnection connection) {
@@ -147,7 +147,7 @@ public class ProjectExportManifestService {
             case TEXT -> new String[] {"format", "text"};
             case IMAGE -> new String[] {"assetId", "prompt", "negativePrompt",
                     "providerConfigVersion", "workflowVersion"};
-            case VIDEO -> new String[] {"assetId", "prompt", "negativePrompt",
+            case VIDEO, AUDIO -> new String[] {"assetId", "prompt", "negativePrompt",
                     "providerConfigVersion", "workflowVersion"};
         };
     }
@@ -212,7 +212,7 @@ public class ProjectExportManifestService {
     /** Complete safe generation state for one image or video card. */
     public record MediaDraftEntry(String prompt, JsonNode parameters, Integer durationSeconds,
             UUID capabilityId, MediaDraft.VideoInputMode videoInputMode,
-            List<MediaDraft.ImageInput> imageInputs, List<MediaDraft.PromptMention> mentions,
+            List<MediaDraft.MediaInput> mediaInputs, List<MediaDraft.PromptMention> mentions,
             MediaDraft.DisplayMode displayMode, long version) {}
 
     /** One persisted editable topology edge with its frozen source image version. */

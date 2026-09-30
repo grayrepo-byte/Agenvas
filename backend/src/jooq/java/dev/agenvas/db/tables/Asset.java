@@ -246,12 +246,12 @@ public class Asset extends TableImpl<AssetRecord> {
     public List<Check<AssetRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_asset_dimensions"), "((((width IS NULL) AND (height IS NULL)) OR ((width > 0) AND (height > 0))))", true),
-            Internal.createCheck(this, DSL.name("ck_asset_kind"), "(((media_kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_asset_kind"), "(((media_kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying, 'AUDIO'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_asset_media_duration"), "(((((media_kind)::text = 'IMAGE'::text) AND (duration_ms IS NULL)) OR (((media_kind)::text = 'VIDEO'::text) AND ((duration_ms IS NULL) OR ((duration_ms >= 1) AND (duration_ms <= 60000)))) OR (((media_kind)::text = 'AUDIO'::text) AND (duration_ms IS NOT NULL) AND ((duration_ms >= 1) AND (duration_ms <= 600000)) AND (width IS NULL) AND (height IS NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_asset_sha256"), "((sha256 ~ '^[0-9a-f]{64}$'::text))", true),
             Internal.createCheck(this, DSL.name("ck_asset_size"), "((byte_size > 0))", true),
             Internal.createCheck(this, DSL.name("ck_asset_status"), "(((status)::text = 'READY'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_asset_thumbnail_complete"), "((((thumbnail_key IS NULL) AND (thumbnail_byte_size IS NULL) AND (thumbnail_sha256 IS NULL)) OR ((thumbnail_key IS NOT NULL) AND (thumbnail_byte_size > 0) AND (thumbnail_sha256 ~ '^[0-9a-f]{64}$'::text))))", true),
-            Internal.createCheck(this, DSL.name("ck_asset_video_duration"), "(((((media_kind)::text = 'IMAGE'::text) AND (duration_ms IS NULL)) OR (((media_kind)::text = 'VIDEO'::text) AND ((duration_ms IS NULL) OR ((duration_ms >= 1) AND (duration_ms <= 60000))))))", true)
+            Internal.createCheck(this, DSL.name("ck_asset_thumbnail_complete"), "((((thumbnail_key IS NULL) AND (thumbnail_byte_size IS NULL) AND (thumbnail_sha256 IS NULL)) OR ((thumbnail_key IS NOT NULL) AND (thumbnail_byte_size > 0) AND (thumbnail_sha256 ~ '^[0-9a-f]{64}$'::text))))", true)
         );
     }
 

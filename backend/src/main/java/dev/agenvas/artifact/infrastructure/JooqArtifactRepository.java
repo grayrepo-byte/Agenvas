@@ -161,12 +161,12 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     @Override
     public void replaceMediaInputs(UUID projectId, UUID canvasItemId,
-            List<MediaDraft.ImageInput> inputs, Instant now) {
+            List<MediaDraft.MediaInput> inputs, Instant now) {
         dsl.deleteFrom(CANVAS_ITEM_MEDIA_INPUT)
                 .where(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID.eq(projectId))
                 .and(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID.eq(canvasItemId))
                 .execute();
-        for (MediaDraft.ImageInput input : inputs) {
+        for (MediaDraft.MediaInput input : inputs) {
             dsl.insertInto(CANVAS_ITEM_MEDIA_INPUT)
                     .set(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID, projectId)
                     .set(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID, canvasItemId)
@@ -527,7 +527,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                         .add(new MediaDraft.InputSource(source.value2(),
                                 MediaDraft.SourceType.valueOf(source.value3()),
                                 source.value4())));
-        List<MediaDraft.ImageInput> inputs = dsl
+        List<MediaDraft.MediaInput> inputs = dsl
                 .select(CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID,
                         ARTIFACT_VERSION.ARTIFACT_ID,
                         CANVAS_ITEM_MEDIA_INPUT.INPUT_ROLE,
@@ -541,7 +541,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .where(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID.eq(row.getProjectId()))
                 .and(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID.eq(row.getCanvasItemId()))
                 .orderBy(CANVAS_ITEM_MEDIA_INPUT.INPUT_ORDER)
-                .fetch(input -> new MediaDraft.ImageInput(input.value1(), input.value2(),
+                .fetch(input -> new MediaDraft.MediaInput(input.value1(), input.value2(),
                         MediaDraft.InputRole.valueOf(input.value3()), input.value4(),
                         input.value5(), List.copyOf(sources.getOrDefault(input.value1(),
                                 List.of()))));

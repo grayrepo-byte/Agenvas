@@ -148,7 +148,8 @@ public class MediaExecutionWorker {
         if (model == null) model = spec.path("settings").path("diffusionModel").asText(null);
         boolean mock = snapshot.connection().platform() == MediaPlatform.MOCK;
         return new CallLogService.CallDescriptor(task.projectId(), task.id(), task.runId(), null,
-                task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
+                task.kind() == Task.Kind.AUDIO_GENERATION ? CallLog.Kind.AUDIO
+                        : task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
                 operation, binding.adapterId(), model, mock);
     }
 
@@ -198,7 +199,9 @@ public class MediaExecutionWorker {
             Asset asset = task.kind() == Task.Kind.IMAGE_GENERATION
                     ? assets.archiveTaskImage(attempt.ownerId(), task.projectId(), task.id(),
                             payload::stream)
-                    : assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(),
+                    : task.kind() == Task.Kind.AUDIO_GENERATION
+                        ? assets.archiveTaskAudio(attempt.ownerId(), task.projectId(), task.id(), payload::stream)
+                        : assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(),
                             payload::stream);
             ObjectNode content = mapper.createObjectNode();
             content.put("assetId", asset.id().toString());

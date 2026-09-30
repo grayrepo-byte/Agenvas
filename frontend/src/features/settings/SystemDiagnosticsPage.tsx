@@ -6,12 +6,13 @@ import { ApiError, getCurrentUser, getSystemDiagnostics } from "../../shared/api
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
+import { DebugModeSection } from "./DebugModeSection";
 import { PasswordChangeSection } from "./PasswordChangeSection";
 import "./SettingsPages.css";
 
 const UNAUTHORIZED_STATUS = 401;
 
-/** Reads only a redacted local snapshot; refreshing never calls a paid Provider. */
+/** System preferences and local diagnostics; refreshing never calls a paid Provider. */
 export function SystemDiagnosticsPage() {
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const diagnostics = useQuery({
@@ -21,7 +22,7 @@ export function SystemDiagnosticsPage() {
   if (diagnostics.error instanceof ApiError && diagnostics.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
 
   const snapshot = diagnostics.data;
-  return <PageShell title="系统诊断" description="只读取本地状态；不会连接模型或媒体服务，也不会发起生成。" actions={
+  return <PageShell title="系统设置" description="管理密码与 debug 模式，查看本地运行状态。诊断刷新不会连接模型或媒体服务。" actions={
     <button className="secondary-button" type="button" disabled={diagnostics.isFetching || !currentUser.isSuccess} onClick={() => { void diagnostics.refetch(); }}><ArrowsClockwise size={16} aria-hidden />{diagnostics.isFetching ? "正在检查…" : "刷新状态"}</button>
   }>
     <div className="ui-stack">
@@ -36,6 +37,7 @@ export function SystemDiagnosticsPage() {
           <StatusCard title="媒体服务" icon={<Plugs size={20} aria-hidden />} tone={snapshot.mediaMode === "MOCK" ? "neutral" : snapshot.imageConfigured && snapshot.videoConfigured ? "success" : "warning"} badge={snapshot.mediaMode === "MOCK" ? "Mock" : "配置状态"} value={`${modeLabel(snapshot.mediaMode)} · 图片${snapshot.imageConfigured ? "已配置" : "未配置"} · 视频${snapshot.videoConfigured ? "已配置" : "未配置"}`} description="已配置不代表已完成真实生成测试。" />
         </div>
       </> : null}
+      <DebugModeSection enabled={currentUser.isSuccess} />
       <div className="diagnostics-detail-layout">
         <div>{snapshot ? <Panel title="近七天任务异常" description="仅显示失败、未知或阻断任务的数量和最近更新时间；不展示素材、路径或原始错误。">
           {snapshot.recentErrors.length === 0 ? <EmptyState icon={<CheckCircle size={28} aria-hidden />} title="暂无异常任务记录。" description="最近七天没有记录到失败、未知或阻断任务。" /> :

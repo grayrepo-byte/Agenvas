@@ -58,6 +58,72 @@ public class AssetService {
         this.clock = clock;
     }
 
+    /** Authenticated audio upload; MIME and duration come from actual decoding. */
+    public Asset archiveAudio(UUID ownerId, UUID projectId, InputStream input) {
+        projects.requireActiveProject(ownerId, projectId);
+        UUID id = UUID.randomUUID();
+        var stored = storage.storeAudio(projectId, id, input);
+        try { return publishAudio(ownerId, projectId, id, stored, false); }
+        catch (RuntimeException failure) { storage.discard(stored.objectKey()); throw failure; }
+    }
+
+    /** Recovery reads installed bytes only; no provider request is made. */
+    public java.util.Optional<Asset> recoverTaskAudio(UUID ownerId, UUID projectId, UUID taskId) {
+        projects.get(ownerId, projectId);
+        UUID id = UUID.nameUUIDFromBytes(("agenvas:task-audio:v1:" + taskId).getBytes(StandardCharsets.UTF_8));
+        return storage.withTaskAudioLock(projectId, id, () -> {
+            var stored = storage.recoverAudio(projectId, id);
+            if (stored.isEmpty()) return java.util.Optional.empty();
+            var existing = assets.find(projectId, id);
+            if (existing.isPresent()) {
+                Asset asset = existing.get();
+                if (asset.mediaKind() != Asset.MediaKind.AUDIO || !asset.objectKey().equals(stored.get().objectKey())
+                        || !asset.sha256().equals(stored.get().sha256()) || asset.byteSize() != stored.get().byteSize())
+                    throw new IllegalStateException("Audio bytes differ from READY metadata");
+                return existing;
+            }
+            return java.util.Optional.of(publishAudio(ownerId, projectId, id, stored.get(), true));
+        });
+    }
+
+    public Asset archiveTaskAudio(UUID ownerId, UUID projectId, UUID taskId,
+            Supplier<InputStream> download) {
+        projects.get(ownerId, projectId);
+        UUID id = UUID.nameUUIDFromBytes(("agenvas:task-audio:v1:" + taskId).getBytes(StandardCharsets.UTF_8));
+        return storage.withTaskAudioLock(projectId, id, () -> {
+            var recovered = storage.recoverAudio(projectId, id);
+            var existing = assets.find(projectId, id);
+            if (existing.isPresent()) {
+                var file = recovered.orElseThrow(() -> new IllegalStateException("Audio file missing"));
+                Asset asset = existing.get();
+                if (asset.mediaKind() != Asset.MediaKind.AUDIO || !asset.objectKey().equals(file.objectKey())
+                        || !asset.sha256().equals(file.sha256()) || asset.byteSize() != file.byteSize())
+                    throw new IllegalStateException("Audio bytes differ from READY metadata");
+                return asset;
+            }
+            if (recovered.isPresent()) return publishAudio(ownerId, projectId, id, recovered.get(), true);
+            try (InputStream input = download.get()) {
+                if (input == null) throw new IllegalStateException("Audio stream missing");
+                return publishAudio(ownerId, projectId, id, storage.storeAudio(projectId, id, input), true);
+            } catch (IOException failure) { throw new IllegalStateException("Cannot close audio stream", failure); }
+        });
+    }
+
+    private Asset publishAudio(UUID ownerId, UUID projectId, UUID id,
+            LocalAssetStorage.StoredAudio stored, boolean taskOutput) {
+        Asset asset = new Asset(id, projectId, Asset.MediaKind.AUDIO, stored.objectKey(),
+                stored.contentType(), stored.byteSize(), stored.sha256(), null, null,
+                stored.durationMs(), null, null, null, now());
+        return events.recordChange(ownerId, projectId, () -> {
+            if (taskOutput) projects.get(ownerId, projectId); else projects.requireActiveProject(ownerId, projectId);
+            assets.insert(asset);
+            ObjectNode payload = mapper.createObjectNode().put("assetId", id.toString())
+                    .put("contentType", asset.contentType()).put("byteSize", asset.byteSize());
+            return ProjectEventService.Change.changed(asset,
+                    new ProjectEventService.EventDraft("asset.ready", 1, id, 0, payload));
+        }).value();
+    }
+
     /** 流式接收用户图片，在字节、像素和解码校验通过并生成缩略图后才写 READY。 */
     public Asset archiveImage(UUID ownerId, UUID projectId, InputStream input) {
         projects.requireActiveProject(ownerId, projectId);

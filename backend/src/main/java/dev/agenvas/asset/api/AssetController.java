@@ -59,6 +59,15 @@ public class AssetController {
         }
     }
 
+    @PostMapping(path = "/audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AssetResponse> uploadAudio(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @RequestPart("file") MultipartFile file) throws IOException {
+        try (InputStream input = file.getInputStream()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(AssetResponse.from(
+                    assets.archiveAudio(principal.userId(), projectId, input)));
+        }
+    }
+
     /** 返回经项目权限检查的不可变媒体元数据，不暴露本地对象键。 */
     @GetMapping("/{assetId}")
     public AssetResponse metadata(@AuthenticationPrincipal AdminPrincipal principal,

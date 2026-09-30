@@ -96,7 +96,7 @@ class ImageOperationDerivationPostgresIT {
         MediaDraft sourceDraft = drafts.save(owner.userId(), project.id(), sourceCardId, 0,
                 "Previous prompt \uFFFC", parameters, null,
                 capabilities.defaultFor(Task.Kind.IMAGE_GENERATION).capabilityId(), null,
-                List.of(new MediaDraftService.SaveImageInput(reference.resourceDefaultVersion().id(),
+                List.of(new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE, "#7C3AED")),
                 List.of(new MediaDraft.PromptMention(reference.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE)));
@@ -188,7 +188,7 @@ class ImageOperationDerivationPostgresIT {
         assertThat(draft.capabilityId()).isNull();
         assertThat(draft.durationSeconds()).isNull();
         assertThat(draft.videoInputMode()).isNull();
-        assertThat(draft.imageInputs()).isEmpty();
+        assertThat(draft.mediaInputs()).isEmpty();
         assertThat(draft.mentions()).isEmpty();
         assertThat(draft.displayMode()).isEqualTo(displayMode);
         assertThat(draft.version()).isZero();

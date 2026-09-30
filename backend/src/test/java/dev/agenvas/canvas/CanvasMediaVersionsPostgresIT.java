@@ -229,7 +229,7 @@ class CanvasMediaVersionsPostgresIT {
         connections.connect(owner.userId(), project.id(), source, target, first,
                 CanvasConnection.RelationType.MEDIA_INPUT, drafts.get(owner.userId(), project.id(), target).version());
         UUID second = generate(source);
-        assertThat(drafts.get(owner.userId(), project.id(), target).imageInputs().getFirst().versionId())
+        assertThat(drafts.get(owner.userId(), project.id(), target).mediaInputs().getFirst().versionId())
                 .isEqualTo(first);
         assertThat(connections.list(owner.userId(), project.id()).getFirst().sourceArtifactVersionId())
                 .isEqualTo(first);

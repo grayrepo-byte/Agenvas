@@ -304,6 +304,7 @@ public class MediaCapabilityService {
         normalized.put("minimumSeconds", declaration.minimumSeconds());
         normalized.put("maximumSeconds", declaration.maximumSeconds());
         normalized.put("maxReferenceImages", declaration.maxReferenceImages());
+        normalized.put("maxReferenceAudios", declaration.maxReferenceAudios());
         var modes = normalized.putArray("supportedVideoInputModes");
         declaration.supportedVideoInputModes().stream().sorted().forEach(modes::add);
         if (declaration.defaultVideoInputMode() == null) {
@@ -319,6 +320,9 @@ public class MediaCapabilityService {
             normalized.put("modelId", NANO_BANANA_MODEL_ID);
             normalized.put("outputFormat", "image");
             normalized.put("imageSize", NANO_BANANA_IMAGE_SIZE);
+        } else if ("VOLC_SEED_AUDIO_1".equals(adapterId)) {
+            normalized.put("modelId", "seed-audio-1.0");
+            normalized.put("outputFormat", "mp3");
         } else if ("ARK_SEEDANCE_2_I2V".equals(adapterId)) {
             normalized.put("modelId", "doubao-seedance-2-0-260128");
             normalized.put("outputFormat", "mp4");
@@ -544,7 +548,7 @@ public class MediaCapabilityService {
     }
 
     private static Task.Kind requireMediaKind(Task.Kind kind) {
-        if (kind != Task.Kind.IMAGE_GENERATION && kind != Task.Kind.VIDEO_GENERATION) {
+        if (kind != Task.Kind.IMAGE_GENERATION && kind != Task.Kind.VIDEO_GENERATION && kind != Task.Kind.AUDIO_GENERATION) {
             throw invalid("仅支持图片或视频能力");
         }
         return kind;
@@ -613,7 +617,7 @@ public class MediaCapabilityService {
 
     private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
         boolean cloud = platform == MediaPlatform.OPENAI || platform == MediaPlatform.ARK
-                || platform == MediaPlatform.GOOGLE;
+                || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid("云平台连接必须填写 API Key");
         }

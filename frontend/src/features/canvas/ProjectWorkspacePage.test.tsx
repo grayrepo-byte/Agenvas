@@ -81,7 +81,7 @@ describe("ProjectWorkspacePage", () => {
         HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
         HttpResponse.json({ projectId: params.projectId, canvasItemId: params.canvasItemId,
-          prompt: "", parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+          prompt: "", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [],
           durationSeconds: null, capabilityId: null,
           displayMode: "RESULT", version: 0, createdAt: "2026-09-23T00:00:00Z",
           updatedAt: "2026-09-23T00:00:00Z" })),
@@ -109,6 +109,61 @@ describe("ProjectWorkspacePage", () => {
         }),
       ),
     );
+  });
+
+  it("opens an idle audio conversation bound to the exact selected version and reuses it", async () => {
+    const source = imageCard();
+    const audio: CanvasItem = { ...source, id: "audio-card", title: "Voice",
+      artifact: { ...source.artifact!, kind: "AUDIO", title: "Voice" } };
+    let items = [audio];
+    let agents: Agent[] = [];
+    let creates = 0;
+    let runs = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Audio project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: agents })),
+      http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
+        creates++;
+        const input = await request.json() as { name: string; instruction: string; bindings: { artifactId: string; selectedVersionId: string }[] };
+        expect(input.bindings).toEqual([{ artifactId: audio.artifact!.id, selectedVersionId: imageVersionId }]);
+        expect(input.instruction).toContain("不代表你已听到");
+        const now = "2026-09-30T00:00:00Z";
+        const agent: Agent = { ...input, id: "audio-agent", projectId: "project-1", profileKey: "creator", profileVersion: 1,
+          outputGroupId: "audio-output", version: 0, createdAt: now, updatedAt: now,
+          bindings: input.bindings.map((binding) => ({ ...binding, id: "audio-binding", bindingType: "INPUT" })) };
+        agents = [agent];
+        return HttpResponse.json(agent, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: CanvasCommand[] };
+        const command = body.commands[0];
+        if (!command || command.type !== "PLACE_AGENT") throw new Error("Expected idle Agent placement");
+        items = [...items, { id: command.itemId, subjectType: "AGENT", subjectId: command.agentId,
+          title: agents[0]!.name, x: command.x, y: command.y, width: command.width, height: command.height,
+          zIndex: command.zIndex, groupId: null, locked: false, version: 0, selectedVersionId: null, selectedVersion: null,
+          artifact: null, agent: agents[0]! }];
+        return HttpResponse.json({ items });
+      }),
+      http.post("/api/v1/projects/:projectId/runs", () => { runs++; return HttpResponse.json({}); }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("article", { name: "Voice · 音频" }));
+    await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
+    expect(await screen.findByRole("heading", { name: "Voice · 对话" })).toBeVisible();
+    expect(creates).toBe(1);
+    expect(runs).toBe(0);
+    fireEvent.click(screen.getByRole("article", { name: "Voice · 音频" }));
+    await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Agent 对话" })).not.toBeInTheDocument());
+    expect(creates).toBe(1);
+    expect(items).toHaveLength(2);
+    expect(runs).toBe(0);
   });
 
   it("creates and selects empty text at the menu's canvas position without a drawer", async () => {
@@ -208,7 +263,7 @@ describe("ProjectWorkspacePage", () => {
       }),
       http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
         HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt,
-          parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+          parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [],
           durationSeconds: null, capabilityId: null,
           version: draftVersion, createdAt: now, updatedAt: now })),
       http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", async ({ request, params }) => {
@@ -217,7 +272,7 @@ describe("ProjectWorkspacePage", () => {
         prompt = body.prompt;
         draftVersion++;
         return HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt,
-          parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+          parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [],
           durationSeconds: null, capabilityId: null,
           version: draftVersion, createdAt: now, updatedAt: now });
       }),
@@ -236,7 +291,7 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
     expect(screen.getByRole("menuitem", { name: "文字" })).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
@@ -271,12 +326,12 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
     await user.click(screen.getByLabelText("项目画布"));
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
     screen.getByRole("menuitem", { name: "文字" }).blur();
     await user.keyboard("{Escape}");
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
@@ -538,17 +593,17 @@ describe("ProjectWorkspacePage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "导入素材" }));
-    await user.type(screen.getByLabelText("图片标题"), "Product reference");
-    await user.upload(screen.getByLabelText("参考图片"),
+    await user.type(screen.getByLabelText("素材标题"), "Product reference");
+    await user.upload(screen.getByLabelText("图片或音频"),
       new File(["real bytes checked by backend"], "reference.webp", { type: "image/webp" }));
-    expect((screen.getByLabelText("参考图片") as HTMLInputElement).files).toHaveLength(1);
+    expect((screen.getByLabelText("图片或音频") as HTMLInputElement).files).toHaveLength(1);
     fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
     const preview = await screen.findByAltText("Product reference 的预览");
     expect(preview).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(preview.closest(".react-flow__node")).toHaveStyle({ visibility: "visible" });
     expect(uploaded).toBe(true);
     expect(created).toBe(true);
-    expect(screen.getByLabelText("图片标题")).toHaveValue("");
+    expect(screen.getByLabelText("素材标题")).toHaveValue("");
   });
 
   it("keeps the chosen reference file after a rejected upload", async () => {
@@ -585,14 +640,14 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
     await user.click(screen.getByRole("button", { name: "导入素材" }));
-    await user.type(screen.getByLabelText("图片标题"), "Broken reference");
-    await user.upload(screen.getByLabelText("参考图片"),
+    await user.type(screen.getByLabelText("素材标题"), "Broken reference");
+    await user.upload(screen.getByLabelText("图片或音频"),
       new File(["bad image"], "broken.webp", { type: "image/webp" }));
-    expect((screen.getByLabelText("参考图片") as HTMLInputElement).files).toHaveLength(1);
+    expect((screen.getByLabelText("图片或音频") as HTMLInputElement).files).toHaveLength(1);
     fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
     expect(await screen.findByText("图片解码失败。")).toBeInTheDocument();
-    expect(screen.getByLabelText("图片标题")).toHaveValue("Broken reference");
-    expect((screen.getByLabelText("参考图片") as HTMLInputElement).files?.[0]?.name)
+    expect(screen.getByLabelText("素材标题")).toHaveValue("Broken reference");
+    expect((screen.getByLabelText("图片或音频") as HTMLInputElement).files?.[0]?.name)
       .toBe("broken.webp");
     expect(creates).toBe(0);
   });
@@ -645,18 +700,18 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
     await user.click(screen.getByRole("button", { name: "导入素材" }));
-    await user.type(screen.getByLabelText("图片标题"), "Retry reference");
-    await user.upload(screen.getByLabelText("参考图片"),
+    await user.type(screen.getByLabelText("素材标题"), "Retry reference");
+    await user.upload(screen.getByLabelText("图片或音频"),
       new File(["bytes"], "retry.webp", { type: "image/webp" }));
     const form = screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!;
     fireEvent.submit(form);
     expect(await screen.findByText("画布版本冲突。")).toBeInTheDocument();
-    expect(screen.getByText(/图片和产物已创建，但画布放置未完成/)).toBeInTheDocument();
+    expect(screen.getByText(/素材和产物已创建，但画布放置未完成/)).toBeInTheDocument();
     fireEvent.submit(form);
     await waitFor(() => expect(placements).toBe(2));
     expect(uploads).toBe(1);
     expect(artifacts).toBe(1);
-    expect(screen.getByLabelText("图片标题")).toHaveValue("");
+    expect(screen.getByLabelText("素材标题")).toHaveValue("");
   });
 
   it.each(["artifact", "placement"])("reuses the text creation intent after an uncertain %s response", async (stage) => {

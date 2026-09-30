@@ -13,5 +13,7 @@ public enum MediaPlatform {
     /** 火山方舟视频端点。 */
     ARK,
     /** Google 图像端点。 */
-    GOOGLE
+    GOOGLE,
+    /** Fixed Volcano Engine speech synthesis API. */
+    VOLCENGINE
 }

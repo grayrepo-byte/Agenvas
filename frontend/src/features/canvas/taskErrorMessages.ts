@@ -32,6 +32,8 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]: "响应超出大小上限",
   [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]: "结果超出大小上限",
   [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]: "提交结果未确认，需人工核对",
+  SEED_AUDIO_RESULT_UNKNOWN: "音频生成结果未确认，需在节点中显式重试",
+  SEED_AUDIO_REJECTED: "上游拒绝了音频请求（参数或凭证）",
   ARK_CREATE_UNCERTAIN: "提交结果未确认",
   OPENAI_IMAGE_REJECTED: "上游拒绝了请求（参数或凭证）",
   GOOGLE_IMAGE_REJECTED: "上游拒绝了请求（参数或凭证）",

@@ -369,7 +369,7 @@ public class ArtifactService {
                     throw versionConflict();
                 }
             }
-            if (current.kind() == Artifact.Kind.IMAGE || current.kind() == Artifact.Kind.VIDEO) {
+            if (current.kind() != Artifact.Kind.TEXT) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                         "工具参数无效", "Agent 不能修改已归档媒体内容。", false);
             }
@@ -458,6 +458,14 @@ public class ArtifactService {
 
     /** 只解析同项目图片版本，供可信媒体任务读取已固定的参考图。 */
     @Transactional(readOnly = true)
+    /** Resolves an exact media version within the authenticated project, never a mutable default. */
+    public ArtifactVersion requireMediaVersionForTask(UUID ownerId, UUID projectId, UUID versionId, Artifact.Kind kind) {
+        projects.get(ownerId, projectId);
+        var target = artifacts.findVersionTarget(projectId, versionId).orElseThrow(this::notFound);
+        if (target.kind() != kind || kind == Artifact.Kind.TEXT) throw notFound();
+        return artifacts.findVersion(projectId, target.artifactId(), versionId).orElseThrow(this::notFound);
+    }
+
     public ArtifactVersion requireImageVersionForTask(UUID ownerId, UUID projectId,
             UUID versionId) {
         projects.get(ownerId, projectId);
@@ -560,6 +568,11 @@ public class ArtifactService {
                         image.path("role").asText(), index++, Artifact.Kind.IMAGE));
             }
         }
+        if (frozenInput != null) for (JsonNode audio : frozenInput.path("audios")) {
+            references.add(new ArtifactVersion.InputReference(
+                    UUID.fromString(audio.path("versionId").asText()), "AUDIO_REFERENCE",
+                    references.size(), Artifact.Kind.AUDIO));
+        }
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.TASK);
         validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, current.kind(), content);
@@ -589,7 +602,7 @@ public class ArtifactService {
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
                 .orElseThrow(this::notFound);
         requireEditable(current);
-        if (current.kind() != Artifact.Kind.IMAGE && current.kind() != Artifact.Kind.VIDEO) {
+        if (current.kind() == Artifact.Kind.TEXT) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     "请求参数无效", "只有图片和视频卡片可以追加上传版本。", false);
         }
@@ -690,9 +703,8 @@ public class ArtifactService {
     /** Schema 只校验字段形状；此处还要把媒体身份绑定到项目内真实且已就绪的私有文件。 */
     private void validateMediaAsset(UUID ownerId, UUID projectId, Artifact.Kind kind,
             JsonNode content) {
-        if (kind == Artifact.Kind.IMAGE || kind == Artifact.Kind.VIDEO) {
-            Asset.MediaKind mediaKind = kind == Artifact.Kind.IMAGE
-                    ? Asset.MediaKind.IMAGE : Asset.MediaKind.VIDEO;
+        if (kind != Artifact.Kind.TEXT) {
+            Asset.MediaKind mediaKind = Asset.MediaKind.valueOf(kind.name());
             assets.requireReadyMedia(ownerId, projectId,
                     UUID.fromString(content.path("assetId").asText()), mediaKind);
         }
@@ -701,7 +713,7 @@ public class ArtifactService {
     /** 禁止 Agent 或生成任务伪造用户上传来源。 */
     private void requireUploadAuthorship(Artifact.Kind kind, JsonNode content,
             ArtifactVersion.CreatedByKind author) {
-        if (kind == Artifact.Kind.IMAGE
+        if (kind != Artifact.Kind.TEXT
                 && "UPLOAD".equals(content.path("sourceType").asText())
                 && author != ArtifactVersion.CreatedByKind.USER) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -770,7 +782,7 @@ public class ArtifactService {
     public record ArtifactView(Artifact artifact, ArtifactVersion resourceDefaultVersion) {}
 
     private static boolean isMediaKind(Artifact.Kind kind) {
-        return kind == Artifact.Kind.IMAGE || kind == Artifact.Kind.VIDEO;
+        return kind != Artifact.Kind.TEXT;
     }
 
     /**

@@ -26,8 +26,8 @@ public final class CanvasMediaFixture {
             UUID canvasItemId, long expectedVersion, String prompt, UUID imageVersionId,
             Integer durationSeconds, UUID capabilityId) {
         boolean video = durationSeconds != null;
-        List<MediaDraftService.SaveImageInput> inputs = imageVersionId == null ? List.of()
-                : List.of(new MediaDraftService.SaveImageInput(imageVersionId,
+        List<MediaDraftService.SaveMediaInput> inputs = imageVersionId == null ? List.of()
+                : List.of(new MediaDraftService.SaveMediaInput(imageVersionId,
                         video ? MediaDraft.InputRole.START_FRAME
                                 : MediaDraft.InputRole.REFERENCE,
                         "#7C3AED"));

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasConnection, CanvasItem } from "../../shared/api/client";
-import type { VersionedArtifact } from "./versionedArtifact";
+import { canvasItemVersion, canvasItemVersionId, type VersionedArtifact } from "./versionedArtifact";
 import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputBindingsAfterConnect,
-  inputConnectionUpdate, isCanvasConnectionValid, projectCanvasRelations } from "./canvasRelations";
+  inputConnectionUpdate, isCanvasConnectionValid, mediaInputConnection, projectCanvasRelations } from "./canvasRelations";
 
 const createdAt = "2026-09-24T00:00:00Z";
 
@@ -76,6 +76,24 @@ function agentCard(bindingVersion = "version-a"): CanvasItem {
 }
 
 describe("canvas relation projection", () => {
+  it("uses the audio node selection for bindings, connections and detail even when the resource default differs", () => {
+    const source = mediaCard("artifact-a", "library-audio-version", "selected-audio-version");
+    source.artifact!.kind = "AUDIO";
+    const target = mediaCard("video", "library-video", "selected-video");
+    target.artifact!.kind = "VIDEO";
+    const agent = agentCard("selected-audio-version");
+    expect(canvasItemVersionId(source)).toBe("selected-audio-version");
+    expect(canvasItemVersion(source)?.id).toBe("selected-audio-version");
+    expect(inputBindingsAfterConnect(source, agent)).toEqual([{ artifactId: "artifact-a", selectedVersionId: "selected-audio-version" }]);
+    expect(mediaInputConnection([source, target], { source: source.id, target: target.id,
+      sourceHandle: "artifact-output", targetHandle: "artifact-input" })).toMatchObject({ sourceVersionId: "selected-audio-version" });
+    expect(projectCanvasRelations([source, agent])[0]?.className).not.toContain("historical");
+    source.selectedVersionId = null; source.selectedVersion = null;
+    expect(canvasItemVersionId(source)).toBeNull();
+    expect(canvasItemVersion(source)).toBeNull();
+    expect(inputBindingsAfterConnect(source, agent)).toBeNull();
+  });
+
   it("keeps Agent bindings, output ownership, and persisted media inputs distinct", () => {
     const input = mediaCard("artifact-a", "version-a", "version-a");
     const output = mediaCard("artifact-b", "version-b", "version-b");

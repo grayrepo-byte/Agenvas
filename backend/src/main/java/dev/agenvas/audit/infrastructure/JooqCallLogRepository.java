@@ -1,6 +1,15 @@
 package dev.agenvas.audit.infrastructure;
 
 import static dev.agenvas.db.Tables.CALL_LOG;
+import static dev.agenvas.db.Tables.CALL_LOG_DEBUG;
+import static dev.agenvas.db.Tables.AUDIT_DEBUG_SETTINGS;
+import static dev.agenvas.db.Tables.PROJECT;
+import dev.agenvas.audit.domain.DebugSettings;
+import dev.agenvas.audit.domain.CallDebug;
+import dev.agenvas.shared.http.DebugHttpCapture.Exchange;
+import java.util.Optional;
+import org.jooq.JSONB;
+import tools.jackson.databind.ObjectMapper;
 
 import dev.agenvas.audit.application.CallLogRepository;
 import dev.agenvas.audit.application.CallLogService;
@@ -19,9 +28,43 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class JooqCallLogRepository implements CallLogRepository {
+    private static final short SETTINGS_ID = 1;
     private final DSLContext dsl;
+    private final ObjectMapper mapper;
 
-    public JooqCallLogRepository(DSLContext dsl) { this.dsl = dsl; }
+    public JooqCallLogRepository(DSLContext dsl, ObjectMapper mapper) {
+        this.dsl = dsl; this.mapper = mapper;
+    }
+
+    @Override public boolean isDebugEnabled() { return settings().debugMode(); }
+    @Override public DebugSettings settings() {
+        return dsl.selectFrom(AUDIT_DEBUG_SETTINGS).where(AUDIT_DEBUG_SETTINGS.ID.eq(SETTINGS_ID))
+                .fetchSingle(row -> new DebugSettings(row.getDebugMode(), row.getVersion()));
+    }
+    @Override public Optional<DebugSettings> updateSettings(boolean enabled, int expectedVersion) {
+        return dsl.update(AUDIT_DEBUG_SETTINGS).set(AUDIT_DEBUG_SETTINGS.DEBUG_MODE, enabled)
+                .set(AUDIT_DEBUG_SETTINGS.VERSION, AUDIT_DEBUG_SETTINGS.VERSION.plus(1))
+                .where(AUDIT_DEBUG_SETTINGS.ID.eq(SETTINGS_ID))
+                .and(AUDIT_DEBUG_SETTINGS.VERSION.eq(expectedVersion)).returning()
+                .fetchOptional(row -> new DebugSettings(row.getDebugMode(), row.getVersion()));
+    }
+    @Override public void saveDebug(UUID id, List<Exchange> exchanges) {
+        JSONB json = JSONB.valueOf(mapper.writeValueAsString(exchanges));
+        dsl.insertInto(CALL_LOG_DEBUG).set(CALL_LOG_DEBUG.CALL_ID, id)
+                .set(CALL_LOG_DEBUG.EXCHANGES_JSON, json).onConflict(CALL_LOG_DEBUG.CALL_ID)
+                .doUpdate().set(CALL_LOG_DEBUG.EXCHANGES_JSON, json).execute();
+    }
+    @Override public Optional<CallDebug> debug(UUID ownerId, UUID id) {
+        return dsl.select(CALL_LOG.ID, CALL_LOG_DEBUG.EXCHANGES_JSON).from(CALL_LOG)
+                .join(PROJECT).on(PROJECT.ID.eq(CALL_LOG.PROJECT_ID))
+                .leftJoin(CALL_LOG_DEBUG).on(CALL_LOG_DEBUG.CALL_ID.eq(CALL_LOG.ID))
+                .where(CALL_LOG.ID.eq(id)).and(PROJECT.OWNER_ID.eq(ownerId)).fetchOptional(row -> {
+                    JSONB json = row.get(CALL_LOG_DEBUG.EXCHANGES_JSON);
+                    List<Exchange> exchanges = json == null ? List.of() : List.of(
+                            mapper.readValue(json.data(), Exchange[].class));
+                    return new CallDebug(id, json != null, exchanges);
+                });
+    }
 
     @Override
     public void start(UUID id, CallLogService.CallDescriptor value, String traceId, Instant startedAt) {

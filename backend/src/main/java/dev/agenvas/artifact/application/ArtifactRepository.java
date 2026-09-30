@@ -28,7 +28,7 @@ public interface ArtifactRepository {
     /** 先插入稳定产物身份，再追加首个不可变内容版本。 */
     void createArtifact(Artifact artifact);
 
-    /** Initialize the independent editable input of one IMAGE or VIDEO CanvasItem. */
+    /** Initialize the independent editable input of one media CanvasItem. */
     void createMediaDraft(UUID projectId, UUID canvasItemId, String prompt,
             MediaDraft.DisplayMode displayMode, Instant now);
 
@@ -40,7 +40,7 @@ public interface ArtifactRepository {
 
     /** Replace the complete ordered input set and all source rows in the draft transaction. */
     void replaceMediaInputs(UUID projectId, UUID canvasItemId,
-            List<MediaDraft.ImageInput> inputs, Instant now);
+            List<MediaDraft.MediaInput> inputs, Instant now);
 
     /** Change only the card face, without invalidating the saved input version. */
     void setMediaDraftDisplayMode(UUID projectId, UUID canvasItemId,

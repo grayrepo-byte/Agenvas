@@ -2,11 +2,21 @@ package dev.agenvas.audit.application;
 
 import dev.agenvas.audit.domain.CallLogPage;
 import java.time.Instant;
+import dev.agenvas.audit.domain.DebugSettings;
+import dev.agenvas.audit.domain.CallDebug;
+import dev.agenvas.shared.http.DebugHttpCapture.Exchange;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-/** Only stores allowlisted identifiers and timings; request/response content has no field here. */
+/** Metadata stays separate from opt-in, sanitized debug bodies. */
 public interface CallLogRepository {
     void start(UUID id, CallLogService.CallDescriptor descriptor, String traceId, Instant startedAt);
     void finish(UUID id, CallLogService.CallOutcome outcome, Instant respondedAt, long durationMs);
+    boolean isDebugEnabled();
+    DebugSettings settings();
+    Optional<DebugSettings> updateSettings(boolean enabled, int expectedVersion);
+    void saveDebug(UUID id, List<Exchange> exchanges);
+    Optional<CallDebug> debug(UUID ownerId, UUID id);
     CallLogPage list(UUID ownerId, CallLogService.Filter filter);
 }

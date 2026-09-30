@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -57,19 +58,33 @@ public class ArkSeedanceClient {
                 || !java.util.Set.of("16:9", "9:16", "1:1").contains(ratio)) {
             throw new IllegalArgumentException("Seedance first-frame inputs are unsupported");
         }
+        return create(key, prompt, List.of(new Reference("image/png", firstFramePng, "first_frame")),
+                durationSeconds, ratio, false);
+    }
+
+    public record Reference(String contentType, byte[] bytes, String role) {}
+
+    public String create(String key, String prompt, List<Reference> references,
+            int durationSeconds, String ratio, boolean generateAudio) {
+        if (durationSeconds < 4 || durationSeconds > 15
+                || !java.util.Set.of("16:9", "9:16", "1:1").contains(ratio))
+            throw new IllegalArgumentException("Seedance parameters unsupported");
         ObjectNode request = mapper.createObjectNode();
         request.put("model", MODEL);
         var content = request.putArray("content");
         content.addObject().put("type", "text").put("text", prompt);
-        ObjectNode frame = content.addObject();
-        frame.put("type", "image_url");
-        frame.put("role", "first_frame");
-        frame.putObject("image_url").put("url", "data:image/png;base64,"
-                + Base64.getEncoder().encodeToString(firstFramePng));
+        for (var reference : references) {
+            boolean audio = "reference_audio".equals(reference.role());
+            String type = audio ? "audio_url" : "image_url";
+            String mime = "audio/mpeg".equals(reference.contentType()) ? "audio/mp3" : reference.contentType();
+            var item = content.addObject().put("type", type).put("role", reference.role());
+            item.putObject(type).put("url", "data:" + mime + ";base64,"
+                    + Base64.getEncoder().encodeToString(reference.bytes()));
+        }
         request.put("duration", durationSeconds);
         request.put("ratio", ratio);
         request.put("resolution", "720p");
-        request.put("generate_audio", false);
+        request.put("generate_audio", generateAudio);
         request.put("output_format", "mp4");
         JsonNode response = request(key, "POST", TASKS,
                 request.toString().getBytes(StandardCharsets.UTF_8), true);

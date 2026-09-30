@@ -203,8 +203,8 @@ class OpenAiImage2PostgresIT {
         var card = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE, "Concept", null);
         UUID canvasItemId = dev.agenvas.support.CanvasMediaFixture.place(
                 canvas, ownerId, project.id(), card.artifact().id());
-        List<MediaDraftService.SaveImageInput> inputs = referenceImages.stream()
-                .map(reference -> new MediaDraftService.SaveImageInput(
+        List<MediaDraftService.SaveMediaInput> inputs = referenceImages.stream()
+                .map(reference -> new MediaDraftService.SaveMediaInput(
                         reference.resourceDefaultVersion().id(),
                         dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE,
                         "#7C3AED"))

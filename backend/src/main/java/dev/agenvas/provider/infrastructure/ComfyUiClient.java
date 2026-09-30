@@ -1,6 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
 import java.io.IOException;
+import dev.agenvas.shared.http.DebugHttpCapture;
 import java.io.FilterInputStream;
 import java.io.InputStream;
 import java.net.Proxy;
@@ -134,7 +135,8 @@ public class ComfyUiClient {
         HttpRequest request = request("/upload/image")
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(payload)).build();
-        JsonNode response = readJson(send(request), MAX_JSON_BYTES);
+        int exchange = DebugHttpCapture.begin("POST", request.uri().toString(), payload, "application/octet-stream");
+        JsonNode response = readJson(send(request, exchange), MAX_JSON_BYTES);
         String returned = response.path("name").asText();
         if (!safeFilename(returned) || !"input".equals(response.path("type").asText())
                 || !response.path("subfolder").asText("").isEmpty()) {
@@ -151,7 +153,8 @@ public class ComfyUiClient {
         String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8);
         HttpRequest request = request("/view?filename=" + encoded + "&type=output&subfolder=")
                 .GET().build();
-        return new FilterInputStream(send(request).body()) {
+        int exchange = DebugHttpCapture.begin("GET", request.uri().toString(), null, null);
+        return new FilterInputStream(send(request, exchange).body()) {
             private long total;
 
             @Override
@@ -183,7 +186,10 @@ public class ComfyUiClient {
         } else {
             request.GET();
         }
-        return readJson(send(request.build()), MAX_JSON_BYTES);
+        HttpRequest built = request.build();
+        int exchange = DebugHttpCapture.begin(method, built.uri().toString(),
+                body == null ? null : body.getBytes(StandardCharsets.UTF_8), "application/json");
+        return readJson(send(built, exchange), MAX_JSON_BYTES);
     }
 
     /** 只从固定 origin 拼接内部受控路径，并为单个请求设置超时。 */
@@ -192,13 +198,18 @@ public class ComfyUiClient {
     }
 
     /** 禁止跟随重定向；4xx 视为协议错误，5xx 和网络异常视为受理状态不明。 */
-    private HttpResponse<InputStream> send(HttpRequest request) {
+    private record TransportResponse(InputStream body) {}
+
+    private TransportResponse send(HttpRequest request, int exchange) {
         try {
             HttpResponse<InputStream> response = client.send(request,
                     HttpResponse.BodyHandlers.ofInputStream());
             int status = response.statusCode();
+            InputStream captured = DebugHttpCapture.responseStream(exchange, status,
+                    response.headers().firstValue("Content-Type").orElse("application/octet-stream"), response.body());
             if (status < 200 || status >= 300) {
-                try (InputStream discarded = response.body()) {
+                try (InputStream discarded = captured) {
+                    if (DebugHttpCapture.enabled()) discarded.readNBytes(MAX_JSON_BYTES + 1);
                     // 不跟随重定向，也不把上游正文反射到用户或模型错误信息。
                 }
                 if (status >= 500) {
@@ -206,7 +217,7 @@ public class ComfyUiClient {
                 }
                 throw new ProtocolFailure("ComfyUI returned HTTP " + status);
             }
-            return response;
+            return new TransportResponse(captured);
         } catch (IOException failure) {
             throw new TransportFailure("ComfyUI transport outcome is uncertain", failure);
         } catch (InterruptedException failure) {
@@ -216,7 +227,7 @@ public class ComfyUiClient {
     }
 
     /** 有界读取 JSON 响应；格式错误映射为不含原始上游正文的协议失败。 */
-    private JsonNode readJson(HttpResponse<InputStream> response, int maximum) {
+    private JsonNode readJson(TransportResponse response, int maximum) {
         byte[] bytes = readBounded(response, maximum);
         try {
             return mapper.readTree(bytes);
@@ -226,7 +237,7 @@ public class ComfyUiClient {
     }
 
     /** 最多读取 maximum+1 字节以检测超限，并始终关闭响应流。 */
-    private byte[] readBounded(HttpResponse<InputStream> response, int maximum) {
+    private byte[] readBounded(TransportResponse response, int maximum) {
         try (InputStream input = response.body()) {
             byte[] bytes = input.readNBytes(maximum + 1);
             if (bytes.length > maximum) throw new ProtocolFailure("ComfyUI response exceeded limit");

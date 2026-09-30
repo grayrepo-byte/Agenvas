@@ -43,3 +43,11 @@
 }
 @media (min-width: 1600px) { .call-log-filters { grid-template-columns: repeat(6, minmax(0, 1fr)); } .call-log-metadata { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .call-log-toggle svg { transition: none; } }
+
+.call-log-debug { margin-top: var(--ui-space-5); border-top: 1px solid var(--line); padding-top: var(--ui-space-4); }
+.call-log-debug h3, .call-log-debug h4 { margin: 0 0 var(--ui-space-3); font-weight: 550; }
+.call-log-exchange { margin-top: var(--ui-space-4); min-width: 0; }
+.call-log-url { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.call-log-body { margin-top: var(--ui-space-3); }
+.call-log-body summary { cursor: pointer; }
+.call-log-body pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--ui-space-3); background: var(--ui-field); border: 1px solid var(--line); border-radius: 6px; font-size: var(--ui-text-xs); }

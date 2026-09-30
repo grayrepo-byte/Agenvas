@@ -49,7 +49,7 @@ public class MediaDraftController {
         return drafts.save(principal.userId(), projectId, canvasItemId,
                 request.expectedVersion(), request.prompt(), request.parameters(),
                 request.durationSeconds(), request.capabilityId(), request.videoInputMode(),
-                request.imageInputs(), request.mentions());
+                request.mediaInputs(), request.mentions());
     }
 
     /** Deliberately restores all editable generation input without recreating old canvas lines. */
@@ -62,11 +62,11 @@ public class MediaDraftController {
     }
 
     /** Removes the image aggregate and every canvas line that currently owns it. */
-    @PostMapping("/image-inputs/{versionId}/remove")
-    public MediaDraft removeImageInput(@AuthenticationPrincipal AdminPrincipal principal,
+    @PostMapping("/media-inputs/{versionId}/remove")
+    public MediaDraft removeMediaInput(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID canvasItemId,
             @PathVariable UUID versionId,
-            @Valid @RequestBody RemoveImageInputRequest request) {
+            @Valid @RequestBody RemoveMediaInputRequest request) {
         return connections.removeMediaInput(principal.userId(), projectId, canvasItemId,
                 versionId, request.expectedVersion());
     }
@@ -75,10 +75,10 @@ public class MediaDraftController {
             @NotNull @Size(max = 20000) String prompt, JsonNode parameters,
             Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode videoInputMode,
-            List<MediaDraftService.SaveImageInput> imageInputs,
+            List<MediaDraftService.SaveMediaInput> mediaInputs,
             List<MediaDraft.PromptMention> mentions) {}
 
     public record RestoreVersionInputsRequest(@NotNull UUID versionId,
             @PositiveOrZero long expectedVersion) {}
-    public record RemoveImageInputRequest(@PositiveOrZero long expectedVersion) {}
+    public record RemoveMediaInputRequest(@PositiveOrZero long expectedVersion) {}
 }

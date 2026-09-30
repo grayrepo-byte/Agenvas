@@ -14,7 +14,7 @@ public record MediaDraft(
         Integer durationSeconds,
         UUID capabilityId,
         VideoInputMode videoInputMode,
-        List<ImageInput> imageInputs,
+        List<MediaInput> mediaInputs,
         List<PromptMention> mentions,
         DisplayMode displayMode,
         long version,
@@ -26,14 +26,14 @@ public record MediaDraft(
     public enum VideoInputMode { TEXT, START_END, GENERAL_REFERENCE }
 
     /** Semantic role of one exact image version in the provider input. */
-    public enum InputRole { REFERENCE, START_FRAME, END_FRAME }
+    public enum InputRole { REFERENCE, START_FRAME, END_FRAME, AUDIO_REFERENCE }
 
     /** Why an input remains in the deduplicated card-local input row. */
     public enum SourceType { MANUAL, CONNECTION }
 
     public record InputSource(UUID id, SourceType type, UUID connectionId) {}
 
-    public record ImageInput(UUID versionId, UUID artifactId, InputRole role, int order,
+    public record MediaInput(UUID versionId, UUID artifactId, InputRole role, int order,
             String color, List<InputSource> sources) {}
 
     public record PromptMention(UUID versionId, InputRole role) {}

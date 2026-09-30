@@ -116,7 +116,8 @@ public class ManualUnknownRetryService {
                 || original.status() != Task.Status.UNKNOWN || original.cancelRequested()
                 || original.providerRequestId() != null
                 || (original.kind() != Task.Kind.IMAGE_GENERATION
-                        && original.kind() != Task.Kind.VIDEO_GENERATION)) {
+                        && original.kind() != Task.Kind.VIDEO_GENERATION
+                        && original.kind() != Task.Kind.AUDIO_GENERATION)) {
             throw conflict("原任务状态或版本已变化，请刷新后重试。");
         }
         projects.requireActiveProject(ownerId, projectId);

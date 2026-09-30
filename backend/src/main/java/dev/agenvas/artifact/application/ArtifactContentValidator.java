@@ -52,7 +52,7 @@ public class ArtifactContentValidator {
         rejectProtectedFields(content);
         return switch (kind) {
             case TEXT -> validateText(content);
-            case IMAGE, VIDEO -> validateMedia(content);
+            case IMAGE, VIDEO, AUDIO -> validateMedia(content);
         };
     }
 

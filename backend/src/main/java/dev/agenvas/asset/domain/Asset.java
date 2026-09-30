@@ -32,6 +32,8 @@ public record Asset(UUID id, UUID projectId, MediaKind mediaKind, String objectK
         /** 经图像解码验证的图片文件。 */
         IMAGE,
         /** 经探测和解码验证的 MP4 视频。 */
-        VIDEO
+        VIDEO,
+        /** Probed and decoded audio without video streams. */
+        AUDIO
     }
 }

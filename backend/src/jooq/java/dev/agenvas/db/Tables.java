@@ -13,7 +13,9 @@ import dev.agenvas.db.tables.Artifact;
 import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
+import dev.agenvas.db.tables.AuditDebugSettings;
 import dev.agenvas.db.tables.CallLog;
+import dev.agenvas.db.tables.CallLogDebug;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
@@ -108,10 +110,21 @@ public class Tables {
     public static final Asset ASSET = Asset.ASSET;
 
     /**
+     * The table <code>public.audit_debug_settings</code>.
+     */
+    public static final AuditDebugSettings AUDIT_DEBUG_SETTINGS = AuditDebugSettings.AUDIT_DEBUG_SETTINGS;
+
+    /**
      * Safe metadata for individual adapter invocations; no bodies, endpoints or
      * credentials.
      */
     public static final CallLog CALL_LOG = CallLog.CALL_LOG;
+
+    /**
+     * Opt-in HTTP bodies and URLs, with credentials and private reasoning
+     * removed; never part of project export.
+     */
+    public static final CallLogDebug CALL_LOG_DEBUG = CallLogDebug.CALL_LOG_DEBUG;
 
     /**
      * Persistent CanvasItem-to-CanvasItem topology with the exact source
@@ -126,8 +139,8 @@ public class Tables {
     public static final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 
     /**
-     * Ordered exact image versions used by one CanvasItem media draft; identity
-     * and color are card-local.
+     * Ordered exact image/audio versions with card-local source and color
+     * identity.
      */
     public static final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
 

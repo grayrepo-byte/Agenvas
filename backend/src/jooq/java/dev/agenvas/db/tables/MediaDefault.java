@@ -167,7 +167,7 @@ public class MediaDefault extends TableImpl<MediaDefaultRecord> {
     @Override
     public List<Check<MediaDefaultRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("media_default_kind_check"), "(((kind)::text = ANY ((ARRAY['IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("media_default_kind_check"), "(((kind)::text = ANY ((ARRAY['IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("media_default_version_check"), "((version >= 0))", true)
         );
     }

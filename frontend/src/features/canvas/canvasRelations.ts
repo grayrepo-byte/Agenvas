@@ -118,8 +118,9 @@ export function mediaInputConnection(items: CanvasItem[], connection: Connection
   const source = items.find((item) => item.id === connection.source);
   const target = items.find((item) => item.id === connection.target);
   const sourceVersionId = source ? canvasItemVersionId(source) : null;
-  if (!source?.artifact || source.artifact.kind !== "IMAGE" || !sourceVersionId
-      || !target?.artifact || target.artifact.kind === "TEXT" || source.id === target.id) return null;
+  if (!source?.artifact || !["IMAGE", "AUDIO"].includes(source.artifact.kind) || !sourceVersionId
+      || !target?.artifact || target.artifact.kind === "TEXT"
+      || source.artifact.kind === "AUDIO" && target.artifact.kind === "IMAGE" || source.id === target.id) return null;
   return { sourceCanvasItemId: source.id, targetCanvasItemId: target.id, sourceVersionId };
 }
 

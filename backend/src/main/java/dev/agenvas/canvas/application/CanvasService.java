@@ -129,8 +129,7 @@ public class CanvasService {
             }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     source.subjectId());
-            if (artifact.artifact().kind() != Artifact.Kind.IMAGE
-                    && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+            if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
                 throw validation("只有图片和视频卡片可以复制工作分支。");
             }
             CanvasItem target = placement(targetItemId, projectId,
@@ -223,7 +222,7 @@ public class CanvasService {
             throw validation("只有图片和视频节点拥有媒体版本。");
         }
         Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
-        if (kind != Artifact.Kind.IMAGE && kind != Artifact.Kind.VIDEO) {
+        if (kind == Artifact.Kind.TEXT) {
             throw validation("只有图片和视频节点拥有媒体版本。");
         }
         return item;
@@ -262,8 +261,7 @@ public class CanvasService {
         }
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                 source.subjectId());
-        if (artifact.artifact().kind() != Artifact.Kind.IMAGE
-                && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+        if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
             throw validation("只有图片和视频支持新节点输出。");
         }
         if (draftInitialization == MediaOutputDraft.EMPTY
@@ -507,8 +505,7 @@ public class CanvasService {
             if (markup && !sourceVersionId.equals(current.selectedVersionId())) throw conflict();
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
-            if (artifact.artifact().kind() != Artifact.Kind.IMAGE
-                    && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
+            if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
                 throw validation("只有图片和视频卡片可以追加上传版本。");
             }
             if (markup && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
@@ -873,15 +870,13 @@ public class CanvasService {
     }
 
     private UUID mediaSelection(ArtifactService.ArtifactView artifact) {
-        return artifact.artifact().kind() == Artifact.Kind.IMAGE
-                        || artifact.artifact().kind() == Artifact.Kind.VIDEO
+        return artifact.artifact().kind() != Artifact.Kind.TEXT
                 ? artifact.artifact().resourceDefaultVersionId() : null;
     }
 
     private void initializeMediaDraft(UUID projectId, CanvasItem item,
             ArtifactService.ArtifactView artifact) {
-        if (artifact.artifact().kind() == Artifact.Kind.IMAGE
-                || artifact.artifact().kind() == Artifact.Kind.VIDEO) {
+        if (artifact.artifact().kind() != Artifact.Kind.TEXT) {
             mediaDrafts.initializeWithinChange(projectId, item.id(), item.selectedVersionId() != null);
             rememberInitialMediaVersion(item);
         }

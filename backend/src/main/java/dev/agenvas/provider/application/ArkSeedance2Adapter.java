@@ -51,11 +51,12 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     private final ArkMediaDownloadPolicy downloads;
     private final MediaToolRunner mediaTools;
     private final ObjectMapper mapper;
+    private final AudioReferenceLoader audioReferences;
 
     public ArkSeedance2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             ArkSeedanceClient client, ArkMediaDownloadPolicy downloads,
-            MediaToolRunner mediaTools, ObjectMapper mapper) {
+            MediaToolRunner mediaTools, ObjectMapper mapper, AudioReferenceLoader audioReferences) {
         this.catalog = catalog;
         this.cipher = cipher;
         this.artifacts = artifacts;
@@ -65,6 +66,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         this.downloads = downloads;
         this.mediaTools = mediaTools;
         this.mapper = mapper;
+        this.audioReferences = audioReferences;
     }
 
     @Override public String adapterId() { return "ARK_SEEDANCE_2_I2V"; }
@@ -83,7 +85,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         try {
             int seconds = context.lease().input().path("durationSeconds").asInt(-1);
             if (seconds < 4 || seconds > 15) return "PROVIDER_UNSUPPORTED_INPUT";
-            pinnedFrame(context);
+            references(context);
             return null;
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
@@ -97,8 +99,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         String negative = task.input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
-            String id = client.create(key, prompt, pinnedFrame(context),
-                    task.input().path("durationSeconds").asInt(-1), ratio(context));
+            String id = client.create(key, prompt, references(context),
+                    task.input().path("durationSeconds").asInt(-1), ratio(context), hasAudioReferences(context));
             return new Submission.Accepted(id);
         } catch (ArkSeedanceClient.Rejected rejected) {
             return new Submission.Rejected("ARK_CREATE_REJECTED");
@@ -140,7 +142,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
         try {
             return new Submission.Completed(downloadVideo(url,
-                    context.lease().input().path("durationSeconds").asInt(-1)));
+                    context.lease().input().path("durationSeconds").asInt(-1), hasAudioReferences(context)));
         } catch (ArkMediaDownloadPolicy.Expired expired) {
             ArkSeedanceClient.TaskState refreshed = client.query(
                     credential(snapshot(context)), context.originalRequestId());
@@ -150,14 +152,14 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             }
             try {
                 return new Submission.Completed(downloadVideo(URI.create(refreshed.videoUrl()),
-                        context.lease().input().path("durationSeconds").asInt(-1)));
+                        context.lease().input().path("durationSeconds").asInt(-1), hasAudioReferences(context)));
             } catch (IllegalArgumentException | ArkMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
             }
         }
     }
 
-    private MediaPayload downloadVideo(URI url, int expectedSeconds) {
+    private MediaPayload downloadVideo(URI url, int expectedSeconds, boolean preserveAudio) {
         downloads.validate(url);
         Path directory;
         try {
@@ -173,7 +175,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             }
             VideoProbe original = probe(raw, expectedSeconds);
             Path selected = raw;
-            if (original.hasAudio()) {
+            if (original.hasAudio() && !preserveAudio) {
                 mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                         "-i", raw.toString(), "-map", "0:v:0", "-an", "-c:v", "copy",
                         "-movflags", "+faststart", "-y", silent.toString()));
@@ -273,10 +275,34 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         };
     }
 
+    private boolean hasAudioReferences(AttemptContext context) {
+        return !FrozenMediaInputs.audios(context.lease()).isEmpty();
+    }
+
+    private List<ArkSeedanceClient.Reference> references(AttemptContext context) {
+        var task = context.lease();
+        var images = FrozenMediaInputs.images(task);
+        var audios = audioReferences.load(context.ownerId(), task, false);
+        String mode = task.input().path("mediaInput").path("mode").asText();
+        if (images.size() > 9 || !audios.isEmpty() && (images.isEmpty() || !"GENERAL_REFERENCE".equals(mode)))
+            throw new IllegalArgumentException("Seedance audio requires a visual reference in general mode");
+        var result = new java.util.ArrayList<ArkSeedanceClient.Reference>();
+        for (var image : images) {
+            String role = switch (image.role()) {
+                case "START_FRAME" -> "first_frame";
+                case "END_FRAME" -> "last_frame";
+                case "REFERENCE" -> "reference_image";
+                default -> throw new IllegalArgumentException("Unsupported image role");
+            };
+            result.add(new ArkSeedanceClient.Reference("image/png", pinnedFrame(context, image), role));
+        }
+        for (var audio : audios) result.add(new ArkSeedanceClient.Reference(audio.contentType(), audio.bytes(), "reference_audio"));
+        return List.copyOf(result);
+    }
+
     /** Send the exact pinned input image version as a bounded normalized PNG data URL. */
-    private byte[] pinnedFrame(AttemptContext context) {
+    private byte[] pinnedFrame(AttemptContext context, FrozenMediaInputs.Image image) {
         Task task = context.lease();
-        FrozenMediaInputs.Image image = FrozenMediaInputs.first(task);
         UUID imageId = image.artifactId();
         UUID versionId = image.versionId();
         ArtifactVersion version = artifacts.requireVersion(context.ownerId(), task.projectId(),

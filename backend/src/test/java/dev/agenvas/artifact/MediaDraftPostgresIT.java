@@ -84,7 +84,7 @@ class MediaDraftPostgresIT {
         assertThat(initial.path("version").asLong()).isZero();
 
         String save = "{\"expectedVersion\":0,\"prompt\":\"A red kite over a lake\","
-                + "\"parameters\":{},\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}";
+                + "\"parameters\":{},\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}";
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
                 .content(save)).andExpect(status().isOk());
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
@@ -148,7 +148,7 @@ class MediaDraftPostgresIT {
         assertThat(resultDraft.path("displayMode").asText()).isEqualTo("RESULT");
         mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
                 .content("{\"expectedVersion\":1,\"prompt\":\"Second concept\","
-                        + "\"parameters\":{},\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                        + "\"parameters\":{},\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         JsonNode edited = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -158,7 +158,7 @@ class MediaDraftPostgresIT {
                         .with(auth).with(csrf()).contentType("application/json")
                         .content("{\"expectedVersion\":" + edited.path("version").asLong()
                                 + ",\"prompt\":\"Next concept\",\"parameters\":{},"
-                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(retainedResult.path("displayMode").asText()).isEqualTo("RESULT");
         JsonNode reloadedResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
@@ -194,7 +194,7 @@ class MediaDraftPostgresIT {
                                 + "\"aspectRatio\":\"9:16\",\"resolution\":\"2K\","
                                 + "\"quality\":\"high\",\"transparentBackground\":false,"
                                 + "\"generationCount\":2},"
-                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode batchPrimary = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
                         .header("Idempotency-Key", "direct-image-two-new-nodes")
@@ -223,7 +223,7 @@ class MediaDraftPostgresIT {
                                 + "\"aspectRatio\":\"1:1\",\"resolution\":\"1K\","
                                 + "\"quality\":\"medium\",\"transparentBackground\":false,"
                                 + "\"generationCount\":2},"
-                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String sameCardKey = "direct-image-two-same-card";
         String sameCardBody = "{\"canvasItemId\":\"" + canvasItemId
@@ -266,7 +266,7 @@ class MediaDraftPostgresIT {
         mvc.perform(put(videoDraftPath).with(auth).with(csrf()).contentType("application/json")
                 .content("{\"expectedVersion\":0,\"prompt\":\"Camera pans left\","
                         + "\"parameters\":{},\"videoInputMode\":\"START_END\","
-                        + "\"imageInputs\":[],\"mentions\":[]}"))
+                        + "\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         mvc.perform(post(base + "/artifacts/" + videoId + "/run")
                 .with(auth).with(csrf()).contentType("application/json")
@@ -277,7 +277,7 @@ class MediaDraftPostgresIT {
         mvc.perform(put(videoDraftPath).with(auth).with(csrf()).contentType("application/json")
                 .content("{\"expectedVersion\":1,\"prompt\":\"Camera pans left\","
                         + "\"parameters\":{},\"videoInputMode\":\"START_END\","
-                        + "\"imageInputs\":[{\"versionId\":\""
+                        + "\"mediaInputs\":[{\"versionId\":\""
                         + completedCard.path("selectedVersionId").asText()
                         + "\",\"role\":\"START_FRAME\",\"color\":\"#7C3AED\"}],"
                         + "\"mentions\":[],\"durationSeconds\":5}"))
@@ -311,7 +311,7 @@ class MediaDraftPostgresIT {
                     .with(auth).with(csrf()).contentType("application/json")
                     .content("{\"expectedVersion\":0,\"prompt\":\"Parallel concept\","
                             + "\"parameters\":{},\"videoInputMode\":null,"
-                            + "\"imageInputs\":[],\"mentions\":[]}"))
+                            + "\"mediaInputs\":[],\"mentions\":[]}"))
                     .andExpect(status().isOk());
             JsonNode accepted = mapper.readTree(mvc.perform(post(base + "/artifacts/"
                             + cardId + "/run").with(auth).with(csrf())
@@ -352,7 +352,7 @@ class MediaDraftPostgresIT {
                 .with(auth).with(csrf()).contentType("application/json")
                 .content("{\"expectedVersion\":0,\"prompt\":\"A quiet lake\","
                         + "\"parameters\":{},\"videoInputMode\":null,"
-                        + "\"imageInputs\":[],\"mentions\":[]}"))
+                        + "\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         JsonNode limitedTask = mapper.readTree(mvc.perform(post(otherBase + "/artifacts/"
                         + otherId + "/run").with(auth).with(csrf())
