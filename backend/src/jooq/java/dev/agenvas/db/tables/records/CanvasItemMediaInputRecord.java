@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Ordered exact image versions used by one CanvasItem media draft; identity and
- * color are card-local.
+ * Ordered exact image/audio versions with card-local source and color identity.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMediaInputRecord> {

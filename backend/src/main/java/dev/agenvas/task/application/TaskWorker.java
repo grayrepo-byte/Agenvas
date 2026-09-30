@@ -38,7 +38,7 @@ public class TaskWorker {
     public int runOnce(String workerId, int limit, Handler handler) {
         List<Task> claimed = tasks.claimDue(workerId, limit);
         for (Task task : claimed) {
-            boolean media = task.kind() == Task.Kind.IMAGE_GENERATION
+            boolean media = task.kind() == Task.Kind.AUDIO_GENERATION || task.kind() == Task.Kind.IMAGE_GENERATION
                     || task.kind() == Task.Kind.VIDEO_GENERATION;
             if (media && beginOrFailStale(task, workerId, null) == null) {
                 continue;
@@ -230,7 +230,8 @@ public class TaskWorker {
         boolean mock = workflow.startsWith("mock-");
         String provider = mock ? "mock" : workflow.startsWith("comfyui-") ? "comfyui" : null;
         return new CallLogService.CallDescriptor(task.projectId(), task.id(), task.runId(), null,
-                task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
+                task.kind() == Task.Kind.AUDIO_GENERATION ? CallLog.Kind.AUDIO
+                        : task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
                 operation, provider, null, mock);
     }
 

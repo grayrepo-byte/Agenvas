@@ -3,6 +3,7 @@ package dev.agenvas.task.application;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.AudioGenerationParameters;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.artifact.domain.MediaDraft;
@@ -136,6 +137,7 @@ public class DirectMediaTaskService {
             Task.Kind kind = switch (target.kind()) {
                 case IMAGE -> Task.Kind.IMAGE_GENERATION;
                 case VIDEO -> Task.Kind.VIDEO_GENERATION;
+                case AUDIO -> Task.Kind.AUDIO_GENERATION;
                 default -> throw invalid("只能直接运行图片或视频卡片。");
             };
             MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
@@ -143,14 +145,14 @@ public class DirectMediaTaskService {
             if (draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
             if (kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
-                    && (draft.imageInputs().isEmpty()
-                            || draft.imageInputs().getFirst().role()
+                    && (draft.mediaInputs().isEmpty()
+                            || draft.mediaInputs().getFirst().role()
                                     != MediaDraft.InputRole.START_FRAME)) {
                 throw invalid("首尾帧视频运行前需要选择首帧。");
             }
             if (kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
-                    && draft.imageInputs().isEmpty()) {
+                    && draft.mediaInputs().isEmpty()) {
                 throw invalid("全能参考视频运行前至少需要一张图片。");
             }
             MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
@@ -169,7 +171,8 @@ public class DirectMediaTaskService {
             if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
                 throw invalid("本地图片处理能力只能从图片后处理入口使用。");
             }
-            validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding));
+            validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+            validateReferenceAssets(ownerId, projectId, draft, binding);
             ImageGenerationParameters imageParameters = kind == Task.Kind.IMAGE_GENERATION
                     ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
             VideoGenerationParameters videoParameters = kind == Task.Kind.VIDEO_GENERATION
@@ -219,23 +222,29 @@ public class DirectMediaTaskService {
                 else frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
                 frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
-                        : draft.videoInputMode().name());
+                        : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
                 frozen.put("prompt", draft.prompt());
                 frozen.put("renderedPrompt", renderedPrompt);
                 frozen.set("parameters", imageParameters != null
-                        ? imageParameters.toJson(mapper) : videoParameters.toJson(mapper));
+                        ? imageParameters.toJson(mapper) : videoParameters != null ? videoParameters.toJson(mapper)
+                        : dev.agenvas.artifact.domain.AudioGenerationParameters.parse(
+                                capabilities.parameters(binding, draft.parameters())).toJson(mapper));
                 frozen.put("capabilityId", binding.capabilityId().toString());
                 frozen.put("capabilityVersion", binding.capabilityVersion());
                 if (kind == Task.Kind.VIDEO_GENERATION) frozen.put("durationSeconds", seconds);
                 ArrayNode images = frozen.putArray("images");
-                for (MediaDraft.ImageInput imageInput : draft.imageInputs()) {
-                    ArtifactVersion image = artifacts.requireImageVersionForTask(ownerId, projectId,
-                            imageInput.versionId());
-                    ObjectNode imageNode = images.addObject();
+                frozen.putArray("audios");
+                for (MediaDraft.MediaInput imageInput : draft.mediaInputs()) {
+                    ArtifactVersion image = artifacts.requireMediaVersionForTask(ownerId, projectId,
+                            imageInput.versionId(), imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
+                                    ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
+                    ObjectNode imageNode = (imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
+                            ? (ArrayNode) frozen.get("audios") : images).addObject();
                     imageNode.put("artifactId", image.artifactId().toString());
                     imageNode.put("versionId", image.id().toString());
                     imageNode.put("role", imageInput.role().name());
-                    imageNode.put("order", imageInput.order());
+                    imageNode.put("order", imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
+                            ? frozen.path("audios").size() - 1 : images.size() - 1);
                 }
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 String stepKey = outputIndex == 0 ? commandKey
@@ -435,6 +444,7 @@ public class DirectMediaTaskService {
             frozen.put("capabilityId", binding.capabilityId().toString());
             frozen.put("capabilityVersion", binding.capabilityVersion());
             ArrayNode images = frozen.putArray("images");
+                frozen.putArray("audios");
             ObjectNode image = images.addObject();
             image.put("artifactId", artifactId.toString());
             image.put("versionId", sourceVersionId.toString());
@@ -753,6 +763,7 @@ public class DirectMediaTaskService {
                 case START_FRAME -> "Start Frame";
                 case END_FRAME -> "End Frame";
                 case REFERENCE -> "Image " + referenceNumber(draft, mention);
+                case AUDIO_REFERENCE -> (draft.videoInputMode() == null ? "音频" : "Audio ") + referenceNumber(draft, mention);
             });
         }
         if (mentionIndex != draft.mentions().size()) {
@@ -762,10 +773,11 @@ public class DirectMediaTaskService {
     }
 
     private int referenceNumber(MediaDraft draft, MediaDraft.PromptMention mention) {
-        for (int index = 0; index < draft.imageInputs().size(); index++) {
-            MediaDraft.ImageInput input = draft.imageInputs().get(index);
+        int number = 0;
+        for (MediaDraft.MediaInput input : draft.mediaInputs()) {
+            if (input.role() == mention.role()) number++;
             if (input.versionId().equals(mention.versionId()) && input.role() == mention.role()) {
-                return index + 1;
+                return number;
             }
         }
         throw invalid("提示词图片标签没有对应的图片输入。");
@@ -830,9 +842,23 @@ public class DirectMediaTaskService {
     }
 
     private void validateCapabilityInputs(Task.Kind kind, MediaDraft draft,
-            dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy) {
+            dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy, JsonNode parametersJson) {
+        long audioCount = draft.mediaInputs().stream().filter(input ->
+                input.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+        if (audioCount > policy.maxReferenceAudios()) throw invalid("所选能力不支持此数量的音频参考。");
+        if (kind == Task.Kind.AUDIO_GENERATION) {
+            if (draft.prompt().codePointCount(0, draft.prompt().length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH)
+                throw invalid("Seed Audio 提示词最多 3000 字符。");
+            long images = draft.mediaInputs().size() - audioCount;
+            var parameters = dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parametersJson);
+            if (images > policy.maxReferenceImages() || images > 0 && (audioCount > 0 || !parameters.speaker().isEmpty()))
+                throw invalid("音频生成最多参考一张图片，图片不能与音频或指定音色混用。");
+            if (audioCount + (parameters.speaker().isEmpty() ? 0 : 1) > policy.maxReferenceAudios())
+                throw invalid("音色与音频参考合计最多三项。");
+            return;
+        }
         if (kind == Task.Kind.IMAGE_GENERATION) {
-            if (draft.imageInputs().size() > policy.maxReferenceImages()) {
+            if (draft.mediaInputs().size() > policy.maxReferenceImages()) {
                 throw invalid("所选图片能力最多接受 " + policy.maxReferenceImages()
                         + " 张参考图。");
             }
@@ -842,14 +868,53 @@ public class DirectMediaTaskService {
         if (!policy.supportedVideoInputModes().contains(mode)) {
             throw invalid("所选视频能力不支持当前图片输入模式。");
         }
-        if (!policy.supportsEndFrame() && draft.imageInputs().stream().anyMatch(input ->
+        if (!policy.supportsEndFrame() && draft.mediaInputs().stream().anyMatch(input ->
                 input.role() == MediaDraft.InputRole.END_FRAME)) {
             throw invalid("所选视频能力不支持尾帧。");
         }
-        if (draft.imageInputs().size() > policy.maxReferenceImages()) {
+        if (draft.mediaInputs().size() - audioCount > policy.maxReferenceImages()) {
             throw invalid("所选视频能力最多接受 " + policy.maxReferenceImages()
                     + " 张图片输入。");
         }
+    }
+
+    /** Reject known protocol limits before creating a task or reserving usage. */
+    private void validateReferenceAssets(UUID ownerId, UUID projectId, MediaDraft draft,
+            MediaCapabilityBinding binding) {
+        boolean seed = MediaAdapterRegistry.SEED_AUDIO_1.equals(binding.adapterId());
+        boolean ark = MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId());
+        if (!seed && !ark) return;
+        long audioDuration = 0;
+        int imageCount = 0;
+        int audioCount = 0;
+        for (var reference : draft.mediaInputs()) {
+            boolean audio = reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE;
+            var version = artifacts.requireMediaVersionForTask(ownerId, projectId, reference.versionId(),
+                    audio ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
+            Asset asset = assets.requireReadyMedia(ownerId, projectId,
+                    UUID.fromString(version.content().path("assetId").asText()),
+                    audio ? Asset.MediaKind.AUDIO : Asset.MediaKind.IMAGE);
+            if (!audio) {
+                imageCount++;
+                if (seed && asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES)
+                    throw invalid("Seed Audio 参考图片最大 10 MiB。");
+                continue;
+            }
+            audioCount++;
+            audioDuration += asset.durationMs();
+            if (seed && (asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES
+                    || asset.durationMs() > AudioGenerationParameters.MAX_REFERENCE_DURATION_MS))
+                throw invalid("Seed Audio 单条参考音频最大 10 MiB、30 秒。");
+            if (ark && (asset.byteSize() > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_BYTES
+                    || asset.durationMs() < MediaAdapterRegistry.SEEDANCE_MIN_AUDIO_DURATION_MS
+                    || asset.durationMs() > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS
+                    || !Set.of("audio/mpeg", "audio/wav").contains(asset.contentType())))
+                throw invalid("Seedance 音频参考仅支持 MP3/WAV，单条 2–15 秒且最大 15 MiB。");
+        }
+        if (ark && audioCount > 0 && (imageCount == 0
+                || draft.videoInputMode() != MediaDraft.VideoInputMode.GENERAL_REFERENCE
+                || audioDuration > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS))
+            throw invalid("Seedance 音频参考须在全能参考模式搭配图片，音频总时长最多 15 秒。");
     }
 
     private static ApiProblemException invalid(String detail) {

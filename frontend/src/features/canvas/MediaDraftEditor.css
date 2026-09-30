@@ -17,6 +17,9 @@
 
 .media-draft-initial { justify-content: center; align-items: center; }
 .media-draft-header { display: flex; align-items: center; gap: 18px; min-height: 20px; padding: 0 2px; }
+.media-draft-tab { color: var(--ui-text-muted); background: transparent; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
+.media-draft-tab:hover, .media-draft-tab:focus-visible { color: var(--ui-text); }
+.media-draft-tab:disabled { cursor: wait; opacity: 0.6; }
 .media-draft-tab-active { color: #fafafa; font-weight: 600; }
 .media-draft-tab-unavailable { color: #7a7a7e; cursor: not-allowed; }
 .media-draft-save-state { margin-left: auto; padding-right: 28px; font-size: 10px; color: #75757a; }

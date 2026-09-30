@@ -21,13 +21,13 @@ const artifact: Artifact = {
 const initialDraft: MediaDraft = {
   projectId: PROJECT_ID, canvasItemId: CANVAS_ITEM_ID, prompt: "A lighthouse at dawn",
   parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: null,
-  imageInputs: [], mentions: [],
+  mediaInputs: [], mentions: [],
   displayMode: "DRAFT", version: 0, createdAt: NOW, updatedAt: NOW,
 };
 const imageCapability: MediaCapability = {
   id: "image-capability", name: "细节生图", enabled: true, version: 0, capabilityVersion: 1,
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0,
-  maximumSeconds: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
+  maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
   defaultVideoInputMode: null, supportsEndFrame: false,
   supportedImageAspectRatios: ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"],
   supportedImageResolutions: ["1K", "2K", "4K"], supportedImageQualities: ["low", "medium", "high"],
@@ -37,14 +37,14 @@ const imageCapability: MediaCapability = {
 const videoCapability: MediaCapability = {
   ...imageCapability, id: "video-capability", name: "镜头视频", adapterId: "ARK_SEEDANCE_2_I2V",
   kind: "VIDEO_GENERATION", minimumSeconds: 2, maximumSeconds: 10,
-  maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
+  maxReferenceAudios: 0, maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
   defaultVideoInputMode: "START_END", supportsEndFrame: true, supportedImageAspectRatios: [],
   supportedImageResolutions: [], supportedImageQualities: [], supportsTransparentBackground: false,
   supportsImageMask: false, settings: {},
 };
 const versatileVideoCapability: MediaCapability = {
   ...videoCapability, id: "versatile-video-capability", name: "全能视频",
-  maxReferenceImages: 4,
+  maxReferenceAudios: 0, maxReferenceImages: 4,
   supportedVideoInputModes: ["TEXT", "START_END", "GENERAL_REFERENCE"],
   defaultVideoInputMode: "TEXT", supportsEndFrame: true,
 };
@@ -68,7 +68,7 @@ function task(status: Task["status"]): Task {
     createdAt: NOW, updatedAt: NOW };
 }
 
-function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSettings; kind?: "IMAGE" | "VIDEO"; handlers?: RequestHandler[] } = {}) {
+function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSettings; kind?: "IMAGE" | "VIDEO" | "AUDIO"; handlers?: RequestHandler[] } = {}) {
   let draft = options.draft ?? { ...initialDraft };
   let tasks = options.tasks ?? [];
   const saves: SaveMediaDraftRequest[] = [];
@@ -79,7 +79,7 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
     http.put(DRAFT_URL, async ({ request }) => {
       const input = await request.json() as SaveMediaDraftRequest;
       saves.push(input);
-      draft = { ...draft, ...input, imageInputs: input.imageInputs.map((item, order) => ({
+      draft = { ...draft, ...input, mediaInputs: input.mediaInputs.map((item, order) => ({
         ...item, artifactId: "reference-image", order,
         sources: [{ id: `manual-${order}`, type: "MANUAL" as const, connectionId: null }],
       })), version: draft.version + 1 };
@@ -107,6 +107,57 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
+    const audioCapability: MediaCapability = { ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
+      kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,
+      supportedImageAspectRatios: [], supportedImageResolutions: [], supportedImageQualities: [], settings: {} };
+    const { saves } = setup({ kind: "AUDIO", settings: { connections: [{ ...settings.connections[0]!, platform: "VOLCENGINE",
+      capabilities: [audioCapability] }], defaults: [{ kind: "AUDIO_GENERATION", capabilityId: audioCapability.id, version: 0 }] } });
+    expect(await screen.findByRole("textbox", { name: "音频提示词" })).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "选择音色" }));
+    await user.type(screen.getByRole("searchbox", { name: "搜索音色" }), "小何");
+    expect(screen.getByText("小何 2.0")).toBeVisible();
+    expect(screen.queryByText("云舟 2.0")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /小何 2.0.*中文/ }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.speaker).toBe("zh_female_xiaohe_uranus_bigtts"));
+    expect(saves.at(-1)?.durationSeconds).toBeNull();
+    expect(saves.at(-1)?.videoInputMode).toBeNull();
+    await user.click(screen.getByRole("button", { name: "音频参数" }));
+    fireEvent.change(screen.getByLabelText("语速"), { target: { value: "-20" } });
+    await waitFor(() => expect(saves.at(-1)?.parameters.speechRate).toBe(-20));
+  });
+
+  it("confirms removal of audio when switching mixed references to frames and updates surviving mention roles", async () => {
+    const capability = { ...versatileVideoCapability, adapterId: "MOCK_VIDEO", maxReferenceAudios: 3 };
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, parameters: { aspectRatio: "AUTO" }, durationSeconds: 5, videoInputMode: "GENERAL_REFERENCE",
+        prompt: "参考 \uFFFC 与 \uFFFC", mediaInputs: [
+          { versionId: "audio-v1", artifactId: "reference-audio", order: 0, role: "AUDIO_REFERENCE", color: "#67C7F3", sources: [] },
+          { versionId: "image-v1", artifactId: "reference-image", order: 1, role: "REFERENCE", color: "#F15CAF", sources: [] }],
+        mentions: [{ versionId: "audio-v1", role: "AUDIO_REFERENCE" }, { versionId: "image-v1", role: "REFERENCE" }] },
+      handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-audio", kind: "AUDIO", title: "节奏", resourceDefaultVersionId: "audio-v1" },
+        { ...artifact, id: "reference-image", title: "画面", resourceDefaultVersionId: "image-v1" }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-audio/versions`, () => HttpResponse.json({ items: [{ id: "audio-v1", versionNo: 1, content: { assetId: "audio-asset" } }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [{ id: "image-v1", versionNo: 1, content: { assetId: "image-asset" } }] }))] });
+    const user = userEvent.setup();
+    await screen.findByLabelText("视频提示词");
+    await user.click(screen.getByRole("button", { name: "选择视频输入模式" }));
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    try {
+      await user.click(screen.getByRole("menuitemradio", { name: /首尾帧/ }));
+      expect(confirmation).toHaveBeenCalledWith(expect.stringContaining("音频"));
+      expect(saves).toHaveLength(0);
+      await user.click(screen.getByRole("menuitemradio", { name: /首尾帧/ }));
+      await waitFor(() => expect(saves.at(-1)).toMatchObject({ videoInputMode: "START_END",
+        mediaInputs: [{ versionId: "image-v1", role: "START_FRAME" }],
+        prompt: "参考  与 \uFFFC", mentions: [{ versionId: "image-v1", role: "START_FRAME" }] }));
+    } finally { confirmation.mockRestore(); }
+  });
+
   it("shows configured defaults and the exact batch estimate, with custom model names", async () => {
     const pricedCapability = { ...imageCapability, settings: { model: "custom-image-model",
       defaultParameters: { aspectRatio: "16:9", resolution: "2K", generationCount: 4 },
@@ -123,7 +174,7 @@ describe("MediaDraftEditor", () => {
 
   it("inserts an exact-version image token inside the prompt instead of a separate tag row", async () => {
     const { saves } = setup({ draft: { ...initialDraft, prompt: "修改为红色衣服 ",
-      imageInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE",
+      mediaInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE",
         order: 0, color: "#F15CAF",
         sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }] }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{
@@ -154,17 +205,17 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: /取消引入 新图片/ }));
     expect(within(prompt).queryByText("@Image 1")).not.toBeInTheDocument();
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
-      prompt: "修改为红色衣服 ", mentions: [], imageInputs: [],
+      prompt: "修改为红色衣服 ", mentions: [], mediaInputs: [],
     }));
   });
 
   it("disconnects a connection-only image directly from its hover close button", async () => {
     const removals: unknown[] = [];
     setup({ draft: { ...initialDraft,
-      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+      mediaInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
         role: "REFERENCE", order: 0, color: "#F15CAF",
         sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
-      handlers: [http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`,
+      handlers: [http.post(`${DRAFT_URL}/media-inputs/connected-version/remove`,
         async ({ request }) => {
           removals.push(await request.json());
           return HttpResponse.json({ ...initialDraft, version: 1 });
@@ -183,10 +234,10 @@ describe("MediaDraftEditor", () => {
   it("retries a failed atomic connection-input removal instead of saving an unrelated draft", async () => {
     let attempts = 0;
     setup({ draft: { ...initialDraft,
-      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+      mediaInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
         role: "REFERENCE", order: 0, color: "#F15CAF",
         sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
-      handlers: [http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`, () => {
+      handlers: [http.post(`${DRAFT_URL}/media-inputs/connected-version/remove`, () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json({ code: "TEMPORARY", detail: "暂时无法取消引入" }, { status: 503 })
@@ -206,10 +257,10 @@ describe("MediaDraftEditor", () => {
     let releaseRemoval = () => {};
     const removalGate = new Promise<void>((resolve) => { releaseRemoval = resolve; });
     const { saves } = setup({ draft: { ...initialDraft,
-      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+      mediaInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
         role: "REFERENCE", order: 0, color: "#F15CAF",
         sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
-      handlers: [http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`, async () => {
+      handlers: [http.post(`${DRAFT_URL}/media-inputs/connected-version/remove`, async () => {
         await removalGate;
         return HttpResponse.json({ ...initialDraft, version: 1 });
       })] });
@@ -222,7 +273,7 @@ describe("MediaDraftEditor", () => {
     expect(saves).toHaveLength(0);
     releaseRemoval();
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
-      expectedVersion: 1, prompt: "继续输入提示词", imageInputs: [],
+      expectedVersion: 1, prompt: "继续输入提示词", mediaInputs: [],
     }));
     expect(prompt).toHaveTextContent("继续输入提示词");
   });
@@ -235,7 +286,7 @@ describe("MediaDraftEditor", () => {
     let attempts = 0;
     const saveRequests: SaveMediaDraftRequest[] = [];
     setup({ draft: { ...initialDraft,
-      imageInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
+      mediaInputs: [{ versionId: "connected-version", artifactId: "connected-artifact",
         role: "REFERENCE", order: 0, color: "#F15CAF",
         sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] }] },
       handlers: [
@@ -244,12 +295,12 @@ describe("MediaDraftEditor", () => {
           saveRequests.push(input);
           if (saveRequests.length === 1) await saveGate;
           return HttpResponse.json({ ...initialDraft, prompt: input.prompt,
-            imageInputs: input.imageInputs.map((item, order) => ({ ...item,
+            mediaInputs: input.mediaInputs.map((item, order) => ({ ...item,
               artifactId: "connected-artifact", order,
               sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "line-1" }] })),
             mentions: input.mentions, version: saveRequests.length === 1 ? 1 : 3 });
         }),
-        http.post(`${DRAFT_URL}/image-inputs/connected-version/remove`, async () => {
+        http.post(`${DRAFT_URL}/media-inputs/connected-version/remove`, async () => {
           attempts += 1;
           if (attempts === 1) {
             await failureGate;
@@ -277,13 +328,13 @@ describe("MediaDraftEditor", () => {
       name: "取消引入 图片输入 1",
     })).not.toBeInTheDocument());
     await waitFor(() => expect(saveRequests[1]).toMatchObject({
-      expectedVersion: 2, prompt: "失败期间继续输入，保存时继续输入", imageInputs: [],
+      expectedVersion: 2, prompt: "失败期间继续输入，保存时继续输入", mediaInputs: [],
     }));
     expect(prompt).toHaveTextContent("失败期间继续输入，保存时继续输入");
   });
 
   it("keeps image-only thumbnails keyboard and drag reorderable without visible move controls", async () => {
-    const { saves } = setup({ draft: { ...initialDraft, imageInputs: [
+    const { saves } = setup({ draft: { ...initialDraft, mediaInputs: [
       { versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE",
         order: 0, color: "#F15CAF", sources: [{ id: "manual-1", type: "MANUAL", connectionId: null }] },
       { versionId: "image-v2", artifactId: "reference-image", role: "REFERENCE",
@@ -303,14 +354,14 @@ describe("MediaDraftEditor", () => {
     expect(screen.queryByRole("button", { name: /向左移动|向右移动/ })).not.toBeInTheDocument();
     await user.click(first);
     await user.keyboard("{ArrowRight}");
-    await waitFor(() => expect(saves.at(-1)?.imageInputs.map((input) => input.versionId))
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs.map((input) => input.versionId))
       .toEqual(["image-v2", "image-v1"]));
     const movedFirst = screen.getByLabelText("海边灯塔 · v1，序号 2");
     const movedSecond = screen.getByLabelText("海边灯塔 · v2，序号 1");
     expect(movedFirst).toHaveAttribute("data-reorderable", "true");
     fireEvent.pointerDown(movedFirst, { button: 0 });
     fireEvent.pointerUp(movedSecond, { button: 0 });
-    await waitFor(() => expect(saves.at(-1)?.imageInputs.map((input) => input.versionId))
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs.map((input) => input.versionId))
       .toEqual(["image-v1", "image-v2"]));
   });
 
@@ -439,7 +490,7 @@ describe("MediaDraftEditor", () => {
     expect(artifactRequests[0]).toMatchObject({ body: { kind: "IMAGE", title: "reference",
       content: { sourceType: "UPLOAD", assetId: "uploaded-asset" } } });
     expect(artifactRequests[0]?.key).toBeTruthy();
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [{
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ mediaInputs: [{
       versionId: "uploaded-version", role: "REFERENCE", color: "#F15CAF",
     }] }));
   });
@@ -472,7 +523,7 @@ describe("MediaDraftEditor", () => {
     expect(within(picker).queryByRole("button", { name: /当前图片/ })).not.toBeInTheDocument();
     expect(within(picker).queryByRole("button", { name: /文字卡片/ })).not.toBeInTheDocument();
     await user.click(within(picker).getByRole("button", { name: "使用画布图片 其他图片" }));
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [{
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ mediaInputs: [{
       versionId: "other-version", role: "REFERENCE", color: "#F15CAF",
     }] }));
   });
@@ -497,7 +548,7 @@ describe("MediaDraftEditor", () => {
       expect(saves[0]).toEqual({ expectedVersion: 0, prompt: initialDraft.prompt,
         parameters: { aspectRatio: "AUTO", resolution: "1K", quality: "high",
           transparentBackground: false, generationCount: 1 },
-        videoInputMode: null, imageInputs: [], mentions: [],
+        videoInputMode: null, mediaInputs: [], mentions: [],
         durationSeconds: null, capabilityId: imageCapability.id });
       await user.click(screen.getByRole("button", { name: "选择生成模型" }));
       outerEscape.mockClear();
@@ -612,7 +663,7 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("checkbox", { name: "选择 海边灯塔 · v2" }));
     expect(saves).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "添加所选图片（2）" }));
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ mediaInputs: [
       { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
       { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
     ] }));
@@ -622,7 +673,7 @@ describe("MediaDraftEditor", () => {
     await user.type(screen.getByRole("spinbutton", { name: "时长（秒）" }), "4");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
-      imageInputs: [
+      mediaInputs: [
         { versionId: "image-v1", role: "START_FRAME", color: "#F15CAF" },
         { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
       ], durationSeconds: 4 }));
@@ -635,7 +686,7 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByLabelText("海边灯塔 · v2，序号 2").querySelector("img")).toHaveAttribute("src",
       `/api/v1/projects/${PROJECT_ID}/assets/asset-new-frame/content`);
     await user.click(screen.getByRole("button", { name: "取消引入 海边灯塔 · v1" }));
-    await waitFor(() => expect(saves.at(-1)).toMatchObject({ imageInputs: [
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ mediaInputs: [
       { versionId: "image-v2", role: "END_FRAME", color: "#67C7F3" },
     ], durationSeconds: 4 }));
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
@@ -650,7 +701,7 @@ describe("MediaDraftEditor", () => {
     const user = userEvent.setup();
 
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
-      videoInputMode: "TEXT", parameters: { aspectRatio: "AUTO" }, imageInputs: [],
+      videoInputMode: "TEXT", parameters: { aspectRatio: "AUTO" }, mediaInputs: [],
     }));
     expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent("文生视频");
     await user.click(screen.getByRole("button", { name: "选择视频输入模式" }));
@@ -679,7 +730,7 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "添加所选图片（1）" }));
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
       videoInputMode: "GENERAL_REFERENCE",
-      imageInputs: [{ versionId: "image-v1", role: "REFERENCE" }],
+      mediaInputs: [{ versionId: "image-v1", role: "REFERENCE" }],
     }));
     expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent("全能参考");
 
@@ -692,7 +743,7 @@ describe("MediaDraftEditor", () => {
 
   it("retains an unavailable pinned video frame without silently using the current version", async () => {
     const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, videoInputMode: "START_END",
-      imageInputs: [{ versionId: "image-gone", artifactId: "reference-image", role: "START_FRAME",
+      mediaInputs: [{ versionId: "image-gone", artifactId: "reference-image", role: "START_FRAME",
         order: 0, color: "#F15CAF", sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }], durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
         id: "reference-image", title: "新首帧", resourceDefaultVersionId: "image-v2" }] })),
@@ -702,7 +753,7 @@ describe("MediaDraftEditor", () => {
       ] })),
     ] });
     const user = userEvent.setup();
-    expect(await screen.findByText(/无法确认一个或多个已固定图片版本/)).toBeVisible();
+    expect(await screen.findByText(/无法确认一个或多个已固定媒体版本/)).toBeVisible();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
@@ -715,7 +766,7 @@ describe("MediaDraftEditor", () => {
   it("retries video image-history failures and restores the exact old frame", async () => {
     let attempts = 0;
     setup({ kind: "VIDEO", draft: { ...initialDraft, videoInputMode: "START_END",
-      imageInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "START_FRAME",
+      mediaInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "START_FRAME",
         order: 0, color: "#F15CAF", sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }], durationSeconds: 4 }, handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
         id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v2" }] })),

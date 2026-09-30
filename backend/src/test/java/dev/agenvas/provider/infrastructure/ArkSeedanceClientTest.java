@@ -70,6 +70,24 @@ class ArkSeedanceClientTest {
     }
 
     @Test
+    void sendsAllReferenceImagesAndAudiosWithoutSilencingReferenceVideo() {
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+            var body = mapper.readTree(exchange.getRequestBody().readAllBytes());
+            assertThat(body.path("generate_audio").asBoolean()).isTrue();
+            assertThat(body.path("content").size()).isEqualTo(4);
+            assertThat(body.at("/content/1/role").asText()).isEqualTo("reference_image");
+            assertThat(body.at("/content/2/role").asText()).isEqualTo("reference_audio");
+            assertThat(body.at("/content/2/audio_url/url").asText()).startsWith("data:audio/mp3;base64,");
+            assertThat(body.at("/content/3/audio_url/url").asText()).startsWith("data:audio/wav;base64,");
+            respond(exchange, 200, "{\"id\":\"" + TASK_ID + "\"}");
+        });
+        var references = java.util.List.of(new ArkSeedanceClient.Reference("image/png", new byte[]{1}, "reference_image"),
+                new ArkSeedanceClient.Reference("audio/mpeg", new byte[]{2}, "reference_audio"),
+                new ArkSeedanceClient.Reference("audio/wav", new byte[]{3}, "reference_audio"));
+        assertThat(client.create("fake-key", "Animate", references, 4, "16:9", true)).isEqualTo(TASK_ID);
+    }
+
+    @Test
     void badDurationsAndLostCreateResponseNeverCauseAutomaticResubmission() {
         byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         assertThatThrownBy(() -> client.create("key", "Move", png, 3, "16:9"))

@@ -15,6 +15,11 @@ import org.springframework.stereotype.Component;
 @Component
 public final class MediaAdapterRegistry {
 
+    public static final String SEED_AUDIO_1 = "VOLC_SEED_AUDIO_1";
+    public static final String SEEDANCE_2 = "ARK_SEEDANCE_2_I2V";
+    public static final int SEEDANCE_MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+    public static final int SEEDANCE_MIN_AUDIO_DURATION_MS = 2_000;
+    public static final int SEEDANCE_MAX_AUDIO_DURATION_MS = 15_000;
     public static final String LOCAL_IMAGE_PROCESSOR = "LOCAL_IMAGE_PROCESSOR";
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
@@ -28,7 +33,7 @@ public final class MediaAdapterRegistry {
             Set<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, Set<String> supportedImageAspectRatios,
             Set<String> supportedImageResolutions, Set<String> supportedImageQualities,
-            boolean supportsTransparentBackground, boolean supportsImageMask) {}
+            boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.of(
             LOCAL_IMAGE_PROCESSOR, image(MediaPlatform.LOCAL, false, 1,
@@ -39,6 +44,8 @@ public final class MediaAdapterRegistry {
                     ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS,
                     ImageGenerationParameters.QUALITIES, true, false),
+            "MOCK_AUDIO", audio(MediaPlatform.MOCK),
+            "VOLC_SEED_AUDIO_1", audio(MediaPlatform.VOLCENGINE),
             "MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, 4,
                     Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true),
             "COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1,
@@ -53,15 +60,15 @@ public final class MediaAdapterRegistry {
             GOOGLE_NANO_BANANA_2, image(MediaPlatform.GOOGLE, false,
                     GOOGLE_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS, Set.of(), false, false),
-            "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 1,
-                    Set.of("START_END"), "START_END", false));
+            "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 9,
+                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true));
 
     private static Declaration image(MediaPlatform platform, boolean originRequired,
             int maxReferenceImages, Set<String> aspectRatios, Set<String> resolutions,
             Set<String> qualities, boolean transparentBackground, boolean imageMask) {
         return new Declaration(platform, Task.Kind.IMAGE_GENERATION, 0, 0, originRequired,
                 maxReferenceImages, Set.of(), null, false, aspectRatios, resolutions,
-                qualities, transparentBackground, imageMask);
+                qualities, transparentBackground, imageMask, 0);
     }
 
     private static Declaration video(MediaPlatform platform, int minimumSeconds,
@@ -69,7 +76,13 @@ public final class MediaAdapterRegistry {
             Set<String> inputModes, String defaultInputMode, boolean supportsEndFrame) {
         return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
                 maximumSeconds, originRequired, maxReferenceImages, inputModes, defaultInputMode,
-                supportsEndFrame, Set.of(), Set.of(), Set.of(), false, false);
+                supportsEndFrame, Set.of(), Set.of(), Set.of(), false, false,
+                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK ? 3 : 0);
+    }
+
+    private static Declaration audio(MediaPlatform platform) {
+        return new Declaration(platform, Task.Kind.AUDIO_GENERATION, 0, 0, false, 1,
+                Set.of(), null, false, Set.of(), Set.of(), Set.of(), false, false, 3);
     }
 
     private final Map<String, MediaAdapter> implementations;

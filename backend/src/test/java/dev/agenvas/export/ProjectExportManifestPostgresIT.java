@@ -106,7 +106,7 @@ class ProjectExportManifestPostgresIT {
         mediaDrafts.save(owner.userId(), project.id(), targetItemId, 0,
                 "Animate the exact frame", mapper.createObjectNode(), 5, null,
                 MediaDraft.VideoInputMode.GENERAL_REFERENCE,
-                List.of(new MediaDraftService.SaveImageInput(
+                List.of(new MediaDraftService.SaveMediaInput(
                         revisedImage.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of());
         connections.connect(owner.userId(), project.id(), sourceItemId, targetItemId,
@@ -125,7 +125,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(3);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(4);
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();
@@ -147,7 +147,7 @@ class ProjectExportManifestPostgresIT {
         JsonNode targetCard = findById(manifest.path("canvasItems"), targetItemId);
         assertThat(targetCard.path("mediaVersionIds").isEmpty()).isTrue();
         assertThat(targetCard.path("selectedVersionId").isNull()).isTrue();
-        JsonNode input = targetCard.path("mediaDraft").path("imageInputs").get(0);
+        JsonNode input = targetCard.path("mediaDraft").path("mediaInputs").get(0);
         assertThat(input.path("versionId").asText())
                 .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
         assertThat(input.path("sources").size()).isEqualTo(2);

@@ -13,7 +13,16 @@ final class FrozenMediaInputs {
     private FrozenMediaInputs() {}
 
     static List<Image> images(Task task) {
-        JsonNode images = task.input().path("mediaInput").path("images");
+        return read(task, "images");
+    }
+
+    static List<Image> audios(Task task) {
+        if (!task.input().path("mediaInput").has("audios")) return List.of();
+        return read(task, "audios");
+    }
+
+    private static List<Image> read(Task task, String field) {
+        JsonNode images = task.input().path("mediaInput").path(field);
         if (!images.isArray()) {
             throw new IllegalArgumentException("Frozen media input images are invalid");
         }

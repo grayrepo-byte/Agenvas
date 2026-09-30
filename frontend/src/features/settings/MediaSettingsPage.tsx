@@ -1,7 +1,7 @@
 import { Select } from "../../shared/ui/Select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useRef, useState } from "react";
-import { ImageSquare, PlugsConnected, Plus, VideoCamera } from "@phosphor-icons/react";
+import { ImageSquare, PlugsConnected, Plus, VideoCamera, MusicNotes } from "@phosphor-icons/react";
 import { Link, Navigate } from "react-router";
 import {
   ApiError, createMediaCapability, createMediaConnection, getCurrentUser,
@@ -47,13 +47,14 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
   const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
-    maxReferenceImages, pricing } = values;
+    maxReferenceImages, maxReferenceAudios, pricing } = values;
   return { ...fields, ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
     ...(defaultParameters ? { defaultParameters } : {}),
     ...(defaultDurationSeconds !== undefined ? { defaultDurationSeconds } : {}),
     ...(minimumSeconds !== undefined ? { minimumSeconds } : {}),
     ...(maximumSeconds !== undefined ? { maximumSeconds } : {}),
     ...(maxReferenceImages !== undefined ? { maxReferenceImages } : {}),
+    ...(maxReferenceAudios !== undefined ? { maxReferenceAudios } : {}),
     ...(pricing?.amount.trim() ? { pricing } : {}) };
 
 }
@@ -73,14 +74,14 @@ function FixedModelFields({ adapterId, values, onChange }: {
   onChange: (value: AdapterSettings) => void;
 }) {
   return <>
-    {adapterModel(adapterId) && adapterId !== "ARK_SEEDANCE_2_I2V" ? <label className="ui-field">模型选项
+    {adapterModel(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1"].includes(adapterId) ? <label className="ui-field">模型选项
       <Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
         model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
         <option value="builtin">内置模型 · {adapterModel(adapterId)}</option>
         <option value="custom">自定义兼容模型</option>
       </Select>
     </label> : null}
-    {adapterId === "ARK_SEEDANCE_2_I2V" ? <label className="ui-field">固定模型
+    {["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1"].includes(adapterId) ? <label className="ui-field">固定模型
       <input value={adapterModel(adapterId)} readOnly />
     </label> : null}
     {fixedModelFields(adapterId).map(({ key, label }) => <label key={key} className="ui-field">{label}
@@ -177,10 +178,11 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
         maxLength={ORIGIN_LIMIT} placeholder={platform === "GOOGLE" ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"} />
     </label> : null}
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
+    {platform === "VOLCENGINE" ? <label className="ui-field">固定 API 地址<input value="https://openspeech.bytedance.com/api/v3/tts/create" readOnly /></label> : null}
     {platform === "ARK" ? <label className="ui-field">固定 API 地址
       <input value="https://ark.cn-beijing.volces.com/api/v3" readOnly />
     </label> : null}
-    {platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" ? <label className="ui-field">
+    {platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" ? <label className="ui-field">
       {creating ? "API Key" : "替换 API Key（留空则不修改）"}
       <input type="password" autoComplete="new-password" value={apiKey}
         onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
@@ -265,7 +267,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
     setModelNames(capability.settings);
     setError("");
   }
-  const CapabilityIcon = capability.kind === "IMAGE_GENERATION" ? ImageSquare : VideoCamera;
+  const CapabilityIcon = capability.kind === "IMAGE_GENERATION" ? ImageSquare : capability.kind === "AUDIO_GENERATION" ? MusicNotes : VideoCamera;
   return <>
     <tr>
       <td><div className="media-table-name"><CapabilityIcon size={19} /><div>
@@ -273,7 +275,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       </div></div></td>
       <td><strong>{adapterLabel(capability.adapterId)}</strong>
         <small>{capability.settings.model || adapterModel(capability.adapterId) || capability.adapterId}</small></td>
-      <td><strong>{capability.kind === "VIDEO_GENERATION" ? `${capability.minimumSeconds}–${capability.maximumSeconds} 秒` : "图片"}</strong>
+      <td><strong>{capability.kind === "VIDEO_GENERATION" ? `${capability.minimumSeconds}–${capability.maximumSeconds} 秒` : capability.kind === "AUDIO_GENERATION" ? "音频" : "图片"}</strong>
         <small>最多 {capability.maxReferenceImages} 张参考图</small></td>
       <td>{capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
         <small>每{capability.settings.pricing.unit === "SECOND" ? "秒" : capability.settings.pricing.unit === "VIDEO" ? "个视频" : "张图片"} · 估算</small></> : <span className="ui-muted">未设置</span>}</td>
@@ -508,7 +510,7 @@ export function MediaSettingsPage() {
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"COMFYUI" | "OPENAI" | "ARK" | "GOOGLE">("COMFYUI");
+  const [platform, setPlatform] = useState<"COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE">("COMFYUI");
   const [origin, setOrigin] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -591,7 +593,7 @@ export function MediaSettingsPage() {
               <label className="ui-field">平台
                 <Select value={platform} onChange={(event) => { setPlatform(event.target.value as typeof platform); setOrigin(""); setApiKey(""); }}>
                   <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
-                  <option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">火山方舟</option>
+                  <option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">火山方舟</option><option value="VOLCENGINE">火山引擎 · Seed Audio</option>
                 </Select>
               </label>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}

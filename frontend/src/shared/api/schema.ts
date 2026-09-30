@@ -319,7 +319,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             };
             cookie?: never;
         };
@@ -485,6 +485,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/assets/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 上传并校验私有 PNG/JPEG/WebP 音频素材 */
+        post: operations["uploadAudioAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/assets/{assetId}/content": {
         parameters: {
             query?: never;
@@ -627,7 +646,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/image-inputs/{versionId}/remove": {
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/media-inputs/{versionId}/remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -641,7 +660,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** 原子移除精确图片输入、全部来源连线及其结构化标签 */
-        post: operations["removeMediaDraftImageInput"];
+        post: operations["removeMediaDraftMediaInput"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1291,7 +1310,7 @@ export interface components {
             /** Format: uuid */
             runId: string | null;
             /** @enum {string} */
-            kind: "LLM" | "IMAGE" | "VIDEO";
+            kind: "LLM" | "IMAGE" | "VIDEO" | "AUDIO";
             /** @enum {string} */
             operation: "CHAT" | "SUBMIT" | "POLL" | "LEGACY";
             /**
@@ -1330,7 +1349,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
+            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE";
             enabled: boolean;
             /** Format: int64 */
             version: number;
@@ -1353,10 +1372,11 @@ export interface components {
             capabilityVersion: number;
             adapterId: string;
             /** @enum {string} */
-            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             minimumSeconds: number;
             maximumSeconds: number;
             maxReferenceImages: number;
+            maxReferenceAudios: number;
             supportedVideoInputModes: components["schemas"]["VideoInputMode"][];
             defaultVideoInputMode: components["schemas"]["VideoInputMode"] | null;
             supportsEndFrame: boolean;
@@ -1385,6 +1405,7 @@ export interface components {
             minimumSeconds?: number;
             maximumSeconds?: number;
             maxReferenceImages?: number;
+            maxReferenceAudios?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
         };
         MediaCapabilityPricing: {
@@ -1393,14 +1414,14 @@ export interface components {
             /** @enum {string} */
             currency: "CNY" | "USD";
             /**
-             * @description IMAGE for images; VIDEO or SECOND for videos.
+             * @description IMAGE for images; VIDEO or SECOND for videos; AUDIO or SECOND for audio (120 second conservative reservation).
              * @enum {string}
              */
-            unit: "IMAGE" | "VIDEO" | "SECOND";
+            unit: "IMAGE" | "VIDEO" | "AUDIO" | "SECOND";
         };
         MediaDefault: {
             /** @enum {string} */
-            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             /** Format: uuid */
             capabilityId: string;
             /** Format: int64 */
@@ -1409,7 +1430,7 @@ export interface components {
         CreateMediaConnectionRequest: {
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE";
             /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
@@ -1521,7 +1542,7 @@ export interface components {
         };
         ProjectExportManifest: {
             /** @constant */
-            schemaVersion: 3;
+            schemaVersion: 4;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -1601,13 +1622,14 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            mediaKind: "IMAGE" | "VIDEO";
+            mediaKind: "IMAGE" | "VIDEO" | "AUDIO";
             contentType: string;
             /** Format: int64 */
             byteSize: number;
             sha256: string;
             width?: number | null;
             height?: number | null;
+            /** @description Verified media duration: videos up to 60000ms; audio up to 600000ms. */
             durationMs: number | null;
             thumbnailSha256?: string | null;
             /** Format: date-time */
@@ -1642,8 +1664,8 @@ export interface components {
             /** Format: uuid */
             capabilityId: string | null;
             videoInputMode: components["schemas"]["VideoInputMode"] | null;
-            imageInputs: components["schemas"]["MediaImageInput"][];
-            mentions: components["schemas"]["PromptImageMention"][];
+            mediaInputs: components["schemas"]["MediaInput"][];
+            mentions: components["schemas"]["PromptMediaMention"][];
             /** @enum {string} */
             displayMode: "DRAFT" | "RESULT";
             /** Format: int64 */
@@ -1733,19 +1755,20 @@ export interface components {
             /** Format: uuid */
             projectId: string;
             /** @enum {string} */
-            mediaKind: "IMAGE" | "VIDEO";
+            mediaKind: "IMAGE" | "VIDEO" | "AUDIO";
             contentType: string;
             /** Format: int64 */
             byteSize: number;
             sha256: string;
             width: number | null;
             height: number | null;
+            /** @description Verified media duration: videos up to 60000ms; audio up to 600000ms. */
             durationMs: number | null;
             /** Format: date-time */
             createdAt: string;
         };
         /** @enum {string} */
-        ArtifactKind: "TEXT" | "IMAGE" | "VIDEO";
+        ArtifactKind: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
         ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"];
         WritableArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"];
         CreateArtifactRequest: {
@@ -1763,8 +1786,8 @@ export interface components {
             /** Format: uuid */
             capabilityId?: string | null;
             videoInputMode: components["schemas"]["VideoInputMode"] | null;
-            imageInputs: components["schemas"]["SaveMediaImageInput"][];
-            mentions: components["schemas"]["PromptImageMention"][];
+            mediaInputs: components["schemas"]["SaveMediaInput"][];
+            mentions: components["schemas"]["PromptMediaMention"][];
         };
         RestoreMediaDraftVersionInputsRequest: {
             /** Format: uuid */
@@ -1772,7 +1795,7 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
         };
-        RemoveMediaDraftImageInputRequest: {
+        RemoveMediaDraftMediaInputRequest: {
             /** Format: int64 */
             expectedVersion: number;
         };
@@ -1847,8 +1870,8 @@ export interface components {
             /** Format: uuid */
             capabilityId: string | null;
             videoInputMode: components["schemas"]["VideoInputMode"] | null;
-            imageInputs: components["schemas"]["MediaImageInput"][];
-            mentions: components["schemas"]["PromptImageMention"][];
+            mediaInputs: components["schemas"]["MediaInput"][];
+            mentions: components["schemas"]["PromptMediaMention"][];
             /** @enum {string} */
             displayMode: "DRAFT" | "RESULT";
             /** Format: int64 */
@@ -1858,8 +1881,18 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description 媒体草稿的原子生成参数；图片使用全部字段，视频只使用 aspectRatio。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
+        AudioGenerationParameters: {
+            speaker?: string;
+            speechRate?: number;
+            loudnessRate?: number;
+            pitchRate?: number;
+        };
+        /** @description 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
         ImageGenerationParameters: {
+            speaker?: string;
+            speechRate?: number;
+            loudnessRate?: number;
+            pitchRate?: number;
             /** @enum {string} */
             aspectRatio?: "AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
             /** @enum {string} */
@@ -1873,14 +1906,14 @@ export interface components {
         /** @enum {string} */
         VideoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
         /** @enum {string} */
-        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME";
-        SaveMediaImageInput: {
+        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE";
+        SaveMediaInput: {
             /** Format: uuid */
             versionId: string;
             role: components["schemas"]["MediaInputRole"];
             color: string;
         };
-        MediaImageInputSource: {
+        MediaInputSource: {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
@@ -1888,7 +1921,7 @@ export interface components {
             /** Format: uuid */
             connectionId: string | null;
         };
-        MediaImageInput: {
+        MediaInput: {
             /** Format: uuid */
             versionId: string;
             /** Format: uuid */
@@ -1896,9 +1929,9 @@ export interface components {
             role: components["schemas"]["MediaInputRole"];
             order: number;
             color: string;
-            sources: components["schemas"]["MediaImageInputSource"][];
+            sources: components["schemas"]["MediaInputSource"][];
         };
-        PromptImageMention: {
+        PromptMediaMention: {
             /** Format: uuid */
             versionId: string;
             role: components["schemas"]["MediaInputRole"];
@@ -2338,14 +2371,14 @@ export interface components {
             connectionName: string;
             capabilityName: string;
             /** @enum {string} */
-            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             minimumSeconds: number;
             maximumSeconds: number;
             realGenerationTested: boolean;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
         /** @enum {string} */
-        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "ASSET_INGEST";
+        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION" | "ASSET_INGEST";
         /** @enum {string} */
         TaskStatus: "PENDING" | "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED";
         ManualUnknownAttemptRequest: {
@@ -2708,7 +2741,7 @@ export interface operations {
         parameters: {
             query?: {
                 projectId?: string;
-                kind?: "LLM" | "IMAGE" | "VIDEO";
+                kind?: "LLM" | "IMAGE" | "VIDEO" | "AUDIO";
                 status?: "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
                 traceId?: string;
                 /** @description 调用开始时间下界（包含） */
@@ -3252,7 +3285,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             };
             cookie?: never;
         };
@@ -3566,6 +3599,52 @@ export interface operations {
             };
         };
     };
+    uploadAudioAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 素材已归档 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description 音频超过大小限制 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 音频格式、解码或像素限制未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getAssetContent: {
         parameters: {
             query?: never;
@@ -3869,7 +3948,7 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
-    removeMediaDraftImageInput: {
+    removeMediaDraftMediaInput: {
         parameters: {
             query?: never;
             header?: never;
@@ -3882,7 +3961,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RemoveMediaDraftImageInputRequest"];
+                "application/json": components["schemas"]["RemoveMediaDraftMediaInputRequest"];
             };
         };
         responses: {

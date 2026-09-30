@@ -5,7 +5,7 @@ import { ApiError, listArtifactVersions, setArtifactResourceDefaultVersion,
 
 /** On-demand resource history for text; media nodes intentionally expose no version switching. */
 export function ArtifactVersionHistory({ artifact }: { artifact: Artifact }) {
-  if (artifact.kind === "IMAGE" || artifact.kind === "VIDEO") return null;
+  if (artifact.kind !== "TEXT") return null;
   return <TextArtifactVersionHistory artifact={artifact} />;
 }
 

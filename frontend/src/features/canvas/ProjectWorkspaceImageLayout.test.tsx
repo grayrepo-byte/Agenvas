@@ -81,7 +81,7 @@ describe("workspace image dimensions", () => {
       http.get("/api/v1/projects/project-1/canvas-items/:canvasItemId/media-draft", ({ params }) => HttpResponse.json({
         canvasItemId: params.canvasItemId, projectId: "project-1", displayMode: draftMode, prompt: "",
         version: 0, parameters: params.canvasItemId === "image-card" ? parameters : {}, durationSeconds: null, capabilityId: null,
-        videoInputMode: null, imageInputs: [], mentions: [],
+        videoInputMode: null, mediaInputs: [], mentions: [],
         createdAt: NOW, updatedAt: NOW,
       })),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({

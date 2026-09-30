@@ -13,7 +13,7 @@ export function hasCurrentVersion(artifact: Artifact | null | undefined):
 
 function isMediaArtifactItem(item: CanvasItem): item is CanvasItem & { artifact: Artifact } {
   return item.artifact != null
-    && (item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO");
+    && (item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO" || item.artifact.kind === "AUDIO");
 }
 
 /** The version this card presents; media cards deliberately ignore the resource-library default. */

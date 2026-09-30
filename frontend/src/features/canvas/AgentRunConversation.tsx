@@ -20,7 +20,7 @@ const TASK_STATUS: Record<Task["status"], "running" | "pending" | "completed" | 
 };
 const TASK_LABELS: Record<Task["kind"], string> = {
   AGENT_TURN: "AI 回复", TEXT_GENERATION: "生成文字",
-  IMAGE_GENERATION: "生成图片", VIDEO_GENERATION: "生成视频",
+  IMAGE_GENERATION: "生成图片", AUDIO_GENERATION: "音频生成", VIDEO_GENERATION: "生成视频",
   ASSET_INGEST: "归档素材",
 };
 const TOOL_LABELS: Record<string, string> = {

@@ -162,8 +162,8 @@ class CanvasMediaContextPostgresIT {
         assertThat(uploadDraft.path("capabilityId").isNull()).isTrue();
         assertThat(uploadDraft.path("durationSeconds").isNull()).isTrue();
         assertThat(uploadDraft.path("videoInputMode").isNull()).isTrue();
-        assertThat(uploadDraft.path("imageInputs").isArray()).isTrue();
-        assertThat(uploadDraft.path("imageInputs").size()).isZero();
+        assertThat(uploadDraft.path("mediaInputs").isArray()).isTrue();
+        assertThat(uploadDraft.path("mediaInputs").size()).isZero();
         assertThat(uploadDraft.path("mentions").isArray()).isTrue();
         assertThat(uploadDraft.path("mentions").size()).isZero();
         assertThat(uploadDraft.path("displayMode").asText()).isEqualTo("RESULT");

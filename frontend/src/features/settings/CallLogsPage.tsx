@@ -18,7 +18,7 @@ const FORBIDDEN_STATUS = 403;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const LOCAL_DATE_TIME_LENGTH = 19;
 const TABLE_COLUMN_COUNT = 7;
-const KIND_LABELS: Record<CallLog["kind"], string> = { LLM: "文本模型", IMAGE: "图片", VIDEO: "视频" };
+const KIND_LABELS: Record<CallLog["kind"], string> = { LLM: "文本模型", IMAGE: "图片", VIDEO: "视频", AUDIO: "音频" };
 const STATUS_LABELS: Record<CallLog["status"], string> = { RUNNING: "调用中", SUCCEEDED: "成功", FAILED: "失败", UNKNOWN: "未知" };
 const OPERATION_LABELS: Record<CallLog["operation"], string> = { CHAT: "模型对话", SUBMIT: "提交生成", POLL: "查询结果", LEGACY: "历史任务" };
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
@@ -33,7 +33,7 @@ function readFilters(params: URLSearchParams): CallLogFilters {
   const page = Number(params.get("page") ?? FIRST_PAGE);
   return {
     projectId: params.get("projectId") || undefined,
-    kind: kind === "LLM" || kind === "IMAGE" || kind === "VIDEO" ? kind : undefined,
+    kind: kind === "LLM" || kind === "IMAGE" || kind === "VIDEO" || kind === "AUDIO" ? kind : undefined,
     status: status === "RUNNING" || status === "SUCCEEDED" || status === "FAILED" || status === "UNKNOWN" ? status : undefined,
     traceId: params.get("traceId") || undefined,
     from: params.get("from") || undefined,

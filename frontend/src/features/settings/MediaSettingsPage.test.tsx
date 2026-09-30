@@ -36,7 +36,7 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
       capabilities: [{
         id: "portrait", name: "Portrait", enabled: true, version: 4, capabilityVersion: 2,
         adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION",
-        minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 1,
+        minimumSeconds: 0, maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceImages: 1,
         supportedVideoInputModes: [], defaultVideoInputMode: null,
         supportsEndFrame: false,
         supportedImageAspectRatios: ["AUTO", "1:1"], supportedImageResolutions: ["1K", "2K", "4K"],
@@ -147,7 +147,7 @@ describe("MediaSettingsPage", () => {
         capabilities: [{
           id: "portrait", name: "Portrait", enabled: true, version: 4, capabilityVersion: 2,
           adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION",
-          minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 1,
+          minimumSeconds: 0, maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceImages: 1,
           supportedVideoInputModes: [], defaultVideoInputMode: null,
           supportsEndFrame: false,
           supportedImageAspectRatios: ["AUTO", "1:1"], supportedImageResolutions: ["1K", "2K", "4K"],

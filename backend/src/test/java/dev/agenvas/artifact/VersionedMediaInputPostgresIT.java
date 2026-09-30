@@ -78,7 +78,7 @@ class VersionedMediaInputPostgresIT {
         String draftPath = base + "/canvas-items/" + videoItemId + "/media-draft";
         String input = """
                 {"expectedVersion":0,"prompt":"Move from \uFFFC to \uFFFC",\
-                "durationSeconds":5,"videoInputMode":"START_END","imageInputs":[\
+                "durationSeconds":5,"videoInputMode":"START_END","mediaInputs":[\
                 {"versionId":"%s","role":"START_FRAME","color":"#7C3AED"},\
                 {"versionId":"%s","role":"END_FRAME","color":"#0EA5E9"}],\
                 "mentions":[\
@@ -90,7 +90,7 @@ class VersionedMediaInputPostgresIT {
         mvc.perform(put(draftPath).with(auth).with(csrf())
                         .contentType("application/json")
                         .content("{\"expectedVersion\":0,\"prompt\":\"Atomic batch\","
-                                + "\"imageInputs\":[{\"versionId\":\"" + start.versionId()
+                                + "\"mediaInputs\":[{\"versionId\":\"" + start.versionId()
                                 + "\",\"role\":\"START_FRAME\",\"color\":\"#7C3AED\"},"
                                 + "{\"versionId\":\"" + staleVersionId
                                 + "\",\"role\":\"END_FRAME\",\"color\":\"#0EA5E9\"}]}"))
@@ -99,7 +99,7 @@ class VersionedMediaInputPostgresIT {
                         .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
                 .getContentAsString());
         assertThat(unchangedAfterRejectedBatch.path("version").asLong()).isZero();
-        assertThat(unchangedAfterRejectedBatch.path("imageInputs")).isEmpty();
+        assertThat(unchangedAfterRejectedBatch.path("mediaInputs")).isEmpty();
         mvc.perform(put(draftPath).with(auth).with(csrf())
                         .contentType("application/json")
                         .content(input.replace("Move from \uFFFC to \uFFFC",
@@ -109,12 +109,12 @@ class VersionedMediaInputPostgresIT {
                         .contentType("application/json").content(input))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(saved.path("videoInputMode").asText()).isEqualTo("START_END");
-        assertThat(saved.path("imageInputs")).hasSize(2);
-        assertThat(saved.path("imageInputs").get(0).path("versionId").asText())
+        assertThat(saved.path("mediaInputs")).hasSize(2);
+        assertThat(saved.path("mediaInputs").get(0).path("versionId").asText())
                 .isEqualTo(start.versionId());
-        assertThat(saved.path("imageInputs").get(1).path("role").asText())
+        assertThat(saved.path("mediaInputs").get(1).path("role").asText())
                 .isEqualTo("END_FRAME");
-        assertThat(saved.path("imageInputs").get(0).path("sources").get(0).path("type").asText())
+        assertThat(saved.path("mediaInputs").get(0).path("sources").get(0).path("type").asText())
                 .isEqualTo("MANUAL");
 
         JsonNode connected = mapper.readTree(mvc.perform(post(base + "/canvas/connections")
@@ -126,9 +126,9 @@ class VersionedMediaInputPostgresIT {
                                 + "\"expectedTargetDraftVersion\":1}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String connectionId = connected.path("connection").path("id").asText();
-        assertThat(connected.path("draft").path("imageInputs").get(0).path("sources"))
+        assertThat(connected.path("draft").path("mediaInputs").get(0).path("sources"))
                 .hasSize(2);
-        assertThat(connected.path("draft").path("imageInputs").get(0).path("sources").get(1)
+        assertThat(connected.path("draft").path("mediaInputs").get(0).path("sources").get(1)
                 .path("type").asText()).isEqualTo("CONNECTION");
         JsonNode connectionSnapshot = mapper.readTree(mvc.perform(get(base + "/snapshot")
                         .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
@@ -142,9 +142,9 @@ class VersionedMediaInputPostgresIT {
                         .contentType("application/json")
                         .content("{\"expectedTargetDraftVersion\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(disconnected.path("draft").path("imageInputs")).hasSize(2);
-        assertThat(disconnected.path("draft").path("imageInputs").get(0).path("sources")).hasSize(1);
-        assertThat(disconnected.path("draft").path("imageInputs").get(0).path("sources").get(0)
+        assertThat(disconnected.path("draft").path("mediaInputs")).hasSize(2);
+        assertThat(disconnected.path("draft").path("mediaInputs").get(0).path("sources")).hasSize(1);
+        assertThat(disconnected.path("draft").path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
 
         String secondStartItemId = duplicateMediaItem(mvc, auth, base, start, 480);
@@ -156,7 +156,7 @@ class VersionedMediaInputPostgresIT {
         mvc.perform(put(removalDraftPath).with(auth).with(csrf())
                         .contentType("application/json")
                         .content("{\"expectedVersion\":0,\"prompt\":\"Reference ￼\","
-                                + "\"imageInputs\":[{\"versionId\":\"" + start.versionId()
+                                + "\"mediaInputs\":[{\"versionId\":\"" + start.versionId()
                                 + "\",\"role\":\"REFERENCE\",\"color\":\"#7C3AED\"}],"
                                 + "\"mentions\":[{\"versionId\":\"" + start.versionId()
                                 + "\",\"role\":\"REFERENCE\"}] }"))
@@ -177,7 +177,7 @@ class VersionedMediaInputPostgresIT {
                                 + "\",\"relationType\":\"MEDIA_INPUT\","
                                 + "\"expectedTargetDraftVersion\":2}"))
                 .andExpect(status().isCreated());
-        String removeInputPath = removalDraftPath + "/image-inputs/" + start.versionId()
+        String removeInputPath = removalDraftPath + "/media-inputs/" + start.versionId()
                 + "/remove";
         mvc.perform(post(removeInputPath).with(auth).with(csrf())
                         .contentType("application/json").content("{\"expectedVersion\":2}"))
@@ -186,7 +186,7 @@ class VersionedMediaInputPostgresIT {
                         .with(auth).with(csrf()).contentType("application/json")
                         .content("{\"expectedVersion\":3}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(removedInput.path("imageInputs")).isEmpty();
+        assertThat(removedInput.path("mediaInputs")).isEmpty();
         assertThat(removedInput.path("mentions")).isEmpty();
         assertThat(removedInput.path("prompt").asText()).isEqualTo("Reference ");
         JsonNode connectionsAfterInputRemoval = mapper.readTree(mvc.perform(
@@ -211,12 +211,12 @@ class VersionedMediaInputPostgresIT {
                                 + "\"width\":280,\"height\":240,\"zIndex\":1}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(duplicated.path("item").path("id").asText()).isEqualTo(duplicateItemId);
-        assertThat(duplicated.path("draft").path("imageInputs")).hasSize(2);
-        assertThat(duplicated.path("draft").path("imageInputs").get(0).path("color").asText())
+        assertThat(duplicated.path("draft").path("mediaInputs")).hasSize(2);
+        assertThat(duplicated.path("draft").path("mediaInputs").get(0).path("color").asText())
                 .isEqualTo("#7C3AED");
-        assertThat(duplicated.path("draft").path("imageInputs").get(0).path("sources"))
+        assertThat(duplicated.path("draft").path("mediaInputs").get(0).path("sources"))
                 .hasSize(1);
-        assertThat(duplicated.path("draft").path("imageInputs").get(0).path("sources").get(0)
+        assertThat(duplicated.path("draft").path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
         JsonNode duplicateConnections = mapper.readTree(mvc.perform(
                         get(base + "/canvas/connections").with(auth))
@@ -239,16 +239,16 @@ class VersionedMediaInputPostgresIT {
         JsonNode autosavedConnectionInput = mapper.readTree(mvc.perform(put(base
                         + "/canvas-items/" + cleanupTargetItemId + "/media-draft")
                         .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":1,\"prompt\":\"\",\"imageInputs\":["
+                        .content("{\"expectedVersion\":1,\"prompt\":\"\",\"mediaInputs\":["
                                 + "{\"versionId\":\"" + start.versionId()
                                 + "\",\"role\":\"REFERENCE\",\"color\":\""
-                                + cleanupConnection.path("draft").path("imageInputs").get(0)
+                                + cleanupConnection.path("draft").path("mediaInputs").get(0)
                                         .path("color").asText()
                                 + "\"}]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(autosavedConnectionInput.path("imageInputs").get(0).path("sources"))
+        assertThat(autosavedConnectionInput.path("mediaInputs").get(0).path("sources"))
                 .hasSize(1);
-        assertThat(autosavedConnectionInput.path("imageInputs").get(0).path("sources").get(0)
+        assertThat(autosavedConnectionInput.path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("CONNECTION");
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
                         .contentType("application/json")
@@ -259,7 +259,7 @@ class VersionedMediaInputPostgresIT {
         JsonNode cleanedDraft = mapper.readTree(mvc.perform(get(base + "/canvas-items/"
                         + cleanupTargetItemId + "/media-draft").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(cleanedDraft.path("imageInputs")).isEmpty();
+        assertThat(cleanedDraft.path("mediaInputs")).isEmpty();
 
         JsonNode task = mapper.readTree(mvc.perform(post(base + "/artifacts/"
                         + video.path("id").asText() + "/run").with(auth).with(csrf())
@@ -313,9 +313,9 @@ class VersionedMediaInputPostgresIT {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(restored.path("prompt").asText())
                 .isEqualTo("Move from \uFFFC to \uFFFC");
-        assertThat(restored.path("imageInputs")).hasSize(2);
-        assertThat(restored.path("imageInputs").get(0).path("sources")).hasSize(1);
-        assertThat(restored.path("imageInputs").get(0).path("sources").get(0)
+        assertThat(restored.path("mediaInputs")).hasSize(2);
+        assertThat(restored.path("mediaInputs").get(0).path("sources")).hasSize(1);
+        assertThat(restored.path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
         JsonNode restoredConnections = mapper.readTree(mvc.perform(
                         get(base + "/canvas/connections").with(auth))
@@ -389,7 +389,7 @@ class VersionedMediaInputPostgresIT {
                                 + "\",\"expectedDraftVersion\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String resultItemId = task.path("input").path("canvasItemId").asText();
-        assertThat(resultItemId).isNotEqualTo(itemId);
+        assertThat(resultItemId).isEqualTo(itemId);
         assertThat(worker.submitOnce("input-worker-" + itemId)).isEqualTo(1);
         JsonNode canvas = mapper.readTree(mvc.perform(get(base + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());

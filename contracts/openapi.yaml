@@ -24,7 +24,7 @@ paths:
           schema: {type: string, format: uuid}
         - name: kind
           in: query
-          schema: {type: string, enum: [LLM, IMAGE, VIDEO]}
+          schema: {type: string, enum: [LLM, IMAGE, VIDEO, AUDIO]}
         - name: status
           in: query
           schema: {type: string, enum: [RUNNING, SUCCEEDED, FAILED, UNKNOWN]}
@@ -439,7 +439,7 @@ paths:
       - name: kind
         in: path
         required: true
-        schema: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        schema: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]}
     put:
       operationId: setMediaDefault
       summary: 使用 expectedVersion 设置图片或视频默认能力
@@ -654,6 +654,33 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {description: 图片超过大小限制}
         "422": {description: 图片格式、解码或像素限制未通过}
+  /api/v1/projects/{projectId}/assets/audio:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: uploadAudioAsset
+      summary: 上传并校验私有 PNG/JPEG/WebP 音频素材
+      tags: [Assets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 素材已归档
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Asset"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {description: 音频超过大小限制}
+        "422": {description: 音频格式、解码或像素限制未通过}
   /api/v1/projects/{projectId}/assets/{assetId}/content:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -854,7 +881,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/image-inputs/{versionId}/remove:
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/media-inputs/{versionId}/remove:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/CanvasItemId"}
@@ -863,14 +890,14 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     post:
-      operationId: removeMediaDraftImageInput
+      operationId: removeMediaDraftMediaInput
       summary: 原子移除精确图片输入、全部来源连线及其结构化标签
       tags: [Canvas]
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/RemoveMediaDraftImageInputRequest"}
+            schema: {$ref: "#/components/schemas/RemoveMediaDraftMediaInputRequest"}
       responses:
         "200":
           description: 已移除图片输入的媒体草稿
@@ -1732,7 +1759,7 @@ components:
         projectTitle: {type: string}
         taskId: {type: [string, "null"], format: uuid}
         runId: {type: [string, "null"], format: uuid}
-        kind: {type: string, enum: [LLM, IMAGE, VIDEO]}
+        kind: {type: string, enum: [LLM, IMAGE, VIDEO, AUDIO]}
         operation: {type: string, enum: [CHAT, SUBMIT, POLL, LEGACY]}
         status:
           type: string
@@ -1777,7 +1804,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
-        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
+        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE]}
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
@@ -1792,7 +1819,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
-        minimumSeconds, maximumSeconds, maxReferenceImages, supportedVideoInputModes,
+        minimumSeconds, maximumSeconds, maxReferenceImages, maxReferenceAudios, supportedVideoInputModes,
         defaultVideoInputMode, supportsEndFrame, supportedImageAspectRatios,
         supportedImageResolutions, supportedImageQualities, supportsTransparentBackground,
         supportsImageMask,
@@ -1804,10 +1831,11 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         capabilityVersion: {type: integer, minimum: 1}
         adapterId: {type: string}
-        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]}
         minimumSeconds: {type: integer, minimum: 0}
         maximumSeconds: {type: integer, minimum: 0}
         maxReferenceImages: {type: integer, minimum: 0}
+        maxReferenceAudios: {type: integer, minimum: 0, maximum: 3}
         supportedVideoInputModes:
           type: array
           uniqueItems: true
@@ -1852,6 +1880,7 @@ components:
         minimumSeconds: {type: integer, minimum: 0, maximum: 30}
         maximumSeconds: {type: integer, minimum: 0, maximum: 30}
         maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
+        maxReferenceAudios: {type: integer, minimum: 0, maximum: 3}
         pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
     MediaCapabilityPricing:
       type: object
@@ -1860,13 +1889,13 @@ components:
       properties:
         amount: {type: string, pattern: "^[0-9]{1,10}(\\.[0-9]{1,6})?$", description: "Administrator supplied unit price; up to six decimal places."}
         currency: {type: string, enum: [CNY, USD]}
-        unit: {type: string, enum: [IMAGE, VIDEO, SECOND], description: "IMAGE for images; VIDEO or SECOND for videos."}
+        unit: {type: string, enum: [IMAGE, VIDEO, AUDIO, SECOND], description: "IMAGE for images; VIDEO or SECOND for videos; AUDIO or SECOND for audio (120 second conservative reservation)."}
     MediaDefault:
       type: object
       additionalProperties: false
       required: [kind, capabilityId, version]
       properties:
-        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]}
         capabilityId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
     CreateMediaConnectionRequest:
@@ -1875,7 +1904,7 @@ components:
       required: [name, platform]
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
-        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE]}
         origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     UpdateMediaConnectionRequest:
@@ -2008,7 +2037,7 @@ components:
       required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
         canvasItems, connections]
       properties:
-        schemaVersion: {type: integer, const: 3}
+        schemaVersion: {type: integer, const: 4}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -2097,13 +2126,13 @@ components:
       required: [id, mediaKind, contentType, byteSize, sha256, durationMs, createdAt]
       properties:
         id: {type: string, format: uuid}
-        mediaKind: {type: string, enum: [IMAGE, VIDEO]}
+        mediaKind: {type: string, enum: [IMAGE, VIDEO, AUDIO]}
         contentType: {type: string}
         byteSize: {type: integer, format: int64, minimum: 1}
         sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         width: {type: [integer, "null"]}
         height: {type: [integer, "null"]}
-        durationMs: {type: [integer, "null"], minimum: 1, maximum: 60000}
+        durationMs: {type: [integer, "null"], minimum: 1, maximum: 600000, description: "Verified media duration: videos up to 60000ms; audio up to 600000ms."}
         thumbnailSha256: {type: [string, "null"]}
         createdAt: {type: string, format: date-time}
     ManifestCanvasItem:
@@ -2137,7 +2166,7 @@ components:
       type: object
       additionalProperties: false
       required: [prompt, parameters, durationSeconds, capabilityId, videoInputMode,
-        imageInputs, mentions, displayMode, version]
+        mediaInputs, mentions, displayMode, version]
       properties:
         prompt: {type: string}
         parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
@@ -2147,8 +2176,8 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/VideoInputMode"}
             - {type: "null"}
-        imageInputs: {type: array, items: {$ref: "#/components/schemas/MediaImageInput"}}
-        mentions: {type: array, items: {$ref: "#/components/schemas/PromptImageMention"}}
+        mediaInputs: {type: array, items: {$ref: "#/components/schemas/MediaInput"}}
+        mentions: {type: array, items: {$ref: "#/components/schemas/PromptMediaMention"}}
         displayMode: {type: string, enum: [DRAFT, RESULT]}
         version: {type: integer, format: int64, minimum: 0}
     ManifestCanvasConnection:
@@ -2268,17 +2297,17 @@ components:
       properties:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
-        mediaKind: {type: string, enum: [IMAGE, VIDEO]}
+        mediaKind: {type: string, enum: [IMAGE, VIDEO, AUDIO]}
         contentType: {type: string}
         byteSize: {type: integer, format: int64, minimum: 1}
         sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         width: {type: [integer, "null"], minimum: 1}
         height: {type: [integer, "null"], minimum: 1}
-        durationMs: {type: [integer, "null"], minimum: 1, maximum: 60000}
+        durationMs: {type: [integer, "null"], minimum: 1, maximum: 600000, description: "Verified media duration: videos up to 60000ms; audio up to 600000ms."}
         createdAt: {type: string, format: date-time}
     ArtifactKind:
       type: string
-      enum: [TEXT, IMAGE, VIDEO]
+      enum: [TEXT, IMAGE, VIDEO, AUDIO]
     ArtifactContent:
       oneOf:
         - {$ref: "./artifact-schemas/text-v1.schema.json"}
@@ -2304,7 +2333,7 @@ components:
     SaveMediaDraftRequest:
       type: object
       additionalProperties: false
-      required: [expectedVersion, prompt, parameters, videoInputMode, imageInputs, mentions]
+      required: [expectedVersion, prompt, parameters, videoInputMode, mediaInputs, mentions]
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         prompt: {type: string, maxLength: 20000}
@@ -2315,13 +2344,13 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/VideoInputMode"}
             - {type: "null"}
-        imageInputs:
+        mediaInputs:
           type: array
           maxItems: 8
-          items: {$ref: "#/components/schemas/SaveMediaImageInput"}
+          items: {$ref: "#/components/schemas/SaveMediaInput"}
         mentions:
           type: array
-          items: {$ref: "#/components/schemas/PromptImageMention"}
+          items: {$ref: "#/components/schemas/PromptMediaMention"}
     RestoreMediaDraftVersionInputsRequest:
       type: object
       additionalProperties: false
@@ -2329,7 +2358,7 @@ components:
       properties:
         versionId: {type: string, format: uuid}
         expectedVersion: {type: integer, format: int64, minimum: 0}
-    RemoveMediaDraftImageInputRequest:
+    RemoveMediaDraftMediaInputRequest:
       type: object
       additionalProperties: false
       required: [expectedVersion]
@@ -2409,7 +2438,7 @@ components:
       type: object
       additionalProperties: false
       required: [projectId, canvasItemId, prompt, parameters, durationSeconds, capabilityId,
-        videoInputMode, imageInputs, mentions, displayMode, version, createdAt, updatedAt]
+        videoInputMode, mediaInputs, mentions, displayMode, version, createdAt, updatedAt]
       properties:
         projectId: {type: string, format: uuid}
         canvasItemId: {type: string, format: uuid}
@@ -2421,21 +2450,33 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/VideoInputMode"}
             - {type: "null"}
-        imageInputs:
+        mediaInputs:
           type: array
-          items: {$ref: "#/components/schemas/MediaImageInput"}
+          items: {$ref: "#/components/schemas/MediaInput"}
         mentions:
           type: array
-          items: {$ref: "#/components/schemas/PromptImageMention"}
+          items: {$ref: "#/components/schemas/PromptMediaMention"}
         displayMode: {type: string, enum: [DRAFT, RESULT]}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
+    AudioGenerationParameters:
+      type: object
+      additionalProperties: false
+      properties:
+        speaker: {type: string, pattern: "^[A-Za-z0-9_-]{0,120}$"}
+        speechRate: {type: integer, minimum: -50, maximum: 100}
+        loudnessRate: {type: integer, minimum: -50, maximum: 100}
+        pitchRate: {type: integer, minimum: -12, maximum: 12}
     ImageGenerationParameters:
       type: object
       additionalProperties: false
-      description: 媒体草稿的原子生成参数；图片使用全部字段，视频只使用 aspectRatio。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
+      description: 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
       properties:
+        speaker: {type: string, pattern: "^[A-Za-z0-9_-]{0,120}$"}
+        speechRate: {type: integer, minimum: -50, maximum: 100}
+        loudnessRate: {type: integer, minimum: -50, maximum: 100}
+        pitchRate: {type: integer, minimum: -12, maximum: 12}
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
         resolution: {type: string, enum: [1K, 2K, 4K]}
         quality: {type: string, enum: [low, medium, high]}
@@ -2446,8 +2487,8 @@ components:
       enum: [TEXT, START_END, GENERAL_REFERENCE]
     MediaInputRole:
       type: string
-      enum: [REFERENCE, START_FRAME, END_FRAME]
-    SaveMediaImageInput:
+      enum: [REFERENCE, START_FRAME, END_FRAME, AUDIO_REFERENCE]
+    SaveMediaInput:
       type: object
       additionalProperties: false
       required: [versionId, role, color]
@@ -2455,7 +2496,7 @@ components:
         versionId: {type: string, format: uuid}
         role: {$ref: "#/components/schemas/MediaInputRole"}
         color: {type: string, pattern: "^#[0-9A-F]{6}$"}
-    MediaImageInputSource:
+    MediaInputSource:
       type: object
       additionalProperties: false
       required: [id, type, connectionId]
@@ -2463,7 +2504,7 @@ components:
         id: {type: string, format: uuid}
         type: {type: string, enum: [MANUAL, CONNECTION]}
         connectionId: {type: [string, "null"], format: uuid}
-    MediaImageInput:
+    MediaInput:
       type: object
       additionalProperties: false
       required: [versionId, artifactId, role, order, color, sources]
@@ -2475,8 +2516,8 @@ components:
         color: {type: string, pattern: "^#[0-9A-F]{6}$"}
         sources:
           type: array
-          items: {$ref: "#/components/schemas/MediaImageInputSource"}
-    PromptImageMention:
+          items: {$ref: "#/components/schemas/MediaInputSource"}
+    PromptMediaMention:
       type: object
       additionalProperties: false
       required: [versionId, role]
@@ -2972,14 +3013,14 @@ components:
         binding: {$ref: "#/components/schemas/MediaCapabilityBinding"}
         connectionName: {type: string}
         capabilityName: {type: string}
-        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+        kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]}
         minimumSeconds: {type: integer, minimum: 0}
         maximumSeconds: {type: integer, minimum: 0}
         realGenerationTested: {type: boolean}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     TaskKind:
       type: string
-      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, ASSET_INGEST]
+      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION, ASSET_INGEST]
     TaskStatus:
       type: string
       enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]

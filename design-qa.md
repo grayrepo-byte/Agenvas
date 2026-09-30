@@ -1,51 +1,46 @@
-# 画笔标注设计验收（2026-09-30）
+# 音频节点设计验收（2026-09-30，收尾于 2026-10-01）
 
 final result: passed
 
-范围仅为画笔标注工具栏、直接图片编辑和保存派生节点。历史画布整体验收保存在 [旧记录](docs/evidence/design-qa-before-brush-markup.md)，其范围不由本次结果覆盖。
+范围为本轮音频节点、编辑器、音色库与 MV 草稿入口。用户要求功能/状态参考附件，但 UI 遵从系统风格。上一轮画笔验收保存在[历史记录](docs/evidence/design-qa-before-audio.md)，本结果不覆盖其范围。真实 Seed Audio / Seedance 云端效果未验证；这里的通过只指界面与本地 Mock 行为。
 
-## Visual truth 与证据
+## Visual truth 与比较方式
 
-- 原设计：`docs/evidence/brush-markup/reference-editor.png`（606 × 516），`reference-derived.png`（562 × 436）；来自用户两张附件。
-- Chrome 实现初始状态：`docs/evidence/brush-markup/editor-empty-chrome.png`，586 × 515 CSS/PNG px，devicePixelRatio=1。两图均以约 161 × 286 px 的原图内容展示，未缩放对比工具栏；原设计是画布中的卡片截取，实现编辑区域居中，因此对比组件时平移对齐，20 px 的外围画布宽度差不作为组件尺寸差。
-- 全图并排证据：`docs/evidence/brush-markup/editor-comparison.png`（1192 × 516）。状态为红色、画笔选中、无新增标注。
-- 工具栏局部并排证据：`docs/evidence/brush-markup/toolbar-comparison.png`（689 × 94），颜色、图标、选中态和间距均可直接核对。
-- 操作后：`docs/evidence/brush-markup/editor-chrome.png`（586 × 515），实际笔迹、矩形、擦除、蓝色箭头和文字。
-- 窄视口：`docs/evidence/brush-markup/editor-narrow-chrome.png`（320 × 560），编辑区宽 281 px，无横向溢出；笔刷尺寸弹层与所有按钮可见。整个画布仍遵守已有最小编辑宽度约束，不代表全应用支持移动编辑。
-- 保存并刷新：`docs/evidence/brush-markup/derived-chrome.png`（2560 × 1131，恢复 Chrome 默认视口），`derived-detail.png` 为包含两个标题、原图、结果与派生线的 820 × 730 原像素裁切。
+三张用户附件分别为：有内容 `reference-content.png`（1104 × 609）、音色库 `reference-voices.png`（1149 × 779）、无内容 `reference-empty.png`（859 × 641）。路径均位于 `docs/evidence/audio-ui-2026-09-30/`。浏览器采用 1280 × 900 CSS 视口，截图也是 1280 × 900；实现图片与来源不拉伸，按原像素并排放在同一张比较图中。全图保留画布与面板上下文，局部比较仅平移裁切；不把画布坐标或外围留白当作组件缺陷。
 
-## Findings
+| 状态 | 全图并排 | 局部并排 | 实现原图 |
+| --- | --- | --- | --- |
+| 有内容 | [全图](docs/evidence/audio-ui-2026-09-30/comparison-content-full.jpg) | [局部](docs/evidence/audio-ui-2026-09-30/comparison-content-focus.jpg) | [播放器](docs/evidence/audio-ui-2026-09-30/content.jpg) |
+| 音色库 | [全图](docs/evidence/audio-ui-2026-09-30/comparison-voices-full.jpg) | [局部](docs/evidence/audio-ui-2026-09-30/comparison-voices-focus.jpg) | [音色库](docs/evidence/audio-ui-2026-09-30/voices.jpg) |
+| 无内容 | [全图](docs/evidence/audio-ui-2026-09-30/comparison-empty-full.jpg) | [局部](docs/evidence/audio-ui-2026-09-30/comparison-empty-focus.jpg) | [上传空态](docs/evidence/audio-ui-2026-09-30/empty.jpg) |
 
-无未解决的 P0/P1/P2 标注功能问题。保留项目现有 Phosphor 线性图标。浮动工具栏、八色圆盘、粉色工具选中态、底部撤销/重做与保存均对应设计。
+三组全图与局部均已查看。宽全图在工具展示时缩小到 2048px，磁盘文件保持原像素；局部图直接核对文字、操作可见性与间距。浏览器为 Codex in-app browser，独立测试后端 18081 / 前端 15173 / PostgreSQL 17.11，未重建用户既有服务。
 
-五项视觉表面：
+## Findings 与五项视觉表面
 
-- 字体与排版：项目 sans-serif，工具栏 13px、保存 14px；图标按钮有可访问名称与焦点，标题省略不挤压尺寸。
-- 间距与布局：46px 工具栏、42px 颜色盘和底部控制，圆角胶囊；笔刷尺寸通过再次点击画笔/橡皮展开，默认不占用图稿之外的常驻空间。
-- 颜色：深色工具栏、八种颜色、粉色选中和保存；加载/保存等待时明确禁用。
-- 图片质量：使用附件中原图区域作为专门测试素材；归档 PNG 保持 161 × 286 原始像素尺寸，未标注的底部区域逐像素与原图相同。该小样本不代表大图压力测试。
-- 文案：入口标记本地；编辑器提供图标工具，不含标注说明、模型、提示词或 AI 提交。标题和尺寸分开显示。
+无未解决的 P0/P1/P2 音频界面问题。用户要求的系统风格优先于附件颜色和演示名称，允许的差异列在下方。
 
-允许的产品上下文差异：编辑时使用独立深色遮罩保持操作焦点，原图标题完整放在工具栏下方，避免设计截取中标题被遮挡。来源与结果保留项目现有标题、打开原图按钮及派生线风格。具体画布位置由现有布局和缩放决定，不强行复制截图坐标。
+- 字体与排版：系统 sans-serif、已有 13/14px 操作文字和 Phosphor 图标，可访问名称与焦点样式；标题、时长与操作不互相挤压。
+- 间距与布局：默认空卡片 430 × 240、内容卡片 430 × 160，保留明确的用户调整尺寸。音色库宽 640px、双列列表，按工作区顶部和锚点之间的空间限制高度；只滚动列表，保持搜索、筛选、关闭与费用提示可见。
+- 颜色与状态：系统深色面板、边框和蓝色选中/运行态。空态没有播放器或 Agent 对话；内容态显示 MV、重新生成、下载、版本与 Agent 入口。等待、失败、UNKNOWN、保存冲突沿用任务/草稿反馈。
+- 媒体与图像质量：波形来自实际解码音频；Mock 是 3 秒提示音，明确标注“非语音合成”。默认暂停，进度与时长随真实音频变化。音色使用名字首字的系统圆形标识，不伪造人物照片或真实试听。
+- 文案与层级：空态提示声音、对白、情绪和环境音；内容态完整显示 Mock 提示。音色库列官方 speaker 名称、语言/场景、最近与收藏；试听说明创建付费任务，Mock 禁止音色试听。
+
+## 允许的产品差异
+
+附件粉色运行、荧光 MV 和白色选中框改用系统主题。配音员示例替换为核对过的官方 speaker ID 与名称。截图所选 Mock audio 用于本地验收，配置火山连接与能力后可选 Seed Audio 1.0。Agent 对话复用独立的既有 Agent 卡片，固定音频版本且不自动运行；助手与翻译也复用正常文字节点/任务，不用静态返回值冒充模型效果。
 
 ## Comparison history
 
-1. 首次 Chrome 检查发现尺寸滑杆常驻、背景透出原节点，造成重复图片与额外垂直间距。
-2. 改为纯深色背景，滑杆通过再次点击工具展开，颜色盘向工具组对齐；重新截图、查看上述全图与局部并排图，无未解决 P0/P1/P2。
-3. 补验 320px 宽度，将颜色盘的横向偏移在窄视口清除，无溢出。
+1. 初次比较发现内容卡片过高、音色库为窄单列。初始证据为 `comparison-content-before.jpg`、`comparison-empty-before.jpg`、`comparison-voices-before.jpg`，位于同一证据目录。修正为内容态 160px 与 640px 双列库。
+2. 进度控件受全局 input 最小尺寸影响，挤压 Mock 说明；重置尺寸并限制播放器内部滚动，最终内容截图完整显示说明。
+3. 双列库在锚点上方空间不足时可能越过工作区；限制可用高度、固定顶部控制、只滚动列表，并重新拍摄/比较，最新图中上下控件完整可见。
+4. 选择聚焦同时考虑编辑器空间；拖动隐藏工具栏/编辑器，批量拖动保存所有移动节点。选择、拖动与布局定向测试通过。
 
-## Interactions 与控制台
+## Interactions、控制台与限制
 
-Chrome 实测画笔、颜色、橡皮、矩形、箭头、文字输入与回车确认、撤销/重做、笔刷大小弹层、保存、关闭、刷新后保留结果。保存后独立 PostgreSQL 显示 2 节点、1 派生线、0 Task，原节点与结果使用不同 Asset。
+浏览器完成创建、空节点上传、全局导入、Mock 生成、播放/暂停/进度、下载、音色搜索/筛选/收藏/选择、模板、展开、助手预览、翻译任务、MV 草稿与带音轨 Mock 视频、重新生成 v2 后选回 v1、刷新持久化及 Agent 绑定。详见[专项证据](docs/evidence/audio-nodes-2026-09-30.md)。
 
-控制台曾出现工作区并行代码热更新导致的 Hooks 顺序错误，完整刷新后界面恢复且未再出现新的运行错误；React Flow nodeTypes/edgeTypes 对象稳定性警告仍属既有工作区问题，本次不声称全应用控制台零警告。
+热更新过程中出现一次 React effect 依赖长度变化错误，完整刷新后完成最终验收且未出现新增运行错误。历史日志仍含热更新的 React Flow nodeTypes/edgeTypes 稳定性警告，不声称全应用控制台零警告。jsdom 的 pause 未实现警告不等同浏览器播放失败。
 
-## Implementation checklist
-
-- [x] 直接绘制与保存，不调用 AI。
-- [x] 保存后独立节点与可删除派生线，保留来源结果。
-- [x] 颜色、五种工具、笔刷大小、撤销重做。
-- [x] 单元测试与 PostgreSQL 专项验证、TypeScript、相关 ESLint、生产构建。
-- [x] OpenAPI、生成 TS、规格、词汇表、清单和 ADR 0018 同步。
-
-未运行全量测试、真实 Provider 调用和 40MP 大图压力测试。未重建用户现有 8088 Compose 服务；Chrome 预览使用独立测试数据与 8081 后端/5173 前端。
+10 个前端定向文件共 186 例通过；最终音色库布局相关两文件 86 例复跑通过，类型检查、lint 与生产构建通过。12 个后端专项类共 30 例通过，含真实 PostgreSQL/解码与假 HTTP。全量测试、真实云端生成/试听、窄屏画布编辑和大音频压力测试未运行。既有画布要求桌面最小宽度，音色库窄屏 CSS 单列规则不作为移动端实测结论。

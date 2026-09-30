@@ -64,6 +64,8 @@ public record Task(
         IMAGE_GENERATION,
         /** 根据输入图片生成并归档视频。 */
         VIDEO_GENERATION,
+        /** Direct speech synthesis with immutable archived audio. */
+        AUDIO_GENERATION,
         /** 对本地媒体执行受控归档。 */
         ASSET_INGEST
     }

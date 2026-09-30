@@ -34,6 +34,8 @@ public record Artifact(
         /** 图片媒体引用及生成信息。 */
         IMAGE,
         /** 视频媒体引用及生成信息。 */
-        VIDEO
+        VIDEO,
+        /** Uploaded or generated speech/audio. */
+        AUDIO
     }
 }

@@ -179,7 +179,7 @@ public class UsageService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveMediaTask(UUID ownerId, Task task, String costSource) {
         boolean directMedia = task.runId() == null
-                && (task.kind() == Task.Kind.IMAGE_GENERATION
+                && (task.kind() == Task.Kind.AUDIO_GENERATION || task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION);
         if (!directMedia) {
             throw new IllegalArgumentException("Media reservation requires a direct media Task");
@@ -191,7 +191,7 @@ public class UsageService {
     /** 仅在带 fencing 校验的媒体结果同事务提交后结算。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task) {
-        if (task.kind() != Task.Kind.IMAGE_GENERATION
+        if (task.kind() != Task.Kind.AUDIO_GENERATION && task.kind() != Task.Kind.IMAGE_GENERATION
                 && task.kind() != Task.Kind.VIDEO_GENERATION) return;
         UsageEntry reservation = ledger.findByOperationKey(
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
@@ -203,7 +203,7 @@ public class UsageService {
     /** 调用方确认任务未到达提交检查点后，释放媒体任务的预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseUnsubmittedMediaTask(UUID ownerId, Task task) {
-        if ((task.kind() != Task.Kind.IMAGE_GENERATION
+        if ((task.kind() != Task.Kind.AUDIO_GENERATION && task.kind() != Task.Kind.IMAGE_GENERATION
                 && task.kind() != Task.Kind.VIDEO_GENERATION)
                 || (task.status() != Task.Status.CANCELED
                         && task.status() != Task.Status.FAILED
@@ -245,6 +245,12 @@ public class UsageService {
         ObjectNode quantity = mapper.createObjectNode();
         boolean secondsV2 = task.input().path("schemaVersion").asInt(1) >= 2;
         switch (task.kind()) {
+            case AUDIO_GENERATION -> {
+                quantity.put("audioCount", 1);
+                quantity.put("audioSeconds", dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
+                quantity.put("imageCount", 0); quantity.put("videoCount", 0);
+                quantity.put("videoSeconds", "0"); quantity.put("exportCount", 0);
+            }
             case IMAGE_GENERATION -> {
                 quantity.put("imageCount", 1);
                 quantity.put("videoCount", 0);
@@ -291,7 +297,7 @@ public class UsageService {
         if (!localNoCost && pricing.isObject()) {
             estimate = new BigDecimal(pricing.path("amount").asText());
             if ("SECOND".equals(pricing.path("unit").asText())) {
-                estimate = estimate.multiply(new BigDecimal(quantity.path("videoSeconds").asText()));
+                estimate = estimate.multiply(new BigDecimal(quantity.path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds").asText()));
             }
             estimate = estimate.setScale(MONEY_SCALE);
             currency = pricing.path("currency").asText();

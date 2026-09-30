@@ -71,7 +71,9 @@ public class CanvasConnectionService {
                     sourceItemId);
             Artifact sourceArtifact = artifacts.get(ownerId, projectId,
                     source.subjectId()).artifact();
-            if (sourceArtifact.kind() != Artifact.Kind.IMAGE) {
+            if (sourceArtifact.kind() != Artifact.Kind.IMAGE
+                    && (sourceArtifact.kind() != Artifact.Kind.AUDIO
+                        || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
                 throw invalid("画布图片输入连线必须从 IMAGE 卡片发起。");
             }
             if (sourceVersionId == null
@@ -135,8 +137,7 @@ public class CanvasConnectionService {
         CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
         Artifact sourceArtifact = artifacts.get(ownerId, projectId, source.subjectId()).artifact();
         Artifact targetArtifact = artifacts.get(ownerId, projectId, target.subjectId()).artifact();
-        if ((sourceArtifact.kind() != Artifact.Kind.IMAGE
-                        && sourceArtifact.kind() != Artifact.Kind.VIDEO)
+        if (sourceArtifact.kind() == Artifact.Kind.TEXT
                 || targetArtifact.kind() != sourceArtifact.kind()
                 || !source.subjectId().equals(target.subjectId())
                 || !sourceVersionId.equals(source.selectedVersionId())
@@ -189,10 +190,10 @@ public class CanvasConnectionService {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             MediaDraft before = drafts.get(ownerId, projectId, targetCanvasItemId);
-            MediaDraft.ImageInput input = before.imageInputs().stream()
+            MediaDraft.MediaInput input = before.mediaInputs().stream()
                     .filter(candidate -> candidate.versionId().equals(imageVersionId))
                     .findFirst().orElseThrow(() -> invalid("媒体草稿中没有该图片输入。"));
-            MediaDraft updated = drafts.removeImageInputWithinChange(ownerId, projectId,
+            MediaDraft updated = drafts.removeMediaInputWithinChange(ownerId, projectId,
                     targetCanvasItemId, expectedDraftVersion, imageVersionId);
             List<UUID> connectionIds = input.sources().stream()
                     .filter(source -> source.type() == MediaDraft.SourceType.CONNECTION)

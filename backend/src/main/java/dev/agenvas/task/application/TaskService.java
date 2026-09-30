@@ -1053,24 +1053,27 @@ public class TaskService {
                 JsonNode frozen = input.path("mediaInput");
                 String currentMode = task.kind() == Task.Kind.IMAGE_GENERATION
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
-                        : current.videoInputMode().name();
+                        : task.kind() == Task.Kind.AUDIO_GENERATION ? "TEXT" : current.videoInputMode().name();
                 if (!currentMode.equals(frozen.path("mode").asText())
-                        || current.imageInputs().size() != frozen.path("images").size()) {
+                        || current.mediaInputs().size() != frozen.path("images").size() + frozen.path("audios").size()) {
                     return false;
                 }
-                for (int index = 0; index < current.imageInputs().size(); index++) {
-                    MediaDraft.ImageInput currentImage = current.imageInputs().get(index);
-                    JsonNode frozenImage = frozen.path("images").get(index);
+                int imageIndex = 0;
+                int audioIndex = 0;
+                for (MediaDraft.MediaInput currentImage : current.mediaInputs()) {
+                    boolean audio = currentImage.role() == MediaDraft.InputRole.AUDIO_REFERENCE;
+                    int index = audio ? audioIndex++ : imageIndex++;
+                    JsonNode frozenImage = frozen.path(audio ? "audios" : "images").get(index);
                     if (frozenImage == null
                             || !currentImage.versionId().toString().equals(
                                     frozenImage.path("versionId").asText())
                             || !currentImage.role().name().equals(
                                     frozenImage.path("role").asText())
-                            || currentImage.order() != frozenImage.path("order").asInt(-1)) {
+                            || index != frozenImage.path("order").asInt(-1)) {
                         return false;
                     }
-                    artifacts.requireImageVersionForTask(ownerId, task.projectId(),
-                            currentImage.versionId());
+                    artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
+                            currentImage.versionId(), audio ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
                 }
                 return true;
             } catch (ApiProblemException | IllegalArgumentException unavailable) {

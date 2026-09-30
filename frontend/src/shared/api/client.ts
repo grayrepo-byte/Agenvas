@@ -16,7 +16,7 @@ export type ArtifactList = components["schemas"]["ArtifactList"];
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
 export type RestoreMediaDraftVersionInputsRequest = components["schemas"]["RestoreMediaDraftVersionInputsRequest"];
-export type RemoveMediaDraftImageInputRequest = components["schemas"]["RemoveMediaDraftImageInputRequest"];
+export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMediaDraftMediaInputRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunImageOperationRequest = components["schemas"]["RunImageOperationRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
@@ -145,6 +145,27 @@ export async function uploadImageAsset(projectId: string, file: File): Promise<A
 }
 
 /** Session-protected metadata download; the manifest contains no signed media URLs. */
+export async function uploadAudioAsset(projectId: string, file: File): Promise<Asset> {
+  if (file.size > 50 * 1024 * 1024) {
+    throw new ApiError(413, "ASSET_TOO_LARGE", "音频不能超过 50 MiB。", false);
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const token = await getCsrfToken();
+  const response = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json, application/problem+json",
+      [token.headerName]: token.token,
+    },
+    body: form,
+  });
+  if (!response.ok) throw await apiError(response, "音频上传未完成");
+  return (await response.json()) as Asset;
+}
+
+/** Session-protected metadata download; the manifest contains no signed media URLs. */
 export function projectExportManifestUrl(projectId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/export-manifest`;
 }
@@ -240,7 +261,7 @@ export async function updateMediaCapability(connectionId: string, capabilityId: 
   });
 }
 
-export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION",
+export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION",
   input: SetMediaDefaultRequest): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-defaults/${kind}`, {
     method: "PUT", body: JSON.stringify(input),
@@ -389,11 +410,11 @@ export async function restoreMediaDraftVersionInputs(projectId: string, canvasIt
 }
 
 /** Atomically removes an exact image input together with every owning canvas line and mention. */
-export async function removeMediaDraftImageInput(projectId: string, canvasItemId: string,
-  versionId: string, input: RemoveMediaDraftImageInputRequest): Promise<MediaDraft> {
+export async function removeMediaDraftMediaInput(projectId: string, canvasItemId: string,
+  versionId: string, input: RemoveMediaDraftMediaInputRequest): Promise<MediaDraft> {
   return writeJson<MediaDraft>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}`
-      + `/media-draft/image-inputs/${encodeURIComponent(versionId)}/remove`,
+      + `/media-draft/media-inputs/${encodeURIComponent(versionId)}/remove`,
     { method: "POST", body: JSON.stringify(input) },
   );
 }

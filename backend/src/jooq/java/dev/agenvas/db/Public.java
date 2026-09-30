@@ -153,8 +153,8 @@ public class Public extends SchemaImpl {
     public final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 
     /**
-     * Ordered exact image versions used by one CanvasItem media draft; identity
-     * and color are card-local.
+     * Ordered exact image/audio versions with card-local source and color
+     * identity.
      */
     public final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
 

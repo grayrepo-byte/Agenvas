@@ -1,3 +1,4 @@
+import { AudioPlayer } from "./AudioPlayer";
 import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import { Select } from "../../shared/ui/Select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -5,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowsOutSimple, ArrowClockwise, Buildings, CaretDown, CaretRight, Crop, Cube,
   DownloadSimple, CopySimple, Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush,
   PersonSimple, Play, Scissors, SlidersHorizontal, Smiley, Sun, UploadSimple,
-  VideoCamera, X } from "@phosphor-icons/react";
+  VideoCamera, MusicNotes, X } from "@phosphor-icons/react";
 import { ApiError, assetContentUrl, assetThumbnailUrl, getMediaSettings, listDirectMediaTasks,
   runImageOperation, type Artifact, type CanvasItem, type MediaCapability,
   type RunImageOperationRequest, type Task } from "../../shared/api/client";
@@ -65,9 +66,10 @@ const EXTENSIONS = [
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
 export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit, onInspect,
-  onDuplicate, children }: {
+  onDuplicate, onMakeMV, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; toolbarVisible?: boolean; locked: boolean; onEdit: () => void;
-  onInspect: () => void; onDuplicate?: () => void; children: ReactNode;
+  onInspect: () => void; onDuplicate?: () => void;
+  onMakeMV?: () => void; children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [threeViewMenuOpen, setThreeViewMenuOpen] = useState(false);
@@ -92,6 +94,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const parameters = content && typeof content === "object" && "parameters" in content ? content.parameters : null;
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
   const isImage = artifact.kind === "IMAGE";
+  const isAudio = artifact.kind === "AUDIO";
   const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage ? assetId : null));
   const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
@@ -165,7 +168,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     return () => document.removeEventListener("pointerdown", close);
   }, [menuOpen]);
 
-  return <ArtifactCardFrame title={item.title} kindLabel={isImage ? "图片" : "视频"}
+  return <ArtifactCardFrame title={item.title} kindLabel={isImage ? "图片" : isAudio ? "音频" : "视频"}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
     toolbarRaised={menuOpen || operationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
@@ -246,6 +249,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               onSubmit={(operationParameters, instruction, capabilityId) =>
                 runOperation(operationOpen, operationParameters, instruction, capabilityId)} /> : null}
         </> : null}
+        {isAudio && assetId && onMakeMV ? <button type="button" onClick={onMakeMV}><VideoCamera size={17} />MV 制作</button> : null}
         <button type="button" onClick={onEdit} title="编辑工作草稿，运行后为当前节点增加版本">
           <ArrowClockwise size={17} />{item.selectedVersionId ? "重新生成" : "编辑草稿"}</button>
         <MediaVersionPicker projectId={artifact.projectId} item={item} />
@@ -253,11 +257,11 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <CopySimple size={17} />复制</button> : null}
         <button type="button" onClick={onInspect} aria-label="卡片详情"><SlidersHorizontal size={17} /></button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
-          aria-label={isImage ? "下载图片" : "下载视频"}><DownloadSimple size={19} /></a> : null}
+          aria-label={isImage ? "下载图片" : isAudio ? "下载音频" : "下载视频"}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
-      {isImage && !assetId ? <input ref={uploadInput} className="sr-only nodrag" type="file"
-        aria-label="选择要上传的图片" accept="image/png,image/jpeg,image/webp"
+      {(isImage || isAudio) && !assetId ? <input ref={uploadInput} className="sr-only nodrag" type="file"
+        aria-label={isAudio ? "选择要上传的音频" : "选择要上传的图片"} accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => {
@@ -266,7 +270,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           if (selectedFile) setUploadFile(selectedFile);
         }} /> : null}
       {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
-        title={item.title} demo={demo} />
+        title={item.title} demo={demo} selected={selected} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
           {metadata.data ? "图片尺寸刷新失败，请重试" : "图片尺寸读取失败，暂按原卡片尺寸显示"}
           <button type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
@@ -274,7 +278,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
         : <div className="media-card-empty">
           {busy ? <CanvasLoadingState label={status ?? "正在生成"} /> : <>
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
-              : <VideoCamera className="media-empty-icon" size={44} />}
+              : isAudio ? <MusicNotes className="media-empty-icon" size={44} /> : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
               <TaskReason errorCode={latest?.errorCode} />
               {latest?.status === "UNKNOWN" ? <small>可在编辑区重试</small> : null}
@@ -285,10 +289,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             : latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
               <button className="media-upload-button nodrag" type="button" onClick={onEdit}>
                 <SlidersHorizontal size={15} />查看任务</button>
-              : isImage ? <button className="media-upload-button nodrag" type="button"
+              : isImage || isAudio ? <button className="media-upload-button nodrag" type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => { event.stopPropagation(); uploadInput.current?.click(); }}>
-              <UploadSimple size={15} />上传图片</button>
+              <UploadSimple size={15} />{isAudio ? "上传音频" : "上传图片"}</button>
               : <button className="media-upload-button nodrag" type="button" onClick={onEdit}>
                 <Play size={15} />生成视频</button>}
           </>}
@@ -436,8 +440,8 @@ function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
  * preview is kept for later list-style surfaces and is not used here. Videos keep loading only
  * the cover frame until the user explicitly plays the original.
  */
-function MediaPreview({ artifact, assetId, title, demo }: {
-  artifact: Artifact; assetId: string; title: string; demo: boolean;
+function MediaPreview({ artifact, assetId, title, demo, selected }: {
+  artifact: Artifact; assetId: string; title: string; demo: boolean; selected: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -454,6 +458,7 @@ function MediaPreview({ artifact, assetId, title, demo }: {
     setPlaying(true);
   }
 
+  if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title} selected={selected} demo={demo} />;
   return <div className="media-card-preview">
     {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={`${title} 的视频`}
       controls autoPlay playsInline preload="metadata" src={assetContentUrl(artifact.projectId, assetId)}

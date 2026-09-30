@@ -71,7 +71,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.CONNECTION_ID, binding.connectionId())
                 .set(TASK.CONNECTION_VERSION, binding.connectionVersion())
                 .where(TASK.ID.eq(taskId))
-                .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(TASK.CAPABILITY_ID.isNull())
                 .and(TASK.STATUS.in(Task.Status.PENDING.name(), Task.Status.READY.name()))
@@ -449,7 +449,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .from(queued)
                 .join(current).on(current.ID.eq(taskId))
                 .where(queued.STATUS.eq(Task.Status.READY.name()))
-                .and(queued.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                .and(queued.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(queued.CAPABILITY_ID.isNotNull())
                 .and(DSL.row(queued.NEXT_ACTION_AT, queued.CREATED_AT, queued.ID)
@@ -551,7 +551,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
             Instant leaseUntil) {
         return claimDueKind(workerId, limit, now, leaseUntil, null,
                 TASK.CAPABILITY_ID.isNotNull()
-                        .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                        .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                                 Task.Kind.VIDEO_GENERATION.name())));
     }
 
@@ -627,7 +627,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     private List<Task> claimProviderPolls(String workerId, int limit, Instant now,
             Instant leaseUntil, Task.Kind onlyKind, Condition bindingClause) {
         Condition kindCondition = onlyKind == null
-                ? TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                ? TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name())
                 : TASK.KIND.eq(onlyKind.name());
         Condition due = TASK.STATUS.eq(Task.Status.WAITING_PROVIDER.name())
@@ -888,7 +888,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .returning(TASK.ID, TASK.KIND, TASK.STATUS)
                 .fetch(record -> record.get(TASK.STATUS).equals(Task.Status.CANCELED.name())
                         && (record.get(TASK.KIND).equals(Task.Kind.IMAGE_GENERATION.name())
-                                || record.get(TASK.KIND).equals(Task.Kind.VIDEO_GENERATION.name()))
+                                || record.get(TASK.KIND).equals(Task.Kind.VIDEO_GENERATION.name())
+                                || record.get(TASK.KIND).equals(Task.Kind.AUDIO_GENERATION.name()))
                         ? record.get(TASK.ID) : null)
                 .stream().filter(java.util.Objects::nonNull).toList();
         return canceledBeforeSubmission.stream()
@@ -1255,7 +1256,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(lease.id()))
-                .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
                 .and(TASK.LEASE_OWNER.eq(workerId))
@@ -1302,7 +1303,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(lease.id()))
-                .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
                 .and(TASK.LEASE_OWNER.eq(workerId))

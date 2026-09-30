@@ -48,7 +48,7 @@ class MediaCapabilityConfigurationTest {
         for (String json : List.of("{\"minimumSeconds\":3}", "{\"maximumSeconds\":16}",
                 "{\"minimumSeconds\":10,\"maximumSeconds\":5}",
                 "{\"maximumSeconds\":10,\"defaultDurationSeconds\":12}",
-                "{\"maxReferenceImages\":2}", "{\"maxReferenceImages\":1.5}")) {
+                "{\"maxReferenceImages\":10}", "{\"maxReferenceImages\":1.5}")) {
             assertThatThrownBy(() -> normalize("ARK_SEEDANCE_2_I2V", json))
                     .isInstanceOf(ApiProblemException.class);
         }

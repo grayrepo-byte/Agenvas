@@ -129,7 +129,7 @@ beforeEach(() => {
       ({ params }) => HttpResponse.json({
         projectId: String(params.projectId), canvasItemId: String(params.canvasItemId), prompt: "",
         parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: "START_END",
-        imageInputs: [], mentions: [],
+        mediaInputs: [], mentions: [],
         displayMode: "RESULT", version: 0, createdAt: now, updatedAt: now,
       })),
     http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
@@ -146,7 +146,7 @@ beforeEach(() => {
           body: await request.json() as Record<string, unknown> });
         return HttpResponse.json({ projectId: "project-1", canvasItemId: "video-card",
           prompt: "", parameters: {}, durationSeconds: null, capabilityId: null,
-          videoInputMode: "START_END", imageInputs: [], mentions: [], displayMode: "RESULT",
+          videoInputMode: "START_END", mediaInputs: [], mentions: [], displayMode: "RESULT",
           version: 1, createdAt: now, updatedAt: now });
       }),
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {

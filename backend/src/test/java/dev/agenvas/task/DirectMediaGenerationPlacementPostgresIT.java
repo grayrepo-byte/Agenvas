@@ -91,7 +91,7 @@ class DirectMediaGenerationPlacementPostgresIT {
                         .contentType("application/json")
                         .content("{\"expectedVersion\":0,\"prompt\":\"First image\","
                                 + "\"parameters\":{},\"videoInputMode\":null,"
-                                + "\"imageInputs\":[],\"mentions\":[]}"))
+                                + "\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String runPath = base + "/artifacts/" + artifactId + "/run";
         JsonNode firstTask = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
@@ -113,7 +113,7 @@ class DirectMediaGenerationPlacementPostgresIT {
                         .contentType("application/json")
                         .content("{\"expectedVersion\":" + currentDraft.path("version").asLong()
                                 + ",\"prompt\":\"Revised image\",\"parameters\":{},"
-                                + "\"videoInputMode\":null,\"imageInputs\":[],\"mentions\":[]}"))
+                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode secondTask = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
                         .header("Idempotency-Key", "placement-second-run")

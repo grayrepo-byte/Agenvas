@@ -232,7 +232,7 @@ public class MediaProviderConnection extends TableImpl<MediaProviderConnectionRe
     @Override
     public List<Check<MediaProviderConnectionRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_media_connection_platform"), "(((platform)::text = ANY ((ARRAY['LOCAL'::character varying, 'MOCK'::character varying, 'COMFYUI'::character varying, 'OPENAI'::character varying, 'ARK'::character varying, 'GOOGLE'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_media_connection_platform"), "(((platform)::text = ANY ((ARRAY['LOCAL'::character varying, 'MOCK'::character varying, 'COMFYUI'::character varying, 'OPENAI'::character varying, 'GOOGLE'::character varying, 'ARK'::character varying, 'VOLCENGINE'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("media_provider_connection_current_version_check"), "((current_version > 0))", true),
             Internal.createCheck(this, DSL.name("media_provider_connection_name_check"), "((length(btrim((name)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("media_provider_connection_version_check"), "((version >= 0))", true)

@@ -48,7 +48,7 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
         projectId: artifact.projectId, canvasItemId: "item-1", prompt: "", displayMode: "DRAFT",
-        parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
+        parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [],
         durationSeconds: null, capabilityId: null, version: 0,
         createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
       })),
@@ -730,7 +730,7 @@ describe("MediaCanvasCard", () => {
         inputReferences: [], createdByKind: "TASK", runId: null, createdAt: artifact.createdAt } };
     server.use(http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
       projectId: artifact.projectId, canvasItemId: "item-1", prompt: "湖面慢慢推进", displayMode: "RESULT",
-      parameters: {}, videoInputMode: "START_END", imageInputs: [], mentions: [],
+      parameters: {}, videoInputMode: "START_END", mediaInputs: [], mentions: [],
       durationSeconds: 5, capabilityId: null, version: 1,
       createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
     })));

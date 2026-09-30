@@ -1,12 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, listCanvasItems, uploadCanvasItemVersion, uploadImageAsset,
+import { ApiError, listCanvasItems, uploadCanvasItemVersion, uploadImageAsset, uploadAudioAsset,
   type Artifact, type CanvasItem } from "../../shared/api/client";
 
 /** Upload fills an empty media node, and only derives when the source already has a result. */
 export function MediaCardUpload({ artifact, item, initialFile, onDone, compact = false }: {
   artifact: Artifact; item: CanvasItem; initialFile: File; onDone: () => void; compact?: boolean;
 }) {
+  const isAudio = artifact.kind === "AUDIO";
+  const label = isAudio ? "音频" : "图片";
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(initialFile);
   const [expectedVersion, setExpectedVersion] = useState(item.version);
@@ -24,7 +26,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
         targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
       };
       const pending = progress.current;
-      if (!pending.assetId) pending.assetId = (await uploadImageAsset(artifact.projectId, image)).id;
+      if (!pending.assetId) pending.assetId = (await (isAudio ? uploadAudioAsset : uploadImageAsset)(artifact.projectId, image)).id;
       const request = { targetItemId: pending.targetItemId, expectedVersion,
         content: { sourceType: "UPLOAD" as const, assetId: pending.assetId } };
       try {
@@ -71,7 +73,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     ? "卡片已有更新，文件已保留；读取最新版本后可重新上传。"
     : upload.error?.message;
   if (compact) return <div className="media-card-upload-status nodrag nowheel nopan">
-    {upload.isPending ? <p role="status">正在上传图片…</p> : null}
+    {upload.isPending ? <p role="status">正在上传{label}…</p> : null}
     {upload.error ? <div className="media-card-error" role="alert">
       <span>{errorMessage}</span>
       <button type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
@@ -83,17 +85,17 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     {refreshError ? <p className="media-card-error" role="alert">{refreshError}</p> : null}
   </div>;
   return <form className="media-card-upload-form" onSubmit={submit}>
-    <p>{item.selectedVersionId ? `基于「${artifact.title}」上传图片，并创建一个新节点。`
-      : `上传图片到「${artifact.title}」。`}</p>
+    <p>{item.selectedVersionId ? `基于「${artifact.title}」上传${label}，并创建一个新节点。`
+      : `上传${label}到「${artifact.title}」。`}</p>
     <p className="text-xs text-[var(--muted)]">已选择：{file?.name}</p>
-    <label>更换图片<input type="file" accept="image/png,image/jpeg,image/webp"
+    <label>更换{label}<input type="file" accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
       disabled={upload.isPending} onChange={(event) => {
         const selected = event.target.files?.[0] ?? null;
         setFile(selected);
         upload.reset();
         if (selected) upload.mutate(selected);
       }} /></label>
-    <p className="text-xs text-[var(--muted)]">PNG、JPEG、WebP · 最大 20 MiB / 40 MP</p>
+    <p className="text-xs text-[var(--muted)]">{isAudio ? "MP3、WAV、OGG · 最大 50 MiB / 10 分钟" : "PNG、JPEG、WebP · 最大 20 MiB / 40 MP"}</p>
     <button className="primary-button" type="submit" disabled={!file || upload.isPending || refreshing}>
       {upload.isPending ? "正在上传…" : upload.error ? "重试上传" : "上传并创建节点"}</button>
     {upload.error ? <p role="alert">{errorMessage}</p> : null}

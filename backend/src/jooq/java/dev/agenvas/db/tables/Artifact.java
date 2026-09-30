@@ -267,7 +267,7 @@ public class Artifact extends TableImpl<ArtifactRecord> {
     @Override
     public List<Check<ArtifactRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_artifact_kind"), "(((kind)::text = ANY ((ARRAY['TEXT'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_artifact_kind"), "(((kind)::text = ANY ((ARRAY['TEXT'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying, 'AUDIO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_title_not_blank"), "((length(btrim((title)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_version_non_negative"), "((version >= 0))", true)
         );

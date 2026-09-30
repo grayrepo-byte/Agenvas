@@ -420,6 +420,88 @@ public class LocalAssetStorage {
     }
 
     /** 限流保存视频字节，实测容器与视频流后解码首帧并原子安装 MP4 和海报。 */
+    public static final long MAX_AUDIO_BYTES = 50L * 1024 * 1024;
+    public static final int MAX_AUDIO_DURATION_MS = 600_000;
+    public record StoredAudio(String objectKey, String contentType, long byteSize,
+            String sha256, int durationMs) {}
+
+    public <T> T withTaskAudioLock(UUID projectId, UUID assetId, Supplier<T> action) {
+        return withTaskArchiveLock(projectId, assetId, "audio", action);
+    }
+
+    /** Actual container, stream and full decoding checks precede immutable installation. */
+    public StoredAudio storeAudio(UUID projectId, UUID assetId, InputStream source) {
+        Path temporary = null;
+        try {
+            temporary = Files.createTempFile(prepareProjectDirectory(projectId), ".audio-ingest-", ".bin");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            long size = copyBounded(source, temporary, digest, MAX_AUDIO_BYTES);
+            StoredAudio details = inspectAudio(temporary, "", size,
+                    HexFormat.of().formatHex(digest.digest()));
+            String extension = switch (details.contentType()) {
+                case "audio/mpeg" -> ".mp3";
+                case "audio/wav" -> ".wav";
+                default -> ".ogg";
+            };
+            String key = projectId + "/" + assetId + extension;
+            Path stable = checkedPath(key);
+            if (Files.exists(stable, LinkOption.NOFOLLOW_LINKS))
+                throw new IllegalStateException("Immutable audio already exists");
+            Files.move(temporary, stable, StandardCopyOption.ATOMIC_MOVE);
+            temporary = null;
+            return new StoredAudio(key, details.contentType(), size, details.sha256(), details.durationMs());
+        } catch (IOException | NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Private audio archive failed", failure);
+        } finally { cleanup(temporary); }
+    }
+
+    /** Recover installed bytes after a database failure without requesting synthesis again. */
+    public java.util.Optional<StoredAudio> recoverAudio(UUID projectId, UUID assetId) {
+        try {
+            for (String extension : java.util.List.of(".mp3", ".wav", ".ogg")) {
+                String key = projectId + "/" + assetId + extension;
+                Path file = checkedPath(key);
+                if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) continue;
+                if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                        || Files.size(file) < 1 || Files.size(file) > MAX_AUDIO_BYTES)
+                    throw new IllegalStateException("Recovered audio exceeds archive bounds");
+                return java.util.Optional.of(inspectAudio(file, key, Files.size(file), sha256(file)));
+            }
+            return java.util.Optional.empty();
+        } catch (IOException | NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Cannot recover task audio archive", failure);
+        }
+    }
+
+    private StoredAudio inspectAudio(Path file, String key, long size, String hash) {
+        try {
+            JsonNode probe = mapper.readTree(mediaTools.ffprobe(java.util.List.of(
+                    "-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries",
+                    "stream=codec_type,codec_name:format=format_name,duration", "-of", "json", file.toString())));
+            JsonNode streams = probe.path("streams");
+            double seconds = probe.path("format").path("duration").asDouble();
+            String format = probe.path("format").path("format_name").asText();
+            String mime = switch (format) {
+                case "mp3" -> "audio/mpeg";
+                case "wav" -> "audio/wav";
+                case "ogg" -> "audio/ogg";
+                default -> null;
+            };
+            if (mime == null || "audio/ogg".equals(mime) && !"opus".equals(streams.path(0).path("codec_name").asText()) || !streams.isArray() || streams.size() != 1
+                    || !"audio".equals(streams.path(0).path("codec_type").asText())
+                    || !Double.isFinite(seconds) || seconds < 0.1
+                    || seconds * 1000 > MAX_AUDIO_DURATION_MS)
+                throw invalid("音频必须是可解码的 MP3、WAV 或 OGG，且不超过 10 分钟。", "ASSET_INVALID_AUDIO");
+            mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-protocol_whitelist", "file,pipe", "-i", file.toString(), "-map", "0:a:0",
+                    "-f", "null", "-"));
+            return new StoredAudio(key, mime, size, hash, (int) Math.round(seconds * 1000));
+        } catch (MediaToolRunner.MediaToolException failure) {
+            if (failure.invalidInput()) throw invalid("音频无法解码。", "ASSET_INVALID_AUDIO");
+            throw failure;
+        }
+    }
+
     public StoredVideo storeVideo(UUID projectId, UUID assetId, InputStream source) {
         Path directory = root.resolve(projectId.toString());
         Path temporary = null;
@@ -700,6 +782,7 @@ public class LocalAssetStorage {
         if (count == 0) {
             throw maximum == MAX_VIDEO_BYTES
                     ? invalid("视频文件不能为空。", "ASSET_INVALID_VIDEO")
+                    : maximum == MAX_AUDIO_BYTES ? invalid("音频文件不能为空。", "ASSET_INVALID_AUDIO")
                     : invalid("图片文件不能为空。", "ASSET_INVALID_IMAGE");
         }
         return count;

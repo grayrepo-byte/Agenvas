@@ -87,7 +87,7 @@ public class CanvasConnectionController {
     }
     public record MediaDraftView(UUID projectId, UUID canvasItemId, String prompt,
             JsonNode parameters, Integer durationSeconds, UUID capabilityId,
-            String videoInputMode, List<ImageInputView> imageInputs,
+            String videoInputMode, List<MediaInputView> mediaInputs,
             List<PromptMentionView> mentions, String displayMode, long version,
             Instant createdAt, Instant updatedAt) {
         private static MediaDraftView from(MediaDraft draft) {
@@ -95,16 +95,16 @@ public class CanvasConnectionController {
             return new MediaDraftView(draft.projectId(), draft.canvasItemId(), draft.prompt(),
                     draft.parameters(), draft.durationSeconds(), draft.capabilityId(),
                     draft.videoInputMode() == null ? null : draft.videoInputMode().name(),
-                    draft.imageInputs().stream().map(ImageInputView::from).toList(),
+                    draft.mediaInputs().stream().map(MediaInputView::from).toList(),
                     draft.mentions().stream().map(PromptMentionView::from).toList(),
                     draft.displayMode().name(), draft.version(), draft.createdAt(),
                     draft.updatedAt());
         }
     }
-    public record ImageInputView(UUID versionId, UUID artifactId, String role, int order,
+    public record MediaInputView(UUID versionId, UUID artifactId, String role, int order,
             String color, List<InputSourceView> sources) {
-        private static ImageInputView from(MediaDraft.ImageInput input) {
-            return new ImageInputView(input.versionId(), input.artifactId(),
+        private static MediaInputView from(MediaDraft.MediaInput input) {
+            return new MediaInputView(input.versionId(), input.artifactId(),
                     input.role().name(), input.order(), input.color(),
                     input.sources().stream().map(InputSourceView::from).toList());
         }

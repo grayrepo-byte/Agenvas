@@ -151,6 +151,26 @@ public class MockVideoWorker {
                                     + ":(ow-iw)/2:(oh-ih)/2,format=yuv420p",
                             "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
                             "-movflags", "+faststart", "-y", rendered.toString());
+            var audioInputs = FrozenMediaInputs.audios(task);
+            if (!audioInputs.isEmpty()) {
+                List<String> withAudio = new java.util.ArrayList<>(command);
+                int inputEnd = withAudio.indexOf("-t");
+                List<String> audioArguments = new java.util.ArrayList<>();
+                for (var audio : audioInputs) {
+                    var version = artifacts.requireVersion(ownerId, task.projectId(), audio.artifactId(), audio.versionId());
+                    var file = assets.get(ownerId, task.projectId(), UUID.fromString(version.content().path("assetId").asText()));
+                    if (file.asset().mediaKind() != Asset.MediaKind.AUDIO) throw new IllegalArgumentException("Audio reference invalid");
+                    audioArguments.addAll(List.of("-stream_loop", "-1", "-i", file.path().toString()));
+                }
+                withAudio.addAll(inputEnd, audioArguments);
+                int silentFlag = withAudio.indexOf("-an");
+                withAudio.remove(silentFlag);
+                StringBuilder mix = new StringBuilder();
+                for (int index = 0; index < audioInputs.size(); index++) mix.append('[').append(index + 1).append(":a:0]");
+                mix.append("amix=inputs=").append(audioInputs.size()).append(":duration=longest[mixed]");
+                withAudio.addAll(silentFlag, List.of("-filter_complex", mix.toString(), "-map", "0:v:0", "-map", "[mixed]", "-c:a", "aac"));
+                command = withAudio;
+            }
             mediaTools.ffmpeg(command);
             Asset archived = assets.archiveTaskVideo(ownerId, task.projectId(), task.id(),
                     () -> {

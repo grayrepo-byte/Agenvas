@@ -98,7 +98,7 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
       HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
         parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: "START_END",
-        imageInputs: [], mentions: [], displayMode: "RESULT", version: 0,
+        mediaInputs: [], mentions: [], displayMode: "RESULT", version: 0,
         createdAt: now, updatedAt: now })),
     http.post("/api/v1/projects/:projectId/canvas/connections", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
