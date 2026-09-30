@@ -210,6 +210,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read administrator storage destinations without credentials */
+        get: operations["getStorageSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save an encrypted immutable destination without activating it */
+        post: operations["createStorageProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Switch future archives only; existing assets retain their location */
+        put: operations["activateStorageProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/profiles/{profileId}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Rotate credentials for the same immutable location, including historical assets */
+        put: operations["rotateStorageCredentials"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/llm": {
         parameters: {
             query?: never;
@@ -520,8 +590,27 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 上传并校验私有 PNG/JPEG/WebP 音频素材 */
+        /** 上传并校验私有 MP3/WAV/OGG Opus 音频素材 */
         post: operations["uploadAudioAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/assets/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 上传并校验私有 MP4 视频素材（最大 500 MiB） */
+        post: operations["uploadVideoAsset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1547,6 +1636,59 @@ export interface components {
             count: number;
             /** Format: date-time */
             lastAt: string;
+        };
+        /** @enum {string} */
+        StorageProvider: "ALIYUN_OSS" | "TENCENT_COS" | "S3";
+        StorageProfile: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            provider: components["schemas"]["StorageProvider"];
+            /** Format: uri */
+            endpoint: string;
+            region: string;
+            bucket: string;
+            keyPrefix: string;
+            pathStyle: boolean;
+            accessKeyMask: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StorageSettings: {
+            version: number;
+            /**
+             * Format: uuid
+             * @description Null selects local storage; existing objects are never relocated
+             */
+            activeProfileId: string | null;
+            profiles: components["schemas"]["StorageProfile"][];
+        };
+        CreateStorageProfileRequest: {
+            expectedVersion: number;
+            name: string;
+            provider: components["schemas"]["StorageProvider"];
+            /**
+             * Format: uri
+             * @description HTTPS service endpoint without bucket or path
+             */
+            endpoint: string;
+            region: string;
+            bucket: string;
+            keyPrefix: string;
+            /** @description Available only for S3 compatible services */
+            pathStyle: boolean;
+            accessKeyId: string;
+            secretAccessKey: string;
+        };
+        ActivateStorageProfileRequest: {
+            expectedVersion: number;
+            /** Format: uuid */
+            profileId: string | null;
+        };
+        RotateStorageCredentialsRequest: {
+            expectedVersion: number;
+            accessKeyId: string;
+            secretAccessKey: string;
         };
         LlmSettings: {
             configured: boolean;
@@ -2767,6 +2909,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description 对象存储连接、权限或网络不可用；生成结果只重试归档，不重新生成 */
+        ObjectStorageFailure: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description 部署凭证加密主密钥尚未配置 */
         Unavailable: {
             headers: {
@@ -3103,6 +3254,118 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    getStorageSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Storage configuration; null activeProfileId means local storage */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createStorageProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved destinations; creating a profile does not switch the default */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    activateStorageProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description New default destination */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    rotateStorageCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateStorageCredentialsRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated credential mask; no secrets are returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
         };
     };
     getLlmSettings: {
@@ -3671,6 +3934,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 图片超过大小限制 */
             413: {
                 headers: {
@@ -3685,6 +3949,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     uploadAudioAsset: {
@@ -3717,6 +3982,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 音频超过大小限制 */
             413: {
                 headers: {
@@ -3731,6 +3997,55 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
+        };
+    };
+    uploadVideoAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 素材已归档 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 视频超过大小限制 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 视频格式、解码或像素限制未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     getAssetContent: {
@@ -3768,6 +4083,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 请求的字节范围不可用 */
             416: {
                 headers: {
@@ -3775,6 +4091,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     headAssetContent: {
@@ -3807,6 +4124,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 请求的字节范围不可用 */
             416: {
                 headers: {
@@ -3814,6 +4132,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     getAssetMetadata: {
@@ -3864,6 +4183,8 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     listArtifacts: {

@@ -42,7 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** 将媒体流写入私有临时文件，完成字节与解码校验后以原子移动安装不可变对象。 */
 @Component
-public class LocalAssetStorage {
+public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage {
 
     /** 文件清理只能写入日志，不能掩盖最初的归档错误。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalAssetStorage.class);

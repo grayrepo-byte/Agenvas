@@ -53,7 +53,7 @@ public class SecurityConfiguration {
                         .requestMatchers("/api/v1/settings/media-connections/**",
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/media-defaults/**", "/api/v1/call-logs",
-                                "/api/v1/settings/system-logs",
+                                "/api/v1/settings/system-logs", "/api/v1/settings/storage/**",
                                 "/api/v1/call-logs/**", "/api/v1/settings/debug")
                         .hasRole("ADMIN")
                         .anyRequest()

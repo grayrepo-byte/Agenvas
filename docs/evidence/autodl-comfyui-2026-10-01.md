@@ -62,4 +62,16 @@ pnpm build
 
 官方来源：[ComfyUI API 文档](https://autodl.art/docs/comfyui_api/)与[工作流目录](https://www.autodl.art/large-model/comfyui)。固定声明来自本次公开目录/详情接口与前端字段校验；base64 限制按用户说明落实，并由上述真实调用验证。
 
-合并编号调整：AutoDL 迁移使用 V65，ADR 使用 0024；上文付费生成来自调整编号前的独立工作区，合并后不重复付费生成。
+## 合并 main 验证
+
+与 main 的对象存储、画布连线改动集成，保留双方任务清单。因 main 已使用 V64 / ADR 0023，AutoDL 改用 V65 / ADR 0024。上文付费生成来自调整编号前的独立工作区，合并后未重复付费生成。
+
+按合并后 V1–V65 对隔离 PostgreSQL 17.11 重新执行 Flyway / jOOQ codegen，生成源码一致；按合并后的 OpenAPI 重新生成 TS，结果一致。类型检查、lint、53 个前端测试和生产构建再次通过。
+
+第一次增量集成测试因 target/classes 残留改名前的 AutoDL V64 资源而启动失败；清理构建目录后实际执行以下定向检查，37 个单元测试、4 个 PostgreSQL 集成用例全部通过，失败、错误和跳过均为 0：
+
+```sh
+./backend/mvnw -f backend/pom.xml clean -Dtest=AutoDlClientTest,AutoDlWorkflowsTest,MediaAdapterRegistryVideoModesTest,MediaCapabilityConfigurationTest,ImageOperationSpecTest,DebugHttpCaptureTest -Dit.test=AutoDlVideoPostgresIT,MediaCapabilitySettingsPostgresIT,MediaCapabilityConfigurationPostgresIT,ObjectStoragePostgresIT test failsafe:integration-test failsafe:verify -q
+```
+
+已核对实际构建目录仅有对象存储 V64 与 AutoDL V65，没有旧 AutoDL V64。全量测试与生产部署未运行。

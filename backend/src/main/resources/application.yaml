@@ -15,8 +15,8 @@ spring:
     timeout: 12h
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 51MB
+      max-file-size: 500MB
+      max-request-size: 501MB
   ai:
     model:
       chat: ${AGENVAS_LLM_CHAT_ADAPTER:none}

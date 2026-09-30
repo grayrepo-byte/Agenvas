@@ -165,6 +165,28 @@ export async function uploadAudioAsset(projectId: string, file: File): Promise<A
   return (await response.json()) as Asset;
 }
 
+const MAX_VIDEO_UPLOAD_BYTES = 500 * 1024 * 1024;
+/** MP4 uploads use actual backend decoding and the selected per-asset storage destination. */
+export async function uploadVideoAsset(projectId: string, file: File): Promise<Asset> {
+  if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    throw new ApiError(413, "ASSET_TOO_LARGE", "视频不能超过 500 MiB。", false);
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const token = await getCsrfToken();
+  const response = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json, application/problem+json",
+      [token.headerName]: token.token,
+    },
+    body: form,
+  });
+  if (!response.ok) throw await apiError(response, "视频上传未完成");
+  return (await response.json()) as Asset;
+}
+
 /** Session-protected metadata download; the manifest contains no signed media URLs. */
 export function projectExportManifestUrl(projectId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/export-manifest`;
@@ -794,4 +816,27 @@ export async function listSystemLogs(input: { stream?: SystemLogStream; search?:
   if (input.stream) params.set("stream", input.stream);
   if (input.search) params.set("search", input.search);
   return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, "无法读取系统日志");
+}
+
+export type StorageSettings = components["schemas"]["StorageSettings"];
+export type StorageProvider = components["schemas"]["StorageProvider"];
+export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
+export type RotateStorageCredentialsRequest = components["schemas"]["RotateStorageCredentialsRequest"];
+export async function getStorageSettings(): Promise<StorageSettings> {
+  return readJson<StorageSettings>("/api/v1/settings/storage", "无法读取存储配置");
+}
+export async function createStorageProfile(input: CreateStorageProfileRequest): Promise<StorageSettings> {
+  return writeJson<StorageSettings>("/api/v1/settings/storage/profiles", {
+    method: "POST", body: JSON.stringify(input),
+  });
+}
+export async function activateStorageProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
+  return writeJson<StorageSettings>("/api/v1/settings/storage/active", {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+export async function rotateStorageCredentials(id: string, input: RotateStorageCredentialsRequest): Promise<StorageSettings> {
+  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}/credentials`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
 }

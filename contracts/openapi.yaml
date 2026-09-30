@@ -263,6 +263,86 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/RateLimited"}
+  /api/v1/settings/storage:
+    get:
+      operationId: getStorageSettings
+      summary: Read administrator storage destinations without credentials
+      responses:
+        '200':
+          description: Storage configuration; null activeProfileId means local storage
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/settings/storage/profiles:
+    post:
+      operationId: createStorageProfile
+      summary: Save an encrypted immutable destination without activating it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateStorageProfileRequest' }
+      responses:
+        '200':
+          description: Saved destinations; creating a profile does not switch the default
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/settings/storage/active:
+    put:
+      operationId: activateStorageProfile
+      summary: Switch future archives only; existing assets retain their location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateStorageProfileRequest' }
+      responses:
+        '200':
+          description: New default destination
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/settings/storage/profiles/{profileId}/credentials:
+    parameters:
+      - in: path
+        name: profileId
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: rotateStorageCredentials
+      summary: Rotate credentials for the same immutable location, including historical assets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RotateStorageCredentialsRequest' }
+      responses:
+        '200':
+          description: Updated credential mask; no secrets are returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/v1/settings/llm:
     get:
       operationId: getLlmSettings
@@ -685,6 +765,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
         "413": {description: 图片超过大小限制}
         "422": {description: 图片格式、解码或像素限制未通过}
   /api/v1/projects/{projectId}/assets/audio:
@@ -692,7 +774,7 @@ paths:
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: uploadAudioAsset
-      summary: 上传并校验私有 PNG/JPEG/WebP 音频素材
+      summary: 上传并校验私有 MP3/WAV/OGG Opus 音频素材
       tags: [Assets]
       requestBody:
         required: true
@@ -712,8 +794,39 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
         "413": {description: 音频超过大小限制}
         "422": {description: 音频格式、解码或像素限制未通过}
+  /api/v1/projects/{projectId}/assets/video:
+    parameters:
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: uploadVideoAsset
+      summary: 上传并校验私有 MP4 视频素材（最大 500 MiB）
+      tags: [Assets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 素材已归档
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Asset"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
+        "413": {description: 视频超过大小限制}
+        "422": {description: 视频格式、解码或像素限制未通过}
   /api/v1/projects/{projectId}/assets/{assetId}/content:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -744,6 +857,8 @@ paths:
         "206": {description: 部分文件，返回 Content-Range}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
         "416": {description: 请求的字节范围不可用}
     head:
       operationId: headAssetContent
@@ -758,6 +873,8 @@ paths:
         "206": {description: 部分文件元数据响应头}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
         "416": {description: 请求的字节范围不可用}
   /api/v1/projects/{projectId}/assets/{assetId}:
     parameters:
@@ -797,6 +914,8 @@ paths:
               schema: {type: string, format: binary}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/ObjectStorageFailure"}
   /api/v1/projects/{projectId}/artifacts:
     parameters:
       - {$ref: "#/components/parameters/ProjectId"}
@@ -2029,6 +2148,62 @@ components:
         status: {type: string, enum: [FAILED, UNKNOWN, BLOCKED]}
         count: {type: integer, format: int64, minimum: 1}
         lastAt: {type: string, format: date-time}
+    StorageProvider:
+      type: string
+      enum: [ALIYUN_OSS, TENCENT_COS, S3]
+    StorageProfile:
+      type: object
+      required: [id, name, provider, endpoint, region, bucket, keyPrefix, pathStyle, accessKeyMask, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        provider: { $ref: '#/components/schemas/StorageProvider' }
+        endpoint: { type: string, format: uri }
+        region: { type: string }
+        bucket: { type: string }
+        keyPrefix: { type: string }
+        pathStyle: { type: boolean }
+        accessKeyMask: { type: string }
+        createdAt: { type: string, format: date-time }
+    StorageSettings:
+      type: object
+      required: [version, activeProfileId, profiles]
+      properties:
+        version: { type: integer, minimum: 0 }
+        activeProfileId:
+          type: [string, 'null']
+          format: uuid
+          description: Null selects local storage; existing objects are never relocated
+        profiles:
+          type: array
+          items: { $ref: '#/components/schemas/StorageProfile' }
+    CreateStorageProfileRequest:
+      type: object
+      required: [expectedVersion, name, provider, endpoint, region, bucket, keyPrefix, pathStyle, accessKeyId, secretAccessKey]
+      properties:
+        expectedVersion: { type: integer, minimum: 0 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        provider: { $ref: '#/components/schemas/StorageProvider' }
+        endpoint: { type: string, format: uri, description: HTTPS service endpoint without bucket or path }
+        region: { type: string, maxLength: 80 }
+        bucket: { type: string, maxLength: 63 }
+        keyPrefix: { type: string, maxLength: 120 }
+        pathStyle: { type: boolean, description: Available only for S3 compatible services }
+        accessKeyId: { type: string, writeOnly: true }
+        secretAccessKey: { type: string, writeOnly: true }
+    ActivateStorageProfileRequest:
+      type: object
+      required: [expectedVersion, profileId]
+      properties:
+        expectedVersion: { type: integer, minimum: 0 }
+        profileId: { type: [string, 'null'], format: uuid }
+    RotateStorageCredentialsRequest:
+      type: object
+      required: [expectedVersion, accessKeyId, secretAccessKey]
+      properties:
+        expectedVersion: { type: integer, minimum: 0 }
+        accessKeyId: { type: string, writeOnly: true }
+        secretAccessKey: { type: string, writeOnly: true }
     LlmSettings:
       type: object
       additionalProperties: false
@@ -3354,6 +3529,11 @@ components:
           schema: {$ref: "#/components/schemas/Problem"}
     ProviderFailure:
       description: 原 Provider 请求核对不可用或身份不匹配，任务仍为 UNKNOWN
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    ObjectStorageFailure:
+      description: 对象存储连接、权限或网络不可用；生成结果只重试归档，不重新生成
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}

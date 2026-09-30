@@ -1,10 +1,11 @@
 import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import { Check, Cursor, DotsThree, Hand, Plus } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CanvasTool } from "./canvasInteraction";
 
-export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd }: {
+export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children }: {
   tool: CanvasTool; spaceHeld: boolean; onToolChange: (tool: CanvasTool) => void; onAdd: () => void;
+  children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
@@ -42,5 +43,6 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd }: {
       <button type="button" role="menuitemradio" aria-checked={tool === "hand"}
         onClick={() => choose("hand")}><span>{tool === "hand" ? <Check size={14} /> : null}</span><Hand size={18} />手形工具<kbd>Space</kbd></button>
     </DropdownMenu> : null}
+    {children}
   </div>;
 }
