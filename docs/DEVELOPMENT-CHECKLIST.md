@@ -456,6 +456,9 @@ Prompt 版本补充：新 Run 的策略快照固定系统 Prompt v2；历史无�
 
 ### T28 性能与可观测性
 
+- [x] 2026-09-30 管理员系统日志页可读取本次后端 Java stdout / stderr，提供自动刷新、暂停、跟随、筛选和字面搜索；缓存有界、常见凭据脱敏、未授权拒绝。OpenAPI 与生成类型同步；定向单元、组件与真实 PostgreSQL main 启动测试见[系统日志证据](evidence/T28-system-logs.md)。重启清空；其他进程日志和浏览器视觉验收不在本次验证范围。
+
+
 2026-09-26 调用审计：新增 `/settings/calls` 黑色日志页及管理员本人项目范围的分页筛选 API，V46 持久化新模型/媒体调用的起止时间、耗时和 Trace ID。历史记录明确标注缺失字段，UNKNOWN 核对入口从画布常驻横幅迁入日志；原恢复与成本确认规则不变。验收范围与实际检查见 [调用日志证据](evidence/T28-call-audit.md)，真实 Provider 与全链路分布式追踪未由此验收。
 
 2026-09-26 入口与呈现收口（其中的审批呈现部分已随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 撤回，2026-09-27）：调用日志不再在画布放入口，只从侧栏菜单进入，进入后按当前项目筛选；`BlockedRunNotice` 与 `UnknownTaskAttemptPanel` 去掉已无调用方的 `panel` 呈现分支。定向 14 个前端文件、98 项通过，未运行全量测试，浏览器视觉与长内容滚动仍未验收。

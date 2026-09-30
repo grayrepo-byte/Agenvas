@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cube, FilmStrip, FolderSimple, GearSix, ListMagnifyingGlass, SidebarSimple, SignOut, UserCircle } from "@phosphor-icons/react";
+import { Cube, FilmStrip, FolderSimple, GearSix, ListMagnifyingGlass, SidebarSimple, TerminalWindow, SignOut, UserCircle } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { ApiError, getCurrentUser, logout } from "../api/client";
@@ -14,6 +14,7 @@ const NAVIGATION = [
   { to: "/settings/providers", label: "Provider 配置", icon: Cube },
   { to: "/settings/media", label: "媒体配置", icon: FilmStrip },
   { to: "/settings/calls", label: "调用日志", icon: ListMagnifyingGlass },
+  { to: "/settings/logs", label: "系统日志", icon: TerminalWindow },
   { to: "/settings/general", label: "系统诊断", icon: GearSix },
 ] as const;
 

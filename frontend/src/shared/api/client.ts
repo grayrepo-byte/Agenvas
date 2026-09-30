@@ -745,3 +745,14 @@ async function apiError(response: Response, fallbackMessage: string): Promise<Ap
   }
   return new ApiError(response.status, "HTTP_ERROR", fallbackMessage, response.status >= 500);
 }
+
+export type SystemLogSnapshot = components["schemas"]["SystemLogSnapshot"];
+export type SystemLogStream = components["schemas"]["SystemLogEntry"]["stream"];
+
+/** Reads bounded, sanitized Java console output; no generated work is triggered. */
+export async function listSystemLogs(input: { stream?: SystemLogStream; search?: string; limit: number }): Promise<SystemLogSnapshot> {
+  const params = new URLSearchParams({ limit: String(input.limit) });
+  if (input.stream) params.set("stream", input.stream);
+  if (input.search) params.set("search", input.search);
+  return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, "无法读取系统日志");
+}

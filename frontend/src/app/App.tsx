@@ -23,6 +23,9 @@ const SystemDiagnosticsPage = lazy(() => import("../features/settings/SystemDiag
 const CallLogsPage = lazy(() => import("../features/settings/CallLogsPage")
   .then((module) => ({ default: module.CallLogsPage })));
 
+const SystemLogsPage = lazy(() => import("../features/settings/SystemLogsPage")
+  .then((module) => ({ default: module.SystemLogsPage })));
+
 export function App() {
   const [queryClient] = useState(createQueryClient);
 
@@ -38,6 +41,7 @@ export function App() {
           <Route path="/settings/providers" element={<LlmSettingsPage />} />
           <Route path="/settings/media" element={<MediaSettingsPage />} />
           <Route path="/settings/general" element={<SystemDiagnosticsPage />} />
+          <Route path="/settings/logs" element={<SystemLogsPage />} />
           <Route path="/settings/calls" element={<CallLogsPage />} />
           <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
           <Route path="/" element={<Navigate to="/setup" replace />} />

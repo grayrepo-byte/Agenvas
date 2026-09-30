@@ -127,3 +127,9 @@ docs/           MVP 规格、依赖基线与开发验收清单
 - Flyway 已推进到 V56，覆盖当前画布、资源、直接生成、Provider 配置与任务恢复模型；V56 删除媒体能力并发字段和旧 ComfyUI 全局单槽表。迁移仍只增不改，详见 `backend/src/main/resources/db/migration/`。
 
 项目目标许可为 Apache-2.0；正式许可证、NOTICE 与第三方/模型许可证清单在 M6/T30 发布门禁完成前仍属于待办事项。安全报告边界见 [SECURITY.md](SECURITY.md)，当前支持范围与升级限制见 [0.1.0 发行说明草案](docs/release-notes/0.1.0-mvp-draft.md)。
+
+### 查看系统日志
+
+登录后从侧栏进入“系统日志”（`/settings/logs`），可按 stdout / stderr 和关键词筛选，自动刷新或暂停，并跟随最新输出。只对管理员开放，不会发起模型调用。
+
+页面保留本次后端 Java 进程最近 2000 行，每行最多 8192 字节，换行后显示；重启会清空。它不包含 stdin、子进程、数据库或 Nginx 的输出。需查看其他服务或重启前记录时，使用部署控制台（如 `docker compose logs`）。采集保持原始控制台输出，对网页缓存中的常见凭据与 URL 查询参数脱敏；应用仍须遵守不输出密钥、完整 Prompt 或模型私有推理的规则。

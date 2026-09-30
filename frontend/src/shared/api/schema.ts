@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    "/api/v1/settings/system-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取当前后端进程的 stdout / stderr
+         * @description 仅管理员可读，Cache-Control 为 no-store。最多保留最近 2000 行，单行最多 8192 字节；
+         *     在换行后采集，超长行尾部丢弃并标记 truncated。按 sequence 正序返回最新的匹配行。
+         *     search 在脱敏后的内容上进行不区分大小写的字面匹配。重启后 processId 改变且日志重新开始。
+         *     droppedCount 是本次进程因容量淘汰的总行数，matchedCount 是保留范围内的匹配总数。
+         *     日志不持久化，不包含 stdin、原生文件描述符写入、子进程或其他容器输出。
+         */
+        get: operations["listSystemLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/call-logs": {
         parameters: {
             query?: never;
@@ -1377,6 +1401,30 @@ export interface components {
             /** Format: uuid */
             capabilityId: string;
         };
+        SystemLogEntry: {
+            /** Format: int64 */
+            sequence: number;
+            /** Format: date-time */
+            recordedAt: string;
+            /** @enum {string} */
+            stream: "STDOUT" | "STDERR";
+            message: string;
+            truncated: boolean;
+        };
+        SystemLogSnapshot: {
+            /** Format: uuid */
+            processId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            checkedAt: string;
+            capacity: number;
+            retainedCount: number;
+            /** Format: int64 */
+            droppedCount: number;
+            matchedCount: number;
+            entries: components["schemas"]["SystemLogEntry"][];
+        };
         SystemDiagnostics: {
             /** Format: date-time */
             checkedAt: string;
@@ -2639,6 +2687,34 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listSystemLogs: {
+        parameters: {
+            query?: {
+                stream?: "STDOUT" | "STDERR";
+                search?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前进程的脱敏输出快照 */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemLogSnapshot"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listCallLogs: {
         parameters: {
             query?: {

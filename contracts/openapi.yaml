@@ -9,6 +9,39 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/settings/system-logs:
+    get:
+      operationId: listSystemLogs
+      summary: 读取当前后端进程的 stdout / stderr
+      description: |
+        仅管理员可读，Cache-Control 为 no-store。最多保留最近 2000 行，单行最多 8192 字节；
+        在换行后采集，超长行尾部丢弃并标记 truncated。按 sequence 正序返回最新的匹配行。
+        search 在脱敏后的内容上进行不区分大小写的字面匹配。重启后 processId 改变且日志重新开始。
+        droppedCount 是本次进程因容量淘汰的总行数，matchedCount 是保留范围内的匹配总数。
+        日志不持久化，不包含 stdin、原生文件描述符写入、子进程或其他容器输出。
+      tags: [Settings]
+      parameters:
+        - name: stream
+          in: query
+          schema: {type: string, enum: [STDOUT, STDERR]}
+        - name: search
+          in: query
+          schema: {type: string, maxLength: 200}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 1000, default: 500}
+      responses:
+        "200":
+          description: 当前进程的脱敏输出快照
+          headers:
+            Cache-Control:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SystemLogSnapshot"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/call-logs:
     get:
       operationId: listCallLogs
@@ -1814,6 +1847,31 @@ components:
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         capabilityId: {type: string, format: uuid}
+    SystemLogEntry:
+      type: object
+      additionalProperties: false
+      required: [sequence, recordedAt, stream, message, truncated]
+      properties:
+        sequence: {type: integer, format: int64, minimum: 1}
+        recordedAt: {type: string, format: date-time}
+        stream: {type: string, enum: [STDOUT, STDERR]}
+        message: {type: string}
+        truncated: {type: boolean}
+    SystemLogSnapshot:
+      type: object
+      additionalProperties: false
+      required: [processId, startedAt, checkedAt, capacity, retainedCount, droppedCount, matchedCount, entries]
+      properties:
+        processId: {type: string, format: uuid}
+        startedAt: {type: string, format: date-time}
+        checkedAt: {type: string, format: date-time}
+        capacity: {type: integer, minimum: 1}
+        retainedCount: {type: integer, minimum: 0}
+        droppedCount: {type: integer, format: int64, minimum: 0}
+        matchedCount: {type: integer, minimum: 0}
+        entries:
+          type: array
+          items: {$ref: "#/components/schemas/SystemLogEntry"}
     SystemDiagnostics:
       type: object
       additionalProperties: false

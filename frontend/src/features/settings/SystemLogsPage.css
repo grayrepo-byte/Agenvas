@@ -1,0 +1,20 @@
+.system-logs-filters { display: flex; gap: var(--ui-space-3); align-items: end; flex-wrap: wrap; }
+.system-logs-filters .ui-field { min-width: 160px; }
+.system-logs-keyword { flex: 1; }
+.system-logs-toolbar, .system-logs-summary { display: flex; flex-wrap: wrap; gap: var(--ui-space-4); margin: var(--ui-space-4) 0; }
+.system-logs-toolbar label { display: flex; align-items: center; gap: var(--ui-space-2); font-size: var(--ui-text-md); }
+.system-logs-toolbar input { accent-color: var(--ui-accent); }
+.system-logs-console { max-height: 65vh; overflow: auto; background: var(--ui-field); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: var(--ui-space-3); font: var(--ui-text-sm)/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.system-log-line { display: grid; grid-template-columns: 5ch 10ch 7ch minmax(0, 1fr); gap: var(--ui-space-3); padding: var(--ui-space-1) 0; }
+.system-log-sequence, .system-log-line time { color: var(--ui-text-muted); }
+.system-log-stream { color: var(--ui-info); }
+.system-log-line--stderr .system-log-stream { color: var(--ui-danger); }
+.system-log-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.system-log-message em { color: var(--ui-warning); font-style: normal; }
+@media (max-width: 640px) {
+  .system-logs-filters { align-items: stretch; }
+  .system-logs-filters .ui-field, .system-logs-filters button { width: 100%; }
+  .system-log-line { grid-template-columns: 10ch 7ch; gap: var(--ui-space-1); }
+  .system-log-sequence { display: none; }
+  .system-log-message { grid-column: 1 / -1; }
+}

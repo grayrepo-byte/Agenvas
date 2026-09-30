@@ -40,4 +40,19 @@ describe("App routes", () => {
     expect(await screen.findByText("没有匹配的调用记录")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "调用日志" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("loads the system logs route and marks its navigation active", async () => {
+    window.history.replaceState({}, "", "/settings/logs");
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/system-logs", () => HttpResponse.json({
+        processId: "fixture-process", startedAt: "2026-09-30T00:00:00Z", checkedAt: "2026-09-30T00:00:00Z",
+        capacity: 2000, retainedCount: 0, droppedCount: 0, matchedCount: 0, entries: [],
+      })),
+    );
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "系统日志" }, { timeout: ROUTE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
+    expect(await screen.findByText("暂无控制台输出")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "系统日志" })).toHaveAttribute("aria-current", "page");
+  });
 });
