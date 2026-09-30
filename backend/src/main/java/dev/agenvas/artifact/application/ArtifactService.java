@@ -106,6 +106,19 @@ public class ArtifactService {
                 .value();
     }
 
+    /** Trusted library boundary. Ordinary artifact writes cannot assert this provenance. */
+    @Transactional
+    public ArtifactView createLibraryImport(UUID ownerId, UUID projectId, Artifact.Kind kind,
+            String title, JsonNode textContent, UUID assetId) {
+        JsonNode content = kind == Artifact.Kind.TEXT ? textContent
+                : objectMapper.createObjectNode().put("sourceType", "LIBRARY_IMPORT").put("assetId", assetId.toString());
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
+                    ArtifactVersion.CreatedByKind.USER, null, true);
+            return ProjectEventService.Change.changed(created, artifactEvent("artifact.created", created));
+        }).value();
+    }
+
     /**
      * 使用项目内幂等键创建手工产物；同键同载荷返回原响应快照，同键异载荷返回冲突。
      * 重放时仍重新鉴权原产物，不会再次追加首个版本。
@@ -210,6 +223,12 @@ public class ArtifactService {
             JsonNode content,
             ArtifactVersion.CreatedByKind createdByKind,
             UUID runId) {
+        return createLocked(ownerId, projectId, kind, requestedTitle, content, createdByKind, runId, false);
+    }
+
+    private ArtifactView createLocked(UUID ownerId, UUID projectId, Artifact.Kind kind,
+            String requestedTitle, JsonNode content, ArtifactVersion.CreatedByKind createdByKind,
+            UUID runId, boolean libraryImport) {
         if (content != null && content.isNull()) content = null;
         projects.requireActiveProject(ownerId, projectId);
         String title = validateTitle(requestedTitle);
@@ -226,7 +245,7 @@ public class ArtifactService {
         }
         List<ArtifactVersion.InputReference> references =
                 contentValidator.validate(kind, content);
-        requireUploadAuthorship(kind, content, createdByKind);
+        if (!libraryImport) requireUploadAuthorship(kind, content, createdByKind);
         validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, kind, content);
         Instant now = clock.instant();
@@ -713,6 +732,10 @@ public class ArtifactService {
     /** 禁止 Agent 或生成任务伪造用户上传来源。 */
     private void requireUploadAuthorship(Artifact.Kind kind, JsonNode content,
             ArtifactVersion.CreatedByKind author) {
+        if ("LIBRARY_IMPORT".equals(content.path("sourceType").asText())) {
+            throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "ARTIFACT_ORIGIN_INVALID",
+                    "来源无效", "资产导入来源只能由资产库操作创建。", false);
+        }
         if (kind != Artifact.Kind.TEXT
                 && "UPLOAD".equals(content.path("sourceType").asText())
                 && author != ArtifactVersion.CreatedByKind.USER) {

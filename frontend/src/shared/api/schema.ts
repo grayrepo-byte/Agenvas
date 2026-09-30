@@ -1286,10 +1286,322 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listLibraryEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/entries/{entryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLibraryEntry"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteLibraryEntry"];
+        options?: never;
+        head?: never;
+        patch: operations["updateLibraryEntry"];
+        trace?: never;
+    };
+    "/api/v1/library/entries/{entryId}/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["trashLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/entries/{entryId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restoreLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/entries/{entryId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLibraryContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headLibraryContent"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/entries/{entryId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLibraryThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/commands/{commandId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLibraryCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/commands/{commandId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retryLibraryCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{itemId}/library-saves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLibrarySaveSource"];
+        put?: never;
+        post: operations["saveLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/library-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{itemId}/library-references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["referenceLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["uploadLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        LibraryCategory: "CHARACTER" | "SCENE" | "PROP" | "OTHER";
+        /** @enum {string} */
+        LibrarySort: "SAVED" | "NAME" | "UPDATED";
+        LibraryEntry: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            category: components["schemas"]["LibraryCategory"];
+            kind: components["schemas"]["ArtifactKind"];
+            textContent: {
+                [key: string]: unknown;
+            } | null;
+            contentType: string | null;
+            byteSize: number | null;
+            width: number | null;
+            height: number | null;
+            durationMs: number | null;
+            hasThumbnail: boolean;
+            source: {
+                [key: string]: unknown;
+            };
+            favorite: boolean;
+            /** Format: date-time */
+            trashedAt: string | null;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        LibraryPage: {
+            items: components["schemas"]["LibraryEntry"][];
+            nextCursor: string | null;
+            total: number;
+            categoryCounts: {
+                [key: string]: number;
+            };
+        };
+        LibraryCommand: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "ACCEPTED" | "ARCHIVING" | "SUCCEEDED" | "FAILED";
+            result: {
+                /** Format: uuid */
+                entryId?: string;
+                /** Format: uuid */
+                artifactId?: string;
+                /** Format: uuid */
+                versionId?: string;
+                /** Format: uuid */
+                canvasItemId?: string;
+                /** Format: int64 */
+                draftVersion?: number;
+                alreadySaved?: boolean;
+                trashed?: boolean;
+            } | null;
+            errorCode: string | null;
+            errorDetail: string | null;
+        };
+        LibrarySource: {
+            title: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Format: uuid */
+            versionId: string;
+            /** Format: int64 */
+            expectedSelectionEpoch: number;
+            /** Format: int64 */
+            expectedArtifactVersion: number;
+            textContent: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: uuid */
+            assetId: string | null;
+            versionNo: number;
+        };
+        SaveLibraryRequest: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: int64 */
+            expectedSelectionEpoch: number;
+            /** Format: int64 */
+            expectedArtifactVersion?: number;
+            name: string;
+            category: components["schemas"]["LibraryCategory"];
+            commandKey: string;
+        };
+        UpdateLibraryRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            category: components["schemas"]["LibraryCategory"];
+            favorite: boolean;
+        };
+        LibraryVersionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        ImportLibraryRequest: {
+            /** Format: uuid */
+            entryId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            x: number;
+            y: number;
+            commandKey: string;
+        };
+        ReferenceLibraryRequest: {
+            /** Format: uuid */
+            entryId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            draft: components["schemas"]["SaveMediaDraftRequest"];
+            /** @enum {string} */
+            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE";
+            color: string;
+            commandKey: string;
+        };
         DebugSettings: {
             /** @default false */
             debugMode: boolean;
@@ -1817,8 +2129,8 @@ export interface components {
         };
         /** @enum {string} */
         ArtifactKind: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
-        ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"];
-        WritableArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["image-v1.schema"] | components["schemas"]["video-v1.schema"];
+        ArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["writable"] | components["schemas"]["libraryImport"] | components["schemas"]["writable"] | components["schemas"]["libraryImport"];
+        WritableArtifactContent: components["schemas"]["text-v1.schema"] | components["schemas"]["writable"] | components["schemas"]["writable"];
         CreateArtifactRequest: {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
@@ -2648,13 +2960,13 @@ export interface components {
             /** @description 允许空字符串作为新文字节点的初始正文版本。 */
             text: string;
         };
-        /** IMAGE Artifact content v1 */
-        "image-v1.schema": {
+        upload: {
             /** @constant */
             sourceType: "UPLOAD";
             /** Format: uuid */
             assetId: string;
-        } | {
+        };
+        generated: {
             /** Format: uuid */
             assetId: string;
             prompt: string;
@@ -2667,19 +2979,13 @@ export interface components {
             /** Format: uuid */
             sourceTaskId: string;
         };
-        /** VIDEO Artifact content v1 */
-        "video-v1.schema": {
+        writable: components["schemas"]["upload"] | components["schemas"]["generated"];
+        /** @description Server-authored library provenance; ordinary artifact writes cannot create it. */
+        libraryImport: {
+            /** @constant */
+            readonly sourceType: "LIBRARY_IMPORT";
             /** Format: uuid */
             assetId: string;
-            prompt: string;
-            negativePrompt?: string;
-            providerConfigVersion: number;
-            workflowVersion: string;
-            parameters: {
-                [key: string]: unknown;
-            };
-            /** Format: uuid */
-            sourceTaskId: string;
         };
     };
     responses: {
@@ -5080,6 +5386,557 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listLibraryEntries: {
+        parameters: {
+            query?: {
+                category?: components["schemas"]["LibraryCategory"];
+                kind?: components["schemas"]["ArtifactKind"];
+                query?: string;
+                favorite?: boolean;
+                trash?: boolean;
+                sort?: components["schemas"]["LibrarySort"];
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteLibraryEntry: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLibraryRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    trashLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    restoreLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntry"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLibraryContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private media bytes; content supports Range and HEAD */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid byte range */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    headLibraryContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLibraryThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private media bytes; content supports Range and HEAD */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLibraryCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commandId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCommand"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retryLibraryCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commandId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCommand"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLibrarySaveSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySource"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    saveLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLibraryRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCommand"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLibraryRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCommand"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    referenceLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceLibraryRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCommand"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    uploadLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @enum {string} */
+                    kind: "IMAGE" | "VIDEO" | "AUDIO";
+                    name: string;
+                    category: components["schemas"]["LibraryCategory"];
+                    commandKey: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Accepted local transfer. PNG/JPEG/WebP:20 MiB/40 MP; MP3/WAV/OGG Opus:50 MiB/10min; decoded MP4:50 MiB/40 MP/60sec. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCommand"];
+                };
+            };
+            /** @description ProblemDetail error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
 }

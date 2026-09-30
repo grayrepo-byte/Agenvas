@@ -25,6 +25,11 @@ import dev.agenvas.db.tables.ComfyuiConfigVersion;
 import dev.agenvas.db.tables.CreativeDataResetMarker;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
+import dev.agenvas.db.tables.LibraryCleanup;
+import dev.agenvas.db.tables.LibraryCommand;
+import dev.agenvas.db.tables.LibraryEntry;
+import dev.agenvas.db.tables.LibraryFile;
+import dev.agenvas.db.tables.LibraryImport;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
@@ -189,6 +194,32 @@ public class Public extends SchemaImpl {
      * Singleton row used to serialize installation-wide bootstrap decisions.
      */
     public final InstallationLock INSTALLATION_LOCK = InstallationLock.INSTALLATION_LOCK;
+
+    /**
+     * Durable idempotent file removal after catalogue deletion or duplicate
+     * save
+     */
+    public final LibraryCleanup LIBRARY_CLEANUP = LibraryCleanup.LIBRARY_CLEANUP;
+
+    /**
+     * Durable local transfers; no provider submission or generation retry
+     */
+    public final LibraryCommand LIBRARY_COMMAND = LibraryCommand.LIBRARY_COMMAND;
+
+    /**
+     * The table <code>public.library_entry</code>.
+     */
+    public final LibraryEntry LIBRARY_ENTRY = LibraryEntry.LIBRARY_ENTRY;
+
+    /**
+     * The table <code>public.library_file</code>.
+     */
+    public final LibraryFile LIBRARY_FILE = LibraryFile.LIBRARY_FILE;
+
+    /**
+     * Immutable provenance; library deletion never cascades to project content
+     */
+    public final LibraryImport LIBRARY_IMPORT = LibraryImport.LIBRARY_IMPORT;
 
     /**
      * Immutable versioned LLM endpoint and AES-GCM encrypted credential; old
@@ -369,6 +400,11 @@ public class Public extends SchemaImpl {
             CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
             InstallationLock.INSTALLATION_LOCK,
+            LibraryCleanup.LIBRARY_CLEANUP,
+            LibraryCommand.LIBRARY_COMMAND,
+            LibraryEntry.LIBRARY_ENTRY,
+            LibraryFile.LIBRARY_FILE,
+            LibraryImport.LIBRARY_IMPORT,
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
             LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER,
             LlmTurn.LLM_TURN,

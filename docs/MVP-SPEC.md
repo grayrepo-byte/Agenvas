@@ -20,6 +20,8 @@
 
 **2026-09-30 扩展**：创作产物增加 AUDIO；音频节点及视频全能参考音频按 [ADR 0021](adr/0021-audio-nodes-and-mixed-references.md) 实施，覆盖上述三类产物限制，其他范围收缩决定保留。详见 6.11。
 
+**2026-10-01 个人资产库**：用户确认把选中的创作结果保存为角色、场景、道具、其他分类资产，“我的资产”属于账号并跨本人项目复用。分类独立于产物类型，不恢复角色/场景节点或规划链路；功能已实施，专项验收与限制见 #24 证据。方案见 6.12、[资产库设计](superpowers/specs/2026-10-01-personal-asset-library-design.md) 和 [ADR 0023](adr/0023-personal-asset-library.md)。
+
 **本稿采用的技术决策**：Vite 构建的客户端 SPA，而不是 SSR 或服务端渲染框架；Spring MVC 而不是全栈 WebFlux；模块化单体而不是微服务；PostgreSQL 持久化任务而不是第一天引入消息中间件；默认本地文件存储；REST + SSE；一个 Creator Agent 配置，多实例展示，受控串行执行。
 
 **媒体接入假设**：首个真实媒体适配器采用 ComfyUI，接入两份受信任的固定工作流，分别完成生图与图生视频。它只是可替换的推理服务，不是本产品的画布、业务模型或 Agent 内核。LLM 通过 Spring AI 接入一个经过工具调用测试的模型端点。2026-09-25 确认的后续交付为界面配置的媒体能力目录、统一执行内核，以及固定代码实现的 GPT Image 2 图片与火山方舟 Seedance 视频适配器；见[基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)和[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入已撤回，不作为当前实施依据。
@@ -132,7 +134,7 @@ P2：多个 Agent 并发协调、多人协作、插件市场、完整剪辑时�
 | Task | 可恢复的本地或外部执行单元 | 不等于前端 loading 状态 |
 | ProjectEvent | 已提交业务变更的增量通知 | 不是全部业务数据的唯一存储 |
 
-角色、场景、镜头与执行计划都不是本版的概念；产物修改通过创建内容新版本表达，执行依赖由任务自身的输入与状态表达。
+角色、场景、镜头不作为创作产物类型，执行计划不属于本版；个人资产库设计中的角色/场景只是用途分类。产物修改通过创建内容新版本表达，执行依赖由任务自身的输入与状态表达。
 
 ### 3.1 空间、输入关系与执行必须分开
 
@@ -447,6 +449,16 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 - 音频沿用数据库任务、租约/fencing、幂等、用量预检、取消、UNKNOWN 显式新尝试与 SSE。Key 只在服务端加密，接口固定来源，不接受任意 URL、重定向或生成请求自动重试。同步 Seed Audio 请求结果未知且无本地字节时保持 UNKNOWN；归档字节已有时恢复归档而不再次生成。人工配置价格按 AUDIO 次数或 SECOND；SECOND 预留按官方最大生成时长 120 秒估算，不等同供应商真实账单。
 
 官方协议：[Seed Audio](https://docs.volcengine.com/docs/DoubaoVoice/audio-generation-http?lang=zh)、[音色目录](https://docs.volcengine.com/docs/DoubaoVoice/Tonelist-1?lang=zh)。本轮实现和定向验证见 [音频证据](evidence/audio-nodes-2026-09-30.md)，真实 Seed Audio / Seedance 云端调用未验证。
+
+### 6.12 个人资产库（2026-10-01）
+
+新增账号级“我的资产”设计，用户可以从文字、图片、视频、音频节点的具体内容结果选择“保存为资产”，填写名称并选择角色、场景、道具、其他分类。画布自动保存与分类收藏是两项独立操作；媒体草稿占位和 Agent 不创建资产。文字未保存修改先按现有 CAS 保存，再固定精确版本。
+
+主导航增加资产页面，在项目资源抽屉与图片/音频参考选择器提供“我的资产”入口。资产页采用分类、搜索与缩略图网格，复用现有公共主题。角色、场景、道具与其他是用途分类，类型仍为 TEXT / IMAGE / VIDEO / AUDIO；演员库与合集没有本轮交付承诺。
+
+个人资产独立持有不可变内容快照，Asset 保持项目媒体文件边界。放到画布或用于参考时创建目标项目内的内容与媒体文件；新节点只有首个结果和空白媒体草稿，原项目、资产与新节点不会同步改写。来源项目清理或资产删除不破坏已经成功保存/导入的另一侧内容；参考模式、能力限制、CAS 和生成授权仍遵守 6.11。元数据编辑与回收站使用乐观锁，本地转存可持久恢复，任何保存或复用不触发 Provider。
+
+详细页面、生命周期、模型、接口与测试范围见 [个人资产库设计](superpowers/specs/2026-10-01-personal-asset-library-design.md)。权威合约已增加保存、列表、上传、导入、参考与管理端点，Java、生成 TS、内容 Schema、V64–V66 与 jOOQ 已同步。`LIBRARY_IMPORT` 来源仅由应用服务建立；同键异参返回 `409 IDEMPOTENCY_CONFLICT`。上传限制：图片 20 MiB / 40 MP，音频 50 MiB / 10 分钟，MP4 视频 50 MiB / 40 MP / 60 秒，按实际解码校验。验收结果和未验证限制见 [#24 实施证据](evidence/issue-24-personal-asset-library.md)。
 
 ## 7. 数据模型与持久化约定
 

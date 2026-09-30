@@ -1,3 +1,4 @@
+import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { Select } from "../../shared/ui/Select";
 import { ArrowUp, LockSimple, TextT, X } from "@phosphor-icons/react";
 import { type FormEvent } from "react";
@@ -16,12 +17,13 @@ type TextFields = {
 };
 
 /** Keeps text editing and immutable-version selection inside the text node itself. */
-export function TextCanvasEditor({ artifact, locked, onDone }: {
+export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone }: {
   artifact: VersionedArtifact;
+  canvasItemId?: string;
   locked: boolean;
   onDone: () => void;
 }) {
-  const { base, fields, edit, save, reload, status } = useArtifactRevision({
+  const { base, fields, edit, save, saveAsync, reload, status } = useArtifactRevision({
     artifact,
     readFields,
     saveRevision: (current, revision: ReviseArtifactRequest) =>
@@ -52,6 +54,9 @@ export function TextCanvasEditor({ artifact, locked, onDone }: {
       {status.saved && !status.dirty ? <span className="text-card-saved" role="status">新版本已保存</span> : null}
     </div>
     <footer className="content-card-sources text-card-editor-footer">
+      {canvasItemId ? <SaveToLibraryButton projectId={artifact.projectId} itemId={canvasItemId} disabled={status.busy || !valid}
+        beforeOpen={async () => { if (status.dirty) await saveAsync({ expectedVersion: base.version, title: base.title,
+          content: { format: fields.format, text: fields.text.trim() } }); }} /> : null}
       <span className="content-card-chip"><TextT size={12} aria-hidden />文字</span>
       <TextVersionPicker artifact={base} disabled={status.dirty} />
       <Select density="compact" aria-label="文字格式" disabled={status.busy} value={fields.format}

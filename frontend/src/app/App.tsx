@@ -10,6 +10,7 @@ const SetupPage = lazy(() => import("../features/auth/SetupPage")
   .then((module) => ({ default: module.SetupPage })));
 const LoginPage = lazy(() => import("../features/auth/LoginPage")
   .then((module) => ({ default: module.LoginPage })));
+const LibraryPage = lazy(() => import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const ProjectsPage = lazy(() => import("../features/projects/ProjectsPage")
   .then((module) => ({ default: module.ProjectsPage })));
 const ProjectWorkspacePage = lazy(() => import("../features/canvas/ProjectWorkspacePage")
@@ -37,6 +38,7 @@ export function App() {
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/settings/llm" element={<LlmSettingsPage />} />
           <Route path="/settings/providers" element={<LlmSettingsPage />} />
           <Route path="/settings/media" element={<MediaSettingsPage />} />

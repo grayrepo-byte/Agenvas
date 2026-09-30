@@ -1733,8 +1733,722 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/library/entries:
+    get:
+      operationId: "listLibraryEntries"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryPage"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "category"
+          in: "query"
+          schema:
+            $ref: "#/components/schemas/LibraryCategory"
+        - name: "kind"
+          in: "query"
+          schema:
+            $ref: "#/components/schemas/ArtifactKind"
+        - name: "query"
+          in: "query"
+          schema:
+            type: "string"
+            maxLength: 160
+            default: ""
+        - name: "favorite"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "trash"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "sort"
+          in: "query"
+          schema:
+            $ref: "#/components/schemas/LibrarySort"
+            default: "SAVED"
+        - name: "cursor"
+          in: "query"
+          schema:
+            type: "string"
+            maxLength: 1000
+  /api/v1/library/entries/{entryId}:
+    get:
+      operationId: "getLibraryEntry"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+    patch:
+      operationId: "updateLibraryEntry"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLibraryRequest"
+    delete:
+      operationId: "deleteLibraryEntry"
+      responses:
+        "204":
+          description: "Success"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "expectedVersion"
+          in: "query"
+          schema:
+            type: "integer"
+            format: "int64"
+            minimum: 0
+          required: true
+  /api/v1/library/entries/{entryId}/trash:
+    post:
+      operationId: "trashLibraryEntry"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryVersionRequest"
+  /api/v1/library/entries/{entryId}/restore:
+    post:
+      operationId: "restoreLibraryEntry"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryEntry"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryVersionRequest"
+  /api/v1/library/entries/{entryId}/content:
+    get:
+      operationId: "getLibraryContent"
+      responses:
+        "200":
+          description: "Private media bytes; content supports Range and HEAD"
+          content:
+            application/octet-stream:
+              schema:
+                type: "string"
+                format: "binary"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "206":
+          description: "Requested byte range"
+        "416":
+          description: "Invalid byte range"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+    head:
+      operationId: "headLibraryContent"
+      responses:
+        "200":
+          description: "Success"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  /api/v1/library/entries/{entryId}/thumbnail:
+    get:
+      operationId: "getLibraryThumbnail"
+      responses:
+        "200":
+          description: "Private media bytes; content supports Range and HEAD"
+          content:
+            application/octet-stream:
+              schema:
+                type: "string"
+                format: "binary"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "entryId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  /api/v1/library/commands/{commandId}:
+    get:
+      operationId: "getLibraryCommand"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCommand"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "commandId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  /api/v1/library/commands/{commandId}/retry:
+    post:
+      operationId: "retryLibraryCommand"
+      responses:
+        "202":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCommand"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "commandId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  /api/v1/projects/{projectId}/canvas-items/{itemId}/library-saves:
+    get:
+      operationId: "getLibrarySaveSource"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibrarySource"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "itemId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+    post:
+      operationId: "saveLibraryEntry"
+      responses:
+        "202":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCommand"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "itemId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveLibraryRequest"
+  /api/v1/projects/{projectId}/library-imports:
+    post:
+      operationId: "importLibraryEntry"
+      responses:
+        "202":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCommand"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportLibraryRequest"
+  /api/v1/projects/{projectId}/canvas-items/{itemId}/library-references:
+    post:
+      operationId: "referenceLibraryEntry"
+      responses:
+        "202":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCommand"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      parameters:
+        - name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "itemId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReferenceLibraryRequest"
+  /api/v1/library/uploads:
+    post:
+      operationId: "uploadLibraryEntry"
+      responses:
+        "202":
+          description: "Accepted local transfer. PNG/JPEG/WebP:20 MiB/40 MP; MP3/WAV/OGG Opus:50 MiB/10min; decoded MP4:50 MiB/40 MP/60sec."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCommand"
+        default:
+          description: "ProblemDetail error"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required: ["file", "kind", "name", "category", "commandKey"]
+              properties:
+                file:
+                  type: "string"
+                  format: "binary"
+                kind:
+                  type: "string"
+                  enum: ["IMAGE", "VIDEO", "AUDIO"]
+                name:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 160
+                category:
+                  $ref: "#/components/schemas/LibraryCategory"
+                commandKey:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 200
 components:
   schemas:
+    LibraryCategory:
+      type: "string"
+      enum: ["CHARACTER", "SCENE", "PROP", "OTHER"]
+    LibrarySort:
+      type: "string"
+      enum: ["SAVED", "NAME", "UPDATED"]
+    LibraryEntry:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "name", "category", "kind", "textContent", "contentType", "byteSize", "width", "height", "durationMs", "hasThumbnail", "source", "favorite", "trashedAt", "version", "createdAt", "updatedAt"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        category:
+          $ref: "#/components/schemas/LibraryCategory"
+        kind:
+          $ref: "#/components/schemas/ArtifactKind"
+        textContent:
+          type: ["object", "null"]
+          additionalProperties: true
+        contentType:
+          type: ["string", "null"]
+        byteSize:
+          type: ["integer", "null"]
+        width:
+          type: ["integer", "null"]
+        height:
+          type: ["integer", "null"]
+        durationMs:
+          type: ["integer", "null"]
+        hasThumbnail:
+          type: "boolean"
+        source:
+          type: "object"
+          additionalProperties: true
+        favorite:
+          type: "boolean"
+        trashedAt:
+          type: ["string", "null"]
+          format: "date-time"
+        version:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        createdAt:
+          type: "string"
+          format: "date-time"
+        updatedAt:
+          type: "string"
+          format: "date-time"
+    LibraryPage:
+      type: "object"
+      additionalProperties: false
+      required: ["items", "nextCursor", "total", "categoryCounts"]
+      properties:
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/LibraryEntry"
+        nextCursor:
+          type: ["string", "null"]
+        total:
+          type: "integer"
+          minimum: 0
+        categoryCounts:
+          type: "object"
+          additionalProperties:
+            type: "integer"
+            minimum: 0
+    LibraryCommand:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "status", "result", "errorCode", "errorDetail"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        status:
+          type: "string"
+          enum: ["ACCEPTED", "ARCHIVING", "SUCCEEDED", "FAILED"]
+        result:
+          type: ["object", "null"]
+          additionalProperties: false
+          required: []
+          properties:
+            entryId:
+              type: "string"
+              format: "uuid"
+            artifactId:
+              type: "string"
+              format: "uuid"
+            versionId:
+              type: "string"
+              format: "uuid"
+            canvasItemId:
+              type: "string"
+              format: "uuid"
+            draftVersion:
+              type: "integer"
+              format: "int64"
+              minimum: 0
+            alreadySaved:
+              type: "boolean"
+            trashed:
+              type: "boolean"
+        errorCode:
+          type: ["string", "null"]
+        errorDetail:
+          type: ["string", "null"]
+    LibrarySource:
+      type: "object"
+      additionalProperties: false
+      required: ["title", "kind", "versionId", "expectedSelectionEpoch", "expectedArtifactVersion", "textContent", "assetId", "versionNo"]
+      properties:
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        kind:
+          $ref: "#/components/schemas/ArtifactKind"
+        versionId:
+          type: "string"
+          format: "uuid"
+        expectedSelectionEpoch:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        expectedArtifactVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        textContent:
+          type: ["object", "null"]
+          additionalProperties: true
+        assetId:
+          type: ["string", "null"]
+          format: "uuid"
+        versionNo:
+          type: "integer"
+          minimum: 1
+    SaveLibraryRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["versionId", "expectedSelectionEpoch", "name", "category", "commandKey"]
+      properties:
+        versionId:
+          type: "string"
+          format: "uuid"
+        expectedSelectionEpoch:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        expectedArtifactVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        category:
+          $ref: "#/components/schemas/LibraryCategory"
+        commandKey:
+          type: "string"
+          minLength: 1
+          maxLength: 200
+    UpdateLibraryRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["expectedVersion", "name", "category", "favorite"]
+      properties:
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        category:
+          $ref: "#/components/schemas/LibraryCategory"
+        favorite:
+          type: "boolean"
+    LibraryVersionRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["expectedVersion"]
+      properties:
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    ImportLibraryRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["entryId", "expectedVersion", "x", "y", "commandKey"]
+      properties:
+        entryId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        x:
+          type: "number"
+          minimum: -1000000
+          maximum: 1000000
+        y:
+          type: "number"
+          minimum: -1000000
+          maximum: 1000000
+        commandKey:
+          type: "string"
+          minLength: 1
+          maxLength: 200
+    ReferenceLibraryRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["entryId", "expectedVersion", "draft", "role", "color", "commandKey"]
+      properties:
+        entryId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        draft:
+          $ref: "#/components/schemas/SaveMediaDraftRequest"
+        role:
+          type: "string"
+          enum: ["REFERENCE", "START_FRAME", "END_FRAME", "AUDIO_REFERENCE"]
+        color:
+          type: "string"
+          pattern: "^#[0-9A-F]{6}$"
+        commandKey:
+          type: "string"
+          minLength: 1
+          maxLength: 200
     DebugSettings:
       type: object
       required: [debugMode, version]
@@ -2367,15 +3081,17 @@ components:
       type: string
       enum: [TEXT, IMAGE, VIDEO, AUDIO]
     ArtifactContent:
-      oneOf:
+      anyOf:
         - {$ref: "./artifact-schemas/text-v1.schema.json"}
-        - {$ref: "./artifact-schemas/image-v1.schema.json"}
-        - {$ref: "./artifact-schemas/video-v1.schema.json"}
+        - {$ref: "./artifact-schemas/image-v1.schema.json#/$defs/writable"}
+        - {$ref: "./artifact-schemas/image-v1.schema.json#/$defs/libraryImport"}
+        - {$ref: "./artifact-schemas/video-v1.schema.json#/$defs/writable"}
+        - {$ref: "./artifact-schemas/video-v1.schema.json#/$defs/libraryImport"}
     WritableArtifactContent:
-      oneOf:
+      anyOf:
         - {$ref: "./artifact-schemas/text-v1.schema.json"}
-        - {$ref: "./artifact-schemas/image-v1.schema.json"}
-        - {$ref: "./artifact-schemas/video-v1.schema.json"}
+        - {$ref: "./artifact-schemas/image-v1.schema.json#/$defs/writable"}
+        - {$ref: "./artifact-schemas/video-v1.schema.json#/$defs/writable"}
     CreateArtifactRequest:
       type: object
       additionalProperties: false

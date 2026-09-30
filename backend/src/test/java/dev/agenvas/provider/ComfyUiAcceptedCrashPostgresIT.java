@@ -109,6 +109,10 @@ class ComfyUiAcceptedCrashPostgresIT {
         input.put("providerConfigVersion", provider.configVersion());
         input.put("workflowVersion", workflow.version());
         input.put("prompt", "A coffee pour in a studio");
+        // Even an empty reference set is an explicit frozen input in the current contract.
+        ObjectNode mediaInput = input.putObject("mediaInput");
+        mediaInput.putArray("images");
+        mediaInput.putArray("audios");
         Task submitted = tasks.create(owner.userId(), project.id(), run.id(),
                 "image-crash", Task.Kind.IMAGE_GENERATION, input, null, 1, List.of());
 

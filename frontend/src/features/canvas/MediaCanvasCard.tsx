@@ -1,3 +1,4 @@
+import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { AudioPlayer } from "./AudioPlayer";
 import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import { Select } from "../../shared/ui/Select";
@@ -173,6 +174,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     toolbarRaised={menuOpen || operationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel="媒体卡片操作" toolbar={<>
+        <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
         {isImage ? <>
           <button type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />智能编辑</button>

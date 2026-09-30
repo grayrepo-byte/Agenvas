@@ -1,3 +1,4 @@
+import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { prepareMediaNode, AUDIO_CARD_WIDTH, AUDIO_CARD_HEIGHT, type PreparedMediaNode } from "./mediaNodeActions";
 import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import {
@@ -174,6 +175,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [creationPoint, setCreationPoint] = useState<CreationPoint | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [resourceTab, setResourceTab] = useState<"PROJECT" | "LIBRARY">("PROJECT");
   const [inspectingId, setInspectingId] = useState<string | null>(null);
   const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
@@ -1225,6 +1227,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }} type="button">关闭</button>
         </div>
         {resourcesOpen ? <>
+          <div className="library-tabs"><button type="button" aria-pressed={resourceTab === "PROJECT"} onClick={() => setResourceTab("PROJECT")}>项目资源</button><button type="button" aria-pressed={resourceTab === "LIBRARY"} onClick={() => setResourceTab("LIBRARY")}>我的资产</button></div>
+          {resourceTab === "LIBRARY" ? <LibraryCanvasPicker projectId={projectId!} position={() => {
+            const rect = canvasElement.current?.getBoundingClientRect();
+            return rect && flow.current ? flow.current.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) : { x: 80, y: 80 };
+          }} /> : <>
           <label className="mt-3 block text-sm">搜索资源
             <input value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)}
               placeholder="标题或类型" /></label>
@@ -1246,6 +1253,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             })}
           </ul>
           {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
+          </>}
         </> : null}
         {toolsKind === "UPLOAD" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-base font-semibold">上传图片或音频</h2>

@@ -66,7 +66,7 @@ public class ArtifactContentValidator {
 
     /** 区分用户图片上传和任务生成媒体；生成结果必须保留提示、配置、工作流与来源任务。 */
     private List<ArtifactVersion.InputReference> validateMedia(JsonNode content) {
-        if ("UPLOAD".equals(content.path("sourceType").asText())) {
+        if (java.util.Set.of("UPLOAD", "LIBRARY_IMPORT").contains(content.path("sourceType").asText())) {
             allowOnly(content, "sourceType", "assetId");
             requireUuid(content, "assetId");
             return List.of();

@@ -58,6 +58,64 @@ public class AssetService {
         this.clock = clock;
     }
 
+    /** Prepares fixed library bytes outside the caller's final business transaction. */
+    public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind, Path source) {
+        projects.requireActiveProject(owner, project);
+        try (InputStream input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
+            return switch (kind) {
+                case IMAGE -> storage.withTaskImageLock(project, id, () -> {
+                    var file = storage.recoverImage(project, id).orElseGet(() -> storage.storeImage(project, id, input));
+                    return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
+                            file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
+                            file.thumbnailByteSize(), file.thumbnailSha256(), now());
+                });
+                case VIDEO -> storage.withTaskVideoLock(project, id, () -> {
+                    var file = storage.recoverVideo(project, id).orElseGet(() -> storage.storeVideo(project, id, input));
+                    return new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
+                            file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
+                            file.thumbnailByteSize(), file.thumbnailSha256(), now());
+                });
+                case AUDIO -> storage.withTaskAudioLock(project, id, () -> {
+                    var file = storage.recoverAudio(project, id).orElseGet(() -> storage.storeAudio(project, id, input));
+                    return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
+                            file.sha256(), null, null, file.durationMs(), null, null, null, now());
+                });
+            };
+        } catch (IOException failure) { throw new IllegalStateException("Cannot read library import", failure); }
+    }
+
+    /** Only rejected, unregistered local imports may be removed; READY project content is never garbage. */
+    public void discardUnregisteredLibraryImport(UUID owner, Asset prepared) {
+        projects.get(owner, prepared.projectId());
+        if (assets.find(prepared.projectId(), prepared.id()).isPresent())
+            throw new IllegalStateException("Registered project media cannot be discarded");
+        if (!prepared.objectKey().startsWith(prepared.projectId() + "/"))
+            throw new IllegalStateException("Import partition mismatch");
+        storage.discard(prepared.objectKey());
+        if (prepared.thumbnailKey() != null) {
+            if (!prepared.thumbnailKey().startsWith(prepared.projectId() + "/"))
+                throw new IllegalStateException("Thumbnail partition mismatch");
+            storage.discard(prepared.thumbnailKey());
+        }
+    }
+
+    /** Registers prepared immutable bytes in the same transaction as the imported content and events. */
+    public void registerLibraryImport(UUID owner, Asset asset) {
+        events.recordChange(owner, asset.projectId(), () -> {
+            projects.requireActiveProject(owner, asset.projectId());
+            var existing = assets.find(asset.projectId(), asset.id());
+            if (existing.isPresent()) {
+                if (!existing.get().sha256().equals(asset.sha256()) || existing.get().mediaKind() != asset.mediaKind())
+                    throw new IllegalStateException("Imported media differs from READY metadata");
+                return ProjectEventService.Change.unchanged(asset);
+            }
+            assets.insert(asset);
+            return ProjectEventService.Change.changed(asset, new ProjectEventService.EventDraft("asset.ready", 1,
+                    asset.id(), 0, mapper.createObjectNode().put("assetId", asset.id().toString())
+                    .put("contentType", asset.contentType()).put("byteSize", asset.byteSize())));
+        });
+    }
+
     /** Authenticated audio upload; MIME and duration come from actual decoding. */
     public Asset archiveAudio(UUID ownerId, UUID projectId, InputStream input) {
         projects.requireActiveProject(ownerId, projectId);
