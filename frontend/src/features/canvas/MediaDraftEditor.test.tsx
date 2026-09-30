@@ -124,7 +124,15 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
     await user.click(screen.getByRole("textbox", { name: "图片提示词" }));
     expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "选择生成模型" }));
+    expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+    await user.click(screen.getByRole("textbox", { name: "图片提示词" }));
+    await user.keyboard(" while archiving");
     expect(saves).toHaveLength(0);
+    cleanup();
+    const recovery = useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`];
+    expect(recovery?.saving).toBe(false);
+    expect(recovery?.error?.message).toContain("参考转存");
   });
   it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
     const audioCapability: MediaCapability = { ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",

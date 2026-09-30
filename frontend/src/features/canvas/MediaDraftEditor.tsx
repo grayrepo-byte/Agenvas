@@ -683,18 +683,19 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   });
 
   const closeState = useRef<{ fields: DraftFields | null; dirty: boolean;
-    expectedVersion: number | null; error: Error | null }>({ fields: null,
-    dirty: false, expectedVersion: null, error: null });
+    expectedVersion: number | null; error: Error | null; libraryBusy: boolean }>({ fields: null,
+    dirty: false, expectedVersion: null, error: null, libraryBusy: false });
   useLayoutEffect(() => {
-    closeState.current = { fields, dirty, expectedVersion, error };
-  }, [fields, dirty, expectedVersion, error]);
+    closeState.current = { fields, dirty, expectedVersion, error, libraryBusy };
+  }, [fields, dirty, expectedVersion, error, libraryBusy]);
   useEffect(() => () => {
     const state = closeState.current;
     if (state.dirty && state.fields && state.expectedVersion !== null) {
       const request = { ...state.fields, expectedVersion: state.expectedVersion };
-      if (state.error) {
+      // An accepted reference owns this CAS version; closing must retain edits without racing it.
+      if (state.error || state.libraryBusy) {
         useCanvasStore.getState().setMediaDraftRecovery(ratioDraftKey,
-          { request, saving: false, error: state.error });
+          { request, saving: false, error: state.error ?? new Error("参考转存仍在进行，本地输入已保留。请重新打开并核对最新草稿后保存。") });
       } else {
         void saveClosedMediaDraft(queryClient, artifact.projectId, canvasItemId,
           request, pendingSaveRef.current);
@@ -805,6 +806,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function togglePopover(next: Popover, trigger: HTMLButtonElement) {
+    if (libraryBusy) return;
     triggerRef.current = trigger;
     setPopover((current) => current === next ? null : next);
   }
