@@ -448,6 +448,14 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 
 官方协议：[Seed Audio](https://docs.volcengine.com/docs/DoubaoVoice/audio-generation-http?lang=zh)、[音色目录](https://docs.volcengine.com/docs/DoubaoVoice/Tonelist-1?lang=zh)。本轮实现和定向验证见 [音频证据](evidence/audio-nodes-2026-09-30.md)，真实 Seed Audio / Seedance 云端调用未验证。
 
+### 6.12 AutoDL ComfyUI 工作流（2026-10-01）
+
+新增 AutoDL 连接与统一 H3 视频适配器。管理员使用 ComfyUI 分组 Token 发布具体工作流能力，版本化保存工作流 ID、输出分辨率档位及可选种子；工作流声明固定输入模式、时长、必填参考、数量与精确枚举，管理员只能收紧范围。当前支持 14 个显式时长的 H3 工作流，包含纯文本、首尾帧、多图及图片/音频混合参考；未开放任意工作流图或运行时远程发现。
+
+参考资源由服务端按同项目精确版本读取归档字节，使用带 MIME 的 base64 data URL，不发送私有 URL。图片和音频分别从零编号；首尾帧映射为 first_frame / last_frame。资源每个最多 15 MiB、合计最多 60 MiB，AutoDL 音频参考拒绝 OGG。运行前校验必填参考、数量、时长、提示词和画幅；AUTO 画幅在受理时按项目解析为精确供应商枚举并冻结。后续草稿、项目或配置修改不能改变原任务。
+
+提交持久检查点后保存 task_id，异步查询原任务；未知提交不自动重试。临时结果地址只用于受校验的服务端下载，链接刷新与归档恢复不创建新生成。视频保留原音轨，创建不可变版本且遵守当前选用结果与草稿并发保护。估算价格由管理员配置，不代表实际扣费。V65、升级与真实验证范围见 [ADR 0024](adr/0024-autodl-comfyui-workflows.md)、[接入说明](autodl-comfyui.md)与[验证证据](evidence/autodl-comfyui-2026-10-01.md)。自动时长对口型、视频参考动作迁移和 IndexTTS 另有不同输入契约，尚未实现。
+
 ## 7. 数据模型与持久化约定
 
 ### 7.1 通用约定

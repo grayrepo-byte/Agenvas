@@ -17,6 +17,8 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.AutoDlWorkflows;
+import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
@@ -83,13 +85,14 @@ public class DirectMediaTaskService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final ProjectService projects;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
             CanvasService canvas,
             MediaCapabilityService capabilities,
             ProviderProperties provider, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock) {
+            ObjectMapper mapper, Clock clock, ProjectService projects) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -102,6 +105,7 @@ public class DirectMediaTaskService {
         this.usage = usage;
         this.mapper = mapper;
         this.clock = clock;
+        this.projects = projects;
     }
 
     @Transactional
@@ -184,6 +188,25 @@ public class DirectMediaTaskService {
                         policy.supportsTransparentBackground());
             }
             String renderedPrompt = renderPrompt(draft);
+            String autodlResolution = null;
+            if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())) {
+                var workflow = AutoDlWorkflows.require(configuredSettings);
+                int audios = (int) draft.mediaInputs().stream().filter(reference ->
+                        reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+                workflow.validate(renderedPrompt, seconds, draft.videoInputMode().name(),
+                        draft.mediaInputs().size() - audios, audios);
+                if ("START_END".equals(workflow.mode()) && draft.mediaInputs().stream().noneMatch(reference ->
+                        reference.role() == MediaDraft.InputRole.END_FRAME)) throw invalid("此 AutoDL 工作流需要首帧和尾帧。");
+                String ratio = videoParameters.aspectRatio();
+                if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+                    ratio = switch (projects.get(ownerId, projectId).aspectRatio()) {
+                        case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
+                        case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
+                        case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
+                    };
+                }
+                autodlResolution = workflow.resolution(configuredSettings.path("videoResolution").asText(), ratio);
+            }
             String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
                     .connectionVersion().originSha256();
             Instant now = clock.instant();
@@ -218,6 +241,12 @@ public class DirectMediaTaskService {
                 if (originHash != null) input.put("providerOriginSha256", originHash);
                 if (kind == Task.Kind.VIDEO_GENERATION) input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
+                if (autodlResolution != null) {
+                    ObjectNode providerParameters = frozen.putObject("providerParameters");
+                    providerParameters.put("workflowId", configuredSettings.path("workflowId").asText());
+                    providerParameters.put("resolution", autodlResolution);
+                    if (configuredSettings.has("seed")) providerParameters.set("seed", configuredSettings.get("seed"));
+                }
                 if (outputCard.selectedVersionId() == null) frozen.putNull("parentVersionId");
                 else frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
                 frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
@@ -883,7 +912,9 @@ public class DirectMediaTaskService {
             MediaCapabilityBinding binding) {
         boolean seed = MediaAdapterRegistry.SEED_AUDIO_1.equals(binding.adapterId());
         boolean ark = MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId());
-        if (!seed && !ark) return;
+        boolean autodl = AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId());
+        if (!seed && !ark && !autodl) return;
+        long autodlTotalBytes = 0;
         long audioDuration = 0;
         int imageCount = 0;
         int audioCount = 0;
@@ -894,6 +925,13 @@ public class DirectMediaTaskService {
             Asset asset = assets.requireReadyMedia(ownerId, projectId,
                     UUID.fromString(version.content().path("assetId").asText()),
                     audio ? Asset.MediaKind.AUDIO : Asset.MediaKind.IMAGE);
+            if (autodl) {
+                autodlTotalBytes += asset.byteSize();
+                if (asset.byteSize() > AutoDlWorkflows.MAX_REFERENCE_BYTES
+                        || autodlTotalBytes > AutoDlWorkflows.MAX_TOTAL_REFERENCE_BYTES
+                        || audio && !Set.of("audio/mpeg", "audio/wav", "audio/flac").contains(asset.contentType()))
+                    throw invalid("AutoDL 参考资源每个最多 15 MiB、合计最多 60 MiB；音频仅接受 MP3/WAV/FLAC。");
+            }
             if (!audio) {
                 imageCount++;
                 if (seed && asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES)

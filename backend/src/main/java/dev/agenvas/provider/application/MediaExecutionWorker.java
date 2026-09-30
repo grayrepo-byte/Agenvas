@@ -144,6 +144,7 @@ public class MediaExecutionWorker {
         var spec = mapper.readTree(snapshot.specJson());
         String model = spec.path("settings").path("model").asText("");
         if (model.isEmpty()) model = spec.path("modelId").asText(null);
+        if (model == null) model = spec.path("settings").path("workflowId").asText(null);
         if (model == null) model = spec.path("settings").path("checkpoint").asText(null);
         if (model == null) model = spec.path("settings").path("diffusionModel").asText(null);
         boolean mock = snapshot.connection().platform() == MediaPlatform.MOCK;

@@ -4,6 +4,7 @@ import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
 import dev.agenvas.provider.domain.MediaPlatform;
+import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
@@ -297,7 +298,9 @@ public class MediaCapabilityService {
 
     /** Versioned protocol settings; graph structure and adapter support remain compiled code. */
     private String spec(String adapterId, JsonNode suppliedSettings) {
-        var declaration = registry.declaration(adapterId);
+        var declaration = AutoDlWorkflows.ADAPTER_ID.equals(adapterId)
+                ? AutoDlWorkflows.require(suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings).declaration()
+                : registry.declaration(adapterId);
         ObjectNode normalized = mapper.createObjectNode();
         normalized.put("schemaVersion", 1);
         normalized.put("kind", declaration.kind().name());
@@ -340,7 +343,8 @@ public class MediaCapabilityService {
             default -> List.of();
         };
         for (String field : source.propertyNames()) {
-            if (!fields.contains(field) && !MediaCapabilityConfiguration.FIELDS.contains(field))
+            if (!fields.contains(field) && !MediaCapabilityConfiguration.FIELDS.contains(field)
+                    && !(AutoDlWorkflows.ADAPTER_ID.equals(adapterId) && AutoDlWorkflows.SETTINGS.contains(field)))
                 throw invalid("能力模板包含不允许的参数");
         }
         for (String field : fields) {
@@ -368,11 +372,22 @@ public class MediaCapabilityService {
             }
             settings.put(field, value.asText());
         }
+        if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
         MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
         var policy = MediaCapabilityConfiguration.policy(declaration, settings);
+        if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
+            var workflow = AutoDlWorkflows.require(settings);
+            if (policy.maxReferenceImages() < workflow.minimumImages() || policy.maxReferenceAudios() < workflow.minimumAudios())
+                throw invalid("参考上限不能低于 AutoDL 工作流必填数量");
+            if (settings.has("defaultParameters")) {
+                String ratio = settings.path("defaultParameters").path("aspectRatio").asText();
+                if (!"AUTO".equals(ratio)) workflow.resolution(settings.path("videoResolution").asText(), ratio);
+            }
+        }
         normalized.put("minimumSeconds", policy.minimumSeconds());
         normalized.put("maximumSeconds", policy.maximumSeconds());
         normalized.put("maxReferenceImages", policy.maxReferenceImages());
+        normalized.put("maxReferenceAudios", policy.maxReferenceAudios());
         return normalized.toString();
     }
 
@@ -401,8 +416,10 @@ public class MediaCapabilityService {
     }
 
     public MediaAdapterRegistry.Declaration inputPolicy(Snapshot snapshot) {
-        return MediaCapabilityConfiguration.policy(registry.declaration(snapshot.adapterId()),
-                mapper.readTree(snapshot.specJson()).path("settings"));
+        JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
+        var declaration = AutoDlWorkflows.ADAPTER_ID.equals(snapshot.adapterId())
+                ? AutoDlWorkflows.require(settings).declaration() : registry.declaration(snapshot.adapterId());
+        return MediaCapabilityConfiguration.policy(declaration, settings);
     }
 
     public JsonNode settings(MediaCapabilityBinding binding) {
@@ -617,7 +634,8 @@ public class MediaCapabilityService {
 
     private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
         boolean cloud = platform == MediaPlatform.OPENAI || platform == MediaPlatform.ARK
-                || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE;
+                || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE
+                || platform == MediaPlatform.AUTODL;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid("云平台连接必须填写 API Key");
         }

@@ -2,6 +2,7 @@ import type { MediaConnection } from "../../shared/api/client";
 
 /** Presentation metadata for compiled protocols; the server validates their actual bounds. */
 export const mediaAdapters = {
+  AUTODL_COMFY_VIDEO: { label: "ComfyUI 工作流 · AutoDL H3", kind: "VIDEO_GENERATION", references: 9, minimum: 1, maximum: 15 },
   LOCAL_IMAGE_PROCESSOR: { label: "本地图片处理", kind: "IMAGE_GENERATION", references: 1, minimum: 0, maximum: 0 },
   MOCK_IMAGE: { label: "Mock 图片演示", kind: "IMAGE_GENERATION", references: 4, minimum: 0, maximum: 0 },
   MOCK_AUDIO: { label: "Mock 音频演示", kind: "AUDIO_GENERATION", references: 1, minimum: 0, maximum: 0 },
@@ -17,7 +18,7 @@ export const mediaAdapters = {
 export const platformAdapters: Record<MediaConnection["platform"], string[]> = {
   LOCAL: ["LOCAL_IMAGE_PROCESSOR"], MOCK: ["MOCK_IMAGE", "MOCK_VIDEO", "MOCK_AUDIO"],
   COMFYUI: ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"], OPENAI: ["OPENAI_GPT_IMAGE_2"],
-  VOLCENGINE: ["VOLC_SEED_AUDIO_1"], GOOGLE: ["GOOGLE_NANO_BANANA_2"], ARK: ["ARK_SEEDANCE_2_I2V"],
+  AUTODL: ["AUTODL_COMFY_VIDEO"], VOLCENGINE: ["VOLC_SEED_AUDIO_1"], GOOGLE: ["GOOGLE_NANO_BANANA_2"], ARK: ["ARK_SEEDANCE_2_I2V"],
 };
 
 export function adapterMetadata(id: string) {

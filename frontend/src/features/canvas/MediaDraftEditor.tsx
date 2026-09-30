@@ -1,3 +1,4 @@
+import { AUTODL_ADAPTER, getAutoDlWorkflow, autoDlRatioSupported } from "../../shared/autodlWorkflows";
 import { AudioPromptTools } from "./AudioPromptTools";
 import { VOICES } from "./voiceCatalog";
 import { VoiceLibrary } from "./VoiceLibrary";
@@ -897,17 +898,25 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     && (supportedImageQualities.length === 0
       || supportedImageQualities.includes(imageParameters.quality))
     && (!imageParameters.transparentBackground || chosenCapability!.supportsTransparentBackground);
+  const autodlWorkflow = chosenCapability?.adapterId === AUTODL_ADAPTER
+    ? getAutoDlWorkflow(chosenCapability.settings.workflowId) : undefined;
+  const autodlTier = chosenCapability?.settings.videoResolution ?? autodlWorkflow?.defaultResolution ?? "";
+  const autodlInputsValid = !autodlWorkflow || imageCount >= autodlWorkflow.minimumImages
+    && audioCount >= autodlWorkflow.minimumAudios
+    && (autodlWorkflow.mode !== "START_END" || Boolean(endFrame))
+    && Array.from(fields.prompt).length <= autodlWorkflow.promptLimit;
+  const autodlRatioValid = !autodlWorkflow || autoDlRatioSupported(autodlWorkflow, autodlTier, videoParameters.aspectRatio);
   const videoModeSupported = artifact.kind !== "VIDEO" || effectiveMode !== null
     && (chosenCapability?.supportedVideoInputModes.includes(effectiveMode) ?? false);
   const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
     && !error && !run.isPending
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
     && fields.prompt.trim().length > 0 && !occupied
-    && semanticInputsValid && allInputsAvailable && imageParametersSupported && videoModeSupported
+    && semanticInputsValid && autodlInputsValid && autodlRatioValid && allInputsAvailable && imageParametersSupported && videoModeSupported
     && (artifact.kind !== "VIDEO" || validDuration);
   const dimensionLabel = artifact.kind === "IMAGE"
     ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
-    : ASPECT_RATIO_LABELS[videoParameters.aspectRatio];
+    : `${ASPECT_RATIO_LABELS[videoParameters.aspectRatio]}${autodlWorkflow ? ` · ${autodlTier}` : ""}`;
   const qualityLabel = artifact.kind === "IMAGE"
     ? supportedImageQualities.length
       ? QUALITY_LABELS[imageParameters.quality] : "模型默认"
@@ -1291,7 +1300,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             const unsupported = !chosenCapability?.supportedVideoInputModes.includes(option.value);
             const disabled = missingImage || hasImagesForText || unsupported;
             const reason = missingImage ? "添加图片后可用" : hasImagesForText ? "移除参考素材后自动切换"
-              : unsupported ? "当前模型不支持" : option.description;
+              : unsupported ? "当前模型不支持" : option.value === "START_END" && autodlWorkflow ? "首帧和尾帧均为必填" : option.description;
             return <button key={option.value} className="media-draft-model-option" role="menuitemradio"
               type="button" aria-checked={effectiveMode === option.value} disabled={disabled}
               title={reason} onClick={() => chooseVideoMode(option.value)}>
@@ -1380,7 +1389,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             <p className="media-draft-fixed-parameter">空节点首个结果留在当前节点，其余结果创建独立节点</p>
           </div> : <div className="media-draft-video-parameters">
             <fieldset><legend>比例</legend><div className="media-draft-choice-grid media-draft-video-aspect-grid">
-              {VIDEO_ASPECT_RATIO_OPTIONS.map((value) => <button key={value} type="button"
+              {VIDEO_ASPECT_RATIO_OPTIONS.filter((value) => !autodlWorkflow || autoDlRatioSupported(autodlWorkflow, autodlTier, value)).map((value) => <button key={value} type="button"
                 aria-pressed={videoParameters.aspectRatio === value}
                 aria-label={ASPECT_RATIO_LABELS[value]}
                 onClick={() => edit({ parameters: { aspectRatio: value } })}>
@@ -1428,6 +1437,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         ? <p role="alert">当前模型不支持{VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label}，请切换模型或添加/移除图片。</p> : null}
       {settings.error ? <div role="alert">无法读取模型配置。
         <button className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">重试读取模型</button></div> : null}
+      {autodlWorkflow && !autodlInputsValid ? <p role="alert">此 AutoDL 工作流至少需要 {autodlWorkflow.minimumImages} 张图片、{autodlWorkflow.minimumAudios} 条音频{autodlWorkflow.mode === "START_END" ? "（首帧和尾帧均需提供）" : ""}，提示词最多 {autodlWorkflow.promptLimit} 字符。</p> : null}
+      {autodlWorkflow && !autodlRatioValid ? <p role="alert">当前 AutoDL 工作流不支持此画幅，请选择支持的比例。</p> : null}
       {isAudio && !semanticInputsValid ? <p role="alert">音频生成最多参考 1 张图片或 3 个音频/音色；图片不能与音频或指定音色混用，提示词最多 3000 字符。</p> : null}
       {artifact.kind === "VIDEO" && duration != null && !validDuration ? <p role="alert">请填写所选模型支持的整数秒时长。</p> : null}
       {fields.mediaInputs.length > 0 && !historyPending && (!resources.isSuccess || !allInputsAvailable)

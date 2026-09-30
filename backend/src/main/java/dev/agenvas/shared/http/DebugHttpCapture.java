@@ -72,7 +72,7 @@ public final class DebugHttpCapture implements AutoCloseable {
         String value = normalized(name);
         return PRIVATE_FIELDS.contains(value) || value.endsWith("apikey") || value.endsWith("secret")
                 || value.endsWith("password") || value.endsWith("credential") || value.endsWith("token")
-                || value.contains("authorization") || value.startsWith("xamz") || value.startsWith("xgoog");
+                || value.contains("authorization") || value.startsWith("xamz") || value.startsWith("xgoog") || value.startsWith("xtos");
     }
     private void remember(String value) {
         if (value == null || value.isBlank()) return;
@@ -92,7 +92,7 @@ public final class DebugHttpCapture implements AutoCloseable {
                 .replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED)
                 .replaceAll("(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(-----END [A-Z ]*PRIVATE KEY-----|$)", REDACTED)
                 .replaceAll("\\bsk-[A-Za-z0-9_-]+", REDACTED)
-                .replaceAll("(?i)([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig|x-amz-[a-z-]+|x-goog-[a-z-]+)=)[^&\\s\"<>]+", "$1" + REDACTED)
+                .replaceAll("(?i)([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig|x-amz-[a-z-]+|x-goog-[a-z-]+|x-tos-[a-z-]+)=)[^&\\s\"<>]+", "$1" + REDACTED)
                 .replaceAll("(?i)(https?://)[^/\\s@]+@", "$1" + REDACTED + "@");
     }
     private JsonNode scrub(JsonNode node) {

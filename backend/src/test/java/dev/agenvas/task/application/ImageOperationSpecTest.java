@@ -12,7 +12,7 @@ class ImageOperationSpecTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final DirectMediaTaskService service = new DirectMediaTaskService(
             null, null, null, null, null, null, null, null, null, null, mapper,
-            Clock.systemUTC());
+            Clock.systemUTC(), null);
 
     @Test
     void declaresModelExtensionsAsCloudImageOperations() {

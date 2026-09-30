@@ -19,3 +19,5 @@
 ## 后果
 
 新增供应商仍需要编写和测试适配器，但计划、审批与画布使用稳定能力契约，无须增加供应商分支。管理员不能通过填 API 模板接入任意平台；这降低了当前交付范围，也避免把尚未验证的动态代码执行和任意平台兼容性标记为已完成。基础层及首批渠道分别见[媒体能力规格](../superpowers/specs/2026-09-25-media-capability-foundation-design.md)和[固定渠道规格](../superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)。
+
+2026-10-01 补充：用户明确要求的 AutoDL ComfyUI 工作流接入采用同一固定 Java 协议与受审查参数声明，局部修订本 ADR 暂不接入工作流平台的范围；不开放任意工作流图、脚本或远程发现。见 [ADR 0024](0024-autodl-comfyui-workflows.md)。
