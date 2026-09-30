@@ -6,14 +6,7 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.FilterInputStream;
 import java.net.URI;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.Channels;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
@@ -39,6 +32,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/v1/projects/{projectId}/assets")
 public class AssetController {
 
+    private static final long MAX_THUMBNAIL_BYTES = 20L * 1024 * 1024;
+
     /** 校验媒体内容、检查项目权限并读取归档文件。 */
     private final AssetService assets;
 
@@ -59,6 +54,16 @@ public class AssetController {
         }
     }
 
+    /** Upload an actually decoded MP4, using the same immutable archive boundary as generated video. */
+    @PostMapping(path = "/video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AssetResponse> uploadVideo(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @RequestPart("file") MultipartFile file) throws IOException {
+        try (InputStream input = file.getInputStream()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(AssetResponse.from(
+                    assets.archiveVideo(principal.userId(), projectId, input)));
+        }
+    }
+
     @PostMapping(path = "/audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AssetResponse> uploadAudio(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @RequestPart("file") MultipartFile file) throws IOException {
@@ -72,7 +77,7 @@ public class AssetController {
     @GetMapping("/{assetId}")
     public AssetResponse metadata(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID assetId) {
-        return AssetResponse.from(assets.get(principal.userId(), projectId, assetId).asset());
+        return AssetResponse.from(assets.metadata(principal.userId(), projectId, assetId));
     }
 
     /** 流式发送完整内容或受限字节范围，不把媒体文件整体读入 JVM 内存。 */
@@ -101,21 +106,13 @@ public class AssetController {
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
             @PathVariable UUID assetId) throws IOException {
-        AssetService.ThumbnailFile preview = assets.getThumbnail(
-                principal.userId(), projectId, assetId);
-        long size = preview.asset().thumbnailByteSize();
-        if (size < 1 || size > 20L * 1024 * 1024) {
-            throw new IOException("Archived thumbnail has an invalid size");
-        }
-        byte[] bytes = new byte[(int) size];
-        try (FileChannel channel = FileChannel.open(preview.path(),
-                StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            while (buffer.hasRemaining()) {
-                if (channel.read(buffer) <= 0) {
-                    throw new IOException("Archived thumbnail ended before its recorded size");
-                }
-            }
+        AssetService.AssetContent preview = assets.content(principal.userId(), projectId, assetId, true);
+        long size = preview.size();
+        if (size < 1 || size > MAX_THUMBNAIL_BYTES) throw new IOException("Archived thumbnail has an invalid size");
+        byte[] bytes;
+        try (InputStream input = assets.open(preview, 0, size)) {
+            bytes = input.readNBytes((int) size);
+            if (bytes.length != size) throw new IOException("Archived thumbnail ended before its recorded size");
         }
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
@@ -127,75 +124,18 @@ public class AssetController {
     /** 先取得经授权的资产文件，再使用记录的大小与类型构造流式响应。 */
     private ResponseEntity<InputStreamResource> stream(AdminPrincipal principal,
             UUID projectId, UUID assetId, String requestedRange, boolean head) throws IOException {
-        AssetService.AssetFile file = assets.get(principal.userId(), projectId, assetId);
-        return streamFile(file.path(), file.asset().byteSize(),
-                file.asset().contentType(), requestedRange, head);
-    }
-
-    /** 根据单段范围请求构造 200/206 响应，并为 HEAD 留空响应体。 */
-    private ResponseEntity<InputStreamResource> streamFile(Path path, long size,
-            String contentType, String requestedRange, boolean head) throws IOException {
+        AssetService.AssetContent file = assets.content(principal.userId(), projectId, assetId, false);
+        long size = file.size();
         ByteRange selected = ByteRange.parse(requestedRange, size);
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType(contentType));
+        headers.setContentType(MediaType.parseMediaType(file.contentType()));
         headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
         headers.set(HttpHeaders.CACHE_CONTROL, "private, no-store");
         headers.setContentLength(selected.length());
-        if (selected.partial()) {
-            headers.set(HttpHeaders.CONTENT_RANGE,
-                    "bytes " + selected.start() + "-" + selected.end() + "/" + size);
-        }
-        InputStreamResource body = head ? null : new InputStreamResource(
-                boundedFileRange(path, selected));
-        return new ResponseEntity<>(body, headers,
-                selected.partial() ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
-    }
-
-    /** 禁止符号链接跟随，并将输入流严格限制在已解析的字节区间内。 */
-    private InputStream boundedFileRange(Path path, ByteRange selected) throws IOException {
-        FileChannel channel = FileChannel.open(path,
-                StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
-        channel.position(selected.start());
-        return new FilterInputStream(Channels.newInputStream(channel)) {
-            private long remaining = selected.length();
-
-            /** 读取单字节并维护范围剩余长度，文件意外提前结束时报错。 */
-            @Override
-            public int read() throws IOException {
-                if (remaining == 0) return -1;
-                int value = super.read();
-                if (value < 0) throw new IOException("Archived asset ended before its recorded size");
-                remaining--;
-                return value;
-            }
-
-            /** 限制批量读取长度，不允许越过所选范围末端。 */
-            @Override
-            public int read(byte[] bytes, int offset, int length) throws IOException {
-                if (length == 0) return 0;
-                if (remaining == 0) return -1;
-                int count = in.read(bytes, offset, (int) Math.min(length, remaining));
-                if (count <= 0) throw new IOException("Archived asset ended before its recorded size");
-                remaining -= count;
-                return count;
-            }
-
-            /** 通过文件通道前移位置并同步扣减可读取范围。 */
-            @Override
-            public long skip(long count) throws IOException {
-                if (count <= 0 || remaining == 0) return 0;
-                long skipped = Math.min(count, remaining);
-                channel.position(channel.position() + skipped);
-                remaining -= skipped;
-                return skipped;
-            }
-
-            /** 返回不超过当前范围剩余量的可立即读取字节数。 */
-            @Override
-            public int available() throws IOException {
-                return (int) Math.min(in.available(), Math.min(remaining, Integer.MAX_VALUE));
-            }
-        };
+        if (selected.partial()) headers.set(HttpHeaders.CONTENT_RANGE,
+                "bytes " + selected.start() + "-" + selected.end() + "/" + size);
+        InputStreamResource body = head ? null : new InputStreamResource(assets.open(file, selected.start(), selected.length()));
+        return new ResponseEntity<>(body, headers, selected.partial() ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
     }
 
     /** 为范围错误返回 416，并附带客户端重新请求所需的文件总长度。 */

@@ -37,7 +37,7 @@ import {
   listCanvasConnections,
   listArtifacts,
   projectExportManifestUrl,
-  uploadImageAsset, uploadAudioAsset,
+  uploadImageAsset, uploadAudioAsset, uploadVideoAsset,
   updateAgent,
   disconnectCanvasConnection,
   duplicateCanvasItem,
@@ -448,18 +448,19 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const addImageCard = useMutation({
     mutationFn: async ({ cardTitle, file }: { cardTitle: string; file: File }) => {
       const audio = file.type.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(file.name);
+      const video = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
       const progress = imageProgress.current?.projectId === projectId &&
         imageProgress.current.file === file && imageProgress.current.title === cardTitle
         ? imageProgress.current : { projectId, file, title: cardTitle };
       imageProgress.current = progress;
       if (!progress.assetId) {
-        const asset = await (audio ? uploadAudioAsset : uploadImageAsset)(projectId, file);
+        const asset = await (audio ? uploadAudioAsset : video ? uploadVideoAsset : uploadImageAsset)(projectId, file);
         progress.assetId = asset.id;
       }
       if (!progress.artifactId) {
         progress.createKey ??= crypto.randomUUID();
         const artifact = await createArtifact(projectId, {
-          kind: audio ? "AUDIO" : "IMAGE",
+          kind: audio ? "AUDIO" : video ? "VIDEO" : "IMAGE",
           title: cardTitle,
           content: { sourceType: "UPLOAD", assetId: progress.assetId },
         }, progress.createKey);
@@ -1229,11 +1230,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
         </> : null}
         {toolsKind === "UPLOAD" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
-          <h2 className="text-base font-semibold">上传图片或音频</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">图片支持 PNG、JPEG、WebP，最大 20 MiB/40 MP；音频支持 MP3、WAV、OGG Opus，最大 50 MiB/10 分钟。上传后创建对应媒体节点，可作为精确版本参考。</p>
+          <h2 className="text-base font-semibold">上传图片、视频或音频</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">图片支持 PNG、JPEG、WebP，最大 20 MiB/40 MP；视频支持 MP4，最大 500 MiB；音频支持 MP3、WAV、OGG Opus，最大 50 MiB/10 分钟。上传后创建对应媒体节点，可作为精确版本参考。</p>
           <form className="mt-4" onSubmit={submitImage}>
             <label className="text-sm font-medium">素材标题<input maxLength={160} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
-            <label className="mt-3 block text-sm font-medium">图片或音频<input accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
+            <label className="mt-3 block text-sm font-medium">图片、视频或音频<input accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
             <button className="secondary-button mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? "正在上传并放置…" : "上传并放到画布"}</button>
           </form>
           {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}

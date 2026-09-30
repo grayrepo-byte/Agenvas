@@ -90,6 +90,15 @@ public class CredentialCipher {
         return encryptWithAad(connectionId, version, secret, "media-provider-connection");
     }
 
+    /** Object-storage secrets are bound to their own configuration identity and revision. */
+    public Encrypted encryptStorage(UUID id, int version, String secret) {
+        return encryptWithAad(id, version, secret, "object-storage-profile");
+    }
+
+    public String decryptStorage(UUID id, int version, Encrypted encrypted) {
+        return decryptWithAad(id, version, encrypted, "object-storage-profile");
+    }
+
     private Encrypted encryptWithAad(UUID configId, int version, String secret,
             String namespace) {
         requireKey();

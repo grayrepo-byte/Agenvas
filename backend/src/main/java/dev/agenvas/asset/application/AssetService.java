@@ -31,7 +31,7 @@ public class AssetService {
     /** 保存 READY 素材元数据并按项目查询。 */
     private final AssetRepository assets;
     /** 验证字节、解码媒体、生成缩略图并安装不可变文件。 */
-    private final LocalAssetStorage storage;
+    private final dev.agenvas.asset.storage.AssetStorage storage;
     /** 将素材就绪状态与项目事件一起提交。 */
     private final ProjectEventService events;
     /** 构造不暴露存储路径的素材事件负载。 */
@@ -48,7 +48,8 @@ public class AssetService {
      * @param clock 提供可控的素材创建时间
      */
     public AssetService(ProjectService projects, AssetRepository assets,
-            LocalAssetStorage storage, ProjectEventService events, ObjectMapper mapper,
+            @org.springframework.beans.factory.annotation.Qualifier("configuredAssetStorage")
+            dev.agenvas.asset.storage.AssetStorage storage, ProjectEventService events, ObjectMapper mapper,
             Clock clock) {
         this.projects = projects;
         this.assets = assets;
@@ -325,6 +326,34 @@ public class AssetService {
         return new AssetFile(asset, path);
     }
 
+    /** READY metadata is the database truth; creating an input reference never performs network I/O. */
+    public Asset metadata(UUID ownerId, UUID projectId, UUID assetId) {
+        projects.get(ownerId, projectId);
+        return assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
+                "ASSET_NOT_FOUND", "素材不存在", "找不到该项目中的素材。", false));
+    }
+
+    /** Authorize before accessing storage; metadata/HEAD never materialize a remote video. */
+    public AssetContent content(UUID ownerId, UUID projectId, UUID assetId, boolean thumbnail) {
+        projects.get(ownerId, projectId);
+        Asset asset = assets.find(projectId, assetId).orElseThrow(() ->
+                new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", "素材不存在", "找不到该项目中的素材。", false));
+        if (thumbnail && (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null))
+            throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND", "预览不存在", "该素材没有可用的缩略图。", false);
+        String key = thumbnail ? asset.thumbnailKey() : asset.objectKey();
+        long size = thumbnail ? asset.thumbnailByteSize() : asset.byteSize();
+        String hash = thumbnail ? asset.thumbnailSha256() : asset.sha256();
+        storage.verify(key, size, hash);
+        return new AssetContent(asset, key, size, thumbnail ? "image/png" : asset.contentType());
+    }
+
+    /** Open only a previously authorized descriptor; the stream owns its local/remote resources. */
+    public InputStream open(AssetContent content, long start, long length) throws IOException {
+        return storage.open(content.objectKey(), start, length, content.size());
+    }
+
+    public record AssetContent(Asset asset, String objectKey, long size, String contentType) {}
+
     /** 向项目清单组装器返回已鉴权的素材记录，不返回磁盘路径。 */
     public List<Asset> listProjectAssets(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
@@ -334,7 +363,7 @@ public class AssetService {
     /** 产物引用媒体前确认素材已 READY、属于该项目且类型匹配。 */
     public Asset requireReadyMedia(UUID ownerId, UUID projectId, UUID assetId,
             Asset.MediaKind expectedKind) {
-        Asset asset = get(ownerId, projectId, assetId).asset();
+        Asset asset = metadata(ownerId, projectId, assetId);
         if (asset.mediaKind() != expectedKind) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "ARTIFACT_ASSET_KIND_INVALID",
                     "素材类型不匹配", "产物引用的素材类型不匹配。", false);
@@ -344,7 +373,7 @@ public class AssetService {
 
     /** 使用与原素材相同的项目权限返回预先生成的小型 PNG 缩略图。 */
     public ThumbnailFile getThumbnail(UUID ownerId, UUID projectId, UUID assetId) {
-        Asset asset = get(ownerId, projectId, assetId).asset();
+        Asset asset = metadata(ownerId, projectId, assetId);
         if (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null) {
             throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND",
                     "预览不存在", "该素材没有可用的缩略图。", false);

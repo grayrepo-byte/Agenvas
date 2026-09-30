@@ -594,13 +594,90 @@ describe("ProjectWorkspacePage", () => {
 
     await user.click(screen.getByRole("button", { name: "导入素材" }));
     await user.type(screen.getByLabelText("素材标题"), "Product reference");
-    await user.upload(screen.getByLabelText("图片或音频"),
+    await user.upload(screen.getByLabelText("图片、视频或音频"),
       new File(["real bytes checked by backend"], "reference.webp", { type: "image/webp" }));
-    expect((screen.getByLabelText("图片或音频") as HTMLInputElement).files).toHaveLength(1);
+    expect((screen.getByLabelText("图片、视频或音频") as HTMLInputElement).files).toHaveLength(1);
     fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
     const preview = await screen.findByAltText("Product reference 的预览");
     expect(preview).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(preview.closest(".react-flow__node")).toHaveStyle({ visibility: "visible" });
+    expect(uploaded).toBe(true);
+    expect(created).toBe(true);
+    expect(screen.getByLabelText("素材标题")).toHaveValue("");
+  });
+
+  it("uploads MP4 through the video archive route and places an exact-version VIDEO card", async () => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    let uploaded = false;
+    let created = false;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        const body = await request.json() as { kind: string; title: string; content: unknown };
+        expect(body).toMatchObject({ kind: "VIDEO", title: "Uploaded video",
+          content: { sourceType: "UPLOAD", assetId } });
+        created = true;
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: Array<{ artifactId: string }> };
+        expect(body.commands[0]?.artifactId).toBe(artifactId);
+        const selectedVersion = { id: versionId, versionNo: 1, schemaVersion: 1 as const,
+          content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
+          createdByKind: "USER" as const, runId: null, createdAt: "2026-09-23T00:00:00Z" };
+        return HttpResponse.json({ items: [{
+          id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "Uploaded video",
+          x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          artifact: {
+            id: artifactId, projectId: "project-1", kind: "VIDEO",
+            title: "Uploaded video", resourceDefaultVersionId: versionId, version: 0,
+            createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
+            resourceDefaultVersion: selectedVersion,
+          },
+        }] });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets/video") {
+        expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-token");
+        expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+        expect(init?.body).toBeInstanceOf(FormData);
+        expect((init?.body as FormData).get("file")).toHaveProperty("name", "uploaded.mp4");
+        uploaded = true;
+        return HttpResponse.json({ id: assetId, mediaKind: "VIDEO" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "导入素材" }));
+    await user.type(screen.getByLabelText("素材标题"), "Uploaded video");
+    await user.upload(screen.getByLabelText("图片、视频或音频"),
+      new File(["real bytes checked by backend"], "uploaded.mp4", { type: "video/mp4" }));
+    expect((screen.getByLabelText("图片、视频或音频") as HTMLInputElement).files).toHaveLength(1);
+    fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
+    const poster = await screen.findByRole("img", { name: "Uploaded video 的视频封面" });
+    expect(poster).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+    expect(document.querySelector("video")).toBeNull();
     expect(uploaded).toBe(true);
     expect(created).toBe(true);
     expect(screen.getByLabelText("素材标题")).toHaveValue("");
@@ -641,13 +718,13 @@ describe("ProjectWorkspacePage", () => {
     );
     await user.click(screen.getByRole("button", { name: "导入素材" }));
     await user.type(screen.getByLabelText("素材标题"), "Broken reference");
-    await user.upload(screen.getByLabelText("图片或音频"),
+    await user.upload(screen.getByLabelText("图片、视频或音频"),
       new File(["bad image"], "broken.webp", { type: "image/webp" }));
-    expect((screen.getByLabelText("图片或音频") as HTMLInputElement).files).toHaveLength(1);
+    expect((screen.getByLabelText("图片、视频或音频") as HTMLInputElement).files).toHaveLength(1);
     fireEvent.submit(screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!);
     expect(await screen.findByText("图片解码失败。")).toBeInTheDocument();
     expect(screen.getByLabelText("素材标题")).toHaveValue("Broken reference");
-    expect((screen.getByLabelText("图片或音频") as HTMLInputElement).files?.[0]?.name)
+    expect((screen.getByLabelText("图片、视频或音频") as HTMLInputElement).files?.[0]?.name)
       .toBe("broken.webp");
     expect(creates).toBe(0);
   });
@@ -701,7 +778,7 @@ describe("ProjectWorkspacePage", () => {
     );
     await user.click(screen.getByRole("button", { name: "导入素材" }));
     await user.type(screen.getByLabelText("素材标题"), "Retry reference");
-    await user.upload(screen.getByLabelText("图片或音频"),
+    await user.upload(screen.getByLabelText("图片、视频或音频"),
       new File(["bytes"], "retry.webp", { type: "image/webp" }));
     const form = screen.getByRole("button", { name: "上传并放到画布" }).closest("form")!;
     fireEvent.submit(form);

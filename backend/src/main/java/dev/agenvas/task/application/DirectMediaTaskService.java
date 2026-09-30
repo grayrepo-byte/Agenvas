@@ -275,7 +275,6 @@ public class DirectMediaTaskService {
     }
 
     /** Accepts one image post-processing command while pinning the exact visible source version. */
-    @Transactional
     public Task runImageOperation(UUID ownerId, UUID projectId, UUID artifactId,
             UUID canvasItemId, UUID sourceVersionId, long expectedCanvasItemVersion,
             ImageOperation operation, String instruction, UUID capabilityId,
@@ -309,6 +308,11 @@ public class DirectMediaTaskService {
         }
         if (!operation.cloud() && capabilityId != null) {
             throw invalid("本地图片处理不能指定云端图片能力。");
+        }
+        // Remote masks are materialized before the event transaction acquires project locks.
+        // Immutable READY bytes allow the acceptance transaction to recheck only identity and capability.
+        if (maskAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()) {
+            validateImageMask(ownerId, projectId, maskAssetId);
         }
         UUID requestedCapabilityId = operation.cloud()
                 ? capabilityId : LOCAL_IMAGE_CAPABILITY_ID;
@@ -372,7 +376,7 @@ public class DirectMediaTaskService {
                 if (!inputPolicy.supportsImageMask()) {
                     throw invalid("所选 AI 图片能力不支持显式蒙版编辑。");
                 }
-                validateImageMask(ownerId, projectId, maskAssetId);
+                assets.requireReadyMedia(ownerId, projectId, maskAssetId, Asset.MediaKind.IMAGE);
             }
             boolean transparentOutput = requiresTransparentOutput(operation,
                     operationParameters);

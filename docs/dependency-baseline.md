@@ -97,3 +97,7 @@ server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当�
 
 媒体集成测试不再固定 macOS Homebrew 路径，使用服务端固定路径发现（`/usr/bin`、`/opt/homebrew/bin`、`/usr/local/bin`）；Ubuntu CI 后端 job 显式安装 `ffmpeg`/`ffprobe` 所在系统包。当前主机定向测试已运行，GitHub Ubuntu job 尚未在此工作区验证。
 - SSE 通过 Testcontainers 中真实 Tomcat HTTP 和 Nginx 配置验证；浏览器全链路弱网压测仍属于发布前门禁。
+
+## 2026-10-01 对象存储验证范围
+
+对象存储复用现有 OkHttp 4.12.0 和 JDK SHA-256/HMAC，不引入云 SDK 或新运行依赖。固定 PUT/HEAD/GET Range/DELETE 协议及签名根据 [AWS SigV4](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html)、[COS 的 S3 兼容说明](https://intl.cloud.tencent.com/document/product/436/34688?lang=en)和 [OSS V4](https://www.alibabacloud.com/help/en/oss/developer-reference/recommend-to-use-signature-version-4)实现；限制目标与操作的传输保持应用的 DNS、重定向和重试控制。AWS 官方示例签名有定向单元测试，OSS 规范化示例以独立 HMAC 计算交叉核验。真实云账户兼容性与吞吐尚未实测，假 HTTP 服务不代表真实云验收。jOOQ 由隔离 PostgreSQL 17.11 执行 V64 后重新生成。
