@@ -354,8 +354,10 @@ public class LibraryService {
         });
     }
 
+    private static final Duration CLEANUP_RETRY_DELAY = Duration.ofSeconds(30);
+
     public void cleanupNext() {
-        var job = repository.cleanup();
+        var job = repository.cleanup(clock.instant());
         if (job.isEmpty()) return;
         var cleanup = job.get();
         try {
@@ -363,7 +365,10 @@ public class LibraryService {
             else assets.discardUnregisteredLibraryImport(cleanup.owner(), cleanup.preparedImport());
             tx.executeWithoutResult(ignored -> repository.cleaned(cleanup.id()));
         }
-        catch (RuntimeException failure) { LOGGER.warn("Library cleanup deferred for {}", cleanup.id()); }
+        catch (RuntimeException failure) {
+            tx.executeWithoutResult(ignored -> repository.deferCleanup(cleanup.id(), clock.instant().plus(CLEANUP_RETRY_DELAY)));
+            LOGGER.warn("Library cleanup deferred for {}", cleanup.id());
+        }
     }
 
     /** One short claim per worker; media decoding/copying occurs after the transaction closes. */

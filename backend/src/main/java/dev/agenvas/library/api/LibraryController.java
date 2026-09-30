@@ -20,6 +20,9 @@ import tools.jackson.databind.JsonNode;
 @RestController
 @RequestMapping("/api/v1")
 public class LibraryController {
+    private static final int MAX_CURSOR_LENGTH = 1000;
+    private static final String MIN_CANVAS_COORDINATE = "-1000000";
+    private static final String MAX_CANVAS_COORDINATE = "1000000";
     private final LibraryService library;
     public LibraryController(LibraryService library) { this.library = library; }
     @GetMapping("/library/entries")
@@ -30,7 +33,7 @@ public class LibraryController {
             @RequestParam(defaultValue = "false") boolean favorite,
             @RequestParam(defaultValue = "false") boolean trash,
             @RequestParam(defaultValue = "SAVED") LibraryEntry.Sort sort,
-            @RequestParam(required = false) @Size(max = 1000) String cursor) {
+            @RequestParam(required = false) @Size(max = MAX_CURSOR_LENGTH) String cursor) {
         return library.list(principal.userId(), category, kind, query, favorite, trash, sort, cursor);
     }
     @GetMapping("/library/entries/{entryId}")
@@ -144,8 +147,8 @@ public class LibraryController {
             @NotBlank @Size(max = LibraryService.MAX_COMMAND_KEY_LENGTH) String commandKey) {}
 
     public record ImportRequest(@NotNull UUID entryId, @PositiveOrZero long expectedVersion,
-            @NotNull @jakarta.validation.constraints.DecimalMin("-1000000") @jakarta.validation.constraints.DecimalMax("1000000") java.math.BigDecimal x,
-            @NotNull @jakarta.validation.constraints.DecimalMin("-1000000") @jakarta.validation.constraints.DecimalMax("1000000") java.math.BigDecimal y,
+            @NotNull @jakarta.validation.constraints.DecimalMin(MIN_CANVAS_COORDINATE) @jakarta.validation.constraints.DecimalMax(MAX_CANVAS_COORDINATE) java.math.BigDecimal x,
+            @NotNull @jakarta.validation.constraints.DecimalMin(MIN_CANVAS_COORDINATE) @jakarta.validation.constraints.DecimalMax(MAX_CANVAS_COORDINATE) java.math.BigDecimal y,
             @NotBlank @Size(max = LibraryService.MAX_COMMAND_KEY_LENGTH) String commandKey) {}
 
     public record SaveRequest(@NotNull UUID versionId, @PositiveOrZero long expectedSelectionEpoch,

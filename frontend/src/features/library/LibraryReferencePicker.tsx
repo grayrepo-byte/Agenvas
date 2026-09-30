@@ -11,16 +11,25 @@ export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, 
 }) {
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<LibraryEntry | null>(null);
+  const [readFinished, setReadFinished] = useState(false);
   const submitted = useRef(draft);
   const applied = useRef<string | null>(null);
   const transfer = useLibraryTransfer<Omit<ReferenceLibraryRequest, "commandKey">>((request) => referenceLibraryEntry(projectId, itemId, request));
-  useEffect(() => { onBusy?.(transfer.working); return () => onBusy?.(false); }, [transfer.working, onBusy]);
+  const busy = transfer.working || transfer.data?.status === "SUCCEEDED" && !readFinished;
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
   useEffect(() => {
     if (transfer.data?.status !== "SUCCEEDED" || applied.current === transfer.data.id) return;
     applied.current = transfer.data.id;
-    void getMediaDraft(projectId, itemId).then((saved) => onApplied(saved, submitted.current)).catch((failure: unknown) => {
-      applied.current = null; setError(failure instanceof Error ? failure.message : "引用已提交，暂时无法读取新草稿，请关闭选择器并核对草稿。");
-    });
+    const resultVersion = transfer.data.result?.draftVersion;
+    void getMediaDraft(projectId, itemId).then((saved) => {
+      if (saved.version !== resultVersion) {
+        setError("参考已添加，但草稿已被其他操作修改。本地输入已保留，请关闭选择器并刷新核对。");
+        return;
+      }
+      onApplied(saved, submitted.current);
+    }).catch((failure: unknown) => {
+      setError(failure instanceof Error ? failure.message : "引用已提交，暂时无法读取新草稿，请关闭选择器并核对草稿。");
+    }).finally(() => setReadFinished(true));
   }, [transfer.data, projectId, itemId, onApplied]);
   function add(entry: LibraryEntry, confirmed = false) {
     const selected = plan(entry);

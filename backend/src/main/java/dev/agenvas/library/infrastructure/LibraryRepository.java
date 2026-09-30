@@ -101,9 +101,14 @@ public class LibraryRepository {
                 .set(LIBRARY_CLEANUP.METADATA_JSON, json(mapper.valueToTree(cleanup))).set(LIBRARY_CLEANUP.CREATED_AT, time(now))
                 .onConflictDoNothing().execute();
     }
-    public Optional<Cleanup> cleanup() {
-        return db.selectFrom(LIBRARY_CLEANUP).orderBy(LIBRARY_CLEANUP.CREATED_AT, LIBRARY_CLEANUP.ID).limit(1)
+    public Optional<Cleanup> cleanup(Instant now) {
+        return db.selectFrom(LIBRARY_CLEANUP).where(LIBRARY_CLEANUP.NEXT_ATTEMPT_AT.le(time(now)))
+                .orderBy(LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, LIBRARY_CLEANUP.CREATED_AT, LIBRARY_CLEANUP.ID).limit(1)
                 .fetchOptional().map(row -> mapper.readValue(row.getMetadataJson().data(), Cleanup.class));
+    }
+    public void deferCleanup(UUID id, Instant nextAttempt) {
+        db.update(LIBRARY_CLEANUP).set(LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, time(nextAttempt))
+                .where(LIBRARY_CLEANUP.ID.eq(id)).execute();
     }
     public void cleaned(UUID id) { db.deleteFrom(LIBRARY_CLEANUP).where(LIBRARY_CLEANUP.ID.eq(id)).execute(); }
 

@@ -531,6 +531,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ? "input[type=search]" : "[aria-checked='true'], button, select, input");
     (firstControl ?? popoverRef.current)?.focus();
     function onPointerDown(event: PointerEvent) {
+      if (popover === "libraryReferences" && libraryBusy) return;
       if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
         && !triggerRef.current?.contains(event.target)) setPopover(null);
     }
@@ -538,6 +539,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
+        if (popover === "libraryReferences" && libraryBusy) return;
         setPopover(null);
         suppressReferenceSourceFocusOpen.current = true;
         triggerRef.current?.focus();
@@ -558,7 +560,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [popover]);
+  }, [popover, libraryBusy]);
 
   const save = useMutation({
     mutationFn: (input: SaveMediaDraftRequest) => {

@@ -107,6 +107,25 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("keeps the library picker open on Escape or outside clicks while a reference is archiving", async () => {
+    const { saves } = setup({ handlers: [
+      http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "library-image", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 0, source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/library-references`, () => HttpResponse.json({ id: "library-command", status: "ARCHIVING" }, { status: 202 })),
+      http.get("/api/v1/library/commands/library-command", () => HttpResponse.json({ id: "library-command", status: "ARCHIVING" })),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    await user.click(await screen.findByRole("button", { name: "查看 旅馆" }));
+    await screen.findByText("正在转存，请稍候…");
+    expect(screen.getByRole("button", { name: "关闭资产选择" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+    await user.click(screen.getByRole("textbox", { name: "图片提示词" }));
+    expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+    expect(saves).toHaveLength(0);
+  });
   it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
     const audioCapability: MediaCapability = { ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
       kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,

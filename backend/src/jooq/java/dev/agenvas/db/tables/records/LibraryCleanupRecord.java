@@ -78,6 +78,20 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
         return (OffsetDateTime) get(3);
     }
 
+    /**
+     * Setter for <code>public.library_cleanup.next_attempt_at</code>.
+     */
+    public void setNextAttemptAt(OffsetDateTime value) {
+        set(4, value);
+    }
+
+    /**
+     * Getter for <code>public.library_cleanup.next_attempt_at</code>.
+     */
+    public OffsetDateTime getNextAttemptAt() {
+        return (OffsetDateTime) get(4);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -101,13 +115,14 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
     /**
      * Create a detached, initialised LibraryCleanupRecord
      */
-    public LibraryCleanupRecord(UUID id, UUID ownerId, JSONB metadataJson, OffsetDateTime createdAt) {
+    public LibraryCleanupRecord(UUID id, UUID ownerId, JSONB metadataJson, OffsetDateTime createdAt, OffsetDateTime nextAttemptAt) {
         super(LibraryCleanup.LIBRARY_CLEANUP);
 
         setId(id);
         setOwnerId(ownerId);
         setMetadataJson(metadataJson);
         setCreatedAt(createdAt);
+        setNextAttemptAt(nextAttemptAt);
         resetChangedOnNotNull();
     }
 }

@@ -458,7 +458,7 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 
 个人资产独立持有不可变内容快照，Asset 保持项目媒体文件边界。放到画布或用于参考时创建目标项目内的内容与媒体文件；新节点只有首个结果和空白媒体草稿，原项目、资产与新节点不会同步改写。来源项目清理或资产删除不破坏已经成功保存/导入的另一侧内容；参考模式、能力限制、CAS 和生成授权仍遵守 6.11。元数据编辑与回收站使用乐观锁，本地转存可持久恢复，任何保存或复用不触发 Provider。
 
-详细页面、生命周期、模型、接口与测试范围见 [个人资产库设计](superpowers/specs/2026-10-01-personal-asset-library-design.md)。权威合约已增加保存、列表、上传、导入、参考与管理端点，Java、生成 TS、内容 Schema、V64–V66 与 jOOQ 已同步。`LIBRARY_IMPORT` 来源仅由应用服务建立；同键异参返回 `409 IDEMPOTENCY_CONFLICT`。上传限制：图片 20 MiB / 40 MP，音频 50 MiB / 10 分钟，MP4 视频 50 MiB / 40 MP / 60 秒，按实际解码校验。验收结果和未验证限制见 [#24 实施证据](evidence/issue-24-personal-asset-library.md)。
+详细页面、生命周期、模型、接口与测试范围见 [个人资产库设计](superpowers/specs/2026-10-01-personal-asset-library-design.md)。权威合约已增加保存、列表、上传、导入、参考与管理端点，Java、生成 TS、内容 Schema、V64–V67 与 jOOQ 已同步。`LIBRARY_IMPORT` 来源仅由应用服务建立；同键异参返回 `409 IDEMPOTENCY_CONFLICT`。上传限制：图片 20 MiB / 40 MP，音频 50 MiB / 10 分钟，MP4 视频 50 MiB / 40 MP / 60 秒，按实际解码校验。验收结果和未验证限制见 [#24 实施证据](evidence/issue-24-personal-asset-library.md)。
 
 ## 7. 数据模型与持久化约定
 

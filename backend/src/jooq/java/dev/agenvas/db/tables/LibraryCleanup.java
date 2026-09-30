@@ -4,6 +4,7 @@
 package dev.agenvas.db.tables;
 
 
+import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AppUser.AppUserPath;
@@ -19,6 +20,7 @@ import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
+import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.JSONB;
 import org.jooq.Name;
@@ -80,6 +82,11 @@ public class LibraryCleanup extends TableImpl<LibraryCleanupRecord> {
      * The column <code>public.library_cleanup.created_at</code>.
      */
     public final TableField<LibraryCleanupRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+
+    /**
+     * The column <code>public.library_cleanup.next_attempt_at</code>.
+     */
+    public final TableField<LibraryCleanupRecord, OffsetDateTime> NEXT_ATTEMPT_AT = createField(DSL.name("next_attempt_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
 
     private LibraryCleanup(Name alias, Table<LibraryCleanupRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -146,6 +153,11 @@ public class LibraryCleanup extends TableImpl<LibraryCleanupRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
+    }
+
+    @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.LIBRARY_CLEANUP_DUE_IDX);
     }
 
     @Override

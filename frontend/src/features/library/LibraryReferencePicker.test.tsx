@@ -23,3 +23,20 @@ it("adds a library reference atomically without placing a canvas card", async ()
   await waitFor(() => expect(applied).toHaveBeenCalledOnce());
   expect(requests).toEqual([expect.objectContaining({ entryId: "entry", expectedVersion: 2, role: "REFERENCE", draft: expect.objectContaining({ expectedVersion: 5, prompt: "酒店" }) })]);
 });
+
+it("preserves local input when another client changes the draft after reference completion", async () => {
+  const applied = vi.fn();
+  server.use(
+    http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "entry", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 2, source: {}, favorite: false, createdAt: "2026-10-01T00:00:00Z", hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.post("/api/v1/projects/p/canvas-items/i/library-references", () => HttpResponse.json({ id: "cmd", status: "ACCEPTED" }, { status: 202 })),
+    http.get("/api/v1/library/commands/cmd", () => HttpResponse.json({ id: "cmd", status: "SUCCEEDED", result: { draftVersion: 6 } })),
+    http.get("/api/v1/projects/p/canvas-items/i/media-draft", () => HttpResponse.json({ version: 7, prompt: "另一客户端的新提示词", mediaInputs: [] })),
+  );
+  render(<QueryClientProvider client={createQueryClient()}><LibraryReferencePicker projectId="p" itemId="i" kinds={["IMAGE"]}
+    draft={{ expectedVersion: 5, prompt: "本地输入", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [] }}
+    plan={() => ({ role: "REFERENCE", color: "#67C7F3", videoInputMode: null })} onApplied={applied} /></QueryClientProvider>);
+  await userEvent.setup().click(await screen.findByRole("button", { name: "查看 旅馆" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("草稿已被其他操作修改");
+  expect(applied).not.toHaveBeenCalled();
+});

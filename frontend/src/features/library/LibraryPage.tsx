@@ -10,6 +10,8 @@ import { LibraryBrowser } from "./LibraryBrowser";
 import { CATEGORY_LABELS, KIND_LABELS, MAX_LIBRARY_NAME_LENGTH } from "./libraryLabels";
 import { TransferState, useLibraryTransfer } from "./useLibraryTransfer";
 
+const DEFAULT_LIBRARY_DROP_COORDINATE = 80;
+
 export function LibraryPage() {
   const [trash, setTrash] = useState(false);
   const [selected, setSelected] = useState<LibraryEntry | null>(null);
@@ -57,7 +59,7 @@ function LibraryDetail({ entry: initial, onClose }: { entry: LibraryEntry; onClo
       : <><label className="field">目标项目<Select value={project} disabled={busy || transfer.frozen} onChange={(event) => setProject(event.target.value)}><option value="">选择项目</option>{projects.data?.pages.flatMap((page) => page.items).filter((item) => item.status === "ACTIVE").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></label>
         {projects.error ? <p role="alert">{projects.error.message}<button type="button" onClick={() => void projects.refetch()}>重试项目列表</button></p> : null}
         {projects.hasNextPage ? <button type="button" disabled={projects.isFetchingNextPage} onClick={() => void projects.fetchNextPage()}>{projects.isFetchingNextPage ? "正在读取项目…" : "加载更多项目"}</button> : null}
-        <div className="ui-form-actions"><button type="button" disabled={!project || busy || transfer.data?.status === "SUCCEEDED"} onClick={() => transfer.start({ entryId: entry.id, expectedVersion: entry.version, x: 80, y: 80 })}>放到画布</button><button type="button" disabled={busy} onClick={() => change.mutate("TRASH")}>移入回收站</button></div>
+        <div className="ui-form-actions"><button type="button" disabled={!project || busy || transfer.data?.status === "SUCCEEDED"} onClick={() => transfer.start({ entryId: entry.id, expectedVersion: entry.version, x: DEFAULT_LIBRARY_DROP_COORDINATE, y: DEFAULT_LIBRARY_DROP_COORDINATE })}>放到画布</button><button type="button" disabled={busy} onClick={() => change.mutate("TRASH")}>移入回收站</button></div>
         <TransferState transfer={transfer} success="已放到目标项目画布" />{transfer.data?.status === "SUCCEEDED" ? <Link to={`/projects/${project}`}>打开目标项目</Link> : null}</>}
   </Dialog>;
 }

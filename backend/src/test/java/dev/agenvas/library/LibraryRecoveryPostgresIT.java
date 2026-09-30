@@ -109,6 +109,34 @@ class LibraryRecoveryPostgresIT {
     }
     JsonNode command(String id) throws Exception { return read("/api/v1/library/commands/" + id); }
 
+    @Test void oneBlockedCleanupDoesNotPreventOtherDeletedFilesFromBeingCollected() throws Exception {
+        Card first = image();
+        Card second = image();
+        String firstCommand = postJson(source(first), saveRequest(first, "blocked-cleanup-first"), 202).path("id").asText();
+        String secondCommand = postJson(source(second), saveRequest(second, "blocked-cleanup-second"), 202).path("id").asText();
+        assertThat(library.processNext()).isTrue();
+        assertThat(library.processNext()).isTrue();
+        // Flush success-pin jobs before arranging the independently failing deletion.
+        for (int i = 0; i < 10; i++) library.cleanupNext();
+        String firstEntry = command(firstCommand).path("result").path("entryId").asText();
+        String secondEntry = command(secondCommand).path("result").path("entryId").asText();
+        Path firstPath = library.file(owner.userId(), UUID.fromString(firstEntry), false).path();
+        Path secondPath = library.file(owner.userId(), UUID.fromString(secondEntry), false).path();
+        Files.delete(firstPath);
+        Files.createDirectory(firstPath);
+        Path blocker = firstPath.resolve("blocked-delete");
+        Files.writeString(blocker, "simulated filesystem obstruction");
+        for (String entry : List.of(firstEntry, secondEntry)) {
+            postJson("/api/v1/library/entries/" + entry + "/trash", Map.of("expectedVersion", 0), 200);
+            mvc.perform(delete("/api/v1/library/entries/" + entry).param("expectedVersion", "1").with(auth).with(csrf()))
+                    .andExpect(status().isNoContent());
+        }
+        // Other tests may have left success-pin jobs; every due job must get a turn.
+        for (int i = 0; i < 100 && Files.exists(secondPath); i++) library.cleanupNext();
+        assertThat(Files.exists(secondPath)).isFalse();
+        assertThat(Files.exists(blocker)).isTrue();
+    }
+
     @Test void resumesInstalledFilesAfterAnExpiredLeaseAndReplaysTheOriginalCommand() throws Exception {
         Card card = image();
         var request = saveRequest(card, "recover-installed");

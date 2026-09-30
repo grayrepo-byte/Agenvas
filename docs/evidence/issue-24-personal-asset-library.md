@@ -10,7 +10,7 @@
 
 ## 文件与升级
 
-后端新增 `library` 模块与资产存储应用边界；复用产物、画布、媒体草稿及能力校验应用服务。迁移 V64–V66 新增五张 library 表及完整性约束；jOOQ 由独立 PostgreSQL 17.11 重新生成。OpenAPI、生成 TS、图片/视频 JSON Schema 同步增加只读 `LIBRARY_IMPORT`；普通 Artifact 写入拒绝伪造。同步 CONTEXT、规格 6.12、设计、ADR 0023、开发清单及备份范围。无依赖变更。
+后端新增 `library` 模块与资产存储应用边界；复用产物、画布、媒体草稿及能力校验应用服务。迁移 V64–V67 新增五张 library 表及完整性约束；jOOQ 由独立 PostgreSQL 17.11 重新生成。OpenAPI、生成 TS、图片/视频 JSON Schema 同步增加只读 `LIBRARY_IMPORT`；普通 Artifact 写入拒绝伪造。同步 CONTEXT、规格 6.12、设计、ADR 0023、开发清单及备份范围。无依赖变更。
 
 前后端需同版本部署，升级前备份数据库与完整文件卷（包含 `library/` 和命令 pin）。既有迁移未修改，新增迁移不删除项目或既有媒体。真实旧部署升级/回滚及完整库备份恢复演练未运行。
 
@@ -22,10 +22,28 @@
 - 前端定向回归最初 9 文件 125 项通过；最终 5 文件 35 项通过，包括 5 项新增公开 React 交互测试。
 - 全量只运行一次：`./run-tests.sh`。前端 50 文件 / 380 项通过；后端单元 180 项无失败，1 项依赖本地 Depth Anything 权重的 opt-in 测试跳过；后端集成 100 项出现 2 失败 / 1 错误。
 - 全量失败定位：旧 `ComfyUiAcceptedCrashPostgresIT` 夹具缺少冻结 `mediaInput.images/audios`，子进程抛 IllegalArgumentException；旧 `ComfyUiVideoPostgresIT` 断言 schemaVersion 2，而基准实现已为 3；新库 Worker 在旧测试容器关闭后未捕获数据库异常。补齐夹具/断言与轮次错误处理。原两项失败已在修复前定向重现，修复后 4 个相关 IT 类共 11 项通过，内容校验单元 3 项通过（定向 Maven verify BUILD SUCCESS），未再次运行全量。
-- OpenAPI 生成、TypeScript strict、ESLint、Vite 生产构建通过；构建保留既有大分块体积警告。jOOQ 在本轮独立空库迁移到 V66 后生成成功。
+- OpenAPI 生成、TypeScript strict、ESLint、Vite 生产构建通过；构建保留既有大分块体积警告。jOOQ 在本轮独立空库迁移到 V67 后生成成功。
 
 ## 未验证与范围限制
 
 真实 Provider/LLM 未调用。库功能测试不需要生成费用；既有媒体回归使用假 ComfyUI。其他账号测试使用另一已认证 UUID 身份，当前产品仍为单管理员，未执行两个实际用户的登录流程。跨进程清理竞争、资产库专属 SSE 断线补发、操作系统 ENOSPC、生产规模与真实升级/备份恢复未验收；完成项与专项门禁分别记录在开发清单。
 
-浏览器验收与双轴审查结果在本文件末尾追加。
+浏览器验收与双轴审查结果见下文。
+
+## 双轴审查与修复
+
+按 code-review 技能，独立子代理以 `git diff 7164253...HEAD` 进行 Standards / Spec 审查。Standards 3 项：完成后读取草稿可能绕过 CAS、单条清理失败阻塞队列、裸值常量；Spec 2 项：同一 CAS 风险、Escape/外部点击绕过转存关闭保护。全部修复：读取版本必须等于命令 `draftVersion`，保留并发本地输入；统一所有关闭路径并覆盖完成后读取阶段；V67 为清理任务增加 nextAttemptAt 和到期索引，失败延迟 30 秒后重试，其余任务继续处理；提取命名常量。
+
+新增参考并发读回归先失败后通过，新增文件清理阻塞回归先失败后通过。最终资产库 PostgreSQL 测试 10 项、内容校验 3 项通过；对应前端 2 文件 33 项通过，包括参考并发与关闭保护新增测试。没有再次运行全量。
+
+## 隔离 Mock 浏览器验收
+
+使用本轮独立 PostgreSQL、文件目录与服务端口，未修改已有 Compose 实例。实际登录临时账号，创建来源/目标项目；Mock 图片生成后固定节点 v1，保存为“海边旅馆 · Mock 验收 / 场景”，资产页显示完整分类计数与缩略图；详情导入目标项目成功，画布只有一个独立节点、空白提示词与参考；通过“从我的资产选择”成功添加精确 v1 参考，没有额外画布节点、没有运行生成。
+
+桌面分类页及 390 × 844 窄屏网格/详情已检查；窄屏 document.scrollWidth=390、dialog.width=374，没有页面横向溢出。截图使用明确标注的 DEMO IMAGE，与真实 Provider 无关。
+
+验收过程曾因构建替换正在运行的 JAR 导致临时实例类加载错误；已改用独立 JAR 副本重启，仅在该临时库注入租约过期，原保存命令恢复成功且只有一个资产条目。这是本地验收运行方式错误，不作为真实断电/ENOSPC 压测证据。临时服务、文件与数据库在验收后清理。
+
+![桌面资产页](issue-24-assets/desktop.jpg)
+
+![窄屏资产网格](issue-24-assets/mobile.jpg)
