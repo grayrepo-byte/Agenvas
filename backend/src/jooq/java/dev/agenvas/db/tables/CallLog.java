@@ -8,6 +8,7 @@ import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
+import dev.agenvas.db.tables.CallLogDebug.CallLogDebugPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.CallLogRecord;
@@ -271,6 +272,19 @@ public class CallLog extends TableImpl<CallLogRecord> {
             _task = new TaskPath(this, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_TASK_ID_FKEY, null);
 
         return _task;
+    }
+
+    private transient CallLogDebugPath _callLogDebug;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.call_log_debug</code> table
+     */
+    public CallLogDebugPath callLogDebug() {
+        if (_callLogDebug == null)
+            _callLogDebug = new CallLogDebugPath(this, null, Keys.CALL_LOG_DEBUG__CALL_LOG_DEBUG_CALL_ID_FKEY.getInverseKey());
+
+        return _callLogDebug;
     }
 
     @Override

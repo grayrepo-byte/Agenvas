@@ -5,6 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import dev.agenvas.shared.http.DebugHttpCapture;
+import dev.agenvas.shared.http.PinnedHttpClients;
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import com.sun.net.httpserver.HttpServer;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.MediaType;
+import okhttp3.Dns;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
@@ -99,6 +111,7 @@ class CallLogPostgresIT {
                 .orElseGet(() -> identities.setup("call-log-integration-secret", "call-log-admin",
                         "call-log-password-123"));
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        jdbc.sql("update audit_debug_settings set debug_mode=false").update();
     }
 
     @Test
@@ -332,6 +345,90 @@ class CallLogPostgresIT {
         assertThat(interrupted.path("historical").asBoolean()).isFalse();
         assertThat(jdbc.sql("select status from call_log where id=:id").param("id", callId)
                 .query(String.class).single()).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void debugSettingsAreDefaultOffPersistentCsrfProtectedAndUseCas() throws Exception {
+        String path = "/api/v1/settings/debug";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_USER"))))
+                .andExpect(status().isForbidden());
+        JsonNode setting = mapper.readTree(mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_ADMIN"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(setting.path("debugMode").asBoolean()).isFalse();
+        String body = mapper.createObjectNode().put("debugMode", true)
+                .put("expectedVersion", setting.path("version").asInt()).toString();
+        mvc.perform(put(path).with(authentication(asUser(owner, "ROLE_ADMIN")))
+                .contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(put(path).with(authentication(asUser(owner, "ROLE_USER"))).with(csrf())
+                .contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(put(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content(body)).andExpect(status().isOk());
+        assertThat(calls.settings().debugMode()).isTrue();
+        mvc.perform(put(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content(body)).andExpect(status().isConflict());
+        mvc.perform(put(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content("{\"debugMode\":null,\"expectedVersion\":1}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void realHttpBodiesAreStoredOnlyWhileEnabledAndDetailRemainsOwnerScoped() throws Exception {
+        HttpServer provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        provider.createContext("/chat", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            byte[] bytes = "{\"content\":\"RAW_RESPONSE\",\"reasoning_content\":\"PRIVATE_REASONING\",\"echo\":\"sk-debug-secret\"}".getBytes();
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes); exchange.close();
+        });
+        provider.start();
+        try {
+            var client = PinnedHttpClients.pinned(Dns.SYSTEM, Duration.ofSeconds(2), Duration.ofSeconds(2), Duration.ofSeconds(5));
+            Project project = newProject("Raw debug log");
+            Task task = newTask(project, CallLog.Kind.IMAGE);
+            var descriptor = new CallDescriptor(project.id(), task.id(), task.runId(), null,
+                    CallLog.Kind.IMAGE, CallLog.Operation.SUBMIT, "OPENAI", "debug-fixture", false);
+            java.util.function.Supplier<String> invoke = () -> {
+                try (var response = client.newCall(new Request.Builder()
+                        .url("http://127.0.0.1:" + provider.getAddress().getPort() + "/chat")
+                        .header("Authorization", "Bearer sk-debug-secret")
+                        .post(RequestBody.create("{\"prompt\":\"RAW_PROMPT\"}", MediaType.get("application/json")))
+                        .build()).execute()) { return response.body().string(); }
+                catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+            };
+            calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
+            UUID disabled = jdbc.sql("select id from call_log where project_id=:id").param("id", project.id())
+                    .query(UUID.class).single();
+            assertThat(calls.debug(owner.userId(), disabled).captured()).isFalse();
+            calls.updateSettings(true, calls.settings().version());
+            calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
+            UUID captured = jdbc.sql("select call_id from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
+                    .param("id", project.id()).query(UUID.class).single();
+            String path = PATH + "/" + captured + "/debug";
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_USER"))))
+                    .andExpect(status().isForbidden());
+            AdminPrincipal other = new AdminPrincipal(UUID.randomUUID(), "other");
+            mvc.perform(get(path).with(authentication(asUser(other, "ROLE_ADMIN"))))
+                    .andExpect(status().isNotFound());
+            String body = mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_ADMIN"))))
+                    .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(body).contains("RAW_PROMPT", "RAW_RESPONSE", "/chat")
+                    .doesNotContain("sk-debug-secret", "PRIVATE_REASONING", "Authorization");
+            String stored = jdbc.sql("select exchanges_json::text from call_log_debug where call_id=:id")
+                    .param("id", captured).query(String.class).single();
+            assertThat(stored).contains("RAW_PROMPT", "RAW_RESPONSE").doesNotContain("sk-debug-secret", "PRIVATE_REASONING");
+            assertThat(list(owner, Map.of("projectId", project.id().toString())).toString())
+                    .doesNotContain("RAW_PROMPT", "RAW_RESPONSE", "/chat");
+            calls.updateSettings(false, calls.settings().version());
+            calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
+            assertThat(jdbc.sql("select count(*) from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
+                    .param("id", project.id()).query(Integer.class).single()).isEqualTo(1);
+            assertThat(calls.debug(owner.userId(), captured).captured()).isTrue();
+            assertThat(DebugHttpCapture.enabled()).isFalse();
+        } finally { provider.stop(0); }
     }
 
     private Project newProject(String title) {

@@ -53,6 +53,10 @@ export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAt
 export type UsageEntry = components["schemas"]["UsageEntry"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
+export type DebugSettings = components["schemas"]["DebugSettings"];
+export type CallDebug = components["schemas"]["CallDebug"];
+export type DebugBody = components["schemas"]["DebugBody"];
+export type UpdateDebugSettingsRequest = NonNullable<paths["/api/v1/settings/debug"]["put"]["requestBody"]>["content"]["application/json"];
 export type CallLog = components["schemas"]["CallLog"];
 export type CallLogPage = components["schemas"]["CallLogPage"];
 export type CallLogFilters = NonNullable<paths["/api/v1/call-logs"]["get"]["parameters"]["query"]>;
@@ -79,6 +83,20 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, "无法读取调用日志");
+}
+
+export async function getDebugSettings(): Promise<DebugSettings> {
+  return readJson<DebugSettings>("/api/v1/settings/debug", "无法读取 debug 模式设置");
+}
+
+export async function updateDebugSettings(request: UpdateDebugSettingsRequest): Promise<DebugSettings> {
+  return writeJson<DebugSettings>("/api/v1/settings/debug", {
+    method: "PUT", body: JSON.stringify(request),
+  });
+}
+
+export async function getCallDebug(id: string): Promise<CallDebug> {
+  return readJson<CallDebug>(`/api/v1/call-logs/${encodeURIComponent(id)}/debug`, "无法读取调用正文");
 }
 
 /**

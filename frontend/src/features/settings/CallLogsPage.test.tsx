@@ -38,6 +38,20 @@ function showPage(path = "/settings/calls") {
 describe("CallLogsPage", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" }))));
 
+  it("fetches raw details only after expanding a log", async () => {
+    const reads = vi.fn();
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())),
+      http.get("/api/v1/call-logs/:id/debug", ({ params }) => {
+        reads(); return HttpResponse.json({ id: params.id, captured: false, exchanges: [] });
+      }));
+    showPage();
+    await screen.findByText("test-model");
+    expect(reads).not.toHaveBeenCalled();
+    await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
+    await screen.findByText(/本次调用未开启 debug 模式/);
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
   it("shows separate start/response time and duration, and expands actual correlation IDs", async () => {
     server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())));
     showPage();

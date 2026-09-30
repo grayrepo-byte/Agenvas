@@ -26,6 +26,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/debug": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取系统 debug 模式（默认关闭，仅管理员） */
+        get: operations["getDebugSettings"];
+        /**
+         * 修改系统 debug 模式
+         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭不清理历史，旧调用不会补录。不会触发 Provider 请求。
+         */
+        put: operations["updateDebugSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/call-logs/{id}/debug": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查看本人项目的脱敏原始调用详情
+         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文移除凭证与私有推理。UTF8 为正文文本（JSON 脱敏后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+         */
+        get: operations["getCallDebug"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/setup-status": {
         parameters: {
             query?: never;
@@ -1206,6 +1247,30 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DebugSettings: {
+            /** @default false */
+            debugMode: boolean;
+            version: number;
+        };
+        DebugBody: {
+            content: string;
+            /** @enum {string} */
+            encoding: "UTF8" | "BASE64" | "MULTIPART_JSON" | "OMITTED";
+            truncated: boolean;
+        };
+        DebugExchange: {
+            method: string;
+            url: string;
+            requestBody: components["schemas"]["DebugBody"] | null;
+            responseStatus: number | null;
+            responseBody: components["schemas"]["DebugBody"] | null;
+        };
+        CallDebug: {
+            /** Format: uuid */
+            id: string;
+            captured: boolean;
+            exchanges: components["schemas"]["DebugExchange"][];
+        };
         CallLogPage: {
             items: components["schemas"]["CallLog"][];
             page: number;
@@ -2671,6 +2736,85 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getDebugSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 持久化设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateDebugSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    debugMode: boolean;
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 更新后的设置与版本 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebugSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCallDebug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Debug 详情 */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallDebug"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getSetupStatus: {

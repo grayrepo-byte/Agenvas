@@ -54,6 +54,68 @@ paths:
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/debug:
+    get:
+      operationId: getDebugSettings
+      summary: 读取系统 debug 模式（默认关闭，仅管理员）
+      tags: [Audit]
+      responses:
+        "200":
+          description: 持久化设置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DebugSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: updateDebugSettings
+      summary: 修改系统 debug 模式
+      description: 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭不清理历史，旧调用不会补录。不会触发 Provider 请求。
+      tags: [Audit]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [debugMode, expectedVersion]
+              properties:
+                debugMode: {type: boolean}
+                expectedVersion: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: 更新后的设置与版本
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DebugSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/call-logs/{id}/debug:
+    get:
+      operationId: getCallDebug
+      summary: 查看本人项目的脱敏原始调用详情
+      description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文移除凭证与私有推理。UTF8 为正文文本（JSON 脱敏后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+      tags: [Audit]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Debug 详情
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallDebug"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/auth/setup-status:
     get:
       operationId: getSetupStatus
@@ -1613,6 +1675,43 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
+    DebugSettings:
+      type: object
+      required: [debugMode, version]
+      properties:
+        debugMode: {type: boolean, default: false}
+        version: {type: integer, minimum: 1}
+    DebugBody:
+      type: object
+      required: [content, encoding, truncated]
+      properties:
+        content: {type: string}
+        encoding: {type: string, enum: [UTF8, BASE64, MULTIPART_JSON, OMITTED]}
+        truncated: {type: boolean}
+    DebugExchange:
+      type: object
+      required: [method, url, requestBody, responseStatus, responseBody]
+      properties:
+        method: {type: string}
+        url: {type: string}
+        requestBody:
+          oneOf:
+            - {$ref: "#/components/schemas/DebugBody"}
+            - {type: "null"}
+        responseStatus: {type: [integer, "null"]}
+        responseBody:
+          oneOf:
+            - {$ref: "#/components/schemas/DebugBody"}
+            - {type: "null"}
+    CallDebug:
+      type: object
+      required: [id, captured, exchanges]
+      properties:
+        id: {type: string, format: uuid}
+        captured: {type: boolean}
+        exchanges:
+          type: array
+          items: {$ref: "#/components/schemas/DebugExchange"}
     CallLogPage:
       type: object
       required: [items, page, size, totalElements, totalPages]

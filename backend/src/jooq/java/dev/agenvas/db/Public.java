@@ -13,7 +13,9 @@ import dev.agenvas.db.tables.Artifact;
 import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
+import dev.agenvas.db.tables.AuditDebugSettings;
 import dev.agenvas.db.tables.CallLog;
+import dev.agenvas.db.tables.CallLogDebug;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
@@ -122,10 +124,21 @@ public class Public extends SchemaImpl {
     public final Asset ASSET = Asset.ASSET;
 
     /**
+     * The table <code>public.audit_debug_settings</code>.
+     */
+    public final AuditDebugSettings AUDIT_DEBUG_SETTINGS = AuditDebugSettings.AUDIT_DEBUG_SETTINGS;
+
+    /**
      * Safe metadata for individual adapter invocations; no bodies, endpoints or
      * credentials.
      */
     public final CallLog CALL_LOG = CallLog.CALL_LOG;
+
+    /**
+     * Opt-in HTTP bodies and URLs, with credentials and private reasoning
+     * removed; never part of project export.
+     */
+    public final CallLogDebug CALL_LOG_DEBUG = CallLogDebug.CALL_LOG_DEBUG;
 
     /**
      * Persistent CanvasItem-to-CanvasItem topology with the exact source
@@ -344,7 +357,9 @@ public class Public extends SchemaImpl {
             ArtifactVersion.ARTIFACT_VERSION,
             ArtifactVersionReference.ARTIFACT_VERSION_REFERENCE,
             Asset.ASSET,
+            AuditDebugSettings.AUDIT_DEBUG_SETTINGS,
             CallLog.CALL_LOG,
+            CallLogDebug.CALL_LOG_DEBUG,
             CanvasConnection.CANVAS_CONNECTION,
             CanvasItem.CANVAS_ITEM,
             CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT,

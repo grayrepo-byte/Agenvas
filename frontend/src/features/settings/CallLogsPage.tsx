@@ -7,6 +7,7 @@ import { ApiError, getCurrentUser, getTask, listCallLogs, type CallLog, type Cal
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
+import { CallDebugDetails } from "./CallDebugDetails";
 import "./CallLogsPage.css";
 
 const PAGE_SIZE = 20;
@@ -163,6 +164,7 @@ function CallLogDetails({ log }: { log: CallLog }) {
       <Detail label="调用记录 ID" value={log.id} /><Detail label="Run ID" value={log.runId} />
       <Detail label="Task ID" value={log.taskId} /><Detail label="错误码" value={log.errorCode} />
     </dl>
+    {!log.historical ? <CallDebugDetails id={log.id} /> : null}
     {log.taskId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
   </>;
 }

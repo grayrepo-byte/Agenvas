@@ -70,6 +70,7 @@ public final class PinnedHttpClients {
         return new OkHttpClient.Builder()
                 .proxy(Proxy.NO_PROXY)
                 .dns(dns)
+                .addInterceptor(DebugHttpCapture.interceptor())
                 .addNetworkInterceptor(DROP_RETRY_AFTER)
                 .retryOnConnectionFailure(false)
                 .connectTimeout(connectTimeout)

@@ -1,6 +1,9 @@
 package dev.agenvas.audit.application;
 
 import dev.agenvas.audit.domain.CallLog;
+import dev.agenvas.audit.domain.DebugSettings;
+import dev.agenvas.audit.domain.CallDebug;
+import dev.agenvas.shared.http.DebugHttpCapture;
 import dev.agenvas.audit.domain.CallLogPage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
@@ -55,6 +58,13 @@ public class CallLogService {
                 descriptor.runId(), descriptor.stepIndex(), descriptor.kind(), descriptor.operation(),
                 safeIdentifier(descriptor.provider()), safeIdentifier(descriptor.model()), descriptor.mock());
         repository.start(id, safe, traceId, clock.instant());
+        // Pin the setting at invocation start. Each request checkpoint precedes network I/O.
+        DebugHttpCapture capture = repository.isDebugEnabled() ? DebugHttpCapture.open(exchanges -> {
+            try { repository.saveDebug(id, exchanges); }
+            catch (RuntimeException failure) {
+                LOGGER.error("Debug call capture write failed callId={} code=CALL_DEBUG_WRITE_FAILED", id);
+            }
+        }) : null;
         String previousTrace = MDC.get("traceId");
         MDC.put("traceId", traceId);
         long started = System.nanoTime();
@@ -76,9 +86,24 @@ public class CallLogService {
             finish(id, outcome.apply(result), respondedAt, durationMs);
             return result;
         } finally {
+            if (capture != null) capture.close();
             if (previousTrace == null) MDC.remove("traceId");
             else MDC.put("traceId", previousTrace);
         }
+    }
+
+    public DebugSettings settings() { return repository.settings(); }
+
+    public DebugSettings updateSettings(boolean enabled, int expectedVersion) {
+        return repository.updateSettings(enabled, expectedVersion).orElseThrow(() ->
+                new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT", "设置已变化",
+                        "请重新读取 debug 模式设置后再保存。", false));
+    }
+
+    public CallDebug debug(UUID ownerId, UUID id) {
+        return repository.debug(ownerId, id).orElseThrow(() ->
+                new ApiProblemException(HttpStatus.NOT_FOUND, "CALL_LOG_NOT_FOUND", "调用记录不存在",
+                        "调用记录不存在或不属于当前账户。", false));
     }
 
     private static long elapsed(long started) {

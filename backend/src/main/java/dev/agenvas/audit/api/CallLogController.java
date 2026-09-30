@@ -2,6 +2,15 @@ package dev.agenvas.audit.api;
 
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
+import dev.agenvas.audit.domain.CallDebug;
+import dev.agenvas.audit.domain.DebugSettings;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Min;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.http.ResponseEntity;
 import dev.agenvas.audit.domain.CallLogPage;
 import dev.agenvas.identity.application.AdminPrincipal;
 import java.time.Instant;
@@ -31,6 +40,22 @@ public class CallLogController {
             @RequestParam(defaultValue = "20") int size) {
         return PageResponse.from(logs.list(principal.userId(),
                 new CallLogService.Filter(projectId, kind, status, traceId, from, to, page, size)));
+    }
+
+    @GetMapping("/api/v1/settings/debug")
+    public DebugSettings settings() { return logs.settings(); }
+
+    @PutMapping("/api/v1/settings/debug")
+    public DebugSettings updateSettings(@Valid @RequestBody DebugSettingsRequest request) {
+        return logs.updateSettings(request.debugMode(), request.expectedVersion());
+    }
+
+    public record DebugSettingsRequest(@NotNull Boolean debugMode, @NotNull @Min(1) Integer expectedVersion) {}
+
+    @GetMapping("/api/v1/call-logs/{id}/debug")
+    public ResponseEntity<CallDebug> debug(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID id) {
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(logs.debug(principal.userId(), id));
     }
 
     public record PageResponse(List<CallResponse> items, int page, int size,
