@@ -17,6 +17,47 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Definite rejection, uncertain submission and redirect boundaries of the fixed API. */
 class GoogleNanoBananaClientTest {
+    /** A relay's configured API prefix must survive request construction. */
+    @Test
+    void configuredBetaPrefixIsUsedWithoutTryingTheStableEndpoint() throws IOException {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicInteger stableCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models/", exchange -> {
+            stableCalls.incrementAndGet();
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.createContext("/gateway/v1beta/models/nano-banana-2-lite:generateContent", exchange -> {
+            var config = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes())
+                    .path("generationConfig");
+            calls.incrementAndGet();
+            assertThat(config.path("imageConfig").path("aspectRatio").asText())
+                    .isEqualTo("1:1");
+            assertThat(config.path("imageConfig").path("imageSize").asText()).isEqualTo("1K");
+            assertThat(config.has("responseFormat")).isFalse();
+            assertThat(exchange.getRequestHeaders().getFirst("x-goog-api-key"))
+                    .isEqualTo("test-key");
+            exchange.sendResponseHeaders(400, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            GoogleNanoBananaClient client = new GoogleNanoBananaClient(new ObjectMapper());
+            String base = "http://127.0.0.1:" + server.getAddress().getPort()
+                    + "/gateway/v1beta";
+            for (String origin : List.of(base, base + "/")) {
+                assertThatThrownBy(() -> client.generate("test-key", "nano-banana-2-lite",
+                        origin, "draw", "1:1", List.of()))
+                        .isInstanceOf(GoogleNanoBananaClient.Rejected.class);
+            }
+            assertThat(calls).hasValue(2);
+            assertThat(stableCalls).hasValue(0);
+        } finally {
+            server.stop(0);
+        }
+    }
+
     /** 注入短超时的用例里，响应只要慢过这个时长的上限就足以触发超时。 */
     private static final Duration IMPATIENT_TIMEOUT = Duration.ofMillis(300);
     private static final long SLOW_RESPONSE_DELAY_MS = 2_000;

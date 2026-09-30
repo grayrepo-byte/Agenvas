@@ -52,9 +52,9 @@ export function PageShell({ title, description, actions, children }: {
         <span className="app-brand-mark" aria-hidden><Cube size={21} weight="duotone" /></span>
         <span className="app-sidebar-copy">Agenvas</span>
       </Link><button className="app-sidebar-toggle" type="button" aria-label={collapsed ? "展开导航" : "收起导航"}
-        aria-expanded={!collapsed} onClick={toggleNavigation}><SidebarSimple size={18} /></button></div>
+        aria-expanded={!collapsed} aria-controls="app-navigation" onClick={toggleNavigation}><SidebarSimple size={18} /></button></div>
       <span className="app-sidebar-section app-sidebar-copy">工作空间</span>
-      <nav aria-label="主导航">{NAVIGATION.map(({ to, label, icon: Icon }) => <Link key={to} to={to}
+      <nav id="app-navigation" aria-label="主导航">{NAVIGATION.map(({ to, label, icon: Icon }) => <Link key={to} to={to}
         className={`app-nav-item${activePath === to ? " is-active" : ""}`} aria-current={activePath === to ? "page" : undefined}
         aria-label={label} title={collapsed ? label : undefined}>
         <Icon size={18} aria-hidden /><span className="app-sidebar-copy">{label}</span>

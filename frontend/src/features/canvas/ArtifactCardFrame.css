@@ -12,7 +12,7 @@
 }
 
 /* An outer shadow follows the card radius without taking space from the preview. */
-.artifact-canvas-card.is-selected { box-shadow: 0 0 0 2px #fff; }
+.artifact-canvas-card.is-selected { box-shadow: 0 0 0 2px var(--ui-accent); }
 .artifact-card-caption {
   position: absolute;
   top: -24px;
@@ -52,7 +52,7 @@
   min-width: 64px;
   max-width: 100%;
   margin: 0;
-  border: 1px solid #b45cff;
+  border: 1px solid var(--ui-focus);
   border-radius: 4px;
   padding: 1px 5px;
   background: #232323;
@@ -61,11 +61,11 @@
   font-size: 11px;
   line-height: 18px;
   outline: none;
-  box-shadow: 0 0 0 1px #7f35d8;
+  box-shadow: 0 0 0 1px var(--ui-focus);
 }
 .artifact-card-title-input:focus {
-  border-color: #d178ff;
-  box-shadow: 0 0 0 1px #a94cff;
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 1px var(--ui-focus);
 }
 .artifact-card-title-input.is-error {
   border-color: #ff5d67;
@@ -79,4 +79,4 @@
 .artifact-card-toolbar :where(button), .artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: 999px; color: #eee; background: transparent; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .artifact-card-toolbar button:hover:not(:disabled), .artifact-card-toolbar button.is-open, .artifact-card-toolbar > a:hover { background: #3a3a3a; }
 .artifact-card-toolbar button:disabled { opacity: .48; cursor: not-allowed; }
-.artifact-card-toolbar :is(button, a):focus-visible { outline: 2px solid #eee; outline-offset: 2px; }
+.artifact-card-toolbar :is(button, a):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }

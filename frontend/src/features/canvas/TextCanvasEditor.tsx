@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { ArrowUp, LockSimple, TextT, X } from "@phosphor-icons/react";
 import { type FormEvent } from "react";
 import { ApiError, reviseArtifact,
@@ -53,10 +54,10 @@ export function TextCanvasEditor({ artifact, locked, onDone }: {
     <footer className="content-card-sources text-card-editor-footer">
       <span className="content-card-chip"><TextT size={12} aria-hidden />文字</span>
       <TextVersionPicker artifact={base} disabled={status.dirty} />
-      <select aria-label="文字格式" disabled={status.busy} value={fields.format}
+      <Select density="compact" aria-label="文字格式" disabled={status.busy} value={fields.format}
         onChange={(event) => edit({ format: event.target.value === "MARKDOWN" ? "MARKDOWN" : "PLAIN_TEXT" })}>
         <option value="PLAIN_TEXT">纯文本</option><option value="MARKDOWN">Markdown</option>
-      </select>
+      </Select>
       <span className="text-card-count">{fields.text.length}/{MAX_TEXT_LENGTH}</span>
       {locked ? <LockSimple className="content-card-locked" size={13} aria-label="已锁定" /> : null}
       <button aria-label="退出内容编辑" className="text-card-done" disabled={status.busy}

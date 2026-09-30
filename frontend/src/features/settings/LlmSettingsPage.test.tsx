@@ -10,6 +10,41 @@ import { server } from "../../test/server";
 import { LlmSettingsPage } from "./LlmSettingsPage";
 
 describe("LlmSettingsPage", () => {
+  it("discards unsaved fields and credentials without saving or diagnosing", async () => {
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/llm", () => HttpResponse.json({
+        configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
+        keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
+      })),
+      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
+        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
+        llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
+        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
+      })),
+      http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+      http.post("/api/v1/settings/llm/diagnose", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup();
+    const model = await screen.findByRole("textbox", { name: "模型 ID" });
+    const consent = screen.getByRole("checkbox", { name: "我确认此次诊断可能产生模型费用" });
+    await user.click(consent);
+    await user.clear(model); await user.type(model, "draft-model");
+    const key = screen.getByLabelText("API Key（每次修改均需重新输入）");
+    await user.type(key, "unsaved-secret");
+    expect(screen.getByText("有未保存的修改")).toBeInTheDocument();
+    expect(consent).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "撤销修改" }));
+    expect(model).toHaveValue("model-a");
+    expect(key).toHaveValue("");
+    expect(consent).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
+    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(writes).toEqual([]);
+  });
+
   it("submits the key once, clears its field, and displays only the server mask", async () => {
     const submitted: unknown[] = [];
     server.use(

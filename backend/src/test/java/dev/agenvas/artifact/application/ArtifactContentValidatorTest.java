@@ -17,6 +17,19 @@ class ArtifactContentValidatorTest {
     private final ArtifactContentValidator validator = new ArtifactContentValidator();
 
     @Test
+    void acceptsEmptyStartingTextButStillRequiresAStringField() {
+        assertThat(validate(Artifact.Kind.TEXT, """
+                {"format":"PLAIN_TEXT","text":""}
+                """)).isEmpty();
+        assertThatThrownBy(() -> validate(Artifact.Kind.TEXT,
+                "{\"format\":\"PLAIN_TEXT\",\"text\":null}"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> validate(Artifact.Kind.TEXT,
+                "{\"format\":\"PLAIN_TEXT\",\"text\":1}"))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
     void acceptsTextImageAndVideoSchemaFamilies() {
         assertThat(validate(Artifact.Kind.TEXT, """
                 {"format":"MARKDOWN","text":"# Brief"}

@@ -1,5 +1,6 @@
 import { CheckCircle, Info, WarningCircle } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
+import "./design-tokens.css";
 import "./PageTheme.css";
 
 /** Shared dark surfaces and status chips adapted from Beautiful UI (see beautiful-ui-LICENSE.txt). */
@@ -38,4 +39,14 @@ export function EmptyState({ icon, title, description, action }: {
     {icon ? <span className="ui-empty-icon" aria-hidden>{icon}</span> : null}
     <h3>{title}</h3>{description ? <p>{description}</p> : null}{action}
   </div>;
+}
+
+/** Compact factual summaries, shared by configuration pages. */
+export function SummaryStrip({ items }: {
+  items: { label: string; value: ReactNode; detail?: ReactNode }[];
+}) {
+  return <dl className="ui-summary-strip">{items.map((item) => <div key={item.label}>
+    <dt>{item.label}</dt><dd>{item.value}</dd>
+    {item.detail ? <dd className="ui-summary-detail">{item.detail}</dd> : null}
+  </div>)}</dl>;
 }

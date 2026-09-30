@@ -1,3 +1,4 @@
+import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import { Check, Cursor, DotsThree, Hand, Plus } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CanvasTool } from "./canvasInteraction";
@@ -35,17 +36,11 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd }: {
       title={handActive ? "手形工具 · 拖动画布" : "选择工具 · 短按空格切换手形，长按临时拖动"}>
       {handActive ? <Hand size={20} /> : <Cursor size={20} />}<DotsThree size={16} />
     </button>
-    {open ? <div className="workspace-tool-menu" role="menu" aria-label="画布工具模式" onKeyDown={(event) => {
-      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-      event.preventDefault();
-      const options = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']")];
-      const index = options.indexOf(document.activeElement as HTMLButtonElement);
-      options[(index + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length]?.focus();
-    }}>
+    {open ? <DropdownMenu className="workspace-tool-menu" role="menu" aria-label="画布工具模式">
       <button ref={firstOption} type="button" role="menuitemradio" aria-checked={tool === "select"}
         onClick={() => choose("select")}><span>{tool === "select" ? <Check size={14} /> : null}</span><Cursor size={18} />选择工具<kbd>V</kbd></button>
       <button type="button" role="menuitemradio" aria-checked={tool === "hand"}
         onClick={() => choose("hand")}><span>{tool === "hand" ? <Check size={14} /> : null}</span><Hand size={18} />手形工具<kbd>Space</kbd></button>
-    </div> : null}
+    </DropdownMenu> : null}
   </div>;
 }

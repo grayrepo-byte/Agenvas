@@ -23,6 +23,14 @@ V60 新增 `canvas_item_media_version` 与内容选择 epoch；迁移保持原�
 - OpenAPI TypeScript 生成器通过；`tsc --noEmit` 通过。生成类型约束暴露版本选择器测试数据的 `schemaVersion` 被推断为宽泛 `number`，已使用生成的 `ArtifactVersionList` 元素类型修正。`vitest run src/features/canvas/MediaVersionPicker.test.tsx` 4 项通过，修改测试文件 `eslint --max-warnings=0` 通过；`git diff --check` 通过。
 - 本次未运行前端生产构建、浏览器端到端、全量测试或真实 Provider，未部署。已有派生节点的草稿不做自动迁移。
 
+## 派生节点标题补验
+
+新建派生节点在受理时保存「来源节点当前显示名称 · 操作名称」。例如深度提取为「原图 · 深度图」，裁剪为「原图 · 裁剪」，替换上传为「原图 · 上传」。三视图区分角色、脸部、道具和场景宫格，图层区分主体/背景。标题过长时保留操作后缀、截短来源名称，不拆开 emoji 代理对；任务完成及重放不重命名用户已修改的结果。既有节点与共享资源名称不自动修改，无新迁移或 API 字段，OpenAPI 行为描述与生成 TypeScript 已同步。
+
+- 实际运行 `./mvnw -Dtest=CanvasMediaDerivationDraftTest,CanvasTaskResultSelectionTest,ImageOperationSpecTest -Dit.test=ImageOperationDerivationPostgresIT,CanvasMediaContextPostgresIT verify`：10 项单元测试、2 项 PostgreSQL 测试通过。
+- 本地裁剪集成测试把来源节点改为与资源不同的名称，验证受理时保存派生名；随后手工修改派生名，任务成功后仍保留该名称，原节点与资源名称保持各自身份。上传接口与重放保持同一派生名。单元测试覆盖深度图后缀、长名称和 emoji 边界，以及三视图/图层的参数命名；空白草稿、来源保护与批量输出原有命名回归通过。
+- OpenAPI TypeScript 生成器、`tsc --noEmit` 和 `git diff --check` 通过。本轮未运行前端组件、全量测试、浏览器端到端、真实 Provider 或生产构建，未部署；裁剪验证使用本地图片处理。
+
 ## 限制
 
 媒体生成流程使用明确的 Mock Provider，视频包含实际归档 MP4；图片派生使用本地裁剪。未调用真实外部 Provider，未运行浏览器端到端、全量测试或部署升级。迁移在真实 PostgreSQL 的构造旧数据上验证，未对用户部署数据执行迁移。工作区原有图片蒙版、模型和其他改动保持原样。

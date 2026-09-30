@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { imageAspectRatio, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
+import { imageAspectRatio, imageDraftAspectRatio, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
 
 describe("image node layout", () => {
+  it.each(["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"] as const)(
+    "projects the generation ratio %s while preserving the long edge", (ratio) => {
+      const [width, height] = ratio.split(":").map(Number);
+      const size = projectImageNodeSize({ width: 225, height: 300 }, imageDraftAspectRatio(ratio));
+      expect(size.width / size.height).toBeCloseTo(width! / height!);
+      expect(Math.max(size.width, size.height)).toBe(300);
+    });
+
+  it("leaves AUTO and unset ratios to the existing image or stored dimensions", () => {
+    expect(imageDraftAspectRatio("AUTO")).toBeUndefined();
+    expect(imageDraftAspectRatio()).toBeUndefined();
+  });
+
   it("fits the node to original pixel proportions while preserving its long edge", () => {
     const source = { width: 4001, height: 2000 };
     const size = projectImageNodeSize({ width: 225, height: 300 }, imageAspectRatio(source));

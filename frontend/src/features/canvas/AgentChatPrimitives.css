@@ -13,7 +13,7 @@
   --agent-chat-success: #a3d9b1;
   --agent-chat-failure: #f4a2a7;
   --agent-chat-unknown: #e9c68b;
-  --agent-chat-focus: #f08acb;
+  --agent-chat-focus: var(--ui-focus);
   --agent-chat-control-transition: 160ms;
 
   min-width: 0;
@@ -259,11 +259,11 @@
 .agent-chat-approval__footer .agent-chat-panel-actions { margin-top: 0; }
 .agent-chat-approval__footer button { border-radius: 999px; }
 .agent-chat-approval__footer .agent-chat-panel-primary {
-  border-color: var(--agent-chat-line);
-  background: var(--agent-chat-ink);
-  color: var(--agent-chat-surface);
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+  color: var(--ui-accent-foreground);
 }
-.agent-chat-approval__footer .agent-chat-panel-primary:hover:enabled { background: #dcdcdf; }
+.agent-chat-approval__footer .agent-chat-panel-primary:hover:enabled { background: var(--ui-accent-hover); }
 
 @keyframes agent-approval-enter {
   from { opacity: 0; transform: translateY(5px); }

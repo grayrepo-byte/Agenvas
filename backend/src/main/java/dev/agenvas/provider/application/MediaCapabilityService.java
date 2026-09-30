@@ -2,8 +2,8 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
+import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
 import dev.agenvas.provider.domain.MediaPlatform;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
@@ -295,7 +295,7 @@ public class MediaCapabilityService {
         return snapshot;
     }
 
-    /** Only fixed model file basenames are editable; graph structure remains bundled Java code. */
+    /** Versioned protocol settings; graph structure and adapter support remain compiled code. */
     private String spec(String adapterId, JsonNode suppliedSettings) {
         var declaration = registry.declaration(adapterId);
         ObjectNode normalized = mapper.createObjectNode();
@@ -336,7 +336,8 @@ public class MediaCapabilityService {
             default -> List.of();
         };
         for (String field : source.propertyNames()) {
-            if (!fields.contains(field)) throw invalid("能力模板包含不允许的参数");
+            if (!fields.contains(field) && !MediaCapabilityConfiguration.FIELDS.contains(field))
+                throw invalid("能力模板包含不允许的参数");
         }
         for (String field : fields) {
             JsonNode value = source.path(field);
@@ -363,6 +364,11 @@ public class MediaCapabilityService {
             }
             settings.put(field, value.asText());
         }
+        MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
+        var policy = MediaCapabilityConfiguration.policy(declaration, settings);
+        normalized.put("minimumSeconds", policy.minimumSeconds());
+        normalized.put("maximumSeconds", policy.maximumSeconds());
+        normalized.put("maxReferenceImages", policy.maxReferenceImages());
         return normalized.toString();
     }
 
@@ -385,9 +391,32 @@ public class MediaCapabilityService {
         return repository.defaultCapabilityId(requireMediaKind(kind).name());
     }
 
-    /** Immutable input policy of the exact compiled adapter pinned by this task. */
+    /** Immutable administrator limits within the protocol pinned by this task. */
     public MediaAdapterRegistry.Declaration inputPolicy(MediaCapabilityBinding binding) {
-        return registry.declaration(binding.adapterId());
+        return inputPolicy(pinnedSnapshot(binding));
+    }
+
+    public MediaAdapterRegistry.Declaration inputPolicy(Snapshot snapshot) {
+        return MediaCapabilityConfiguration.policy(registry.declaration(snapshot.adapterId()),
+                mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    public JsonNode settings(MediaCapabilityBinding binding) {
+        JsonNode settings = mapper.readTree(pinnedSnapshot(binding).specJson()).path("settings");
+        return settings.isMissingNode() ? mapper.createObjectNode() : settings;
+    }
+
+    /** Missing card fields use the selected version's defaults; explicit card values win. */
+    public JsonNode parameters(MediaCapabilityBinding binding, JsonNode draft) {
+        ObjectNode parameters = mapper.createObjectNode();
+        JsonNode configuration = settings(binding);
+        if (configuration.has("quality")) parameters.set("quality", configuration.get("quality"));
+        JsonNode defaults = configuration.path("defaultParameters");
+        if (defaults.isObject()) defaults.properties().forEach(entry ->
+                parameters.set(entry.getKey(), entry.getValue()));
+        if (draft != null && draft.isObject()) draft.properties().forEach(entry ->
+                parameters.set(entry.getKey(), entry.getValue()));
+        return parameters;
     }
 
     @Transactional
@@ -413,6 +442,11 @@ public class MediaCapabilityService {
                 mediaKind == Task.Kind.VIDEO_GENERATION ? -1 : 0, true);
     }
 
+    public MediaCapabilityBinding forDraft(UUID capabilityId, Task.Kind kind) {
+        return capabilityId == null ? defaultFor(kind)
+                : resolve(capabilityId, requireMediaKind(kind), 0, true);
+    }
+
     public MediaCapabilityBinding resolve(UUID capabilityId, Task.Kind kind,
             int durationSeconds) {
         return resolve(capabilityId, requireMediaKind(kind), durationSeconds, false);
@@ -427,12 +461,11 @@ public class MediaCapabilityService {
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
                 .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
                         snapshot.adapterId()))
-                .filter(snapshot -> registry.supports(snapshot.adapterId(),
-                        new PortInput(mediaKind, durationSeconds, null)))
+                .filter(snapshot -> supports(snapshot, mediaKind, durationSeconds))
                 .map(snapshot -> new Candidate(binding(snapshot), snapshot.connection().name(),
                         snapshot.capability().name(), mediaKind,
-                        registry.declaration(snapshot.adapterId()).minimumSeconds(),
-                        registry.declaration(snapshot.adapterId()).maximumSeconds(),
+                        inputPolicy(snapshot).minimumSeconds(),
+                        inputPolicy(snapshot).maximumSeconds(),
                         false, mapper.readTree(snapshot.specJson()).path("settings"))).toList();
     }
 
@@ -445,7 +478,7 @@ public class MediaCapabilityService {
                 .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
                         snapshot.adapterId()))
                 .map(snapshot -> {
-                    var declaration = registry.declaration(snapshot.adapterId());
+                    var declaration = inputPolicy(snapshot);
                     return new Candidate(binding(snapshot), snapshot.connection().name(),
                             snapshot.capability().name(), declaration.kind(),
                             declaration.minimumSeconds(), declaration.maximumSeconds(), false,
@@ -473,11 +506,17 @@ public class MediaCapabilityService {
         if (registry.declaration(snapshot.adapterId()).kind() != kind) {
             throw invalid("能力输出类型与任务类别不匹配");
         }
-        if (!skipDuration && !registry.supports(snapshot.adapterId(),
-                new PortInput(kind, durationSeconds, null))) {
+        if (!skipDuration && !supports(snapshot, kind, durationSeconds)) {
             throw invalid("该能力不支持当前时长，请调整时长");
         }
         return binding(snapshot);
+    }
+
+    private boolean supports(Snapshot snapshot, Task.Kind kind, int durationSeconds) {
+        var policy = inputPolicy(snapshot);
+        return policy.kind() == kind && (kind == Task.Kind.IMAGE_GENERATION
+                || durationSeconds >= policy.minimumSeconds()
+                        && durationSeconds <= policy.maximumSeconds());
     }
 
     private Snapshot enabledSnapshot(UUID capabilityId) {

@@ -971,7 +971,7 @@ paths:
     post:
       operationId: runImageOperation
       summary: 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
-      description: 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。
+      description: 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -1103,7 +1103,7 @@ paths:
     post:
       operationId: uploadCanvasItemVersion
       summary: 向空媒体节点上传首个结果，或从已有结果派生新节点
-      description: 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入。
+      description: 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入，标题为来源节点当前标题加「 · 上传」；超长时截短来源部分以保留后缀。首次填充空节点保留原标题，重放不重新命名。BRUSH_MARKUP 用途从来源当前图片同步创建「 · 画笔标注」派生节点，保存为 USER 版本并记录 baseVersionId 与 frozenInput，不创建 AI Task。来源版本或 expectedVersion 不匹配返回 409，相同目标 ID 与内容、用途和来源安全重放。
       tags: [Canvas]
       requestBody:
         required: true
@@ -1682,7 +1682,7 @@ components:
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
-        origin: {type: [string, "null"], description: "COMFYUI local origin or optional OPENAI HTTPS API base URL; null uses the official OpenAI /v1 base."}
+        origin: {type: [string, "null"], description: "COMFYUI local origin or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint."}
         keyMask: {type: [string, "null"]}
         connectivityStatus: {type: string, enum: [NOT_CHECKED]}
         realGenerationTested: {type: boolean}
@@ -1737,7 +1737,7 @@ components:
     FixedMediaAdapterSettings:
       type: object
       additionalProperties: false
-      description: Fixed adapters accept only their declared settings; model IDs are not editable. OPENAI base URL belongs to the versioned connection.
+      description: Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge.
       properties:
         checkpoint: {type: string, maxLength: 160}
         diffusionModel: {type: string, maxLength: 160}
@@ -1745,6 +1745,23 @@ components:
         vae: {type: string, maxLength: 160}
         clipVision: {type: string, maxLength: 160}
         quality: {type: string, enum: [low, medium, high]}
+        model: {type: string, maxLength: 120, pattern: "^([A-Za-z0-9][A-Za-z0-9._:/-]{0,119})?$", description: "Empty uses the compiled default; only OPENAI/GOOGLE accept this field. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        defaultParameters:
+          $ref: "#/components/schemas/ImageGenerationParameters"
+          description: "Image defaults; video adapters accept aspectRatio only. Unsupported parameters are rejected."
+        defaultDurationSeconds: {type: integer, minimum: 1, maximum: 30}
+        minimumSeconds: {type: integer, minimum: 0, maximum: 30}
+        maximumSeconds: {type: integer, minimum: 0, maximum: 30}
+        maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
+        pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
+    MediaCapabilityPricing:
+      type: object
+      additionalProperties: false
+      required: [amount, currency, unit]
+      properties:
+        amount: {type: string, pattern: "^[0-9]{1,10}(\\.[0-9]{1,6})?$", description: "Administrator supplied unit price; up to six decimal places."}
+        currency: {type: string, enum: [CNY, USD]}
+        unit: {type: string, enum: [IMAGE, VIDEO, SECOND], description: "IMAGE for images; VIDEO or SECOND for videos."}
     MediaDefault:
       type: object
       additionalProperties: false
@@ -1760,7 +1777,7 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
         platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE]}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI HTTPS API base URL."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     UpdateMediaConnectionRequest:
       type: object
@@ -1770,7 +1787,7 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI HTTPS API base URL."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     CreateMediaCapabilityRequest:
       type: object
@@ -2184,7 +2201,7 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/WritableArtifactContent"}
             - {type: "null"}
-          description: IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。
+          description: TEXT 必须提供 format 与 text，text 可为空字符串以创建文字节点的初始正文版本。IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。
     SaveMediaDraftRequest:
       type: object
       additionalProperties: false
@@ -2237,7 +2254,7 @@ components:
         operation:
           type: string
           enum: [SMART_EDIT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
-            EXPRESSION_EDIT, BRUSH_MARKUP, REMOVE_BACKGROUND, OBJECT_REMOVE, VIEW_ANGLE,
+            EXPRESSION_EDIT, REMOVE_BACKGROUND, OBJECT_REMOVE, VIEW_ANGLE,
             DEPTH_MAP, UPSCALE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
         instruction: {type: [string, "null"], maxLength: 4000}
         capabilityId: {type: [string, "null"], format: uuid}
@@ -2469,6 +2486,14 @@ components:
       properties:
         targetItemId: {type: string, format: uuid}
         expectedVersion: {type: integer, format: int64, minimum: 0}
+        purpose:
+          type: string
+          enum: [UPLOAD, BRUSH_MARKUP]
+          description: 不传时为 UPLOAD。BRUSH_MARKUP 直接保存客户端合成图片，不调用模型或创建生成任务；必须固定来源图片版本并派生独立节点。
+        sourceVersionId:
+          type: [string, "null"]
+          format: uuid
+          description: BRUSH_MARKUP 必填，必须等于来源节点当前选用图片版本；普通上传不传。
         content: {$ref: "#/components/schemas/WritableArtifactContent"}
     ArtifactInputReference:
       type: object

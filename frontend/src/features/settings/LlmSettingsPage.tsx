@@ -4,7 +4,7 @@ import { type FormEvent, useState } from "react";
 import { Link, Navigate } from "react-router";
 import { ApiError, diagnoseLlmSettings, getCurrentUser, getLlmSettings, getSystemDiagnostics, replaceLlmSettings, type LlmSettings } from "../../shared/api/client";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
+import { Notice, Panel, StatusBadge, SummaryStrip } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import "./SettingsPages.css";
 
@@ -95,6 +95,11 @@ export function LlmSettingsPage() {
   }
 
   return <PageShell title="Provider 配置" description="管理 Agent 使用的文本模型、安全凭据与工具调用能力。">
+    {snapshot ? <SummaryStrip items={[
+      { label: "当前模型", value: snapshot.modelId ?? "尚未配置", detail: "OpenAI 兼容端点" },
+      { label: "工具协议", value: snapshot.toolCallingVerified ? "已验证" : "待验证", detail: "诊断使用已保存的配置" },
+      { label: "配置版本", value: `v${snapshot.version}`, detail: snapshot.configured ? "凭据已加密保存" : "添加端点与凭据后保存" },
+    ]} /> : null}
     <div className="settings-page-layout">
       <div className="ui-stack">
         {settings.isPending ? <LoadingState label="正在读取配置…" /> : null}
@@ -127,26 +132,31 @@ export function LlmSettingsPage() {
               </label>
               {error ? <Notice tone="danger"><p>{error}</p><p>密钥输入已清空，重试前请重新输入。</p></Notice> : null}
               {saved ? <Notice tone="success">配置已加密保存，密钥输入已清空。</Notice> : null}
-              <div className="ui-form-actions">
-                {saving ? <LoadingState compact label="正在保存配置…" /> : <span className="ui-muted">保存后需验证当前版本的工具协议。</span>}
-                <button className="primary-button" disabled={busy} type="submit"><FloppyDisk size={16} aria-hidden />{saving ? "正在保存…" : "保存配置"}</button>
+              <div className="ui-form-actions settings-save-bar">
+                {saving ? <LoadingState compact label="正在保存配置…" /> : <span className="ui-muted">{hasUnsavedChanges ? "有未保存的修改" : "保存后需验证当前版本的工具协议。"}</span>}
+                <div className="ui-form-actions">
+                  {hasUnsavedChanges ? <button className="ghost-button" type="button" disabled={busy} onClick={() => {
+                    setDraft(null); setApiKey(""); setError(""); setSaved(false); setAcknowledgedVersion(null);
+                  }}>撤销修改</button> : null}
+                  <button className="primary-button" disabled={busy} type="submit"><FloppyDisk size={16} aria-hidden />{saving ? "正在保存…" : "保存配置"}</button>
+                </div>
               </div>
             </form>
           </Panel>
-          {snapshot.configured ? <Panel title="工具协议诊断" description="只使用已保存的配置，不发送项目内容。" actions={<StatusBadge tone={snapshot.toolCallingVerified ? "success" : "warning"}>{snapshot.toolCallingVerified ? "已验证" : "待验证"}</StatusBadge>}>
-            <div className="ui-stack">
-              <p className="settings-status-line"><ShieldCheck size={20} aria-hidden />当前版本 {snapshot.version}：{snapshot.toolCallingVerified ? "完整工具往返已验证" : "尚未验证，Agent Run 会被阻断"}。</p>
-              <p className="ui-muted">诊断最多向模型服务发送两次请求，可能产生费用。它验证工具请求、结果回填和下一轮响应，不验证视觉或输出质量。</p>
-              <label className="settings-consent"><input type="checkbox" checked={costAcknowledged} disabled={busy || hasUnsavedChanges || hasRemoteUpdate} onChange={(event) => setAcknowledgedVersion(event.target.checked ? snapshot.version : null)} /><span>我确认此次诊断可能产生模型费用</span></label>
-              {diagnosticError ? <Notice tone="danger">{diagnosticError}</Notice> : null}
-              {diagnosed ? <Notice tone="success">已验证完整工具协议。</Notice> : null}
-              {diagnosing ? <LoadingState compact label="正在验证工具协议…" /> : null}
-              <div className="ui-form-actions"><span className="ui-muted">{hasUnsavedChanges || hasRemoteUpdate ? "请先保存并清空未提交的密钥输入，再诊断已保存版本。" : "每次诊断都需要确认费用。"}</span><button className="secondary-button" type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? "正在诊断…" : "执行可能计费的诊断"}</button></div>
-            </div>
-          </Panel> : null}
         </> : null}
       </div>
       <aside className="ui-stack">
+        {snapshot?.configured ? <Panel title="工具协议诊断" description="只使用已保存的配置，不发送项目内容。" actions={<StatusBadge tone={snapshot.toolCallingVerified ? "success" : "warning"}>{snapshot.toolCallingVerified ? "已验证" : "待验证"}</StatusBadge>}>
+          <div className="ui-stack">
+            <p className="settings-status-line"><ShieldCheck size={20} aria-hidden />当前版本 {snapshot.version}：{snapshot.toolCallingVerified ? "完整工具往返已验证" : "尚未验证，Agent Run 会被阻断"}。</p>
+            <p className="ui-muted">诊断最多向模型服务发送两次请求，可能产生费用。它验证工具请求、结果回填和下一轮响应，不验证视觉或输出质量。</p>
+            <label className="settings-consent"><input type="checkbox" checked={costAcknowledged} disabled={busy || hasUnsavedChanges || hasRemoteUpdate} onChange={(event) => setAcknowledgedVersion(event.target.checked ? snapshot.version : null)} /><span>我确认此次诊断可能产生模型费用</span></label>
+            {diagnosticError ? <Notice tone="danger">{diagnosticError}</Notice> : null}
+            {diagnosed ? <Notice tone="success">已验证完整工具协议。</Notice> : null}
+            {diagnosing ? <LoadingState compact label="正在验证工具协议…" /> : null}
+            <div className="ui-form-actions"><span className="ui-muted">{hasUnsavedChanges || hasRemoteUpdate ? "请先保存并清空未提交的密钥输入，再诊断已保存版本。" : "每次诊断都需要确认费用。"}</span><button className="secondary-button" type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? "正在诊断…" : "执行可能计费的诊断"}</button></div>
+          </div>
+        </Panel> : null}
         <Notice title="配置与验证">
           已保存的配置在真实模型模式下生效。运行前请完成工具协议诊断；保存配置本身不会验证服务连通性。
         </Notice>

@@ -584,7 +584,7 @@ public class ArtifactService {
     /** Appends one user-uploaded media version without changing the resource-library default. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public ArtifactVersion appendUserMediaVersionWithinChange(UUID ownerId, UUID projectId,
-            UUID artifactId, JsonNode content) {
+            UUID artifactId, JsonNode content, UUID baseVersionId, JsonNode frozenInput) {
         projects.requireActiveProject(ownerId, projectId);
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
                 .orElseThrow(this::notFound);
@@ -598,10 +598,12 @@ public class ArtifactService {
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.USER);
         validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, current.kind(), content);
+        if (baseVersionId != null) requireVersion(ownerId, projectId, artifactId, baseVersionId);
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
-                INITIAL_SCHEMA_VERSION, null, null, content.deepCopy(), references,
+                INITIAL_SCHEMA_VERSION, baseVersionId,
+                frozenInput == null ? null : frozenInput.deepCopy(), content.deepCopy(), references,
                 ArtifactVersion.CreatedByKind.USER, null, now);
         artifacts.appendVersion(revision);
         return revision;

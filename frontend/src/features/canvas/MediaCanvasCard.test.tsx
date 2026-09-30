@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,18 +30,22 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
   const onEdit = vi.fn();
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
-  render(<QueryClientProvider client={client}>
+  const card = (selected: boolean, toolbarVisible = true) => <QueryClientProvider client={client}>
     <div onClick={onCardClick}>
-      <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected locked={false} onEdit={onEdit}
+      <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected={selected}
+        toolbarVisible={toolbarVisible} locked={false} onEdit={onEdit}
         onInspect={onInspect}>{null}</MediaCanvasCard>
     </div>
-  </QueryClientProvider>);
-  return { onInspect, onEdit, onCardClick };
+  </QueryClientProvider>;
+  const view = render(card(true));
+  return { onInspect, onEdit, onCardClick,
+    setToolbarState: (selected: boolean, toolbarVisible = true) => view.rerender(card(selected, toolbarVisible)) };
 }
 
 describe("MediaCanvasCard", () => {
   beforeEach(() => {
     server.use(
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
         projectId: artifact.projectId, canvasItemId: "item-1", prompt: "", displayMode: "DRAFT",
         parameters: {}, videoInputMode: null, imageInputs: [], mentions: [],
@@ -50,6 +54,153 @@ describe("MediaCanvasCard", () => {
       })),
       http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([])),
     );
+  });
+
+  describe.each(["deselect", "hide toolbar"] as const)("when closing via %s", (closeMode) => {
+    beforeEach(() => {
+      server.use(
+        http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+          projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+        })),
+        http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+          id: "image-asset", width: 1200, height: 800,
+        })),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+          connections: [], defaults: [],
+        })),
+      );
+    });
+
+    function showResultCard() {
+      const card = showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+        id: "image-version", versionNo: 1, schemaVersion: 1,
+        content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+        createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+      } });
+      return {
+        closeToolbar: () => card.setToolbarState(closeMode !== "deselect", closeMode !== "hide toolbar"),
+        reopenToolbar: () => card.setToolbarState(true),
+      };
+    }
+
+    it.each([
+      ["表情调整", "表情调整"], ["图层分离", "图层分离"], ["画笔标注", "画笔标注"],
+      ["移除背景", "移除背景"], ["局部擦除", "局部擦除"], ["视角调整", "视角调整"],
+      ["AI 扩图", "AI 扩图"], ["高清放大", "高清放大"], ["裁剪", "裁剪图片"],
+      ["重新打光", "打光"], ["智能编辑", "智能编辑图片"], ["脸部三视图", "脸部三视图"],
+    ])("resets the %s panel before selecting the node again", async (label, dialogName) => {
+      const { closeToolbar, reopenToolbar } = showResultCard();
+      await screen.findByRole("img", { name: "湖边 的预览" });
+      if (label !== "智能编辑") {
+        fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+        if (label === "脸部三视图") {
+          fireEvent.click(screen.getByRole("menuitem", { name: "三视图" }));
+          fireEvent.click(screen.getByRole("menuitem", { name: /脸部三视图/ }));
+        } else fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(`${label}.*(?:AI|本地)`) }));
+      } else fireEvent.click(screen.getByRole("button", { name: "智能编辑" }));
+      expect(screen.getByRole("dialog", { name: dialogName })).toBeInTheDocument();
+      closeToolbar();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      reopenToolbar();
+      expect(screen.getByLabelText("媒体卡片操作")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "扩展" })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByLabelText("媒体卡片操作").closest(".react-flow__node-toolbar"))
+        .not.toHaveClass("artifact-card-toolbar-raised");
+    });
+
+    it("resets the extension menu and its three-view submenu", async () => {
+      const { closeToolbar, reopenToolbar } = showResultCard();
+      fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "三视图" }));
+      expect(screen.getByRole("menu", { name: "三视图类型" })).toBeInTheDocument();
+      closeToolbar();
+      reopenToolbar();
+      expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
+      expect(screen.queryByRole("menu", { name: "三视图类型" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+      expect(screen.queryByRole("menu", { name: "三视图类型" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the version menu closed after selecting the node again", async () => {
+      server.use(http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () =>
+        HttpResponse.json({ items: [1, 2].map((versionNo) => ({
+          id: versionNo === 1 ? "image-version" : "image-version-2", versionNo, schemaVersion: 1,
+          content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+          createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+        })) })));
+      const { closeToolbar, reopenToolbar } = showResultCard();
+      fireEvent.click(await screen.findByRole("button", { name: "版本 v1" }));
+      expect(await screen.findByText("2 个版本")).toBeInTheDocument();
+      closeToolbar();
+      reopenToolbar();
+      expect(screen.queryByRole("menu", { name: "媒体版本" })).not.toBeInTheDocument();
+    });
+
+    it("clears a failed operation and its form when the toolbar closes", async () => {
+      server.use(
+        http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+          headerName: "X-XSRF-TOKEN", token: "test",
+        })),
+        http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", () =>
+          HttpResponse.json({ status: 502, code: "PROVIDER_ERROR", detail: "模拟处理失败" },
+            { status: 502, headers: { "Content-Type": "application/problem+json" } })),
+      );
+      const { closeToolbar, reopenToolbar } = showResultCard();
+      await screen.findByRole("img", { name: "湖边 的预览" });
+      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
+      fireEvent.change(screen.getByRole("combobox", { name: "放大倍数" }), { target: { value: "4" } });
+      fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("模拟处理失败");
+      closeToolbar();
+      reopenToolbar();
+      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: "放大倍数" })).toHaveValue("2");
+    });
+
+    it("dismisses the panel without losing or resubmitting an in-flight operation", async () => {
+      let submissions = 0;
+      let finishSubmission = () => {};
+      const submitted = new Promise<void>((resolve) => { finishSubmission = resolve; });
+      server.use(
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+          connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
+            id: "ai-capability", name: "GPT Image", enabled: true,
+            kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          }] }], defaults: [],
+        })),
+        http.get("/api/v1/auth/csrf", () => HttpResponse.json({
+          headerName: "X-XSRF-TOKEN", token: "test",
+        })),
+        http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async () => {
+          submissions += 1;
+          await submitted;
+          return HttpResponse.json({ id: "expression-task", status: "READY", errorCode: null });
+        }),
+      );
+      const { closeToolbar, reopenToolbar } = showResultCard();
+      await screen.findByRole("img", { name: "湖边 的预览" });
+      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
+      await waitFor(() => expect(screen.getByRole("combobox", { name: "图片能力" }))
+        .toHaveValue("ai-capability"));
+      fireEvent.change(screen.getByRole("textbox", { name: "目标表情" }), { target: { value: "微笑" } });
+      fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+      await waitFor(() => expect(submissions).toBe(1));
+      try {
+        closeToolbar();
+        reopenToolbar();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "智能编辑" })).toBeDisabled();
+      } finally {
+        finishSubmission();
+      }
+      await waitFor(() => expect(screen.getByRole("button", { name: "智能编辑" })).toBeEnabled());
+      expect(submissions).toBe(1);
+    });
   });
 
   it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
@@ -62,7 +213,7 @@ describe("MediaCanvasCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "扩展" }));
     expect(screen.getByLabelText("图片扩展功能").closest(".react-flow__node-toolbar"))
       .toHaveClass("artifact-card-toolbar-raised");
-    expect(screen.getByRole("button", { name: /高清放大.*本地/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /高清放大.*本地/ })).toBeDisabled();
     fireEvent.keyDown(screen.getByRole("button", { name: "扩展" }), { key: "Escape" });
     expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus();
@@ -127,7 +278,7 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("button", { name: /裁剪.*本地/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /裁剪.*本地/ }));
     expect(screen.getByRole("dialog", { name: "裁剪图片" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "当前图片裁剪预览" })).toHaveAttribute("src",
       "/api/v1/projects/project-1/assets/image-asset/content");
@@ -172,7 +323,7 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("button", { name: /重新打光.*AI/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /重新打光.*AI/ }));
     expect(screen.getByRole("dialog", { name: "打光" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "当前图片打光预览" })).toHaveAttribute("src",
       "/api/v1/projects/project-1/assets/image-asset/content");
@@ -190,7 +341,7 @@ describe("MediaCanvasCard", () => {
     })));
   });
 
-  it("exposes all seven AI image operations instead of disabled placeholders", async () => {
+  it("exposes model operations and the local brush editor", async () => {
     server.use(
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
         projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
@@ -213,9 +364,10 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    expect(screen.getByRole("button", { name: "三视图" })).toBeEnabled();
-    for (const label of ["图层分离", "表情调整", "画笔标注", "移除背景", "局部擦除", "视角调整"]) {
-      expect(screen.getByRole("button", { name: new RegExp(`${label}.*AI`) })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "三视图" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: /画笔标注.*本地/ })).toBeEnabled();
+    for (const label of ["图层分离", "表情调整", "移除背景", "局部擦除", "视角调整"]) {
+      expect(screen.getByRole("menuitem", { name: new RegExp(`${label}.*AI`) })).toBeEnabled();
     }
     expect(screen.queryByText("后续")).not.toBeInTheDocument();
   });
@@ -321,7 +473,7 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    const threeViewEntry = screen.getByRole("button", { name: "三视图" });
+    const threeViewEntry = screen.getByRole("menuitem", { name: "三视图" });
     fireEvent.pointerEnter(threeViewEntry);
     fireEvent.click(threeViewEntry);
     expect(screen.getByRole("menu", { name: "三视图类型" })).toBeInTheDocument();
@@ -374,7 +526,7 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("button", { name: /表情调整.*AI/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
     const submit = screen.getByRole("button", { name: "开始处理" });
     expect(submit).toBeDisabled();
     fireEvent.change(screen.getByRole("textbox", { name: "目标表情" }), {
@@ -415,7 +567,7 @@ describe("MediaCanvasCard", () => {
     } });
 
     fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("button", { name: /图层分离.*AI/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /图层分离.*AI/ }));
     const capability = screen.getByRole("combobox", { name: "图片能力" });
     expect(capability).toHaveValue("transparent-capability");
     expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
@@ -423,6 +575,73 @@ describe("MediaCanvasCard", () => {
       target: { value: "BACKGROUND" },
     });
     expect(screen.getByRole("option", { name: "Opaque model" })).toBeInTheDocument();
+  });
+
+  describe("image enlargement", () => {
+    beforeEach(() => {
+      server.use(http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+      })));
+    });
+
+    function showImage() {
+      return showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+        id: "image-version", versionNo: 1, schemaVersion: 1,
+        content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+        createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+      } });
+    }
+
+    it.each(["button", "escape", "backdrop"] as const)("opens a modal and closes via %s with focus restored", async (method) => {
+      const { onCardClick } = showImage();
+      const expand = await screen.findByRole("button", { name: "放大图片" });
+      expand.focus();
+      fireEvent.click(expand);
+      const dialog = screen.getByRole("dialog", { name: "湖边 的原图预览" });
+      expect(dialog).toHaveAttribute("aria-modal", "true");
+      expect(screen.queryByRole("link", { name: "打开原图" })).not.toBeInTheDocument();
+      expect(within(dialog).getByRole("img", { name: "湖边 的原图" })).toHaveAttribute("src",
+        "/api/v1/projects/project-1/assets/image-asset/content");
+      const close = within(dialog).getByRole("button", { name: "关闭图片预览" });
+      expect(close).toHaveFocus();
+      fireEvent.keyDown(close, { key: "Tab" });
+      expect(close).toHaveFocus();
+      fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+      expect(close).toHaveFocus();
+      fireEvent.click(within(dialog).getByRole("img"));
+      expect(dialog).toBeInTheDocument();
+      if (method === "button") fireEvent.click(close);
+      else if (method === "escape") fireEvent.keyDown(close, { key: "Escape" });
+      else fireEvent.click(dialog.parentElement!);
+      expect(screen.queryByRole("dialog", { name: "湖边 的原图预览" })).not.toBeInTheDocument();
+      expect(expand).toHaveFocus();
+      expect(onCardClick).not.toHaveBeenCalled();
+    });
+
+    it("handles image loading failure and retry without passing canvas shortcuts through", async () => {
+      showImage();
+      fireEvent.click(await screen.findByRole("button", { name: "放大图片" }));
+      const dialog = screen.getByRole("dialog", { name: "湖边 的原图预览" });
+      expect(within(dialog).getByRole("status", { name: "正在加载图片" })).toBeInTheDocument();
+      fireEvent.error(within(dialog).getByRole("img"));
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("图片加载失败");
+      const retry = within(dialog).getByRole("button", { name: "重试加载图片" });
+      retry.focus();
+      fireEvent.keyDown(retry, { key: "Tab" });
+      expect(within(dialog).getByRole("button", { name: "关闭图片预览" })).toHaveFocus();
+      const canvasShortcut = vi.fn();
+      document.addEventListener("keydown", canvasShortcut);
+      try {
+        fireEvent.keyDown(retry, { key: "Delete" });
+        expect(canvasShortcut).not.toHaveBeenCalled();
+      } finally {
+        document.removeEventListener("keydown", canvasShortcut);
+      }
+      fireEvent.click(retry);
+      expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+      fireEvent.load(within(dialog).getByRole("img"));
+      expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+    });
   });
 
   it("keeps the full preview available when original dimensions fail and allows retry", async () => {
@@ -448,15 +667,16 @@ describe("MediaCanvasCard", () => {
     expect(screen.getByRole("img", { name: "湖边 的预览" })).toBeInTheDocument();
   });
 
-  it("shows a real running task as a loader without a fabricated percentage", async () => {
-    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
-      { id: "task-1", status: "WAITING_PROVIDER", errorCode: null },
-    ])));
-    showCard();
-    expect(await screen.findByText("正在生成")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "上传图片" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-  });
+  it.each(["RUNNING", "SUBMITTING", "WAITING_PROVIDER"] as const)(
+    "shows %s as generation activity without a fabricated percentage", async (status) => {
+      server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+        { id: "task-1", status, errorCode: null },
+      ])));
+      showCard();
+      expect(await screen.findByText("正在生成")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "上传图片" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
 
   it("shows UNKNOWN as an explicit retry state instead of a running animation", async () => {
     server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
@@ -519,6 +739,7 @@ describe("MediaCanvasCard", () => {
     expect(poster.getAttribute("src")).toContain("/thumbnail");
     expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
     expect(screen.getByText("演示视频")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "打开视频文件" })).toHaveAttribute("target", "_blank");
 
     fireEvent.click(screen.getByRole("button", { name: "播放视频" }));
     const video = screen.getByLabelText("湖边 的视频");

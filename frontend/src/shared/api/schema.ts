@@ -703,7 +703,7 @@ export interface paths {
         put?: never;
         /**
          * 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
-         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。
+         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。
          */
         post: operations["runImageOperation"];
         delete?: never;
@@ -826,7 +826,7 @@ export interface paths {
         put?: never;
         /**
          * 向空媒体节点上传首个结果，或从已有结果派生新节点
-         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入。
+         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入，标题为来源节点当前标题加「 · 上传」；超长时截短来源部分以保留后缀。首次填充空节点保留原标题，重放不重新命名。BRUSH_MARKUP 用途从来源当前图片同步创建「 · 画笔标注」派生节点，保存为 USER 版本并记录 baseVersionId 与 frozenInput，不创建 AI Task。来源版本或 expectedVersion 不匹配返回 409，相同目标 ID 与内容、用途和来源安全重放。
          */
         post: operations["uploadCanvasItemVersion"];
         delete?: never;
@@ -1270,7 +1270,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI local origin or optional OPENAI HTTPS API base URL; null uses the official OpenAI /v1 base. */
+            /** @description COMFYUI local origin or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -1303,7 +1303,7 @@ export interface components {
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
-        /** @description Fixed adapters accept only their declared settings; model IDs are not editable. OPENAI base URL belongs to the versioned connection. */
+        /** @description Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
             checkpoint?: string;
             diffusionModel?: string;
@@ -1312,6 +1312,26 @@ export interface components {
             clipVision?: string;
             /** @enum {string} */
             quality?: "low" | "medium" | "high";
+            /** @description Empty uses the compiled default; only OPENAI/GOOGLE accept this field. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            model?: string;
+            /** @description Image defaults; video adapters accept aspectRatio only. Unsupported parameters are rejected. */
+            defaultParameters?: components["schemas"]["ImageGenerationParameters"];
+            defaultDurationSeconds?: number;
+            minimumSeconds?: number;
+            maximumSeconds?: number;
+            maxReferenceImages?: number;
+            pricing?: components["schemas"]["MediaCapabilityPricing"];
+        };
+        MediaCapabilityPricing: {
+            /** @description Administrator supplied unit price; up to six decimal places. */
+            amount: string;
+            /** @enum {string} */
+            currency: "CNY" | "USD";
+            /**
+             * @description IMAGE for images; VIDEO or SECOND for videos.
+             * @enum {string}
+             */
+            unit: "IMAGE" | "VIDEO" | "SECOND";
         };
         MediaDefault: {
             /** @enum {string} */
@@ -1325,7 +1345,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE";
-            /** @description Required local COMFYUI origin or optional OPENAI HTTPS API base URL. */
+            /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1334,7 +1354,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required local COMFYUI origin or optional OPENAI HTTPS API base URL. */
+            /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1666,7 +1686,7 @@ export interface components {
         CreateArtifactRequest: {
             kind: components["schemas"]["ArtifactKind"];
             title: string;
-            /** @description IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。 */
+            /** @description TEXT 必须提供 format 与 text，text 可为空字符串以创建文字节点的初始正文版本。IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。 */
             content: components["schemas"]["WritableArtifactContent"] | null;
         };
         SaveMediaDraftRequest: {
@@ -1705,7 +1725,7 @@ export interface components {
             /** Format: int64 */
             expectedCanvasItemVersion: number;
             /** @enum {string} */
-            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "BRUSH_MARKUP" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
+            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
             instruction?: string | null;
             /** Format: uuid */
             capabilityId?: string | null;
@@ -1906,6 +1926,16 @@ export interface components {
             targetItemId: string;
             /** Format: int64 */
             expectedVersion: number;
+            /**
+             * @description 不传时为 UPLOAD。BRUSH_MARKUP 直接保存客户端合成图片，不调用模型或创建生成任务；必须固定来源图片版本并派生独立节点。
+             * @enum {string}
+             */
+            purpose?: "UPLOAD" | "BRUSH_MARKUP";
+            /**
+             * Format: uuid
+             * @description BRUSH_MARKUP 必填，必须等于来源节点当前选用图片版本；普通上传不传。
+             */
+            sourceVersionId?: string | null;
             content: components["schemas"]["WritableArtifactContent"];
         };
         ArtifactInputReference: {
@@ -2469,6 +2499,7 @@ export interface components {
         "text-v1.schema": {
             /** @enum {string} */
             format: "PLAIN_TEXT" | "MARKDOWN";
+            /** @description 允许空字符串作为新文字节点的初始正文版本。 */
             text: string;
         };
         /** IMAGE Artifact content v1 */

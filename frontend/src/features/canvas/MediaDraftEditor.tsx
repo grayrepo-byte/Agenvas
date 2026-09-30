@@ -1,3 +1,6 @@
+import { estimatedMediaCost } from "../../shared/mediaPricing";
+import { adapterModel } from "../settings/mediaAdapterCatalog";
+import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import { ArrowUp, BoundingBox, CaretDown, Check, Coins, Cube, ImagesSquare, ImageSquare,
   PaintBrush, Plus, SlidersHorizontal, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +18,8 @@ import { ApiError, assetContentUrl, cancelQueuedDirectMediaTask, createArtifact,
   uploadImageAsset, type Artifact, type MediaCapability, type MediaDraft,
   type ImageGenerationParameters, type SaveMediaDraftRequest } from "../../shared/api/client";
 import "./MediaDraftEditor.css";
+import { useCanvasStore } from "./canvasStore";
+import { saveClosedMediaDraft, type PendingMediaDraftSave } from "./mediaDraftCloseSave";
 
 const AUTOSAVE_DELAY_MS = 650;
 const REFERENCE_SOURCE_CLOSE_DELAY_MS = 120;
@@ -30,11 +35,6 @@ const INPUT_COLORS = [
 const QUEUE_LABELS = {
   WAITING_WORKER: "等待执行器", NOT_QUEUED: "未排队",
 } as const;
-const FIXED_MODELS: Readonly<Record<string, string>> = {
-  OPENAI_GPT_IMAGE_2: "gpt-image-2", GOOGLE_NANO_BANANA_2: "gemini-3.1-flash-image",
-  ARK_SEEDANCE_2_I2V: "doubao-seedance-2-0-260128", MOCK_IMAGE: "Mock 图片演示",
-  MOCK_VIDEO: "Mock 视频演示",
-};
 const QUALITY_LABELS = { low: "低", medium: "中", high: "高" } as const;
 const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9", "AUTO"] as const;
 const VIDEO_ASPECT_RATIO_OPTIONS = ["AUTO", "16:9", "9:16", "1:1"] as const;
@@ -71,6 +71,7 @@ type VideoParameters = { aspectRatio: (typeof VIDEO_ASPECT_RATIO_OPTIONS)[number
 
 function normalizedImageParameters(raw: ImageGenerationParameters | undefined,
   capability?: MediaCapability): ImageParameters {
+  raw = { ...capability?.settings.defaultParameters, ...raw };
   const supportedRatios = capability?.supportedImageAspectRatios ?? ["AUTO"];
   const supportedResolutions = capability?.supportedImageResolutions ?? ["1K"];
   const supportedQualities = capability?.supportedImageQualities ?? [];
@@ -90,7 +91,8 @@ function normalizedImageParameters(raw: ImageGenerationParameters | undefined,
   };
 }
 
-function normalizedVideoParameters(raw: ImageGenerationParameters | undefined): VideoParameters {
+function normalizedVideoParameters(raw: ImageGenerationParameters | undefined, capability?: MediaCapability): VideoParameters {
+  raw = { ...capability?.settings.defaultParameters, ...raw };
   const aspectRatio = VIDEO_ASPECT_RATIO_OPTIONS.find((candidate) => candidate === raw?.aspectRatio);
   return { aspectRatio: aspectRatio ?? "AUTO" };
 }
@@ -113,8 +115,8 @@ function inputsForVideoMode(inputs: DraftFields["imageInputs"], mode: VideoInput
 }
 
 function modelName(capability: MediaCapability) {
-  return FIXED_MODELS[capability.adapterId] ?? capability.settings.checkpoint
-    ?? capability.settings.diffusionModel ?? capability.adapterId;
+  return capability.settings.model || adapterModel(capability.adapterId) || capability.settings.checkpoint
+    || capability.settings.diffusionModel || capability.adapterId;
 }
 
 function imageAssetId(content: unknown) {
@@ -329,7 +331,7 @@ function PromptMentionEditor({ id, label, placeholder, prompt, mentions, referen
     <div ref={editorRef} id={id} className="media-draft-prompt" role="textbox"
       aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
       data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
-    {menu ? <div className="media-draft-mention-menu" role="listbox" aria-label="图片引用"
+    {menu ? <DropdownMenu className="media-draft-mention-menu" role="listbox" aria-label="图片引用"
       style={{ left: menu.left, top: menu.top }}>
       <span className="media-draft-mention-menu-title">Image</span>
       {references.map((reference, index) => <button key={reference.versionId} type="button"
@@ -339,7 +341,7 @@ function PromptMentionEditor({ id, label, placeholder, prompt, mentions, referen
         {reference.thumbnailUrl ? <img src={reference.thumbnailUrl} alt="" /> : <ImageSquare size={28} />}
         <span>{reference.label}</span>
       </button>)}
-    </div> : null}
+    </DropdownMenu> : null}
   </div>;
 }
 
@@ -420,6 +422,17 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   });
   const [fields, setFields] = useState<DraftFields | null>(null);
   const fieldsRef = useRef<DraftFields | null>(null);
+  const ratioDraftKey = `${artifact.projectId}:${canvasItemId}`;
+  const recovery = useCanvasStore((state) => state.mediaDraftRecoveries[ratioDraftKey]);
+  const pendingSaveRef = useRef<PendingMediaDraftSave | undefined>(undefined);
+  const localAspectRatio = fields?.parameters.aspectRatio;
+  useEffect(() => {
+    if (artifact.kind === "IMAGE" && localAspectRatio !== undefined) {
+      useCanvasStore.getState().setImageRatioDraft(ratioDraftKey, localAspectRatio);
+    } else if (!useCanvasStore.getState().mediaDraftRecoveries[ratioDraftKey]) {
+      useCanvasStore.getState().clearImageRatioDraft(ratioDraftKey);
+    }
+  }, [artifact.kind, localAspectRatio, ratioDraftKey]);
   const [expectedVersion, setExpectedVersion] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -529,8 +542,13 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   }, [popover]);
 
   const save = useMutation({
-    mutationFn: (input: SaveMediaDraftRequest) => saveMediaDraft(artifact.projectId, canvasItemId, input),
+    mutationFn: (input: SaveMediaDraftRequest) => {
+      const result = saveMediaDraft(artifact.projectId, canvasItemId, input);
+      pendingSaveRef.current = { request: input, result };
+      return result;
+    },
     onSuccess: (saved, input) => {
+      pendingSaveRef.current = undefined;
       setExpectedVersion(saved.version);
       queryClient.setQueryData(key, saved);
       const latest = fieldsRef.current;
@@ -539,7 +557,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
       if (latest && JSON.stringify(latest) === JSON.stringify(submitted)) setDirty(false);
       setError(null);
     },
-    onError: (failure) => setError(failure),
+    onError: (failure) => { pendingSaveRef.current = undefined; setError(failure); },
   });
   const commitAssetReferences = useMutation({
     mutationFn: ({ request }: AssetReferenceCommit) =>
@@ -643,10 +661,43 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: tasksKey }),
   });
 
+  const closeState = useRef<{ fields: DraftFields | null; dirty: boolean;
+    expectedVersion: number | null; error: Error | null }>({ fields: null,
+    dirty: false, expectedVersion: null, error: null });
+  useLayoutEffect(() => {
+    closeState.current = { fields, dirty, expectedVersion, error };
+  }, [fields, dirty, expectedVersion, error]);
+  useEffect(() => () => {
+    const state = closeState.current;
+    if (state.dirty && state.fields && state.expectedVersion !== null) {
+      const request = { ...state.fields, expectedVersion: state.expectedVersion };
+      if (state.error) {
+        useCanvasStore.getState().setMediaDraftRecovery(ratioDraftKey,
+          { request, saving: false, error: state.error });
+      } else {
+        void saveClosedMediaDraft(queryClient, artifact.projectId, canvasItemId,
+          request, pendingSaveRef.current);
+      }
+    } else if (!useCanvasStore.getState().mediaDraftRecoveries[ratioDraftKey]) {
+      useCanvasStore.getState().clearImageRatioDraft(ratioDraftKey);
+    }
+  }, [queryClient, artifact.projectId, canvasItemId, ratioDraftKey]);
+
+  useEffect(() => {
+    if (fields || !recovery || recovery.saving) return;
+    const { expectedVersion: recoveredVersion, ...recoveredFields } = recovery.request;
+    fieldsRef.current = recoveredFields;
+    setFields(recoveredFields);
+    setExpectedVersion(recoveredVersion);
+    setDirty(true);
+    setError(recovery.error);
+    useCanvasStore.getState().clearMediaDraftRecovery(ratioDraftKey);
+  }, [fields, recovery, ratioDraftKey]);
+
   useEffect(() => {
     // Run submission and result selection may advance the draft CAS version. Refresh only clean
     // fields; an in-flight save, local edit or conflict must keep its current input intact.
-    if (!draft.data || dirty || save.isPending || commitAssetReferences.isPending
+    if (recovery || !draft.data || dirty || save.isPending || commitAssetReferences.isPending
         || run.isPending || error) return;
     // An earlier GET can finish after a successful save wrote its newer result to the cache.
     // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
@@ -656,7 +707,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     setFields(initial);
     setExpectedVersion(draft.data.version);
   }, [draft.data, dirty, save.isPending, commitAssetReferences.isPending,
-    run.isPending, error, expectedVersion]);
+    run.isPending, error, expectedVersion, recovery]);
 
   useEffect(() => {
     if (!dirty || !fields || expectedVersion === null || save.isPending
@@ -668,14 +719,14 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     removeConnectedInput.isPending, error]);
 
   useEffect(() => {
-    if (artifact.kind !== "VIDEO" || !fields || dirty || save.isPending
+    if (artifact.kind !== "VIDEO" || !fields || !chosenCapability || dirty || save.isPending
         || commitAssetReferences.isPending || removeConnectedInput.isPending) return;
     const hasImages = fields.imageInputs.length > 0;
     const desiredMode = hasImages
       ? fields.videoInputMode === null || fields.videoInputMode === "TEXT"
         ? preferredImageVideoMode(chosenCapability) : fields.videoInputMode
       : "TEXT";
-    const parameters = normalizedVideoParameters(fields.parameters);
+    const parameters = normalizedVideoParameters(fields.parameters, chosenCapability);
     if (fields.videoInputMode !== desiredMode
         || JSON.stringify(fields.parameters) !== JSON.stringify(parameters)) {
       edit({ videoInputMode: desiredMode,
@@ -755,7 +806,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     if (nextVideoInputs.length < fields.imageInputs.length
         && !window.confirm("切换模型会移除当前模式无法使用的多余图片。是否继续？")) return;
     edit({ capabilityId, ...(nextImageParameters ? { parameters: nextImageParameters } : {}),
-      ...(artifact.kind === "VIDEO" ? { parameters: normalizedVideoParameters(fields.parameters),
+      ...(artifact.kind === "VIDEO" ? { parameters: normalizedVideoParameters(fields.parameters, chosenCapability),
         videoInputMode: nextVideoMode, imageInputs: nextVideoInputs } : {}) });
     setPopover(null);
     triggerRef.current?.focus();
@@ -765,7 +816,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
     {draft.error ? <div role="alert">无法读取工作草稿：{draft.error.message}
       <button className="media-draft-text-action" disabled={draft.isFetching}
         onClick={() => void draft.refetch()} type="button">重试读取草稿</button></div>
-      : <CanvasLoadingState compact label="正在读取工作草稿" />}
+      : <CanvasLoadingState compact label={recovery?.saving ? "正在保存工作草稿" : "正在读取工作草稿"} />}
   </div>;
 
   const imageChoices = imageResources.flatMap((candidate, index) =>
@@ -801,17 +852,17 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
   const semanticInputsValid = artifact.kind === "IMAGE"
     ? fields.imageInputs.length <= imageCapacity
     : effectiveMode === "TEXT" ? fields.imageInputs.length === 0
-      : effectiveMode === "START_END" ? Boolean(startFrame)
+      : effectiveMode === "START_END" ? Boolean(startFrame) && fields.imageInputs.length <= imageCapacity
         && (chosenCapability?.supportsEndFrame || !endFrame)
       : effectiveMode === "GENERAL_REFERENCE" ? fields.imageInputs.length > 0
         && fields.imageInputs.length <= imageCapacity : false;
   const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
-  const duration = fields.durationSeconds;
+  const duration = fields.durationSeconds ?? chosenCapability?.settings.defaultDurationSeconds ?? null;
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
     && duration <= Math.min(MAX_VIDEO_SECONDS, chosenCapability?.maximumSeconds ?? MAX_VIDEO_SECONDS);
   const imageParameters = normalizedImageParameters(fields.parameters, chosenCapability);
-  const videoParameters = normalizedVideoParameters(fields.parameters);
+  const videoParameters = normalizedVideoParameters(fields.parameters, chosenCapability);
   const supportedImageAspectRatios = chosenCapability?.supportedImageAspectRatios ?? ["AUTO"];
   const supportedImageResolutions = chosenCapability?.supportedImageResolutions ?? ["1K"];
   const supportedImageQualities = chosenCapability?.supportedImageQualities ?? [];
@@ -1052,7 +1103,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           }}>
           <Plus size={20} />
         </button>
-        {referenceSourcesOpen && !popover ? <div className="media-draft-popover media-draft-reference-sources"
+        {referenceSourcesOpen && !popover ? <DropdownMenu className="media-draft-popover media-draft-reference-sources"
           ref={popoverRef} id={`${id}-reference-sources`} role="menu" aria-label="图片来源">
           <button type="button" role="menuitem" onClick={() => {
             setReferenceSourcesOpen(false);
@@ -1074,8 +1125,8 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
             aria-label="绘制引用图（暂未接入）" title="绘制引用图暂未接入">
             <PaintBrush size={17} /><span>绘制引用图</span><small>暂未接入</small>
           </button>
-        </div> : null}
-        {popover === "assetReferences" ? <div className="media-draft-popover media-draft-references" ref={popoverRef}
+        </DropdownMenu> : null}
+        {popover === "assetReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-asset-references`} role="dialog" aria-label="输入图片版本">
           <p className="media-draft-popover-title">选择精确图片版本</p>
           <label htmlFor={`${id}-asset-search`}>搜索资源图片</label>
@@ -1122,7 +1173,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
             </button>
           </div>
         </div> : null}
-        {popover === "canvasReferences" ? <div className="media-draft-popover media-draft-references" ref={popoverRef}
+        {popover === "canvasReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-canvas-references`} role="dialog" aria-label="从画布选择图片">
           <p className="media-draft-popover-title">画布中的其他图片</p>
           <div className="media-draft-reference-options">
@@ -1177,7 +1228,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           <VideoCamera size={17} /><span>{VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label
             ?? "选择输入模式"}</span><CaretDown size={12} />
         </button>
-        {popover === "modes" ? <div className="media-draft-popover media-draft-modes" ref={popoverRef}
+        {popover === "modes" ? <DropdownMenu className="media-draft-popover media-draft-modes" ref={popoverRef}
           id={`${id}-modes`} role="menu" aria-label="视频输入模式">
           <p className="media-draft-popover-title">视频生成模式</p>
           {VIDEO_MODE_OPTIONS.map((option) => {
@@ -1194,7 +1245,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
               {effectiveMode === option.value ? <Check size={16} /> : null}
             </button>;
           })}
-        </div> : null}
+        </DropdownMenu> : null}
       </div> : null}
       <div className="media-draft-popover-anchor media-draft-model-anchor">
         <button className="media-draft-toolbar-button media-draft-model-trigger" type="button"
@@ -1203,7 +1254,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           <Cube size={17} /><span>{settings.isPending ? "加载模型…" : settings.error ? "模型配置读取失败" : chosenCapability?.name
             ?? (fields.capabilityId ? "所选模型不可用" : "未配置默认模型")}</span><CaretDown size={12} />
         </button>
-        {popover === "models" ? <div className="media-draft-popover media-draft-models" ref={popoverRef}
+        {popover === "models" ? <DropdownMenu className="media-draft-popover media-draft-models" ref={popoverRef}
           id={`${id}-models`} role="menu" aria-label="生成模型">
           <p className="media-draft-popover-title">{artifact.kind === "IMAGE" ? "图片模型" : "视频模型"}</p>
           <button className="media-draft-model-option" role="menuitemradio" aria-checked={!fields.capabilityId}
@@ -1222,7 +1273,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           {settings.error ? <div role="alert">无法读取模型。
             <button className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">重试读取模型</button></div> : null}
           {settings.isSuccess && !availableCapabilities.length ? <p>尚无可用模型，请在媒体设置中启用对应能力。</p> : null}
-        </div> : null}
+        </DropdownMenu> : null}
       </div>
       <div className="media-draft-popover-anchor media-draft-parameters-anchor">
         <button className="media-draft-toolbar-button" type="button" aria-label="尺寸与画质"
@@ -1230,7 +1281,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           onClick={(event) => togglePopover("parameters", event.currentTarget)}>
           <SlidersHorizontal size={16} /><span>{artifact.kind === "VIDEO" ? `${duration ?? "—"} 秒 · ` : ""}{dimensionLabel} · {qualityLabel}{artifact.kind === "IMAGE" ? ` · ${imageParameters.generationCount} 张` : ""}</span><CaretDown size={12} />
         </button>
-        {popover === "parameters" ? <div className="media-draft-popover media-draft-parameters" ref={popoverRef}
+        {popover === "parameters" ? <div className="ui-popover-surface media-draft-popover media-draft-parameters" ref={popoverRef}
           tabIndex={-1} id={`${id}-parameters`} role="dialog" aria-label="尺寸与画质设置">
           <p className="media-draft-popover-title">生成参数</p>
           {artifact.kind === "IMAGE" ? <div className="media-draft-image-parameters">
@@ -1287,7 +1338,7 @@ export function MediaDraftEditor({ artifact, canvasItemId }: {
           </div> : null}
         </div> : null}
       </div>
-      <span className="media-draft-cost" title="预计费用未知"><Coins size={16} /><span>费用未知</span></span>
+      <span className="media-draft-cost" title="按管理员配置估算，实际费用以平台账单为准"><Coins size={16} /><span>{estimatedMediaCost(chosenCapability, imageParameters.generationCount, duration)}</span></span>
       <button className="media-draft-run" type="button" disabled={!canRun}
         aria-label={run.isPending ? "正在提交运行" : "运行"} title={occupied ? "此卡片已有任务，请等待完成或先重试" : "运行"}
         onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></button>

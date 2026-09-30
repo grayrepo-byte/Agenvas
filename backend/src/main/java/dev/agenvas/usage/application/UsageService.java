@@ -21,6 +21,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 记录模型、媒体任务和导出的预留与结算；缺少真实价格时保持 UNKNOWN，不伪造金额。 */
 @Service
 public class UsageService {
+    private static final int MONEY_SCALE = 6;
 
     /** 以 operationKey 唯一约束保证每笔用量账目最多写入一次。 */
     private final UsageRepository ledger;
@@ -279,15 +280,27 @@ public class UsageService {
         String workflowVersion = task.input().path("workflowVersion").asText("");
         if (configVersion < 1 || workflowVersion.isBlank()
                 || !("MOCK_UNPRICED".equals(source) || "PROVIDER_UNPRICED".equals(source)
-                        || "LOCAL_NO_COST".equals(source))) {
+                        || "LOCAL_NO_COST".equals(source) || "ADMIN_CONFIGURED".equals(source))) {
             throw new IllegalStateException("Media usage configuration snapshot is invalid");
         }
         boolean localNoCost = "LOCAL_NO_COST".equals(source);
         BigDecimal knownZero = localNoCost ? BigDecimal.ZERO : null;
+        JsonNode pricing = task.input().path("mediaPricing");
+        BigDecimal estimate = knownZero;
+        String currency = null;
+        if (!localNoCost && pricing.isObject()) {
+            estimate = new BigDecimal(pricing.path("amount").asText());
+            if ("SECOND".equals(pricing.path("unit").asText())) {
+                estimate = estimate.multiply(new BigDecimal(quantity.path("videoSeconds").asText()));
+            }
+            estimate = estimate.setScale(MONEY_SCALE);
+            currency = pricing.path("currency").asText();
+        }
         return new UsageEntry(UUID.randomUUID(), task.projectId(), task.runId(), task.id(),
-                operationKey, type, quantity, knownZero, knownZero, null,
-                localNoCost ? UsageEntry.CostStatus.KNOWN : UsageEntry.CostStatus.UNKNOWN,
-                source, configVersion,
+                operationKey, type, quantity, estimate, knownZero, currency,
+                localNoCost ? UsageEntry.CostStatus.KNOWN
+                        : estimate != null ? UsageEntry.CostStatus.ESTIMATED : UsageEntry.CostStatus.UNKNOWN,
+                estimate != null && !localNoCost ? "ADMIN_CONFIGURED" : source, configVersion,
                 workflowVersion, null, clock.instant());
     }
 

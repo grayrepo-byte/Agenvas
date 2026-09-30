@@ -7,6 +7,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.domain.CanvasItem;
+import dev.agenvas.canvas.domain.MediaUploadPurpose;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -34,6 +35,7 @@ public class CanvasService {
     private static final int MAX_COMMANDS = 100;
     /** 卡片展示标题允许的最大字符数。 */
     private static final int MAX_TITLE_LENGTH = 160;
+    private static final String DERIVATION_TITLE_SEPARATOR = " · ";
     /** 卡片坐标的最小边界。 */
     private static final BigDecimal MIN_COORDINATE = new BigDecimal("-1000000");
     /** 卡片坐标的最大边界。 */
@@ -241,14 +243,14 @@ public class CanvasService {
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
             int outputIndex) {
         return createMediaOutputWithinChange(ownerId, projectId, sourceItemId, targetItemId,
-                expectedSourceDraftVersion, outputIndex, MediaOutputDraft.COPY_SOURCE);
+                expectedSourceDraftVersion, outputIndex, MediaOutputDraft.COPY_SOURCE, null);
     }
 
     private enum MediaOutputDraft { COPY_SOURCE, EMPTY }
 
     private CanvasItem createMediaOutputWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
-            int outputIndex, MediaOutputDraft draftInitialization) {
+            int outputIndex, MediaOutputDraft draftInitialization, String resultLabel) {
         if (outputIndex < 0 || outputIndex >= 4) {
             throw validation("媒体输出序号必须在 0 到 3 之间。");
         }
@@ -281,7 +283,9 @@ public class CanvasService {
                 .max().orElse(-1) + 1);
         CanvasItem target = placement(targetItemId, projectId,
                 CanvasItem.SubjectType.ARTIFACT, source.subjectId(), source.selectedVersionId(),
-                source.title(), x, y, source.width(), source.height(), zIndex,
+                draftInitialization == MediaOutputDraft.EMPTY
+                        ? derivationTitle(source.title(), resultLabel) : source.title(),
+                x, y, source.width(), source.height(), zIndex,
                 source.groupId(), false);
         if (!canvasItems.create(target)) throw conflict();
         if (draftInitialization == MediaOutputDraft.EMPTY) {
@@ -303,9 +307,10 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem forkMediaDerivationWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
-            int outputIndex) {
+            int outputIndex, String resultLabel) {
         CanvasItem target = createMediaOutputWithinChange(ownerId, projectId, sourceItemId,
-                targetItemId, expectedSourceDraftVersion, outputIndex, MediaOutputDraft.EMPTY);
+                targetItemId, expectedSourceDraftVersion, outputIndex, MediaOutputDraft.EMPTY,
+                resultLabel);
         if (target.selectedVersionId() != null) {
             connections.createMediaDerivationWithinChange(ownerId, projectId, sourceItemId,
                     target.id(), target.selectedVersionId());
@@ -460,7 +465,23 @@ public class CanvasService {
     /** Fills an empty media node; uploads from a completed node derive a new result node. */
     @Transactional
     public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
-            UUID targetItemId, long expectedVersion, JsonNode content) {
+            UUID targetItemId, long expectedVersion, JsonNode content,
+            MediaUploadPurpose purpose, UUID sourceVersionId) {
+        MediaUploadPurpose uploadPurpose = purpose == null ? MediaUploadPurpose.UPLOAD : purpose;
+        boolean markup = uploadPurpose == MediaUploadPurpose.BRUSH_MARKUP;
+        if (markup && (sourceVersionId == null || targetItemId.equals(itemId))) {
+            throw validation("画笔标注必须固定来源图片版本并保存到独立节点。");
+        }
+        if (!markup && sourceVersionId != null) {
+            throw validation("普通上传不接受标注来源版本。");
+        }
+        ObjectNode frozenInput = markup ? objectMapper.createObjectNode() : null;
+        if (markup) {
+            frozenInput.put("schemaVersion", 1);
+            frozenInput.put("operation", uploadPurpose.name());
+            frozenInput.put("sourceCanvasItemId", itemId.toString());
+            frozenInput.put("parentVersionId", sourceVersionId.toString());
+        }
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
@@ -473,6 +494,8 @@ public class CanvasService {
                 ArtifactVersion replayVersion = artifacts.requireVersion(ownerId, projectId,
                         replay.subjectId(), replay.selectedVersionId());
                 if (!replayVersion.content().equals(content)
+                        || !java.util.Objects.equals(replayVersion.baseVersionId(), sourceVersionId)
+                        || !java.util.Objects.equals(replayVersion.frozenInput(), frozenInput)
                         || replayVersion.createdByKind() != ArtifactVersion.CreatedByKind.USER) {
                     throw conflict();
                 }
@@ -481,11 +504,15 @@ public class CanvasService {
             boolean fillsCurrent = targetItemId.equals(itemId);
             if (replay != null && !fillsCurrent) throw conflict();
             if (current.version() != expectedVersion) throw conflict();
+            if (markup && !sourceVersionId.equals(current.selectedVersionId())) throw conflict();
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
             if (artifact.artifact().kind() != Artifact.Kind.IMAGE
                     && artifact.artifact().kind() != Artifact.Kind.VIDEO) {
                 throw validation("只有图片和视频卡片可以追加上传版本。");
+            }
+            if (markup && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
+                throw validation("画笔标注只支持图片。");
             }
             CanvasItem target;
             if (fillsCurrent) {
@@ -494,10 +521,10 @@ public class CanvasService {
             } else {
                 var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
                 target = forkMediaDerivationWithinChange(ownerId, projectId, itemId,
-                        targetItemId, sourceDraft.version(), 0);
+                        targetItemId, sourceDraft.version(), 0, uploadPurpose.resultLabel());
             }
             ArtifactVersion revision = artifacts.appendUserMediaVersionWithinChange(ownerId,
-                    projectId, current.subjectId(), content);
+                    projectId, current.subjectId(), content, sourceVersionId, frozenInput);
             canvasItems.addMediaVersion(projectId, target.id(), revision.id(), revision.createdAt());
             if (!canvasItems.selectVersion(ownerId, projectId, target.id(), target.version(),
                     revision.id(), clock.instant())) {
@@ -915,6 +942,17 @@ public class CanvasService {
     /** 判断十进制值是否落在闭区间之外。 */
     private boolean outside(BigDecimal value, BigDecimal minimum, BigDecimal maximum) {
         return value.compareTo(minimum) < 0 || value.compareTo(maximum) > 0;
+    }
+
+    /** Preserve the operation suffix within the title limit, without splitting a source emoji. */
+    private String derivationTitle(String sourceTitle, String resultLabel) {
+        String suffix = DERIVATION_TITLE_SEPARATOR + validateTitle(resultLabel);
+        int sourceEnd = Math.min(sourceTitle.length(), MAX_TITLE_LENGTH - suffix.length());
+        if (sourceEnd < 1) throw validation("派生操作名称过长。");
+        if (sourceEnd < sourceTitle.length()
+                && Character.isHighSurrogate(sourceTitle.charAt(sourceEnd - 1))
+                && Character.isLowSurrogate(sourceTitle.charAt(sourceEnd))) sourceEnd--;
+        return sourceTitle.substring(0, sourceEnd).stripTrailing() + suffix;
     }
 
     /** 规范化卡片标题并保持数据库、合约和应用层的同一长度约束。 */

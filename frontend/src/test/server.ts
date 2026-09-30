@@ -8,4 +8,7 @@ export const server = setupServer(
   http.get("/api/v1/projects/:projectId/canvas/connections", () =>
     HttpResponse.json({ items: [] }),
   ),
+  http.get("/api/v1/projects/:projectId/canvas/items/:itemId/media-versions", () =>
+    HttpResponse.json({ items: [] }),
+  ),
 );

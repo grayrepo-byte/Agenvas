@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowSquareOut, ArrowsClockwise, CaretDown, ListMagnifyingGlass } from "@phosphor-icons/react";
 import { Fragment, useId, useState, type FormEvent, type ReactNode } from "react";
@@ -95,6 +96,7 @@ export function CallLogsPage() {
 
 function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onApply: (params: URLSearchParams) => void }) {
   const [error, setError] = useState<string | null>(null);
+  const filterCount = [filters.projectId, filters.kind, filters.status, filters.traceId, filters.from, filters.to].filter(Boolean).length;
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -114,17 +116,18 @@ function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onAp
   return <form className="ui-form" onSubmit={submit}>
     <div className="call-log-filters">
       <label className="ui-field">项目 ID<input name="projectId" defaultValue={filters.projectId} placeholder="全部项目" /></label>
-      <label className="ui-field">调用类型<select name="kind" defaultValue={filters.kind ?? ""}><option value="">全部类型</option>
-        {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label className="ui-field">调用状态<select name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>
-        {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label className="ui-field">调用类型<Select name="kind" defaultValue={filters.kind ?? ""}><option value="">全部类型</option>
+        {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
+      <label className="ui-field">调用状态<Select name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>
+        {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
       <label className="ui-field">Trace ID<input name="traceId" defaultValue={filters.traceId} placeholder="按完整 Trace ID 查找" /></label>
       <label className="ui-field">开始时间<input type="datetime-local" name="from" step="1" defaultValue={localDateTime(filters.from)} /></label>
       <label className="ui-field">结束时间<input type="datetime-local" name="to" step="1" defaultValue={localDateTime(filters.to)} /></label>
     </div>
     {error ? <p className="ui-error" role="alert">{error}</p> : null}
+    <div className="ui-toolbar"><span className="ui-muted" role="status">{filterCount ? `已应用 ${filterCount} 项筛选` : "当前显示全部记录"}</span>
     <div className="ui-form-actions"><button className="primary-button" type="submit">筛选日志</button>
-      <button className="ghost-button" type="button" onClick={() => onApply(new URLSearchParams())}>清空筛选</button></div>
+      <button className="ghost-button" type="button" onClick={() => onApply(new URLSearchParams())}>清空筛选</button></div></div>
   </form>;
 }
 

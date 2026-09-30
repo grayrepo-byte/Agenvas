@@ -1,0 +1,15 @@
+.image-preview-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 24px; background: #000c; }
+.image-preview-dialog { display: flex; flex-direction: column; width: min(1200px, 100%); height: min(900px, calc(100dvh - 48px)); overflow: hidden; border: 1px solid #ffffff26; border-radius: 16px; background: #171717; color: #f4f4f4; box-shadow: 0 24px 80px #0008; }
+.image-preview-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; }
+.image-preview-dialog header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-preview-dialog button { flex-shrink: 0; display: grid; place-items: center; padding: 8px; border: 0; border-radius: 8px; background: #ffffff12; color: inherit; cursor: pointer; }
+.image-preview-dialog button:hover { background: #ffffff26; }
+.image-preview-dialog button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.image-preview-stage { position: relative; flex: 1; min-height: 0; padding: 0 16px 16px; }
+.image-preview-stage > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.image-preview-loading { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.image-preview-error { display: grid; place-content: center; justify-items: center; gap: 12px; height: 100%; }
+@media (max-width: 640px) {
+  .image-preview-backdrop { padding: 12px; }
+  .image-preview-dialog { height: calc(100dvh - 24px); }
+}

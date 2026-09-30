@@ -1,0 +1,53 @@
+.ui-select { position: relative; display: inline-flex; width: 100%; min-width: 0; vertical-align: middle; }
+.ui-select.ui-select .ui-select-control {
+  appearance: none; display: block; width: 100%; min-width: 0; height: var(--ui-control-height);
+  margin: 0; padding: 0 var(--ui-space-8) 0 var(--ui-space-3); border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md); background: var(--ui-field); color: var(--ui-text);
+  font: inherit; font-size: var(--ui-text-md); font-weight: 400; line-height: 1.5;
+  text-overflow: ellipsis; cursor: pointer; outline: none; color-scheme: dark;
+  transition: border-color var(--ui-duration), background var(--ui-duration), box-shadow var(--ui-duration);
+}
+.ui-select.ui-select--compact .ui-select-control { height: var(--ui-control-height-compact); font-size: var(--ui-text-sm); }
+.ui-select.ui-select .ui-select-control:hover:not(:disabled) { border-color: var(--ui-border-strong); }
+.ui-select.ui-select .ui-select-control:focus-visible,
+.ui-select.ui-select .ui-select-control[aria-expanded="true"] { border-color: var(--ui-focus); box-shadow: var(--ui-focus-shadow); }
+.ui-select.ui-select .ui-select-control:disabled { cursor: not-allowed; opacity: .5; }
+.ui-select-caret { position: absolute; right: var(--ui-space-3); top: 50%; transform: translateY(-50%); color: var(--ui-text-muted); pointer-events: none; }
+.ui-select:has([aria-expanded="true"]) .ui-select-caret { transform: translateY(-50%) rotate(180deg); }
+.ui-field > .ui-select { margin-top: var(--ui-space-2); }
+
+/* Repeated class raises specificity above legacy canvas toolbar button selectors.
+   Features may set geometry, but must not restyle menu surfaces/options. */
+.ui-dropdown.ui-dropdown, .ui-popover-surface {
+  padding: var(--ui-space-2);
+  border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface-raised); color: var(--ui-text); box-shadow: var(--ui-menu-shadow);
+  font-size: var(--ui-text-md); line-height: 1.5; color-scheme: dark;
+  max-width: calc(100vw - var(--ui-space-4)); overflow-y: auto; overscroll-behavior: contain;
+}
+.ui-dropdown.ui-dropdown { display: flex; flex-direction: column; gap: var(--ui-space-1); }
+.ui-dropdown.ui-select-options { z-index: 1000; }
+.ui-dropdown.ui-dropdown :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]) {
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--ui-space-2);
+  width: 100%; min-width: 0; height: auto; min-height: var(--ui-control-height-compact);
+  margin: 0; padding: var(--ui-space-2); border: 0; border-radius: var(--ui-radius-sm);
+  background: transparent; color: var(--ui-text); box-shadow: none;
+  font: inherit; font-size: var(--ui-text-md); font-weight: 400; line-height: 1.5;
+  text-align: left; cursor: pointer; white-space: normal; overflow-wrap: anywhere;
+  transition: background var(--ui-duration), color var(--ui-duration);
+}
+.ui-dropdown.ui-dropdown :is([role="menuitem"], [role="menuitemradio"], [role="option"]):is(:hover, :focus-visible, [data-active="true"]):not(:disabled) { background: var(--ui-hover); }
+.ui-dropdown.ui-dropdown :is([aria-checked="true"], [aria-selected="true"], [aria-current="true"]) { background: var(--ui-selected); }
+.ui-dropdown.ui-dropdown button:focus-visible { outline: 1px solid var(--ui-focus); outline-offset: -1px; }
+.ui-dropdown.ui-dropdown button:disabled { cursor: not-allowed; opacity: .45; }
+.ui-dropdown.ui-dropdown button > svg { flex-shrink: 0; color: var(--ui-text-muted); }
+.ui-dropdown.ui-dropdown button > span { min-width: 0; }
+.ui-dropdown.ui-dropdown :is(small, kbd) { color: var(--ui-text-muted); font-size: var(--ui-text-xs); font-weight: 400; }
+.ui-dropdown.ui-dropdown button > :is(small, kbd) { margin-left: auto; }
+.ui-dropdown.ui-dropdown button > span + :is(svg, small) { margin-left: auto; }
+.ui-dropdown.ui-dropdown strong { font-size: var(--ui-text-md); font-weight: 500; }
+.ui-dropdown.ui-dropdown :is(.ui-dropdown-heading, .media-draft-popover-title, .workspace-create-title, .media-draft-mention-menu-title),
+.ui-dropdown.ui-dropdown > p { margin: 0; padding: var(--ui-space-1) var(--ui-space-2); color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.6; }
+.ui-select-options [role="option"] > span { flex: 1; }
+.ui-dropdown [role="alert"] { color: var(--ui-danger); }
+@media (prefers-reduced-motion: reduce) { .ui-dropdown, .ui-select * { animation: none !important; transition: none !important; } }

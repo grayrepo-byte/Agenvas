@@ -113,9 +113,15 @@
 
 2026-09-26 节点交互修正：工具栏改为锚定节点上方并跟随节点/视口移动；节点未选中无外边框，选中外圈贴合圆角，去除缩放控件的直角框线。图片节点按当前图片原始比例适配尺寸、保持完整预览，不裁切图片填充旧矩形。定向检查与视觉验收限制见 [节点交互证据](evidence/T07-node-selection-and-image-ratio.md)。
 
+2026-09-30 图片比例联动：底部编辑栏选择明确比例后，图片节点立即保持长边并调整尺寸；已保存草稿刷新后恢复，失败保留本地预览。AUTO/未设置时仍使用原图比例或既有空态尺寸，已有结果完整展示。无 API 或数据库迁移，定向检查见 [联动证据](evidence/T07-image-draft-ratio-preview.md)。
+
+2026-09-30 比例保存关闭路径修正：点击画布或关闭编辑器会立即提交未保存草稿，保存中保留比例预览；已有请求不重复提交，后续修改使用已确认版本串行保存。关闭后失败保留完整本地输入，重开显示错误并允许重试，保存未完成时显示等待。定向回归与检查见 [联动证据](evidence/T07-image-draft-ratio-preview.md)。
+
 2026-09-27 编辑区跟随节点（已随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 部分撤回，2026-09-27）：文字、图片、视频的编辑区统一锚定节点下方，与上方工具栏保持相同跟随方式；媒体编辑区移除重复生成状态条，保留取消排队和异常处理。同步规格与 ADR 0005，无 API 或数据库迁移。5 个相关测试文件共 57 项通过，TypeScript 类型检查与修改文件 ESLint 通过；浏览器视觉验收未运行。角色、场景、镜头编辑区已移除。
 
 2026-09-27 文字生成输入与输出分离：文字节点下方 Prompt 创建固定当前内容、版本和模型配置的 `TEXT_GENERATION` 持久 Task，完整响应落库后追加不可变版本；并发直接编辑时生成结果只进历史。工具栏“编辑内容”进入节点内直接编辑实际输出，版本标签切换当前版本，连线继续固定实际 ArtifactVersion。同步 OpenAPI、生成 TS、Flyway V47、规格与 ADR 0005。前端 6 个定向测试文件共 62 项通过，TypeScript 类型检查与 ESLint 通过；后端 `DirectTextGenerationPostgresIT` 在 PostgreSQL 17.11 上通过，编译通过。真实 Provider 调用和浏览器视觉验收未运行。
+
+2026-09-30 文字直接创建：添加菜单选择“文字”后，直接在触发位置创建并选中“新文字”节点，显示下方 Prompt；移除右侧文字创建表单。节点带有空字符串的 PLAIN_TEXT 初始版本，仍可从工具栏进入节点内正文编辑。画布提示创建等待/失败，显式重试复用命令键、已确认产物、节点 ID 与固定放置参数。正文 Schema、OpenAPI 描述及生成 TS 已同步，规格与 ADR 0005 已记录决定，无新增迁移。工作区 20 项组件测试通过，包含位置、自动选中、无抽屉、输入和创建/放置不确定响应后的幂等重试；文字卡片与生成编辑器另 10 项测试通过。后端 3 项正文校验单元测试及 1 项真实 PostgreSQL＋假 ChatGateway 的文字生成集成测试通过，验证空白当前版本可生成、并发手工编辑不会被晚到结果覆盖。前端类型检查、修改文件 ESLint 和 diff 空白检查通过。未部署，未运行全量测试、浏览器端到端或真实 Provider 调用；旧服务端会拒绝新的空正文创建请求，须与前端同批升级。
 
 2026-09-26 连线入口收敛（按用户确认）：画布只在选中卡片右侧显示连接点，左侧落点与 Agent 输出组锚点不再绘制，但仍作为受控落点由距离判定接收连线；手势中合法落点与连接线为强调色、非法关系为红色且不提交，单击建连已关闭。实现、浏览器实测与未验证限制见 [连接点证据](evidence/T07-canvas-connection-handles.md)。
 
@@ -138,6 +144,8 @@
 2026-09-27 选择/手形工具：默认选择与空白框选，Space 短按保持手形、长按临时平移、菜单持久切换、V 返回选择；右上角采用参考图的竖向添加/工具入口。节点微移点击阈值同步修正。行为决策见 ADR 0005，组件预览与定向验证见 [节点选中证据](evidence/T07-node-selection-and-image-ratio.md)。完整工作区浏览器验收仍未完成。
 
 - [ ] 本次图稿重构的浏览器同视口视觉与真实指针验收（范围限于文字/图片/视频/Agent 四类卡片；本地浏览器工具访问受阻；不以组件测试替代）。
+
+2026-09-30 图片放大改为模态框：图片节点放大按钮改为页面内原图预览，覆盖等待、失败重试、关闭按钮/Esc/遮罩关闭、焦点限制与恢复、画布快捷键隔离。新增 ImagePreviewDialog 组件及样式，调整 MediaCanvasCard 和按钮样式；同步 MVP 规格与 ADR 0005，无 API 或数据库迁移。定向 MediaCanvasCard 组件测试 56 项、TypeScript 类型检查和修改文件 lint 通过。全量测试、后端测试与真实浏览器视觉验收未运行。
 
 ### T08 Agent 卡片与输入绑定
 
@@ -496,6 +504,14 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 ## 后续媒体能力交付（2026-09-25 决策，进行中）
 
+2026-09-30 配置补全：Nano Banana 2 的可识别平台/适配器名称、Google API 根地址编辑、兼容模型选项、默认生成参数、估算单价和协议内视频时长/参考图限制已实现。价格与参数在任务受理时冻结并写入用量账本。配置保存不产生云端生成；真实供应商验收仍保留未勾选。详见 [ADR 0019](adr/0019-media-capability-defaults-limits-and-pricing.md)、[验证证据](evidence/media-capability-configuration.md)。
+
+2026-09-30 呈现调整：媒体设置改为连接/能力两张表格，编辑与发布使用有高度上限的四分区模态框，保存栏固定。草稿、版本冲突和默认/启停行为保留；Google 新建连接同时保留配置的 API 地址。专项前端测试与桌面/手机 Mock 验证见 [表格与模态框证据](evidence/media-settings-tables.md)。
+
+2026-09-30 配置状态文案：按用户确认移除媒体设置页写死的“未实测”（连接行、保存/发布提示及说明），连接显示“已配置”，实际生成结果仍由调用日志和验收记录提供。保存配置不触发生成或宣称所有能力已验证；无 API/数据库变更。`MediaSettingsPage.test.tsx` 15 项、修改文件 lint、类型检查和前端构建通过；全量测试未运行。
+
+2026-09-30 Google 协议配置指引：连接列表及新建/编辑表单显示当前 Gemini v1/v1beta 请求格式，提供 API Base URL 后缀、完整路径/自定义 draw 接口边界和 grsai 已验证示例；发布/编辑能力说明中转站模型名单独填写。沿用地址选择固定格式，无新增 API/数据库字段。15 项页面测试、修改文件 lint、类型检查、构建和差异检查通过，未跑全量、新真实调用或本次浏览器视觉验收；见[界面验证记录](evidence/media-settings-tables.md#google-图片接口格式说明)。
+
 依据：[媒体能力基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[GPT Image 2/Seedance 固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)、[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入不在当前清单中。
 
 实施顺序：[整数秒迁移计划](superpowers/plans/2026-09-25-integer-video-seconds.md) → [媒体能力基础计划](superpowers/plans/2026-09-25-media-capability-foundation.md) → [GPT Image 2/Seedance 适配器计划](superpowers/plans/2026-09-25-gpt-image-seedance-adapters.md)。以下交付项按实际检查结果更新。
@@ -512,6 +528,8 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 后续 Google Nano Banana 2 固定图片适配器见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)：`GOOGLE` 连接、默认 `gemini-3.1-flash-image` 模型、文字生图和最多 14 张同项目有序参考图、项目画幅、管理员配置及 V41 平台约束已接入。假 Google HTTP 服务与 PostgreSQL 覆盖两张冻结参考图顺序提交、成功归档、断线 UNKNOWN 不重提、越权参考图预检拒绝；真实 Google API 调用 **未运行**，真实模型兼容、生成效果与费用尚未验收。
 
+2026-09-30 真实中转站验收：grsai `nano-banana-2-lite` 已通过应用内文字生图（5814 ms）和一张精确参考图智能编辑（8516 ms），均归档并选用 1024×1024 JPEG。修复 Google 连接忽略 `/v1beta` 前缀及 beta 中转站忽略稳定画幅字段的问题，连接地址已通过 API 改为 `/v1beta`，本地后端已更新。GPT 实际模型为 `gpt-image-2.5`；本轮 300042 ms 超时，保持 UNKNOWN 且未重发，既有成功记录不代表本轮成功。7 个 Google 客户端测试、1 个真实 PostgreSQL/假 Provider 集成测试、编译打包及前端类型检查通过，未跑全量。官方端点、完整版 Nano Banana、GPT 参考图编辑和实际扣费仍未验收。见[真实调用与修复证据](evidence/real-image-relay-2026-09-30.md)。
+
 - [ ] 使用真实 Google Key 完成 Nano Banana 2 生图和多参考生成，并验证顺序语义、输出、计费及 UNKNOWN 人工处置。
 
 本轮全量检查：`backend ./mvnw verify` 为 67 项、0 失败；前端类型检查、lint、78 项测试与构建通过。全量后新增的固定云 DNS 共用校验和 Seedance 过期地址断言另经定向测试验证；本地假服务不等于真实 Provider 验收。
@@ -521,6 +539,10 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 依据：[ADR 0005](adr/0005-canvas-interaction-redesign.md)、[ADR 0006](adr/0006-direct-media-task-boundary.md)、[ADR 0013](adr/0013-contract-to-direct-generation.md)、[ADR 0014](adr/0014-canvas-item-media-branches-and-versioned-image-inputs.md)、[领域词汇](../CONTEXT.md)和 `docs/MVP-SPEC.md` 第 6.9–6.10 节。以下均为新目标，不能用已撤回的 Agent 三镜头生成验收代替。
 
 实施进展：深色画布、四类菜单（文字、图片、视频、Agent）、底部编辑、资源抽屉、媒体草稿、直接 Task、数据库竞争认领、单实例有界并行派发和只读队列状态已进入代码。2026-09-28 删除项目级、能力级和 ComfyUI 单槽三层产品并发门禁及设置项；READY 只显示等待执行器，同卡片互斥、租约、fencing 和有界执行器保留。PostgreSQL 集成测试覆盖空版本媒体卡片、草稿 CAS、独立任务、Mock 结果版本、精确视频输入和跨项目/能力继续认领；ComfyUI 假服务覆盖活动请求重叠提交。当前能力目录没有已知价格字段，因此直接运行展示费用未知、账本记未知金额；金额预留需在价格配置落地后补验。浏览器端到端、真实 Provider、跨 Worker 故障注入和真实资源压力仍待验收，因此下列综合验收项暂不勾选。
+
+2026-09-30 同步媒体生成状态文案：媒体卡片将 `SUBMITTING` 与 `RUNNING`、`WAITING_PROVIDER` 统一显示为“正在生成”，避免同步图片接口整个生成期间持续显示“正在提交”。后端任务状态及调用日志保持具体语义，前端运行请求仍可短暂显示“正在提交任务”。MVP 规格已同步，无 API 或数据库迁移。以 Mock HTTP 响应复现 `SUBMITTING` 的错误文案后修复；MediaCanvasCard 的 20 项组件测试、TypeScript 类型检查及修改文件 ESLint 通过。未运行全量测试、浏览器视觉验收或真实 Provider 调用。
+
+2026-09-30 图片工具栏关闭修复：MediaCanvasCard 在取消选中或显式隐藏工具栏时重置扩展菜单、三视图子菜单、操作面板与已结束请求的错误状态，重新选中只显示主工具栏；提交中的请求继续被跟踪，关闭不取消或重提。Mock HTTP 组件测试先复现表情调整面板重新出现，再覆盖 12 类面板、菜单、版本选择、失败表单重置与提交中关闭；MediaCanvasCard、MediaVersionPicker、ArtifactCardFrame 及其手势测试共 4 个文件 59 项通过，TypeScript 类型检查与修改文件 ESLint 通过。MVP 规格与 ADR 0005 已同步，无 API 或数据库迁移；全量测试、浏览器视觉验收及真实 Provider 调用未运行。
 
 2026-09-27 Issue #7 基础切片：媒体草稿、展示版本和直连任务已归属 CanvasItem，Artifact 资源默认版本独立；同一 Artifact 多卡片可独立选择、上传、保存草稿并运行，成功结果只条件选用发起卡片。资源库放置按默认版本初始化且使用空草稿。V52 清空项目创作数据并保留管理员、加密、Provider、能力与 LLM 设置；V53 在首次启动清理旧项目资产目录并保存完成标记；V54 允许删除卡片后保留任务历史。OpenAPI/Java/生成 TypeScript/jOOQ 已同步。全量后端 125 个单元测试与 74 个 PostgreSQL 集成测试、前端 36 个文件 232 项测试及 lint/类型检查/构建通过；边界和未验证项见 [Issue #7 证据](evidence/issue-7-canvas-item-media-context.md)。下列包含后续能力的综合条目仍不勾选。
 
@@ -534,7 +556,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 2026-09-29 图片生成原子参数与批次切片：图片草稿增加比例、分辨率、画质、透明背景、1/2/4 生成数量和当时可选的“生成时新建节点”；能力合约声明实际支持范围，OpenAI、Google、ComfyUI 与 Mock 适配器按声明映射。节点输出开关与原位结果语义已在 2026-09-30 被 ADR 0016 取代，现为每个结果强制创建独立节点。其余专项测试与浏览器视觉核对见 [证据](evidence/T07-image-generation-parameters.md) 和根目录 `design-qa.md`；真实 Provider 调用仍未运行。
 
-2026-09-29 图片后处理切片：选中图片工具栏已接智能编辑、深度提取以及扩展菜单中的 AI 重打光、AI 扩图、AI 三视图、AI 图层分离、AI 表情调整、AI 画笔标注、AI 移除背景、AI 局部擦除、AI 视角调整，以及本地裁剪、旋转、镜像和 2×/4× 放大。三视图在 2026-09-30 拆分为角色、脸部、道具和场景宫格二级入口，类型、画幅与说明冻结进 Task，并映射为不同的一致性 Provider 指令；智能编辑同日加入真实涂抹/框选蒙版、撤销重做、项目引用和本地上传参考图，蒙版与有序精确版本引用随任务冻结，显式蒙版只允许 OpenAI 固定适配器。V57 安装不可修改且不参与普通生成模型选择的本地图片处理能力；V58 最初增加 `IMAGE_DERIVATION`，V59 已将其迁移为图片/视频通用且可删除的 `MEDIA_DERIVATION`。每次后处理受理时从来源图片创建独立结果节点和派生线，Task 与完成结果只绑定结果节点，不覆盖或占用来源节点；派生线不进入媒体草稿，可单独删除。2026-09-30 Compose server 镜像改为内置固定提交和 SHA-256 的 Depth Anything V2 Small INT8 及许可证，切换到 glibc 运行镜像并在 Linux ARM64 构建阶段完成真实推理；源码直跑仍可显式配置模型路径。本地与云端处理能力边界保持不变；未调用真实 OpenAI/Google。见 [ADR 0015](adr/0015-image-post-processing-local-first.md)、[ADR 0016](adr/0016-media-nodes-are-single-results.md) 与 [证据](evidence/T-image-post-processing.md)。
+2026-09-29 图片后处理切片：选中图片工具栏已接智能编辑、深度提取以及扩展菜单中的 AI 重打光、AI 扩图、AI 三视图、AI 图层分离、AI 表情调整、AI 移除背景、AI 局部擦除、AI 视角调整，以及本地裁剪、旋转、镜像和 2×/4× 放大。三视图在 2026-09-30 拆分为角色、脸部、道具和场景宫格二级入口，类型、画幅与说明冻结进 Task，并映射为不同的一致性 Provider 指令；智能编辑同日加入真实涂抹/框选蒙版、撤销重做、项目引用和本地上传参考图，蒙版与有序精确版本引用随任务冻结，显式蒙版只允许 OpenAI 固定适配器。V57 安装不可修改且不参与普通生成模型选择的本地图片处理能力；V58 最初增加 `IMAGE_DERIVATION`，V59 已将其迁移为图片/视频通用且可删除的 `MEDIA_DERIVATION`。每次后处理受理时从来源图片创建独立结果节点和派生线，Task 与完成结果只绑定结果节点，不覆盖或占用来源节点；派生线不进入媒体草稿，可单独删除。2026-09-30 Compose server 镜像改为内置固定提交和 SHA-256 的 Depth Anything V2 Small INT8 及许可证，切换到 glibc 运行镜像并在 Linux ARM64 构建阶段完成真实推理；源码直跑仍可显式配置模型路径。本地与云端处理能力边界保持不变；未调用真实 OpenAI/Google。见 [ADR 0015](adr/0015-image-post-processing-local-first.md)、[ADR 0016](adr/0016-media-nodes-are-single-results.md) 与 [证据](evidence/T-image-post-processing.md)。
 
 2026-09-30 媒体单结果节点切片（后由 ADR 0017 修订，以下保留历史记录）：空图片或视频节点第一次直接生成时，第一个输出绑定当前 CanvasItem；空图片节点第一次上传也原位填充，不创建派生节点或派生线。节点已有固定结果后，图片与视频生成、图片后处理和媒体上传都预建独立结果 CanvasItem，来源节点固定原结果且可继续派生。派生节点与 `MEDIA_DERIVATION` 在任务受理的同一事务中创建，排队和生成期间即可见；删除派生线只移除来源提示，之后图片节点手动重连按 `MEDIA_INPUT` 参考线处理。批量生成仍是一项输出一个 Task，空节点只有第一项复用当前节点。媒体节点版本选择接口和 UI、“生成时新建节点”参数及原位批次路径已经移除。空图片上传直接打开系统文件选择器，上传状态与失败重试留在节点内，不再打开右侧重复上传抽屉。OpenAPI、领域词汇、MVP 规格和 ADR 0016 已同步。PostgreSQL 定向集成测试覆盖首次生成与上传填充原节点、已有结果立即派生、图片/视频普通运行、上传幂等、图片后处理和派生线删除；真实 Provider 未调用。
 
@@ -545,6 +567,8 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 2026-09-30 节点点击与拖动切片：关闭拖动自动选择，点击松手后才显示工具栏和编辑区；节点拖动期间提供临时外圈并隐藏工具栏、编辑区和批量栏，松手立即取消选择，不等待布局保存。多节点移动以单批布局命令保存，失败保留草稿。真实 React Flow + jsdom 回归覆盖拖动后 click 被抑制、后续点击恢复、已有选中节点拖动、组移动批量保存、保存冲突、0/1/3 像素点击微移、追加点击、框选与手形平移。9 个相关测试文件 86 项通过，补充微移浮层断言后选择测试 22 项重跑通过；TypeScript、修改文件 lint 与生产构建通过。MVP 规格与 ADR 0005 同步，无 API 或迁移变更；未运行全量、后端测试或真实浏览器手势验收，未部署。见 [节点交互证据](evidence/T07-node-selection-and-image-ratio.md)。
 
 2026-09-30 媒体节点移除 Agent 占位：图片和视频共用的 `MediaDraftEditor` 不再展示禁用的 Agent 选项，仅保留 Prompt；Agent 对话、历史与配置收敛到独立 Agent 节点，后续扩展仍待单独实施。MVP 规格与 ADR 0005 同步，无 API 或数据库变更。实际运行 `node_modules/.bin/vitest run src/features/canvas/MediaDraftEditor.test.tsx src/features/canvas/MediaCanvasCard.test.tsx`，2 文件 45 项通过；`tsc --noEmit`、`MediaDraftEditor.tsx` 的 `eslint --max-warnings=0` 及 `git diff --check` 通过。未运行全量、后端、浏览器端到端或生产构建，未部署。
+
+2026-09-30 派生节点标题切片：新建图片编辑、后处理及替换上传节点采用「来源节点当前显示名称 · 操作名称」，深度提取使用「深度图」后缀，三视图和图层分离按具体输出类型命名。长标题截短来源部分以保留操作后缀，不拆开 emoji 代理对；任务完成或幂等重放不覆盖后续改名，不自动改写既有节点或资源名称。后端 10 项单元测试、2 项真实 PostgreSQL 定向测试通过，涵盖名称来源、持久化、上传重放、空白草稿、改名不影响结果选用及标题长度边界；生成 TypeScript、类型检查及 diff 检查通过。规格、CONTEXT、ADR 0017 和 OpenAPI 行为描述同步，无新字段或数据库迁移；未运行全量、前端组件、真实 Provider 或浏览器验收，未部署。见 [版本与派生验证记录](evidence/media-operation-versioning.md)。
 
 - [ ] 工作区改为深色点状全画布；取消左侧创建栏；空白双击与悬浮“+”打开同一四类菜单（文字、图片、视频、Agent），键盘可达，边缘避让，新卡片精确落在交互位置；右下角缩放控件可用。
 - [ ] 单选 Artifact 显示按类型切换的底部编辑区，空选隐藏，多选显示批量操作；文字、图片、视频字段与现有业务 Schema 对齐。Agent 使用卡片内对话/历史/设置，配置指令与本次运行指令分开；每次确认发送为独立 Run。
@@ -570,6 +594,30 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 以下条目在收缩时明确留待后续**独立**变更，不属于本次收缩的完成范围，也未排期。
 
 - [ ] Agent 工具能力重塑：ADR 0014 已把图片 CanvasItem 连线形成的视觉输入绑定纳入当前目标，但 Agent 仍不触发媒体生成；其余文本与画布编排工具是否扩展继续作为独立后续变更，需另补 ADR，不与本次图片输入实现合并。
+
+## 下拉框与后台设置统一（2026-09-30）
+
+- [x] 原生单选入口统一 Select，动作/模型/版本/引用菜单共用 DropdownMenu；对应重复视觉样式收敛到公共 UI。
+- [x] 共用 Beautiful UI 风格设计变量与设置摘要、表单、状态和图标容器；lint 限制独立 select/menu/listbox。
+- [x] 定向组件验证选择、键盘、焦点、禁用、视口与选项刷新；19 个文件191项通过，类型检查/lint/生产构建和 diff 检查通过。
+- [x] 使用明确标记的 Mock 预览检查 Provider/媒体设置的桌面与窄屏呈现及平台下拉选择；API、后端与数据库未改动。
+- [ ] 全部画布菜单的逐项浏览器视觉验收、触屏与屏幕阅读器实测。
+
+规格、ADR 0005 与 [公共样式维护说明](frontend-design-system.md) 已同步；完整命令、截图与未验证限制见 [验证证据](evidence/unified-dropdowns.md)。本次未跑全量或后端测试、未部署、未调用真实 Provider。
+
+## 系统蓝色主色（2026-09-30）
+
+- [x] 根据用户参考图取样 `#3D9AFF`，主色、悬停、前景、焦点与透明变体集中在公共设计变量；页面与画布原有粉色/紫色交互改为消费变量。
+- [x] 主操作、卡片选中、开关、标题编辑与连接反馈统一；媒体派生关系线使用集中配置的浅蓝色，保留状态与图像内容颜色语义。
+- [x] lint 拦截业务 CSS 的品牌范围色值及主色/焦点变量硬编码；临时 hex/rgb/hsl 与变量定义反例均被拒绝。
+- [x] 15 个相关前端测试文件181项、类型检查、主题检查、ESLint、生产构建及差异检查通过；真实登录页和隔离样式预览浏览器核对一致。
+- [ ] 所有真实业务页面逐项视觉、悬停、弹窗、触屏与屏幕阅读器验收。
+
+公共样式说明、MVP 规格与 ADR 0005 已同步。无 API、后端或数据库迁移；未运行全量测试、部署或真实 Provider。具体命令、截图与验证边界见 [蓝色主题证据](evidence/blue-theme.md)。
+
+## 后台全宽布局（2026-09-30）
+
+2026-09-30 后台全宽布局补充：主内容取消 1280px 最大宽度，侧栏外铺满；Provider 编辑与诊断分栏、诊断宽屏四卡横排、日志筛选/详情增列、项目卡片自适应增列。增加配置未保存提示与显式撤销。7 个相关测试文件共 54 项通过，类型检查、定向 lint、生产构建通过；桌面与手机使用隔离 Mock 页面验证，详见 [验证证据](evidence/admin-full-width.md)。没有后端、合约、迁移或依赖变更；全量测试、真实 Provider 和部署未运行。
 
 ## A. 跨模块验收矩阵
 
@@ -628,3 +676,7 @@ pnpm test:e2e
 ```
 
 任务证据必须能区分：单元测试通过、Mock E2E 通过、真实供应商通过、故障注入通过和性能通过。它们不是同一种结论。
+
+2026-09-30 画笔标注修正：按设计图实现颜色、画笔、橡皮、矩形、箭头、文字、笔刷大小、撤销/重做及保存。浏览器合成原分辨率 PNG，服务端直接归档用户版本并创建空白草稿的派生节点与可删除派生线；不调用 AI、不创建生成 Task。OpenAPI 移除生成命令 `BRUSH_MARKUP`，上传合约新增用途与精确来源版本，前后端须同时升级，无新增数据库迁移。实际验证见 [画笔标注证据](evidence/T-brush-markup.md) 与 [ADR 0018](adr/0018-local-brush-markup.md)。
+
+2026-09-30 节点版本显示修正：图片、视频版本按钮和列表按节点自己的历史从 v1 连续编号，派生、复制和资源库放置的首个结果从 v1 开始。零/单版本隐藏按钮，第二个结果到达后自动显示，读取失败提供重试；选用仍提交不可变版本 ID 与节点 CAS，API、审计记录和数据库无需变更。实际验证见 [版本显示证据](evidence/node-version-display.md)，已同步 ADR 0017、MVP 规格和领域词汇。

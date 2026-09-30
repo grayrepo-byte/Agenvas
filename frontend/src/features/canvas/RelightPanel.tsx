@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { ArrowUp, Stack, X } from "@phosphor-icons/react";
 import { useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
@@ -131,12 +132,12 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
     <footer className="relight-dialog-footer">
       <label className="relight-capability-select">
         <span>AI 图片能力</span>
-        <select value={capabilityId} aria-label="AI 图片能力"
+        <Select density="compact" value={capabilityId} aria-label="AI 图片能力"
           onChange={(event) => setCapabilityId(event.target.value)}>
           {capabilities.length ? capabilities.map((capability) => <option key={capability.id}
             value={capability.id}>{capability.name}</option>)
             : <option value="">请先配置 OpenAI 或 Google</option>}
-        </select>
+        </Select>
       </label>
       <div className="relight-submit-group">
         <span title="将按所选 AI 图片能力计费"><Stack size={19} weight="fill" />AI</span>

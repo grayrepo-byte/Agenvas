@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.api;
 
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.domain.MediaUploadPurpose;
 import dev.agenvas.identity.application.AdminPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -35,10 +36,10 @@ public class CanvasItemController {
             @Valid @RequestBody UploadVersionRequest request) {
         return CanvasController.CanvasItemResponse.from(canvas.uploadVersion(principal.userId(),
                 projectId, canvasItemId, request.targetItemId(), request.expectedVersion(),
-                request.content()));
+                request.content(), request.purpose(), request.sourceVersionId()));
     }
 
     public record UploadVersionRequest(@NotNull UUID targetItemId,
             @PositiveOrZero long expectedVersion,
-            @NotNull JsonNode content) {}
+            @NotNull JsonNode content, MediaUploadPurpose purpose, UUID sourceVersionId) {}
 }

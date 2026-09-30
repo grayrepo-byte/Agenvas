@@ -1,3 +1,5 @@
+import { DropdownMenu } from "../../shared/ui/DropdownMenu";
+import { Select } from "../../shared/ui/Select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowsOutSimple, ArrowClockwise, Buildings, CaretDown, CaretRight, Crop, Cube,
@@ -10,23 +12,28 @@ import { ApiError, assetContentUrl, assetThumbnailUrl, getMediaSettings, listDir
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { CropPanel } from "./CropPanel";
+import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { MediaCardUpload } from "./MediaCardUpload";
 import { MediaVersionPicker } from "./MediaVersionPicker";
 import { RelightPanel } from "./RelightPanel";
 import { SmartEditDialog } from "./SmartEditDialog";
+import { ImagePreviewDialog } from "./ImagePreviewDialog";
 import { isMediaTaskRunning, latestMediaTask, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { assetMetadataQueryOptions, displayedMediaAssetId, isMediaDraftDisplayed, mediaDraftQueryOptions } from "./mediaDisplay";
 import { taskErrorMessage } from "./taskErrorMessages";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
-  PENDING: "等待生成", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在提交",
+  // Synchronous providers generate before returning, so SUBMITTING also covers generation time.
+  PENDING: "等待生成", READY: "排队中", RUNNING: "正在生成", SUBMITTING: "正在生成",
   WAITING_PROVIDER: "正在生成", FAILED: "生成失败", CANCELED: "已取消",
   UNKNOWN: "结果未知", BLOCKED: "任务已阻断", SUCCEEDED: "生成结果已保存至历史",
 };
 type ImageOperation = RunImageOperationRequest["operation"];
+type ImageTool = ImageOperation | "BRUSH_MARKUP";
 type ThreeViewType = NonNullable<RunImageOperationRequest["parameters"]["threeViewType"]>;
 type AspectRatio = NonNullable<RunImageOperationRequest["parameters"]["aspectRatio"]>;
-const LOCAL_IMAGE_OPERATIONS: readonly ImageOperation[] = [
+const LOCAL_IMAGE_OPERATIONS: readonly ImageTool[] = [
+  "BRUSH_MARKUP",
   "DEPTH_MAP", "UPSCALE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL",
 ];
 const THREE_VIEW_OPTIONS = [
@@ -64,7 +71,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [threeViewMenuOpen, setThreeViewMenuOpen] = useState(false);
-  const [operationOpen, setOperationOpen] = useState<ImageOperation | null>(null);
+  const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -106,6 +113,19 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       ]);
     },
   });
+  const toolbarActive = selected && toolbarVisible !== false;
+  const { isPending: operationPending, reset: resetOperation } = operation;
+
+  useEffect(() => {
+    if (toolbarActive) return;
+    // The card stays mounted when its toolbar hides; dismiss all transient tool state.
+    setMenuOpen(false);
+    setThreeViewMenuOpen(false);
+    setOperationOpen(null);
+    setThreeViewType(null);
+    // Keep tracking an in-flight submission even after its panel is dismissed.
+    if (!operationPending) resetOperation();
+  }, [toolbarActive, operationPending, resetOperation]);
 
   function runOperation(name: ImageOperation, parameters: RunImageOperationRequest["parameters"] = {},
       instruction?: string, capabilityId?: string | null,
@@ -117,7 +137,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       instruction: instruction || null, capabilityId: capabilityId || null, parameters, ...extras });
   }
 
-  function chooseOperation(name: ImageOperation) {
+  function chooseOperation(name: ImageTool) {
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
     setThreeViewType(null);
@@ -168,8 +188,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 setMenuOpen(!menuOpen); setThreeViewMenuOpen(false);
               }}>
               <MagicWand size={17} />扩展<CaretDown size={12} /></button>
-            {menuOpen ? <div className="media-extension-menu" aria-label="图片扩展功能">
-              {EXTENSIONS.map((entry) => <button key={entry.label} type="button"
+            {menuOpen ? <DropdownMenu className="media-extension-menu" aria-label="图片扩展功能">
+              {EXTENSIONS.map((entry) => <button role="menuitem" key={entry.label} type="button"
                 disabled={!assetId || Boolean(busy) || operation.isPending}
                 aria-haspopup={entry.submenu ? "menu" : undefined}
                 aria-expanded={entry.submenu ? threeViewMenuOpen : undefined}
@@ -182,17 +202,23 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 {entry.submenu ? <CaretRight className="media-extension-chevron" size={13} />
                   : <small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? "本地" : "AI"}</small>}
               </button>)}
-            </div> : null}
-            {menuOpen && threeViewMenuOpen ? <div className="media-three-view-submenu"
+            </DropdownMenu> : null}
+            {menuOpen && threeViewMenuOpen ? <DropdownMenu className="media-three-view-submenu"
               role="menu" aria-label="三视图类型">
               {THREE_VIEW_OPTIONS.map((option) => <button key={option.value} type="button"
                 role="menuitem" disabled={!assetId || Boolean(busy) || operation.isPending}
                 onClick={() => chooseThreeView(option.value)}>
                 <option.icon size={17} /><span>{option.label}</span><small>AI</small>
               </button>)}
-            </div> : null}
+            </DropdownMenu> : null}
           </div>
-          {operationOpen === "SMART_EDIT" && assetId ? <SmartEditDialog
+          {operationOpen === "BRUSH_MARKUP" ? (assetId && item.selectedVersionId ? <BrushMarkupEditor
+            key={item.id}
+            projectId={artifact.projectId} canvasItemId={item.id}
+            sourceVersionId={item.selectedVersionId} expectedVersion={item.version}
+            sourceTitle={item.title} sourceUrl={assetContentUrl(artifact.projectId, assetId)}
+            onClose={() => setOperationOpen(null)} /> : null)
+            : operationOpen === "SMART_EDIT" && assetId ? <SmartEditDialog
             projectId={artifact.projectId} sourceVersionId={item.selectedVersion?.id ?? ""}
             sourceTitle={item.title}
             sourceUrl={assetContentUrl(artifact.projectId, assetId)}
@@ -277,7 +303,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
 const OPERATION_TITLES: Record<ImageOperation, string> = {
   SMART_EDIT: "智能编辑", RELIGHT: "打光", OUTPAINT: "AI 扩图",
   THREE_VIEW: "三视图", LAYER_SPLIT: "图层分离", EXPRESSION_EDIT: "表情调整",
-  BRUSH_MARKUP: "画笔标注", REMOVE_BACKGROUND: "移除背景",
+  REMOVE_BACKGROUND: "移除背景",
   OBJECT_REMOVE: "局部擦除", VIEW_ANGLE: "视角调整",
   DEPTH_MAP: "深度提取", UPSCALE: "高清放大", CROP: "裁剪",
   ROTATE: "旋转", FLIP_HORIZONTAL: "水平镜像", FLIP_VERTICAL: "垂直镜像",
@@ -290,7 +316,6 @@ const INSTRUCTION_COPY: Partial<Record<ImageOperation, { label: string; placehol
   THREE_VIEW: { label: "主体说明（可选）", placeholder: "例如：以画面中央人物为主体，保留完整服装细节" },
   LAYER_SPLIT: { label: "分层说明（可选）", placeholder: "例如：主体是画面中央穿红衣的人物" },
   EXPRESSION_EDIT: { label: "目标表情", placeholder: "例如：自然微笑，嘴唇闭合，眼神放松", required: true },
-  BRUSH_MARKUP: { label: "标注说明", placeholder: "例如：用红色手绘箭头指向胸针，并圈出袖口", required: true },
   REMOVE_BACKGROUND: { label: "主体说明（可选）", placeholder: "例如：只保留人物及手中的花束" },
   OBJECT_REMOVE: { label: "擦除目标", placeholder: "例如：移除右下角的路人并自然补全地面", required: true },
   VIEW_ANGLE: { label: "补充说明（可选）", placeholder: "例如：镜头距离保持不变，完整保留人物服装" },
@@ -362,36 +387,36 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
         <option.icon size={18} /><span><strong>{option.label}</strong><small>{option.summary}</small></span>
       </label>)}
     </fieldset> : null}
-    {operation === "LAYER_SPLIT" ? <label>输出图层<select value={layerTarget}
+    {operation === "LAYER_SPLIT" ? <label>输出图层<Select density="compact" value={layerTarget}
       onChange={(event) => setLayerTarget(event.target.value as "FOREGROUND" | "BACKGROUND")}>
       <option value="FOREGROUND">主体层（透明背景）</option>
       <option value="BACKGROUND">背景层（移除主体后补全）</option>
-    </select></label> : null}
-    {operation === "VIEW_ANGLE" ? <label>目标视角<select value={viewAngle}
+    </Select></label> : null}
+    {operation === "VIEW_ANGLE" ? <label>目标视角<Select density="compact" value={viewAngle}
       onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
       {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-    </select></label> : null}
-    {cloud ? <label>图片能力<select value={selectedCapabilityId}
+    </Select></label> : null}
+    {cloud ? <label>图片能力<Select density="compact" value={selectedCapabilityId}
       onChange={(event) => setCapabilityId(event.target.value)}>
       {eligibleCapabilities.length ? eligibleCapabilities.map((capability) => <option key={capability.id}
         value={capability.id}>{capability.name}</option>)
         : <option value="">{transparentOutput
           ? "请配置支持透明背景的 OpenAI / Google 图片能力"
           : "请先在设置中配置 OpenAI 或 Google"}</option>}
-    </select></label> : null}
+    </Select></label> : null}
     {instructionCopy
       ? <label>{instructionCopy.label}
         <textarea value={instruction} maxLength={4000}
           placeholder={instructionCopy.placeholder}
           onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" ? <label>放大倍数<select value={scale}
+    {operation === "UPSCALE" ? <label>放大倍数<Select density="compact" value={scale}
       onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
       <option value={2}>2× 本地双三次插值</option><option value={4}>4× 本地双三次插值</option>
-    </select></label> : null}
-    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>目标画幅<select value={ratio}
+    </Select></label> : null}
+    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>目标画幅<Select density="compact" value={ratio}
       onChange={(event) => setRatio(event.target.value as AspectRatio)}>
       {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].map((value) =>
-        <option key={value} value={value}>{value}</option>)}</select></label> : null}
+        <option key={value} value={value}>{value}</option>)}</Select></label> : null}
     {error ? <p role="alert">{error instanceof ApiError ? error.message : "图片处理任务受理失败，请重试。"}</p> : null}
     <footer><button type="button" onClick={onClose}>取消</button>
       <button type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
@@ -419,6 +444,7 @@ function MediaPreview({ artifact, assetId, title, demo }: {
   const [playbackFailed, setPlaybackFailed] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [playbackAttempt, setPlaybackAttempt] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const video = artifact.kind === "VIDEO";
 
   function startPlayback() {
@@ -449,9 +475,13 @@ function MediaPreview({ artifact, assetId, title, demo }: {
     {video && playing ? <button type="button" className="media-stop-preview nodrag" aria-label="关闭视频预览"
       title="关闭视频预览" onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></button> : null}
     {demo ? <span className="media-demo-badge">{video ? "演示视频" : "演示素材"}</span> : null}
-    <a className="media-expand-button nodrag" href={assetContentUrl(artifact.projectId, assetId)}
-      aria-label={video ? "打开视频文件" : "打开原图"} title={video ? "打开视频文件" : "打开原图"}
-      rel="noopener noreferrer" target="_blank"><ArrowsOutSimple size={19} /><span className="sr-only">{video ? "打开视频文件" : "打开原图"}</span></a>
+    {video ? <a className="media-expand-button nodrag" href={assetContentUrl(artifact.projectId, assetId)}
+      aria-label="打开视频文件" title="打开视频文件"
+      rel="noopener noreferrer" target="_blank"><ArrowsOutSimple size={19} /></a>
+      : <button className="media-expand-button nodrag" type="button" aria-label="放大图片" title="放大图片"
+        onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></button>}
+    {!video && expanded ? <ImagePreviewDialog title={title}
+      sourceUrl={assetContentUrl(artifact.projectId, assetId)} onClose={() => setExpanded(false)} /> : null}
     {video && !playing ? <button className="media-play-button nodrag" type="button"
       aria-label="播放视频" onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">播放视频</span></button> : null}
   </div>;

@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -55,9 +56,11 @@ public class DirectMediaTaskService {
     private static final Set<String> RELIGHT_PRESETS = Set.of(
             "GOLDEN_HOUR", "BLUE_HOUR", "OVERCAST_SOFT", "MOONLIGHT",
             "SOFT_STUDIO", "NEON_NIGHT");
-    private static final Set<String> LAYER_TARGETS = Set.of("FOREGROUND", "BACKGROUND");
-    private static final Set<String> THREE_VIEW_TYPES = Set.of(
-            "CHARACTER", "FACE", "PROP", "SCENE_GRID");
+    private static final Map<String, String> LAYER_RESULT_LABELS = Map.of(
+            "FOREGROUND", "主体图层", "BACKGROUND", "背景图层");
+    private static final Map<String, String> THREE_VIEW_RESULT_LABELS = Map.of(
+            "CHARACTER", "角色三视图", "FACE", "脸部三视图",
+            "PROP", "道具三视图", "SCENE_GRID", "场景宫格图");
     private static final Set<String> VIEW_ANGLES = Set.of(
             "FRONT", "LEFT_THREE_QUARTER", "RIGHT_THREE_QUARTER", "LEFT_PROFILE",
             "RIGHT_PROFILE", "HIGH_ANGLE", "LOW_ANGLE", "BACK");
@@ -138,9 +141,6 @@ public class DirectMediaTaskService {
             MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
             if (draft.version() != expectedDraftVersion) throw conflict("草稿已变化，请检查保存状态后重试。");
             if (draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
-            if (kind == Task.Kind.VIDEO_GENERATION && draft.durationSeconds() == null) {
-                throw invalid("视频运行前需要选择时长。");
-            }
             if (kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
                     && (draft.imageInputs().isEmpty()
@@ -153,20 +153,27 @@ public class DirectMediaTaskService {
                     && draft.imageInputs().isEmpty()) {
                 throw invalid("全能参考视频运行前至少需要一张图片。");
             }
-            int seconds = kind == Task.Kind.VIDEO_GENERATION ? draft.durationSeconds() : 0;
-            MediaCapabilityBinding binding = draft.capabilityId() == null
-                    ? capabilities.defaultFor(kind)
-                    : capabilities.resolve(draft.capabilityId(), kind, seconds);
-            // A default binding must also support the draft's exact duration.
-            binding = capabilities.resolve(binding.capabilityId(), kind, seconds);
+            MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
+            JsonNode configuredSettings = capabilities.settings(selected);
+            Integer duration = draft.durationSeconds();
+            if (kind == Task.Kind.VIDEO_GENERATION && duration == null
+                    && configuredSettings.has("defaultDurationSeconds")) {
+                duration = configuredSettings.path("defaultDurationSeconds").intValue();
+            }
+            if (kind == Task.Kind.VIDEO_GENERATION && duration == null) {
+                throw invalid("视频运行前需要选择时长。");
+            }
+            int seconds = kind == Task.Kind.VIDEO_GENERATION ? duration : 0;
+            MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
+            if (!selected.equals(binding)) throw conflict("媒体配置已变化，请刷新后重试。");
             if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
                 throw invalid("本地图片处理能力只能从图片后处理入口使用。");
             }
             validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding));
             ImageGenerationParameters imageParameters = kind == Task.Kind.IMAGE_GENERATION
-                    ? ImageGenerationParameters.parse(draft.parameters()) : null;
+                    ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
             VideoGenerationParameters videoParameters = kind == Task.Kind.VIDEO_GENERATION
-                    ? VideoGenerationParameters.parse(draft.parameters()) : null;
+                    ? VideoGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
             if (imageParameters != null) {
                 var policy = capabilities.inputPolicy(binding);
                 imageParameters.requireSupported(policy.supportedImageAspectRatios(),
@@ -200,6 +207,9 @@ public class DirectMediaTaskService {
                 input.put("generationIndex", outputIndex);
                 input.put("generationCount", outputCount);
                 input.put("prompt", renderedPrompt);
+                if (configuredSettings.has("pricing")) {
+                    input.set("mediaPricing", configuredSettings.get("pricing"));
+                }
                 input.put("providerConfigVersion", provider.configVersion());
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
                 if (originHash != null) input.put("providerOriginSha256", originHash);
@@ -374,7 +384,8 @@ public class DirectMediaTaskService {
             }
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
-                    canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0);
+                    canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0,
+                    operationResultLabel(operation, operationParameters));
             Instant now = clock.instant();
             ObjectNode input = mapper.createObjectNode();
             input.put("schemaVersion", 6);
@@ -388,6 +399,11 @@ public class DirectMediaTaskService {
             input.put("resultDraftVersion", drafts.get(ownerId, projectId, outputCard.id()).version());
             input.put("parentVersionId", sourceVersionId.toString());
             input.put("prompt", prompt);
+            JsonNode operationSettings = capabilities.settings(binding);
+            if (operationSettings.has("pricing")
+                    && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
+                input.set("mediaPricing", operationSettings.get("pricing"));
+            }
             input.put("providerConfigVersion", provider.configVersion());
             input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
@@ -476,7 +492,7 @@ public class DirectMediaTaskService {
         if (!source.isObject()) throw invalid("图片处理参数必须为对象。");
         ObjectNode result = mapper.createObjectNode();
         switch (operation) {
-            case DEPTH_MAP, SMART_EDIT, EXPRESSION_EDIT, BRUSH_MARKUP,
+            case DEPTH_MAP, SMART_EDIT, EXPRESSION_EDIT,
                     REMOVE_BACKGROUND, OBJECT_REMOVE, FLIP_HORIZONTAL, FLIP_VERTICAL -> { }
             case RELIGHT -> {
                 String preset = source.path("lightingPreset").asText("GOLDEN_HOUR");
@@ -541,7 +557,7 @@ public class DirectMediaTaskService {
                     throw invalid("三视图需要选择明确的输出画幅。");
                 }
                 String type = source.path("threeViewType").asText("");
-                if (!THREE_VIEW_TYPES.contains(type)) {
+                if (!THREE_VIEW_RESULT_LABELS.containsKey(type)) {
                     throw invalid("三视图类型不受支持。");
                 }
                 result.put("aspectRatio", ratio);
@@ -549,7 +565,7 @@ public class DirectMediaTaskService {
             }
             case LAYER_SPLIT -> {
                 String target = source.path("layerTarget").asText("FOREGROUND");
-                if (!LAYER_TARGETS.contains(target)) throw invalid("图层输出类型不受支持。");
+                if (!LAYER_RESULT_LABELS.containsKey(target)) throw invalid("图层输出类型不受支持。");
                 result.put("layerTarget", target);
             }
             case VIEW_ANGLE -> {
@@ -559,6 +575,15 @@ public class DirectMediaTaskService {
             }
         }
         return result;
+    }
+
+    /** Parameters have already been normalized and validated before naming the result node. */
+    String operationResultLabel(ImageOperation operation, ObjectNode parameters) {
+        return switch (operation) {
+            case THREE_VIEW -> THREE_VIEW_RESULT_LABELS.get(parameters.path("threeViewType").asText());
+            case LAYER_SPLIT -> LAYER_RESULT_LABELS.get(parameters.path("layerTarget").asText());
+            default -> operation.resultLabel();
+        };
     }
 
     String operationPrompt(ImageOperation operation, String instruction,
@@ -595,9 +620,6 @@ public class DirectMediaTaskService {
                             + (instruction.isBlank() ? "" : " Background guidance: " + instruction);
             case EXPRESSION_EDIT -> "Change only the subject's facial expression according to the instruction. "
                     + "Preserve identity, face shape, hair, pose, clothing, composition, lighting, and style. "
-                    + "Instruction: " + instruction;
-            case BRUSH_MARKUP -> "Add clear hand-drawn-style visual annotations directly onto the provided "
-                    + "image according to the instruction. Preserve every unannotated part of the image. "
                     + "Instruction: " + instruction;
             case REMOVE_BACKGROUND -> "Remove the entire background from the provided image and return the "
                     + "primary subject on a fully transparent background. Preserve fine edges, hair, shadows "

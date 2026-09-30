@@ -76,7 +76,7 @@ class DirectTextGenerationPostgresIT {
         Project project = projects.create(owner.userId(), "Text generation",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView initial = artifacts.create(owner.userId(), project.id(),
-                Artifact.Kind.TEXT, "Notes", text("Initial"));
+                Artifact.Kind.TEXT, "Notes", text(""));
 
         Task first = direct.run(owner.userId(), project.id(), initial.artifact().id(),
                 "Expand this", initial.artifact().version(), initial.resourceDefaultVersion().id(),
@@ -84,7 +84,8 @@ class DirectTextGenerationPostgresIT {
         assertThat(direct.run(owner.userId(), project.id(), initial.artifact().id(),
                 "Expand this", initial.artifact().version(), initial.resourceDefaultVersion().id(),
                 "direct-text-first").id()).isEqualTo(first.id());
-        assertThat(first.input().path("currentText").asText()).isEqualTo("Initial");
+        assertThat(initial.resourceDefaultVersion().content().path("text").asText()).isEmpty();
+        assertThat(first.input().path("currentText").asText()).isEmpty();
         assertThat(worker.runOnce("text-worker")).isEqualTo(1);
 
         Task firstDone = tasks.get(owner.userId(), project.id(), first.id());

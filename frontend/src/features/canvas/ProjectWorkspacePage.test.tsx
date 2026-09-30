@@ -73,6 +73,10 @@ describe("ProjectWorkspacePage", () => {
         defaults: [{ kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 0 }],
       })),
       http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({ items: [], nextCursor: null })),
+      http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: false, version: 0 })),
+      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK" })),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/text-generations", () =>
+        HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () =>
         HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
@@ -105,6 +109,61 @@ describe("ProjectWorkspacePage", () => {
         }),
       ),
     );
+  });
+
+  it("creates and selects empty text at the menu's canvas position without a drawer", async () => {
+    const original = textCard();
+    const blank: CanvasItem = { ...original, title: "新文字", selectedVersionId: null, selectedVersion: null,
+      artifact: { ...original.artifact!, title: "新文字", version: 0,
+        resourceDefaultVersion: { ...original.artifact!.resourceDefaultVersion!, versionNo: 1,
+          content: { format: "PLAIN_TEXT", text: "" } } } };
+    let items: CanvasItem[] = [];
+    const creates: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({
+        id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", () =>
+        HttpResponse.json({ id: "project-1", name: "Text project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        creates.push(await request.json());
+        return HttpResponse.json(blank.artifact, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: CanvasCommand[] };
+        const command = body.commands[0];
+        expect(command).toMatchObject({ type: "PLACE_ARTIFACT", artifactId: "text-id",
+          x: 235, y: 165, width: 280, height: 180 });
+        if (!command || command.type !== "PLACE_ARTIFACT") throw new Error("Missing placement");
+        items = [{ ...blank, id: command.itemId, x: command.x, y: command.y }];
+        return HttpResponse.json({ items });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>);
+    await screen.findByText("Text project");
+    const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+    fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
+    await user.click(screen.getByRole("menuitem", { name: "文字" }));
+    expect(await screen.findByRole("article", { name: "新文字 · 文字" })).toHaveClass("is-selected");
+    expect(creates).toEqual([{ kind: "TEXT", title: "新文字",
+      content: { format: "PLAIN_TEXT", text: "" } }]);
+    expect(screen.queryByRole("complementary", { name: "创建与工具" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加到画布" })).not.toBeInTheDocument();
+    const prompt = screen.getByRole("textbox", { name: "文字生成提示词" });
+    await user.type(prompt, "写一段开场白");
+    await waitFor(() => expect(screen.getByRole("button", { name: "生成文字" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    const content = screen.getByRole("textbox", { name: "内容" });
+    expect(content).toHaveValue("");
+    await user.type(content, "直接在节点里填写");
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeEnabled();
   });
 
   it("creates an empty image card from the canvas menu and autosaves its bottom draft", async () => {
@@ -600,9 +659,10 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByLabelText("图片标题")).toHaveValue("");
   });
 
-  it("reuses the text creation key after an uncertain response", async () => {
+  it.each(["artifact", "placement"])("reuses the text creation intent after an uncertain %s response", async (stage) => {
     const artifactId = crypto.randomUUID();
     const keys: string[] = [];
+    const placements: unknown[] = [];
     let placedItemId: string | undefined;
     server.use(
       http.get("/api/v1/auth/me", () =>
@@ -614,11 +674,13 @@ describe("ProjectWorkspacePage", () => {
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
         keys.push(request.headers.get("Idempotency-Key") ?? "");
-        if (keys.length === 1) return HttpResponse.error();
+        if (stage === "artifact" && keys.length === 1) return HttpResponse.error();
         return HttpResponse.json({ id: artifactId }, { status: 201 });
       }),
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
         const body = await request.json() as { commands: Array<{ itemId: string; artifactId: string }> };
+        placements.push(body);
+        if (stage === "placement" && placements.length === 1) return HttpResponse.error();
         placedItemId = body.commands[0]?.itemId;
         expect(body.commands[0]?.artifactId).toBe(artifactId);
         return HttpResponse.json({ items: [] });
@@ -634,16 +696,14 @@ describe("ProjectWorkspacePage", () => {
     );
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
     await user.click(screen.getByRole("menuitem", { name: "文字" }));
-    const form = screen.getByRole("button", { name: "添加到画布" }).closest("form")!;
-    await user.type(within(form).getByLabelText("标题"), "Retry note");
-    await user.type(within(form).getByLabelText("内容"), "A stable note");
-    fireEvent.submit(form);
     await screen.findByRole("alert");
-    expect(within(form).getByLabelText("标题")).toHaveValue("Retry note");
-    fireEvent.submit(form);
-    await waitFor(() => expect(keys).toHaveLength(2));
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试创建文字节点" }));
+    await waitFor(() => expect(placedItemId).toBeTruthy());
+    expect(keys).toHaveLength(stage === "artifact" ? 2 : 1);
     expect(keys[0]).toBeTruthy();
-    expect(keys[1]).toBe(keys[0]);
+    if (stage === "artifact") expect(keys[1]).toBe(keys[0]);
+    if (stage === "placement") expect(placements[1]).toEqual(placements[0]);
     expect(placedItemId).toBeTruthy();
   });
 
@@ -718,9 +778,9 @@ describe("ProjectWorkspacePage", () => {
     );
 
     expect(await screen.findByText("Existing card")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    await user.click(screen.getByRole("menuitem", { name: "文字" }));
-    const content = within(screen.getByRole("complementary")).getByLabelText("内容");
+    fireEvent.click(screen.getByRole("article", { name: "Existing card · 文字" }));
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    const content = screen.getByRole("textbox", { name: "内容" });
     await user.type(content, "draft");
     await user.keyboard("{Delete}");
 
@@ -1132,8 +1192,7 @@ describe("ProjectWorkspacePage", () => {
     const preview = await screen.findByAltText("Demo still 的预览");
     expect(preview).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
-    expect(screen.getByText("打开原图").closest("a")).toHaveAttribute("href",
-      `/api/v1/projects/project-1/assets/${assetId}/content`);
+    expect(screen.getByLabelText("放大图片")).toBeInTheDocument();
     expect(screen.getByText("演示素材")).toBeInTheDocument();
     fireEvent.error(preview);
     expect(screen.getByText("预览暂不可用")).toBeInTheDocument();

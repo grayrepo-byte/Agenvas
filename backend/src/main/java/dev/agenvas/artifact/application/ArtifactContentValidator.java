@@ -19,6 +19,9 @@ public class ArtifactContentValidator {
     private static final int MAX_CONTENT_BYTES = 262_144;
     /** 递归字段保护扫描允许访问的 JSON 节点数。 */
     private static final int MAX_CONTENT_NODES = 10_000;
+    /** Empty text is a persisted starting version for direct canvas creation. */
+    private static final int MIN_TEXT_LENGTH = 0;
+    private static final int MAX_TEXT_LENGTH = 20_000;
     /** 无论嵌套层级如何都不允许出现在用户或模型正文中的身份、权限和凭证字段。 */
     private static final Set<String> PROTECTED_FIELD_NAMES = Set.of(
             "ownerid",
@@ -57,7 +60,7 @@ public class ArtifactContentValidator {
     private List<ArtifactVersion.InputReference> validateText(JsonNode content) {
         allowOnly(content, "format", "text");
         requireEnum(content, "format", "PLAIN_TEXT", "MARKDOWN");
-        requireText(content, "text", 1, 20_000);
+        requireText(content, "text", MIN_TEXT_LENGTH, MAX_TEXT_LENGTH);
         return List.of();
     }
 

@@ -10,6 +10,29 @@ import { SystemDiagnosticsPage } from "./SystemDiagnosticsPage";
 
 /** Opening the page reads only the administrator's local diagnostic snapshot. */
 describe("SystemDiagnosticsPage", () => {
+  it("keeps password inputs when a delayed diagnostic snapshot arrives", async () => {
+    let finishRead: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => { finishRead = resolve; });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/diagnostics", async () => {
+        await pending;
+        return HttpResponse.json({
+          checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
+          llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
+          mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
+        });
+      }),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><SystemDiagnosticsPage /></MemoryRouter></QueryClientProvider>);
+    const currentPassword = await screen.findByLabelText("当前密码");
+    await userEvent.setup().type(currentPassword, "temporary-input");
+    finishRead?.();
+    await screen.findByText("路径检查正常（未试写）");
+    expect(screen.getByLabelText("当前密码")).toBe(currentPassword);
+    expect(currentPassword).toHaveValue("temporary-input");
+  });
+
   it("renders redacted local states and refreshes with GET only", async () => {
     const requests = vi.fn();
     server.use(

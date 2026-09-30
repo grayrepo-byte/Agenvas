@@ -153,6 +153,7 @@ class CanvasMediaContextPostgresIT {
                                 + "\"assetId\":\"" + uploadAssetId + "\"}}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID uploadedVersion = UUID.fromString(uploaded.path("selectedVersionId").asText());
+        assertThat(uploaded.path("title").asText()).isEqualTo("Shared image · 上传");
         assertThat(uploadedVersion).isNotEqualTo(firstVersion);
         JsonNode uploadDraft = read(mvc, auth, base + "/canvas-items/" + uploadTarget
                 + "/media-draft");
@@ -177,6 +178,7 @@ class CanvasMediaContextPostgresIT {
         assertThat(replayedUpload.path("selectedVersionId").asText())
                 .isEqualTo(uploadedVersion.toString());
         assertThat(replayedUpload.path("id").asText()).isEqualTo(uploadTarget.toString());
+        assertThat(replayedUpload.path("title").asText()).isEqualTo(uploaded.path("title").asText());
         assertThat(jdbc.sql("select count(*) from artifact_version where artifact_id=:id")
                 .param("id", artifactId).query(Integer.class).single()).isEqualTo(3);
         assertThat(read(mvc, auth, base + "/artifacts/" + artifactId)
@@ -217,6 +219,55 @@ class CanvasMediaContextPostgresIT {
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(replayedEmptyUpload.path("selectedVersionId").asText())
                 .isEqualTo(filledEmptyCard.path("selectedVersionId").asText());
+
+        // A local markup saves user bytes, immutable provenance and one independent node; no Task.
+        UUID markupTarget = UUID.randomUUID();
+        String markupBody = mapper.createObjectNode().put("targetItemId", markupTarget.toString())
+                .put("expectedVersion", 0).put("purpose", "BRUSH_MARKUP")
+                .put("sourceVersionId", firstVersion.toString())
+                .set("content", mapper.createObjectNode().put("sourceType", "UPLOAD")
+                        .put("assetId", uploadAssetId.toString())).toString();
+        Integer taskCount = jdbc.sql("select count(*) from task where project_id=:id")
+                .param("id", project.id()).query(Integer.class).single();
+        JsonNode marked = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
+                        + firstCard + "/upload-version").with(auth).with(csrf())
+                        .contentType("application/json").content(markupBody))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(marked.path("title").asText()).isEqualTo("Shared image · 画笔标注");
+        assertThat(marked.path("selectedVersion").path("createdByKind").asText()).isEqualTo("USER");
+        assertThat(marked.path("selectedVersion").path("baseVersionId").asText())
+                .isEqualTo(firstVersion.toString());
+        assertThat(marked.path("selectedVersion").path("frozenInput").path("operation").asText())
+                .isEqualTo("BRUSH_MARKUP");
+        assertThat(read(mvc, auth, base + "/canvas-items/" + markupTarget + "/media-draft")
+                .path("prompt").asText()).isEmpty();
+        JsonNode markupReplay = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
+                        + firstCard + "/upload-version").with(auth).with(csrf())
+                        .contentType("application/json").content(markupBody))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(markupReplay.path("selectedVersionId")).isEqualTo(marked.path("selectedVersionId"));
+        assertThat(jdbc.sql("select count(*) from task where project_id=:id")
+                .param("id", project.id()).query(Integer.class).single()).isEqualTo(taskCount);
+        assertThat(selectedVersion(read(mvc, auth, base + "/canvas/items"), firstCard))
+                .isEqualTo(firstVersion.toString());
+        assertThat(read(mvc, auth, firstDraft)).isEqualTo(sourceBeforeUpload);
+        // Same target with a different intent cannot replay an unrelated upload.
+        mvc.perform(post(base + "/canvas-items/" + firstCard + "/upload-version")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(markupBody.replace("BRUSH_MARKUP", "UPLOAD")))
+                .andExpect(status().isBadRequest());
+        String staleMarkup = markupBody.replace(markupTarget.toString(), UUID.randomUUID().toString())
+                .replace(firstVersion.toString(), secondVersion.toString());
+        mvc.perform(post(base + "/canvas-items/" + firstCard + "/upload-version")
+                        .with(auth).with(csrf()).contentType("application/json").content(staleMarkup))
+                .andExpect(status().isConflict());
+        mvc.perform(post(base + "/artifacts/" + artifactId + "/image-operations")
+                        .with(auth).with(csrf()).header("Idempotency-Key", "old-ai-markup")
+                        .contentType("application/json")
+                        .content("{\"canvasItemId\":\"" + firstCard + "\",\"sourceVersionId\":\""
+                                + firstVersion + "\",\"expectedCanvasItemVersion\":0,"
+                                + "\"operation\":\"BRUSH_MARKUP\",\"parameters\":{}}"))
+                .andExpect(status().isBadRequest());
 
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
                         .contentType("application/json")

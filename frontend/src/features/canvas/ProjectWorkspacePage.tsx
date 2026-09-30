@@ -1,3 +1,4 @@
+import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import {
   Background,
   ConnectionLineType,
@@ -54,7 +55,7 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
-import { X } from "@phosphor-icons/react";
+import { ImageSquare, Sparkle, TextT, VideoCamera, X, type Icon } from "@phosphor-icons/react";
 import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
 import { CanvasHandle } from "./CanvasHandle";
@@ -66,17 +67,20 @@ import { useImageNodeRatios } from "./useImageNodeRatios";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AGENT";
-type DrawerKind = CreationKind | "UPLOAD" | "ALIGN";
+type DrawerKind = "AGENT" | "UPLOAD" | "ALIGN";
 type CreationPoint = { x: number; y: number };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
 type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "agent-input" | "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
-const CREATION_MENU_WIDTH = 184;
-const CREATION_MENU_HEIGHT = 210;
+const CREATION_MENU_WIDTH = 208;
+/** Match the menu's title, rows, gaps and padding in styles.css so edge clamping stays accurate. */
+const CREATION_MENU_HEIGHT = 218;
 const CREATION_MENU_MARGIN = 12;
 const DEFAULT_CARD_WIDTH = 280;
+const DEFAULT_TEXT_CARD_HEIGHT = 180;
+const DEFAULT_TEXT_CARD_TITLE = "新文字";
 const DEFAULT_MEDIA_CARD_HEIGHT = 300;
 const DEFAULT_IMAGE_CARD_WIDTH = 225;
 const DEFAULT_VIDEO_CARD_WIDTH = 534;
@@ -92,9 +96,11 @@ const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
 function focusArtifactEditor() {
   document.querySelector<HTMLElement>(".workspace-media-editor [data-content-editor-focus], .workspace-media-editor .media-draft-prompt")?.focus();
 }
-const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string }> = [
-  { kind: "TEXT", label: "文字" }, { kind: "IMAGE", label: "图片" },
-  { kind: "VIDEO", label: "视频" }, { kind: "AGENT", label: "Agent" },
+const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string; icon: Icon }> = [
+  { kind: "TEXT", label: "文字", icon: TextT },
+  { kind: "IMAGE", label: "图片", icon: ImageSquare },
+  { kind: "VIDEO", label: "视频", icon: VideoCamera },
+  { kind: "AGENT", label: "Agent", icon: Sparkle },
 ];
 
 type CanvasNodeData = {
@@ -114,9 +120,6 @@ type CanvasNodeData = {
   imageAspectRatio: number | undefined;
   /** Connection gesture feedback: this card is under the pointer and will accept, or reject, the line. */
   connectionTarget: "valid" | "invalid" | null;
-  /** Drag feedback is visual only; contextual actions require a completed selection gesture. */
-  dragHighlighted: boolean;
-  showSelectionActions: boolean;
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
@@ -133,10 +136,8 @@ export function ProjectWorkspacePage() {
 
 function ProjectWorkspace({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
   const textProgress = useRef<{ fingerprint: string; createKey: string;
-    itemId: string; artifactId?: string } | null>(null);
+    itemId: string; zIndex: number; artifactId?: string } | null>(null);
   const [imageTitle, setImageTitle] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -162,7 +163,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const drafts = useCanvasStore((state) => state.drafts);
   const saveState = useCanvasStore((state) => state.saveState);
   const selectedIds = useCanvasStore((state) => state.selectedIds);
-  const [draggingIds, setDraggingIds] = useState<string[]>([]);
   const updateDraft = useCanvasStore((state) => state.updateDraft);
   const clearDraft = useCanvasStore((state) => state.clearDraft);
   const setSaveState = useCanvasStore((state) => state.setSaveState);
@@ -299,26 +299,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, snapshot.isSuccess]);
 
   const saveLayout = useMutation({
-    mutationFn: (updates: { item: CanvasItem; patch: Partial<LayoutPatch> }[]) => {
-      const commands: CanvasCommand[] = updates.map(({ item, patch }) => {
-        const draft = useCanvasStore.getState().drafts[item.id];
-        return {
-          type: "UPDATE_LAYOUT",
-          itemId: item.id,
-          expectedVersion: item.version,
-          x: patch.x ?? draft?.x ?? item.x,
-          y: patch.y ?? draft?.y ?? item.y,
-          ...persistableNodeSize(effectiveNodeSize(item, patch)),
-          zIndex: item.zIndex,
-          groupId: item.groupId,
-        };
-      });
-      return applyCanvasCommands(projectId, commands);
+    mutationFn: ({ item, patch }: { item: CanvasItem; patch: Partial<LayoutPatch> }) => {
+      const draft = useCanvasStore.getState().drafts[item.id];
+      const command: CanvasCommand = {
+        type: "UPDATE_LAYOUT",
+        itemId: item.id,
+        expectedVersion: item.version,
+        x: patch.x ?? draft?.x ?? item.x,
+        y: patch.y ?? draft?.y ?? item.y,
+        ...persistableNodeSize(effectiveNodeSize(item, patch)),
+        zIndex: item.zIndex,
+        groupId: item.groupId,
+      };
+      return applyCanvasCommands(projectId, [command]);
     },
     onMutate: () => setSaveState("saving"),
     onSuccess: (saved, variables) => {
       queryClient.setQueryData(["canvas", projectId], saved);
-      for (const { item } of variables) clearDraft(item.id);
+      clearDraft(variables.item.id);
       setSaveState("saved");
     },
     onError: setSaveError,
@@ -383,42 +381,41 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     onError: setSaveError,
   });
   const addTextCard = useMutation({
-    mutationFn: async ({ cardTitle, cardText }: { cardTitle: string; cardText: string }) => {
-      const fingerprint = JSON.stringify({ projectId, cardTitle, cardText });
+    mutationFn: async ({ point }: { point: CreationPoint }) => {
+      const fingerprint = JSON.stringify({ projectId, point });
       if (textProgress.current?.fingerprint !== fingerprint) {
         textProgress.current = { fingerprint, createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID() };
+          itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0 };
       }
       const pending = textProgress.current;
       if (!pending.artifactId) {
         const artifact = await createArtifact(projectId, {
-          kind: "TEXT", title: cardTitle,
-          content: { format: "PLAIN_TEXT", text: cardText },
+          kind: "TEXT", title: DEFAULT_TEXT_CARD_TITLE,
+          content: { format: "PLAIN_TEXT", text: "" },
         }, pending.createKey);
         pending.artifactId = artifact.id;
       }
-      const index = canvas.data?.items.length ?? 0;
-      return applyCanvasCommands(projectId, [
+      const saved = await applyCanvasCommands(projectId, [
         {
           type: "PLACE_ARTIFACT",
           itemId: pending.itemId,
           artifactId: pending.artifactId,
-          x: creationPoint?.x ?? 80 + (index % 3) * 320,
-          y: creationPoint?.y ?? 80 + Math.floor(index / 3) * 220,
-          width: 280,
-          height: 180,
-          zIndex: index,
+          x: point.x,
+          y: point.y,
+          width: DEFAULT_CARD_WIDTH,
+          height: DEFAULT_TEXT_CARD_HEIGHT,
+          zIndex: pending.zIndex,
           locked: false,
         },
       ]);
+      return { saved, itemId: pending.itemId };
     },
     onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
+    onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
+      void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
+      setSelectedIds([itemId]);
       textProgress.current = null;
-      setTitle("");
-      setText("");
-      setToolsKind(null);
       setSaveState("saved");
     },
     onError: setSaveError,
@@ -750,7 +747,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (!item) return;
       const effectiveLayout = { ...layout, ...effectiveNodeSize(item, layout) };
       updateDraft(itemId, effectiveLayout);
-      saveLayoutMutate([{ item, patch: effectiveLayout }]);
+      saveLayoutMutate({ item, patch: effectiveLayout });
     },
     [canvas.data?.items, effectiveNodeSize, saveLayoutMutate, updateDraft],
   );
@@ -898,15 +895,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               connectionTarget: connectionTarget?.itemId === item.id
                 ? (connectionTarget.valid ? "valid" : "invalid")
                 : null,
-              dragHighlighted: draggingIds.includes(item.id),
-              showSelectionActions: draggingIds.length === 0,
             },
           };
         }),
     [
       canvas.data?.items,
       drafts,
-      draggingIds,
       editAgent.isPending,
       editAgent.error,
       effectiveNodeSize,
@@ -982,11 +976,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds([]);
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
-  function submitText(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    addTextCard.mutate({ cardTitle: title, cardText: text });
-  }
-
   function submitAgent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     addAgentCard.mutate({ name: agentName, instruction: agentInstruction });
@@ -1051,7 +1040,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setCreationMenu(null);
     setResourcesOpen(false);
     setCreationPoint(point);
-    if (kind === "IMAGE" || kind === "VIDEO") {
+    if (kind === "TEXT") {
+      setToolsKind(null);
+      if (!addTextCard.isPending) addTextCard.mutate({ point });
+    } else if (kind === "IMAGE" || kind === "VIDEO") {
       addBlankMedia.mutate({ kind, point });
     } else {
       setToolsKind(kind);
@@ -1134,16 +1126,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </ul>
           {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
         </> : null}
-        {toolsKind === "TEXT" ? <>
-        <h2 className="text-base font-semibold">添加文字卡片</h2>
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">创建 Artifact 后再放到画布；删除卡片不会删除内容。</p>
-        <form className="mt-4" onSubmit={submitText}>
-          <label className="text-sm font-medium">标题<input maxLength={160} required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-          <label className="mt-3 block text-sm font-medium">内容<textarea className="mt-2 min-h-32 w-full rounded-xl border border-[var(--line)] bg-white p-3" maxLength={20000} required value={text} onChange={(event) => setText(event.target.value)} /></label>
-          <button className="primary-button mt-4 w-full" disabled={addTextCard.isPending} type="submit">{addTextCard.isPending ? "正在添加…" : "添加到画布"}</button>
-        </form>
-        {addTextCard.error ? <WorkspaceError error={addTextCard.error} /> : null}
-        </> : null}
         {toolsKind === "UPLOAD" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-base font-semibold">上传参考图</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">支持 PNG、JPEG、WebP；不超过 20 MiB/40 MP。上传后选中图片卡片与 Agent 卡片，再绑定为精确版本输入。模型规划默认不读取图片字节。</p>
@@ -1215,26 +1197,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           selectionKeyCode={selecting ? "Shift" : null}
           nodeClickDistance={CANVAS_POINTER_THRESHOLD}
           nodeDragThreshold={CANVAS_POINTER_THRESHOLD}
-          selectNodesOnDrag={false}
           onBeforeDelete={handleBeforeDelete}
           onConnect={(connection) => connectInputMutate(connection)}
           onConnectEnd={handleConnectEnd}
           onConnectStart={handleConnectStart}
-          onNodeDragStart={(_, node, draggedNodes) => {
-            setDraggingIds(draggedNodes.length ? draggedNodes.map((dragged) => dragged.id) : [node.id]);
-            setSelectedEdgeIds([]);
-          }}
-          onNodeDragStop={(_, node, draggedNodes) => {
-            setDraggingIds([]);
-            clearSelection();
-            const updates = (draggedNodes.length ? draggedNodes : [node]).flatMap((dragged) => {
-              const item = canvas.data?.items.find((candidate) => candidate.id === dragged.id);
-              if (!item) return [];
-              const patch = { x: dragged.position.x, y: dragged.position.y, ...effectiveNodeSize(item) };
+          onNodeDragStop={(_, node) => {
+            const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
+            if (item) {
+              const patch = { x: node.position.x, y: node.position.y, ...effectiveNodeSize(item) };
               updateDraft(item.id, patch);
-              return [{ item, patch }];
-            });
-            if (updates.length) saveLayout.mutate(updates);
+              saveLayout.mutate({ item, patch });
+            }
           }}
           onNodeClick={(event, node) => {
             if (!selecting || event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -1259,7 +1232,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           selectionOnDrag={selecting}
           zoomOnDoubleClick={false}
         >
-          {draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
+          {selectedItems.length === 1 && selectedItems[0]?.artifact ?
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
               className="workspace-media-toolbar nodrag nowheel nopan">
               <div className="workspace-media-editor" aria-label="所选卡片编辑区">
@@ -1274,7 +1247,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                     artifact={selectedItems[0].artifact} /> : null}
               </div>
             </NodeToolbar> : null}
-          <Background color="#454545" gap={20} size={1.1} />
+          <Background color="var(--ui-border-strong)" gap={20} size={1.1} />
           <MiniMap pannable zoomable />
           <Controls position="bottom-right" />
         </ReactFlow>
@@ -1282,12 +1255,22 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
         }} />
-        {creationMenu ? <div className="workspace-create-menu" role="menu"
+        {creationMenu ? <DropdownMenu className="workspace-create-menu" role="menu" aria-label="添加卡片"
           ref={creationMenuElement}
-          style={{ left: creationMenu.x, top: creationMenu.y }}>
+          style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
           <p className="workspace-create-title">添加卡片</p>
-          {CREATION_KINDS.map(({ kind, label }) => <button key={kind} role="menuitem"
-            onClick={() => chooseCreationKind(kind)} type="button">{label}</button>)}
+          {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <button key={kind} role="menuitem"
+            disabled={kind === "TEXT" && addTextCard.isPending}
+            onClick={() => chooseCreationKind(kind)} type="button">
+            <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
+          </button>)}
+        </DropdownMenu> : null}
+        {addTextCard.isPending ? <div className="canvas-message" role="status">正在创建文字节点…</div> : null}
+        {addTextCard.error ? <div className="canvas-message">
+          <WorkspaceError error={addTextCard.error} />
+          <button className="node-action" type="button" onClick={() => {
+            if (addTextCard.variables) addTextCard.mutate(addTextCard.variables);
+          }}>重试创建文字节点</button>
         </div> : null}
         {addBlankMedia.error ? <div className="canvas-message" role="alert">
           <WorkspaceError error={addBlankMedia.error} /></div> : null}
@@ -1295,7 +1278,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <WorkspaceError error={connectInput.error} /></div> : null}
         {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
           <div className="canvas-message"><WorkspaceError error={(removeItem.error ?? toggleLocked.error)!} /></div> : null}
-        {draggingIds.length === 0 && selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
+        {selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label="批量操作">
           <button aria-label="关闭编辑区" className="workspace-bottom-close"
             onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
           <span>{selectedItems.length} 张卡片已选中</span>
@@ -1342,15 +1325,13 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   const halo = data.connectionTarget
     ? <span className={`canvas-connection-halo canvas-connection-halo--${data.connectionTarget}`} />
     : null;
-  const highlighted = selected || data.dragHighlighted;
-  if (data.item.agent) return <>{halo}<AgentChatCard data={data} selected={highlighted} /></>;
+  if (data.item.agent) return <>{halo}<AgentChatCard data={data} selected={selected} /></>;
   const artifact = data.item.artifact;
   if (!artifact) return null;
   const cardProps = {
-    artifact, item: data.item, selected: highlighted, locked: data.item.locked,
-    toolbarVisible: data.showSelectionActions,
+    artifact, item: data.item, selected, locked: data.item.locked,
     onInspect: () => data.onInspect(data.item),
-    children: <NodeResizer isVisible={selected && data.showSelectionActions && !data.item.locked}
+    children: <NodeResizer isVisible={selected && !data.item.locked}
       {...(data.imageAspectRatio === undefined
         ? { minHeight: MIN_ARTIFACT_CARD_SIZE, minWidth: MIN_ARTIFACT_CARD_SIZE,
           maxWidth: CANVAS_MAX_SIZE, maxHeight: CANVAS_MAX_SIZE }

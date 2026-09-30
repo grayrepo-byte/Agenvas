@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowClockwise, ArrowCounterClockwise, BoundingBox, Eraser, Image as ImageIcon,
   PaintBrush, PaperPlaneTilt, Plus, UploadSimple, X } from "@phosphor-icons/react";
@@ -364,11 +365,11 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           onChange={(event) => setInstruction(event.target.value)} />
         <div className="smart-edit-footer">
           <label><span className="sr-only">图片能力</span><ImageIcon size={16} />
-            <select value={selectedCapabilityId} onChange={(event) => setCapabilityId(event.target.value)}>
+            <Select density="compact" value={selectedCapabilityId} onChange={(event) => setCapabilityId(event.target.value)}>
               {eligibleCapabilities.length ? eligibleCapabilities.map((capability) =>
                 <option key={capability.id} value={capability.id}>{capability.name}</option>)
                 : <option value="">{hasMask ? "请配置支持蒙版的 OpenAI 图片能力" : "请配置图片能力"}</option>}
-            </select></label>
+            </Select></label>
           <span>{hasMask ? "透明区域将被编辑" : "未绘制蒙版，将编辑整张图片"}</span>
           <button type="button" className="smart-edit-submit" aria-label="开始智能编辑"
             disabled={!canSubmit} onClick={() => void submit()}>

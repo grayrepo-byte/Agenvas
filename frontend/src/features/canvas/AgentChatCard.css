@@ -37,16 +37,16 @@
 .agent-chat-empty button { display: inline-flex; align-items: center; gap: 12px; border: 1px solid var(--chat-border); background: #222; border-radius: 9px; padding: 8px 11px; margin-top: 18px; color: #d8d8d8; font-size: 12px; }
 .agent-chat-empty button:hover { background: #303030; }
 .agent-chat-composer { flex-shrink: 0; padding: 10px; margin: 0 9px 9px; background: var(--chat-surface); border: 1px solid #333; border-radius: 12px; }
-.agent-chat-card input, .agent-chat-card textarea, .agent-chat-card select { color-scheme: dark; color: #efefef; border: 1px solid #414141; background: #242424; border-radius: 8px; font-size: 12px; outline: none; box-shadow: none; }
+.agent-chat-card input, .agent-chat-card textarea { color-scheme: dark; color: #efefef; border: 1px solid #414141; background: #242424; border-radius: 8px; font-size: 12px; outline: none; box-shadow: none; }
 .agent-chat-card input { margin-top: 4px; padding: 8px; width: 100%; }
 .agent-chat-card textarea { display: block; resize: vertical; width: 100%; min-height: 62px; padding: 8px; }
 .agent-chat-composer textarea { background: transparent; border: none; padding: 9px 2px 4px; max-height: 160px; outline: none; font-size: 13px; }
-.agent-chat-card :is(input,textarea,select):focus { border-color: #414141; outline: none; box-shadow: none; }
-.agent-chat-card :is(button,summary):focus-visible { outline: 2px solid #e1e1e1; outline-offset: 3px; }
+.agent-chat-card :is(input,textarea):focus { border-color: #414141; outline: none; box-shadow: none; }
+.agent-chat-card :is(button,summary):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
 .agent-chat-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; }
 .agent-chat-composer-footer > span { font-size: 10px; color: #999; }
-.agent-chat-send { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; color: #151515; background: #eeeeee; transition: background 150ms, transform 150ms; }
-.agent-chat-send:enabled:hover { background: #fff; transform: translateY(-1px); }
+.agent-chat-send { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; color: var(--ui-accent-foreground); background: var(--ui-accent); transition: background 150ms, transform 150ms; }
+.agent-chat-send:enabled:hover { background: var(--ui-accent-hover); transform: translateY(-1px); }
 .agent-chat-send:disabled { background: #383838; color: #777; }
 .agent-chat-stop { color: #eee; background: #444; }
 .agent-chat-stop:enabled:hover { background: #555; }

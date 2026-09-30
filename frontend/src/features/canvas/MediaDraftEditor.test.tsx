@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, type RequestHandler } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Artifact, MediaCapability, MediaDraft, MediaSettings, SaveMediaDraftRequest, Task } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { MediaDraftEditor } from "./MediaDraftEditor";
+import { useCanvasStore } from "./canvasStore";
 
 const NOW = "2026-09-26T00:00:00Z";
 const PROJECT_ID = "project-media-editor";
@@ -99,6 +100,27 @@ function setup(options: { draft?: MediaDraft; tasks?: Task[]; settings?: MediaSe
 }
 
 describe("MediaDraftEditor", () => {
+  beforeEach(() => useCanvasStore.setState({ mediaDraftRecoveries: {}, imageRatioDrafts: {} }));
+  afterEach(async () => {
+    cleanup();
+    // Closing can flush a debounced save; let it settle before the shared HTTP handlers reset.
+    await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
+      .some((recovery) => recovery.saving)).toBe(false));
+  });
+  it("shows configured defaults and the exact batch estimate, with custom model names", async () => {
+    const pricedCapability = { ...imageCapability, settings: { model: "custom-image-model",
+      defaultParameters: { aspectRatio: "16:9", resolution: "2K", generationCount: 4 },
+      pricing: { amount: "0.125", currency: "USD", unit: "IMAGE" } } };
+    setup({ handlers: [http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      ...settings, connections: [{ ...settings.connections[0], capabilities: [pricedCapability] }],
+    }))] });
+    expect(await screen.findByText("预计 USD 0.5")).toBeVisible();
+    expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveTextContent("16:9 · 2K");
+    expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveTextContent("4 张");
+    await userEvent.setup().click(screen.getByRole("button", { name: "选择生成模型" }));
+    expect(screen.getByText(/custom-image-model/)).toBeVisible();
+  });
+
   it("inserts an exact-version image token inside the prompt instead of a separate tag row", async () => {
     const { saves } = setup({ draft: { ...initialDraft, prompt: "修改为红色衣服 ",
       imageInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE",

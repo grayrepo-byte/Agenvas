@@ -64,7 +64,7 @@
 }
 
 .crop-selection-surface { inset: 7px; cursor: move; }
-.crop-selection-surface:focus-visible { outline: 1px dashed #fff; outline-offset: -5px; }
+.crop-selection-surface:focus-visible { outline: 1px dashed var(--ui-focus); outline-offset: -5px; }
 
 .crop-handle::after {
   position: absolute;
@@ -107,7 +107,7 @@
   border-radius: 2px;
 }
 
-.crop-handle:focus-visible { outline: 2px solid #ff4bac; outline-offset: 2px; }
+.crop-handle:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
 
 .crop-toolbar {
   display: flex;
@@ -139,23 +139,14 @@
 .crop-toolbar button { padding: 0 14px; cursor: pointer; }
 .crop-toolbar button:hover:not(:disabled) { background: #343434; }
 .crop-toolbar button:focus-visible,
-.crop-ratio-control:focus-within { outline: 2px solid #fff; outline-offset: 2px; }
+.crop-ratio-control:focus-within { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
 .crop-toolbar button:disabled { opacity: .56; cursor: progress; }
 .crop-toolbar-divider { width: 1px; height: 22px; background: #4b4b4b; }
 .crop-ratio-control { padding: 0 8px 0 12px; }
-.crop-ratio-control select {
-  min-width: 92px;
-  border: 0;
-  padding: 0 22px 0 0;
-  background: transparent;
-  color: #ededed;
-  font: inherit;
-  outline: none;
-  cursor: pointer;
-}
-.crop-ratio-control select option { background: #242424; color: #ededed; }
-.crop-toolbar .crop-confirm { min-width: 86px; background: #ff2e9d; color: #fff; font-weight: 650; }
-.crop-toolbar .crop-confirm:hover:not(:disabled) { background: #ff4bac; }
+.crop-ratio-control .ui-select { min-width: 110px; }
+
+.crop-toolbar .crop-confirm { min-width: 86px; background: var(--ui-accent); color: var(--ui-accent-foreground); font-weight: 650; }
+.crop-toolbar .crop-confirm:hover:not(:disabled) { background: var(--ui-focus); }
 .crop-error {
   max-width: 520px;
   margin: -6px 0 0;

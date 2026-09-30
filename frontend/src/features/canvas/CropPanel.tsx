@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { Check, Crop, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties,
   type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
@@ -244,11 +245,11 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
           <X size={18} weight="bold" />取消</button>
         <span className="crop-toolbar-divider" aria-hidden="true" />
         <label className="crop-ratio-control"><Crop size={19} />
-          <select aria-label="裁剪比例" value={ratio}
+          <Select density="compact" aria-label="裁剪比例" value={ratio}
             onChange={(event) => selectRatio(event.target.value as CropRatio)}>
             {RATIO_OPTIONS.map((option) => <option key={option.value}
               value={option.value}>{option.label}</option>)}
-          </select>
+          </Select>
         </label>
         <button type="button" className="crop-confirm" disabled={busy} onClick={submit}>
           <Check size={18} weight="bold" />{busy ? "处理中…" : "确定"}</button>

@@ -32,6 +32,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class GoogleNanoBananaClient {
     private static final URI OFFICIAL = URI.create("https://generativelanguage.googleapis.com");
+    private static final String DEFAULT_API_PATH = "/v1/";
+    private static final String BETA_MODEL_PATH = "/v1beta/models/";
     /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
     public static final String DEFAULT_MODEL = "gemini-3.1-flash-image";
     public static final int MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
@@ -79,6 +81,7 @@ public class GoogleNanoBananaClient {
                 || !ImageGenerationParameters.RESOLUTIONS.contains(imageSize)) {
             throw new IllegalArgumentException("Google image dimensions are invalid");
         }
+        URI endpoint = apiEndpoint(origin, model);
         ObjectNode body = mapper.createObjectNode();
         ObjectNode content = body.putArray("contents").addObject();
         content.put("role", "user");
@@ -91,13 +94,14 @@ public class GoogleNanoBananaClient {
         }
         ObjectNode config = body.putObject("generationConfig");
         config.putArray("responseModalities").add("TEXT").add("IMAGE");
-        ObjectNode image = config.putObject("responseFormat").putObject("image");
+        // Beta-compatible relays read imageConfig; stable v1 uses responseFormat.image.
+        // Sending the stable field to a beta relay can silently ignore the chosen dimensions.
+        ObjectNode image = endpoint.getRawPath().contains(BETA_MODEL_PATH)
+                ? config.putObject("imageConfig")
+                : config.putObject("responseFormat").putObject("image");
         image.put("aspectRatio", aspectRatio);
         image.put("imageSize", imageSize);
-        // 能力配置的地址；留空表示沿用官方端点。
-        URI target = origin == null || origin.isBlank() ? OFFICIAL : URI.create(origin);
-        String path = "/v1/models/" + model + ":generateContent";
-        Request request = new Request.Builder().url(target.resolve(path).toString())
+        Request request = new Request.Builder().url(endpoint.toString())
                 .header("x-goog-api-key", key)
                 .header("Accept", "application/json")
                 .post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
@@ -141,6 +145,27 @@ public class GoogleNanoBananaClient {
     MediaPayload generate(String key, String model, String origin, String prompt,
             String aspectRatio, List<InputImage> references) {
         return generate(key, model, origin, prompt, aspectRatio, "1K", references);
+    }
+
+    /**
+     * A configured API base includes its version/prefix (for example /v1beta).
+     * Bare origins keep the stable default. Never probe alternate paths after submission:
+     * synchronous generation can incur a charge even when its response is lost.
+     */
+    static URI apiEndpoint(String origin, String model) {
+        URI target = origin == null || origin.isBlank() ? OFFICIAL : URI.create(origin);
+        boolean loopback = "http".equals(target.getScheme())
+                && "127.0.0.1".equals(target.getHost()) && target.getPort() > 0;
+        if (target.getHost() == null || !(loopback || "https".equals(target.getScheme()))
+                || target.getRawUserInfo() != null || target.getRawQuery() != null
+                || target.getRawFragment() != null) {
+            throw new IllegalArgumentException("Pinned Google API base URL is invalid");
+        }
+        String path = target.getRawPath();
+        URI base = path == null || path.isEmpty() || "/".equals(path)
+                ? target.resolve(DEFAULT_API_PATH)
+                : URI.create(target.toString().replaceAll("/+$", "") + "/");
+        return base.resolve("models/" + model + ":generateContent");
     }
 
     private static void validateReferences(List<InputImage> references) {

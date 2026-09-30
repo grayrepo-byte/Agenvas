@@ -89,9 +89,10 @@ class GoogleNanoBananaPostgresIT {
     @Autowired private ObjectMapper mapper;
 
     @Test
-    void approvedReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
+    void configuredBetaReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
         var connection = catalog.createConnection("google-it-connection", "Google fake",
-                "GOOGLE", "http://127.0.0.1:" + SERVER.getAddress().getPort(), "fake-google-secret");
+                "GOOGLE", "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1beta",
+                "fake-google-secret");
         var ability = catalog.publishCapability(connection.id(), "Nano Banana 2",
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{}"));
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
@@ -116,8 +117,8 @@ class GoogleNanoBananaPostgresIT {
                 .isEqualTo(3);
         assertThat(LAST_REQUEST.get().path("contents").path(0).path("parts").path(2)
                 .path("inlineData").path("mimeType").asText()).isEqualTo("image/png");
-        assertThat(LAST_REQUEST.get().path("generationConfig").path("responseFormat")
-                .path("image").path("aspectRatio").asText()).isEqualTo("16:9");
+        assertThat(LAST_REQUEST.get().path("generationConfig").path("imageConfig")
+                .path("aspectRatio").asText()).isEqualTo("16:9");
         UUID completedVersionId = UUID.fromString(
                 completed.output().path("artifactVersionId").asText());
         assertThat(artifacts.requireVersion(owner.userId(), edited.project().id(),
@@ -204,7 +205,7 @@ class GoogleNanoBananaPostgresIT {
     private static HttpServer startServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/v1/models/gemini-3.1-flash-image:generateContent", exchange -> {
+            server.createContext("/v1beta/models/gemini-3.1-flash-image:generateContent", exchange -> {
                 JsonNode request = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 LAST_REQUEST.set(request);
                 boolean edit = request.path("contents").path(0).path("parts").size() > 1;
@@ -225,8 +226,8 @@ class GoogleNanoBananaPostgresIT {
     private static void respond(HttpExchange exchange) throws IOException {
         assertThat(exchange.getRequestHeaders().getFirst("x-goog-api-key"))
                 .isEqualTo("fake-google-secret");
-        assertThat(LAST_REQUEST.get().path("generationConfig").path("responseFormat")
-                .path("image").path("imageSize").asText()).isEqualTo("1K");
+        assertThat(LAST_REQUEST.get().path("generationConfig").path("imageConfig")
+                .path("imageSize").asText()).isEqualTo("1K");
         BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream png = new ByteArrayOutputStream();
         ImageIO.write(image, "png", png);

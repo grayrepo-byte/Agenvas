@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.application;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
@@ -14,6 +15,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.domain.CanvasItem;
+import dev.agenvas.canvas.domain.MediaUploadPurpose;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -44,10 +46,7 @@ class CanvasMediaDerivationDraftTest {
 
     @BeforeEach
     void source() {
-        Instant now = Instant.now();
-        CanvasItem item = new CanvasItem(source, project, CanvasItem.SubjectType.ARTIFACT,
-                artifactId, parent, "Source", BigDecimal.ZERO, BigDecimal.ZERO,
-                new BigDecimal("280"), new BigDecimal("240"), 0, null, false, 0, now, now);
+        CanvasItem item = sourceItem("Source");
         when(items.findForUpdate(owner, project, source)).thenReturn(Optional.of(item));
         when(items.list(owner, project)).thenReturn(List.of(item));
         when(items.create(any())).thenReturn(true);
@@ -62,8 +61,21 @@ class CanvasMediaDerivationDraftTest {
     }
 
     @Test
+    void markupRequiresAnExactSourceAndIndependentTargetBeforeAnyWrite() {
+        assertThatThrownBy(() -> canvas.uploadVersion(owner, project, source, target, 0,
+                new ObjectMapper().createObjectNode(), MediaUploadPurpose.BRUSH_MARKUP, null))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> canvas.uploadVersion(owner, project, source, source, 0,
+                new ObjectMapper().createObjectNode(), MediaUploadPurpose.BRUSH_MARKUP, parent))
+                .isInstanceOf(ApiProblemException.class);
+        verify(items, never()).create(any());
+    }
+
+    @Test
     void editingCreatesAFreshDraftAndKeepsOnlyTheLineageReference() {
-        canvas.forkMediaDerivationWithinChange(owner, project, source, target, 5, 0);
+        CanvasItem result = canvas.forkMediaDerivationWithinChange(owner, project, source,
+                target, 5, 0, "深度图");
+        assertThat(result.title()).isEqualTo("Source · 深度图");
         verify(drafts).initializeWithinChange(project, target, false);
         verify(drafts, never()).duplicateWithinChange(any(), any(), any(), any(), anyLong());
         verify(connections).createMediaDerivationWithinChange(owner, project, source, target, parent);
@@ -71,7 +83,8 @@ class CanvasMediaDerivationDraftTest {
 
     @Test
     void additionalBatchOutputsStillCopyTheDraftThatTheirGenerationUses() {
-        canvas.forkMediaOutputWithinChange(owner, project, source, target, 5, 1);
+        CanvasItem result = canvas.forkMediaOutputWithinChange(owner, project, source, target, 5, 1);
+        assertThat(result.title()).isEqualTo("Source");
         verify(drafts).duplicateWithinChange(owner, project, source, target, 5);
         verify(drafts, never()).initializeWithinChange(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
@@ -79,8 +92,25 @@ class CanvasMediaDerivationDraftTest {
     @Test
     void staleSourceDraftDoesNotCreateAPartialDerivation() {
         assertThatThrownBy(() -> canvas.forkMediaDerivationWithinChange(owner, project,
-                source, target, 4, 0)).isInstanceOf(ApiProblemException.class);
+                source, target, 4, 0, "裁剪")).isInstanceOf(ApiProblemException.class);
         verify(items, never()).create(any());
         verify(drafts, never()).initializeWithinChange(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void keepsTheOperationSuffixWhenTruncatingLongTitlesWithoutSplittingAnEmoji() {
+        CanvasItem item = sourceItem("图".repeat(153) + "😀" + "尾".repeat(5));
+        when(items.findForUpdate(owner, project, source)).thenReturn(Optional.of(item));
+        when(items.list(owner, project)).thenReturn(List.of(item));
+        CanvasItem result = canvas.forkMediaDerivationWithinChange(owner, project, source,
+                target, 5, 0, "深度图");
+        assertThat(result.title()).isEqualTo("图".repeat(153) + " · 深度图");
+    }
+
+    private CanvasItem sourceItem(String title) {
+        Instant now = Instant.now();
+        return new CanvasItem(source, project, CanvasItem.SubjectType.ARTIFACT,
+                artifactId, parent, title, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("280"), new BigDecimal("240"), 0, null, false, 0, now, now);
     }
 }

@@ -1,4 +1,4 @@
-import type { Asset } from "../../shared/api/client";
+import type { Asset, ImageGenerationParameters } from "../../shared/api/client";
 
 type NodeSize = { width: number; height: number };
 
@@ -7,6 +7,12 @@ export const CANVAS_MIN_WIDTH = 120;
 export const CANVAS_MIN_HEIGHT = 80;
 export const CANVAS_MAX_SIZE = 2000;
 const IMAGE_MIN_LONG_EDGE = CANVAS_MIN_WIDTH;
+
+export function imageDraftAspectRatio(ratio?: ImageGenerationParameters["aspectRatio"]): number | undefined {
+  if (!ratio || ratio === "AUTO") return undefined;
+  const [width, height] = ratio.split(":").map(Number);
+  return imageAspectRatio({ width: width ?? null, height: height ?? null });
+}
 
 export function imageAspectRatio(asset?: Pick<Asset, "width" | "height">): number | undefined {
   const { width, height } = asset ?? {};

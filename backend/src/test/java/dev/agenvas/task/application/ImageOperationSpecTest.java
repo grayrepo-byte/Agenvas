@@ -15,12 +15,11 @@ class ImageOperationSpecTest {
             Clock.systemUTC());
 
     @Test
-    void declaresAllSevenExtensionsAsCloudImageOperations() {
+    void declaresModelExtensionsAsCloudImageOperations() {
         assertThat(new ImageOperation[] {
                 ImageOperation.THREE_VIEW,
                 ImageOperation.LAYER_SPLIT,
                 ImageOperation.EXPRESSION_EDIT,
-                ImageOperation.BRUSH_MARKUP,
                 ImageOperation.REMOVE_BACKGROUND,
                 ImageOperation.OBJECT_REMOVE,
                 ImageOperation.VIEW_ANGLE
@@ -28,7 +27,6 @@ class ImageOperationSpecTest {
 
         assertThat(new ImageOperation[] {
                 ImageOperation.EXPRESSION_EDIT,
-                ImageOperation.BRUSH_MARKUP,
                 ImageOperation.OBJECT_REMOVE
         }).allMatch(ImageOperation::instructionRequired);
     }
@@ -45,7 +43,11 @@ class ImageOperationSpecTest {
 
         assertThat(threeView.path("aspectRatio").asText()).isEqualTo("16:9");
         assertThat(threeView.path("threeViewType").asText()).isEqualTo("CHARACTER");
+        assertThat(service.operationResultLabel(ImageOperation.THREE_VIEW, threeView))
+                .isEqualTo("角色三视图");
         assertThat(foreground.path("layerTarget").asText()).isEqualTo("FOREGROUND");
+        assertThat(service.operationResultLabel(ImageOperation.LAYER_SPLIT, foreground))
+                .isEqualTo("主体图层");
         assertThat(angle.path("viewAngle").asText()).isEqualTo("RIGHT_THREE_QUARTER");
         assertThat(service.requiresTransparentOutput(ImageOperation.LAYER_SPLIT, foreground))
                 .isTrue();
@@ -73,12 +75,12 @@ class ImageOperationSpecTest {
                 ratio.put("threeViewType", "SCENE_GRID")))
                 .contains("2 by 2 environment reference grid", "reverse view", "key-detail view",
                         "empty courtyard");
+        assertThat(service.operationResultLabel(ImageOperation.THREE_VIEW, ratio))
+                .isEqualTo("场景宫格图");
         assertThat(service.operationPrompt(ImageOperation.LAYER_SPLIT, "main person", foreground))
                 .contains("fully transparent background", "main person");
         assertThat(service.operationPrompt(ImageOperation.EXPRESSION_EDIT, "gentle smile",
                 mapper.createObjectNode())).contains("facial expression", "gentle smile");
-        assertThat(service.operationPrompt(ImageOperation.BRUSH_MARKUP, "circle the pin",
-                mapper.createObjectNode())).contains("visual annotations", "circle the pin");
         assertThat(service.operationPrompt(ImageOperation.REMOVE_BACKGROUND, "keep flowers",
                 mapper.createObjectNode())).contains("fully transparent background", "keep flowers");
         assertThat(service.operationPrompt(ImageOperation.OBJECT_REMOVE, "right-hand person",

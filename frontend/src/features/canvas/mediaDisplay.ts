@@ -22,7 +22,7 @@ export function isMediaDraftDisplayed(item: CanvasItem, draft?: MediaDraft): boo
   return item.selectedVersionId === null || draft?.displayMode === "DRAFT";
 }
 
-/** Preview, node geometry and downloads must all describe the same displayed result. */
+/** Preview and downloads describe the same result; explicit draft ratios may change its frame. */
 export function displayedMediaAssetId(item: CanvasItem, draft?: MediaDraft): string | null {
   return isMediaDraftDisplayed(item, draft)
     ? null : readContentText(item.selectedVersion?.content, "assetId") || null;

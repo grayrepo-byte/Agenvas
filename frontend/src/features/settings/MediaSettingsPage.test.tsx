@@ -64,37 +64,37 @@ describe("MediaSettingsPage", () => {
     );
     const queryClient = mount();
     const user = userEvent.setup();
-    const connection = await screen.findByRole("region", { name: "OpenAI" });
-    const connectionName = within(connection).getByRole("textbox", { name: "连接名称" });
-    await user.clear(connectionName);
-    await user.type(connectionName, "Connection draft");
-    const replacementKey = within(connection).getByLabelText("替换 API Key（留空则不修改）");
-    await user.type(replacementKey, "new-key-draft");
-    await user.click(within(connection).getByText("编辑能力参数"));
-    const name = within(connection).getByRole("textbox", { name: "能力名称" });
-    await user.clear(name);
-    await user.type(name, "Capability draft");
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+    let dialog = screen.getByRole("dialog");
+    const connectionName = within(dialog).getByRole("textbox", { name: "连接名称" });
+    await user.clear(connectionName); await user.type(connectionName, "Connection draft");
+    await user.type(within(dialog).getByLabelText("替换 API Key（留空则不修改）"), "new-key-draft");
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    dialog = screen.getByRole("dialog");
+    const name = within(dialog).getByRole("textbox", { name: "能力名称" });
+    await user.clear(name); await user.type(name, "Capability draft");
     settings = settingsFixture({ version: 2, name: "Remote connection" }, {
       version: 5, name: "Remote capability", settings: { quality: "low" },
     });
     await act(() => queryClient.invalidateQueries({ queryKey: ["settings", "media"] }));
-    await waitFor(() => expect(within(connection).getByRole("button", { name: "保存连接" })).toBeDisabled());
-    expect(connectionName).toHaveValue("Connection draft");
-    expect(replacementKey).toHaveValue("new-key-draft");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "保存能力" })).toBeDisabled());
     expect(name).toHaveValue("Capability draft");
-    expect(within(connection).getByRole("button", { name: "保存能力" })).toBeDisabled();
-    await user.click(within(connection).getByRole("button", { name: "保存连接" }));
-    expect(writes).toEqual([]);
-    const row = name.closest("li");
-    if (!row) throw new Error("Missing capability row");
-    await user.click(within(row).getByRole("button", { name: "载入最新版本" }));
+    await user.click(within(dialog).getByRole("button", { name: "载入最新版本" }));
     expect(name).toHaveValue("Remote capability");
-    expect(within(row).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("low");
-    expect(connectionName).toHaveValue("Connection draft");
-    await user.click(within(connection).getByRole("button", { name: "载入最新版本" }));
-    expect(connectionName).toHaveValue("Remote connection");
-    expect(replacementKey).toHaveValue("");
-    await user.click(within(connection).getByRole("button", { name: "保存连接" }));
+    expect(within(dialog).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("low");
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "编辑连接" }));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("textbox", { name: "连接名称" })).toHaveValue("Connection draft");
+    expect(within(dialog).getByLabelText("替换 API Key（留空则不修改）")).toHaveValue("new-key-draft");
+    expect(within(dialog).getByRole("button", { name: "保存连接" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "保存连接" }));
+    expect(writes).toEqual([]);
+    await user.click(within(dialog).getByRole("button", { name: "载入最新版本" }));
+    expect(within(dialog).getByRole("textbox", { name: "连接名称" })).toHaveValue("Remote connection");
+    expect(within(dialog).getByLabelText("替换 API Key（留空则不修改）")).toHaveValue("");
+    await user.click(within(dialog).getByRole("button", { name: "保存连接" }));
     await waitFor(() => expect(writes).toEqual([{
       expectedVersion: 2, name: "Remote connection", enabled: true, origin: null, apiKey: null,
     }]));
@@ -120,17 +120,20 @@ describe("MediaSettingsPage", () => {
     await user.clear(name);
     await user.type(name, "Updated portrait");
     await user.click(screen.getByRole("button", { name: "保存能力" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存能力" })).toBeEnabled());
-    await user.clear(name);
-    await user.type(name, "Next unsaved name");
-    expect(name).toHaveValue("Next unsaved name");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    const savedName = screen.getByRole("textbox", { name: "能力名称" });
+    expect(savedName).toHaveValue("Updated portrait");
+    await user.clear(savedName);
+    await user.type(savedName, "Next unsaved name");
+    expect(savedName).toHaveValue("Next unsaved name");
     expect(writes).toEqual([{ expectedVersion: 4, name: "Updated portrait", enabled: true,
       adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }]);
     expect(screen.queryByText(/全局并发/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument();
   });
 
-  it("keeps default actions visible and edits a capability inside its expandable row", async () => {
+  it("keeps default actions in the table and edits a capability in a tabbed dialog", async () => {
     let defaultSelection: unknown;
     const settings: MediaSettings = {
       defaults: [
@@ -168,15 +171,15 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
-    const heading = await screen.findByRole("heading", { name: "Portrait" });
-    const row = heading.closest("li");
+    const heading = await screen.findByText("Portrait");
+    const row = heading.closest("tr");
     if (!row) throw new Error("Missing capability row");
     expect(within(row).queryByText(/全局并发/)).not.toBeInTheDocument();
     await user.click(within(row).getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(defaultSelection).toEqual({ expectedVersion: 2, capabilityId: "portrait" }));
     await waitFor(() => expect(within(row).getByRole("button", { name: "设为默认" })).toBeDisabled());
     await user.click(within(row).getByText("编辑能力参数"));
-    expect(within(row).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("high");
+    expect(within(screen.getByRole("dialog")).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("high");
   });
 
   it("offers a retry when media settings fail to load", async () => {
@@ -219,17 +222,21 @@ describe("MediaSettingsPage", () => {
     mount();
     const user = userEvent.setup();
     expect(await screen.findByText("尚无媒体连接")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加连接" }));
     await user.type(screen.getByRole("textbox", { name: "连接名称" }), "OpenAI main");
     await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "OPENAI");
     const key = screen.getByLabelText("API Key") as HTMLInputElement;
     await user.type(key, "provider-secret-7890");
     await user.type(screen.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
       "https://gateway.example.com/proxy/v1");
-    await user.click(screen.getByRole("button", { name: "添加连接" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "添加连接" }));
     expect(screen.getByRole("button", { name: "正在保存…" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     release?.();
-    expect(await screen.findByText(/密钥 ••••7890 · 已配置、未实测/)).toBeInTheDocument();
-    expect(key).toHaveValue("");
+    expect(await screen.findByText(/密钥 ••••7890 · 已配置/)).toBeInTheDocument();
+    expect(screen.queryByText(/未实测/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("provider-secret-7890");
     expect(window.localStorage.getItem("mediaApiKey")).toBeNull();
     expect(posted).toEqual([{ name: "OpenAI main", platform: "OPENAI",
@@ -256,7 +263,8 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+    await user.type(screen.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
       "https://gateway.example.com/v1");
     await user.click(screen.getByRole("button", { name: "保存连接" }));
     await waitFor(() => expect(submitted).toMatchObject({ expectedVersion: 2,
@@ -288,7 +296,8 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
-    const name = (await screen.findAllByRole("textbox", { name: "连接名称" }))[0];
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+    const name = screen.getByRole("textbox", { name: "连接名称" });
     if (!name) throw new Error("Missing saved connection editor");
     await user.clear(name);
     await user.type(name, "My draft");
@@ -326,16 +335,26 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "新能力名称" }), "Wan video");
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Wan video");
     await user.selectOptions(screen.getByRole("combobox", { name: "固定适配器" }), "COMFY_VIDEO_V1");
     await user.type(screen.getByRole("textbox", { name: "视频扩散模型文件名" }), "wan.safetensors");
     await user.type(screen.getByRole("textbox", { name: "文本编码器文件名" }), "text.safetensors");
     await user.type(screen.getByRole("textbox", { name: "VAE 文件名" }), "vae.safetensors");
     await user.type(screen.getByRole("textbox", { name: "CLIP Vision 文件名" }), "vision.safetensors");
-    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await user.click(screen.getByRole("tab", { name: "默认参数" }));
+    await user.type(screen.getByRole("spinbutton", { name: "默认视频时长（秒）" }), "4");
+    await user.click(screen.getByRole("tab", { name: "输入限制" }));
+    const minimum = screen.getByRole("spinbutton", { name: "最短视频时长（秒）" });
+    await user.clear(minimum); await user.type(minimum, "3");
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    await user.type(screen.getByRole("spinbutton", { name: "单位价格" }), "1.25");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Wan video", adapterId: "COMFY_VIDEO_V1",
       settings: { diffusionModel: "wan.safetensors", textEncoder: "text.safetensors",
-        vae: "vae.safetensors", clipVision: "vision.safetensors" } }));
+        vae: "vae.safetensors", clipVision: "vision.safetensors",
+        defaultDurationSeconds: 4, minimumSeconds: 3,
+        pricing: { amount: "1.25", currency: "CNY", unit: "SECOND" } } }));
   });
 
   it("publishes only the fixed GPT Image 2 mapping with an allowed quality", async () => {
@@ -357,12 +376,79 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "新能力名称" }), "Portrait image");
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Portrait image");
     expect(screen.getByRole("combobox", { name: "固定适配器" })).toHaveValue("OPENAI_GPT_IMAGE_2");
     await user.selectOptions(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
-    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
       adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }));
+  });
+
+  it("saves a Google API address without clearing the existing credential", async () => {
+    const settings = settingsFixture({ id: "google-1", name: "Google", platform: "GOOGLE",
+      origin: "https://gateway.example.com" }, { adapterId: "GOOGLE_NANO_BANANA_2", settings: { model: "custom-image" } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/google-1", async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ ...settings, connections: settings.connections.map((connection) => ({
+          ...connection, origin: "https://new-gateway.example.com/proxy/v1beta/",
+        })) });
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+    const region = screen.getByRole("dialog");
+    const origin = within(region).getByRole("textbox", { name: "API Base URL（留空使用官方地址）" });
+    expect(origin).toHaveValue("https://gateway.example.com");
+    const help = within(region).getByRole("note", { name: "Nano Banana 接口配置说明" });
+    expect(help).toHaveTextContent("当前接口格式：Gemini v1（默认）");
+    expect(help).toHaveTextContent("https://grsai.dakka.com.cn/v1beta");
+    expect(help).toHaveTextContent("nano-banana-2-lite");
+    expect(help).toHaveTextContent("/v1/draw/nano-banana");
+    expect(origin).toHaveAttribute("aria-describedby", help.id);
+    await user.clear(origin);
+    await user.type(origin, "https://new-gateway.example.com/proxy/v1beta/");
+    expect(help).toHaveTextContent("当前接口格式：Gemini v1beta（兼容）");
+    await user.click(within(region).getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(submitted).toEqual({ expectedVersion: 1, name: "Google", enabled: true,
+      origin: "https://new-gateway.example.com/proxy/v1beta/", apiKey: null }));
+    expect(await screen.findByText("Gemini v1beta（兼容）")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    expect(within(screen.getByRole("dialog")).getByText(/与模型名分开配置/)).toBeInTheDocument();
+  });
+
+  it("persists defaults, price and reference limits while preserving the configured model", async () => {
+    const settings = settingsFixture({}, { settings: { model: "gateway-image", quality: "high",
+      defaultParameters: { aspectRatio: "16:9", resolution: "2K", generationCount: 2 },
+      maxReferenceImages: 3, pricing: { amount: "0.125", currency: "USD", unit: "IMAGE" } } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(settings);
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("编辑能力参数"));
+    const dialog = screen.getByRole("dialog");
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    expect(within(dialog).getByRole("spinbutton", { name: "单位价格" })).toHaveValue(0.125);
+    await user.click(screen.getByRole("tab", { name: "默认参数" }));
+    expect(within(dialog).getByRole("combobox", { name: "默认分辨率" })).toHaveValue("2K");
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: "默认分辨率" }), "4K");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toMatchObject({ settings: { model: "gateway-image", quality: "high",
+      defaultParameters: { aspectRatio: "16:9", resolution: "4K", generationCount: 2 },
+      maxReferenceImages: 3, pricing: { amount: "0.125", currency: "USD", unit: "IMAGE" } } }));
   });
 
   it("publishes the fixed Nano Banana 2 image capability", async () => {
@@ -384,11 +470,95 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "新能力名称" }), "Nano Banana 2");
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Nano Banana 2");
     expect(screen.getByRole("combobox", { name: "固定适配器" }))
       .toHaveValue("GOOGLE_NANO_BANANA_2");
-    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    expect(screen.getByRole("option", { name: "Nano Banana 2 · Google Gemini" })).toHaveValue("GOOGLE_NANO_BANANA_2");
+    expect(screen.getByRole("table", { name: "媒体连接" })).toHaveTextContent("Google Gemini");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Nano Banana 2",
       adapterId: "GOOGLE_NANO_BANANA_2", settings: { model: "" } }));
   });
+
+  it("keeps forms out of the tables and preserves a draft when Escape closes the dialog", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settingsFixture())),
+    );
+    mount(); const user = userEvent.setup();
+    const edit = await screen.findByRole("button", { name: "编辑能力参数" });
+    expect(screen.getByRole("table", { name: "媒体连接" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "已发布能力" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    await user.click(edit);
+    const name = screen.getByRole("textbox", { name: "能力名称" });
+    await user.clear(name); await user.type(name, "Unsaved portrait");
+    await user.click(screen.getByRole("tab", { name: "默认参数" }));
+    expect(screen.queryByRole("textbox", { name: "能力名称" })).not.toBeInTheDocument();
+    const resolution = screen.getByRole("combobox", { name: "默认分辨率" });
+    await user.click(resolution);
+    expect(screen.getByRole("listbox").closest("dialog")).toBe(screen.getByRole("dialog"));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(edit).toHaveFocus();
+    await user.click(edit);
+    expect(screen.getByRole("textbox", { name: "能力名称" })).toHaveValue("Unsaved portrait");
+    const saveButton = screen.getByRole("button", { name: "保存能力" });
+    saveButton.focus(); await user.keyboard("{Tab}");
+    expect(screen.getByRole("button", { name: "关闭窗口" })).toHaveFocus();
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(saveButton).toHaveFocus();
+    const modelTab = screen.getByRole("tab", { name: "模型配置" });
+    await user.click(modelTab); await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "默认参数" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "默认参数" })).toHaveFocus();
+  });
+
+  it("reveals the required model fields when publishing from another tab", async () => {
+    const settings = settingsFixture({ platform: "COMFYUI", capabilities: [] });
+    // The fixture adds its capability after connection overrides; remove it explicitly.
+    settings.connections[0]!.capabilities = [];
+    let writes = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", () => { writes += 1; return HttpResponse.json(settings); }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Incomplete model");
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
+    expect(screen.getByRole("tab", { name: "模型配置" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "图片 checkpoint 文件名" })).toHaveFocus());
+    expect(writes).toBe(0);
+  });
+
+  it("creates a Google connection with the configured API address", async () => {
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: mockDefault })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json({ connections: [], defaults: mockDefault });
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "GOOGLE");
+    expect(screen.getByRole("note", { name: "Nano Banana 接口配置说明" }))
+      .toHaveTextContent("当前接口格式：Gemini v1（默认）");
+    await user.type(screen.getByRole("textbox", { name: "连接名称" }), "Google gateway");
+    await user.type(screen.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }), "https://gemini.example.com");
+    await user.type(screen.getByLabelText("API Key"), "mock-key");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(submitted).toEqual({ name: "Google gateway", platform: "GOOGLE", origin: "https://gemini.example.com", apiKey: "mock-key" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
 });

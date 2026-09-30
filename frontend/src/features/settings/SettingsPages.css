@@ -1,23 +1,25 @@
 /* ContextCards and Records from Beautiful UI: restrained surfaces, compact status rows, and inset controls. */
-.settings-page-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(240px, 1fr); gap: 24px; align-items: start; }
-.settings-config-summary { display: grid; gap: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: 13px; }
-.settings-consent { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgb(255 255 255 / 2%); font-size: 13px; line-height: 1.6; cursor: pointer; }
+.settings-page-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, var(--ui-settings-aside-width)); gap: var(--ui-space-6); align-items: start; }
+.settings-save-bar { justify-content: space-between; padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
+.settings-config-summary { display: grid; gap: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: var(--ui-text-md); }
+.settings-consent { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--ui-radius-lg); background: var(--ui-field); font-size: var(--ui-text-md); line-height: 1.6; cursor: pointer; }
 .settings-consent input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
-.settings-status-line { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.6; }
+.settings-status-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--ui-text-md); line-height: 1.6; }
 .settings-status-line svg { flex: none; color: var(--muted); }
-.settings-mode-summary { font-size: 13px; line-height: 1.8; }
-.settings-nav-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; transition: background-color 150ms, border-color 150ms; }
-.settings-nav-link:hover { background: rgb(255 255 255 / 5%); border-color: rgb(255 255 255 / 20%); }
-.diagnostics-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.settings-mode-summary { font-size: var(--ui-text-md); line-height: 1.8; }
+.settings-nav-link { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: var(--ui-text-md); transition: background-color 150ms, border-color 150ms; }
+.settings-nav-link:hover { background: var(--ui-hover); border-color: var(--ui-border-strong); }
+.diagnostics-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
 .diagnostics-stat-heading { display: flex; align-items: center; gap: 10px; }
-.diagnostics-stat-icon { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; color: var(--muted); background: rgb(255 255 255 / 4%); }
 .diagnostics-stat-value { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.65; }
-.diagnostics-stat-note { margin-top: 5px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.diagnostics-stat-note { margin-top: 5px; font-size: var(--ui-text-sm); line-height: 1.6; color: var(--muted); }
 .diagnostics-errors { display: grid; padding: 0; margin: 0; list-style: none; }
-.diagnostics-errors li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.diagnostics-errors li { display: flex; justify-content: space-between; align-items: center; gap: var(--ui-space-3); padding: 15px 0; border-bottom: 1px solid var(--line); font-size: var(--ui-text-md); }
 .diagnostics-errors li:first-child { padding-top: 0; }
 .diagnostics-errors li:last-child { border-bottom: 0; padding-bottom: 0; }
-.diagnostics-errors time { font-size: 12px; color: var(--muted); text-align: right; }
-.password-fields { max-width: 620px; }
+.diagnostics-errors time { font-size: var(--ui-text-sm); color: var(--muted); text-align: right; }
+.diagnostics-detail-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-6); align-items: start; }
+@media (min-width: 1440px) { .diagnostics-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 1080px) { .settings-page-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1200px) { .diagnostics-detail-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .diagnostics-stats { grid-template-columns: minmax(0, 1fr); } .diagnostics-errors li { align-items: flex-start; flex-direction: column; } }

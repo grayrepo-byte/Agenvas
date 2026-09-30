@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { Archive, ArrowClockwise, ArrowRight, Folder, MagnifyingGlass, PencilSimple, Plus, X } from "@phosphor-icons/react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useRef, useState } from "react";
@@ -77,7 +78,7 @@ export function ProjectsPage() {
         <Panel className="projects-create" title="新建项目" description="为新的创作留一张空白画布。">
           <form className="ui-form" onSubmit={submit} aria-busy={create.isPending}>
             <label className="ui-field"><span>项目名称</span><input ref={nameInput} disabled={create.isPending} maxLength={PROJECT_NAME_MAX_LENGTH} placeholder="给你的作品起个名字" required value={name} onChange={(event) => setName(event.target.value)} /></label>
-            <label className="ui-field"><span>画幅</span><select disabled={create.isPending} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as Project["aspectRatio"])}>{Object.entries(ASPECT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label className="ui-field"><span>画幅</span><Select disabled={create.isPending} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as Project["aspectRatio"])}>{Object.entries(ASPECT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
             {create.error ? <Notice tone="danger">{errorMessage(create.error)}</Notice> : null}
             <button className="primary-button" disabled={create.isPending || !name.trim()} type="submit"><Plus size={16} aria-hidden="true" />{create.isPending ? "正在创建…" : "创建项目"}</button>
             {create.isSuccess ? <Notice tone="success">项目已创建，可从列表打开画布。</Notice> : null}

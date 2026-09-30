@@ -33,6 +33,8 @@ import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -58,6 +60,7 @@ class MediaCapabilitySettingsPostgresIT {
     @Autowired private CredentialCipher cipher;
     @Autowired private JdbcClient jdbc;
     @Autowired private WebApplicationContext context;
+    @Autowired private ObjectMapper mapper;
 
     @Test
     void administratorCreatesMaskedVersionedConnectionAndCapabilities() throws Exception {
@@ -78,6 +81,8 @@ class MediaCapabilitySettingsPostgresIT {
                                 + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isForbidden());
 
+        int initialConnections = jdbc.sql("select count(*) from media_provider_connection")
+                .query(Integer.class).single();
         String key = "secret-media-provider-7890";
         String cloud = "{\"name\":\"OpenAI main\",\"platform\":\"OPENAI\","
                 + "\"apiKey\":\"" + key + "\"}";
@@ -85,16 +90,18 @@ class MediaCapabilitySettingsPostgresIT {
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
                         .contentType("application/json").content(cloud))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.connections.length()").value(2))
-                .andExpect(jsonPath("$.connections[1].keyMask").value("••••7890"))
-                .andExpect(jsonPath("$.connections[1].realGenerationTested").value(false))
+                .andExpect(jsonPath("$.connections.length()").value(initialConnections + 1))
+                .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "OPENAI")
+                        .path("keyMask").asText()).isEqualTo("••••7890"))
+                .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "OPENAI")
+                        .path("realGenerationTested").booleanValue()).isFalse())
                 .andReturn().getResponse().getContentAsString();
         assertThat(created).doesNotContain(key, "ciphertext", "nonce", "apiKey");
         mvc.perform(post("/api/v1/settings/media-connections")
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
                         .contentType("application/json").content(cloud))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.connections.length()").value(2));
+                .andExpect(jsonPath("$.connections.length()").value(initialConnections + 1));
         mvc.perform(post("/api/v1/settings/media-connections")
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
                         .contentType("application/json")
@@ -136,7 +143,8 @@ class MediaCapabilitySettingsPostgresIT {
                 .andExpect(status().isOk());
         mvc.perform(get("/api/v1/settings/media-connections").with(adminAuth))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.connections[2].capabilities.length()").value(2));
+                .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "COMFYUI")
+                        .path("capabilities").size()).isEqualTo(2));
         UUID imageId = jdbc.sql("select id from media_capability where connection_id=:id "
                 + "and name='Image'").param("id", comfyId).query(UUID.class).single();
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId
@@ -145,7 +153,8 @@ class MediaCapabilitySettingsPostgresIT {
                         .content("{\"expectedVersion\":0,\"name\":\"Hero image\","
                                 + "\"enabled\":true,\"adapterId\":\"COMFY_IMAGE_V1\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.connections[2].capabilities[0].name").value("Hero image"));
+                .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "COMFYUI")
+                        .at("/capabilities/0/name").asText()).isEqualTo("Hero image"));
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId
                         + "/capabilities/" + imageId).with(adminAuth).with(csrf())
                         .contentType("application/json")
@@ -173,5 +182,36 @@ class MediaCapabilitySettingsPostgresIT {
                         .content("{\"expectedVersion\":0,\"name\":\"Stale\","
                                 + "\"enabled\":true,\"origin\":\"http://127.0.0.1:8188\"}"))
                 .andExpect(status().isConflict());
+
+        mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
+                        .header("Idempotency-Key", "google-config-create").contentType("application/json")
+                        .content("""
+                                {"name":"Nano Banana gateway","platform":"GOOGLE",
+                                "origin":"https://gateway.example.com","apiKey":"fake-google-key"}
+                                """))
+                .andExpect(status().isOk());
+        UUID googleId = jdbc.sql("select id from media_provider_connection where platform='GOOGLE'")
+                .query(UUID.class).single();
+        mvc.perform(post("/api/v1/settings/media-connections/" + googleId + "/capabilities")
+                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "google-config-publish")
+                        .contentType("application/json").content("""
+                                {"name":"Nano Banana 2","adapterId":"GOOGLE_NANO_BANANA_2",
+                                "settings":{"model":"gateway-image","maxReferenceImages":3,
+                                "defaultParameters":{"aspectRatio":"16:9","resolution":"2K"},
+                                "pricing":{"amount":"0.125","currency":"USD","unit":"IMAGE"}}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    JsonNode google = connection(result.getResponse().getContentAsString(), "GOOGLE");
+                    assertThat(google.path("origin").asText()).isEqualTo("https://gateway.example.com");
+                    assertThat(google.at("/capabilities/0/maxReferenceImages").asInt()).isEqualTo(3);
+                    assertThat(google.at("/capabilities/0/settings/pricing/amount").asText()).isEqualTo("0.125");
+                });
+    }
+    private JsonNode connection(String response, String platform) {
+        for (JsonNode connection : mapper.readTree(response).path("connections")) {
+            if (platform.equals(connection.path("platform").asText())) return connection;
+        }
+        throw new AssertionError("Missing connection for " + platform);
     }
 }

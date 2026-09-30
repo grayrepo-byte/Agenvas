@@ -84,6 +84,8 @@ class ImageOperationDerivationPostgresIT {
         UUID sourceVersionId = image.resourceDefaultVersion().id();
         UUID sourceCardId = dev.agenvas.support.CanvasMediaFixture.place(canvas,
                 owner.userId(), project.id(), image.artifact().id());
+        canvas.apply(owner.userId(), project.id(),
+                List.of(new CanvasService.UpdateTitle(sourceCardId, 0, "我的原图")));
         var reference = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Reference", content);
         var parameters = mapper.createObjectNode();
@@ -105,9 +107,12 @@ class ImageOperationDerivationPostgresIT {
         crop.put("width", 0.5);
         crop.put("height", 1);
         Task accepted = directMedia.runImageOperation(owner.userId(), project.id(),
-                image.artifact().id(), sourceCardId, sourceVersionId, 0,
+                image.artifact().id(), sourceCardId, sourceVersionId, 1,
                 ImageOperation.CROP, "", null, List.of(), null, crop, "crop-derived-node");
         UUID targetCardId = UUID.fromString(accepted.input().path("canvasItemId").asText());
+        assertThat(canvas.list(owner.userId(), project.id()).stream()
+                .filter(entry -> entry.item().id().equals(targetCardId))
+                .findFirst().orElseThrow().item().title()).isEqualTo("我的原图 · 裁剪");
         assertFreshDraft(owner, project, targetCardId, MediaDraft.DisplayMode.DRAFT);
         assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
         assertThat(accepted.input().path("resultDraftVersion").asLong()).isZero();
@@ -128,11 +133,14 @@ class ImageOperationDerivationPostgresIT {
                 });
 
         Task replay = directMedia.runImageOperation(owner.userId(), project.id(),
-                image.artifact().id(), sourceCardId, sourceVersionId, 0,
+                image.artifact().id(), sourceCardId, sourceVersionId, 1,
                 ImageOperation.CROP, "", null, List.of(), null, crop, "crop-derived-node");
         assertThat(replay.id()).isEqualTo(accepted.id());
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
         assertThat(connections.list(owner.userId(), project.id())).hasSize(1);
+
+        canvas.apply(owner.userId(), project.id(),
+                List.of(new CanvasService.UpdateTitle(targetCardId, 0, "自定义裁剪结果")));
 
         assertThat(worker.submitOnce("local-image-derivation-worker")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), project.id(), accepted.id());
@@ -141,6 +149,12 @@ class ImageOperationDerivationPostgresIT {
         UUID resultVersionId = UUID.fromString(
                 completed.output().path("artifactVersionId").asText());
         var cards = canvas.list(owner.userId(), project.id());
+        assertThat(cards.stream().filter(entry -> entry.item().id().equals(targetCardId))
+                .findFirst().orElseThrow().item().title()).isEqualTo("自定义裁剪结果");
+        assertThat(cards.stream().filter(entry -> entry.item().id().equals(sourceCardId))
+                .findFirst().orElseThrow().item().title()).isEqualTo("我的原图");
+        assertThat(artifacts.get(owner.userId(), project.id(), image.artifact().id())
+                .artifact().title()).isEqualTo("Source image");
         assertThat(cards.stream().filter(entry -> entry.item().id().equals(sourceCardId))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(sourceVersionId);
         assertThat(cards.stream().filter(entry -> entry.item().id().equals(targetCardId))
