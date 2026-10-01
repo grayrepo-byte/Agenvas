@@ -84,21 +84,25 @@ describe("shared locale configuration", () => {
   it("offers all native names and reports blocked preference storage", async () => {
     render(<LanguageSelect />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("combobox"));
-    const list = within(screen.getByRole("listbox"));
-    for (const locale of SUPPORTED_LOCALES) expect(list.getByRole("option", { name: LOCALE_NAMES[locale] })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /界面语言/ }));
+    const list = within(screen.getByRole("dialog"));
+    for (const locale of SUPPORTED_LOCALES) expect(list.getByRole("button", { name: LOCALE_NAMES[locale] })).toBeInTheDocument();
     const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("blocked"); });
-    await user.click(list.getByRole("option", { name: "日本語" }));
+    await user.click(list.getByRole("button", { name: "日本語" }));
     expect(getLocale()).toBe("ja");
     expect(screen.getByRole("alert")).toHaveTextContent(translate("ja", "语言已切换，但浏览器未能保存偏好。"));
+    expect(list.getByRole("button", { name: "日本語" })).toHaveAttribute("aria-pressed", "true");
     storage.mockRestore();
+    await user.click(list.getByRole("button", { name: "日本語" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("ja");
   });
 
   it("synchronizes other tabs without accepting unsupported languages", () => {
     render(<LanguageSelect />);
     act(() => window.dispatchEvent(new StorageEvent("storage", { key: LOCALE_STORAGE_KEY, newValue: "ru" })));
     expect(getLocale()).toBe("ru");
-    expect(screen.getByRole("combobox")).toHaveTextContent("Русский");
+    expect(screen.getByRole("button", { name: /Русский/ })).toHaveTextContent("Русский");
     act(() => window.dispatchEvent(new StorageEvent("storage", { key: "unrelated", newValue: "en" })));
     expect(getLocale()).toBe("ru");
   });

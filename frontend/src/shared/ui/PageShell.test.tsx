@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +8,7 @@ import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { PageShell } from "./PageShell";
 import { useNavigationStore } from "./navigationStore";
+import { getLocale, LOCALE_NAMES, SUPPORTED_LOCALES } from "../i18n";
 
 function showShell(path = "/projects") {
   const client = createQueryClient();
@@ -38,6 +40,35 @@ describe("PageShell", () => {
     fireEvent.click(screen.getByRole("link", { name: "调用日志" }));
     expect(await screen.findByText("调用记录内容")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "调用日志" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("uses a compact language button and a dialog while preserving collapsed navigation and drafts", async () => {
+    const user = userEvent.setup();
+    showShell();
+    const draft = await screen.findByRole("textbox", { name: "临时草稿" });
+    await user.type(draft, "保留这份草稿");
+    await user.click(screen.getByRole("button", { name: "收起导航" }));
+    const trigger = screen.getByRole("button", { name: /界面语言/ });
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    expect(trigger.closest(".language-select")).toHaveClass("language-select--compact");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    await user.click(trigger);
+    const dialog = within(screen.getByRole("dialog", { name: "界面语言" }));
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(dialog.getByRole("button", { name: LOCALE_NAMES[locale] })).toHaveAttribute("aria-pressed", String(locale === "zh"));
+    }
+    await user.click(dialog.getByRole("button", { name: "Русский" }));
+    expect(getLocale()).toBe("ru");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveAccessibleName(/Русский/);
+    expect(useNavigationStore.getState().collapsed).toBe(true);
+    expect(draft).toHaveValue("保留这份草稿");
+    await user.click(trigger);
+    // jsdom's dialog fallback does not move focus like native showModal().
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("keeps a failed session read recoverable without pretending the user is logged out", async () => {

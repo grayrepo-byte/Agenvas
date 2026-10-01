@@ -12,9 +12,9 @@ let openDialogCount = 0;
 let beforeDialogsOverflow = "";
 
 /** Native modal isolation and focus restoration; the form body alone can scroll. */
-export function Dialog({ title, description, children, footer, onClose, onSubmit, busy = false, className = "" }: {
-  title: string; description?: string; children: ReactNode; footer: ReactNode;
-  onClose: () => void; onSubmit: FormEventHandler<HTMLFormElement>; busy?: boolean; className?: string;
+export function Dialog({ title, description, children, footer, onClose, onSubmit, busy = false, className = "", compact = false }: {
+  title: string; description?: string; children: ReactNode; footer?: ReactNode;
+  onClose: () => void; onSubmit: FormEventHandler<HTMLFormElement>; busy?: boolean; className?: string; compact?: boolean;
 }) {
   useLocale();
   const titleId = useId();
@@ -36,7 +36,7 @@ export function Dialog({ title, description, children, footer, onClose, onSubmit
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
   }, []);
-  return createPortal(<dialog ref={dialog} className={`ui-dialog app-page ${className}`}
+  return createPortal(<dialog ref={dialog} className={`ui-dialog app-page ${className}${compact ? " ui-dialog--compact" : ""}`}
     aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
     onCancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); }}
     onKeyDown={(event) => {
@@ -57,7 +57,7 @@ export function Dialog({ title, description, children, footer, onClose, onSubmit
     </header>
     <form className="ui-dialog-form" onSubmit={onSubmit}>
       <div className="ui-dialog-body">{children}</div>
-      <footer className="ui-dialog-footer">{footer}</footer>
+      {footer ? <footer className="ui-dialog-footer">{footer}</footer> : null}
     </form>
   </dialog>, document.body);
 }

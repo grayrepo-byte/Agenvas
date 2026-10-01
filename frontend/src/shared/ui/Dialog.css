@@ -1,6 +1,6 @@
 /* Shared modal and tab surfaces consume the same design tokens as page controls. */
 .ui-dialog.app-page {
-  width: min(660px, calc(100% - var(--ui-space-8)));
+  width: min(var(--ui-dialog-width, 660px), calc(100% - var(--ui-space-8)));
   max-width: none;
   min-height: 0;
   max-height: min(680px, calc(100dvh - var(--ui-space-8)));
@@ -13,6 +13,7 @@
   box-shadow: var(--ui-menu-shadow);
   overflow: hidden;
 }
+.ui-dialog--compact { --ui-dialog-width: 400px; }
 .ui-dialog[open] { display: flex; flex-direction: column; }
 .ui-dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
 .ui-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-4); padding: var(--ui-space-5) var(--ui-space-6); border-bottom: 1px solid var(--ui-border); flex: none; }
@@ -27,7 +28,7 @@
 .ui-tabs > button:hover { color: var(--ui-text); background: var(--ui-hover); }
 .ui-tabs > button[aria-selected="true"] { background: var(--ui-selected); color: var(--ui-text); box-shadow: var(--ui-inset-highlight); }
 @media (max-width: 560px) {
-  .ui-dialog.app-page { width: calc(100% - var(--ui-space-4)); max-height: min(680px, calc(100dvh - var(--ui-space-4))); }
+  .ui-dialog.app-page { width: min(var(--ui-dialog-width, 660px), calc(100% - var(--ui-space-4))); max-height: min(680px, calc(100dvh - var(--ui-space-4))); }
   .ui-dialog-header, .ui-dialog-body { padding: var(--ui-space-4); }
   .ui-dialog-footer { padding: var(--ui-space-3) var(--ui-space-4); }
 }

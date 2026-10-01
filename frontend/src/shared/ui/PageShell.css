@@ -17,6 +17,7 @@
 .app-nav-item.is-active::before { content: ""; position: absolute; left: 0; width: 2px; height: 18px; border-radius: 2px; background: var(--ui-accent); }
 .app-sidebar-copy { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-sidebar-footer { margin-top: auto; padding-top: 22px; border-top: 1px solid var(--ui-border); }
+.app-sidebar-footer .language-select { margin-bottom: var(--ui-space-4); }
 .app-sidebar-brand, .app-sidebar-footer { flex-shrink: 0; }
 .app-user { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 9px 16px; color: var(--ui-text-muted); }
 .app-user > svg { flex: none; }
@@ -53,6 +54,7 @@
   .app-nav-item { height: auto; min-height: 48px; flex-direction: column; justify-content: center; gap: var(--ui-space-1); padding: 5px 2px; font-size: 10px; }
   .app-nav-item.is-active::before { display: none; }
   .app-sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: var(--ui-space-3); padding-top: 8px; }
+  .app-sidebar-footer .language-select { margin-bottom: 0; }
   .app-user, .app-shell--collapsed .app-user { padding: 0; }
   .app-sidebar-footer .app-nav-item { width: auto; flex-direction: row; min-height: 32px; padding-inline: 7px; }
   .app-page-main { padding: 24px 16px 36px; }

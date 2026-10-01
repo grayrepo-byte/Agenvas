@@ -972,7 +972,3 @@ button:disabled {
 .media-version-menu { position: absolute; top: calc(100% + 8px); left: 0; width: 230px; max-height: 320px; }
 
 .media-version-menu > button { justify-content: space-between; }
-/* The same language control fits public screens, the sidebar, and preferences. */
-.language-select { min-width: 0; max-width: 16rem; }
-.language-select .ui-select { width: 100%; }
-.language-select small { display: block; margin-top: 0.5rem; }

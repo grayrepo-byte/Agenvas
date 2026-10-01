@@ -66,7 +66,7 @@ export function PageShell({ title, description, actions, children }: {
         aria-label={label} title={collapsed ? label : undefined}>
         <Icon size={18} aria-hidden /><span className="app-sidebar-copy">{label}</span>
       </Link>)}</nav>
-      <div className="app-sidebar-footer"><LanguageSelect /><div className="app-user"><UserCircle size={23} aria-hidden />
+      <div className="app-sidebar-footer"><LanguageSelect compact={collapsed} /><div className="app-user"><UserCircle size={23} aria-hidden />
         <div className="app-sidebar-copy"><strong>{session.data.loginName}</strong><span>{t("管理员 · 自托管")}</span></div></div>
         <button className="app-nav-item" type="button" disabled={signOut.isPending} onClick={() => signOut.mutate()}
           aria-label={signOut.isPending ? t("正在退出…") : t("退出登录")} title={collapsed ? t("退出登录") : undefined}>
