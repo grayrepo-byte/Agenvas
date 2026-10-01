@@ -20,7 +20,7 @@ const NAVIGATION = [
   { to: "/settings/storage", get label() { return t("资源存储"); }, icon: HardDrives },
   { to: "/settings/calls", get label() { return t("调用日志"); }, icon: ListMagnifyingGlass },
   { to: "/settings/logs", get label() { return t("系统日志"); }, icon: TerminalWindow },
-  { to: "/settings/general", get label() { return t("系统诊断"); }, icon: GearSix },
+  { to: "/settings/general", get label() { return t("系统设置"); }, icon: GearSix },
 ] as const;
 
 /** Sidebar row hierarchy and collapse motion adapt Beautiful UI SidebarNav; all navigation is real. */

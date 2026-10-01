@@ -3,6 +3,10 @@ package dev.agenvas.audit.infrastructure;
 import static dev.agenvas.db.Tables.CALL_LOG;
 import static dev.agenvas.db.Tables.CALL_LOG_DEBUG;
 import static dev.agenvas.db.Tables.AUDIT_DEBUG_SETTINGS;
+import static dev.agenvas.db.Tables.AUDIT_LOG_RETENTION_SETTINGS;
+import dev.agenvas.audit.domain.CallLogRetentionSettings;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.temporal.ChronoUnit;
 import static dev.agenvas.db.Tables.PROJECT;
 import dev.agenvas.audit.domain.DebugSettings;
 import dev.agenvas.audit.domain.CallDebug;
@@ -31,9 +35,93 @@ public class JooqCallLogRepository implements CallLogRepository {
     private static final short SETTINGS_ID = 1;
     private final DSLContext dsl;
     private final ObjectMapper mapper;
+    private final dev.agenvas.llm.application.ExecutionLedgerRetention turns;
+    private final dev.agenvas.task.application.ProviderAttemptRetention attempts;
 
-    public JooqCallLogRepository(DSLContext dsl, ObjectMapper mapper) {
-        this.dsl = dsl; this.mapper = mapper;
+    public JooqCallLogRepository(DSLContext dsl, ObjectMapper mapper,
+            dev.agenvas.llm.application.ExecutionLedgerRetention turns,
+            dev.agenvas.task.application.ProviderAttemptRetention attempts) {
+        this.dsl = dsl; this.mapper = mapper; this.turns = turns; this.attempts = attempts;
+    }
+
+    @Override public CallLogRetentionSettings retentionSettings() {
+        return dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS).where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID))
+                .fetchSingle(row -> new CallLogRetentionSettings(row.getRetentionDays(), row.getVersion()));
+    }
+    @Override public Optional<CallLogRetentionSettings> updateRetentionSettings(Integer days, int expectedVersion) {
+        return dsl.update(AUDIT_LOG_RETENTION_SETTINGS).set(AUDIT_LOG_RETENTION_SETTINGS.RETENTION_DAYS, days)
+                .set(AUDIT_LOG_RETENTION_SETTINGS.VERSION, AUDIT_LOG_RETENTION_SETTINGS.VERSION.plus(1))
+                .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID))
+                .and(AUDIT_LOG_RETENTION_SETTINGS.VERSION.eq(expectedVersion)).returning()
+                .fetchOptional(row -> new CallLogRetentionSettings(row.getRetentionDays(), row.getVersion()));
+    }
+
+    /** One policy-locked transaction removes calls and ledgers together for complete terminal
+     * execution units. Recovery states (including UNKNOWN) are never selected, even with an
+     * expired lease. Recent calls or late updates defer the entire unit, avoiding partial history.
+     * Runs/tasks remain as business identities and result provenance; module ports own ledger deletion.
+     */
+    @Override @Transactional
+    public int purgeExpired(Instant now, int batchSize, int expectedVersion) {
+        var policy = dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS)
+                .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID)).forUpdate().fetchSingle();
+        if (policy.getVersion() != expectedVersion) {
+            throw new dev.agenvas.shared.error.ApiProblemException(org.springframework.http.HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                    dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-title"),
+                    dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-detail"), false);
+        }
+        if (policy.getRetentionDays() == null) return 0;
+        Instant cutoff = now.minus(policy.getRetentionDays(), ChronoUnit.DAYS);
+        var runIds = new ArrayList<>(dsl.fetch("""
+                SELECT r.id FROM agent_run r
+                WHERE r.status IN ('SUCCEEDED', 'FAILED', 'CANCELED') AND r.completed_at < ? AND r.updated_at < ?
+                  AND EXISTS (SELECT 1 FROM llm_turn l WHERE l.run_id=r.id
+                    UNION ALL SELECT 1 FROM call_log c WHERE c.run_id=r.id AND c.kind='LLM'
+                    UNION ALL SELECT 1 FROM call_log c JOIN task t ON t.id=c.task_id WHERE t.run_id=r.id
+                    UNION ALL SELECT 1 FROM provider_attempt a JOIN task t ON t.id=a.task_id WHERE t.run_id=r.id)
+                  AND NOT EXISTS (SELECT 1 FROM task t WHERE t.run_id=r.id AND
+                    (t.status NOT IN ('SUCCEEDED','FAILED','CANCELED') OR t.completed_at >= ? OR t.updated_at >= ? OR t.lease_until > ?))
+                  AND NOT EXISTS (SELECT 1 FROM call_log c WHERE c.run_id=r.id AND c.kind='LLM' AND
+                    (c.started_at >= ? OR c.responded_at >= ?))
+                  AND NOT EXISTS (SELECT 1 FROM call_log c JOIN task t ON t.id=c.task_id
+                    WHERE t.run_id=r.id AND (c.started_at >= ? OR c.responded_at >= ?))
+                ORDER BY r.completed_at, r.id LIMIT ? FOR UPDATE OF r SKIP LOCKED
+                """, utc(cutoff), utc(cutoff), utc(cutoff), utc(cutoff), utc(now), utc(cutoff), utc(cutoff), utc(cutoff), utc(cutoff), batchSize)
+                .getValues("id", UUID.class));
+        // Lock all tasks belonging to selected runs before touching provider ledgers. Terminal
+        // state cannot be resumed; these locks serialize any legitimate late result checkpoints.
+        var taskIds = new ArrayList<>(dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?) ORDER BY id FOR UPDATE SKIP LOCKED",
+                (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
+        // Recheck after locking: a late checkpoint may have changed a task between the
+        // candidate read and lock. If any task was locked elsewhere, defer its whole run.
+        var deferred = dsl.fetch("""
+                SELECT DISTINCT run_id FROM task WHERE run_id = ANY(?) AND
+                  (NOT (id = ANY(?)) OR status NOT IN ('SUCCEEDED','FAILED','CANCELED')
+                    OR completed_at >= ? OR updated_at >= ? OR lease_until > ?)
+                """, runIds.toArray(UUID[]::new), taskIds.toArray(UUID[]::new), utc(cutoff), utc(cutoff), utc(now))
+                .getValues("run_id", UUID.class);
+        runIds.removeAll(deferred);
+        taskIds = new ArrayList<>(dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?)",
+                (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
+        int remaining = batchSize - runIds.size();
+        var standalone = dsl.fetch("""
+                SELECT t.id FROM task t WHERE t.run_id IS NULL
+                  AND t.status IN ('SUCCEEDED','FAILED','CANCELED') AND t.completed_at < ? AND t.updated_at < ?
+                  AND (t.lease_until IS NULL OR t.lease_until <= ?)
+                  AND NOT EXISTS (SELECT 1 FROM call_log c WHERE c.task_id=t.id AND
+                    (c.started_at >= ? OR c.responded_at >= ?))
+                  AND EXISTS (SELECT 1 FROM provider_attempt a WHERE a.task_id=t.id
+                    UNION ALL SELECT 1 FROM call_log c WHERE c.task_id=t.id)
+                ORDER BY t.completed_at, t.id LIMIT ? FOR UPDATE OF t SKIP LOCKED
+                """, utc(cutoff), utc(cutoff), utc(now), utc(cutoff), utc(cutoff), remaining)
+                .getValues("id", UUID.class);
+        taskIds.addAll(standalone);
+        // Runs without any history must not consume future batches forever.
+        dsl.deleteFrom(CALL_LOG).where(CALL_LOG.KIND.eq("LLM").and(CALL_LOG.RUN_ID.in(runIds))).execute();
+        dsl.deleteFrom(CALL_LOG).where(CALL_LOG.TASK_ID.in(taskIds)).execute();
+        turns.deleteFor(runIds);
+        attempts.deleteFor(taskIds);
+        return runIds.size() + standalone.size();
     }
 
     @Override public boolean isDebugEnabled() { return settings().debugMode(); }

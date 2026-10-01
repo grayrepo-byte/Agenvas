@@ -35,6 +35,6 @@ export function CallDebugDetails({ id, kind }: { id: string; kind?: CallLog["kin
         <p className="call-log-url">{exchange.url}</p>
         <FormattedCallExchange exchange={exchange} mode={mode} llm={kind === undefined || kind === "LLM"} />
       </div>)}
-    </> : <p className="ui-muted">{t("本次调用未开启 debug 模式，没有保存原始正文。可在")}<Link to="/settings/general">{t("系统设置")}</Link>{t("中开启；旧日志不会补录。")}</p> : null}
+    </> : <p className="ui-muted">{t("本次调用未开启 debug 模式，没有保存原始正文。可在")}<Link to="/settings/general?tab=logs">{t("系统设置")}</Link>{t("中开启；旧日志不会补录。")}</p> : null}
   </section>;
 }

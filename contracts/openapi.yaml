@@ -92,6 +92,75 @@ paths:
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/call-log-retention:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: getCallLogRetentionSettings
+      summary: 读取调用日志保留策略（默认永久，仅管理员）
+      tags: [Audit]
+      responses:
+        "200":
+          description: 持久化设置；Cache-Control 为 no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallLogRetentionSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: updateCallLogRetentionSettings
+      summary: 设置调用日志保留天数
+      description: null 表示永久保留，天数范围 1–3650。仅更新策略，不自动清理；管理员手动执行清理已结束且超过保留期的完整执行，以完成时间和最近活动时间判断过期。调用日志、debug 正文、模型回合、工具执行及 Provider 提交账本在同一事务删除，未结束与 UNKNOWN 执行继续保留。保留业务任务、Run 身份、产物和素材；旧对话的执行明细会消失。缩短策略也影响历史记录，删除不可恢复，改回永久不能恢复已清理日志。默认永久保证升级不主动删除数据。不会触发 Provider 请求。
+      tags: [Audit]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [retentionDays, expectedVersion]
+              properties:
+                retentionDays: {type: [integer, "null"], minimum: 1, maximum: 3650}
+                expectedVersion: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: 保存后的策略和版本
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallLogRetentionSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/call-log-retention/cleanup:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    post:
+      operationId: cleanupCallLogs
+      summary: 手动清理到期调用日志与执行账本
+      description: 仅管理员显式请求执行，无定时任务；使用已保存且版本匹配的保留策略，null 永久保留时返回零。每批策略行加锁并检查 expectedVersion，已结束执行的日志与账本同事务删除；每次至多十批，每批至多 1000 个执行单位。batchLimitReached=true 表示可能还有待清理记录，须再次手动执行。多个批次分别提交，后续失败或设置冲突不能恢复前面已提交的批次；不得自动重试。保留业务身份和结果，不触发 Provider 请求。
+      tags: [Audit]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion]
+              properties:
+                expectedVersion: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: 本次实际清理的执行单位数量；Cache-Control 为 no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallLogCleanupResult"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/debug:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -110,7 +179,7 @@ paths:
     put:
       operationId: updateDebugSettings
       summary: 修改系统 debug 模式
-      description: 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭不清理历史，旧调用不会补录。不会触发 Provider 请求。
+      description: 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
       tags: [Audit]
       requestBody:
         required: true
@@ -2719,6 +2788,18 @@ components:
           type: "string"
           minLength: 1
           maxLength: 200
+    CallLogCleanupResult:
+      type: object
+      required: [cleanedExecutions, batchLimitReached]
+      properties:
+        cleanedExecutions: {type: integer, minimum: 0, maximum: 10000}
+        batchLimitReached: {type: boolean}
+    CallLogRetentionSettings:
+      type: object
+      required: [retentionDays, version]
+      properties:
+        retentionDays: {type: [integer, "null"], minimum: 1, maximum: 3650, default: null}
+        version: {type: integer, minimum: 1}
     DebugSettings:
       type: object
       required: [debugMode, version]

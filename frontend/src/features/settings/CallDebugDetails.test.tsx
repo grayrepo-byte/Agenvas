@@ -40,7 +40,7 @@ describe("CallDebugDetails", () => {
   it("explains absent capture and does not invent a Mock request", async () => {
     const { unmount } = show();
     expect(await screen.findByText(/本次调用未开启 debug 模式/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "系统设置" })).toHaveAttribute("href", "/settings/general");
+    expect(screen.getByRole("link", { name: "系统设置" })).toHaveAttribute("href", "/settings/general?tab=logs");
     unmount();
     server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [] })));
     show();

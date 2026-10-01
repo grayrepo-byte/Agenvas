@@ -28,3 +28,9 @@
 .storage-destination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-4); padding-block: var(--ui-space-4); border-bottom: 1px solid var(--ui-border); }
 .storage-destination p { margin-block: 6px; overflow-wrap: anywhere; }
 .storage-destination > div { min-width: 0; }
+
+.system-settings-tabs { margin-bottom: var(--ui-space-5); max-width: 640px; }
+.system-settings-panel[hidden] { display: none; }
+@media (max-width: 560px) { .system-settings-tabs { flex-wrap: wrap; } .system-settings-tabs > button { flex-basis: 40%; } }
+
+.call-log-retention-field { max-width: var(--ui-settings-aside-width); }

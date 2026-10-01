@@ -165,7 +165,7 @@ export function LlmSettingsPage() {
             {mediaStatus.isError ? <Notice tone="danger"><p>{t("媒体配置状态读取失败。")}</p><button className="secondary-button" type="button" disabled={mediaStatus.isFetching} onClick={() => { void mediaStatus.refetch(); }}>{t("重新读取媒体状态")}</button></Notice> : null}
             {mediaStatus.data ? <p className="settings-mode-summary">{t("{0} · 图片{1} · 视频{2}", { "0": mediaStatus.data.mediaMode === "MOCK" ? t("Mock 模式") : t("ComfyUI 模式"), "1": mediaStatus.data.imageConfigured ? t("已配置") : t("未配置"), "2": mediaStatus.data.videoConfigured ? t("已配置") : t("未配置") })}</p> : null}
             <Link className="settings-nav-link" to="/settings/media">{t("管理媒体连接")}<ArrowUpRight size={16} aria-hidden /></Link>
-            <Link className="settings-nav-link" to="/settings/general">{t("查看系统诊断")}<ArrowUpRight size={16} aria-hidden /></Link>
+            <Link className="settings-nav-link" to="/settings/general?tab=diagnostics">{t("查看系统诊断")}<ArrowUpRight size={16} aria-hidden /></Link>
           </div>
         </Panel>
       </aside>

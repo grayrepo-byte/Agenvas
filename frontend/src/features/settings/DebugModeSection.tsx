@@ -31,7 +31,7 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
     <div className="ui-stack">
       <Notice tone="warning" title={t("开启风险")}>
         <p>{t("开启后，调用日志会保存原始请求地址、请求内容和响应内容，可能包含完整提示词、素材、个人信息和业务数据，并显著增加数据库及备份体积。请仅在排查问题时开启，避免分享这些日志。")}</p>
-        <p>{t("所有 header 均不保存；密钥、鉴权字段和模型私有推理始终脱敏。单个正文最多采集 64 MiB，超限或未读完会标注。关闭后停止新增正文记录，已经保存的历史记录仍保留；旧日志不会补录。")}</p>
+        <p>{t("所有 header 均不保存；密钥、鉴权字段和模型私有推理始终脱敏。单个正文最多采集 64 MiB，超限或未读完会标注。关闭后停止新增正文记录，已经保存的历史记录按保留设置清理；旧日志不会补录。")}</p>
       </Notice>
       {settings.isPending && enabled ? <LoadingState compact label={t("正在读取 debug 模式")} /> : null}
       {error ? <Notice tone="danger" title={forbidden ? t("无权修改 debug 模式") : conflict ? t("Debug 设置已变化") : save.isError ? t("保存 debug 模式失败") : t("读取 debug 模式失败")}>
