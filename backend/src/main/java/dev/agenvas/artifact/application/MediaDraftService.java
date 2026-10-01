@@ -8,6 +8,10 @@ import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.RunningHubDefinition;
+import dev.agenvas.task.domain.Task;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
@@ -16,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,10 +51,12 @@ public class MediaDraftService {
     private final ProjectEventService events;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final MediaCapabilityService capabilities;
 
     public MediaDraftService(ProjectService projects, ArtifactService artifactService,
             ArtifactRepository artifacts, CanvasItemQueryService canvasItems,
-            ProjectEventService events, ObjectMapper mapper, Clock clock) {
+            ProjectEventService events, ObjectMapper mapper, Clock clock,
+            @Lazy MediaCapabilityService capabilities) {
         this.projects = projects;
         this.artifactService = artifactService;
         this.artifacts = artifacts;
@@ -57,6 +64,7 @@ public class MediaDraftService {
         this.events = events;
         this.mapper = mapper;
         this.clock = clock;
+        this.capabilities = capabilities;
     }
 
     @Transactional(readOnly = true)
@@ -83,7 +91,11 @@ public class MediaDraftService {
         if (!normalizedParameters.isObject()) {
             throw invalid("媒体参数必须是对象。");
         }
-        if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(normalizedParameters);
+        Task.Kind taskKind = Task.Kind.valueOf(kind.name() + "_GENERATION");
+        var definition = capabilityId == null ? null : capabilities.runningHubDefinition(capabilities.forDraft(capabilityId, taskKind));
+        boolean dynamic = definition != null;
+        if (dynamic) definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
+        else if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(normalizedParameters);
         else if (kind == Artifact.Kind.VIDEO) VideoGenerationParameters.parse(normalizedParameters);
         else dev.agenvas.artifact.domain.AudioGenerationParameters.parse(normalizedParameters);
         List<SaveMediaInput> inputCommands = requestedInputs == null
@@ -97,7 +109,7 @@ public class MediaDraftService {
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
         if (inputCommands.size() > MAX_IMAGE_INPUTS) {
-            throw invalid("单张卡片最多保存 14 个图片输入。");
+            throw invalid("单张卡片最多保存 14 个媒体输入。");
         }
         MediaDraft.VideoInputMode mode = kind != Artifact.Kind.VIDEO ? null
                 : requestedMode == null
@@ -108,10 +120,10 @@ public class MediaDraftService {
             throw invalid("图片草稿不能指定视频时长。");
         }
         if (kind == Artifact.Kind.VIDEO && durationSeconds != null &&
-                (durationSeconds < MIN_VIDEO_SECONDS || durationSeconds > MAX_VIDEO_SECONDS)) {
-            throw invalid("视频时长必须为 1–30 秒的整数。");
+                (durationSeconds < MIN_VIDEO_SECONDS || durationSeconds > (dynamic ? MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS : MAX_VIDEO_SECONDS))) {
+            throw invalid(dynamic ? "视频时长必须为 1–60 秒的整数。" : "视频时长必须为 1–30 秒的整数。");
         }
-        if (mode == MediaDraft.VideoInputMode.TEXT && !inputCommands.isEmpty()) {
+        if (!dynamic && mode == MediaDraft.VideoInputMode.TEXT && !inputCommands.isEmpty()) {
             throw invalid("纯文本视频模式不能保存图片输入。");
         }
         Set<UUID> seen = new HashSet<>();
@@ -128,18 +140,20 @@ public class MediaDraftService {
                     .orElseThrow(() -> invalid("输入图片版本不存在于本项目。"));
             boolean alreadyReferenced = persisted.mediaInputs().stream()
                     .anyMatch(input -> input.versionId().equals(command.versionId()));
-            if (target.kind() != (command.role() == MediaDraft.InputRole.AUDIO_REFERENCE
-                    ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE)
+            if (target.kind() != (mediaKind(command.role()))
                     || artifactService.get(ownerId, projectId, target.artifactId())
                             .artifact().archivedAt() != null && !alreadyReferenced) {
                 throw invalid("图片输入必须是本项目中未归档图片的精确版本。");
             }
-            validateRole(kind, mode, command.role(), order, inputCommands.size());
+            if (dynamic) {
+                if (!Set.of(MediaDraft.InputRole.REFERENCE, MediaDraft.InputRole.AUDIO_REFERENCE, MediaDraft.InputRole.VIDEO_REFERENCE).contains(command.role())) throw invalid("动态素材只能使用图片、音频或视频参考角色。");
+            } else validateRole(kind, mode, command.role(), order, inputCommands.size());
             inputs.add(new MediaDraft.MediaInput(command.versionId(), target.artifactId(),
                     command.role(), order, command.color(), List.of(
                             new MediaDraft.InputSource(UUID.randomUUID(),
                                     MediaDraft.SourceType.MANUAL, null))));
         }
+        if (dynamic) validateSlots(definition, normalizedParameters, inputs, false);
         for (MediaDraft.PromptMention mention : mentions) {
             if (mention == null || mention.versionId() == null || mention.role() == null
                     || inputs.stream().noneMatch(input -> input.versionId().equals(
@@ -202,6 +216,11 @@ public class MediaDraftService {
                 inputs.add(new SaveMediaInput(UUID.fromString(audio.path("versionId").asText()),
                         MediaDraft.InputRole.AUDIO_REFERENCE, INPUT_COLORS.get(order++ % INPUT_COLORS.size())));
             } catch (IllegalArgumentException exception) { throw invalid("冻结音频输入无效。"); }
+        }
+        for (JsonNode video : frozen.path("videos")) {
+            try { inputs.add(new SaveMediaInput(UUID.fromString(video.path("versionId").asText()),
+                    MediaDraft.InputRole.VIDEO_REFERENCE, INPUT_COLORS.get(order++ % INPUT_COLORS.size()))); }
+            catch (IllegalArgumentException exception) { throw invalid("冻结视频输入无效。"); }
         }
         List<MediaDraft.PromptMention> mentions = new ArrayList<>();
         JsonNode frozenMentions = frozen.path("mentions");
@@ -280,6 +299,27 @@ public class MediaDraftService {
         }
         artifacts.replaceMediaInputs(projectId, targetCanvasItemId, inputs, now);
         return duplicate;
+    }
+
+    /** A batch result copies the accepted draft, never the user's newer working draft. */
+    public void initializeFrozenWithinChange(UUID projectId, UUID canvasItemId, Artifact.Kind kind, JsonNode frozen) {
+        initializeWithinChange(projectId, canvasItemId, false);
+        Instant now = clock.instant();
+        List<MediaDraft.MediaInput> inputs = new ArrayList<>();
+        for (String group : List.of("images", "audios", "videos")) for (JsonNode input : frozen.path(group)) {
+            int order = inputs.size();
+            inputs.add(new MediaDraft.MediaInput(UUID.fromString(input.path("versionId").asText()),
+                    UUID.fromString(input.path("artifactId").asText()), MediaDraft.InputRole.valueOf(input.path("role").asText()),
+                    order, INPUT_COLORS.get(order % INPUT_COLORS.size()), List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null))));
+        }
+        List<MediaDraft.PromptMention> mentions = new ArrayList<>();
+        for (JsonNode mention : frozen.path("mentions")) mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()), MediaDraft.InputRole.valueOf(mention.path("role").asText())));
+        MediaDraft draft = new MediaDraft(projectId, canvasItemId, frozen.path("prompt").asText(""),
+                frozen.path("parameters").deepCopy(), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
+                UUID.fromString(frozen.path("capabilityId").asText()), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
+                List.copyOf(inputs), List.copyOf(mentions), MediaDraft.DisplayMode.DRAFT, 1, now, now);
+        if (!artifacts.updateMediaDraft(draft, 0)) throw new IllegalStateException("New batch draft update failed");
+        artifacts.replaceMediaInputs(projectId, canvasItemId, inputs, now);
     }
 
     /** Adds one connection source without duplicating an already selected exact version. */
@@ -458,6 +498,26 @@ public class MediaDraftService {
             throw invalid("只有图片和视频产物有媒体草稿。");
         }
         return artifact;
+    }
+
+    public static Artifact.Kind mediaKind(MediaDraft.InputRole role) {
+        return switch (role) { case AUDIO_REFERENCE -> Artifact.Kind.AUDIO; case VIDEO_REFERENCE -> Artifact.Kind.VIDEO; default -> Artifact.Kind.IMAGE; };
+    }
+
+    /** Named slots and the deduplicated exact-version rows must agree on identity and media kind. */
+    public static void validateSlots(RunningHubDefinition definition,
+            JsonNode parameters, List<MediaDraft.MediaInput> inputs, boolean executing) {
+        JsonNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY);
+        Set<UUID> used = new HashSet<>();
+        for (var field : definition.fields()) if (field.media() && values.hasNonNull(field.key())) {
+            UUID id = UUID.fromString(values.path(field.key()).asText());
+            if (inputs.stream().noneMatch(input -> input.versionId().equals(id)
+                    && mediaKind(input.role()).name().equals(field.type().name())))
+                throw RunningHubDefinition.invalid("“" + field.label() + "”需要匹配的项目内精确素材引用");
+            used.add(id);
+        }
+        if (executing && inputs.stream().anyMatch(input -> !used.contains(input.versionId())))
+            throw RunningHubDefinition.invalid("有素材尚未分配到具名输入槽位");
     }
 
     private void validateRole(Artifact.Kind kind, MediaDraft.VideoInputMode mode,

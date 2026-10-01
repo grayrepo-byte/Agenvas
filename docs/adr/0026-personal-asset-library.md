@@ -6,4 +6,4 @@
 
 新增 LibraryEntry 承载个人分类资产，固定用户明确选中的内容版本，并独立保存媒体；导入时创建目标项目自己的产物、文件与精确版本。现有 Asset 保持项目文件语义。相较直接引用原项目内容，该结构增加复制存储成本，但资产不依赖来源项目存续，项目输入也不需绕过跨项目权限边界。源工作卡片、草稿、连线与任务不随资产复制；资产改名、分类或删除不改写已经导入的项目内容。
 
-实施细节、接口草案和验收见 [个人资产库设计](../superpowers/specs/2026-10-01-personal-asset-library-design.md)。演员库、合集、完整生成配方及团队共享不属于本次首版；已增加 `/api/v1/library` 与项目保存/导入/参考接口，以及 V64–V67 增量迁移。`LIBRARY_IMPORT` 为服务端专用内容来源，普通产物写入拒绝伪造。命令以固定输入、独立文件 pin、租约与 fencing 恢复；失败文件和完成 pin 使用持久清理队列。未调用真实 Provider。测试与限制见 [#24 实施证据](../evidence/issue-24-personal-asset-library.md)。
+实施细节、接口草案和验收见 [个人资产库设计](../superpowers/specs/2026-10-01-personal-asset-library-design.md)。演员库、合集、完整生成配方及团队共享不属于本次首版；已增加 `/api/v1/library` 与项目保存/导入/参考接口，以及 V67–V70 增量迁移。`LIBRARY_IMPORT` 为服务端专用内容来源，普通产物写入拒绝伪造。命令以固定输入、独立文件 pin、租约与 fencing 恢复；失败文件和完成 pin 使用持久清理队列。未调用真实 Provider。测试与限制见 [#24 实施证据](../evidence/issue-24-personal-asset-library.md)。

@@ -38,7 +38,7 @@ import {
   listCanvasConnections,
   listArtifacts,
   projectExportManifestUrl,
-  uploadImageAsset, uploadAudioAsset,
+  uploadImageAsset, uploadAudioAsset, uploadVideoAsset,
   updateAgent,
   disconnectCanvasConnection,
   duplicateCanvasItem,
@@ -60,6 +60,10 @@ import { MediaCanvasCard } from "./MediaCanvasCard";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { ImageSquare, Sparkle, TextT, VideoCamera, MusicNotes, X, type Icon } from "@phosphor-icons/react";
 import { CanvasToolMenu } from "./CanvasToolMenu";
+import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
+import { CanvasRelationEdge } from "./CanvasRelationEdge";
+import { displayCanvasRelations } from "./canvasEdgeDisplay";
+import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
 import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
 import { CanvasHandle } from "./CanvasHandle";
 import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
@@ -142,6 +146,7 @@ type CanvasNodeData = {
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
+const edgeTypes = { canvasRelation: CanvasRelationEdge };
 
 /** Safe client-side validation message for unsupported canvas connection gestures. */
 class CanvasConnectionError extends Error {}
@@ -191,6 +196,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
+  const displaySettings = useCanvasDisplayPreferences(currentUser.data?.id, projectId);
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
     queryFn: () => getProjectSnapshot(projectId),
@@ -453,18 +459,19 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const addImageCard = useMutation({
     mutationFn: async ({ cardTitle, file }: { cardTitle: string; file: File }) => {
       const audio = file.type.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(file.name);
+      const video = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
       const progress = imageProgress.current?.projectId === projectId &&
         imageProgress.current.file === file && imageProgress.current.title === cardTitle
         ? imageProgress.current : { projectId, file, title: cardTitle };
       imageProgress.current = progress;
       if (!progress.assetId) {
-        const asset = await (audio ? uploadAudioAsset : uploadImageAsset)(projectId, file);
+        const asset = await (audio ? uploadAudioAsset : video ? uploadVideoAsset : uploadImageAsset)(projectId, file);
         progress.assetId = asset.id;
       }
       if (!progress.artifactId) {
         progress.createKey ??= crypto.randomUUID();
         const artifact = await createArtifact(projectId, {
-          kind: audio ? "AUDIO" : "IMAGE",
+          kind: audio ? "AUDIO" : video ? "VIDEO" : "IMAGE",
           title: cardTitle,
           content: { sourceType: "UPLOAD", assetId: progress.assetId },
         }, progress.createKey);
@@ -1010,9 +1017,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    * them back on the prop. Selection is therefore the only locally owned part of a line.
    */
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
-  const relationEdges = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? [])
-    .map((edge) => selectedEdgeIds.includes(edge.id) ? { ...edge, selected: true } : edge),
-    [canvas.data?.items, canvasConnections.data?.items, selectedEdgeIds]);
+  const projectedRelations = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? []),
+    [canvas.data?.items, canvasConnections.data?.items]);
+  const relationEdges = useMemo(() => displayCanvasRelations(projectedRelations, selectedIds, selectedEdgeIds,
+    displaySettings.preferences), [projectedRelations, selectedIds, selectedEdgeIds, displaySettings.preferences]);
   const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
     setSelectedEdgeIds((current) => {
       const next = new Set(current);
@@ -1256,11 +1264,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </>}
         </> : null}
         {toolsKind === "UPLOAD" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
-          <h2 className="text-base font-semibold">上传图片或音频</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">图片支持 PNG、JPEG、WebP，最大 20 MiB/40 MP；音频支持 MP3、WAV、OGG Opus，最大 50 MiB/10 分钟。上传后创建对应媒体节点，可作为精确版本参考。</p>
+          <h2 className="text-base font-semibold">上传图片、视频或音频</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">图片支持 PNG、JPEG、WebP，最大 20 MiB/40 MP；视频支持 MP4，最大 500 MiB；音频支持 MP3、WAV、OGG Opus，最大 50 MiB/10 分钟。上传后创建对应媒体节点，可作为精确版本参考。</p>
           <form className="mt-4" onSubmit={submitImage}>
             <label className="text-sm font-medium">素材标题<input maxLength={160} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
-            <label className="mt-3 block text-sm font-medium">图片或音频<input accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
+            <label className="mt-3 block text-sm font-medium">图片、视频或音频<input accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
             <button className="secondary-button mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? "正在上传并放置…" : "上传并放到画布"}</button>
           </form>
           {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}
@@ -1314,6 +1322,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           connectionRadius={CANVAS_CONNECTION_RADIUS}
           deleteKeyCode={CANVAS_DELETE_KEY_CODES}
           edges={relationEdges}
+          edgeTypes={edgeTypes}
           fitView
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
           minZoom={0.25}
@@ -1392,7 +1401,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        }} />
+        }}>
+          <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
+            persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
+            disabled={!displaySettings.ready} />
+        </CanvasToolMenu>
+        {displaySettings.persistenceError ? <div className="canvas-message" role="alert">
+          {displaySettings.persistenceError}
+          <button type="button" className="node-action" onClick={displaySettings.retrySave}>重试保存设置</button>
+        </div> : null}
         {creationMenu ? <DropdownMenu className="workspace-create-menu" role="menu" aria-label="添加卡片"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>

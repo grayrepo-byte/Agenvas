@@ -1,4 +1,4 @@
--- v64/v65 audit summaries were objects; adding a schema tag preserves their content.
+-- v67/v68 audit summaries were objects; adding a schema tag preserves their content.
 UPDATE library_entry SET source_json = jsonb_set(source_json, '{schemaVersion}', '1') WHERE NOT source_json ? 'schemaVersion';
 UPDATE library_import SET source_json = jsonb_set(source_json, '{schemaVersion}', '1') WHERE NOT source_json ? 'schemaVersion';
 UPDATE library_command SET input_json = jsonb_set(input_json, '{source,schemaVersion}', '1') WHERE input_json ? 'source' AND NOT (input_json->'source' ? 'schemaVersion');

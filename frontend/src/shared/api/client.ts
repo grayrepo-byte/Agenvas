@@ -62,6 +62,10 @@ export type CallLogPage = components["schemas"]["CallLogPage"];
 export type CallLogFilters = NonNullable<paths["/api/v1/call-logs"]["get"]["parameters"]["query"]>;
 export type ReplaceLlmSettingsRequest = components["schemas"]["ReplaceLlmSettingsRequest"];
 export type DiagnoseLlmRequest = components["schemas"]["DiagnoseLlmRequest"];
+export type RunningHubDefinition = components["schemas"]["RunningHubDefinition"];
+export type RunningHubField = components["schemas"]["RunningHubField"];
+export type RunningHubImportRequest = components["schemas"]["RunningHubImportRequest"];
+export type RunningHubImportPreview = components["schemas"]["RunningHubImportPreview"];
 export type MediaSettings = components["schemas"]["MediaSettings"];
 export type MediaConnection = components["schemas"]["MediaConnection"];
 export type MediaCapability = components["schemas"]["MediaCapability"];
@@ -165,6 +169,28 @@ export async function uploadAudioAsset(projectId: string, file: File): Promise<A
   return (await response.json()) as Asset;
 }
 
+const MAX_VIDEO_UPLOAD_BYTES = 500 * 1024 * 1024;
+/** MP4 uploads use actual backend decoding and the selected per-asset storage destination. */
+export async function uploadVideoAsset(projectId: string, file: File): Promise<Asset> {
+  if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    throw new ApiError(413, "ASSET_TOO_LARGE", "视频不能超过 500 MiB。", false);
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const token = await getCsrfToken();
+  const response = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json, application/problem+json",
+      [token.headerName]: token.token,
+    },
+    body: form,
+  });
+  if (!response.ok) throw await apiError(response, "视频上传未完成");
+  return (await response.json()) as Asset;
+}
+
 /** Session-protected metadata download; the manifest contains no signed media URLs. */
 export function projectExportManifestUrl(projectId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/export-manifest`;
@@ -245,6 +271,11 @@ export async function updateMediaConnection(connectionId: string,
   return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}`, {
     method: "PUT", body: JSON.stringify(input),
   });
+}
+
+export async function previewRunningHubImport(connectionId: string, input: RunningHubImportRequest): Promise<RunningHubImportPreview> {
+  return writeJson<RunningHubImportPreview>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/runninghub/preview`,
+    { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function createMediaCapability(connectionId: string,
@@ -851,4 +882,27 @@ export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | 
     headers: { Accept: "application/json, application/problem+json", [token.headerName]: token.token } });
   if (!response.ok) throw await apiError(response, "资产上传未完成");
   return await response.json() as LibraryCommand;
+}
+
+export type StorageSettings = components["schemas"]["StorageSettings"];
+export type StorageProvider = components["schemas"]["StorageProvider"];
+export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
+export type RotateStorageCredentialsRequest = components["schemas"]["RotateStorageCredentialsRequest"];
+export async function getStorageSettings(): Promise<StorageSettings> {
+  return readJson<StorageSettings>("/api/v1/settings/storage", "无法读取存储配置");
+}
+export async function createStorageProfile(input: CreateStorageProfileRequest): Promise<StorageSettings> {
+  return writeJson<StorageSettings>("/api/v1/settings/storage/profiles", {
+    method: "POST", body: JSON.stringify(input),
+  });
+}
+export async function activateStorageProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
+  return writeJson<StorageSettings>("/api/v1/settings/storage/active", {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+export async function rotateStorageCredentials(id: string, input: RotateStorageCredentialsRequest): Promise<StorageSettings> {
+  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}/credentials`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
 }

@@ -212,6 +212,13 @@ public class Task extends TableImpl<TaskRecord> {
      */
     public final TableField<TaskRecord, String> ORIGIN = createField(DSL.name("origin"), SQLDataType.VARCHAR(24).nullable(false).defaultValue(DSL.field(DSL.raw("'AGENT'::character varying"), SQLDataType.VARCHAR)), this, "");
 
+    /**
+     * The column <code>public.task.provider_result_manifest</code>. Private
+     * immutable provider result checkpoint. Never exposed in task DTOs, SSE or
+     * project export.
+     */
+    public final TableField<TaskRecord, JSONB> PROVIDER_RESULT_MANIFEST = createField(DSL.name("provider_result_manifest"), SQLDataType.JSONB, this, "Private immutable provider result checkpoint. Never exposed in task DTOs, SSE or project export.");
+
     private Task(Name alias, Table<TaskRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -507,6 +514,7 @@ public class Task extends TableImpl<TaskRecord> {
             Internal.createCheck(this, DSL.name("ck_task_lease_pair"), "((((lease_owner IS NULL) AND (lease_until IS NULL)) OR ((lease_owner IS NOT NULL) AND (lease_until IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_media_binding"), "((((capability_id IS NULL) AND (capability_version IS NULL) AND (connection_id IS NULL) AND (connection_version IS NULL)) OR ((capability_id IS NOT NULL) AND (capability_version IS NOT NULL) AND (connection_id IS NOT NULL) AND (connection_version IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_origin_scope"), "(((((origin)::text = 'AGENT'::text) AND (run_id IS NOT NULL)) OR (((origin)::text = 'USER_DIRECT'::text) AND (run_id IS NULL) AND ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[])))))", true),
+            Internal.createCheck(this, DSL.name("ck_task_provider_result_manifest"), "(((provider_result_manifest IS NULL) OR COALESCE(((jsonb_typeof(provider_result_manifest) = 'object'::text) AND ((provider_result_manifest ->> 'schemaVersion'::text) = '1'::text) AND (jsonb_typeof((provider_result_manifest -> 'results'::text)) = 'array'::text) AND ((jsonb_array_length((provider_result_manifest -> 'results'::text)) >= 1) AND (jsonb_array_length((provider_result_manifest -> 'results'::text)) <= 16))), false)))", true),
             Internal.createCheck(this, DSL.name("ck_task_status"), "(((status)::text = ANY ((ARRAY['PENDING'::character varying, 'READY'::character varying, 'RUNNING'::character varying, 'SUBMITTING'::character varying, 'WAITING_PROVIDER'::character varying, 'UNKNOWN'::character varying, 'BLOCKED'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_step_key_not_blank"), "((length(btrim((step_key)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_version_non_negative"), "((version >= 0))", true)

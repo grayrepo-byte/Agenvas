@@ -10,7 +10,7 @@
 
 ## 文件与升级
 
-后端新增 `library` 模块与资产存储应用边界；复用产物、画布、媒体草稿及能力校验应用服务。迁移 V64–V67 新增五张 library 表及完整性约束；jOOQ 由独立 PostgreSQL 17.11 重新生成。OpenAPI、生成 TS、图片/视频 JSON Schema 同步增加只读 `LIBRARY_IMPORT`；普通 Artifact 写入拒绝伪造。同步 CONTEXT、规格 6.12、设计、ADR 0023、开发清单及备份范围。无依赖变更。
+后端新增 `library` 模块与资产存储应用边界；复用产物、画布、媒体草稿及能力校验应用服务。迁移 V67–V70 新增五张 library 表及完整性约束；jOOQ 由独立 PostgreSQL 17.11 重新生成。OpenAPI、生成 TS、图片/视频 JSON Schema 同步增加只读 `LIBRARY_IMPORT`；普通 Artifact 写入拒绝伪造。同步 CONTEXT、规格 6.14、设计、ADR 0026、开发清单及备份范围。无依赖变更。
 
 前后端需同版本部署，升级前备份数据库与完整文件卷（包含 `library/` 和命令 pin）。既有迁移未修改，新增迁移不删除项目或既有媒体。真实旧部署升级/回滚及完整库备份恢复演练未运行。
 
@@ -49,3 +49,19 @@
 ![窄屏资产网格](issue-24-assets/mobile.jpg)
 
 复审继续核对同一关闭保护项，补齐模型/参数弹层切换与整个编辑器卸载：转存进行中 togglePopover 不切换，编辑器关闭只保存本地 recovery、不提交与受理参考竞争的旧 CAS。按钮切换与卸载测试均先失败，修复后最新 4 文件 110 项通过；类型检查、lint、生产构建再次通过。Standards 原 3 项复审已确认解决；Spec 原 2 项复审已确认全部解决，无剩余发现。临时实例与本轮数据库容器已停止并删除，保留验收截图与文本记录。
+
+
+## 合并 main 复验（2026-10-01）
+
+合并目标为 `a26f82c`，保留对象存储、AutoDL、RunningHub 和画布显示设置。main 已占用 V64–V66 / ADR 0023–0025，因此将本分支尚未发布的个人资产迁移从 V64–V67 顺延到 V67–V70，ADR 改为 0026，规格改为 6.14。上文原测试的 V67 等编号为当时分支历史编号；清理重试迁移在合并结果中为 V70。已有 main 迁移及其校验和保持不变。前端冲突合并保留 RunningHub 动态表单、AutoDL 预检及资产参考 CAS/关闭保护。
+
+项目资源归档复用 main 的配置存储路由：从云端保存资产会先鉴权、按原连接物化验证后建立账号独立 pin；账号资产仍位于 `library/` 本地卷，导入目标项目按当前配置归档。新增真实 PostgreSQL + HTTP / 明确标注的假对象存储回归，覆盖云端来源删除后账号资产仍可读取、云端跨项目导入、受理参考后的草稿冲突与失败副本清理、资产删除后 READY 导入仍可读取，并断言网络不在业务事务内。回归先失败：失败副本清理仅接受本地对象键，留下云端文件。修复后由存储边界核对本地/云端精确项目归属，先检查原件和缩略图，再清理未注册内容；READY 元数据存在时拒绝删除。
+
+实际定向检查：
+
+- 后端 `ArtifactContentValidatorTest`、`ConfiguredAssetStorageTest`、`ObjectStorageClientTest`、`StorageSettingsServiceTest` 共 15 项通过；`LibraryPostgresIT`、`LibraryRecoveryPostgresIT`、`ObjectStoragePostgresIT`、`AutoDlVideoPostgresIT`、`RunningHubPostgresIT` 共 20 项通过，Maven BUILD SUCCESS。
+- 前端 9 个文件共 75 项通过：保存窗口、资产页、参考选择、文字 CAS、媒体草稿编辑、项目画布、媒体上传、RunningHub 表单与存储设置。
+- OpenAPI TS 重新生成、TypeScript strict、全前端 lint、Vite 构建通过；仍有既有 >500 kB 分块提示。jOOQ 在独立 PostgreSQL 17.11 将 69 个迁移应用至 V70 后重新生成，输出与自动合并源码一致。
+- 另一隔离数据库先迁移至 main 的 V66，再插入测试身份/项目和设置版本标记，应用 V67–V70。Flyway 校验并成功追加 4 个迁移，断言项目名称、版本、事件序号及存储设置版本保留，5 张 library 表存在。
+
+本轮未再次运行全量测试、浏览器端到端、真实云存储/付费 Provider 或生产部署；隔离数据库迁移检查不等于旧部署 Compose 升级或完整备份恢复验收。

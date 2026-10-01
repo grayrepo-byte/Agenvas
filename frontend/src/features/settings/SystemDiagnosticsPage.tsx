@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwise, CheckCircle, Cpu, Database, HardDrives, Plugs } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { Navigate } from "react-router";
+import { Link, Navigate } from "react-router";
 import { ApiError, getCurrentUser, getSystemDiagnostics } from "../../shared/api/client";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -32,7 +32,7 @@ export function SystemDiagnosticsPage() {
         <div className="ui-toolbar"><StatusBadge>本地检查</StatusBadge><span className="ui-muted">检查时间：<time dateTime={snapshot.checkedAt}>{new Date(snapshot.checkedAt).toLocaleString()}</time></span>{diagnostics.isFetching ? <LoadingState compact label="正在更新状态…" /> : null}</div>
         <div className="diagnostics-stats">
           <StatusCard title="数据库" icon={<Database size={20} aria-hidden />} tone={snapshot.database === "AVAILABLE" ? "success" : "danger"} badge={snapshot.database === "AVAILABLE" ? "正常" : "不可用"} value={snapshot.database === "AVAILABLE" ? "可读取" : "不可用"} description="检查应用能否读取本地数据库。" />
-          <StatusCard title="媒体存储" icon={<HardDrives size={20} aria-hidden />} tone={snapshot.storage === "AVAILABLE" ? "success" : "warning"} badge={snapshot.storage === "AVAILABLE" ? "路径正常" : "需检查"} value={snapshot.storage === "AVAILABLE" ? "路径检查正常（未试写）" : "路径检查异常"} description="仅检查存储路径，不代表已完成写入测试。" />
+          <StatusCard title="本地工作目录" icon={<HardDrives size={20} aria-hidden />} tone={snapshot.storage === "AVAILABLE" ? "success" : "warning"} badge={snapshot.storage === "AVAILABLE" ? "路径正常" : "需检查"} value={snapshot.storage === "AVAILABLE" ? "路径检查正常（未试写）" : "路径检查异常"} description={<>仅检查本地归档、上传校验与媒体处理的目录；不探测云存储。<Link to="/settings/storage">管理资源存储</Link></>} />
           <StatusCard title="文本模型" icon={<Cpu size={20} aria-hidden />} tone={snapshot.llmMode === "MOCK" ? "neutral" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? "success" : "warning"} badge={snapshot.llmMode === "MOCK" ? "Mock" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? "协议已验证" : "待验证"} value={`${modeLabel(snapshot.llmMode)} · ${snapshot.llmConfigured ? "已配置" : "未配置"}${snapshot.llmMode === "CONFIGURED" ? ` · ${snapshot.llmToolCallingVerified ? "工具协议已验证" : "工具协议未验证"}` : ""}`} description="显示已保存的配置与工具协议验证结果。" />
           <StatusCard title="媒体服务" icon={<Plugs size={20} aria-hidden />} tone={snapshot.mediaMode === "MOCK" ? "neutral" : snapshot.imageConfigured && snapshot.videoConfigured ? "success" : "warning"} badge={snapshot.mediaMode === "MOCK" ? "Mock" : "配置状态"} value={`${modeLabel(snapshot.mediaMode)} · 图片${snapshot.imageConfigured ? "已配置" : "未配置"} · 视频${snapshot.videoConfigured ? "已配置" : "未配置"}`} description="已配置不代表已完成真实生成测试。" />
         </div>
@@ -50,7 +50,7 @@ export function SystemDiagnosticsPage() {
 }
 
 function StatusCard({ title, value, icon, description, tone, badge }: {
-  title: string; value: string; icon: ReactNode; description: string; tone: "neutral" | "success" | "warning" | "danger"; badge: string;
+  title: string; value: string; icon: ReactNode; description: ReactNode; tone: "neutral" | "success" | "warning" | "danger"; badge: string;
 }) {
   return <Panel title={title} actions={<StatusBadge tone={tone}>{badge}</StatusBadge>}>
     <div className="diagnostics-stat-heading"><span className="ui-icon-tile">{icon}</span><p className="diagnostics-stat-value">{value}</p></div>

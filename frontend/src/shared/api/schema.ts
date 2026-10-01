@@ -210,6 +210,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read administrator storage destinations without credentials */
+        get: operations["getStorageSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save an encrypted immutable destination without activating it */
+        post: operations["createStorageProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Switch future archives only; existing assets retain their location */
+        put: operations["activateStorageProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/profiles/{profileId}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Rotate credentials for the same immutable location, including historical assets */
+        put: operations["rotateStorageCredentials"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/llm": {
         parameters: {
             query?: never;
@@ -293,6 +363,23 @@ export interface paths {
         /** 使用 expectedVersion 修改连接并保留历史版本 */
         put: operations["updateMediaConnection"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-connections/{connectionId}/runninghub/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 只读发现或导入 RunningHub 参数候选，不提交生成 */
+        post: operations["previewRunningHubImport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -520,8 +607,27 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 上传并校验私有 PNG/JPEG/WebP 音频素材 */
+        /** 上传并校验私有 MP3/WAV/OGG Opus 音频素材 */
         post: operations["uploadAudioAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/assets/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 上传并校验私有 MP4 视频素材（最大 500 MiB） */
+        post: operations["uploadVideoAsset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1685,12 +1791,12 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE";
+            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB";
             enabled: boolean;
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI local origin or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
+            /** @description COMFYUI local origin, RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -1726,6 +1832,19 @@ export interface components {
         };
         /** @description Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
+            runningHub?: components["schemas"]["RunningHubDefinition"];
+            /** @description AUTODL_COMFY_VIDEO only; reviewed H3 workflow ID. Defaults to minimax_h3_z0903. Each workflow fixes its input mode, duration, required references and supported resolutions. */
+            workflowId?: string;
+            /**
+             * @description AutoDL resolution tier; mapped to the workflow's exact enum using the frozen card/project aspect ratio. Unsupported combinations are rejected before task acceptance.
+             * @enum {string}
+             */
+            videoResolution?: "480p" | "736p" | "768p" | "1080p" | "1088p" | "1440p";
+            /**
+             * Format: int64
+             * @description Optional AutoDL seed, only for workflows that declare it.
+             */
+            seed?: number;
             checkpoint?: string;
             diffusionModel?: string;
             textEncoder?: string;
@@ -1743,6 +1862,86 @@ export interface components {
             maxReferenceImages?: number;
             maxReferenceAudios?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
+        };
+        RunningHubScalar: string | number | boolean;
+        /** @description Data-only local contract. No scripts, endpoints or credentials. Local versions do not freeze remote workflow implementations. */
+        RunningHubDefinition: {
+            /** @enum {integer} */
+            schemaVersion: 1;
+            /** @enum {string} */
+            protocolVersion: "V2";
+            /** @enum {string} */
+            targetType: "WORKFLOW" | "AI_APP";
+            /** @description Real workflowId/webappId */
+            targetId: string;
+            sourceSha256?: string | null;
+            /** @enum {string|null} */
+            instanceType?: "default" | "plus" | "ultra" | null;
+            /** @default false */
+            usePersonalQueue: boolean;
+            /** @default false */
+            addMetadata: boolean;
+            /** @description Additional provider charge; disabled by default. */
+            retainSeconds?: number | null;
+            fields: components["schemas"]["RunningHubField"][];
+            fixedBindings?: {
+                nodeId: string;
+                fieldName: string;
+                value: components["schemas"]["RunningHubScalar"];
+                /** @enum {string|null} */
+                encoding?: "NATIVE" | "STRING" | null;
+            }[] | null;
+            outputs: {
+                nodeId?: string | null;
+                /** @enum {string} */
+                kind: "IMAGE" | "VIDEO" | "AUDIO";
+                primary: boolean;
+                maxCount: number;
+            }[];
+        };
+        RunningHubField: {
+            key: string;
+            label: string;
+            description?: string | null;
+            /** @enum {string} */
+            type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
+            /** @default false */
+            required: boolean;
+            /** @default false */
+            advanced: boolean;
+            defaultValue?: components["schemas"]["RunningHubScalar"] | null;
+            minimum?: number | null;
+            maximum?: number | null;
+            maxLength?: number | null;
+            options?: {
+                label: string;
+                value: components["schemas"]["RunningHubScalar"];
+            }[] | null;
+            nodeId: string;
+            fieldName: string;
+            /** @enum {string|null} */
+            source?: "PARAMETER" | "PROMPT" | "DURATION_SECONDS" | null;
+            /** @enum {string|null} */
+            encoding?: "NATIVE" | "STRING" | null;
+            /** @enum {string|null} */
+            resourceFormat?: "FILE_NAME" | "URL" | null;
+            enabledWhen?: {
+                field: string;
+                value: components["schemas"]["RunningHubScalar"];
+            } | null;
+        };
+        RunningHubImportRequest: {
+            /** @enum {string} */
+            targetType: "WORKFLOW" | "AI_APP";
+            targetId: string;
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
+            /** @description Optional sanitized nodeInfoList or ComfyUI API-format JSON (256 KiB maximum). Omit for read-only discovery. No curl execution or credentials. */
+            source?: unknown;
+        };
+        RunningHubImportPreview: {
+            definition: components["schemas"]["RunningHubDefinition"];
+            warnings: string[];
         };
         MediaCapabilityPricing: {
             /** @description Administrator supplied unit price; up to six decimal places. */
@@ -1766,8 +1965,8 @@ export interface components {
         CreateMediaConnectionRequest: {
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE";
-            /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB";
+            /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1776,7 +1975,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1847,6 +2046,59 @@ export interface components {
             count: number;
             /** Format: date-time */
             lastAt: string;
+        };
+        /** @enum {string} */
+        StorageProvider: "ALIYUN_OSS" | "TENCENT_COS" | "S3";
+        StorageProfile: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            provider: components["schemas"]["StorageProvider"];
+            /** Format: uri */
+            endpoint: string;
+            region: string;
+            bucket: string;
+            keyPrefix: string;
+            pathStyle: boolean;
+            accessKeyMask: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StorageSettings: {
+            version: number;
+            /**
+             * Format: uuid
+             * @description Null selects local storage; existing objects are never relocated
+             */
+            activeProfileId: string | null;
+            profiles: components["schemas"]["StorageProfile"][];
+        };
+        CreateStorageProfileRequest: {
+            expectedVersion: number;
+            name: string;
+            provider: components["schemas"]["StorageProvider"];
+            /**
+             * Format: uri
+             * @description HTTPS service endpoint without bucket or path
+             */
+            endpoint: string;
+            region: string;
+            bucket: string;
+            keyPrefix: string;
+            /** @description Available only for S3 compatible services */
+            pathStyle: boolean;
+            accessKeyId: string;
+            secretAccessKey: string;
+        };
+        ActivateStorageProfileRequest: {
+            expectedVersion: number;
+            /** Format: uuid */
+            profileId: string | null;
+        };
+        RotateStorageCredentialsRequest: {
+            expectedVersion: number;
+            accessKeyId: string;
+            secretAccessKey: string;
         };
         LlmSettings: {
             configured: boolean;
@@ -2142,6 +2394,7 @@ export interface components {
             expectedVersion: number;
             prompt: string;
             parameters: components["schemas"]["ImageGenerationParameters"];
+            /** @description RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。 */
             durationSeconds?: number | null;
             /** Format: uuid */
             capabilityId?: string | null;
@@ -2226,6 +2479,7 @@ export interface components {
             canvasItemId: string;
             prompt: string;
             parameters: components["schemas"]["ImageGenerationParameters"];
+            /** @description RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。 */
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
@@ -2249,6 +2503,10 @@ export interface components {
         };
         /** @description 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
         ImageGenerationParameters: {
+            /** @description RunningHub only. Named media values are exact version UUIDs matched against mediaInputs; arbitrary URLs are rejected. */
+            dynamicValues?: {
+                [key: string]: components["schemas"]["RunningHubScalar"];
+            };
             speaker?: string;
             speechRate?: number;
             loudnessRate?: number;
@@ -2266,7 +2524,7 @@ export interface components {
         /** @enum {string} */
         VideoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
         /** @enum {string} */
-        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE";
+        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE" | "VIDEO_REFERENCE";
         SaveMediaInput: {
             /** Format: uuid */
             versionId: string;
@@ -3061,6 +3319,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description 对象存储连接、权限或网络不可用；生成结果只重试归档，不重新生成 */
+        ObjectStorageFailure: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description 部署凭证加密主密钥尚未配置 */
         Unavailable: {
             headers: {
@@ -3399,6 +3666,118 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    getStorageSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Storage configuration; null activeProfileId means local storage */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createStorageProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved destinations; creating a profile does not switch the default */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    activateStorageProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description New default destination */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    rotateStorageCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateStorageCredentialsRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated credential mask; no secrets are returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
     getLlmSettings: {
         parameters: {
             query?: never;
@@ -3599,6 +3978,53 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    previewRunningHubImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunningHubImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Requires explicit field/output review before publishing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunningHubImportPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Invalid sanitized input contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Discovery unavailable; use sanitized local JSON import */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     createMediaCapability: {
@@ -3965,6 +4391,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 图片超过大小限制 */
             413: {
                 headers: {
@@ -3979,6 +4406,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     uploadAudioAsset: {
@@ -4011,6 +4439,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 音频超过大小限制 */
             413: {
                 headers: {
@@ -4025,6 +4454,55 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
+        };
+    };
+    uploadVideoAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 素材已归档 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 视频超过大小限制 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 视频格式、解码或像素限制未通过 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     getAssetContent: {
@@ -4062,6 +4540,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 请求的字节范围不可用 */
             416: {
                 headers: {
@@ -4069,6 +4548,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     headAssetContent: {
@@ -4101,6 +4581,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 请求的字节范围不可用 */
             416: {
                 headers: {
@@ -4108,6 +4589,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     getAssetMetadata: {
@@ -4158,6 +4640,8 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ObjectStorageFailure"];
         };
     };
     listArtifacts: {

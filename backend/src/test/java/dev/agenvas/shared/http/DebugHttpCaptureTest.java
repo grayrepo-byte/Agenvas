@@ -63,6 +63,16 @@ class DebugHttpCaptureTest {
         } finally { server.stop(0); }
     }
 
+    @Test void removesAutoDlSignedTosCredentialsFromUrlsAndJsonBodies() {
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        String url = "https://cg-comfyui-prod.tos-cn-beijing.volces.com/comfyui/outputs/test.mp4?X-Tos-Signature=secret-sig&X-Tos-Credential=secret-credential";
+        try (var scope = DebugHttpCapture.open(saved::set)) {
+            DebugHttpCapture.begin("GET", url, ("{\"url\":\"" + url + "\"}").getBytes(StandardCharsets.UTF_8), "application/json");
+        }
+        assertThat(MAPPER.writeValueAsString(saved.get())).contains("REDACTED")
+                .doesNotContain("secret-sig", "secret-credential");
+    }
+
     @Test void disabledDoesNotReadRequestOrCreateCheckpointsAndScopeDoesNotLeakOnFailure() {
         assertThat(DebugHttpCapture.begin("POST", "http://127.0.0.1:80/test", "private".getBytes(), "text/plain")).isEqualTo(-1);
         assertThatThrownBy(() -> {

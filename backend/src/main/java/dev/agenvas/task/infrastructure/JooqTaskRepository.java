@@ -64,6 +64,22 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     @Override
+    public Optional<dev.agenvas.provider.domain.ProviderResultManifest> providerResultManifest(UUID taskId) {
+        return dsl.select(TASK.PROVIDER_RESULT_MANIFEST).from(TASK).where(TASK.ID.eq(taskId))
+                .and(TASK.PROVIDER_RESULT_MANIFEST.isNotNull()).fetchOptional(TASK.PROVIDER_RESULT_MANIFEST)
+                .map(value -> objectMapper.readValue(value.data(), dev.agenvas.provider.domain.ProviderResultManifest.class));
+    }
+
+    @Override
+    public boolean checkpointProviderResults(Task lease, String workerId,
+            dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now) {
+        return dsl.update(TASK).set(TASK.PROVIDER_RESULT_MANIFEST, JSONB.valueOf(objectMapper.writeValueAsString(manifest)))
+                .where(TASK.ID.eq(lease.id())).and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch())).and(TASK.LEASE_OWNER.eq(workerId))
+                .and(TASK.LEASE_UNTIL.gt(utc(now))).and(TASK.PROVIDER_RESULT_MANIFEST.isNull()).execute() == 1;
+    }
+
+    @Override
     public void bindMediaTask(UUID taskId, MediaCapabilityBinding binding) {
         int changed = dsl.update(TASK)
                 .set(TASK.CAPABILITY_ID, binding.capabilityId())

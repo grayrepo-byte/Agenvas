@@ -2,6 +2,8 @@ import type { MediaCapability } from "../../shared/api/client";
 import { Select } from "../../shared/ui/Select";
 import { adapterMetadata } from "./mediaAdapterCatalog";
 
+import { autodlWorkflow } from "./AutoDlWorkflowFields";
+import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
 type Settings = MediaCapability["settings"];
 type Parameters = NonNullable<Settings["defaultParameters"]>;
 const IMAGE_RATIOS = ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"] as const;
@@ -15,7 +17,10 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
   adapterId: string; values: Settings; onChange: (value: Settings) => void;
   section: "defaults" | "limits" | "pricing";
 }) {
-  const adapter = adapterMetadata(adapterId);
+  const metadata = adapterMetadata(adapterId);
+  const workflow = adapterId === AUTODL_ADAPTER ? autodlWorkflow(values) : undefined;
+  const adapter = metadata && workflow ? { ...metadata, minimum: workflow.minimumSeconds,
+    maximum: workflow.maximumSeconds, references: workflow.imageFields.length } : metadata;
   if (!adapter) return null;
   const image = adapter.kind === "IMAGE_GENERATION";
   const audio = adapter.kind === "AUDIO_GENERATION";
@@ -80,11 +85,11 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
         </label>
       </> : null}
       <label className="ui-field">最多参考图数量
-        <input type="number" min={0} max={adapter.references} step={1}
+        <input type="number" min={workflow?.minimumImages ?? 0} max={adapter.references} step={1}
           value={values.maxReferenceImages ?? ""} placeholder={String(adapter.references)}
           onChange={(event) => onChange({ ...values, maxReferenceImages: event.target.value ? Number(event.target.value) : undefined })} />
       </label>
-      {audio || adapterId === "MOCK_VIDEO" || adapterId === "ARK_SEEDANCE_2_I2V" ? <label className="ui-field">最多参考音频数量<input type="number" min={0} max={3} step={1} value={values.maxReferenceAudios ?? ""} placeholder="3" onChange={(event) => onChange({ ...values, maxReferenceAudios: event.target.value ? Number(event.target.value) : undefined })} /></label> : null}
+      {audio || adapterId === "MOCK_VIDEO" || adapterId === "ARK_SEEDANCE_2_I2V" || (workflow && workflow.audioFields.length > 0) ? <label className="ui-field">最多参考音频数量<input type="number" min={workflow?.minimumAudios ?? 0} max={workflow?.audioFields.length ?? 3} step={1} value={values.maxReferenceAudios ?? ""} placeholder={String(workflow?.audioFields.length ?? 3)} onChange={(event) => onChange({ ...values, maxReferenceAudios: event.target.value ? Number(event.target.value) : undefined })} /></label> : null}
       <p className="ui-muted">{image || audio ? "" : `固定协议支持 ${adapter.minimum}–${adapter.maximum} 秒；`}参考图最多 {adapter.references} 张。留空使用协议范围；可收紧限制，超限草稿需手动调整。</p>
     </div> : null}
     {section === "pricing" ? <div className="media-config-section ui-form-grid">

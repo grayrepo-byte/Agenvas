@@ -14,6 +14,8 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
@@ -527,6 +529,31 @@ public class TaskService {
         });
     }
 
+    public record ArchivedProviderResult(int ordinal, Artifact.Kind kind, boolean primary, JsonNode content) {}
+
+    @Transactional(readOnly = true)
+    public Optional<ProviderResultManifest> providerResultManifest(Task lease) {
+        if (tasks.findById(lease.id()).filter(task -> task.projectId().equals(lease.projectId())).isEmpty()) throw notFound();
+        return tasks.providerResultManifest(lease.id());
+    }
+
+    /** Immutable download checkpoint under the same fencing epoch, before any result bytes are archived. */
+    @Transactional
+    public void checkpointProviderResults(Task lease, String workerId, ProviderResultManifest manifest) {
+        if (manifest == null || manifest.schemaVersion() != ProviderResultManifest.SCHEMA_VERSION
+                || manifest.results() == null || manifest.results().isEmpty()
+                || manifest.results().size() > RunningHubDefinition.MAX_OUTPUTS
+                || manifest.results().stream().anyMatch(java.util.Objects::isNull)
+                || manifest.results().stream().filter(ProviderResultManifest.Result::primary).count() != 1) throw validation("结果清单无效。");
+        for (int index = 0; index < manifest.results().size(); index++) {
+            var result = manifest.results().get(index);
+            if (result.ordinal() != index || result.kind() == null || result.url() == null || result.url().isBlank()
+                    || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
+                throw validation("结果清单的顺序或媒体类型无效。");
+        }
+        if (!tasks.checkpointProviderResults(lease, validateWorkerId(workerId), manifest, clock.instant())) throw leaseLost();
+    }
+
     /**
      * 将同步媒体结果归档为不可变产物版本。只有 Run 仍活动且目标产物未被用户改动时才自动选用新版本。
      * 取消后晚到或固定输入已过期的结果保留在历史中，不推进下游依赖。
@@ -534,6 +561,24 @@ public class TaskService {
     @Transactional
     public ArtifactService.TaskVersionResult succeedWithArtifact(
             Task lease, String workerId, JsonNode content) {
+        return succeedWithArtifacts(lease, workerId, List.of(new ArchivedProviderResult(0,
+                Artifact.Kind.valueOf(lease.kind().name().replace("_GENERATION", "")), true, content)), null);
+    }
+
+    /** All output versions, cards and the final state commit together, so retries cannot duplicate cards. */
+    @Transactional
+    public ArtifactService.TaskVersionResult succeedWithArtifacts(Task lease, String workerId,
+            List<ArchivedProviderResult> results, JsonNode providerUsage) {
+        if (results == null || results.isEmpty() || results.size() > RunningHubDefinition.MAX_OUTPUTS
+                || results.stream().anyMatch(java.util.Objects::isNull)
+                || results.stream().filter(ArchivedProviderResult::primary).count() != 1) throw validation("生成结果清单无效。");
+        for (int index = 0; index < results.size(); index++) {
+            var result = results.get(index);
+            if (result.ordinal() != index || result.kind() == null || result.kind() == Artifact.Kind.TEXT
+                    || result.content() == null || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
+                throw validation("生成结果的顺序或媒体类型无效。");
+        }
+        JsonNode content = results.stream().filter(ArchivedProviderResult::primary).findFirst().orElseThrow().content();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         Instant now = clock.instant();
         return events.recordChange(ownerId, lease.projectId(), () -> {
@@ -598,6 +643,22 @@ public class TaskService {
             output.put("artifactId", artifactId.toString());
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
+            var extraOutputs = output.putArray("additionalResults");
+            int outputIndex = 1;
+            for (ArchivedProviderResult extra : results) {
+                if (extra.primary()) continue;
+                if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) throw validation("额外结果 sourceTaskId 无效。");
+                Artifact extraArtifact = artifacts.get(ownerId, lease.projectId(), artifactId).artifact();
+                if (extraArtifact.kind() != extra.kind()) extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(), "RunningHub " + extra.kind() + " " + (outputIndex + 1));
+                var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,
+                        extraArtifact.version(), extra.content(), lease.input().path("mediaInput"), false);
+                var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), canvasItemId, extraArtifact.id(), outputIndex++, lease.input().path("mediaInput"));
+                if (extraCard != null) canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), extraVersion.versionId());
+                boolean extraSelected = extraCard != null && !canceled && !projectArchived && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), null, extraVersion.versionId(), null, null);
+                extraOutputs.addObject().put("ordinal", extra.ordinal()).put("artifactId", extraArtifact.id().toString())
+                        .put("canvasItemId", extraCard == null ? null : extraCard.id().toString()).put("artifactVersionId", extraVersion.versionId().toString()).put("selected", extraSelected);
+            }
+            if (providerUsage != null) output.set("providerUsage", providerUsage.deepCopy());
             if (canceled) {
                 preserveCanceledResult(lease, workerId, output, now);
             } else if (!(acknowledgedPoll
@@ -689,6 +750,7 @@ public class TaskService {
                 && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(errorCode)
                 && !"PROVIDER_UNSUPPORTED_INPUT".equals(errorCode)
                 && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)
+                && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
                 && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)) {
             throw validation("不支持的提交前阻断原因。");
         }
@@ -1055,15 +1117,17 @@ public class TaskService {
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
                         : task.kind() == Task.Kind.AUDIO_GENERATION ? "TEXT" : current.videoInputMode().name();
                 if (!currentMode.equals(frozen.path("mode").asText())
-                        || current.mediaInputs().size() != frozen.path("images").size() + frozen.path("audios").size()) {
+                        || current.mediaInputs().size() != frozen.path("images").size() + frozen.path("audios").size() + frozen.path("videos").size()) {
                     return false;
                 }
                 int imageIndex = 0;
                 int audioIndex = 0;
+                int videoIndex = 0;
                 for (MediaDraft.MediaInput currentImage : current.mediaInputs()) {
                     boolean audio = currentImage.role() == MediaDraft.InputRole.AUDIO_REFERENCE;
-                    int index = audio ? audioIndex++ : imageIndex++;
-                    JsonNode frozenImage = frozen.path(audio ? "audios" : "images").get(index);
+                    boolean video = currentImage.role() == MediaDraft.InputRole.VIDEO_REFERENCE;
+                    int index = audio ? audioIndex++ : video ? videoIndex++ : imageIndex++;
+                    JsonNode frozenImage = frozen.path(audio ? "audios" : video ? "videos" : "images").get(index);
                     if (frozenImage == null
                             || !currentImage.versionId().toString().equals(
                                     frozenImage.path("versionId").asText())
@@ -1073,7 +1137,7 @@ public class TaskService {
                         return false;
                     }
                     artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
-                            currentImage.versionId(), audio ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
+                            currentImage.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(currentImage.role()));
                 }
                 return true;
             } catch (ApiProblemException | IllegalArgumentException unavailable) {

@@ -48,8 +48,13 @@ class AssetControllerStreamingTest {
                 1_000,
                 "private-poster-key", 1L, "poster-hash", Instant.now());
         AssetService service = mock(AssetService.class);
-        when(service.get(principal.userId(), projectId, assetId))
-                .thenReturn(new AssetService.AssetFile(asset, file));
+        var descriptor = new AssetService.AssetContent(asset, asset.objectKey(), size, asset.contentType());
+        when(service.content(principal.userId(), projectId, assetId, false)).thenReturn(descriptor);
+        var storage = new dev.agenvas.asset.infrastructure.LocalAssetStorage(
+                new dev.agenvas.asset.application.AssetProperties(directory), null, null);
+        when(service.open(org.mockito.ArgumentMatchers.eq(descriptor), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong())).thenAnswer(invocation ->
+                        storage.open("large-video.mp4", invocation.getArgument(1), invocation.getArgument(2), size));
         AssetController controller = new AssetController(service);
 
         ResponseEntity<InputStreamResource> full = controller.content(

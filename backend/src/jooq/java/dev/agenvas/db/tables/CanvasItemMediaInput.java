@@ -44,7 +44,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Ordered exact image/audio versions with card-local source and color identity.
+ * Deduplicated exact media versions; dynamicValues maps named capability slots
+ * to these version identities.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaInput extends TableImpl<CanvasItemMediaInputRecord> {
@@ -110,7 +111,7 @@ public class CanvasItemMediaInput extends TableImpl<CanvasItemMediaInputRecord> 
     }
 
     private CanvasItemMediaInput(Name alias, Table<CanvasItemMediaInputRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Ordered exact image/audio versions with card-local source and color identity."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Deduplicated exact media versions; dynamicValues maps named capability slots to these version identities."), TableOptions.table(), where);
     }
 
     /**
@@ -237,7 +238,7 @@ public class CanvasItemMediaInput extends TableImpl<CanvasItemMediaInputRecord> 
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_canvas_item_media_input_color"), "(((color)::text ~ '^#[0-9A-F]{6}$'::text))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_media_input_order"), "((input_order >= 0))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_media_input_role"), "(((input_role)::text = ANY ((ARRAY['REFERENCE'::character varying, 'START_FRAME'::character varying, 'END_FRAME'::character varying, 'AUDIO_REFERENCE'::character varying])::text[])))", true)
+            Internal.createCheck(this, DSL.name("ck_canvas_item_media_input_role"), "(((input_role)::text = ANY ((ARRAY['REFERENCE'::character varying, 'START_FRAME'::character varying, 'END_FRAME'::character varying, 'AUDIO_REFERENCE'::character varying, 'VIDEO_REFERENCE'::character varying])::text[])))", true)
         );
     }
 

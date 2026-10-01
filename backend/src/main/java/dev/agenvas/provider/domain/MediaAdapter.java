@@ -10,4 +10,7 @@ public interface MediaAdapter {
     default String candidateOriginSha256(AttemptContext context) { return null; }
     Submission submit(AttemptContext context);
     Submission reconcile(AttemptContext context);
+    default MediaPayload downloadResult(AttemptContext context, ProviderResultManifest.Result result) {
+        throw new UnsupportedOperationException("Adapter has no result download protocol");
+    }
 }

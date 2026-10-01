@@ -74,7 +74,9 @@ public class ArtifactContentValidator {
         allowOnly(content, "assetId", "prompt", "negativePrompt",
                 "providerConfigVersion", "workflowVersion", "parameters", "sourceTaskId");
         requireUuid(content, "assetId");
-        requireText(content, "prompt", 1, 8_000);
+        // Some published workflow/app contracts have no prompt input. Task acceptance
+        // checks required inputs; immutable results retain the actual, possibly empty text.
+        requireText(content, "prompt", 0, 20_000);
         optionalText(content, "negativePrompt", 8_000);
         requireInteger(content, "providerConfigVersion", 1, Integer.MAX_VALUE);
         requireText(content, "workflowVersion", 1, 120);

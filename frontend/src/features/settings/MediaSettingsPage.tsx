@@ -15,8 +15,11 @@ import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import "./MediaSettingsPage.css";
 import { adapterLabel, adapterMetadata, adapterModel, platformAdapters } from "./mediaAdapterCatalog";
+import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp, googleImageApiLabel } from "./GoogleImageConnectionHelp";
+import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
+import { AUTODL_ADAPTER, AUTODL_DEFAULT_WORKFLOW } from "../../shared/autodlWorkflows";
 type AdapterSettings = MediaCapability["settings"];
 const MODEL_LIMIT = 120;
 
@@ -44,11 +47,16 @@ function fixedModelFields(adapterId: string) {
 }
 
 function fixedModelSettings(adapterId: string, values: AdapterSettings) {
+  if (adapterId.startsWith("RUNNINGHUB_")) return { runningHub: values.runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
   const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
     maxReferenceImages, maxReferenceAudios, pricing } = values;
-  return { ...fields, ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
+  return { ...fields, ...(adapterId === AUTODL_ADAPTER ? {
+    workflowId: values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
+    ...(values.videoResolution ? { videoResolution: values.videoResolution } : {}),
+    ...(values.seed !== undefined ? { seed: values.seed } : {}),
+  } : {}), ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
     ...(defaultParameters ? { defaultParameters } : {}),
     ...(defaultDurationSeconds !== undefined ? { defaultDurationSeconds } : {}),
     ...(minimumSeconds !== undefined ? { minimumSeconds } : {}),
@@ -74,6 +82,7 @@ function FixedModelFields({ adapterId, values, onChange }: {
   onChange: (value: AdapterSettings) => void;
 }) {
   return <>
+    {adapterId === AUTODL_ADAPTER ? <AutoDlWorkflowFields values={values} onChange={onChange} /> : null}
     {adapterModel(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1"].includes(adapterId) ? <label className="ui-field">模型选项
       <Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
         model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
@@ -105,15 +114,21 @@ const EDITOR_TABS = [
 ] as const;
 type EditorTab = typeof EDITOR_TABS[number]["id"];
 
-function CapabilityEditorFields({ name, onNameChange, adapterId, onAdapterChange, availableAdapters,
+function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
   values, onChange, creating = false, disabled }: {
-  name: string; onNameChange: (value: string) => void;
+  connectionId: string; name: string; onNameChange: (value: string) => void;
   adapterId: string; onAdapterChange: (value: string) => void; availableAdapters: string[];
   values: AdapterSettings; onChange: (value: AdapterSettings) => void;
   creating?: boolean; disabled: boolean;
 }) {
   const [tab, setTab] = useState<EditorTab>("model");
   const id = useId();
+  if (adapterId.startsWith("RUNNINGHUB_")) return <div className="ui-stack"><fieldset disabled={disabled} className="ui-stack">
+    <label className="ui-field">{creating ? "新能力名称" : "能力名称"}<input required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></label>
+    <label className="ui-field">主输出类型<Select value={adapterId} onChange={(event) => onAdapterChange(event.target.value)}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></label>
+    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub} onChange={(runningHub) => onChange({ ...values, runningHub })} />
+    <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
+  </fieldset></div>;
   return <div className="media-editor ui-stack" onInvalidCapture={(event) => {
     // Reveal the invalid field before native form validation tries to focus it.
     const input = event.target;
@@ -168,6 +183,7 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
 }) {
   const helpId = useId();
   return <>
+    {platform === "RUNNINGHUB" ? <label className="ui-field">RunningHub API 地址<input value={origin} onChange={(event) => onOriginChange(event.target.value)} placeholder="https://www.runninghub.ai" /></label> : null}
     {platform === "COMFYUI" ? <label className="ui-field">本机 ComfyUI 地址
       <input value={origin} onChange={(event) => onOriginChange(event.target.value)}
         required placeholder="http://127.0.0.1:8188" />
@@ -178,11 +194,12 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
         maxLength={ORIGIN_LIMIT} placeholder={platform === "GOOGLE" ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"} />
     </label> : null}
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
+    {platform === "AUTODL" ? <><label className="ui-field">固定 API 地址<input value="https://autodl.art/api/v1/comfyui/comfyui_workflow" readOnly /></label><p className="ui-muted">填写令牌管理中分组为 ComfyUI 的 Token。任务异步查询，取消不保证外部停止或退款。</p></> : null}
     {platform === "VOLCENGINE" ? <label className="ui-field">固定 API 地址<input value="https://openspeech.bytedance.com/api/v3/tts/create" readOnly /></label> : null}
     {platform === "ARK" ? <label className="ui-field">固定 API 地址
       <input value="https://ark.cn-beijing.volces.com/api/v3" readOnly />
     </label> : null}
-    {platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" ? <label className="ui-field">
+    {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" ? <label className="ui-field">
       {creating ? "API Key" : "替换 API Key（留空则不修改）"}
       <input type="password" autoComplete="new-password" value={apiKey}
         onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
@@ -300,7 +317,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       </>}>
       <div className="ui-stack">
         {isStale ? <ConfigurationUpdatedNotice scope="能力参数" disabled={rowBusy} onReload={loadLatest} /> : null}
-        <CapabilityEditorFields name={name} onNameChange={setName} adapterId={adapterId}
+        <CapabilityEditorFields connectionId={connectionId} name={name} onNameChange={setName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setModelNames({}); }} availableAdapters={sameKindAdapters}
           values={modelNames} onChange={setModelNames} disabled={rowBusy} />
         {error ? <Notice tone="danger">{error}</Notice> : null}
@@ -384,7 +401,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
       expectedVersion: baseline.version, name: name.trim(), enabled: baseline.enabled,
-      origin: connection.platform === "COMFYUI" || connection.platform === "OPENAI" || connection.platform === "GOOGLE"
+      origin: connection.platform === "RUNNINGHUB" || connection.platform === "COMFYUI" || connection.platform === "OPENAI" || connection.platform === "GOOGLE"
         ? origin.trim() || null : null,
       apiKey: apiKey || null,
     }),
@@ -494,7 +511,7 @@ function ConnectionRow({ connection, settings, apply }: {
         <button className="primary-button" type="submit" disabled={busy || !connection.enabled}>{addCapability.isPending ? "正在发布…" : "发布能力"}</button>
       </>}>
       <div className="ui-stack">
-        <CapabilityEditorFields name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
+        <CapabilityEditorFields connectionId={connection.id} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setNewModelNames({}); }} availableAdapters={availableAdapters}
           values={newModelNames} onChange={setNewModelNames} creating disabled={busy || !connection.enabled} />
         {!connection.enabled ? <Notice tone="warning">启用连接后可发布新能力。</Notice> : null}
@@ -510,7 +527,7 @@ export function MediaSettingsPage() {
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE">("COMFYUI");
+  const [platform, setPlatform] = useState<"RUNNINGHUB" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL">("COMFYUI");
   const [origin, setOrigin] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -519,7 +536,7 @@ export function MediaSettingsPage() {
   const create = useMutation({
     mutationFn: () => {
       const payload = { name: name.trim(), platform,
-        origin: platform === "COMFYUI" || platform === "OPENAI" || platform === "GOOGLE"
+        origin: platform === "RUNNINGHUB" || platform === "COMFYUI" || platform === "OPENAI" || platform === "GOOGLE"
           ? origin.trim() || null : null,
         apiKey: platform === "COMFYUI" ? null : apiKey };
       connectionCreateKey.current = stableCreateKey(connectionCreateKey.current, JSON.stringify(payload));
@@ -592,8 +609,8 @@ export function MediaSettingsPage() {
               </label>
               <label className="ui-field">平台
                 <Select value={platform} onChange={(event) => { setPlatform(event.target.value as typeof platform); setOrigin(""); setApiKey(""); }}>
-                  <option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
-                  <option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">火山方舟</option><option value="VOLCENGINE">火山引擎 · Seed Audio</option>
+                  <option value="RUNNINGHUB">RunningHub</option><option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
+                  <option value="AUTODL">AutoDL · ComfyUI 工作流</option><option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">火山方舟</option><option value="VOLCENGINE">火山引擎 · Seed Audio</option>
                 </Select>
               </label>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}

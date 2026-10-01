@@ -189,6 +189,22 @@ button:disabled {
 
 .workspace-tool-menu button > span { width: 0.85rem; }
 .workspace-tool-menu kbd { margin-left: auto; color: #999; font: inherit; }
+.workspace-settings { position: relative; }
+.workspace-settings-trigger {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+}
+.workspace-settings-trigger:hover:enabled { background: var(--ui-hover); }
+.workspace-settings-trigger:focus-visible { outline: 1px solid var(--ui-focus); }
+.workspace-settings-trigger:disabled { opacity: .5; }
+.workspace-settings-menu { position: absolute; right: calc(100% + 12px); top: 0; width: 290px; }
+.workspace-settings-menu .workspace-settings-check { display: grid; place-items: center; width: 16px; flex-shrink: 0; }
+.workspace-settings-menu button strong, .workspace-settings-menu button small { display: block; }
 .workspace-canvas.is-select-tool .react-flow__pane { cursor: default; }
 .workspace-canvas.is-hand-tool .react-flow__pane,
 .workspace-canvas.is-hand-tool .react-flow__node { cursor: grab; }
@@ -369,40 +385,54 @@ button:disabled {
 
 /* 关系线：颜色与线型由关系类型决定（className 由 projectCanvasRelations 给出），
    选中态在 CSS 里提亮加粗，因此这些样式不能再写成内联 style——内联会压过选中态。 */
+.workspace-shell .relation-edge { --canvas-relation-color: var(--ui-border-strong); }
 .workspace-shell .relation-edge .react-flow__edge-path {
+  stroke: var(--canvas-relation-color);
   stroke-width: 2;
 }
 
-.workspace-shell .relation-edge--input-binding .react-flow__edge-path {
-  stroke: var(--ui-relation-input);
-}
+.workspace-shell .relation-edge--input-binding { --canvas-relation-color: var(--ui-relation-input); }
 
 /* 绑定指向历史版本：语义靠线型表达，不再在线上写文字。 */
 .workspace-shell .relation-edge--input-binding-historical .react-flow__edge-path {
   stroke-dasharray: 4 4;
 }
 
+.workspace-shell .relation-edge--agent-output { --canvas-relation-color: var(--ui-relation-agent-output); }
 .workspace-shell .relation-edge--agent-output .react-flow__edge-path {
-  stroke: var(--ui-relation-agent-output);
   stroke-width: 1.5;
 }
 
+.workspace-shell .relation-edge--reference { --canvas-relation-color: var(--ui-relation-reference); }
 .workspace-shell .relation-edge--reference .react-flow__edge-path {
-  stroke: var(--ui-relation-reference);
   stroke-width: 1.5;
   stroke-dasharray: 4 4;
 }
 
+.workspace-shell .relation-edge--derivation { --canvas-relation-color: var(--ui-relation-derivation); }
 .workspace-shell .relation-edge--derivation .react-flow__edge-path {
-  stroke: var(--ui-relation-derivation);
   stroke-width: 2;
 }
 
+.workspace-shell .relation-edge.selected { --canvas-relation-color: var(--ui-focus); }
 .workspace-shell .relation-edge.selected .react-flow__edge-path {
-  stroke: var(--ui-focus);
   stroke-width: 3.5;
   stroke-dasharray: none;
 }
+
+/* A moving elliptical gradient reveals the curve with a bright center and transparent ends.
+   Alpha compositing blends back into each relation's own color, without hard dash boundaries. */
+.canvas-relation-flow path {
+  fill: none;
+  stroke-linecap: round;
+}
+.canvas-relation-flow__glow { stroke: var(--canvas-relation-color); stroke-width: 7; opacity: .2; }
+.canvas-relation-flow__core {
+  stroke: color-mix(in srgb, var(--canvas-relation-color) 30%, var(--ui-text));
+  stroke-width: 2.5;
+  opacity: .95;
+}
+@media (prefers-reduced-motion: reduce) { .canvas-relation-flow { display: none; } }
 
 /* Keep resize hit areas interactive; the card owns the only visible selection outline. */
 .workspace-shell .react-flow__resize-control.line { border: 0; background: transparent; }

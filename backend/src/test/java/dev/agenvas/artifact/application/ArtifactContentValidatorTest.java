@@ -43,6 +43,12 @@ class ArtifactContentValidatorTest {
     }
 
     @Test
+    void acceptsPromptlessGeneratedMediaWhenTheCapabilityHasNoPromptField() {
+        for (Artifact.Kind kind : new Artifact.Kind[]{Artifact.Kind.IMAGE, Artifact.Kind.VIDEO, Artifact.Kind.AUDIO})
+            assertThat(validate(kind, mediaContent().replace("Coffee commercial", ""))).isEmpty();
+    }
+
+    @Test
     void rejectsPartialUnknownAndMalformedReferenceContent() {
         assertThatThrownBy(() -> validate(Artifact.Kind.TEXT, "{\"format\":\"MARKDOWN\"}"))
                 .isInstanceOfSatisfying(ApiProblemException.class, problem ->

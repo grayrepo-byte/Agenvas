@@ -13,6 +13,7 @@ import dev.agenvas.db.tables.Artifact;
 import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
+import dev.agenvas.db.tables.AssetStorageRoute;
 import dev.agenvas.db.tables.AuditDebugSettings;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
@@ -48,6 +49,8 @@ import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
+import dev.agenvas.db.tables.StorageProfile;
+import dev.agenvas.db.tables.StorageSettings;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskDependency;
@@ -129,6 +132,11 @@ public class Public extends SchemaImpl {
     public final Asset ASSET = Asset.ASSET;
 
     /**
+     * The table <code>public.asset_storage_route</code>.
+     */
+    public final AssetStorageRoute ASSET_STORAGE_ROUTE = AssetStorageRoute.ASSET_STORAGE_ROUTE;
+
+    /**
      * The table <code>public.audit_debug_settings</code>.
      */
     public final AuditDebugSettings AUDIT_DEBUG_SETTINGS = AuditDebugSettings.AUDIT_DEBUG_SETTINGS;
@@ -158,8 +166,8 @@ public class Public extends SchemaImpl {
     public final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 
     /**
-     * Ordered exact image/audio versions with card-local source and color
-     * identity.
+     * Deduplicated exact media versions; dynamicValues maps named capability
+     * slots to these version identities.
      */
     public final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
 
@@ -317,6 +325,16 @@ public class Public extends SchemaImpl {
     public final SpringSessionAttributes SPRING_SESSION_ATTRIBUTES = SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES;
 
     /**
+     * The table <code>public.storage_profile</code>.
+     */
+    public final StorageProfile STORAGE_PROFILE = StorageProfile.STORAGE_PROFILE;
+
+    /**
+     * The table <code>public.storage_settings</code>.
+     */
+    public final StorageSettings STORAGE_SETTINGS = StorageSettings.STORAGE_SETTINGS;
+
+    /**
      * Persistent recoverable work; leases fence workers and never cover
      * provider waiting time.
      */
@@ -388,6 +406,7 @@ public class Public extends SchemaImpl {
             ArtifactVersion.ARTIFACT_VERSION,
             ArtifactVersionReference.ARTIFACT_VERSION_REFERENCE,
             Asset.ASSET,
+            AssetStorageRoute.ASSET_STORAGE_ROUTE,
             AuditDebugSettings.AUDIT_DEBUG_SETTINGS,
             CallLog.CALL_LOG,
             CallLogDebug.CALL_LOG_DEBUG,
@@ -423,6 +442,8 @@ public class Public extends SchemaImpl {
             ProviderAttempt.PROVIDER_ATTEMPT,
             SpringSession.SPRING_SESSION,
             SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES,
+            StorageProfile.STORAGE_PROFILE,
+            StorageSettings.STORAGE_SETTINGS,
             Task.TASK,
             TaskArtifactTarget.TASK_ARTIFACT_TARGET,
             TaskDependency.TASK_DEPENDENCY,

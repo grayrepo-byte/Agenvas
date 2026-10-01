@@ -25,4 +25,10 @@ describe("taskErrorMessages", () => {
     expect(taskErrorDetail(null)).toBe("");
     expect(taskErrorDetail(undefined)).toBe("");
   });
+  it("explains AutoDL permission failures and uncertain submissions", () => {
+    expect(taskErrorMessage("AUTODL_CREDENTIAL_REJECTED")).toContain("ComfyUI 权限");
+    expect(taskErrorMessage("AUTODL_CREATE_UNCERTAIN")).toContain("显式重试");
+    expect(taskErrorMessage("AUTODL_RESULT_EXPIRED")).toContain("已过期");
+  });
+
 });

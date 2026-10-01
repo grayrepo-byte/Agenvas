@@ -104,8 +104,10 @@ public class MediaExecutionWorker {
                     tasks.ownerForWorker(task), null, task.providerRequestId());
             Submission result;
             try {
-                result = callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
-                        () -> adapter.reconcile(attempt), resultValue -> callOutcome(resultValue, task.providerRequestId()));
+                var savedManifest = tasks.providerResultManifest(task);
+                result = savedManifest.isPresent() ? new Submission.CompletedResults(savedManifest.get())
+                        : callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
+                            () -> adapter.reconcile(attempt), resultValue -> callOutcome(resultValue, task.providerRequestId()));
             } catch (RuntimeException transientFailure) {
                 tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
                 continue;
@@ -126,6 +128,15 @@ public class MediaExecutionWorker {
                 }
                 case Submission.CompletedArtifact completed ->
                     tasks.succeedWithArtifact(task, workerId, completed.content());
+                case Submission.CompletedResults completed -> {
+                    try {
+                        if (tasks.providerResultManifest(task).isEmpty()) tasks.checkpointProviderResults(task, workerId, completed.manifest());
+                        var results = archiveResults(attempt, adapter, completed.manifest());
+                        tasks.succeedWithArtifacts(task, workerId, results, completed.manifest().usage());
+                    } catch (RuntimeException archiveFailure) {
+                        tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                    }
+                }
                 case Submission.Rejected rejected -> tasks.fail(task, workerId, rejected.code());
                 case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
                         blocked.code());
@@ -144,6 +155,7 @@ public class MediaExecutionWorker {
         var spec = mapper.readTree(snapshot.specJson());
         String model = spec.path("settings").path("model").asText("");
         if (model.isEmpty()) model = spec.path("modelId").asText(null);
+        if (model == null) model = spec.path("settings").path("workflowId").asText(null);
         if (model == null) model = spec.path("settings").path("checkpoint").asText(null);
         if (model == null) model = spec.path("settings").path("diffusionModel").asText(null);
         boolean mock = snapshot.connection().platform() == MediaPlatform.MOCK;
@@ -185,11 +197,52 @@ public class MediaExecutionWorker {
                     LOGGER.warn("Uncertain submission left to the recovery scan: lease expired");
                 }
             }
+            case Submission.CompletedResults ignored -> throw new IllegalStateException("Results require an acknowledged provider task ID");
             case Submission.Pending ignored -> throw new IllegalStateException(
                     "Submission cannot be pending without an accepted request ID");
             case Submission.Blocked ignored -> throw new IllegalStateException(
                     "Submission cannot be blocked after external submission");
         }
+    }
+
+    private List<TaskService.ArchivedProviderResult> archiveResults(AttemptContext attempt, MediaAdapter adapter,
+            dev.agenvas.provider.domain.ProviderResultManifest manifest) {
+        List<TaskService.ArchivedProviderResult> archived = new java.util.ArrayList<>();
+        for (var result : manifest.results()) {
+            // This is an archive identity, not a new Task or a new provider generation.
+            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + attempt.lease().id() + ":" + result.ordinal())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            java.util.function.Supplier<java.io.InputStream> input = () -> adapter.downloadResult(attempt, result).stream();
+            Asset asset = switch (result.kind()) {
+                case IMAGE -> assets.archiveTaskImage(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+                case AUDIO -> assets.archiveTaskAudio(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+                case VIDEO -> assets.archiveTaskVideo(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+            };
+            ObjectNode content = resultContent(attempt, asset);
+            content.withObject("parameters").put("providerOutputOrdinal", result.ordinal()).put("providerOutputNodeId", result.nodeId());
+            content.withObject("parameters").set("providerUsage", manifest.usage());
+            archived.add(new TaskService.ArchivedProviderResult(result.ordinal(),
+                    dev.agenvas.artifact.domain.Artifact.Kind.valueOf(result.kind().name()), result.primary(), content));
+        }
+        return List.copyOf(archived);
+    }
+
+    private ObjectNode resultContent(AttemptContext attempt, Asset asset) {
+        Task task = attempt.lease();
+        ObjectNode content = mapper.createObjectNode();
+        content.put("assetId", asset.id().toString());
+        content.put("prompt", task.input().path("prompt").asText());
+        if (task.input().has("negativePrompt")) content.put("negativePrompt", task.input().path("negativePrompt").asText());
+        content.put("sourceTaskId", task.id().toString());
+        content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
+        content.put("workflowVersion", task.input().path("workflowVersion").asText());
+        ObjectNode parameters = content.putObject("parameters");
+        JsonNode frozen = task.input().path("mediaInput").path("parameters");
+        if (frozen.isObject()) frozen.properties().forEach(entry -> parameters.set(entry.getKey(), entry.getValue().deepCopy()));
+        parameters.put("adapterId", attempt.binding().adapterId());
+        parameters.put("capabilityId", attempt.binding().capabilityId().toString());
+        parameters.put("providerRequestId", attempt.originalRequestId() != null ? attempt.originalRequestId() : attempt.requestKey());
+        return content;
     }
 
     /** Archive bytes by task identity before committing the immutable artifact version. */
@@ -203,27 +256,7 @@ public class MediaExecutionWorker {
                         ? assets.archiveTaskAudio(attempt.ownerId(), task.projectId(), task.id(), payload::stream)
                         : assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(),
                             payload::stream);
-            ObjectNode content = mapper.createObjectNode();
-            content.put("assetId", asset.id().toString());
-            content.put("prompt", task.input().path("prompt").asText());
-            if (task.input().has("negativePrompt")) {
-                content.put("negativePrompt", task.input().path("negativePrompt").asText());
-            }
-            content.put("sourceTaskId", task.id().toString());
-            content.put("providerConfigVersion",
-                    task.input().path("providerConfigVersion").asInt());
-            content.put("workflowVersion", task.input().path("workflowVersion").asText());
-            ObjectNode parameters = content.putObject("parameters");
-            JsonNode frozenParameters = task.input().path("mediaInput").path("parameters");
-            if (frozenParameters.isObject()) {
-                frozenParameters.properties().forEach(entry ->
-                        parameters.set(entry.getKey(), entry.getValue().deepCopy()));
-            }
-            parameters.put("adapterId", attempt.binding().adapterId());
-            parameters.put("capabilityId", attempt.binding().capabilityId().toString());
-            parameters.put("providerRequestId", attempt.originalRequestId() != null
-                    ? attempt.originalRequestId() : attempt.requestKey());
-            return content;
+            return resultContent(attempt, asset);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close media response", failure);
         }

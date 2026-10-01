@@ -12,6 +12,7 @@ import dev.agenvas.db.tables.AgentRun.AgentRunPath;
 import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
+import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
 import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
@@ -231,6 +232,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _appUser = new AppUserPath(this, Keys.PROJECT__PROJECT_OWNER_ID_FKEY, null);
 
         return _appUser;
+    }
+
+    private transient AssetStorageRoutePath _assetStorageRoute;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.asset_storage_route</code> table
+     */
+    public AssetStorageRoutePath assetStorageRoute() {
+        if (_assetStorageRoute == null)
+            _assetStorageRoute = new AssetStorageRoutePath(this, null, Keys.ASSET_STORAGE_ROUTE__ASSET_STORAGE_ROUTE_PROJECT_ID_FKEY.getInverseKey());
+
+        return _assetStorageRoute;
     }
 
     private transient CallLogPath _callLog;

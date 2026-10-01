@@ -14,7 +14,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Ordered exact image/audio versions with card-local source and color identity.
+ * Deduplicated exact media versions; dynamicValues maps named capability slots
+ * to these version identities.
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMediaInputRecord> {
