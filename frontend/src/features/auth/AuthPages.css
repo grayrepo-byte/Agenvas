@@ -9,7 +9,8 @@
   background: var(--canvas);
   color: var(--ink);
 }
-.auth-brand { display: flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 650; letter-spacing: -.03em; }
+.auth-brand { display: flex; align-items: center; justify-content: center; }
+.auth-brand .brand-logo { width: 224px; max-width: 100%; }
 .auth-card { width: 100%; max-width: 420px; padding: 30px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: 0 14px 54px #0003; }
 .auth-card-heading { margin-bottom: 28px; }
 .auth-eyebrow { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .16em; }

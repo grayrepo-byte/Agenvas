@@ -7,6 +7,7 @@ import { ApiError, getCurrentUser, logout } from "../api/client";
 import { LoadingState } from "./LoadingState";
 import { Notice } from "./PagePrimitives";
 import { useNavigationStore } from "./navigationStore";
+import { BrandLogo } from "./BrandLogo";
 import "./PageShell.css";
 import { LanguageSelect } from "../i18n/LanguageSelect";
 
@@ -55,8 +56,8 @@ export function PageShell({ title, description, actions, children }: {
     <a className="app-skip-link" href="#page-content">{t("跳至页面内容")}</a>
     <aside className="app-sidebar" aria-label={t("应用侧栏")}>
       <div className="app-sidebar-brand"><Link to="/projects" aria-label={t("Agenvas 项目首页")}>
-        <span className="app-brand-mark" aria-hidden><Cube size={21} weight="duotone" /></span>
-        <span className="app-sidebar-copy">Agenvas</span>
+        <BrandLogo className="app-brand-horizontal" decorative />
+        <BrandLogo variant="square" className="app-brand-square" decorative />
       </Link><button className="app-sidebar-toggle" type="button" aria-label={collapsed ? t("展开导航") : t("收起导航")}
         aria-expanded={!collapsed} aria-controls="app-navigation" onClick={toggleNavigation}><SidebarSimple size={18} /></button></div>
       <span className="app-sidebar-section app-sidebar-copy">{t("工作空间")}</span>

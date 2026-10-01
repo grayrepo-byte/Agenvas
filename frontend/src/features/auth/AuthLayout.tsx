@@ -1,8 +1,8 @@
 import { t, useLocale } from "../../shared/i18n";
-import { Stack } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { ApiError } from "../../shared/api/client";
 import { Notice } from "../../shared/ui/PagePrimitives";
+import { BrandLogo } from "../../shared/ui/BrandLogo";
 import "./AuthPages.css";
 import { LanguageSelect } from "../../shared/i18n/LanguageSelect";
 
@@ -15,7 +15,7 @@ export function AuthLayout({ title, description, children }: {
   useLocale();
   return (
     <main className="auth-page app-theme">
-      <div className="auth-brand"><Stack size={22} weight="duotone" aria-hidden="true" /><span>Agenvas</span></div>
+      <div className="auth-brand"><BrandLogo /></div>
       <LanguageSelect />
       <section className="auth-card" aria-labelledby="auth-title">
         <header className="auth-card-heading"><span className="auth-eyebrow">AGENT CANVAS</span><h1 id="auth-title">{title}</h1><p>{description}</p></header>
