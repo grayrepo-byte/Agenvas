@@ -1,0 +1,35 @@
+{
+  "runningHub": {
+    "schemaVersion": 1,
+    "protocolVersion": "V2",
+    "targetType": "WORKFLOW",
+    "targetId": "2093983063180054529",
+    "instanceType": "default",
+    "usePersonalQueue": false,
+    "fields": [
+      {"key":"prompt","label":"提示词","type":"STRING","required":true,"nodeId":"263","fieldName":"text","source":"PROMPT"},
+      {"key":"seconds","label":"时长/秒","type":"INTEGER","required":true,"minimum":5,"maximum":5,"nodeId":"259","fieldName":"value","source":"DURATION_SECONDS","encoding":"STRING"},
+      {"key":"reference","label":"参考图1","type":"IMAGE","required":true,"nodeId":"51","fieldName":"image","resourceFormat":"FILE_NAME"},
+      {"key":"aspectRatio","label":"比例","type":"SELECT","defaultValue":"16:9 (Widescreen)","nodeId":"252","fieldName":"aspect_ratio","options":[{"label":"16:9","value":"16:9 (Widescreen)"}]},
+      {"key":"megapixels","label":"像素/百万","type":"NUMBER","defaultValue":0.2,"minimum":0.2,"maximum":0.5,"nodeId":"252","fieldName":"megapixels","encoding":"STRING"},
+      {"key":"upscale","label":"放大倍数","type":"NUMBER","defaultValue":1,"minimum":1,"maximum":1.5,"advanced":true,"nodeId":"283","fieldName":"value","encoding":"STRING"}
+    ],
+    "fixedBindings": [
+      {"nodeId":"49","fieldName":"image","value":"None"},
+      {"nodeId":"50","fieldName":"image","value":"None"},
+      {"nodeId":"43","fieldName":"image","value":"None"},
+      {"nodeId":"19","fieldName":"image","value":"None"},
+      {"nodeId":"23","fieldName":"image","value":"None"},
+      {"nodeId":"48","fieldName":"audio","value":"None"},
+      {"nodeId":"14","fieldName":"audio","value":"None"},
+      {"nodeId":"15","fieldName":"audio","value":"None"},
+      {"nodeId":"128","fieldName":"strength_model","value":0,"encoding":"STRING"},
+      {"nodeId":"261","fieldName":"steps","value":12,"encoding":"STRING"},
+      {"nodeId":"289","fieldName":"step","value":8,"encoding":"STRING"}
+    ],
+    "outputs": [
+      {"nodeId":"214","kind":"VIDEO","primary":true,"maxCount":1},
+      {"nodeId":"264","kind":"VIDEO","primary":false,"maxCount":1}
+    ]
+  }
+}

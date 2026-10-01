@@ -78,6 +78,24 @@ class RunningHubDefinitionTest {
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("重复");
     }
 
+    @Test void reviewedYzWorkflowUsesItsOwnBindingsAndKeepsBothSamplingStagesConsistent() throws Exception {
+        try (var input = getClass().getResourceAsStream("/runninghub/yz-minimax-h3-workflow-settings.json")) {
+            assertThat(input).isNotNull();
+            var definition = RunningHubDefinition.parse(mapper, mapper.readTree(input).path("runningHub"), Task.Kind.VIDEO_GENERATION);
+            assertThat(definition.targetType()).isEqualTo(RunningHubDefinition.TargetType.WORKFLOW);
+            assertThat(definition.targetId()).isEqualTo("2093983063180054529");
+            assertThat(definition.fields()).anyMatch(field -> field.key().equals("prompt") && field.nodeId().equals("263") && field.fieldName().equals("text"));
+            var parameters = mapper.readTree("{\"dynamicValues\":{\"reference\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
+            var values = definition.values(mapper, parameters, "Synthetic geometry in a studio", 5, true);
+            assertThat(values.path("megapixels").decimalValue()).isEqualByComparingTo("0.2");
+            assertThat(values.path("upscale").decimalValue()).isEqualByComparingTo("1");
+            assertThat(definition.fixedBindings()).anyMatch(binding -> binding.nodeId().equals("261") && binding.value().asInt() == 12);
+            assertThat(definition.fixedBindings()).anyMatch(binding -> binding.nodeId().equals("289") && binding.value().asInt() == 8);
+            assertThat(definition.outputs()).anyMatch(output -> output.primary() && output.nodeId().equals("214"));
+            assertThat(definition.retainSeconds()).isNull();
+        }
+    }
+
     @Test void reviewedMinimaxAppContractResolvesLowCostDefaultsAndDisablesUnusedSampleReferences() throws Exception {
         try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-settings.json")) {
             assertThat(input).isNotNull();

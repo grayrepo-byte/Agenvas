@@ -57,7 +57,16 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.provider.comfyui.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubRealProviderIT {
     private static final String ORIGIN = "https://www.runninghub.ai";
-    private static final String APP_ID = "2084320751339032577";
+    private enum RealTarget {
+        MINIMAX_APP(RunningHubDefinition.TargetType.AI_APP, "2084320751339032577", "minimax-h3-app"),
+        YZ_WORKFLOW(RunningHubDefinition.TargetType.WORKFLOW, "2093983063180054529", "yz-minimax-h3-workflow");
+        final RunningHubDefinition.TargetType type;
+        final String id;
+        final String name;
+        RealTarget(RunningHubDefinition.TargetType type, String id, String name) { this.type = type; this.id = id; this.name = name; }
+        String fixture(String suffix) { return "/runninghub/" + name + "-" + suffix + ".json"; }
+    }
+    private static RealTarget target() { return RealTarget.valueOf(System.getenv().getOrDefault("AGENVAS_RUNNINGHUB_REAL_TARGET", RealTarget.MINIMAX_APP.name())); }
     private static final int VIDEO_SECONDS = 5;
     private static final BigDecimal MEGAPIXELS = new BigDecimal("0.2");
     private static final Duration DEADLINE = Duration.ofMinutes(20);
@@ -93,7 +102,7 @@ class RunningHubRealProviderIT {
     private record Attempt(String name, UUID projectId, UUID taskId) {}
 
     @Test @Timeout(1_800)
-    void realMinimaxAppSubmitOnceQueryDecodeArchiveAndSelect() throws Exception {
+    void realSelectedTargetSubmitOnceQueryDecodeArchiveAndSelect() throws Exception {
         Path receipt = privateRoot().resolve("real-evidence.json");
         assertThat(Files.exists(receipt)).as("An existing receipt must be reconciled; this test must not submit it again").isFalse();
         Files.createDirectories(privateRoot().resolve("results"));
@@ -101,11 +110,11 @@ class RunningHubRealProviderIT {
         owner = identities.setup("runninghub-real-isolated-test", "real-rh-admin", "isolated-rh-password-123").userId();
         String key = readPrivate("api-key");
         var connection = catalog.createConnection(UUID.randomUUID().toString(), "RunningHub real verification", "RUNNINGHUB", ORIGIN, key);
-        // Selected public inputs captured from the application page; Bearer-only discovery can fail upstream.
-        try (var input = RunningHubRealProviderIT.class.getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {
+        // Reviewed target-specific inputs; AI app discovery can fall back to public page metadata.
+        try (var input = RunningHubRealProviderIT.class.getResourceAsStream(target().fixture("inputs"))) {
             assertThat(input).isNotNull();
-            var appPreview = imports.preview(connection.id(), RunningHubDefinition.TargetType.AI_APP, APP_ID, Task.Kind.VIDEO_GENERATION, mapper.readTree(input));
-            assertThat(appPreview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.type() == RunningHubDefinition.FieldType.SELECT);
+            var preview = imports.preview(connection.id(), target().type, target().id, Task.Kind.VIDEO_GENERATION, mapper.readTree(input));
+            assertThat(preview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio"));
         }
         byte[] reference = referenceImage();
         Path upload = privateRoot().resolve("reference.png");
@@ -144,7 +153,7 @@ class RunningHubRealProviderIT {
     }
 
     private void submit(UUID connectionId, byte[] reference) throws Exception {
-        String name = "minimax-h3-app";
+        String name = target().name;
         var project = projects.create(owner, "Real RunningHub " + name, Project.AspectRatio.LANDSCAPE_16_9);
         var referenceAsset = assets.archiveImage(owner, project.id(), new ByteArrayInputStream(reference));
         var referenceArtifact = artifacts.create(owner, project.id(), Artifact.Kind.IMAGE, "Synthetic reference",
@@ -154,13 +163,13 @@ class RunningHubRealProviderIT {
         canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(card, artifact.id(), BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
         ObjectNode settings;
-        try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-settings.json")) {
+        try (var input = getClass().getResourceAsStream(target().fixture("settings"))) {
             assertThat(input).isNotNull();
             settings = (ObjectNode) mapper.readTree(input);
         }
-        // This reviewed data contract disables unused sample images/audio and expensive optional nodes.
-        // The video loader's existing sample is left intact, with its reference switch disabled.
-        var capability = catalog.publishCapability(connectionId, "Minimax H3 5s 0.2MP", "RUNNINGHUB_VIDEO", settings);
+        // Reviewed data contracts replace unused sample references and fix target-specific options.
+        // Each video loader retains the state already saved by that target's author.
+        var capability = catalog.publishCapability(connectionId, name + " 5s 0.2MP", "RUNNINGHUB_VIDEO", settings);
         var parameters = mapper.createObjectNode();
         parameters.putObject("dynamicValues").put("reference", referenceArtifact.resourceDefaultVersion().id().toString());
         var draft = drafts.save(owner, project.id(), card, 0,
@@ -175,6 +184,11 @@ class RunningHubRealProviderIT {
         var accepted = current(attempts.getLast());
         System.out.println("REAL_RUNNINGHUB " + name + " " + accepted.status() + " taskId=" + accepted.providerRequestId() + " error=" + accepted.errorCode());
         assertThat(accepted.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        // Preserve the accepted task and encrypted binding before the disposable database is removed.
+        // An archive failure can then be investigated/recovered without another paid generation.
+        var snapshot = POSTGRES.execInContainer("pg_dump", "-U", POSTGRES.getUsername(), "-d", POSTGRES.getDatabaseName());
+        assertThat(snapshot.getExitCode()).isZero();
+        Files.writeString(privateRoot().resolve("accepted-database-snapshot.sql"), snapshot.getStdout());
     }
     private Task current(Attempt attempt) { return tasks.get(owner, attempt.projectId(), attempt.taskId()); }
     private static boolean terminal(Task.Status status) {
@@ -182,7 +196,7 @@ class RunningHubRealProviderIT {
     }
     private void writeReceipts() throws Exception {
         var evidence = mapper.createObjectNode().put("origin", ORIGIN).put("updatedAt", Instant.now().toString())
-                .put("targetId", APP_ID).put("durationSeconds", VIDEO_SECONDS).put("megapixels", MEGAPIXELS);
+                .put("targetType", target().type.name()).put("targetId", target().id).put("durationSeconds", VIDEO_SECONDS).put("megapixels", MEGAPIXELS);
         var array = evidence.putArray("attempts");
         for (var attempt : attempts) {
             var task = current(attempt);

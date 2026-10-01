@@ -1,0 +1,7 @@
+{
+  "263": {"class_type":"Text","_meta":{"title":"提示词"},"inputs":{"text":"A red geometric sphere slowly rotates above a blue pedestal in a clean studio. Static camera, subtle motion, no people, no text."}},
+  "259": {"class_type":"PrimitiveFloat","_meta":{"title":"视频时长（秒）"},"inputs":{"value":5}},
+  "252": {"class_type":"ResolutionSelector","_meta":{"title":"分辨率选择器"},"inputs":{"aspect_ratio":"16:9 (Widescreen)","megapixels":0.2,"multiple":32}},
+  "51": {"class_type":"LoadImage","_meta":{"title":"参考图1"},"inputs":{"image":"None"}},
+  "283": {"class_type":"easy float","_meta":{"title":"放大倍数"},"inputs":{"value":1}}
+}

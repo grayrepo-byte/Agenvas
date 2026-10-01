@@ -474,7 +474,7 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 - V2 生成只提交一次，按已保存 taskId 查询。外部已受理但本地无可确认 ID 时保持 UNKNOWN，不自动重提；下载和归档恢复只处理原任务。成功查询的私有结果清单先持久化，按稳定序号分别归档字节，再原子创建全部内容版本/节点并完成任务。首个主输出追加当前节点版本；同类额外结果复制冻结草稿，混合类型结果建立新产物身份与空白草稿。取消、草稿或选择冲突不覆盖用户当前结果，晚到结果进入历史。
 - 费用仅展示管理员估算或未知。Provider `usage` 单独保存 `consumeMoney` / `consumeCoins` / `taskCostTime` / `thirdPartyConsumeMoney`；null 不转成零，GPU 时间不当作视频时长，未知币种和包含关系不推算总实付。`retainSeconds` 默认关闭，启用时显示额外计费提示。
 
-本次支持 V2 工作流 / AI 应用生成及图片、视频、音频结果；旧式生成、文本输出、Webhook、远程取消、密码保护目标、SKU 链接解析和通用脚本不在范围内。取消仍是本系统编排语义，不承诺 Provider 停止或退款。前后端、V66、生成的 jOOQ / TS 必须一起发布；迁移保留既有任务、资源和草稿。用户提供的两份 RunningHub 视频示例已分别完成真实上传、生成、归档与费用核对，见 [真实验证记录](evidence/runninghub-real-provider-2026-10-01.md)；其他目标与结果失效恢复未实测。事实核实、操作说明和定向验证见 [研究与接入文档](research/runninghub-api-integration.md) 及 [专项证据](evidence/runninghub-api-integration-2026-10-01.md)。
+本次支持 V2 工作流 / AI 应用生成及图片、视频、音频结果；旧式生成、文本输出、Webhook、远程取消、密码保护目标、SKU 链接解析和通用脚本不在范围内。取消仍是本系统编排语义，不承诺 Provider 停止或退款。前后端、V66、生成的 jOOQ / TS 必须一起发布；迁移保留既有任务、资源和草稿。用户提供的两份 RunningHub 视频示例已分别完成真实上传、生成、归档与费用核对，见 [真实验证记录](evidence/runninghub-real-provider-2026-10-01.md)。另新增 [MinimaxH3 AI 应用](evidence/runninghub-minimax-h3-2026-10-01.md) 的真实生成与原结果归档，以及 [YZ 金鱼工作流](evidence/runninghub-yz-workflow-2026-10-01.md) 的完整真实 Task 验证；未列出的目标与结果失效恢复未实测。事实核实、操作说明和定向验证见 [研究与接入文档](research/runninghub-api-integration.md) 及 [专项证据](evidence/runninghub-api-integration-2026-10-01.md)。
 
 ### 6.14 个人资产库（2026-10-01）
 
