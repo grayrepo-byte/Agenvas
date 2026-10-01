@@ -403,6 +403,24 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
         return (String) get(26);
     }
 
+    /**
+     * Setter for <code>public.task.provider_result_manifest</code>. Private
+     * immutable provider result checkpoint. Never exposed in task DTOs, SSE or
+     * project export.
+     */
+    public void setProviderResultManifest(JSONB value) {
+        set(27, value);
+    }
+
+    /**
+     * Getter for <code>public.task.provider_result_manifest</code>. Private
+     * immutable provider result checkpoint. Never exposed in task DTOs, SSE or
+     * project export.
+     */
+    public JSONB getProviderResultManifest() {
+        return (JSONB) get(27);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -426,7 +444,7 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
     /**
      * Create a detached, initialised TaskRecord
      */
-    public TaskRecord(UUID id, UUID projectId, UUID runId, String stepKey, String kind, String status, JSONB inputJson, String inputHash, JSONB outputJson, UUID providerId, String providerRequestId, Integer attemptNo, OffsetDateTime nextActionAt, String leaseOwner, OffsetDateTime leaseUntil, Long leaseEpoch, Long version, String errorCode, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt, Boolean cancelRequested, UUID capabilityId, Integer capabilityVersion, UUID connectionId, Integer connectionVersion, String origin) {
+    public TaskRecord(UUID id, UUID projectId, UUID runId, String stepKey, String kind, String status, JSONB inputJson, String inputHash, JSONB outputJson, UUID providerId, String providerRequestId, Integer attemptNo, OffsetDateTime nextActionAt, String leaseOwner, OffsetDateTime leaseUntil, Long leaseEpoch, Long version, String errorCode, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt, Boolean cancelRequested, UUID capabilityId, Integer capabilityVersion, UUID connectionId, Integer connectionVersion, String origin, JSONB providerResultManifest) {
         super(Task.TASK);
 
         setId(id);
@@ -456,6 +474,7 @@ public class TaskRecord extends UpdatableRecordImpl<TaskRecord> {
         setConnectionId(connectionId);
         setConnectionVersion(connectionVersion);
         setOrigin(origin);
+        setProviderResultManifest(providerResultManifest);
         resetChangedOnNotNull();
     }
 }

@@ -101,3 +101,9 @@ server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当�
 ## 2026-10-01 对象存储验证范围
 
 对象存储复用现有 OkHttp 4.12.0 和 JDK SHA-256/HMAC，不引入云 SDK 或新运行依赖。固定 PUT/HEAD/GET Range/DELETE 协议及签名根据 [AWS SigV4](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html)、[COS 的 S3 兼容说明](https://intl.cloud.tencent.com/document/product/436/34688?lang=en)和 [OSS V4](https://www.alibabacloud.com/help/en/oss/developer-reference/recommend-to-use-signature-version-4)实现；限制目标与操作的传输保持应用的 DNS、重定向和重试控制。AWS 官方示例签名有定向单元测试，OSS 规范化示例以独立 HMAC 计算交叉核验。真实云账户兼容性与吞吐尚未实测，假 HTTP 服务不代表真实云验收。jOOQ 由隔离 PostgreSQL 17.11 执行 V64 后重新生成。
+
+## 2026-10-01 RunningHub 验证范围
+
+RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务内核与媒体归档，没有引入 Go SDK、脚本运行时或新依赖。第三方 Go SDK 仅作只读参考，不代表 Provider 协议保证。jOOQ 由隔离 PostgreSQL 17.11 执行 V65 后重新生成，普通构建继续不连接生成数据库；OpenAPI 生成 TypeScript。动态表单复用现有 React 控件与类型，没有增加前端服务端。
+
+固定 HTTP 协议、输入契约、归档恢复与动态表单经定向测试；准确命令、计数与未验证事项见 [RunningHub 证据](evidence/runninghub-api-integration-2026-10-01.md)。没有真实 RunningHub Key 或付费调用，也没有运行全量测试或浏览器端到端。

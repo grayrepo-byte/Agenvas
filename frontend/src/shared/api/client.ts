@@ -62,6 +62,10 @@ export type CallLogPage = components["schemas"]["CallLogPage"];
 export type CallLogFilters = NonNullable<paths["/api/v1/call-logs"]["get"]["parameters"]["query"]>;
 export type ReplaceLlmSettingsRequest = components["schemas"]["ReplaceLlmSettingsRequest"];
 export type DiagnoseLlmRequest = components["schemas"]["DiagnoseLlmRequest"];
+export type RunningHubDefinition = components["schemas"]["RunningHubDefinition"];
+export type RunningHubField = components["schemas"]["RunningHubField"];
+export type RunningHubImportRequest = components["schemas"]["RunningHubImportRequest"];
+export type RunningHubImportPreview = components["schemas"]["RunningHubImportPreview"];
 export type MediaSettings = components["schemas"]["MediaSettings"];
 export type MediaConnection = components["schemas"]["MediaConnection"];
 export type MediaCapability = components["schemas"]["MediaCapability"];
@@ -267,6 +271,11 @@ export async function updateMediaConnection(connectionId: string,
   return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}`, {
     method: "PUT", body: JSON.stringify(input),
   });
+}
+
+export async function previewRunningHubImport(connectionId: string, input: RunningHubImportRequest): Promise<RunningHubImportPreview> {
+  return writeJson<RunningHubImportPreview>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/runninghub/preview`,
+    { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function createMediaCapability(connectionId: string,

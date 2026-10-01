@@ -548,6 +548,18 @@ public class ArtifactService {
                 .value();
     }
 
+    /** Identity for a mixed-kind result of an already accepted task, including late archived-project results. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Artifact createTaskMediaIdentityWithinChange(UUID ownerId, UUID projectId, Artifact.Kind kind, String title) {
+        projects.get(ownerId, projectId);
+        if (kind == Artifact.Kind.TEXT) throw new IllegalArgumentException("Media identity required");
+        Instant now = clock.instant();
+        Artifact artifact = new Artifact(UUID.randomUUID(), projectId, kind, validateTitle(title), null, null, 0, now, now);
+        artifacts.createArtifact(artifact);
+        events.append(ownerId, projectId, artifactEvent("artifact.created", new ArtifactView(artifact, null)));
+        return artifact;
+    }
+
     /**
      * 在调用方项目事件事务中追加任务产物版本。只有任务固定的当前版本 ID 和 CAS 版本都未变化，
      * 且调用方允许选用时才切换当前版本；取消后的结果或用户编辑后的旧输入只保留在历史。
@@ -572,6 +584,10 @@ public class ArtifactService {
             references.add(new ArtifactVersion.InputReference(
                     UUID.fromString(audio.path("versionId").asText()), "AUDIO_REFERENCE",
                     references.size(), Artifact.Kind.AUDIO));
+        }
+        if (frozenInput != null) for (JsonNode video : frozenInput.path("videos")) {
+            references.add(new ArtifactVersion.InputReference(UUID.fromString(video.path("versionId").asText()),
+                    "VIDEO_REFERENCE", references.size(), Artifact.Kind.VIDEO));
         }
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.TASK);
         validateReferences(projectId, references);

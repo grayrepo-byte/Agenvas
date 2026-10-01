@@ -4,6 +4,7 @@ import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
 import dev.agenvas.provider.domain.MediaPlatform;
+import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
@@ -331,6 +332,16 @@ public class MediaCapabilityService {
         ObjectNode settings = normalized.putObject("settings");
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
         if (!source.isObject()) throw invalid("能力模板参数必须为对象");
+        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId)) {
+            if (!java.util.Set.of("runningHub", "pricing").containsAll(source.propertyNames()))
+                throw invalid("RunningHub 能力只接受参数定义与估算价格");
+            var definition = RunningHubDefinition.parse(mapper, source.get("runningHub"), declaration.kind());
+            settings.set("runningHub", mapper.valueToTree(definition));
+            ObjectNode price = mapper.createObjectNode();
+            if (source.has("pricing")) price.set("pricing", source.get("pricing"));
+            MediaCapabilityConfiguration.normalize(mapper, declaration, price, settings);
+            return normalized.toString();
+        }
         List<String> fields = switch (adapterId) {
             case "COMFY_IMAGE_V1" -> List.of("checkpoint");
             case "COMFY_VIDEO_V1" -> List.of("diffusionModel", "textEncoder", "vae",
@@ -403,6 +414,21 @@ public class MediaCapabilityService {
     public MediaAdapterRegistry.Declaration inputPolicy(Snapshot snapshot) {
         return MediaCapabilityConfiguration.policy(registry.declaration(snapshot.adapterId()),
                 mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    public RunningHubDefinition runningHubDefinition(MediaCapabilityBinding binding) {
+        if (!MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())) return null;
+        return RunningHubDefinition.parse(mapper, settings(binding).path("runningHub"),
+                registry.declaration(binding.adapterId()).kind());
+    }
+
+    /** Validates only supplied values so incomplete dynamic drafts can still be persisted. */
+    public void validateDynamicDraft(UUID capabilityId, Task.Kind kind, JsonNode parameters,
+            String prompt, Integer seconds) {
+        if (capabilityId == null) throw invalid("动态参数必须选择明确的能力");
+        var definition = runningHubDefinition(forDraft(capabilityId, kind));
+        if (definition == null) throw invalid("当前能力不接受动态参数");
+        definition.values(mapper, parameters, prompt, seconds, false);
     }
 
     public JsonNode settings(MediaCapabilityBinding binding) {
@@ -518,6 +544,7 @@ public class MediaCapabilityService {
 
     private boolean supports(Snapshot snapshot, Task.Kind kind, int durationSeconds) {
         var policy = inputPolicy(snapshot);
+        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(snapshot.adapterId())) return policy.kind() == kind;
         return policy.kind() == kind && (kind == Task.Kind.IMAGE_GENERATION
                 || durationSeconds >= policy.minimumSeconds()
                         && durationSeconds <= policy.maximumSeconds());
@@ -571,6 +598,9 @@ public class MediaCapabilityService {
     }
 
     private static String validatedOrigin(MediaPlatform platform, String origin) {
+        if (platform == MediaPlatform.RUNNINGHUB) {
+            return dev.agenvas.provider.infrastructure.RunningHubClient.validatedOrigin(origin);
+        }
         if (platform == MediaPlatform.OPENAI || platform == MediaPlatform.GOOGLE) {
             if (origin == null || origin.isBlank()) return null;
             try {
@@ -617,7 +647,8 @@ public class MediaCapabilityService {
 
     private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
         boolean cloud = platform == MediaPlatform.OPENAI || platform == MediaPlatform.ARK
-                || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE;
+                || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE
+                || platform == MediaPlatform.RUNNINGHUB;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid("云平台连接必须填写 API Key");
         }

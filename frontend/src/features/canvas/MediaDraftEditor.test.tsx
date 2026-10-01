@@ -107,6 +107,28 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("uses RunningHub fields for a promptless video app and persists named exact video slots", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "rh-video", adapterId: "RUNNINGHUB_VIDEO", name: "视频换背景", supportedVideoInputModes: ["TEXT", "GENERAL_REFERENCE"],
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false, fields: [
+        { key: "clip", label: "参考视频", type: "VIDEO", nodeId: "1", fieldName: "video", required: true, advanced: false },
+        { key: "strength", label: "变化强度", type: "NUMBER", nodeId: "2", fieldName: "strength", required: true, advanced: false, defaultValue: 0.5, minimum: 0, maximum: 1 },
+      ], outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }] } } };
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, prompt: "", parameters: { dynamicValues: {} }, capabilityId: capability.id, videoInputMode: "TEXT" },
+      settings: { connections: [{ ...settings.connections[0]!, platform: "RUNNINGHUB", capabilities: [capability] }], defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact, kind: "VIDEO", id: "video-reference", title: "原片段", resourceDefaultVersionId: "video-v1" }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/video-reference/versions`, () => HttpResponse.json({ items: [{ id: "video-v1", versionNo: 1, content: { assetId: "video-asset" } }] }))] });
+    const slot = await screen.findByRole("combobox", { name: "参考视频 *" });
+    await screen.findByRole("option", { name: "原片段 · v1" });
+    expect(screen.queryByRole("textbox", { name: "视频提示词" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "选择视频输入模式" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    fireEvent.change(slot, { target: { value: "video-v1" } });
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ clip: "video-v1" }));
+    expect(saves.at(-1)?.mediaInputs).toEqual([{ versionId: "video-v1", role: "VIDEO_REFERENCE", color: "#F15CAF" }]);
+    expect(saves.at(-1)?.durationSeconds).toBeNull();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
   it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
     const audioCapability: MediaCapability = { ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
       kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,

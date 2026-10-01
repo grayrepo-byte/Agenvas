@@ -1,0 +1,80 @@
+package dev.agenvas.provider.domain;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import dev.agenvas.task.domain.Task;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+class RunningHubDefinitionTest {
+    private final ObjectMapper mapper = new ObjectMapper();
+    private ObjectNode schema() {
+        return (ObjectNode) mapper.readTree("""
+            {"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",
+             "fields":[{"key":"strength","label":"变化强度","nodeId":"3","fieldName":"denoise","type":"NUMBER","required":true,"minimum":0,"maximum":1,"defaultValue":0.5},
+                       {"key":"person","label":"人物图","nodeId":"10","fieldName":"image","type":"IMAGE","required":true}],
+             "outputs":[{"kind":"IMAGE","primary":true,"maxCount":2}]}
+            """);
+    }
+    @Test void incompleteDraftIsAllowedButRunRequiresNamedMediaAndUsesDefaults() {
+        var definition = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
+        assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, false).isEmpty()).isTrue();
+        assertThatThrownBy(() -> definition.values(mapper, mapper.createObjectNode(), "", null, true)).hasMessageContaining("人物图");
+        var input = mapper.readTree("{\"dynamicValues\":{\"person\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
+        assertThat(definition.values(mapper, input, "", null, true).path("strength").asDouble()).isEqualTo(0.5);
+    }
+    @Test void numericBoundsUnknownKeysAndMediaUrlsAreRejected() {
+        var definition = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
+        for (String json : new String[]{"{\"dynamicValues\":{\"strength\":2}}", "{\"dynamicValues\":{\"unknown\":1}}", "{\"dynamicValues\":{\"person\":\"https://example.com/a.png\"}}", "{\"generationCount\":2}"})
+            assertThatThrownBy(() -> definition.values(mapper, mapper.readTree(json), "", null, false)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
+    @Test void mappingsCannotDuplicateOrContainCredentialsScriptsAndUnknownProperties() {
+        var duplicate = schema();
+        ((ObjectNode) duplicate.path("fields").get(1)).put("nodeId", "3").put("fieldName", "denoise");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, duplicate, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("映射");
+        var unknown = schema().put("script", "anything");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, unknown, Task.Kind.IMAGE_GENERATION)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        var credential = schema(); ((ObjectNode) credential.path("fields").get(0)).put("fieldName", "apiKey");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, credential, Task.Kind.IMAGE_GENERATION)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
+    @Test void inactiveRequiredFieldDoesNotBlockRun() {
+        var schema = schema();
+        ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen", mapper.readTree("{\"field\":\"strength\",\"value\":1}"));
+        var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+        assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true).has("person")).isFalse();
+    }
+    @Test void outputKindAndMissingPrimaryCannotBePublished() {
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema(), Task.Kind.VIDEO_GENERATION)).hasMessageContaining("主输出");
+        var schema = schema(); ((ObjectNode) schema.path("outputs").get(0)).put("primary", false);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("主输出");
+    }
+
+    @Test void overlappingOutputsAndCombinedLimitsCannotBePublished() {
+        var overlapping = schema();
+        ((tools.jackson.databind.node.ArrayNode) overlapping.path("outputs")).addObject()
+                .put("nodeId", "9").put("kind", "IMAGE").put("primary", false).put("maxCount", 1);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, overlapping, Task.Kind.IMAGE_GENERATION))
+                .hasMessageContaining("重叠");
+        var oversized = schema();
+        ((ObjectNode) oversized.path("outputs").get(0)).put("maxCount", 16);
+        ((tools.jackson.databind.node.ArrayNode) oversized.path("outputs")).addObject()
+                .put("kind", "AUDIO").put("primary", false).put("maxCount", 1);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, oversized, Task.Kind.IMAGE_GENERATION))
+                .hasMessageContaining("合计");
+    }
+
+    @Test void numericEnumsAndConditionsSurviveBrowserJsonNumberNormalization() {
+        var schema = schema();
+        var field = (ObjectNode) schema.path("fields").get(0);
+        field.put("type", "SELECT").put("defaultValue", 1.0);
+        var options = field.putArray("options"); options.addObject().put("label", "开启").put("value", 1.0);
+        ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen", mapper.readTree("{\"field\":\"strength\",\"value\":1.0}"));
+        var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+        var input = mapper.readTree("{\"dynamicValues\":{\"strength\":1}}");
+        assertThat(definition.values(mapper, input, "", null, false).path("strength").asInt()).isEqualTo(1);
+        assertThatThrownBy(() -> definition.values(mapper, input, "", null, true)).hasMessageContaining("人物图");
+        options.addObject().put("label", "重复数字").put("value", 1);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("重复");
+    }
+}

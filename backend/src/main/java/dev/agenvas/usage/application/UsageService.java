@@ -216,6 +216,7 @@ public class UsageService {
                                         && !"PROVIDER_UNSUPPORTED_INPUT".equals(task.errorCode())
                                         && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(
                                                 task.errorCode())
+                                        && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(task.errorCode())
                                         && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(
                                                 task.errorCode()))))
                 || task.providerRequestId() != null) {
@@ -243,11 +244,13 @@ public class UsageService {
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
             String operationKey) {
         ObjectNode quantity = mapper.createObjectNode();
+        boolean runningHub = "RUNNINGHUB_V2".equals(task.input().path("providerProtocol").asText());
         boolean secondsV2 = task.input().path("schemaVersion").asInt(1) >= 2;
         switch (task.kind()) {
             case AUDIO_GENERATION -> {
                 quantity.put("audioCount", 1);
-                quantity.put("audioSeconds", dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
+                if (runningHub) quantity.putNull("audioSeconds");
+                else quantity.put("audioSeconds", dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
                 quantity.put("imageCount", 0); quantity.put("videoCount", 0);
                 quantity.put("videoSeconds", "0"); quantity.put("exportCount", 0);
             }
@@ -261,10 +264,13 @@ public class UsageService {
                 String durationText;
                 if (secondsV2) {
                     JsonNode seconds = task.input().path("durationSeconds");
-                    if (!seconds.isInt() || seconds.intValue() < 1 || seconds.intValue() > 30) {
-                        throw new IllegalStateException("Approved video Task lacks pinned duration");
+                    if (runningHub && seconds.isMissingNode()) durationText = null;
+                    else {
+                        if (!seconds.isInt() || seconds.intValue() < 1 || seconds.intValue() > (runningHub ? dev.agenvas.provider.domain.MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS : 30)) {
+                            throw new IllegalStateException("Approved video Task lacks pinned duration");
+                        }
+                        durationText = Integer.toString(seconds.intValue());
                     }
-                    durationText = Integer.toString(seconds.intValue());
                 } else {
                     int durationMs = task.input().path("durationMs").asInt(-1);
                     if (durationMs < 100 || durationMs > 30_000) {
@@ -297,9 +303,10 @@ public class UsageService {
         if (!localNoCost && pricing.isObject()) {
             estimate = new BigDecimal(pricing.path("amount").asText());
             if ("SECOND".equals(pricing.path("unit").asText())) {
-                estimate = estimate.multiply(new BigDecimal(quantity.path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds").asText()));
+                JsonNode duration = quantity.path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds");
+                estimate = duration.isNull() ? null : estimate.multiply(new BigDecimal(duration.asText()));
             }
-            estimate = estimate.setScale(MONEY_SCALE);
+            if (estimate != null) estimate = estimate.setScale(MONEY_SCALE);
             currency = pricing.path("currency").asText();
         }
         return new UsageEntry(UUID.randomUUID(), task.projectId(), task.runId(), task.id(),

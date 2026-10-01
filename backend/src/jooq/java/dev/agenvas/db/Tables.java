@@ -147,8 +147,8 @@ public class Tables {
     public static final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 
     /**
-     * Ordered exact image/audio versions with card-local source and color
-     * identity.
+     * Deduplicated exact media versions; dynamicValues maps named capability
+     * slots to these version identities.
      */
     public static final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
 

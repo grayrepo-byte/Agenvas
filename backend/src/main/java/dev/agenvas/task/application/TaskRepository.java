@@ -11,6 +11,9 @@ import tools.jackson.databind.JsonNode;
 
 /** 任务持久化边界；依赖关系、租约和外部提交检查点均在数据库中约束。 */
 public interface TaskRepository {
+    Optional<dev.agenvas.provider.domain.ProviderResultManifest> providerResultManifest(UUID taskId);
+    boolean checkpointProviderResults(Task lease, String workerId,
+            dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now);
 
     /** 原子写入任务及已由应用层校验的同项目依赖。 */
     void create(Task task, List<UUID> dependencyIds);

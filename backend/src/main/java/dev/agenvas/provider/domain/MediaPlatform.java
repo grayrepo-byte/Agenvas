@@ -15,5 +15,7 @@ public enum MediaPlatform {
     /** Google 图像端点。 */
     GOOGLE,
     /** Fixed Volcano Engine speech synthesis API. */
-    VOLCENGINE
+    VOLCENGINE,
+    /** Fixed RunningHub V2 task protocol with administrator-published input mappings. */
+    RUNNINGHUB
 }

@@ -50,6 +50,62 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
 }
 
 describe("MediaSettingsPage", () => {
+  it("lets administrators configure a RunningHub HTTPS origin outside the official domains", async () => {
+    const posted: unknown[] = [];
+    const fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub", origin: "https://custom-api.example.com", capabilities: [] });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: mockDefault })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections", async ({ request }) => {
+        posted.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "RunningHub");
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: "平台" }), "RUNNINGHUB");
+    await user.type(within(dialog).getByRole("textbox", { name: "RunningHub API 地址" }), "https://custom-api.example.com");
+    await user.type(within(dialog).getByLabelText("API Key"), "fixture-key");
+    await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(posted).toEqual([{ name: "RunningHub", platform: "RUNNINGHUB", origin: "https://custom-api.example.com", apiKey: "fixture-key" }]));
+  });
+  it("imports a RunningHub app, previews its fields and publishes only after field review", async () => {
+    const fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub", origin: "https://www.runninghub.ai", capabilities: [] });
+    const published: unknown[] = [];
+    const definition = { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [{ key: "style", label: "创作风格", type: "SELECT", nodeId: "1", fieldName: "style", required: true, advanced: false,
+        defaultValue: "photo", options: [{ label: "写实", value: "photo" }, { label: "插画", value: "illustration" }] }],
+      outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }] };
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async ({ request }) => {
+        expect(await request.json()).toEqual({ targetType: "AI_APP", targetId: "123", kind: "IMAGE_GENERATION" });
+        return HttpResponse.json({ definition, warnings: ["确认字段后发布"] });
+      }),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        published.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "背景应用");
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
+    await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
+    await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
+    expect(await within(dialog).findByRole("combobox", { name: "创作风格 *" })).toHaveValue("0");
+    expect(within(dialog).getByRole("option", { name: "写实" })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    expect(published).toEqual([]);
+    await user.click(within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" }));
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(published).toEqual([{ name: "背景应用", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } }]));
+  });
+
   it("preserves connection and capability drafts after background updates until each explicit reload", async () => {
     let settings = settingsFixture();
     const writes: unknown[] = [];

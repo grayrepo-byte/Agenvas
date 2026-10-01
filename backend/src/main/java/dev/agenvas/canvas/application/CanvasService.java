@@ -54,6 +54,8 @@ public class CanvasService {
     private static final BigDecimal OUTPUT_HEIGHT = new BigDecimal("300");
     /** 自动放置卡片之间保留的最小空隙。 */
     private static final BigDecimal OUTPUT_GAP = new BigDecimal("24");
+    private static final int MAX_OUTPUT_PLACEMENT_ATTEMPTS = 100;
+    private static final int MAX_Z_INDEX = 1000;
 
     /** 验证项目读取与活动状态。 */
     private final ProjectService projects;
@@ -245,6 +247,33 @@ public class CanvasService {
                 expectedSourceDraftVersion, outputIndex, MediaOutputDraft.COPY_SOURCE, null);
     }
 
+    /** Places a result of the same remote task; no provider submission or source-draft mutation occurs. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem placeTaskMediaOutputWithinChange(UUID ownerId, UUID projectId, UUID sourceItemId,
+            UUID artifactId, int outputIndex, JsonNode frozenInput) {
+        projects.get(ownerId, projectId);
+        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.RunningHubDefinition.MAX_OUTPUTS) throw validation("结果序号无效。");
+        CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
+        if (source == null) return null;
+        var artifact = artifacts.get(ownerId, projectId, artifactId);
+        List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
+        BigDecimal y = source.y();
+        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS && overlapsAny(x, y, existing); attempt++) y = y.add(source.height()).add(OUTPUT_GAP);
+        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1);
+        validateGeometry(x, y, source.width(), source.height(), zIndex);
+        if (overlapsAny(x, y, existing)) throw validation("额外结果附近没有可用位置。");
+        CanvasItem item = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
+                artifactId, null, derivationTitle(source.title(), Integer.toString(outputIndex + 1)), x, y, source.width(), source.height(), zIndex, source.groupId(), false);
+        if (!canvasItems.create(item)) throw conflict();
+        if (source.subjectId().equals(artifactId)) mediaDrafts.initializeFrozenWithinChange(projectId, item.id(), artifact.artifact().kind(), frozenInput);
+        else mediaDrafts.initializeWithinChange(projectId, item.id(), false);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putArray("itemIds").add(item.id().toString());
+        events.append(ownerId, projectId, new ProjectEventService.EventDraft("canvas.items.changed", 1, projectId, 0, payload));
+        return item;
+    }
+
     private enum MediaOutputDraft { COPY_SOURCE, EMPTY }
 
     private CanvasItem createMediaOutputWithinChange(UUID ownerId, UUID projectId,
@@ -271,13 +300,13 @@ public class CanvasService {
         BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
         BigDecimal y = source.y().add(
                 source.height().add(OUTPUT_GAP).multiply(BigDecimal.valueOf(outputIndex)));
-        for (int attempt = 0; attempt < 100 && overlapsAny(x, y, existing); attempt++) {
+        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS && overlapsAny(x, y, existing); attempt++) {
             y = y.add(source.height()).add(OUTPUT_GAP);
         }
         if (overlapsAny(x, y, existing)) throw validation("新图片节点附近没有可用位置。");
         validateGeometry(x, y, source.width(), source.height(),
-                Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1));
-        int zIndex = Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex)
+                Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1));
+        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
                 .max().orElse(-1) + 1);
         CanvasItem target = placement(targetItemId, projectId,
                 CanvasItem.SubjectType.ARTIFACT, source.subjectId(), source.selectedVersionId(),
@@ -361,7 +390,7 @@ public class CanvasService {
         if (!found) {
             throw validation("Agent 输出区域没有可用的画布位置。");
         }
-        int zIndex = Math.min(1000, existing.stream().mapToInt(CanvasItem::zIndex)
+        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
                 .max().orElse(-1) + 1);
         CanvasItem placed = placement(UUID.randomUUID(), projectId,
                 CanvasItem.SubjectType.ARTIFACT, artifactId,

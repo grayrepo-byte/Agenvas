@@ -5,6 +5,7 @@ public sealed interface Submission {
     record Accepted(String requestId) implements Submission {}
     record Completed(MediaPayload payload) implements Submission {}
     record CompletedArtifact(tools.jackson.databind.JsonNode content) implements Submission {}
+    record CompletedResults(ProviderResultManifest manifest) implements Submission {}
     record Pending(java.time.Instant nextActionAt) implements Submission {}
     record Blocked(String code) implements Submission {}
     record Rejected(String code) implements Submission {}

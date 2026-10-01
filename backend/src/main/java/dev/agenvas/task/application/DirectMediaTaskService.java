@@ -142,40 +142,52 @@ public class DirectMediaTaskService {
             };
             MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
             if (draft.version() != expectedDraftVersion) throw conflict("草稿已变化，请检查保存状态后重试。");
-            if (draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
-            if (kind == Task.Kind.VIDEO_GENERATION
+            MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
+            var definition = capabilities.runningHubDefinition(selected);
+            boolean dynamic = definition != null;
+            if (!dynamic && draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
+            if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
                     && (draft.mediaInputs().isEmpty()
                             || draft.mediaInputs().getFirst().role()
                                     != MediaDraft.InputRole.START_FRAME)) {
                 throw invalid("首尾帧视频运行前需要选择首帧。");
             }
-            if (kind == Task.Kind.VIDEO_GENERATION
+            if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
                     && draft.mediaInputs().isEmpty()) {
                 throw invalid("全能参考视频运行前至少需要一张图片。");
             }
-            MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
             JsonNode configuredSettings = capabilities.settings(selected);
             Integer duration = draft.durationSeconds();
             if (kind == Task.Kind.VIDEO_GENERATION && duration == null
                     && configuredSettings.has("defaultDurationSeconds")) {
                 duration = configuredSettings.path("defaultDurationSeconds").intValue();
             }
-            if (kind == Task.Kind.VIDEO_GENERATION && duration == null) {
+            if (dynamic && duration == null) {
+                var durationField = definition.fields().stream().filter(field -> field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.DURATION_SECONDS).findFirst().orElse(null);
+                if (durationField != null && durationField.defaultValue() != null && !durationField.defaultValue().isNull()) duration = durationField.defaultValue().asInt();
+            }
+            if (!dynamic && kind == Task.Kind.VIDEO_GENERATION && duration == null) {
                 throw invalid("视频运行前需要选择时长。");
             }
-            int seconds = kind == Task.Kind.VIDEO_GENERATION ? duration : 0;
+            int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
             MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
             if (!selected.equals(binding)) throw conflict("媒体配置已变化，请刷新后重试。");
             if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
                 throw invalid("本地图片处理能力只能从图片后处理入口使用。");
             }
-            validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+            ObjectNode dynamicParameters = null;
+            if (dynamic) {
+                dynamicParameters = mapper.createObjectNode();
+                dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
+                        definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true));
+                dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
+            } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
             validateReferenceAssets(ownerId, projectId, draft, binding);
-            ImageGenerationParameters imageParameters = kind == Task.Kind.IMAGE_GENERATION
+            ImageGenerationParameters imageParameters = !dynamic && kind == Task.Kind.IMAGE_GENERATION
                     ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
-            VideoGenerationParameters videoParameters = kind == Task.Kind.VIDEO_GENERATION
+            VideoGenerationParameters videoParameters = !dynamic && kind == Task.Kind.VIDEO_GENERATION
                     ? VideoGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
             if (imageParameters != null) {
                 var policy = capabilities.inputPolicy(binding);
@@ -198,6 +210,7 @@ public class DirectMediaTaskService {
                                 UUID.randomUUID(), draft.version(), outputIndex);
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", 3);
+                if (dynamic) input.put("providerProtocol", "RUNNINGHUB_V2");
                 input.put("artifactId", artifactId.toString());
                 input.put("sourceCanvasItemId", canvasItemId.toString());
                 input.put("canvasItemId", outputCard.id().toString());
@@ -216,35 +229,37 @@ public class DirectMediaTaskService {
                 input.put("providerConfigVersion", provider.configVersion());
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
                 if (originHash != null) input.put("providerOriginSha256", originHash);
-                if (kind == Task.Kind.VIDEO_GENERATION) input.put("durationSeconds", seconds);
+                if (kind == Task.Kind.VIDEO_GENERATION && duration != null) input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
                 if (outputCard.selectedVersionId() == null) frozen.putNull("parentVersionId");
                 else frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
                 frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
                         : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
+                if (dynamic) frozen.set("runningHubContract", mapper.valueToTree(definition));
                 frozen.put("prompt", draft.prompt());
                 frozen.put("renderedPrompt", renderedPrompt);
-                frozen.set("parameters", imageParameters != null
+                frozen.set("parameters", dynamicParameters != null ? dynamicParameters : imageParameters != null
                         ? imageParameters.toJson(mapper) : videoParameters != null ? videoParameters.toJson(mapper)
                         : dev.agenvas.artifact.domain.AudioGenerationParameters.parse(
                                 capabilities.parameters(binding, draft.parameters())).toJson(mapper));
                 frozen.put("capabilityId", binding.capabilityId().toString());
                 frozen.put("capabilityVersion", binding.capabilityVersion());
-                if (kind == Task.Kind.VIDEO_GENERATION) frozen.put("durationSeconds", seconds);
-                ArrayNode images = frozen.putArray("images");
+                if (kind == Task.Kind.VIDEO_GENERATION && duration != null) frozen.put("durationSeconds", seconds);
+                frozen.putArray("images");
                 frozen.putArray("audios");
+                frozen.putArray("videos");
                 for (MediaDraft.MediaInput imageInput : draft.mediaInputs()) {
                     ArtifactVersion image = artifacts.requireMediaVersionForTask(ownerId, projectId,
-                            imageInput.versionId(), imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
-                                    ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
-                    ObjectNode imageNode = (imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
-                            ? (ArrayNode) frozen.get("audios") : images).addObject();
+                            imageInput.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(imageInput.role()));
+                    String mediaArray = imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE ? "audios"
+                            : imageInput.role() == MediaDraft.InputRole.VIDEO_REFERENCE ? "videos" : "images";
+                    ArrayNode group = (ArrayNode) frozen.get(mediaArray);
+                    ObjectNode imageNode = group.addObject();
                     imageNode.put("artifactId", image.artifactId().toString());
                     imageNode.put("versionId", image.id().toString());
                     imageNode.put("role", imageInput.role().name());
-                    imageNode.put("order", imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
-                            ? frozen.path("audios").size() - 1 : images.size() - 1);
+                    imageNode.put("order", group.size() - 1);
                 }
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 String stepKey = outputIndex == 0 ? commandKey
@@ -767,6 +782,7 @@ public class DirectMediaTaskService {
                 case START_FRAME -> "Start Frame";
                 case END_FRAME -> "End Frame";
                 case REFERENCE -> "Image " + referenceNumber(draft, mention);
+                case VIDEO_REFERENCE -> "Video " + referenceNumber(draft, mention);
                 case AUDIO_REFERENCE -> (draft.videoInputMode() == null ? "音频" : "Audio ") + referenceNumber(draft, mention);
             });
         }
@@ -887,6 +903,15 @@ public class DirectMediaTaskService {
             MediaCapabilityBinding binding) {
         boolean seed = MediaAdapterRegistry.SEED_AUDIO_1.equals(binding.adapterId());
         boolean ark = MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId());
+        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())) {
+            for (var input : draft.mediaInputs()) {
+                var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()));
+                Asset asset = assets.requireReadyMedia(ownerId, projectId, UUID.fromString(version.content().path("assetId").asText()),
+                        Asset.MediaKind.valueOf(dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()).name()));
+                if (asset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) throw invalid("RunningHub 单条素材不能超过 30 MB。");
+            }
+            return;
+        }
         if (!seed && !ark) return;
         long audioDuration = 0;
         int imageCount = 0;

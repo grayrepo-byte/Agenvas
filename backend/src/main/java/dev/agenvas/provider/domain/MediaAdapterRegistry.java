@@ -23,6 +23,12 @@ public final class MediaAdapterRegistry {
     public static final String LOCAL_IMAGE_PROCESSOR = "LOCAL_IMAGE_PROCESSOR";
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
+    public static final String RUNNINGHUB_IMAGE = "RUNNINGHUB_IMAGE";
+    public static final String RUNNINGHUB_VIDEO = "RUNNINGHUB_VIDEO";
+    public static final String RUNNINGHUB_AUDIO = "RUNNINGHUB_AUDIO";
+    public static final Set<String> RUNNINGHUB_ADAPTERS = Set.of(RUNNINGHUB_IMAGE, RUNNINGHUB_VIDEO, RUNNINGHUB_AUDIO);
+    public static final int RUNNINGHUB_MAX_INPUTS = 14;
+    public static final int RUNNINGHUB_MAX_VIDEO_SECONDS = 60;
 
     /** Product bounds verified against each fixed third-party request protocol. */
     public static final int OPENAI_MAX_REFERENCE_IMAGES = 4;
@@ -35,33 +41,45 @@ public final class MediaAdapterRegistry {
             Set<String> supportedImageResolutions, Set<String> supportedImageQualities,
             boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios) {}
 
-    private static final Map<String, Declaration> DECLARATIONS = Map.of(
-            LOCAL_IMAGE_PROCESSOR, image(MediaPlatform.LOCAL, false, 1,
+    private static final Map<String, Declaration> DECLARATIONS = Map.ofEntries(
+            Map.entry(RUNNINGHUB_IMAGE, runningHub(Task.Kind.IMAGE_GENERATION)),
+            Map.entry(RUNNINGHUB_VIDEO, runningHub(Task.Kind.VIDEO_GENERATION)),
+            Map.entry(RUNNINGHUB_AUDIO, runningHub(Task.Kind.AUDIO_GENERATION)),
+            Map.entry(LOCAL_IMAGE_PROCESSOR, image(MediaPlatform.LOCAL, false, 1,
                     ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS,
-                    ImageGenerationParameters.QUALITIES, true, false),
-            "MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4,
+                    ImageGenerationParameters.QUALITIES, true, false)),
+            Map.entry("MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4,
                     ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS,
-                    ImageGenerationParameters.QUALITIES, true, false),
-            "MOCK_AUDIO", audio(MediaPlatform.MOCK),
-            "VOLC_SEED_AUDIO_1", audio(MediaPlatform.VOLCENGINE),
-            "MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, 4,
-                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true),
-            "COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1,
+                    ImageGenerationParameters.QUALITIES, true, false)),
+            Map.entry("MOCK_AUDIO", audio(MediaPlatform.MOCK)),
+            Map.entry("VOLC_SEED_AUDIO_1", audio(MediaPlatform.VOLCENGINE)),
+            Map.entry("MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, 4,
+                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true)),
+            Map.entry("COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1,
                     Set.of("AUTO", "1:1", "9:16", "16:9"), Set.of("1K"), Set.of(), false,
-                    false),
-            "COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, 1,
-                    Set.of("START_END"), "START_END", false),
-            OPENAI_GPT_IMAGE_2, image(MediaPlatform.OPENAI, false,
+                    false)),
+            Map.entry("COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, 1,
+                    Set.of("START_END"), "START_END", false)),
+            Map.entry(OPENAI_GPT_IMAGE_2, image(MediaPlatform.OPENAI, false,
                     OPENAI_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS,
-                    ImageGenerationParameters.QUALITIES, true, true),
-            GOOGLE_NANO_BANANA_2, image(MediaPlatform.GOOGLE, false,
+                    ImageGenerationParameters.QUALITIES, true, true)),
+            Map.entry(GOOGLE_NANO_BANANA_2, image(MediaPlatform.GOOGLE, false,
                     GOOGLE_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
-                    ImageGenerationParameters.RESOLUTIONS, Set.of(), false, false),
-            "ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 9,
-                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true));
+                    ImageGenerationParameters.RESOLUTIONS, Set.of(), false, false)),
+            Map.entry("ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 9,
+                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true)));
+
+    private static Declaration runningHub(Task.Kind kind) {
+        return new Declaration(MediaPlatform.RUNNINGHUB, kind, 0,
+                kind == Task.Kind.VIDEO_GENERATION ? RUNNINGHUB_MAX_VIDEO_SECONDS : 0,
+                true, RUNNINGHUB_MAX_INPUTS, kind == Task.Kind.VIDEO_GENERATION
+                        ? Set.of("TEXT", "GENERAL_REFERENCE") : Set.of(),
+                kind == Task.Kind.VIDEO_GENERATION ? "TEXT" : null,
+                false, Set.of(), Set.of(), Set.of(), false, false, RUNNINGHUB_MAX_INPUTS);
+    }
 
     private static Declaration image(MediaPlatform platform, boolean originRequired,
             int maxReferenceImages, Set<String> aspectRatios, Set<String> resolutions,

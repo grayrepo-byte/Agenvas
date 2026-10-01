@@ -369,6 +369,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-connections/{connectionId}/runninghub/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 只读发现或导入 RunningHub 参数候选，不提交生成 */
+        post: operations["previewRunningHubImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/media-connections/{connectionId}/capabilities": {
         parameters: {
             query?: never;
@@ -1462,12 +1479,12 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE";
+            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "RUNNINGHUB";
             enabled: boolean;
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI local origin or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
+            /** @description COMFYUI local origin, RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -1503,6 +1520,7 @@ export interface components {
         };
         /** @description Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
+            runningHub?: components["schemas"]["RunningHubDefinition"];
             checkpoint?: string;
             diffusionModel?: string;
             textEncoder?: string;
@@ -1520,6 +1538,86 @@ export interface components {
             maxReferenceImages?: number;
             maxReferenceAudios?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
+        };
+        RunningHubScalar: string | number | boolean;
+        /** @description Data-only local contract. No scripts, endpoints or credentials. Local versions do not freeze remote workflow implementations. */
+        RunningHubDefinition: {
+            /** @enum {integer} */
+            schemaVersion: 1;
+            /** @enum {string} */
+            protocolVersion: "V2";
+            /** @enum {string} */
+            targetType: "WORKFLOW" | "AI_APP";
+            /** @description Real workflowId/webappId */
+            targetId: string;
+            sourceSha256?: string | null;
+            /** @enum {string|null} */
+            instanceType?: "default" | "plus" | "ultra" | null;
+            /** @default false */
+            usePersonalQueue: boolean;
+            /** @default false */
+            addMetadata: boolean;
+            /** @description Additional provider charge; disabled by default. */
+            retainSeconds?: number | null;
+            fields: components["schemas"]["RunningHubField"][];
+            fixedBindings?: {
+                nodeId: string;
+                fieldName: string;
+                value: components["schemas"]["RunningHubScalar"];
+                /** @enum {string|null} */
+                encoding?: "NATIVE" | "STRING" | null;
+            }[] | null;
+            outputs: {
+                nodeId?: string | null;
+                /** @enum {string} */
+                kind: "IMAGE" | "VIDEO" | "AUDIO";
+                primary: boolean;
+                maxCount: number;
+            }[];
+        };
+        RunningHubField: {
+            key: string;
+            label: string;
+            description?: string | null;
+            /** @enum {string} */
+            type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
+            /** @default false */
+            required: boolean;
+            /** @default false */
+            advanced: boolean;
+            defaultValue?: components["schemas"]["RunningHubScalar"] | null;
+            minimum?: number | null;
+            maximum?: number | null;
+            maxLength?: number | null;
+            options?: {
+                label: string;
+                value: components["schemas"]["RunningHubScalar"];
+            }[] | null;
+            nodeId: string;
+            fieldName: string;
+            /** @enum {string|null} */
+            source?: "PARAMETER" | "PROMPT" | "DURATION_SECONDS" | null;
+            /** @enum {string|null} */
+            encoding?: "NATIVE" | "STRING" | null;
+            /** @enum {string|null} */
+            resourceFormat?: "FILE_NAME" | "URL" | null;
+            enabledWhen?: {
+                field: string;
+                value: components["schemas"]["RunningHubScalar"];
+            } | null;
+        };
+        RunningHubImportRequest: {
+            /** @enum {string} */
+            targetType: "WORKFLOW" | "AI_APP";
+            targetId: string;
+            /** @enum {string} */
+            kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
+            /** @description Optional sanitized nodeInfoList or ComfyUI API-format JSON (256 KiB maximum). Omit for read-only discovery. No curl execution or credentials. */
+            source?: unknown;
+        };
+        RunningHubImportPreview: {
+            definition: components["schemas"]["RunningHubDefinition"];
+            warnings: string[];
         };
         MediaCapabilityPricing: {
             /** @description Administrator supplied unit price; up to six decimal places. */
@@ -1543,8 +1641,8 @@ export interface components {
         CreateMediaConnectionRequest: {
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE";
-            /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "RUNNINGHUB";
+            /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1553,7 +1651,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required local COMFYUI origin or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -1972,6 +2070,7 @@ export interface components {
             expectedVersion: number;
             prompt: string;
             parameters: components["schemas"]["ImageGenerationParameters"];
+            /** @description RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。 */
             durationSeconds?: number | null;
             /** Format: uuid */
             capabilityId?: string | null;
@@ -2056,6 +2155,7 @@ export interface components {
             canvasItemId: string;
             prompt: string;
             parameters: components["schemas"]["ImageGenerationParameters"];
+            /** @description RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。 */
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
@@ -2079,6 +2179,10 @@ export interface components {
         };
         /** @description 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
         ImageGenerationParameters: {
+            /** @description RunningHub only. Named media values are exact version UUIDs matched against mediaInputs; arbitrary URLs are rejected. */
+            dynamicValues?: {
+                [key: string]: components["schemas"]["RunningHubScalar"];
+            };
             speaker?: string;
             speechRate?: number;
             loudnessRate?: number;
@@ -2096,7 +2200,7 @@ export interface components {
         /** @enum {string} */
         VideoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
         /** @enum {string} */
-        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE";
+        MediaInputRole: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE" | "VIDEO_REFERENCE";
         SaveMediaInput: {
             /** Format: uuid */
             versionId: string;
@@ -3556,6 +3660,53 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    previewRunningHubImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunningHubImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Requires explicit field/output review before publishing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunningHubImportPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Invalid sanitized input contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Discovery unavailable; use sanitized local JSON import */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     createMediaCapability: {
