@@ -890,6 +890,19 @@ public class DirectMediaTaskService {
         }
     }
 
+    /** Checks library reference reuse with the same protocol rules as direct generation, without a task or provider call. */
+    public void validateLibraryReference(UUID owner, UUID project, Artifact.Kind artifactKind, MediaDraft draft) {
+        Task.Kind kind = switch (artifactKind) {
+            case IMAGE -> Task.Kind.IMAGE_GENERATION;
+            case VIDEO -> Task.Kind.VIDEO_GENERATION;
+            case AUDIO -> Task.Kind.AUDIO_GENERATION;
+            default -> throw invalid("文字节点不能添加媒体参考。");
+        };
+        MediaCapabilityBinding binding = capabilities.forDraft(draft.capabilityId(), kind);
+        validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+        validateReferenceAssets(owner, project, draft, binding);
+    }
+
     private void validateCapabilityInputs(Task.Kind kind, MediaDraft draft,
             dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy, JsonNode parametersJson) {
         long audioCount = draft.mediaInputs().stream().filter(input ->

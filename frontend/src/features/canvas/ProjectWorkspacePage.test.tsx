@@ -125,6 +125,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Audio project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
       http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: agents })),
+      // Audio retrieval can fail independently without blocking exact-version conversations.
+      http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
       http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
         creates++;
         const input = await request.json() as { name: string; instruction: string; bindings: { artifactId: string; selectedVersionId: string }[] };
@@ -154,6 +156,7 @@ describe("ProjectWorkspacePage", () => {
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
     fireEvent.click(await screen.findByRole("article", { name: "Voice · 音频" }));
+    expect(await screen.findByText(/波形暂不可用/)).toBeVisible();
     await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
     expect(await screen.findByRole("heading", { name: "Voice · 对话" })).toBeVisible();
     expect(creates).toBe(1);

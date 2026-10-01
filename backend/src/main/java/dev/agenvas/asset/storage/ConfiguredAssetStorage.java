@@ -213,6 +213,11 @@ public class ConfiguredAssetStorage implements AssetStorage {
             if (!hash.equals(HexFormat.of().formatHex(digest.digest()))) throw new IOException("Cached object hash mismatch");
         } catch (IOException | java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException("Invalid private cache", failure); }
     }
+    @Override public boolean belongsToProject(String key, UUID project) {
+        if (!key.startsWith(REMOTE_PREFIX)) return AssetStorage.super.belongsToProject(key, project);
+        // The durable route validates the cloud connection and exact original/thumbnail key.
+        return remote(key).key().startsWith(project + "/");
+    }
     @Override public void discard(String key) {
         if (!key.startsWith(REMOTE_PREFIX)) { local.discard(key); return; }
         Remote r = remote(key); cloud.delete(r.profile(), remoteKey(r.profile(), r.key()));

@@ -75,6 +75,7 @@ export function useArtifactRevision<Fields extends object, Revision>({
     base, fields, status,
     edit: (patch: Partial<Fields>) => setFields((current) => ({ ...current, ...patch })),
     save: save.mutate,
+    saveAsync: save.mutateAsync,
     reload: () => reload.mutate(),
   };
 }

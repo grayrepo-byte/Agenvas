@@ -54,5 +54,9 @@ public interface AssetStorage {
         };
     }
     Path checkedPath(String objectKey);
+    /** Validate the internal archive partition before removing an unpublished project copy. */
+    default boolean belongsToProject(String objectKey, UUID projectId) {
+        return objectKey.startsWith(projectId + "/");
+    }
     void discard(String objectKey);
 }

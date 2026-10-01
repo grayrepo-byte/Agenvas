@@ -1,3 +1,4 @@
+import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
 import { RunningHubForm, runningHubErrors, runningHubUsedVersions, type RunningHubValue } from "./RunningHubForm";
 import { AUTODL_ADAPTER, getAutoDlWorkflow, autoDlRatioSupported } from "../../shared/autodlWorkflows";
 import { AudioPromptTools } from "./AudioPromptTools";
@@ -60,7 +61,7 @@ const VIDEO_MODE_OPTIONS = [
 // structurally equivalent entry in mentions. Human-readable labels are a view of that pair.
 const MENTION_MARKER = "\uFFFC";
 type DraftFields = Omit<SaveMediaDraftRequest, "expectedVersion">;
-type Popover = "models" | "modes" | "parameters" | "assetReferences" | "canvasReferences" | "voices";
+type Popover = "models" | "modes" | "parameters" | "assetReferences" | "canvasReferences" | "libraryReferences" | "voices";
 type RunIntent = { key: string; expectedDraftVersion: number };
 type UploadProgress = { assetId?: string; createKey: string };
 type AssetReferenceCommit = {
@@ -456,6 +457,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const [failedRemovalVersionId, setFailedRemovalVersionId] = useState<string | null>(null);
   const draggedReferenceIndex = useRef<number | null>(null);
   const runIntent = useRef<RunIntent | null>(null);
+  const [libraryBusy, setLibraryBusy] = useState(false);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [referenceSourcesOpen, setReferenceSourcesOpen] = useState(false);
   const referenceSourcesCloseTimer = useRef<number | null>(null);
@@ -533,6 +535,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ? "input[type=search]" : "[aria-checked='true'], button, select, input");
     (firstControl ?? popoverRef.current)?.focus();
     function onPointerDown(event: PointerEvent) {
+      if (popover === "libraryReferences" && libraryBusy) return;
       if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
         && !triggerRef.current?.contains(event.target)) setPopover(null);
     }
@@ -540,6 +543,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
+        if (popover === "libraryReferences" && libraryBusy) return;
         setPopover(null);
         suppressReferenceSourceFocusOpen.current = true;
         triggerRef.current?.focus();
@@ -560,7 +564,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [popover]);
+  }, [popover, libraryBusy]);
 
   const save = useMutation({
     mutationFn: (input: SaveMediaDraftRequest) => {
@@ -683,18 +687,19 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   });
 
   const closeState = useRef<{ fields: DraftFields | null; dirty: boolean;
-    expectedVersion: number | null; error: Error | null }>({ fields: null,
-    dirty: false, expectedVersion: null, error: null });
+    expectedVersion: number | null; error: Error | null; libraryBusy: boolean }>({ fields: null,
+    dirty: false, expectedVersion: null, error: null, libraryBusy: false });
   useLayoutEffect(() => {
-    closeState.current = { fields, dirty, expectedVersion, error };
-  }, [fields, dirty, expectedVersion, error]);
+    closeState.current = { fields, dirty, expectedVersion, error, libraryBusy };
+  }, [fields, dirty, expectedVersion, error, libraryBusy]);
   useEffect(() => () => {
     const state = closeState.current;
     if (state.dirty && state.fields && state.expectedVersion !== null) {
       const request = { ...state.fields, expectedVersion: state.expectedVersion };
-      if (state.error) {
+      // An accepted reference owns this CAS version; closing must retain edits without racing it.
+      if (state.error || state.libraryBusy) {
         useCanvasStore.getState().setMediaDraftRecovery(ratioDraftKey,
-          { request, saving: false, error: state.error });
+          { request, saving: false, error: state.error ?? new Error("参考转存仍在进行，本地输入已保留。请重新打开并核对最新草稿后保存。") });
       } else {
         void saveClosedMediaDraft(queryClient, artifact.projectId, canvasItemId,
           request, pendingSaveRef.current);
@@ -719,7 +724,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     // Run submission and result selection may advance the draft CAS version. Refresh only clean
     // fields; an in-flight save, local edit or conflict must keep its current input intact.
     if (recovery || !draft.data || dirty || save.isPending || commitAssetReferences.isPending
-        || run.isPending || error) return;
+        || libraryBusy || run.isPending || error) return;
     // An earlier GET can finish after a successful save wrote its newer result to the cache.
     // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
     if (expectedVersion !== null && draft.data.version < expectedVersion) return;
@@ -728,16 +733,16 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     setFields(initial);
     setExpectedVersion(draft.data.version);
   }, [draft.data, dirty, save.isPending, commitAssetReferences.isPending,
-    run.isPending, error, expectedVersion, recovery]);
+    run.isPending, libraryBusy, error, expectedVersion, recovery]);
 
   useEffect(() => {
     if (!dirty || !fields || expectedVersion === null || save.isPending
         || commitAssetReferences.isPending
-        || removeConnectedInput.isPending || error) return;
+        || removeConnectedInput.isPending || libraryBusy || popover === "libraryReferences" || error) return;
     const timer = window.setTimeout(() => save.mutate({ ...fields, expectedVersion }), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [dirty, fields, expectedVersion, save.isPending, commitAssetReferences.isPending,
-    removeConnectedInput.isPending, error]);
+    removeConnectedInput.isPending, libraryBusy, popover, error]);
 
   useEffect(() => {
     if (runningHub || artifact.kind !== "VIDEO" || !fields || !chosenCapability || dirty || save.isPending
@@ -805,6 +810,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function togglePopover(next: Popover, trigger: HTMLButtonElement) {
+    if (libraryBusy) return;
     triggerRef.current = trigger;
     setPopover((current) => current === next ? null : next);
   }
@@ -1246,11 +1252,41 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           }}>
             <BoundingBox size={17} /><span>从画布选择</span>
           </button>
+          <button type="button" role="menuitem" disabled={save.isPending || expectedVersion === null} onClick={() => {
+            setReferenceSourcesOpen(false); setPopover("libraryReferences");
+          }}><ImagesSquare size={17} /><span>从我的资产选择</span></button>
           <button type="button" role="menuitem" disabled aria-disabled="true"
             aria-label="绘制引用图（暂未接入）" title="绘制引用图暂未接入">
             <PaintBrush size={17} /><span>绘制引用图</span><small>暂未接入</small>
           </button>
         </DropdownMenu> : null}
+        {popover === "libraryReferences" && expectedVersion !== null ? <div className="ui-popover-surface media-draft-popover media-draft-library-popover" ref={popoverRef} role="dialog" aria-label="我的资产参考">
+          <button type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>关闭资产选择</button>
+          <LibraryReferencePicker projectId={artifact.projectId} itemId={canvasItemId}
+            kinds={audioCapacity > 0 ? ["IMAGE", "AUDIO"] : ["IMAGE"]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
+            plan={(entry) => {
+              const audio = entry.kind === "AUDIO";
+              const count = fields.mediaInputs.filter((input) => (input.role === "AUDIO_REFERENCE") === audio).length;
+              if (count >= (audio ? audioCapacity - (isAudio && audioSpeaker ? 1 : 0) : imageCapacity)
+                  || isAudio && (audio ? fields.mediaInputs.some((input) => input.role !== "AUDIO_REFERENCE")
+                    : Boolean(audioSpeaker) || fields.mediaInputs.some((input) => input.role === "AUDIO_REFERENCE"))) return null;
+              const mode = artifact.kind === "VIDEO" && fields.mediaInputs.length === 0 ? preferredImageVideoMode(chosenCapability) : effectiveMode;
+              const role = audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
+              if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
+              const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
+              return { role, color, videoInputMode: mode };
+            }} onApplied={(saved, submitted) => {
+              const latest = fieldsRef.current;
+              const changed = latest !== null && JSON.stringify(latest) !== JSON.stringify(Object.fromEntries(Object.entries(submitted).filter(([name]) => name !== "expectedVersion")));
+              const savedFields = fieldsFromDraft(saved);
+              const oldVersions = new Set(submitted.mediaInputs.map((input) => input.versionId));
+              const next = changed ? { ...latest, videoInputMode: saved.videoInputMode,
+                mediaInputs: [...latest.mediaInputs, ...savedFields.mediaInputs.filter((input) => !oldVersions.has(input.versionId))] } : savedFields;
+              fieldsRef.current = next; setFields(next); setExpectedVersion(saved.version); setDirty(changed); setError(null);
+              queryClient.setQueryData(key, saved); setPopover(null);
+              void queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
+            }} />
+        </div> : null}
         {popover === "assetReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-asset-references`} role="dialog" aria-label={audioCapacity > 0 ? "输入媒体版本" : "输入图片版本"}>
           <p className="media-draft-popover-title">{audioCapacity > 0 ? "选择精确图片或音频版本" : "选择精确图片版本"}</p>

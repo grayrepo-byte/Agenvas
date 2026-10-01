@@ -1,3 +1,4 @@
+import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { LinkSimple, LockSimple, PencilSimple,
   SlidersHorizontal, Stack, TextT } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
@@ -43,6 +44,7 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   return <ArtifactCardFrame title={item.title} kindLabel={label} selected={selected} locked={locked}
     toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
+        {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
         <button type="button" disabled={!hasCurrentVersion(artifact)}
           onClick={() => setEditingText(true)}>
           <PencilSimple size={17} aria-hidden />编辑内容</button>
@@ -50,7 +52,7 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
       </>}>
       {children}
       {hasCurrentVersion(artifact) && editingText
-        ? <TextCanvasEditor artifact={artifact} locked={locked}
+        ? <TextCanvasEditor artifact={artifact} canvasItemId={item.id} locked={locked}
           onDone={() => setEditingText(false)} /> : <>
       <div className="content-card-bar">
         <Icon size={17} aria-hidden />

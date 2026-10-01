@@ -11,6 +11,7 @@ import "./PageShell.css";
 const UNAUTHORIZED_STATUS = 401;
 const NAVIGATION = [
   { to: "/projects", label: "项目", icon: FolderSimple },
+  { to: "/library", label: "资产", icon: Cube },
   { to: "/settings/providers", label: "Provider 配置", icon: Cube },
   { to: "/settings/media", label: "媒体配置", icon: FilmStrip },
   { to: "/settings/storage", label: "资源存储", icon: HardDrives },
@@ -69,7 +70,7 @@ export function PageShell({ title, description, actions, children }: {
         </button></div>
     </aside>
     <main className="app-page-main" id="page-content" tabIndex={-1}>
-      <header className="app-page-header"><div><p className="app-page-eyebrow">Agenvas / {activePath === "/projects" ? "工作空间" : "设置"}</p>
+      <header className="app-page-header"><div><p className="app-page-eyebrow">Agenvas / {activePath === "/projects" || activePath === "/library" ? "工作空间" : "设置"}</p>
         <h1>{title}</h1>{description ? <p className="app-page-description">{description}</p> : null}</div>
         {actions ? <div className="ui-form-actions">{actions}</div> : null}
       </header>

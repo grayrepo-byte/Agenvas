@@ -579,9 +579,14 @@ describe("MediaCanvasCard", () => {
 
   describe("image enlargement", () => {
     beforeEach(() => {
-      server.use(http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
-        projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
-      })));
+      server.use(
+        http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+          projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
+        })),
+        http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
+          id: "image-asset", width: 1200, height: 800,
+        })),
+      );
     });
 
     function showImage() {

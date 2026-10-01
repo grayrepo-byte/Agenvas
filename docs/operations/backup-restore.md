@@ -4,8 +4,8 @@
 
 ## 备份范围
 
-1. PostgreSQL 数据库：项目、版本、Run/Task、Provider attempt、媒体连接及不可变能力版本、历史 origin 映射、幂等账本、审批、事件与会话。
-2. `asset-data` 卷：原图、视频、缩略图及任务键归档文件。
+1. PostgreSQL 数据库：项目、版本、Run/Task、Provider attempt、媒体连接及不可变能力版本、历史 origin 映射、幂等账本、审批、事件与会话，以及个人资产条目、库文件、转存命令、导入追溯与清理队列。
+2. `asset-data` 卷：原图、视频、音频、缩略图及任务键归档文件；根目录下的 `library/` 包含账号独立媒体、缩略图和已受理转存的文件 pin，必须完整备份。
 3. 当前部署的 `configs/`、`deploy/`、应用镜像或精确 Git revision、`.env` 中非密钥配置及模板/模型文件名和版本。
 4. 与该数据库对应的 `AGENVAS_CREDENTIAL_MASTER_KEY`、`AGENVAS_CREDENTIAL_KEY_VERSION`、`AGENVAS_CREDENTIAL_PREVIOUS_KEYS` 和外部 Provider 凭证。媒体连接与 LLM 连接的历史密文都可能引用旧密钥版本；密钥与数据库/资产备份**分开**加密存放，记录版本对应关系；不要把密钥放进项目导出或本仓库。
 
@@ -41,7 +41,7 @@ docker compose --env-file .env -f deploy/compose.yaml config --format json \
 docker compose --env-file .env -f deploy/compose.yaml up -d
 ```
 
-恢复模式下登录、项目、Artifact、Asset 与任务只读查询可用；项目及模型设置写操作返回 `503 RECOVERY_MODE_READ_ONLY`。全部后台调度器不注册，包括模型回合、媒体提交/轮询、导出和过期提交扫描；Flyway 不迁移 Schema，也不登记 ComfyUI 配置版本。它是**核对窗口**，不是自动修复：逐项比对数据库里的 Task/Provider attempt、资产文件及原 Provider 实例的请求状态。V34 起的数据库备份包含旧 ComfyUI 精确地址记录，但原实例仍须可达；V34 之前从未登记的旧地址不会由恢复程序推断。旧快照可能不知道备份之后发生的提交；不能批量把 `RUNNING`/`SUBMITTING` 改成 `READY`，不能因为历史查询暂时为空就重提。原端点或旧密钥不可用时保持阻断/UNKNOWN，并记录人工决定。
+恢复模式下登录、项目、Artifact、Asset 与任务只读查询可用；项目及模型设置写操作返回 `503 RECOVERY_MODE_READ_ONLY`。全部后台调度器不注册，包括模型回合、媒体提交/轮询、资产转存/清理、导出和过期提交扫描；Flyway 不迁移 Schema，也不登记 ComfyUI 配置版本。它是**核对窗口**，不是自动修复：逐项比对数据库里的 Task/Provider attempt、资产文件及原 Provider 实例的请求状态。V34 起的数据库备份包含旧 ComfyUI 精确地址记录，但原实例仍须可达；V34 之前从未登记的旧地址不会由恢复程序推断。旧快照可能不知道备份之后发生的提交；不能批量把 `RUNNING`/`SUBMITTING` 改成 `READY`，不能因为历史查询暂时为空就重提。原端点或旧密钥不可用时保持阻断/UNKNOWN，并记录人工决定。
 
 只有完成原请求、文件和密钥核对，确认恢复后的调度不会重复计费，才可在维护窗口将 `AGENVAS_RECOVERY_MODE=false` 并重建/重启服务。当前尚无自动化的全量核对/放行命令；这一步必须由了解 Provider 状态的操作员决定。回滚应用之前还要核对旧二进制是否兼容已迁移的数据库 Schema。
 
@@ -52,3 +52,5 @@ docker compose --env-file .env -f deploy/compose.yaml up -d
 升级到 V51 是一次**不可逆**的产品收缩，见 [ADR 0013](../adr/0013-contract-to-direct-generation.md)：角色、场景、镜头三类产物及其不可变版本、画布卡片、指向它们的媒体任务被硬删除；执行计划、计划步骤与审批、关键帧选择、导出提案及遗留一次性升级表被 drop；任务上指向计划的列与外键被移除。升级前必须确认没有需要保留的三类产物资产——备份仍可回滚到旧 Schema，但已删除的行不会由应用重新生成。等待计划审批的 Run 会被结束并释放项目活动槽位，其未终结任务被取消。
 
 GPT Image 2 与火山方舟 Seedance 连接共用数据库中的版本化媒体连接和上述密钥环。恢复时须保留每个被 Task 固定的连接/能力版本及相应旧主密钥，不能只恢复当前默认渠道。Seedance 的 `providerRequestId` 是原方舟任务 ID；恢复后只查询该 ID 并重取临时结果 URL。数据库备份里没有临时视频字节，已受理但未归档的任务须先核对原任务及 URL 有效期，过期又无法取得原结果时保持 BLOCKED，不创建第二个生成任务。GPT Image 2 同步请求如已发出但结果未入库且无法核对，应保持 UNKNOWN。这两个云渠道仅经本地假服务验证，真实 Provider 请求、灾备核对与密钥轮换演练均未运行。
+
+V67–V70 新增个人资产库，不删除既有项目内容。升级前备份完整数据库和文件卷，并同版本部署前后端；媒体内容增加服务端专用 `LIBRARY_IMPORT` 来源分支，外部导入消费者须理解该来源或拒绝不支持的内容。项目导出仍只包含项目内内容，不导出账号资产库。恢复后先核对 `library_command` 固定输入、独立文件与 pin，再放行本地转存；本地复制重试不触发 Provider。清理队列会删除已确认无需保留的在线文件，备份归档按部署者的独立保留策略处理。V66 升级到 V70 已在隔离 PostgreSQL 验证迁移与项目/设置保留；旧部署 Compose 升级与完整资产库备份恢复演练尚未运行。

@@ -827,6 +827,63 @@ export async function listSystemLogs(input: { stream?: SystemLogStream; search?:
   return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, "无法读取系统日志");
 }
 
+export type LibraryEntry = components["schemas"]["LibraryEntry"];
+export type LibraryCategory = components["schemas"]["LibraryCategory"];
+export type LibrarySort = components["schemas"]["LibrarySort"];
+export type LibraryPage = components["schemas"]["LibraryPage"];
+export type LibraryCommand = components["schemas"]["LibraryCommand"];
+export type LibrarySource = components["schemas"]["LibrarySource"];
+export type SaveLibraryRequest = components["schemas"]["SaveLibraryRequest"];
+export type ImportLibraryRequest = components["schemas"]["ImportLibraryRequest"];
+export type ReferenceLibraryRequest = components["schemas"]["ReferenceLibraryRequest"];
+export type UpdateLibraryRequest = components["schemas"]["UpdateLibraryRequest"];
+export type LibraryFilters = NonNullable<paths["/api/v1/library/entries"]["get"]["parameters"]["query"]>;
+export function listLibraryEntries(filters: LibraryFilters): Promise<LibraryPage> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
+  return readJson(`/api/v1/library/entries?${query}`, "无法读取我的资产");
+}
+export function getLibraryEntry(id: string): Promise<LibraryEntry> {
+  return readJson(`/api/v1/library/entries/${id}`, "无法读取资产");
+}
+export function libraryContentUrl(id: string) { return `/api/v1/library/entries/${id}/content`; }
+export function libraryThumbnailUrl(id: string) { return `/api/v1/library/entries/${id}/thumbnail`; }
+export function getLibrarySource(project: string, item: string): Promise<LibrarySource> {
+  return readJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, "无法读取当前结果");
+}
+export function saveLibraryEntry(project: string, item: string, request: SaveLibraryRequest): Promise<LibraryCommand> {
+  return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, { method: "POST", body: JSON.stringify(request) });
+}
+export function importLibraryEntry(project: string, request: ImportLibraryRequest): Promise<LibraryCommand> {
+  return writeJson(`/api/v1/projects/${project}/library-imports`, { method: "POST", body: JSON.stringify(request) });
+}
+export function referenceLibraryEntry(project: string, item: string, request: ReferenceLibraryRequest): Promise<LibraryCommand> {
+  return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-references`, { method: "POST", body: JSON.stringify(request) });
+}
+export function getLibraryCommand(id: string): Promise<LibraryCommand> {
+  return readJson(`/api/v1/library/commands/${id}`, "暂时无法核对转存结果");
+}
+export function retryLibraryCommand(id: string): Promise<LibraryCommand> {
+  return writeJson(`/api/v1/library/commands/${id}/retry`, { method: "POST" });
+}
+export function updateLibraryEntry(id: string, request: UpdateLibraryRequest): Promise<LibraryEntry> {
+  return writeJson(`/api/v1/library/entries/${id}`, { method: "PATCH", body: JSON.stringify(request) });
+}
+export function setLibraryTrash(id: string, expectedVersion: number, restore = false): Promise<LibraryEntry> {
+  return writeJson(`/api/v1/library/entries/${id}/${restore ? "restore" : "trash"}`, { method: "POST", body: JSON.stringify({ expectedVersion }) });
+}
+export function deleteLibraryEntry(id: string, expectedVersion: number): Promise<void> {
+  return writeEmpty(`/api/v1/library/entries/${id}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
+}
+export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | "VIDEO" | "AUDIO"; name: string; category: LibraryCategory; commandKey: string }): Promise<LibraryCommand> {
+  const body = new FormData(); Object.entries(request).forEach(([key, value]) => body.append(key, value));
+  const token = await getCsrfToken();
+  const response = await fetch("/api/v1/library/uploads", { method: "POST", credentials: "same-origin", body,
+    headers: { Accept: "application/json, application/problem+json", [token.headerName]: token.token } });
+  if (!response.ok) throw await apiError(response, "资产上传未完成");
+  return await response.json() as LibraryCommand;
+}
+
 export type StorageSettings = components["schemas"]["StorageSettings"];
 export type StorageProvider = components["schemas"]["StorageProvider"];
 export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];

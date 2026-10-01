@@ -19,6 +19,9 @@ import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.IdempotencyRecord;
+import dev.agenvas.db.tables.LibraryCleanup;
+import dev.agenvas.db.tables.LibraryCommand;
+import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmTurn;
 import dev.agenvas.db.tables.MediaLegacyOriginMap;
@@ -64,6 +67,8 @@ public class Indexes {
     public static final Index IX_CANVAS_ITEM_SUBJECT = Internal.createIndex(DSL.name("ix_canvas_item_subject"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.SUBJECT_TYPE, CanvasItem.CANVAS_ITEM.SUBJECT_ID }, false);
     public static final Index IX_CONVERSATION_AGENT_UPDATED = Internal.createIndex(DSL.name("ix_conversation_agent_updated"), AgentConversation.AGENT_CONVERSATION, new OrderField[] { AgentConversation.AGENT_CONVERSATION.PROJECT_ID, AgentConversation.AGENT_CONVERSATION.AGENT_INSTANCE_ID, AgentConversation.AGENT_CONVERSATION.UPDATED_AT.desc(), AgentConversation.AGENT_CONVERSATION.ID.desc() }, false);
     public static final Index IX_IDEMPOTENCY_EXPIRY = Internal.createIndex(DSL.name("ix_idempotency_expiry"), IdempotencyRecord.IDEMPOTENCY_RECORD, new OrderField[] { IdempotencyRecord.IDEMPOTENCY_RECORD.EXPIRES_AT }, false);
+    public static final Index IX_LIBRARY_COMMAND_CLAIM = Internal.createIndex(DSL.name("ix_library_command_claim"), LibraryCommand.LIBRARY_COMMAND, new OrderField[] { LibraryCommand.LIBRARY_COMMAND.STATUS, LibraryCommand.LIBRARY_COMMAND.LEASE_UNTIL, LibraryCommand.LIBRARY_COMMAND.CREATED_AT }, false);
+    public static final Index IX_LIBRARY_ENTRY_LIST = Internal.createIndex(DSL.name("ix_library_entry_list"), LibraryEntry.LIBRARY_ENTRY, new OrderField[] { LibraryEntry.LIBRARY_ENTRY.OWNER_ID, LibraryEntry.LIBRARY_ENTRY.TRASHED_AT, LibraryEntry.LIBRARY_ENTRY.CATEGORY, LibraryEntry.LIBRARY_ENTRY.CREATED_AT.desc(), LibraryEntry.LIBRARY_ENTRY.ID.desc() }, false);
     public static final Index IX_LLM_TURN_PROJECT_RUN = Internal.createIndex(DSL.name("ix_llm_turn_project_run"), LlmTurn.LLM_TURN, new OrderField[] { LlmTurn.LLM_TURN.PROJECT_ID, LlmTurn.LLM_TURN.RUN_ID, LlmTurn.LLM_TURN.STEP_INDEX }, false);
     public static final Index IX_MEDIA_LEGACY_ORIGIN_MAP_SHA = Internal.createIndex(DSL.name("ix_media_legacy_origin_map_sha"), MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP, new OrderField[] { MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP.ORIGIN_SHA256, MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP.CONFIG_VERSION }, false);
     public static final Index IX_PROJECT_EVENT_OCCURRED_AT = Internal.createIndex(DSL.name("ix_project_event_occurred_at"), ProjectEvent.PROJECT_EVENT, new OrderField[] { ProjectEvent.PROJECT_EVENT.OCCURRED_AT }, false);
@@ -79,6 +84,7 @@ public class Indexes {
     public static final Index IX_TASK_SUBMITTING_LEASE = Internal.createIndex(DSL.name("ix_task_submitting_lease"), Task.TASK, new OrderField[] { Task.TASK.LEASE_UNTIL, Task.TASK.ID }, false);
     public static final Index IX_TOOL_EXECUTION_RUN = Internal.createIndex(DSL.name("ix_tool_execution_run"), ToolExecution.TOOL_EXECUTION, new OrderField[] { ToolExecution.TOOL_EXECUTION.PROJECT_ID, ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STATUS }, false);
     public static final Index IX_USAGE_LEDGER_PROJECT_CREATED = Internal.createIndex(DSL.name("ix_usage_ledger_project_created"), UsageLedger.USAGE_LEDGER, new OrderField[] { UsageLedger.USAGE_LEDGER.PROJECT_ID, UsageLedger.USAGE_LEDGER.CREATED_AT.desc(), UsageLedger.USAGE_LEDGER.ID.desc() }, false);
+    public static final Index LIBRARY_CLEANUP_DUE_IDX = Internal.createIndex(DSL.name("library_cleanup_due_idx"), LibraryCleanup.LIBRARY_CLEANUP, new OrderField[] { LibraryCleanup.LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, LibraryCleanup.LIBRARY_CLEANUP.CREATED_AT, LibraryCleanup.LIBRARY_CLEANUP.ID }, false);
     public static final Index SPRING_SESSION_IX1 = Internal.createIndex(DSL.name("spring_session_ix1"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.SESSION_ID }, true);
     public static final Index SPRING_SESSION_IX2 = Internal.createIndex(DSL.name("spring_session_ix2"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.EXPIRY_TIME }, false);
     public static final Index SPRING_SESSION_IX3 = Internal.createIndex(DSL.name("spring_session_ix3"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.PRINCIPAL_NAME }, false);

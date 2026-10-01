@@ -9,6 +9,10 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
+import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
+import dev.agenvas.db.tables.LibraryCommand.LibraryCommandPath;
+import dev.agenvas.db.tables.LibraryEntry.LibraryEntryPath;
+import dev.agenvas.db.tables.LibraryFile.LibraryFilePath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.records.AppUserRecord;
@@ -208,6 +212,58 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _idempotencyRecord = new IdempotencyRecordPath(this, null, Keys.IDEMPOTENCY_RECORD__FK_IDEMPOTENCY_PRINCIPAL.getInverseKey());
 
         return _idempotencyRecord;
+    }
+
+    private transient LibraryCleanupPath _libraryCleanup;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.library_cleanup</code> table
+     */
+    public LibraryCleanupPath libraryCleanup() {
+        if (_libraryCleanup == null)
+            _libraryCleanup = new LibraryCleanupPath(this, null, Keys.LIBRARY_CLEANUP__LIBRARY_CLEANUP_OWNER_ID_FKEY.getInverseKey());
+
+        return _libraryCleanup;
+    }
+
+    private transient LibraryCommandPath _libraryCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.library_command</code> table
+     */
+    public LibraryCommandPath libraryCommand() {
+        if (_libraryCommand == null)
+            _libraryCommand = new LibraryCommandPath(this, null, Keys.LIBRARY_COMMAND__LIBRARY_COMMAND_OWNER_ID_FKEY.getInverseKey());
+
+        return _libraryCommand;
+    }
+
+    private transient LibraryEntryPath _libraryEntry;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.library_entry</code> table
+     */
+    public LibraryEntryPath libraryEntry() {
+        if (_libraryEntry == null)
+            _libraryEntry = new LibraryEntryPath(this, null, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FKEY.getInverseKey());
+
+        return _libraryEntry;
+    }
+
+    private transient LibraryFilePath _libraryFile;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.library_file</code> table
+     */
+    public LibraryFilePath libraryFile() {
+        if (_libraryFile == null)
+            _libraryFile = new LibraryFilePath(this, null, Keys.LIBRARY_FILE__LIBRARY_FILE_OWNER_ID_FKEY.getInverseKey());
+
+        return _libraryFile;
     }
 
     private transient ProjectPath _project;

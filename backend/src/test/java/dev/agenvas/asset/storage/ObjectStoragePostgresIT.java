@@ -56,7 +56,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = { AgenvasApplication.class, ObjectStoragePostgresIT.Transport.class }, properties = {
-    "agenvas.identity.bootstrap-secret=storage-integration-bootstrap-secret", "agenvas.tasks.scheduler-enabled=false" })
+    "agenvas.identity.bootstrap-secret=storage-integration-bootstrap-secret", "agenvas.tasks.scheduler-enabled=false",
+    "agenvas.library.worker-enabled=false" })
 class ObjectStoragePostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     static final Path ROOT = temporaryRoot();
@@ -77,6 +78,8 @@ class ObjectStoragePostgresIT {
     @Autowired MediaToolRunner mediaTools;
     @Autowired WebApplicationContext context;
     @Autowired JdbcClient jdbc;
+    @Autowired dev.agenvas.library.application.LibraryService library;
+    @Autowired tools.jackson.databind.ObjectMapper mapper;
     @AfterAll static void stop() { STORE.server.stop(0); }
     static Path temporaryRoot() {
         try { return Files.createTempDirectory("agenvas-object-store-it-"); }
@@ -184,6 +187,7 @@ class ObjectStoragePostgresIT {
 
         // Generated and uploaded video/audio share exactly the same configured archive boundary.
         settings.activate(settings.status().version(), cloudId);
+        verifyCloudLibraryTransfers(mvc, auth, owner, png);
         Path video = ROOT.resolve("fixture.mp4"), audio = ROOT.resolve("fixture.wav");
         mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=red:s=64x64:r=10",
                 "-t", "0.3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", video.toString()));
@@ -203,6 +207,78 @@ class ObjectStoragePostgresIT {
             mvc.perform(get("/api/v1/projects/{p}/assets/{a}/content", project, sound.id()).with(authentication(auth)))
                     .andExpect(status().isOk()).andExpect(content().bytes(Files.readAllBytes(audio)));
         }
+    }
+
+    /** Real HTTP catalogue operations with fake cloud bytes exercise both storage lifetimes. */
+    private void verifyCloudLibraryTransfers(org.springframework.test.web.servlet.MockMvc mvc,
+            org.springframework.security.core.Authentication auth, AdminPrincipal owner, byte[] png) throws Exception {
+        UUID source = projects.create(owner.userId(), "cloud-library-source", dev.agenvas.project.domain.Project.AspectRatio.LANDSCAPE_16_9).id();
+        UUID target = projects.create(owner.userId(), "cloud-library-target", dev.agenvas.project.domain.Project.AspectRatio.LANDSCAPE_16_9).id();
+        var media = assets.archiveImage(owner.userId(), source, new ByteArrayInputStream(png));
+        var artifact = libraryPost(mvc, auth, "/api/v1/projects/" + source + "/artifacts", Map.of(
+                "kind", "IMAGE", "title", "云端来源", "content", Map.of("sourceType", "UPLOAD", "assetId", media.id())), 201);
+        UUID item = UUID.randomUUID();
+        libraryPost(mvc, auth, "/api/v1/projects/" + source + "/canvas/commands", Map.of("commands", java.util.List.of(Map.of(
+                "type", "PLACE_ARTIFACT", "itemId", item, "artifactId", artifact.path("id").asText(),
+                "x", 0, "y", 0, "width", 320, "height", 320, "zIndex", 0, "locked", false))), 200);
+        var save = libraryPost(mvc, auth, "/api/v1/projects/" + source + "/canvas-items/" + item + "/library-saves", Map.of(
+                "versionId", artifact.path("resourceDefaultVersion").path("id").asText(), "expectedSelectionEpoch", 0,
+                "name", "云端场景", "category", "SCENE", "commandKey", "cloud-library-save"), 202);
+        assertThat(library.processNext()).isTrue();
+        var saved = libraryRead(mvc, auth, "/api/v1/library/commands/" + save.path("id").asText());
+        assertThat(saved.path("status").asText()).isEqualTo("SUCCEEDED");
+        String entry = saved.path("result").path("entryId").asText();
+        // Removing the source cloud objects/cache cannot remove the independent account snapshot.
+        var sourceCache = assets.get(owner.userId(), source, media.id()).path();
+        STORE.objects.keySet().removeIf(key -> key.contains(media.id().toString()));
+        Files.delete(sourceCache);
+        mvc.perform(get("/api/v1/library/entries/" + entry + "/content").with(authentication(auth)))
+                .andExpect(status().isOk()).andExpect(content().bytes(png));
+
+        var transfer = libraryPost(mvc, auth, "/api/v1/projects/" + target + "/library-imports", Map.of(
+                "entryId", entry, "expectedVersion", 0, "x", 20, "y", 30, "commandKey", "cloud-library-import"), 202);
+        assertThat(library.processNext()).isTrue();
+        var imported = libraryRead(mvc, auth, "/api/v1/library/commands/" + transfer.path("id").asText());
+        assertThat(imported.path("status").asText()).isEqualTo("SUCCEEDED");
+        var content = libraryRead(mvc, auth, "/api/v1/projects/" + target + "/artifacts/" + imported.path("result").path("artifactId").asText());
+        UUID importedAsset = UUID.fromString(content.path("resourceDefaultVersion").path("content").path("assetId").asText());
+        assertThat(assets.metadata(owner.userId(), target, importedAsset).objectKey()).startsWith("objects/");
+
+        // A draft conflict after cloud upload must clean the unregistered cloud copy and keep READY content.
+        String targetItem = imported.path("result").path("canvasItemId").asText();
+        String draftPath = "/api/v1/projects/" + target + "/canvas-items/" + targetItem + "/media-draft";
+        var draft = libraryRead(mvc, auth, draftPath);
+        var frozen = Map.of("expectedVersion", draft.path("version").asLong(), "prompt", "保留草稿", "parameters", Map.of(),
+                "mediaInputs", java.util.List.of(), "mentions", java.util.List.of());
+        var reference = libraryPost(mvc, auth, "/api/v1/projects/" + target + "/canvas-items/" + targetItem + "/library-references", Map.of(
+                "entryId", entry, "expectedVersion", 0, "commandKey", "cloud-library-conflict", "draft", frozen,
+                "role", "REFERENCE", "color", "#67C7F3"), 202);
+        mvc.perform(put(draftPath).with(authentication(auth)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(frozen))).andExpect(status().isOk());
+        var objectsBeforeFailure = java.util.Set.copyOf(STORE.objects.keySet());
+        assertThat(library.processNext()).isTrue();
+        var rejected = libraryRead(mvc, auth, "/api/v1/library/commands/" + reference.path("id").asText());
+        assertThat(rejected.path("errorCode").asText()).isEqualTo("VERSION_CONFLICT");
+        assertThat(STORE.objects.size()).isGreaterThan(objectsBeforeFailure.size());
+        for (int i = 0; i < 10; i++) library.cleanupNext();
+        assertThat(STORE.objects.keySet()).containsExactlyInAnyOrderElementsOf(objectsBeforeFailure);
+        libraryPost(mvc, auth, "/api/v1/library/entries/" + entry + "/trash", Map.of("expectedVersion", 0), 200);
+        mvc.perform(delete("/api/v1/library/entries/" + entry + "?expectedVersion=1").with(authentication(auth)).with(csrf()))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/projects/{p}/assets/{a}/content", target, importedAsset).with(authentication(auth)))
+                .andExpect(status().isOk()).andExpect(content().bytes(png));
+        assertThat(STORE.networkInsideTransaction.get()).isFalse();
+    }
+    private tools.jackson.databind.JsonNode libraryPost(org.springframework.test.web.servlet.MockMvc mvc,
+            org.springframework.security.core.Authentication auth, String path, Object body, int expected) throws Exception {
+        return mapper.readTree(mvc.perform(post(path).with(authentication(auth)).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body))).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString());
+    }
+    private tools.jackson.databind.JsonNode libraryRead(org.springframework.test.web.servlet.MockMvc mvc,
+            org.springframework.security.core.Authentication auth, String path) throws Exception {
+        return mapper.readTree(mvc.perform(get(path).with(authentication(auth))).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
     }
     static byte[] png() throws Exception {
         var image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
