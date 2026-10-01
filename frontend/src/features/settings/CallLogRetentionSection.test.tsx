@@ -96,6 +96,9 @@ describe("CallLogRetentionSection", () => {
     await user.click(screen.getByRole("button", { name: "立即清理" }));
     let dialog = screen.getByRole("dialog", { name: "确认清理到期日志" });
     expect(dialog).toHaveTextContent("将按已保存的 30 天保留策略执行清理。");
+    expect(dialog).toHaveTextContent("包括未结束和结果未知的执行");
+    expect(dialog).toHaveTextContent("未结束任务会停止本地执行");
+    expect(dialog).toHaveTextContent("外部请求可能仍继续或计费");
     expect(requests).not.toHaveBeenCalled(); await user.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(requests).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "立即清理" }));

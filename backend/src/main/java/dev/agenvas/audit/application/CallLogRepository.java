@@ -16,7 +16,7 @@ public interface CallLogRepository {
     void finish(UUID id, CallLogService.CallOutcome outcome, Instant respondedAt, long durationMs);
     CallLogRetentionSettings retentionSettings();
     Optional<CallLogRetentionSettings> updateRetentionSettings(Integer days, int expectedVersion);
-    /** Atomically cleans at most batchSize terminal execution units and returns their count. */
+    /** Atomically cleans at most batchSize expired execution units and returns their count. */
     int purgeExpired(Instant now, int batchSize, int expectedVersion);
     boolean isDebugEnabled();
     DebugSettings settings();

@@ -131,6 +131,14 @@ public class ProjectService {
         }
     }
 
+    /** History cleanup may stop an old run after its slot was already released. Only
+     * clear a slot still owned by that exact run; never disturb a newer execution.
+     */
+    @Transactional
+    public boolean releaseRunSlotIfHeld(UUID ownerId, UUID projectId, UUID runId) {
+        return projects.releaseRunSlot(ownerId, projectId, runId, clock.instant());
+    }
+
     /** 在用户所有者范围内按创建时间与 ID 键集分页，游标不暴露原始字段结构。 */
     @Transactional(readOnly = true)
     public ProjectPage list(

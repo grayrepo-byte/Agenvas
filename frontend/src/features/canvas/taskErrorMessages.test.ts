@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { PROVIDER_FAILURE_CODES, taskErrorDetail, taskErrorMessage } from "./taskErrorMessages";
 
 describe("taskErrorMessages", () => {
+  it("explains the local stop caused by history cleanup", () => {
+    expect(taskErrorDetail("EXECUTION_HISTORY_CLEANED")).toBe(" · 执行已过期，清理历史时已停止本地任务");
+  });
   it("maps every registered provider failure code to readable Chinese", () => {
     for (const code of Object.values(PROVIDER_FAILURE_CODES)) {
       expect(taskErrorMessage(code), code).toBeTruthy();

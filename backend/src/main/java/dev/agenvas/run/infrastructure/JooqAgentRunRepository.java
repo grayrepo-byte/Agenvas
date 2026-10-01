@@ -25,6 +25,16 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JooqAgentRunRepository implements AgentRunRepository {
 
+    @Override
+    public List<AgentRun> stopForHistoryCleanup(List<UUID> runIds, Instant now) {
+        return dsl.update(AGENT_RUN).set(AGENT_RUN.STATUS, AgentRun.Status.CANCELED.name())
+                .set(AGENT_RUN.VERSION, AGENT_RUN.VERSION.plus(1))
+                .set(AGENT_RUN.COMPLETED_AT, utc(now)).set(AGENT_RUN.UPDATED_AT, utc(now))
+                .where(AGENT_RUN.ID.in(runIds))
+                .and(AGENT_RUN.STATUS.notIn(AgentRun.Status.SUCCEEDED.name(), AgentRun.Status.FAILED.name(), AgentRun.Status.CANCELED.name()))
+                .returning().fetch(this::map);
+    }
+
     /** 执行带所有者和项目边界的 Run 与幂等记录查询。 */
     private final DSLContext dsl;
     /** 将冻结的上下文策略 JSON 与数据库行互相转换。 */

@@ -48,7 +48,8 @@ export function CallLogRetentionSection({ enabled }: { enabled: boolean }) {
     <div className="ui-stack">
       <Notice tone="warning" title={t("清理范围与风险")}>
         <p>{t("手动清理时，将一起删除到期的整条调用日志、debug 正文、模型回合、工具执行与 Provider 提交账本，无法恢复。旧对话中的执行明细也会消失。")}</p>
-        <p>{t("仅清理已结束且超过保留时长的完整执行；运行中、待处理和结果未知的执行继续保留。业务任务、画布内容、生成版本和媒体文件不会删除。")}</p>
+        <p>{t("清理范围包含已结束、未结束和结果未知的过期执行。未结束任务会先停止本地执行，再一起删除日志与账本；任务身份和已有创作结果保留。")}</p>
+        <p>{t("清理未结束或结果未知的执行后，将无法继续恢复或核对原请求；外部请求可能仍在执行或计费，不承诺停止或退款。")}</p>
         <p>{t("不使用定时任务。请先保存保留时长，再手动清理；已有历史也在清理范围内，已删除记录无法恢复。")}</p>
       </Notice>
       {settings.isPending && enabled ? <LoadingState compact label={t("正在读取日志保留设置")} /> : null}
@@ -93,7 +94,7 @@ export function CallLogRetentionSection({ enabled }: { enabled: boolean }) {
       onSubmit={(event) => { event.preventDefault(); if (!cleanup.isPending) cleanup.mutate({ expectedVersion: confirmation.version }); }}
       footer={<><button className="secondary-button" type="button" disabled={cleanup.isPending} onClick={() => setConfirmation(null)}>{t("取消")}</button>
         <button className="primary-button" type="submit" disabled={cleanup.isPending}>{cleanup.isPending ? t("正在清理…") : t("确认清理")}</button></>}>
-      <Notice tone="warning" title={t("清理范围与风险")}><p>{t("调用日志、debug 正文和对应执行账本将一起删除，无法恢复。业务任务与创作结果保留，未结束或结果未知的执行不会清理。")}</p></Notice>
+      <Notice tone="warning" title={t("清理范围与风险")}><p>{t("将清理所有超过保留时长的执行日志与账本，包括未结束和结果未知的执行；未结束任务会停止本地执行。删除无法恢复，外部请求可能仍继续或计费，任务身份与已有创作结果保留。")}</p></Notice>
     </Dialog> : null}
   </Panel>;
 }

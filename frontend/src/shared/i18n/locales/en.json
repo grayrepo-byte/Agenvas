@@ -1771,5 +1771,9 @@
   "默认音调": "default tone",
   "默认音量": "Default volume",
   "（首帧和尾帧均需提供）": "(Both the first frame and the last frame are required)",
-  "；发布 Nano Banana 能力时， 选择“自定义兼容模型”，模型名填 ": ";When publishing Nano Banana capabilities, select \"Custom compatible model\" and fill in the model name "
+  "；发布 Nano Banana 能力时， 选择“自定义兼容模型”，模型名填 ": ";When publishing Nano Banana capabilities, select \"Custom compatible model\" and fill in the model name ",
+  "清理范围包含已结束、未结束和结果未知的过期执行。未结束任务会先停止本地执行，再一起删除日志与账本；任务身份和已有创作结果保留。": "Cleanup includes expired completed, unfinished, and unknown-result executions. Unfinished tasks stop locally before their logs and ledgers are deleted together; task identities and existing creative results remain.",
+  "将清理所有超过保留时长的执行日志与账本，包括未结束和结果未知的执行；未结束任务会停止本地执行。删除无法恢复，外部请求可能仍继续或计费，任务身份与已有创作结果保留。": "All expired execution logs and ledgers will be deleted, including unfinished and unknown-result executions. Unfinished tasks stop locally. Deletion is irreversible; external requests may continue or incur costs. Task identities and existing creative results remain.",
+  "清理未结束或结果未知的执行后，将无法继续恢复或核对原请求；外部请求可能仍在执行或计费，不承诺停止或退款。": "After cleaning unfinished or unknown-result executions, the original request can no longer be recovered or reconciled. External requests may still run or incur costs; stopping them or refunding costs is not guaranteed.",
+  "执行已过期，清理历史时已停止本地任务": "Execution expired; the local task was stopped during history cleanup"
 }

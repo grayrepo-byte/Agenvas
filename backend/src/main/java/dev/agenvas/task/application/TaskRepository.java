@@ -11,6 +11,11 @@ import tools.jackson.databind.JsonNode;
 
 /** 任务持久化边界；依赖关系、租约和外部提交检查点均在数据库中约束。 */
 public interface TaskRepository {
+    /** Stop administrator-selected expired units before deleting their recovery ledgers.
+     * Caller holds project and task locks; advancing epochs fences every previous worker.
+     */
+    List<Task> stopForHistoryCleanup(List<UUID> taskIds, Instant now);
+
     Optional<dev.agenvas.provider.domain.ProviderResultManifest> providerResultManifest(UUID taskId);
     boolean checkpointProviderResults(Task lease, String workerId,
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now);

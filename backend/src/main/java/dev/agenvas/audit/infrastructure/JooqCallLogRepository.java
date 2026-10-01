@@ -37,11 +37,16 @@ public class JooqCallLogRepository implements CallLogRepository {
     private final ObjectMapper mapper;
     private final dev.agenvas.llm.application.ExecutionLedgerRetention turns;
     private final dev.agenvas.task.application.ProviderAttemptRetention attempts;
+    private final dev.agenvas.run.application.RunHistoryCleanupService runs;
+    private final dev.agenvas.task.application.TaskHistoryCleanupService tasks;
 
     public JooqCallLogRepository(DSLContext dsl, ObjectMapper mapper,
             dev.agenvas.llm.application.ExecutionLedgerRetention turns,
-            dev.agenvas.task.application.ProviderAttemptRetention attempts) {
+            dev.agenvas.task.application.ProviderAttemptRetention attempts,
+            dev.agenvas.run.application.RunHistoryCleanupService runs,
+            dev.agenvas.task.application.TaskHistoryCleanupService tasks) {
         this.dsl = dsl; this.mapper = mapper; this.turns = turns; this.attempts = attempts;
+        this.runs = runs; this.tasks = tasks;
     }
 
     @Override public CallLogRetentionSettings retentionSettings() {
@@ -56,10 +61,47 @@ public class JooqCallLogRepository implements CallLogRepository {
                 .fetchOptional(row -> new CallLogRetentionSettings(row.getRetentionDays(), row.getVersion()));
     }
 
-    /** One policy-locked transaction removes calls and ledgers together for complete terminal
-     * execution units. Recovery states (including UNKNOWN) are never selected, even with an
-     * expired lease. Recent calls or late updates defer the entire unit, avoiding partial history.
-     * Runs/tasks remain as business identities and result provenance; module ports own ledger deletion.
+    // A unit expires only if every member and checkpoint is older than the saved period.
+    // Nonterminal states deliberately qualify: the administrator confirms local abandonment.
+    private static final String EXPIRED_RUNS = """
+            WITH expiry AS (SELECT ?::timestamptz AS cutoff)
+            SELECT r.id, r.project_id FROM agent_run r, expiry e
+            WHERE coalesce(r.completed_at,r.created_at) < e.cutoff AND r.updated_at < e.cutoff
+              AND (r.status NOT IN ('SUCCEEDED','FAILED','CANCELED')
+                OR EXISTS (SELECT 1 FROM task t WHERE t.run_id=r.id AND t.status NOT IN ('SUCCEEDED','FAILED','CANCELED'))
+                OR EXISTS (SELECT 1 FROM llm_turn l WHERE l.run_id=r.id
+                  UNION ALL SELECT 1 FROM call_log c WHERE c.run_id=r.id AND c.kind='LLM'
+                  UNION ALL SELECT 1 FROM call_log c JOIN task t ON t.id=c.task_id WHERE t.run_id=r.id
+                  UNION ALL SELECT 1 FROM provider_attempt a JOIN task t ON t.id=a.task_id WHERE t.run_id=r.id))
+              AND NOT EXISTS (SELECT 1 FROM task t WHERE t.run_id=r.id AND
+                (coalesce(t.completed_at,t.created_at) >= e.cutoff OR t.updated_at >= e.cutoff))
+              AND NOT EXISTS (SELECT 1 FROM call_log c WHERE c.run_id=r.id AND c.kind='LLM' AND
+                (c.started_at >= e.cutoff OR c.responded_at >= e.cutoff))
+              AND NOT EXISTS (SELECT 1 FROM call_log c JOIN task t ON t.id=c.task_id
+                WHERE t.run_id=r.id AND (c.started_at >= e.cutoff OR c.responded_at >= e.cutoff))
+              AND NOT EXISTS (SELECT 1 FROM llm_turn l WHERE l.run_id=r.id AND
+                (l.created_at >= e.cutoff OR l.responded_at >= e.cutoff))
+              AND NOT EXISTS (SELECT 1 FROM tool_execution x WHERE x.run_id=r.id AND
+                (x.created_at >= e.cutoff OR x.completed_at >= e.cutoff))
+              AND NOT EXISTS (SELECT 1 FROM provider_attempt a JOIN task t ON t.id=a.task_id
+                WHERE t.run_id=r.id AND (a.created_at >= e.cutoff OR a.updated_at >= e.cutoff))
+            """;
+    private static final String EXPIRED_STANDALONE = """
+            WITH expiry AS (SELECT ?::timestamptz AS cutoff)
+            SELECT t.id, t.project_id FROM task t, expiry e WHERE t.run_id IS NULL
+              AND coalesce(t.completed_at,t.created_at) < e.cutoff AND t.updated_at < e.cutoff
+              AND NOT EXISTS (SELECT 1 FROM call_log c WHERE c.task_id=t.id AND
+                (c.started_at >= e.cutoff OR c.responded_at >= e.cutoff))
+              AND NOT EXISTS (SELECT 1 FROM provider_attempt a WHERE a.task_id=t.id AND
+                (a.created_at >= e.cutoff OR a.updated_at >= e.cutoff))
+              AND (t.status NOT IN ('SUCCEEDED','FAILED','CANCELED')
+                OR EXISTS (SELECT 1 FROM provider_attempt a WHERE a.task_id=t.id
+                  UNION ALL SELECT 1 FROM call_log c WHERE c.task_id=t.id))
+            """;
+
+    /** Lock policy then projects then runs/tasks, matching ordinary project state changes.
+     * Stop expired nonterminal units and fence old workers before removing their ledgers.
+     * State changes, project events and history deletion commit or roll back together.
      */
     @Override @Transactional
     public int purgeExpired(Instant now, int batchSize, int expectedVersion) {
@@ -72,51 +114,36 @@ public class JooqCallLogRepository implements CallLogRepository {
         }
         if (policy.getRetentionDays() == null) return 0;
         Instant cutoff = now.minus(policy.getRetentionDays(), ChronoUnit.DAYS);
-        var runIds = new ArrayList<>(dsl.fetch("""
-                SELECT r.id FROM agent_run r
-                WHERE r.status IN ('SUCCEEDED', 'FAILED', 'CANCELED') AND r.completed_at < ? AND r.updated_at < ?
-                  AND EXISTS (SELECT 1 FROM llm_turn l WHERE l.run_id=r.id
-                    UNION ALL SELECT 1 FROM call_log c WHERE c.run_id=r.id AND c.kind='LLM'
-                    UNION ALL SELECT 1 FROM call_log c JOIN task t ON t.id=c.task_id WHERE t.run_id=r.id
-                    UNION ALL SELECT 1 FROM provider_attempt a JOIN task t ON t.id=a.task_id WHERE t.run_id=r.id)
-                  AND NOT EXISTS (SELECT 1 FROM task t WHERE t.run_id=r.id AND
-                    (t.status NOT IN ('SUCCEEDED','FAILED','CANCELED') OR t.completed_at >= ? OR t.updated_at >= ? OR t.lease_until > ?))
-                  AND NOT EXISTS (SELECT 1 FROM call_log c WHERE c.run_id=r.id AND c.kind='LLM' AND
-                    (c.started_at >= ? OR c.responded_at >= ?))
-                  AND NOT EXISTS (SELECT 1 FROM call_log c JOIN task t ON t.id=c.task_id
-                    WHERE t.run_id=r.id AND (c.started_at >= ? OR c.responded_at >= ?))
-                ORDER BY r.completed_at, r.id LIMIT ? FOR UPDATE OF r SKIP LOCKED
-                """, utc(cutoff), utc(cutoff), utc(cutoff), utc(cutoff), utc(now), utc(cutoff), utc(cutoff), utc(cutoff), utc(cutoff), batchSize)
+        var candidates = dsl.fetch(EXPIRED_RUNS + " ORDER BY coalesce(r.completed_at,r.created_at),r.id LIMIT ?", utc(cutoff), batchSize);
+        var directCandidates = dsl.fetch(EXPIRED_STANDALONE + " ORDER BY coalesce(t.completed_at,t.created_at),t.id LIMIT ?", utc(cutoff), batchSize);
+        var projectIds = new java.util.HashSet<>(candidates.getValues("project_id", UUID.class));
+        projectIds.addAll(directCandidates.getValues("project_id", UUID.class));
+        // SKIP LOCKED never waits while holding a run/task lock for another project's event lock.
+        var projects = dsl.select(PROJECT.ID).from(PROJECT).where(PROJECT.ID.in(projectIds))
+                .orderBy(PROJECT.ID).forUpdate().skipLocked().fetch(PROJECT.ID);
+        var runIds = new ArrayList<>(dsl.fetch(EXPIRED_RUNS + """
+                 AND r.id=ANY(?) AND r.project_id=ANY(?)
+                 ORDER BY coalesce(r.completed_at,r.created_at),r.id LIMIT ? FOR UPDATE OF r SKIP LOCKED
+                """, utc(cutoff), candidates.getValues("id", UUID.class).toArray(UUID[]::new), projects.toArray(UUID[]::new), batchSize)
                 .getValues("id", UUID.class));
-        // Lock all tasks belonging to selected runs before touching provider ledgers. Terminal
-        // state cannot be resumed; these locks serialize any legitimate late result checkpoints.
         var taskIds = new ArrayList<>(dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?) ORDER BY id FOR UPDATE SKIP LOCKED",
                 (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
-        // Recheck after locking: a late checkpoint may have changed a task between the
-        // candidate read and lock. If any task was locked elsewhere, defer its whole run.
+        // A skipped task or a newly refreshed checkpoint defers the whole execution, never half.
         var deferred = dsl.fetch("""
                 SELECT DISTINCT run_id FROM task WHERE run_id = ANY(?) AND
-                  (NOT (id = ANY(?)) OR status NOT IN ('SUCCEEDED','FAILED','CANCELED')
-                    OR completed_at >= ? OR updated_at >= ? OR lease_until > ?)
-                """, runIds.toArray(UUID[]::new), taskIds.toArray(UUID[]::new), utc(cutoff), utc(cutoff), utc(now))
-                .getValues("run_id", UUID.class);
+                  (NOT (id = ANY(?)) OR coalesce(completed_at,created_at) >= ? OR updated_at >= ?)
+                """, runIds.toArray(UUID[]::new), taskIds.toArray(UUID[]::new), utc(cutoff), utc(cutoff)).getValues("run_id", UUID.class);
         runIds.removeAll(deferred);
         taskIds = new ArrayList<>(dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?)",
                 (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
-        int remaining = batchSize - runIds.size();
-        var standalone = dsl.fetch("""
-                SELECT t.id FROM task t WHERE t.run_id IS NULL
-                  AND t.status IN ('SUCCEEDED','FAILED','CANCELED') AND t.completed_at < ? AND t.updated_at < ?
-                  AND (t.lease_until IS NULL OR t.lease_until <= ?)
-                  AND NOT EXISTS (SELECT 1 FROM call_log c WHERE c.task_id=t.id AND
-                    (c.started_at >= ? OR c.responded_at >= ?))
-                  AND EXISTS (SELECT 1 FROM provider_attempt a WHERE a.task_id=t.id
-                    UNION ALL SELECT 1 FROM call_log c WHERE c.task_id=t.id)
-                ORDER BY t.completed_at, t.id LIMIT ? FOR UPDATE OF t SKIP LOCKED
-                """, utc(cutoff), utc(cutoff), utc(now), utc(cutoff), utc(cutoff), remaining)
+        var standalone = dsl.fetch(EXPIRED_STANDALONE + """
+                 AND t.id=ANY(?) AND t.project_id=ANY(?)
+                 ORDER BY coalesce(t.completed_at,t.created_at),t.id LIMIT ? FOR UPDATE OF t SKIP LOCKED
+                """, utc(cutoff), directCandidates.getValues("id", UUID.class).toArray(UUID[]::new), projects.toArray(UUID[]::new), batchSize - runIds.size())
                 .getValues("id", UUID.class);
         taskIds.addAll(standalone);
-        // Runs without any history must not consume future batches forever.
+        runs.stopFor(runIds, now);
+        tasks.stopFor(taskIds, now);
         dsl.deleteFrom(CALL_LOG).where(CALL_LOG.KIND.eq("LLM").and(CALL_LOG.RUN_ID.in(runIds))).execute();
         dsl.deleteFrom(CALL_LOG).where(CALL_LOG.TASK_ID.in(taskIds)).execute();
         turns.deleteFor(runIds);

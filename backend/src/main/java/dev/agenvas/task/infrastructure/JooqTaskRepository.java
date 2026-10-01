@@ -48,6 +48,21 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation {
 
+    @Override
+    public List<Task> stopForHistoryCleanup(List<UUID> taskIds, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.STATUS, Task.Status.CANCELED.name())
+                .set(TASK.CANCEL_REQUESTED, true)
+                .set(TASK.ERROR_CODE, dev.agenvas.task.application.TaskHistoryCleanupService.CLEANED_ERROR_CODE)
+                .setNull(TASK.LEASE_OWNER).setNull(TASK.LEASE_UNTIL)
+                .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1))
+                .set(TASK.VERSION, TASK.VERSION.plus(1))
+                .set(TASK.COMPLETED_AT, utc(now)).set(TASK.UPDATED_AT, utc(now))
+                .where(TASK.ID.in(taskIds))
+                .and(TASK.STATUS.notIn(Task.Status.SUCCEEDED.name(), Task.Status.FAILED.name(), Task.Status.CANCELED.name()))
+                .returning().fetch(this::mapTask);
+    }
+
     /** 人工替代审计行固定写入的确认码，与数据库约束的取值一致。 */
     private static final String CONFIRMATION_CODE_ACCEPT_POSSIBLE_DUPLICATE_COST =
             "ACCEPT_POSSIBLE_DUPLICATE_COST";

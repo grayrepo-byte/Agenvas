@@ -23,6 +23,7 @@ export const PROVIDER_FAILURE_CODES = {
 } as const;
 
 const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  get EXECUTION_HISTORY_CLEANED() { return t("执行已过期，清理历史时已停止本地任务"); },
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
   // 所以不能说成「已提交但没拿到结果」。
   get [PROVIDER_FAILURE_CODES.CALL_TIMEOUT]() { return t("调用超时，结果未知"); },

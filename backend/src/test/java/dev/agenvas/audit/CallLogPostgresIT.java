@@ -97,6 +97,7 @@ class CallLogPostgresIT {
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
     @Autowired private TaskService tasks;
+    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
     @Autowired private CallLogService calls;
     @Autowired private dev.agenvas.audit.application.CallLogRepository auditRepository;
     @Autowired private dev.agenvas.audit.application.CallLogRetentionService retention;
@@ -117,8 +118,9 @@ class CallLogPostgresIT {
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("update audit_debug_settings set debug_mode=false").update();
         jdbc.sql("update audit_log_retention_settings set retention_days=null").update();
-        // Retention is global; defer completed units left by other test cases.
-        jdbc.sql("update agent_run set updated_at=now() where status IN ('SUCCEEDED','FAILED','CANCELED')").update();
+        // Retention is global; defer all units left by other test cases.
+        jdbc.sql("update agent_run set updated_at=now()").update();
+        jdbc.sql("update task set updated_at=now() where run_id is null").update();
     }
 
     @Test
@@ -493,7 +495,7 @@ class CallLogPostgresIT {
     }
 
     @Test
-    void boundsBatchesAndPreservesBoundaryUnknownAndRecentExecutionActivity() {
+    void boundsBatchesAndPreservesBoundaryAndRecentlyUpdatedUnknownExecution() {
         Instant now = Instant.parse("2026-10-01T00:00:00Z");
         Instant cutoff = now.minus(Duration.ofDays(30));
         retention.update(30, retention.settings().version());
@@ -521,6 +523,147 @@ class CallLogPostgresIT {
                 .param("time", Timestamp.from(cutoff.minusSeconds(1))).param("id", fixtureRun(boundary).id()).update();
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(count("llm_turn", "run_id", fixtureRun(boundary).id())).isEqualTo(1);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class,
+            names = {"PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
+    void stopsAndPurgesEveryExpiredNonterminalRunTaskWithWorkerFencing(Task.Status state) throws Exception {
+        Instant now = Instant.parse("2026-10-01T00:00:00Z");
+        Instant old = now.minus(Duration.ofDays(31));
+        Project project = newProject("Expired " + state);
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
+        UUID taskId = taskForCall(call);
+        terminalHistory(project, taskId, old);
+        makeUnfinished(project, state, old, now);
+        Task staleLease = tasks.get(owner.userId(), project.id(), taskId);
+        long runVersion = runs.get(owner.userId(), project.id(), fixtureRun(project).id()).version();
+        retention.update(30, retention.settings().version());
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        Task stopped = tasks.get(owner.userId(), project.id(), taskId);
+        assertThat(stopped.status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(stopped.cancelRequested()).isTrue();
+        assertThat(stopped.errorCode()).isEqualTo("EXECUTION_HISTORY_CLEANED");
+        assertThat(stopped.leaseEpoch()).isEqualTo(staleLease.leaseEpoch() + 1);
+        assertThat(stopped.leaseOwner()).isNull(); assertThat(stopped.leaseUntil()).isNull();
+        assertThat(stopped.version()).isEqualTo(staleLease.version() + 1);
+        assertThat(stopped.providerRequestId()).isEqualTo("expired-provider-request");
+        var stoppedRun = runs.get(owner.userId(), project.id(), fixtureRun(project).id());
+        assertThat(stoppedRun.status()).isEqualTo(AgentRun.Status.CANCELED);
+        assertThat(stoppedRun.version()).isEqualTo(runVersion + 1);
+        assertThat(jdbc.sql("select active_run_id from project where id=:id").param("id", project.id())
+                .query((rs, index) -> rs.getObject(1)).optional()).isEmpty();
+        assertThat(count("call_log", "id", call)).isZero();
+        assertThat(count("llm_turn", "run_id", stoppedRun.id())).isZero();
+        assertThat(count("tool_execution", "run_id", stoppedRun.id())).isZero();
+        assertThat(count("provider_attempt", "task_id", taskId)).isZero();
+        assertThat(jdbc.sql("select count(*) from project_event where project_id=:id and type='task.status.changed' and aggregate_id=:task")
+                .param("id", project.id()).param("task", taskId).query(Integer.class).single()).isPositive();
+        assertThat(jdbc.sql("select count(*) from project_event where project_id=:id and type='agent.run.changed' and aggregate_version=:version")
+                .param("id", project.id()).param("version", stoppedRun.version()).query(Integer.class).single()).isPositive();
+        assertThat(taskRepository.heartbeat(taskId, "expired-worker", staleLease.leaseEpoch(), now, now.plusSeconds(60))).isFalse();
+        assertThat(taskRepository.finishProviderResult(staleLease, "expired-worker", mapper.createObjectNode(), now)).isFalse();
+        assertThat(taskRepository.recordLateResult(staleLease, mapper.createObjectNode(), now)).isFalse();
+        assertThat(taskRepository.claimDueProviderPolls("cleanup-proof", 100, now, now.plusSeconds(60))).extracting(Task::id).doesNotContain(taskId);
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(list(owner, Map.of("projectId", project.id().toString())).path("items").size()).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class,
+            names = {"PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
+    void alsoStopsExpiredStandaloneTasksInEveryNonterminalState(Task.Status state) {
+        Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
+        Project project = newProject("Expired direct " + state);
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
+        UUID task = taskForCall(call);
+        terminalHistory(project, task, old);
+        makeUnfinished(project, state, old, now);
+        jdbc.sql("update task set run_id=null,origin='USER_DIRECT' where id=:id").param("id", task).update();
+        jdbc.sql("update call_log set run_id=null,status='RUNNING',responded_at=null,duration_ms=null where id=:id").param("id", call).update();
+        // The parent run remains recent; only its detached direct task is eligible.
+        jdbc.sql("update agent_run set updated_at=:time where id=:id").param("time", Timestamp.from(now))
+                .param("id", fixtureRun(project).id()).update();
+        retention.update(30, retention.settings().version());
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), project.id(), task).status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(count("call_log", "id", call)).isZero();
+        assertThat(count("provider_attempt", "task_id", task)).isZero();
+        assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+    }
+
+    @Test
+    void stoppingAndHistoryDeletionRollBackTogetherOnFailure() {
+        Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
+        Project project = newProject("Abandon rollback");
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
+        UUID taskId = taskForCall(call); terminalHistory(project, taskId, old);
+        makeUnfinished(project, Task.Status.UNKNOWN, old, now);
+        Task before = tasks.get(owner.userId(), project.id(), taskId);
+        int eventCount = count("project_event", "project_id", project.id());
+        retention.update(30, retention.settings().version());
+        jdbc.sql("CREATE FUNCTION retention_stop_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$").update();
+        jdbc.sql("CREATE TRIGGER retention_stop_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_stop_failure()").update();
+        try {
+            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version())).isInstanceOf(RuntimeException.class);
+            assertThat(tasks.get(owner.userId(), project.id(), taskId)).isEqualTo(before);
+            assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+            assertThat(count("project_event", "project_id", project.id())).isEqualTo(eventCount);
+            assertThat(count("call_log", "id", call)).isEqualTo(1);
+            assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
+            assertThat(count("provider_attempt", "task_id", taskId)).isEqualTo(1);
+            assertThat(jdbc.sql("select active_run_id from project where id=:id").param("id", project.id()).query(UUID.class).single()).isEqualTo(fixtureRun(project).id());
+        } finally {
+            jdbc.sql("DROP TRIGGER retention_stop_failure ON provider_attempt").update();
+            jdbc.sql("DROP FUNCTION retention_stop_failure()").update();
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = AgentRun.Status.class,
+            names = {"QUEUED", "RUNNING", "WAITING_TASKS", "BLOCKED", "CANCEL_REQUESTED"})
+    void abandonsEveryExpiredNonterminalRunState(AgentRun.Status state) {
+        Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
+        Project project = newProject("Expired run " + state);
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
+        terminalHistory(project, taskForCall(call), old);
+        makeUnfinished(project, Task.Status.PENDING, old, now);
+        jdbc.sql("update agent_run set status=:status where id=:id").param("status", state.name()).param("id", fixtureRun(project).id()).update();
+        retention.update(30, retention.settings().version());
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.CANCELED);
+        assertThat(count("call_log", "id", call)).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"llm_turn", "tool_execution", "provider_attempt"})
+    void recentLedgerActivityDefersTheEntireExpiredUnknownExecution(String ledger) {
+        Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
+        Project project = newProject("Recent " + ledger);
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
+        UUID task = taskForCall(call); terminalHistory(project, task, old);
+        makeUnfinished(project, Task.Status.UNKNOWN, old, now);
+        switch (ledger) {
+            case "llm_turn" -> jdbc.sql("update llm_turn set responded_at=:time where run_id=:id").param("time", Timestamp.from(now)).param("id", fixtureRun(project).id()).update();
+            case "tool_execution" -> jdbc.sql("update tool_execution set completed_at=:time where run_id=:id").param("time", Timestamp.from(now)).param("id", fixtureRun(project).id()).update();
+            case "provider_attempt" -> jdbc.sql("update provider_attempt set updated_at=:time where task_id=:id").param("time", Timestamp.from(now)).param("id", task).update();
+            default -> throw new IllegalArgumentException("Unknown fixture ledger");
+        }
+        retention.update(30, retention.settings().version());
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(tasks.get(owner.userId(), project.id(), task).status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(count("call_log", "id", call)).isEqualTo(1);
+        assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
+        assertThat(count("provider_attempt", "task_id", task)).isEqualTo(1);
+    }
+
+    private void makeUnfinished(Project project, Task.Status state, Instant old, Instant now) {
+        UUID run = fixtureRun(project).id();
+        jdbc.sql("update agent_run set status='BLOCKED',completed_at=null,created_at=:old,updated_at=:old where id=:id")
+                .param("old", Timestamp.from(old)).param("id", run).update();
+        jdbc.sql("update project set active_run_id=:run where id=:id").param("run", run).param("id", project.id()).update();
+        jdbc.sql("update task set status=:status,completed_at=null,created_at=:old,updated_at=:old,lease_epoch=1,lease_owner='expired-worker',lease_until=:until,provider_request_id='expired-provider-request' where run_id=:run")
+                .param("status", state.name()).param("old", Timestamp.from(old)).param("until", Timestamp.from(now.plusSeconds(60))).param("run", run).update();
     }
 
     @Test
@@ -568,8 +711,9 @@ class CallLogPostgresIT {
         assertThat(list(owner, Map.of("projectId", legacy.id().toString())).path("items").size()).isZero();
     }
 
-    @Test
-    void skipsAnEntireRunWhenOneTaskIsLockedByAnotherCheckpoint() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"task", "project", "agent_run"})
+    void skipsAnEntireRunWhenAMemberOrItsProjectIsLocked(String lockedTable) throws Exception {
         Instant now = Instant.parse("2026-10-01T00:00:00Z");
         Instant old = now.minus(Duration.ofDays(31));
         Project project = newProject("Locked retention checkpoint");
@@ -582,7 +726,14 @@ class CallLogPostgresIT {
         try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
             var checkpoint = pool.submit(() -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
                     .executeWithoutResult(status -> {
-                        jdbc.sql("select id from task where id=:id for update").param("id", task).query(UUID.class).single();
+                        UUID lockedId = switch (lockedTable) {
+                            case "task" -> task;
+                            case "project" -> project.id();
+                            case "agent_run" -> fixtureRun(project).id();
+                            default -> throw new IllegalArgumentException("Unknown lock fixture");
+                        };
+                        // Fixed parameterized test identifiers only.
+                        jdbc.sql("select id from " + lockedTable + " where id=:id for update").param("id", lockedId).query(UUID.class).single();
                         locked.countDown();
                         try { release.await(10, java.util.concurrent.TimeUnit.SECONDS); }
                         catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new IllegalStateException(failure); }

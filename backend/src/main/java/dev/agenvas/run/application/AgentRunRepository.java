@@ -10,6 +10,9 @@ import java.util.UUID;
 /** 按项目所有者限定的 Run 持久化边界，同时维护创建命令的幂等仲裁记录。 */
 public interface AgentRunRepository {
 
+    /** Caller holds project/run locks and has confirmed abandoning these expired units. */
+    List<AgentRun> stopForHistoryCleanup(List<UUID> runIds, Instant now);
+
     /** 任何业务写入前按用户、作用域和命令键预留幂等记录。 */
     boolean reserveIdempotency(
             UUID principalId,
