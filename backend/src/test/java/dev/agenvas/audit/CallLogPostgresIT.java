@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import dev.agenvas.shared.http.DebugHttpCapture;
@@ -72,8 +73,7 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.provider.mock.scheduler-enabled=false",
         "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.export.scheduler-enabled=false",
-        "agenvas.audit.retention-cleanup-enabled=false"})
+        "agenvas.export.scheduler-enabled=false"})
 class CallLogPostgresIT {
 
     @Container
@@ -477,9 +477,9 @@ class CallLogPostgresIT {
         UUID run = fixtureRun(project).id();
         terminalHistory(project, task, now.minus(Duration.ofDays(31)));
         jdbc.sql("insert into call_log_debug(call_id,exchanges_json) values(:id,'[]'::jsonb)").param("id", call).update();
-        assertThat(auditRepository.purgeExpired(now, 1)).isZero();
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 1)).isEqualTo(1);
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(count("call_log", "id", call)).isZero();
         assertThat(count("call_log_debug", "call_id", call)).isZero();
         assertThat(count("provider_attempt", "task_id", task)).isZero();
@@ -509,17 +509,17 @@ class CallLogPostgresIT {
         Project unknown = newProject("Retention unknown");
         UUID unknownCall = insertCall(unknown, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, cutoff.minusSeconds(1), null);
         jdbc.sql("update task set status='UNKNOWN' where id=:id").param("id", taskForCall(unknownCall)).update();
-        assertThat(auditRepository.purgeExpired(now, 1)).isEqualTo(1);
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(eligible.stream().mapToInt(id -> count("call_log", "id", id)).sum()).isEqualTo(1);
-        assertThat(auditRepository.purgeExpired(now, 1)).isEqualTo(1);
-        assertThat(auditRepository.purgeExpired(now, 1)).isZero();
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(count("call_log", "id", boundaryCall)).isEqualTo(1);
         assertThat(count("call_log", "id", unknownCall)).isEqualTo(1);
         jdbc.sql("update call_log set responded_at=:time where id=:id").param("time", Timestamp.from(now))
                 .param("id", boundaryCall).update();
         jdbc.sql("update agent_run set completed_at=:time,updated_at=:time where id=:id")
                 .param("time", Timestamp.from(cutoff.minusSeconds(1))).param("id", fixtureRun(boundary).id()).update();
-        assertThat(auditRepository.purgeExpired(now, 1)).isZero();
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(count("llm_turn", "run_id", fixtureRun(boundary).id())).isEqualTo(1);
     }
 
@@ -534,7 +534,7 @@ class CallLogPostgresIT {
         jdbc.sql("CREATE FUNCTION retention_test_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$").update();
         jdbc.sql("CREATE TRIGGER retention_test_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_test_failure()").update();
         try {
-            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version())).isInstanceOf(RuntimeException.class);
             assertThat(count("call_log", "id", call)).isEqualTo(1);
             assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
             assertThat(count("tool_execution", "run_id", fixtureRun(project).id())).isEqualTo(1);
@@ -562,7 +562,7 @@ class CallLogPostgresIT {
         jdbc.sql("update task set run_id=null,origin='USER_DIRECT',status='SUCCEEDED',completed_at=:time,updated_at=:time where id=:id")
                 .param("time", Timestamp.from(old)).param("id", directTask).update();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 2)).isEqualTo(2);
+        assertThat(auditRepository.purgeExpired(now, 2, retention.settings().version())).isEqualTo(2);
         assertThat(count("call_log", "id", directCall)).isZero();
         assertThat(count("task", "id", directTask)).isEqualTo(1);
         assertThat(list(owner, Map.of("projectId", legacy.id().toString())).path("items").size()).isZero();
@@ -589,7 +589,7 @@ class CallLogPostgresIT {
                     }));
             try {
                 assertThat(locked.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-                var cleanup = pool.submit(() -> auditRepository.purgeExpired(now, 1));
+                var cleanup = pool.submit(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()));
                 assertThat(cleanup.get(3, java.util.concurrent.TimeUnit.SECONDS)).isZero();
                 assertThat(count("call_log", "id", call)).isEqualTo(1);
                 assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
@@ -597,8 +597,51 @@ class CallLogPostgresIT {
             } finally { release.countDown(); }
             checkpoint.get(5, java.util.concurrent.TimeUnit.SECONDS);
         }
-        assertThat(auditRepository.purgeExpired(now, 1)).isEqualTo(1);
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(count("call_log", "id", call)).isZero();
+    }
+
+    @Test
+    void manuallyCleansOnlyOnPostWithAdministratorCsrfAndConfirmedPolicyVersion() throws Exception {
+        assertThat(context.containsBean("callLogRetentionScheduler")).isFalse();
+        String path = "/api/v1/settings/call-log-retention/cleanup";
+        String body = mapper.createObjectNode().put("expectedVersion", retention.settings().version()).toString();
+        mvc.perform(post(path).contentType("application/json").content(body).with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_USER"))).with(csrf())
+                .contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN")))
+                .contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content("{}")).andExpect(status().isBadRequest());
+        JsonNode permanent = mapper.readTree(mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content(body)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse().getContentAsString());
+        assertThat(permanent.path("cleanedExecutions").asInt()).isZero();
+        assertThat(permanent.path("batchLimitReached").asBoolean()).isFalse();
+        Instant old = context.getBean(java.time.Clock.class).instant().minus(Duration.ofDays(31));
+        Project project = newProject("Manual cleanup API");
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, old, null);
+        UUID task = taskForCall(call);
+        terminalHistory(project, task, old);
+        retention.update(30, retention.settings().version());
+        // Reading and saving policy never delete, and the stale confirmation is rejected before deletion.
+        assertThat(count("call_log", "id", call)).isEqualTo(1);
+        mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content(body)).andExpect(status().isConflict());
+        assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
+        String current = mapper.createObjectNode().put("expectedVersion", retention.settings().version()).toString();
+        JsonNode result = mapper.readTree(mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content(current)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse().getContentAsString());
+        assertThat(result.path("cleanedExecutions").asInt()).isEqualTo(1);
+        assertThat(result.path("batchLimitReached").asBoolean()).isFalse();
+        assertThat(count("call_log", "id", call)).isZero();
+        assertThat(count("provider_attempt", "task_id", task)).isZero();
+        assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isZero();
+        assertThat(count("task", "id", task)).isEqualTo(1);
+        JsonNode again = mapper.readTree(mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                .contentType("application/json").content(current)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(again.path("cleanedExecutions").asInt()).isZero();
     }
 
     private UUID taskForCall(UUID call) {

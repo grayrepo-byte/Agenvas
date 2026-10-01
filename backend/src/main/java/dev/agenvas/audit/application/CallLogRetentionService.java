@@ -1,6 +1,7 @@
 package dev.agenvas.audit.application;
 
 import dev.agenvas.audit.domain.CallLogRetentionSettings;
+import dev.agenvas.audit.domain.CallLogCleanupResult;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.time.Clock;
@@ -31,14 +32,21 @@ public class CallLogRetentionService {
                         ApiMessage.of("api.audit-retention.conflict-title"), ApiMessage.of("api.audit-retention.conflict-detail"), false));
     }
 
-    /** Each batch is a separate short transaction; reread the policy between batches. */
-    public int cleanExpired() {
+    /** Only called by an explicit administrator request. Each batch is a separate short
+     * transaction checking the confirmed policy version. A later failure cannot undo
+     * previous committed batches; the UI must not claim the entire request rolled back.
+     */
+    public CallLogCleanupResult cleanExpired(int expectedVersion) {
+        if (expectedVersion < 1) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                    ApiMessage.of("api.audit-retention.invalid-title"), ApiMessage.of("api.audit-retention.invalid-detail"), false);
+        }
         int total = 0;
         for (int batch = 0; batch < MAX_BATCHES; batch++) {
-            int deleted = repository.purgeExpired(clock.instant(), BATCH_SIZE);
+            int deleted = repository.purgeExpired(clock.instant(), BATCH_SIZE, expectedVersion);
             total += deleted;
-            if (deleted < BATCH_SIZE) break;
+            if (deleted < BATCH_SIZE) return new CallLogCleanupResult(total, false);
         }
-        return total;
+        return new CallLogCleanupResult(total, true);
     }
 }

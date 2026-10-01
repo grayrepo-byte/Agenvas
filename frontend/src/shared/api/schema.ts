@@ -79,10 +79,36 @@ export interface paths {
         get: operations["getCallLogRetentionSettings"];
         /**
          * 设置调用日志保留天数
-         * @description null 表示永久保留，天数范围 1–3650。仅更新策略；后台每五分钟分批清理已结束且超过保留期的完整执行，以完成时间和最近活动时间判断过期。调用日志、debug 正文、模型回合、工具执行及 Provider 提交账本在同一事务删除，未结束与 UNKNOWN 执行继续保留。保留业务任务、Run 身份、产物和素材；旧对话的执行明细会消失。缩短策略也影响历史记录，删除不可恢复，改回永久不能恢复已清理日志。默认永久保证升级不主动删除数据。不会触发 Provider 请求。
+         * @description null 表示永久保留，天数范围 1–3650。仅更新策略，不自动清理；管理员手动执行清理已结束且超过保留期的完整执行，以完成时间和最近活动时间判断过期。调用日志、debug 正文、模型回合、工具执行及 Provider 提交账本在同一事务删除，未结束与 UNKNOWN 执行继续保留。保留业务任务、Run 身份、产物和素材；旧对话的执行明细会消失。缩短策略也影响历史记录，删除不可恢复，改回永久不能恢复已清理日志。默认永久保证升级不主动删除数据。不会触发 Provider 请求。
          */
         put: operations["updateCallLogRetentionSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/call-log-retention/cleanup": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 手动清理到期调用日志与执行账本
+         * @description 仅管理员显式请求执行，无定时任务；使用已保存且版本匹配的保留策略，null 永久保留时返回零。每批策略行加锁并检查 expectedVersion，已结束执行的日志与账本同事务删除；每次至多十批，每批至多 1000 个执行单位。batchLimitReached=true 表示可能还有待清理记录，须再次手动执行。多个批次分别提交，后续失败或设置冲突不能恢复前面已提交的批次；不得自动重试。保留业务身份和结果，不触发 Provider 请求。
+         */
+        post: operations["cleanupCallLogs"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2234,6 +2260,10 @@ export interface components {
             color: string;
             commandKey: string;
         };
+        CallLogCleanupResult: {
+            cleanedExecutions: number;
+            batchLimitReached: boolean;
+        };
         CallLogRetentionSettings: {
             /** @default null */
             retentionDays: number | null;
@@ -4053,6 +4083,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CallLogRetentionSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cleanupCallLogs: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 本次实际清理的执行单位数量；Cache-Control 为 no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallLogCleanupResult"];
                 };
             };
             400: components["responses"]["ValidationError"];

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { http, HttpResponse } from "msw";
@@ -23,9 +23,9 @@ async function loaded() {
 
 describe("CallLogRetentionSection", () => {
   it("defaults to permanent and saves 30, 90, custom and permanent policies with CAS", async () => {
-    const write = vi.fn();
+    const write = vi.fn(); const cleanup = vi.fn();
     let version = 1;
-    server.use(http.put(PATH, async ({ request }) => {
+    server.use(http.post(`${PATH}/cleanup`, () => { cleanup(); return HttpResponse.json({ cleanedExecutions: 0, batchLimitReached: false }); }), http.put(PATH, async ({ request }) => {
       const body = await request.json() as UpdateCallLogRetentionRequest; write(body);
       return HttpResponse.json({ retentionDays: body.retentionDays, version: ++version });
     }));
@@ -40,6 +40,8 @@ describe("CallLogRetentionSection", () => {
       await screen.findByText("日志保留设置已保存。");
       expect(write).toHaveBeenLastCalledWith({ retentionDays: days, expectedVersion: version - 1 });
     }
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "立即清理" })).toBeDisabled();
   });
   it("validates custom integers before writing and preserves selection on a failed save", async () => {
     const writes = vi.fn();
@@ -83,4 +85,65 @@ describe("CallLogRetentionSection", () => {
     server.use(http.get(PATH, () => HttpResponse.json({ status: 401 }, { status: 401 })));
     show(); expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
   });
+  it("requires explicit confirmation, uses the saved version and blocks duplicate clicks while cleaning", async () => {
+    const requests = vi.fn(); let finish: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(http.get(PATH, () => HttpResponse.json({ retentionDays: 30, version: 7 })),
+      http.post(`${PATH}/cleanup`, async ({ request }) => { requests(await request.json()); await pending;
+        return HttpResponse.json({ cleanedExecutions: 12, batchLimitReached: false }); }));
+    show(); const user = userEvent.setup(); await loaded();
+    expect(requests).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "立即清理" }));
+    let dialog = screen.getByRole("dialog", { name: "确认清理到期日志" });
+    expect(dialog).toHaveTextContent("将按已保存的 30 天保留策略执行清理。");
+    expect(requests).not.toHaveBeenCalled(); await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(requests).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "立即清理" }));
+    dialog = screen.getByRole("dialog"); await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
+    await waitFor(() => expect(requests).toHaveBeenCalledWith({ expectedVersion: 7 }));
+    expect(within(dialog).getByRole("button", { name: "正在清理…" })).toBeDisabled();
+    expect(screen.getByRole("combobox")).toBeDisabled();
+    finish?.(); await screen.findByText("本次已清理 12 个执行记录（含调用日志与账本）。");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(requests).toHaveBeenCalledTimes(1);
+  });
+  it("requires saving an edited policy before cleanup and reports the request limit", async () => {
+    server.use(http.get(PATH, () => HttpResponse.json({ retentionDays: 30, version: 1 })),
+      http.put(PATH, () => HttpResponse.json({ retentionDays: 90, version: 2 })),
+      http.post(`${PATH}/cleanup`, () => HttpResponse.json({ cleanedExecutions: 10000, batchLimitReached: true })));
+    show(); const user = userEvent.setup(); await user.selectOptions(await loaded(), "90");
+    expect(screen.getByRole("button", { name: "立即清理" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "保存保留设置" })); await screen.findByText("日志保留设置已保存。");
+    await user.click(screen.getByRole("button", { name: "立即清理" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("将按已保存的 90 天保留策略执行清理。");
+    await user.click(screen.getByRole("button", { name: "确认清理" }));
+    await screen.findByText("已达到本次清理上限"); expect(screen.getByText("可能还有到期记录，请再次手动执行清理。")).toBeInTheDocument();
+  });
+  it("shows an honest failure without automatically retrying or claiming rollback of earlier batches", async () => {
+    const requests = vi.fn();
+    server.use(http.get(PATH, () => HttpResponse.json({ retentionDays: 30, version: 1 })),
+      http.post(`${PATH}/cleanup`, () => { requests(); return HttpResponse.json({ status: 503 }, { status: 503 }); }));
+    show(); const user = userEvent.setup(); await loaded();
+    await user.click(screen.getByRole("button", { name: "立即清理" })); await user.click(screen.getByRole("button", { name: "确认清理" }));
+    await screen.findByText("清理调用日志失败");
+    expect(screen.getByText(/未确认本次清理结果/)).toBeInTheDocument();
+    expect(screen.queryByText(/本次已清理/)).not.toBeInTheDocument(); expect(requests).toHaveBeenCalledTimes(1);
+  });
+  it("reloads a changed policy after cleanup conflicts, then requests a new confirmation", async () => {
+    let version = 1; const requests = vi.fn();
+    server.use(http.get(PATH, () => HttpResponse.json({ retentionDays: 30, version })),
+      http.post(`${PATH}/cleanup`, async ({ request }) => {
+        const body = await request.json() as { expectedVersion: number }; requests(body);
+        if (body.expectedVersion === 1) { version = 2; return HttpResponse.json({ status: 409 }, { status: 409 }); }
+        return HttpResponse.json({ cleanedExecutions: 0, batchLimitReached: false });
+      }));
+    show(); const user = userEvent.setup(); await loaded();
+    await user.click(screen.getByRole("button", { name: "立即清理" })); await user.click(screen.getByRole("button", { name: "确认清理" }));
+    await screen.findByText("日志保留设置已变化"); expect(screen.getByRole("button", { name: "立即清理" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "重新读取设置" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "立即清理" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "立即清理" })); await user.click(screen.getByRole("button", { name: "确认清理" }));
+    await screen.findByText("本次已清理 0 个执行记录（含调用日志与账本）。");
+    expect(requests).toHaveBeenLastCalledWith({ expectedVersion: 2 });
+  });
+
 });

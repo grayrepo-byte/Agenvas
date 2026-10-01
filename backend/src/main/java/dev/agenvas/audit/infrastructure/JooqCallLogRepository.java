@@ -62,11 +62,16 @@ public class JooqCallLogRepository implements CallLogRepository {
      * Runs/tasks remain as business identities and result provenance; module ports own ledger deletion.
      */
     @Override @Transactional
-    public int purgeExpired(Instant now, int batchSize) {
+    public int purgeExpired(Instant now, int batchSize, int expectedVersion) {
         var policy = dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS)
-                .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID)).forUpdate().skipLocked().fetchOptional();
-        if (policy.isEmpty() || policy.get().getRetentionDays() == null) return 0;
-        Instant cutoff = now.minus(policy.get().getRetentionDays(), ChronoUnit.DAYS);
+                .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID)).forUpdate().fetchSingle();
+        if (policy.getVersion() != expectedVersion) {
+            throw new dev.agenvas.shared.error.ApiProblemException(org.springframework.http.HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                    dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-title"),
+                    dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-detail"), false);
+        }
+        if (policy.getRetentionDays() == null) return 0;
+        Instant cutoff = now.minus(policy.getRetentionDays(), ChronoUnit.DAYS);
         var runIds = new ArrayList<>(dsl.fetch("""
                 SELECT r.id FROM agent_run r
                 WHERE r.status IN ('SUCCEEDED', 'FAILED', 'CANCELED') AND r.completed_at < ? AND r.updated_at < ?

@@ -54,6 +54,8 @@ export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAt
 export type UsageEntry = components["schemas"]["UsageEntry"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
+export type CallLogCleanupResult = components["schemas"]["CallLogCleanupResult"];
+export type CleanupCallLogsRequest = NonNullable<paths["/api/v1/settings/call-log-retention/cleanup"]["post"]["requestBody"]>["content"]["application/json"];
 export type CallLogRetentionSettings = components["schemas"]["CallLogRetentionSettings"];
 export type UpdateCallLogRetentionRequest = NonNullable<paths["/api/v1/settings/call-log-retention"]["put"]["requestBody"]>["content"]["application/json"];
 export type DebugSettings = components["schemas"]["DebugSettings"];
@@ -90,6 +92,12 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, t("无法读取调用日志"));
+}
+
+export async function cleanupCallLogs(request: CleanupCallLogsRequest): Promise<CallLogCleanupResult> {
+  return writeJson<CallLogCleanupResult>("/api/v1/settings/call-log-retention/cleanup", {
+    method: "POST", body: JSON.stringify(request),
+  });
 }
 
 export async function getCallLogRetentionSettings(): Promise<CallLogRetentionSettings> {
