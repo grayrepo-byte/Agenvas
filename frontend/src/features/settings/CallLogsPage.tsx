@@ -1,14 +1,15 @@
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { Select } from "../../shared/ui/Select";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowSquareOut, ArrowsClockwise, CaretDown, ListMagnifyingGlass } from "@phosphor-icons/react";
-import { Fragment, useId, useState, type FormEvent, type ReactNode } from "react";
+import { ArrowSquareOut, ArrowsClockwise, ListMagnifyingGlass } from "@phosphor-icons/react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { ApiError, getCurrentUser, getTask, listCallLogs, type CallLog, type CallLogFilters, type Task } from "../../shared/api/client";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import { CallDebugDetails } from "./CallDebugDetails";
+import { Dialog } from "../../shared/ui/Dialog";
 import "./CallLogsPage.css";
 
 const PAGE_SIZE = 20;
@@ -18,7 +19,6 @@ const UNAUTHORIZED_STATUS = 401;
 const FORBIDDEN_STATUS = 403;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const LOCAL_DATE_TIME_LENGTH = 19;
-const TABLE_COLUMN_COUNT = 7;
 const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("文本模型"); }, get IMAGE() { return t("图片"); }, get VIDEO() { return t("视频"); }, get AUDIO() { return t("音频"); } };
 const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { return t("调用中"); }, get SUCCEEDED() { return t("成功"); }, get FAILED() { return t("失败"); }, get UNKNOWN() { return t("未知"); } };
 const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("模型对话"); }, get SUBMIT() { return t("提交生成"); }, get POLL() { return t("查询结果"); }, get LEGACY() { return t("历史任务"); } };
@@ -49,7 +49,7 @@ export function CallLogsPage() {
   useLocale();
   const [params, setParams] = useSearchParams();
   const filters = readFilters(params);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const logs = useQuery({
     queryKey: ["call-logs", filters], queryFn: () => listCallLogs(filters), enabled: currentUser.isSuccess, retry: false,
@@ -58,7 +58,9 @@ export function CallLogsPage() {
   const invalidFilters = logs.error instanceof ApiError && logs.error.status === BAD_REQUEST_STATUS;
   if (logs.error instanceof ApiError && logs.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
   const data = forbidden ? undefined : logs.data;
+  const selectedLog = data?.items.find((log) => log.id === selectedId);
   const setPage = (page: number) => {
+    setSelectedId(null);
     const next = new URLSearchParams(params);
     next.set("page", String(page));
     setParams(next);
@@ -69,7 +71,7 @@ export function CallLogsPage() {
       onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? t("正在刷新…") : t("刷新日志")}</button>
   }><div className="ui-stack">
     <Panel title={t("筛选记录")} description={t("时间按当前设备时区显示；筛选按调用开始时间匹配。未知包含调用结果未记录与关联任务尚未核实的记录。")}>
-      <CallLogFilterForm key={params.toString()} filters={filters} onApply={setParams} />
+      <CallLogFilterForm key={params.toString()} filters={filters} onApply={(next) => { setSelectedId(null); setParams(next); }} />
     </Panel>
     {logs.isPending && currentUser.isSuccess ? <LoadingState label={t("正在读取调用日志")} /> : null}
     {logs.isError ? <Notice tone="danger" title={forbidden ? t("无权查看调用日志") : invalidFilters ? t("筛选条件无效") : t("读取调用日志失败")}>
@@ -84,8 +86,8 @@ export function CallLogsPage() {
         <table className="call-log-table"><caption className="sr-only">{t("模型与媒体调用审计记录")}</caption><thead><tr>
           <th scope="col">{t("调用")}</th><th scope="col">{t("项目")}</th><th scope="col">{t("调用时间")}</th><th scope="col">{t("响应时间")}</th>
           <th scope="col">{t("耗时")}</th><th scope="col">{t("调用结果")}</th><th scope="col"><span className="sr-only">{t("详情")}</span></th>
-        </tr></thead><tbody>{data.items.map((log) => <CallLogRow key={log.id} log={log} expanded={expandedId === log.id}
-          onToggle={() => setExpandedId(expandedId === log.id ? null : log.id)} />)}</tbody></table>}
+        </tr></thead><tbody>{data.items.map((log) => <CallLogRow key={log.id} log={log}
+          onDetails={() => setSelectedId(log.id)} />)}</tbody></table>}
       <nav className="call-log-pagination" aria-label={t("调用日志分页")}>
         <span className="ui-muted">{t("第 {0} 页 / 共 {1} 页 · 每页 {2} 条", { "0": data.page + 1, "1": Math.max(1, data.totalPages), "2": data.size })}</span>
         <div className="ui-form-actions"><button className="secondary-button" type="button" disabled={logs.isFetching || data.page === FIRST_PAGE}
@@ -94,6 +96,7 @@ export function CallLogsPage() {
             onClick={() => setPage(data.page + 1)}>{t("下一页")}</button></div>
       </nav>
     </Panel> : null}
+    {selectedLog ? <CallLogDetailDialog log={selectedLog} onClose={() => setSelectedId(null)} /> : null}
   </div></PageShell>;
 }
 
@@ -135,11 +138,9 @@ function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onAp
   </form>;
 }
 
-function CallLogRow({ log, expanded, onToggle }: { log: CallLog; expanded: boolean; onToggle: () => void }) {
+function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void }) {
   useLocale();
-  const detailsId = useId();
-  return <Fragment>
-    <tr className={expanded ? "is-expanded" : undefined}>
+  return <tr>
       <td data-label={t("调用")}><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong>
         <span className="call-log-secondary">{log.model ?? t("模型未记录")}</span>
         <div className="call-log-badges">{log.mock ? <StatusBadge>{t("Mock 模拟调用")}</StatusBadge> : null}
@@ -150,13 +151,24 @@ function CallLogRow({ log, expanded, onToggle }: { log: CallLog; expanded: boole
       <td data-label={t("耗时")}>{log.durationMs === null ? t("未记录") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</td>
       <td data-label={t("调用结果")}><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
         {log.taskStatus ? <span className="call-log-secondary">{t("任务：{0}", { "0": TASK_STATUS_LABELS[log.taskStatus] })}</span> : null}</td>
-      <td className="call-log-toggle"><button className="ghost-button" type="button" aria-expanded={expanded} aria-controls={detailsId}
-        aria-label={t("{0}调用详情 {1}", { "0": expanded ? t("收起") : t("查看"), "1": log.id })} onClick={onToggle}>{t("详情")}<CaretDown size={14} aria-hidden /></button></td>
-    </tr>
-    {expanded ? <tr className="call-log-detail-row"><td colSpan={TABLE_COLUMN_COUNT}>
-      <div id={detailsId} className="call-log-details"><CallLogDetails log={log} /></div>
-    </td></tr> : null}
-  </Fragment>;
+      <td className="call-log-toggle"><button className="ghost-button" type="button" aria-haspopup="dialog"
+        aria-label={t("查看调用详情 {0}", { "0": log.id })} onClick={onDetails}>{t("详情")}<ArrowSquareOut size={14} aria-hidden /></button></td>
+    </tr>;
+}
+
+function CallLogDetailDialog({ log, onClose }: { log: CallLog; onClose: () => void }) {
+  useLocale();
+  return <Dialog title={t("调用详情")} description={`${KIND_LABELS[log.kind]} · ${log.model ?? t("模型未记录")}`}
+    className="call-log-dialog" onClose={onClose} onSubmit={(event) => event.preventDefault()}
+    footer={<button type="button" className="secondary-button" onClick={onClose}>{t("关闭")}</button>}>
+    <div className="call-log-overview">
+      <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}>{log.projectTitle}<ArrowSquareOut size={14} aria-hidden /></Link>
+      <div className="call-log-badges"><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
+        {log.mock ? <StatusBadge>{t("Mock 模拟调用")}</StatusBadge> : null}
+        {log.historical ? <StatusBadge>{t("历史记录")}</StatusBadge> : null}</div>
+    </div>
+    <CallLogDetails log={log} />
+  </Dialog>;
 }
 
 function CallLogDetails({ log }: { log: CallLog }) {
@@ -164,12 +176,16 @@ function CallLogDetails({ log }: { log: CallLog }) {
   return <>
     {log.historical ? <p className="ui-muted">{t("历史记录只保留当时已保存的信息；响应时间、耗时或 Trace ID 缺失时显示“未记录”。")}</p> : null}
     <dl className="call-log-metadata">
+      <Detail label={t("调用时间")} value={<LogTime value={log.startedAt} />} />
+      <Detail label={t("响应时间")} value={<LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("等待响应") : t("未记录")} />} />
+      <Detail label={t("耗时")} value={log.durationMs === null ? null : `${log.durationMs.toLocaleString(getFormatLocale())} ms`} />
+      <Detail label={t("调用操作")} value={OPERATION_LABELS[log.operation]} />
       <Detail label="Trace ID" value={log.traceId} /><Detail label={t("Provider 请求 ID")} value={log.providerRequestId} />
       <Detail label="Provider" value={log.provider} /><Detail label={t("模型")} value={log.model} />
       <Detail label={t("调用记录 ID")} value={log.id} /><Detail label="Run ID" value={log.runId} />
       <Detail label="Task ID" value={log.taskId} /><Detail label={t("错误码")} value={log.errorCode} />
     </dl>
-    {!log.historical ? <CallDebugDetails id={log.id} /> : null}
+    {!log.historical ? <CallDebugDetails id={log.id} kind={log.kind} /> : null}
     {log.taskId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
   </>;
 }

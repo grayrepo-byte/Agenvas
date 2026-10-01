@@ -1,0 +1,64 @@
+.call-log-view-toggle { display: flex; gap: var(--ui-space-2); margin: var(--ui-space-4) 0; }
+.call-log-view-toggle [aria-pressed="true"] { border-color: var(--ui-accent); color: var(--ui-accent-text); background: var(--ui-accent-subtle); }
+.llm-log { display: grid; gap: var(--ui-space-3); }
+.llm-log-facts, .llm-log-usage { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ui-space-4); margin: 0; }
+.llm-log-facts { padding: var(--ui-space-4) 0; }
+.llm-log-facts dt, .llm-log-usage dt { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.llm-log-facts dd, .llm-log-usage dd { margin: var(--ui-space-2) 0 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+.llm-log-section { min-width: 0; padding: var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); }
+.llm-log-section > summary { display: flex; gap: var(--ui-space-3); align-items: center; cursor: pointer; font-weight: 550; }
+.llm-log-section > summary > span { font-weight: 400; color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.llm-log-usage { margin-top: var(--ui-space-4); }
+.llm-log-section-heading, .llm-log-section-heading > div { display: flex; align-items: center; gap: var(--ui-space-3); }
+.llm-log-section-heading { justify-content: space-between; }
+.llm-log-section-heading > div { flex-wrap: wrap; }
+.llm-log-section-heading span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.llm-log-message-preview { display: flex; gap: var(--ui-space-3); align-items: baseline; margin-top: var(--ui-space-3); }
+.llm-log-message-preview p { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--ui-text-secondary); line-height: 1.7; }
+.llm-log-role { display: inline-flex; flex: none; gap: var(--ui-space-1); align-items: center; padding: 3px 7px; border-radius: var(--ui-radius-sm); color: var(--ui-text-secondary); background: var(--ui-surface-raised); font-size: var(--ui-text-xs); white-space: nowrap; }
+.llm-log-role--system, .llm-log-role--developer { color: var(--ui-info); background: var(--ui-info-bg); }
+.llm-log-role--user { color: var(--ui-success); background: var(--ui-success-bg); }
+.llm-log-role--assistant { color: var(--ui-accent-text); background: var(--ui-accent-subtle); }
+.llm-log-role--tool, .llm-log-role--function { color: var(--ui-warning); background: var(--ui-warning-bg); }
+.ui-dialog.llm-log-dialog { width: min(1480px, calc(100% - var(--ui-space-8))); max-height: calc(100dvh - var(--ui-space-8)); }
+.llm-log-dialog .ui-dialog-body { padding: 0; }
+.llm-message-browser { min-width: 0; }
+.llm-message-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-4); padding: var(--ui-space-5) var(--ui-space-6); border-bottom: 1px solid var(--ui-border); }
+.llm-message-summary > div:first-child { display: flex; gap: var(--ui-space-3); align-items: baseline; }
+.llm-message-summary > div:first-child > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.llm-message-role-counts { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+.llm-message-filters { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-6); border-bottom: 1px solid var(--ui-border); }
+.llm-message-layout { display: grid; grid-template-columns: minmax(0, 44%) minmax(0, 1fr); min-height: 340px; }
+.llm-message-list { overflow: auto; max-height: min(58dvh, 650px); border-right: 1px solid var(--ui-border); }
+.llm-message-row { width: 100%; display: grid; grid-template-columns: 26px 70px minmax(0, 1fr); align-items: start; gap: var(--ui-space-2); padding: var(--ui-space-3); border: 0; border-bottom: 1px solid var(--ui-border); background: transparent; text-align: left; color: var(--ui-text-muted); }
+.llm-message-row:hover { background: var(--ui-hover); }
+.llm-message-row[aria-pressed="true"] { background: var(--ui-accent-subtle); box-shadow: inset 3px 0 var(--ui-accent); }
+.llm-message-row-preview { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--ui-text-secondary); line-height: 1.6; overflow-wrap: anywhere; }
+.llm-message-row > .llm-log-role { justify-self: start; }
+.llm-message-detail { min-width: 0; }
+.llm-message-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); padding: var(--ui-space-2) var(--ui-space-3); border-bottom: 1px solid var(--ui-border); }
+.llm-message-toolbar nav { display: flex; align-items: center; margin-left: auto; gap: var(--ui-space-1); color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.llm-message-content { max-height: min(52dvh, 600px); overflow: auto; padding: var(--ui-space-5); }
+.llm-message-content pre { font-family: inherit; font-size: var(--ui-text-md); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--ui-space-4) 0 0; }
+.llm-message-content .llm-tool-call pre { font-family: ui-monospace, monospace; font-size: var(--ui-text-sm); }
+.llm-tool-call { padding: var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); margin-top: var(--ui-space-4); }
+.llm-tool-call h4 { margin: 0; font-size: var(--ui-text-md); }
+.llm-message-empty { padding: var(--ui-space-6); text-align: center; color: var(--ui-text-muted); }
+.llm-body-actions { display: flex; justify-content: flex-end; margin-top: var(--ui-space-2); }
+.llm-copy-control { display: inline-flex; flex-wrap: wrap; gap: var(--ui-space-2); align-items: center; }
+.llm-copy-control > span { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+@media (max-width: 900px) {
+  .llm-log-facts, .llm-log-usage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .llm-message-layout { grid-template-columns: minmax(0, 1fr); }
+  .llm-message-list { max-height: 190px; border-right: 0; border-bottom: 1px solid var(--ui-border); }
+  .llm-message-content { max-height: 40dvh; }
+}
+@media (max-width: 560px) {
+  .ui-dialog.llm-log-dialog { width: calc(100% - var(--ui-space-4)); max-height: calc(100dvh - var(--ui-space-4)); }
+  .llm-message-summary, .llm-message-filters { padding: var(--ui-space-3); }
+  .llm-message-filters { grid-template-columns: minmax(0, 1fr); }
+  .llm-message-row { grid-template-columns: 22px 58px minmax(0, 1fr); }
+  .llm-message-summary > div:first-child { flex-wrap: wrap; }
+  .llm-message-toolbar nav { margin-left: 0; }
+  .llm-message-content { padding: var(--ui-space-3); }
+}

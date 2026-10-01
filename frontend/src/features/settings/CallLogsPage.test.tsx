@@ -38,21 +38,30 @@ function showPage(path = "/settings/calls") {
 describe("CallLogsPage", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" }))));
 
-  it("fetches raw details only after expanding a log", async () => {
+  it("fetches raw details only after opening the modal and clears them on close", async () => {
     const reads = vi.fn();
     server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())),
       http.get("/api/v1/call-logs/:id/debug", ({ params }) => {
         reads(); return HttpResponse.json({ id: params.id, captured: false, exchanges: [] });
       }));
-    showPage();
+    const client = showPage();
     await screen.findByText("test-model");
     expect(reads).not.toHaveBeenCalled();
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
     await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
     await screen.findByText(/本次调用未开启 debug 模式/);
     expect(reads).toHaveBeenCalledTimes(1);
+    const dialog = screen.getByRole("dialog", { name: "调用详情" });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).queryByRole("region", { name: "调用内容" })).not.toBeInTheDocument();
+    await userEvent.setup().click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(client.getQueryData(["call-debug", "call-1"])).toBeUndefined());
+    expect(screen.getByRole("button", { name: "查看调用详情 call-1" })).toHaveFocus();
   });
 
-  it("shows separate start/response time and duration, and expands actual correlation IDs", async () => {
+  it("shows separate start/response time and duration, and shows actual correlation IDs in a modal", async () => {
     server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())));
     showPage();
     expect(await screen.findByText("test-model")).toBeInTheDocument();
@@ -65,7 +74,7 @@ describe("CallLogsPage", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
     expect(screen.getByText("trace-123")).toBeInTheDocument();
     expect(screen.getByText("provider-request-789")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "审计测试项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
+    expect(within(screen.getByRole("dialog", { name: "调用详情" })).getByRole("link", { name: "审计测试项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
     expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 
@@ -181,6 +190,30 @@ describe("CallLogsPage", () => {
     expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
     expect(attemptReads).not.toHaveBeenCalled();
     expect(created).not.toHaveBeenCalled();
+  });
+
+  it("closes the Prompt modal with Escape while keeping call details and scroll locked", async () => {
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, kind: "LLM", operation: "CHAT" }]))),
+      http.get("/api/v1/call-logs/call-1/debug", () => HttpResponse.json({ id: "call-1", captured: true,
+        exchanges: [{ method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200,
+          requestBody: { content: '{"messages":[{"role":"user","content":"hello"}]}', encoding: "UTF8", truncated: false },
+          responseBody: null }] })));
+    const user = userEvent.setup();
+    showPage();
+    await user.click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
+    const expand = await screen.findByRole("button", { name: "展开 Prompt" });
+    await user.click(expand);
+    const prompt = screen.getByRole("dialog", { name: "Prompt" });
+    await user.click(within(prompt).getByRole("searchbox"));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Prompt" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "调用详情" })).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("hidden");
+    expect(expand).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("");
+    expect(screen.getByRole("button", { name: "查看调用详情 call-1" })).toHaveFocus();
   });
 
   it("reads the related task's latest state instead of the logged status", async () => {

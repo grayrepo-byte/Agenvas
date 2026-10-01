@@ -775,3 +775,7 @@ pnpm test:e2e
 RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用 V66 / ADR 0025 / 规格 6.13。jOOQ 与 TS 重新生成；62 项后端单元测试、16 项 PostgreSQL 集成测试、60 项前端测试、类型检查、构建和定向 ESLint 通过，见 [合并验证](evidence/runninghub-main-merge-2026-10-01.md)。未重跑付费生成、全量测试或部署。
 
 个人资产库合并 main 复验：保留对象存储、AutoDL、RunningHub 和画布显示设置，个人资产使用 V67–V70 / ADR 0026 / 规格 6.14；修复云端失败导入副本清理。15 项后端单元、20 项 PostgreSQL 集成、75 项前端测试、生成 TS/jOOQ、类型检查/lint/构建，以及隔离 V66→V70 数据保留检查通过，见 [#24 合并记录](evidence/issue-24-personal-asset-library.md)。未重跑全量、真实云服务或部署。
+
+2026-10-01 调用日志格式化显示：详情默认格式化，保留原始正文切换；LLM Chat Completions 展示模型信息、实际用量、Prompt / Completion 与生成数据，消息浏览支持角色筛选、搜索、工具参数、翻页、复制和单条 JSON。其他正文支持 JSON 缩进或原始回退，长正文分段显示，不加载日志中的远程素材。四语言同步，无 API / 数据库迁移。25 项定向前端测试、类型检查、修改文件 ESLint、文案与主题检查、生产构建及桌面/手机 Mock HTTP 浏览器验收通过；全量、后端及真实 Provider 测试未运行。见 [专项证据](evidence/formatted-call-logs.md)。
+
+2026-10-01 调用详情模态框：按用户反馈移除列表展开行，“详情”改为独立模态框，保留格式化/原始内容及关联任务只读信息；桌面元数据改为四列，窄屏自适应。标题与关闭入口固定，长内容仅在框内滚动，关闭恢复触发按钮焦点并释放正文 Query 缓存；Prompt / Completion 嵌套窗口只关闭最上层，全部卸载时恢复页面滚动。5 个文件、28 项定向前端测试、类型、修改文件 lint、四语言/主题检查、生产构建及桌面/手机 Mock HTTP 浏览器验收通过；无 API / 数据库迁移，未运行全量、后端或真实 Provider 测试。见 [专项证据](evidence/formatted-call-logs.md)。

@@ -15,13 +15,8 @@
 .call-log-badges:empty { display: none; }
 .call-log-table .call-log-toggle { padding-right: 0; }
 .call-log-toggle .ghost-button { padding: 5px; min-height: 30px; }
-.call-log-toggle [aria-expanded="true"] svg { transform: rotate(180deg); }
-.call-log-table .is-expanded { background: var(--ui-field); }
-.call-log-table tbody > tr:not(.call-log-detail-row):hover { background: var(--ui-field); }
-.call-log-toggle svg { transition: transform var(--ui-duration); }
-.call-log-table .call-log-detail-row > td { border-top: 0; padding: 0; }
-.call-log-details { margin: 0 0 14px; padding: var(--ui-space-5); border: 1px solid var(--line); border-radius: 10px; background: var(--ui-field); }
-.call-log-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; margin: 16px 0 0; }
+.call-log-table tbody > tr:hover { background: var(--ui-field); }
+.call-log-metadata { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ui-space-4) var(--ui-space-6); margin: var(--ui-space-4) 0 0; }
 .call-log-metadata dt { color: var(--muted); font-size: var(--ui-text-xs); }
 .call-log-metadata dd { margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: var(--ui-text-sm); overflow-wrap: anywhere; }
 .call-log-task { margin-top: var(--ui-space-5); padding-top: 18px; border-top: 1px solid var(--line); }
@@ -29,20 +24,18 @@
 .call-log-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); margin-top: var(--ui-space-5); }
 @media (max-width: 1080px) {
   .call-log-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .call-log-metadata { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .call-log-table, .call-log-table tbody { display: block; }
   .call-log-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .call-log-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); padding: 12px 0; }
   .call-log-table td { display: flex; flex-direction: column; gap: var(--ui-space-1); border: 0; padding: 8px 10px; }
   .call-log-table td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 10px; }
   .call-log-table .call-log-toggle { align-items: flex-start; }
-  .call-log-table .call-log-detail-row { display: block; padding: 0; border: 0; }
 }
 @media (max-width: 560px) {
   .call-log-filters, .call-log-metadata { grid-template-columns: minmax(0, 1fr); }
-  .call-log-details { padding: 15px; }
 }
 @media (min-width: 1600px) { .call-log-filters { grid-template-columns: repeat(6, minmax(0, 1fr)); } .call-log-metadata { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (prefers-reduced-motion: reduce) { .call-log-toggle svg { transition: none; } }
 
 .call-log-debug { margin-top: var(--ui-space-5); border-top: 1px solid var(--line); padding-top: var(--ui-space-4); }
 .call-log-debug h3, .call-log-debug h4 { margin: 0 0 var(--ui-space-3); font-weight: 550; }
@@ -51,3 +44,9 @@
 .call-log-body { margin-top: var(--ui-space-3); }
 .call-log-body summary { cursor: pointer; }
 .call-log-body pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--ui-space-3); background: var(--ui-field); border: 1px solid var(--line); border-radius: 6px; font-size: var(--ui-text-xs); }
+
+.ui-dialog.app-page.call-log-dialog { width: min(1120px, calc(100% - var(--ui-space-8))); max-height: calc(100dvh - var(--ui-space-8)); }
+.call-log-dialog .ui-dialog-header > div { min-width: 0; overflow-wrap: anywhere; }
+.call-log-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); }
+.call-log-overview .call-log-badges { margin: 0; }
+@media (max-width: 560px) { .ui-dialog.app-page.call-log-dialog { width: calc(100% - var(--ui-space-4)); max-height: calc(100dvh - var(--ui-space-4)); } }

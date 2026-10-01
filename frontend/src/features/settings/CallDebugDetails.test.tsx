@@ -26,6 +26,7 @@ describe("CallDebugDetails", () => {
     const { unmount, client } = show();
     expect(await screen.findByText("https://provider.example/v1/chat/completions")).toBeInTheDocument();
     expect(screen.getByText(/HTTP 500/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
     expect(screen.getByText('{"prompt":"<script>unsafe</script>"}')).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
     expect(screen.getByText("partial response")).toBeInTheDocument();
