@@ -243,20 +243,18 @@ button:disabled {
 
 .workspace-media-editor > .workspace-bottom-close { z-index: 2; top: 10px; right: 12px; }
 
-/* 连接点分两层：外层是 React Flow 的几何盒，中心必须留在卡片边框上，尺寸要小——React Flow
+/* 外层是 React Flow 的几何盒，中心必须留在卡片边框上，尺寸要小——React Flow
    按盒子的外边算连线端点（Position.Right 取 x + width），盒子有多大，线就离卡片多远。
-   可见圆点是内层，内边固定在「卡片边框 + gap」，因此放大只向外长，不会压回卡片；
-   卡片排在连接点之后会盖住边框内的一侧，选中外圈（box-shadow 0 0 0 2px）也压在边框外 2px 上，
-   所以圆点必须整体挪出去。命中区域用 ::after 只向卡片外扩展，抓取仍然落在可见圆点上。
+   home 固定圆点的基准位置，内层圆点最多移动 6px；间隙留出位移与选中外圈的空间。
+   命中区域用 ::after 只向卡片外扩展，覆盖圆点的全部移动范围，不侵入卡片本体。
    落点 (--in) 保持 pointer-events: none，靠 connectionRadius 的距离判定成立。 */
 .workspace-shell {
   --canvas-handle-anchor: 4px;
-  --canvas-handle-dot: 18px;
-  --canvas-handle-dot-active: 22px;
-  --canvas-handle-gap: 4px;
-  --canvas-handle-hit-inset: -12px;
-  --canvas-handle-hit-outset: -25px;
-  --canvas-handle-surface: #26262b;
+  --canvas-handle-dot: 22px;
+  --canvas-handle-gap: 10px;
+  --canvas-handle-hit-inset: -22px;
+  --canvas-handle-hit-outset: -40px;
+  --canvas-handle-hover-scale: 1.09;
   --canvas-handle-invalid: #ff4d4f;
 }
 
@@ -268,29 +266,34 @@ button:disabled {
   transition: opacity 120ms ease;
 }
 
-.workspace-shell .canvas-handle-dot {
+.workspace-shell .canvas-handle-home {
   position: absolute;
   top: 50%;
-  display: grid;
-  place-items: center;
   width: var(--canvas-handle-dot);
   height: var(--canvas-handle-dot);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: var(--canvas-handle-surface);
-  color: var(--ink);
-  transition: width 120ms ease, height 120ms ease, border-color 120ms ease,
-    background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  pointer-events: none;
 }
 
-.workspace-shell .canvas-handle--out .canvas-handle-dot {
+.workspace-shell .canvas-handle--out .canvas-handle-home {
   left: 50%;
   transform: translate(var(--canvas-handle-gap), -50%);
 }
 
-.workspace-shell .canvas-handle--in .canvas-handle-dot {
+.workspace-shell .canvas-handle--in .canvas-handle-home {
   right: 50%;
   transform: translate(calc(-1 * var(--canvas-handle-gap)), -50%);
+}
+
+.workspace-shell .canvas-handle-dot {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  color: var(--muted);
+  transform: translate(var(--canvas-handle-offset-x, 0px), var(--canvas-handle-offset-y, 0px));
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 120ms ease, box-shadow 120ms ease;
 }
 
 .workspace-shell .canvas-handle-icon {
@@ -331,32 +334,31 @@ button:disabled {
   opacity: 1;
 }
 
-/* 悬停出口、拖拽起点、悬停到的合法落点：放大并实心强调。 */
-.workspace-shell .react-flow__handle.canvas-handle--in.connectingto .canvas-handle-dot,
+/* 悬停和连接态保留圆圈加号，用颜色与轻微放大反馈可操作状态。 */
 .workspace-shell .react-flow__handle.canvas-handle--out:hover .canvas-handle-dot,
 .workspace-shell .react-flow__handle.canvas-handle.connectingfrom .canvas-handle-dot,
 .workspace-shell .react-flow__handle.canvas-handle.valid .canvas-handle-dot {
-  width: var(--canvas-handle-dot-active);
-  height: var(--canvas-handle-dot-active);
-}
-
-.workspace-shell .react-flow__handle.canvas-handle--out:hover .canvas-handle-dot,
-.workspace-shell .react-flow__handle.canvas-handle.connectingfrom .canvas-handle-dot,
-.workspace-shell .react-flow__handle.canvas-handle.valid .canvas-handle-dot {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 0 4px var(--ui-accent-ring);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ui-accent-ring);
 }
 
 .workspace-shell .react-flow__handle.canvas-handle--in.connectingto:not(.valid) .canvas-handle-dot {
-  border-color: var(--canvas-handle-invalid);
   color: var(--canvas-handle-invalid);
 }
 
+.workspace-shell .react-flow__handle.canvas-handle--in.connectingto .canvas-handle-icon,
 .workspace-shell .react-flow__handle.canvas-handle--out:hover .canvas-handle-icon,
 .workspace-shell .react-flow__handle.canvas-handle.connectingfrom .canvas-handle-icon,
 .workspace-shell .react-flow__handle.canvas-handle.valid .canvas-handle-icon {
-  transform: scale(1.2);
+  transform: scale(var(--canvas-handle-hover-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-shell .canvas-handle-dot,
+  .workspace-shell .canvas-handle-icon {
+    transform: none !important;
+    transition: none;
+  }
 }
 
 /* 连接线随落点合法性变色，不必等松手才知道能不能连。 */

@@ -76,3 +76,24 @@
 实际检查：`corepack pnpm exec vitest run src/features/canvas` 28 个文件、179 项通过（含“关系线不带 label”“历史版本绑定带虚线修饰类”的断言）；`tsc --noEmit`、`eslint . --max-warnings=0`、`git diff --check` 通过。浏览器核对 5/5：四条关系线全部渲染、线上没有任何 `.react-flow__edge-textwrapper` 文字、当前版本输入为实线蓝线、历史版本输入为虚线蓝线、素材引用仍为灰色虚线；截图逐条比色确认。
 
 未验证限制：浏览器核对使用无后端预览页（投影数据构造，未走服务端）；完整工作区里的观感、1280px 窄宽度与本地镜像未验收。
+
+## 2026-10-01 圆圈加号与限幅悬停
+
+按用户参考图将连接点的方向箭头替换为 Phosphor `PlusCircle` 细线图标：静止为灰色圆圈加号，悬停与连接态用主色和轻微缩放反馈。右侧入口只在选中时显示，左侧落点仅在拖线靠近时浮现，Agent 输出组锚点仍没有可见图标。
+
+右侧入口的鼠标跟随只在静止中心附近的局部命中区内生效，距离上限为 28 个画布像素；跟随比例为指针距离的 35%，二维总位移最多 6 个画布像素。移开、超出距离、按下开始拖线或取消指针手势会复位；触摸、按住鼠标移动与减少动态效果下不位移。固定的 `canvas-handle-home` 测量静止位置，内层圆点通过 CSS 变量和过渡移动，避免追逐自身位置或逐帧触发 React/画布重渲染。距离按当前画布缩放换算。React Flow 的几何盒和连线端点不移动，卡片外侧间隙与命中区覆盖圆点的完整位移范围。
+
+涉及 `CanvasHandle.tsx`、`CanvasHandle.test.tsx` 与 `styles.css`；同步规格 6.2、ADR 0005 和任务清单。没有 API 合约、后端、数据库迁移或依赖变更。
+
+实际检查（在 `frontend` 执行）：
+
+| 检查 | 结果 |
+| --- | --- |
+| `corepack pnpm exec vitest run src/features/canvas/CanvasHandle.test.tsx src/features/canvas/CanvasConnectionDrop.test.tsx` | 2 个文件、16 项通过；使用真实 React Flow Handle，jsdom 几何与 PointerEvent 为测试替身，覆盖二维限幅、范围外复位、0.5/2 倍缩放、离开/按下/取消、触摸/拖动/减少动态效果，以及既有卡片落点提交 |
+| `corepack pnpm build` | TypeScript 检查与 Vite 生产构建通过；工作区 bundle 超过 500 kB 的体积提示仍存在 |
+| `corepack pnpm lint` | 主题颜色检查与 ESLint 通过，零 warning |
+| `git diff --check` | 通过 |
+
+真实浏览器核对：Codex 内置浏览器打开一次性 Mock 预览，使用真实 `CanvasHandle`、React Flow 和项目样式。截图确认圆圈加号、卡片外侧位置，以及未选中入口/静止落点的隐藏；从可见圆圈执行实际指针拖放到目标落点后，预览显示一条新连线；手势结束后偏移变量已清除。浏览器控制台未记录 warning/error。核对完成后删除临时预览文件。
+
+未验证限制：鼠标跟随的连续观感、完整登录工作区与真实服务端写入未做浏览器验收；限幅与复位由上述定向单元测试覆盖。未运行全量测试、后端测试或真实 Provider 调用，未重新构建/部署本地 Compose 镜像。

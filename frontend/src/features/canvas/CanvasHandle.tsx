@@ -1,8 +1,15 @@
 import { Handle, Position } from "@xyflow/react";
-import { ArrowDownLeft, ArrowUpRight, type Icon } from "@phosphor-icons/react";
+import { PlusCircle, type Icon } from "@phosphor-icons/react";
+import { useRef, type PointerEvent } from "react";
 
 /** 图标静止尺寸；悬停与连接态只做 CSS 缩放，不再改这个值。 */
-const HANDLE_ICON_SIZE = 11;
+const HANDLE_ICON_SIZE = 22;
+const HANDLE_HOVER_RADIUS = 28;
+const HANDLE_MAX_OFFSET = 6;
+const HANDLE_FOLLOW_FACTOR = 0.35;
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const HANDLE_OFFSET_X = "--canvas-handle-offset-x";
+const HANDLE_OFFSET_Y = "--canvas-handle-offset-y";
 
 type CanvasHandleConfig = {
   /**
@@ -20,29 +27,66 @@ type CanvasHandleConfig = {
 /** 每个连接点只在这里声明一次，卡片之间不会出现位置、方向或图标分叉。 */
 const CANVAS_HANDLES = {
   "artifact-output": { role: "out", position: Position.Right, direction: "source",
-    icon: ArrowUpRight, hint: "拖到 Agent 输入或可引用的卡片" },
+    icon: PlusCircle, hint: "添加连线：拖到 Agent 输入或可引用的卡片" },
   "artifact-input": { role: "in", position: Position.Left, direction: "target",
-    icon: ArrowDownLeft, hint: "接收素材引用或 Agent 输出组连线" },
+    icon: PlusCircle, hint: "接收素材引用或 Agent 输出组连线" },
   "agent-output": { role: "anchor", position: Position.Right, direction: "source",
     icon: null, hint: "Agent 输出组锚点，不接受手工连线" },
   "agent-input": { role: "in", position: Position.Left, direction: "target",
-    icon: ArrowDownLeft, hint: "接收素材卡片连线" },
+    icon: PlusCircle, hint: "接收素材卡片连线" },
 } as const satisfies Record<string, CanvasHandleConfig>;
 
 export type CanvasHandleId = keyof typeof CANVAS_HANDLES;
 
 /**
- * 连接点分两层：外层是 React Flow 的命中盒，中心必须留在卡片边框上（连线端点和落点判定都用它）；
- * 可见圆点是内层，整体挪到卡片外，避免被卡片背景和选中外圈切掉一半。显隐规则见 styles.css。
+ * React Flow 的几何盒固定在卡片边框；home 是卡片外的静止位置，只有内层圆点跟随指针。
+ * 使用不动的 home 测距离，避免圆点移动后重新测量导致追逐抖动，也不改变连线端点。
  */
 export function CanvasHandle({ id }: { id: CanvasHandleId }) {
   const { direction, hint, icon: IconComponent, position, role } = CANVAS_HANDLES[id];
+  const homeRef = useRef<HTMLSpanElement>(null);
+
+  function resetOffset(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.style.removeProperty(HANDLE_OFFSET_X);
+    event.currentTarget.style.removeProperty(HANDLE_OFFSET_Y);
+  }
+
+  function followPointer(event: PointerEvent<HTMLDivElement>) {
+    const home = homeRef.current;
+    if (role !== "out" || !home || event.pointerType !== "mouse" || event.buttons !== 0
+      || window.matchMedia?.(REDUCED_MOTION_QUERY).matches) {
+      resetOffset(event);
+      return;
+    }
+    const bounds = home.getBoundingClientRect();
+    // home 的布局宽度不随悬停变化；屏幕距离除以缩放，保持各级画布缩放下的位移上限。
+    const scale = bounds.width / home.offsetWidth;
+    if (!Number.isFinite(scale) || scale <= 0) {
+      resetOffset(event);
+      return;
+    }
+    const dx = (event.clientX - bounds.left - bounds.width / 2) / scale;
+    const dy = (event.clientY - bounds.top - bounds.height / 2) / scale;
+    const distance = Math.hypot(dx, dy);
+    if (distance > HANDLE_HOVER_RADIUS) {
+      resetOffset(event);
+      return;
+    }
+    const factor = distance === 0 ? 0 : Math.min(HANDLE_FOLLOW_FACTOR, HANDLE_MAX_OFFSET / distance);
+    event.currentTarget.style.setProperty(HANDLE_OFFSET_X, `${dx * factor}px`);
+    event.currentTarget.style.setProperty(HANDLE_OFFSET_Y, `${dy * factor}px`);
+  }
+
   return (
     <Handle className={`canvas-handle canvas-handle--${role}`} id={id}
+      onPointerMove={followPointer} onPointerLeave={resetOffset}
+      onPointerDown={resetOffset} onPointerCancel={resetOffset}
       isConnectable={role !== "anchor"} position={position} title={hint} type={direction}>
       {IconComponent
-        ? <span className="canvas-handle-dot">
-          <IconComponent className="canvas-handle-icon" size={HANDLE_ICON_SIZE} weight="bold" />
+        ? <span className="canvas-handle-home" ref={homeRef}>
+          <span className="canvas-handle-dot">
+            <IconComponent aria-hidden="true" className="canvas-handle-icon" size={HANDLE_ICON_SIZE} weight="light" />
+          </span>
         </span>
         : null}
     </Handle>
