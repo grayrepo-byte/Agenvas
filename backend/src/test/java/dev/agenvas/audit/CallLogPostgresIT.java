@@ -292,7 +292,7 @@ class CallLogPostgresIT {
     void exceptionPropagatesWhileOnlySafeFailureMetadataIsSaved() throws Exception {
         Project project = newProject("Failed call");
         ApiProblemException failure = new ApiProblemException(HttpStatus.BAD_GATEWAY,
-                "PROVIDER_HTTP_ERROR", "Provider failed", PRIVATE_MARKER + PRIVATE_KEY + PRIVATE_ENDPOINT, false);
+                "PROVIDER_HTTP_ERROR", dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"), dev.agenvas.shared.i18n.ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", PRIVATE_MARKER + PRIVATE_KEY + PRIVATE_ENDPOINT), false);
         assertThatThrownBy(() -> calls.record(new CallDescriptor(project.id(), null, fixtureRun(project).id(), 0,
                         CallLog.Kind.LLM, CallLog.Operation.CHAT, "OPENAI", "chat-model", false),
                 () -> { throw failure; }, ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, null, null)))

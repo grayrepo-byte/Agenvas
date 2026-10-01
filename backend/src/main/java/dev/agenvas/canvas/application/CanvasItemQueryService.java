@@ -1,5 +1,6 @@
 package dev.agenvas.canvas.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.UUID;
@@ -36,6 +37,6 @@ public class CanvasItemQueryService {
 
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
-                "画布卡片不存在", "画布卡片不存在或当前用户无权访问。", false);
+                ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"), ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user"), false);
     }
 }

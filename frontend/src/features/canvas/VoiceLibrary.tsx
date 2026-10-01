@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { Check, Star, X, Play } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type Ref } from "react";
@@ -31,6 +32,7 @@ export function VoiceLibrary({ selected, onSelect, onClose, projectId, canvasIte
   selected: string; onSelect: (speaker: string) => void; onClose: () => void;
   projectId: string; canvasItemId: string; capabilityId?: string; mock: boolean; containerRef: Ref<HTMLDivElement>;
 }) {
+  useLocale();
   const rootRef = useRef<HTMLDivElement>(null);
   const [availableHeight, setAvailableHeight] = useState<number>();
   useLayoutEffect(() => {
@@ -60,7 +62,7 @@ export function VoiceLibrary({ selected, onSelect, onClose, projectId, canvasIte
   const preview = useMutation({ mutationFn: async (speaker: string) => {
     const progress = previewProgress.current.get(speaker) ?? { createKey: crypto.randomUUID(), itemId: crypto.randomUUID() };
     previewProgress.current.set(speaker, progress);
-    const node = await prepareMediaNode(projectId, canvasItemId, "AUDIO", "音色试听", {
+    const node = await prepareMediaNode(projectId, canvasItemId, "AUDIO", t("音色试听"), {
       prompt: speaker.startsWith("en_") ? 'Say warmly: "Welcome. Let us create something wonderful together."'
         : '用自然亲切的语气说：“你好，欢迎来到创作画布，让我们开始创作吧。”',
       parameters: { speaker, speechRate: 0, loudnessRate: 0, pitchRate: 0 }, capabilityId: capabilityId ?? null,
@@ -88,34 +90,34 @@ export function VoiceLibrary({ selected, onSelect, onClose, projectId, canvasIte
     if (typeof containerRef === "function") return containerRef(element);
     if (containerRef) containerRef.current = element;
   }} style={availableHeight !== undefined && availableHeight > 0 ? { maxHeight: availableHeight } : undefined}
-    className="ui-popover-surface voice-library" role="dialog" aria-label="音色库" onKeyDown={(event) => {
+    className="ui-popover-surface voice-library" role="dialog" aria-label={t("音色库")} onKeyDown={(event) => {
     if (event.key === "Escape") { event.stopPropagation(); onClose(); }
   }}>
-    <div className="voice-library-heading"><strong>音色库</strong><button type="button" aria-label="关闭音色库" onClick={onClose}><X size={17} /></button></div>
-    <input autoFocus type="search" aria-label="搜索音色" placeholder="搜索音色名称" value={search} onChange={(event) => setSearch(event.target.value)} />
-    <div className="voice-library-filters"><Select aria-label="音色语言" value={language} onChange={(event) => setLanguage(event.target.value)}>
-      <option value="">全部语言</option>{Array.from(new Set(VOICES.map((voice) => voice.language))).map((value) => <option key={value}>{value}</option>)}</Select>
-      <Select aria-label="音色场景" value={scene} onChange={(event) => setScene(event.target.value)}><option value="">全部场景</option>
-        {Array.from(new Set(VOICES.map((voice) => voice.scene))).map((value) => <option key={value}>{value}</option>)}</Select></div>
-    <div className="voice-library-tabs" role="group" aria-label="音色范围">
-      {([{ key: "all", label: "全部" }, { key: "recent", label: "最近使用" }, { key: "favorites", label: "我的收藏" }] as const).map((item) =>
+    <div className="voice-library-heading"><strong>{t("音色库")}</strong><button type="button" aria-label={t("关闭音色库")} onClick={onClose}><X size={17} /></button></div>
+    <input autoFocus type="search" aria-label={t("搜索音色")} placeholder={t("搜索音色名称")} value={search} onChange={(event) => setSearch(event.target.value)} />
+    <div className="voice-library-filters"><Select aria-label={t("音色语言")} value={language} onChange={(event) => setLanguage(event.target.value)}>
+      <option value="">{t("全部语言")}</option>{Array.from(new Set(VOICES.map((voice) => voice.language))).map((value) => <option key={value} value={value}>{t(value)}</option>)}</Select>
+      <Select aria-label={t("音色场景")} value={scene} onChange={(event) => setScene(event.target.value)}><option value="">{t("全部场景")}</option>
+        {Array.from(new Set(VOICES.map((voice) => voice.scene))).map((value) => <option key={value} value={value}>{t(value)}</option>)}</Select></div>
+    <div className="voice-library-tabs" role="group" aria-label={t("音色范围")}>
+      {([{ key: "all", label: t("全部") }, { key: "recent", label: t("最近使用") }, { key: "favorites", label: t("我的收藏") }] as const).map((item) =>
         <button key={item.key} type="button" aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}
     </div>
-    <button type="button" className="voice-library-automatic" aria-pressed={!selected} onClick={() => onSelect("")}>由提示词决定音色{!selected ? <Check size={15} /> : null}</button>
+    <button type="button" className="voice-library-automatic" aria-pressed={!selected} onClick={() => onSelect("")}>{t("由提示词决定音色")}{!selected ? <Check size={15} /> : null}</button>
     <div className="voice-library-list" style={availableHeight !== undefined && availableHeight > 0
       ? { maxHeight: Math.max(VOICE_LIST_MIN_HEIGHT, Math.min(VOICE_LIST_MAX_HEIGHT, availableHeight - VOICE_LIBRARY_CHROME_HEIGHT)) } : undefined}>{choices.map((voice) => <div className="voice-library-row" key={voice.id}>
       <button type="button" className="voice-library-choice" aria-pressed={selected === voice.id} onClick={() => {
         remember({ ...preferences, recent: [voice.id, ...preferences.recent.filter((id) => id !== voice.id)].slice(0, RECENT_LIMIT) }); onSelect(voice.id);
-      }}><span className="voice-library-avatar">{voice.name.slice(0, 1)}</span><span><strong>{voice.name}</strong><small>{voice.language} · {voice.scene}</small></span>{selected === voice.id ? <Check size={15} /> : null}</button>
-      <button type="button" aria-label={`收藏 ${voice.name}`} aria-pressed={preferences.favorites.includes(voice.id)} onClick={() => remember({ ...preferences,
+      }}><span className="voice-library-avatar">{voice.name.slice(0, 1)}</span><span><strong>{voice.name}</strong><small>{t(voice.language)} · {t(voice.scene)}</small></span>{selected === voice.id ? <Check size={15} /> : null}</button>
+      <button type="button" aria-label={t("收藏 {0}", { "0": voice.name })} aria-pressed={preferences.favorites.includes(voice.id)} onClick={() => remember({ ...preferences,
         favorites: preferences.favorites.includes(voice.id) ? preferences.favorites.filter((id) => id !== voice.id) : [...preferences.favorites, voice.id] })}><Star size={17} weight={preferences.favorites.includes(voice.id) ? "fill" : "regular"} /></button>
-      <button type="button" aria-label={`生成试听 ${voice.name}`} disabled={!capabilityId || preview.isPending || mock}
-        title={mock ? "Mock 只生成提示音，不提供音色试听" : "新增试听音频节点并运行，按所选模型计费"}
+      <button type="button" aria-label={t("生成试听 {0}", { "0": voice.name })} disabled={!capabilityId || preview.isPending || mock}
+        title={mock ? t("Mock 只生成提示音，不提供音色试听") : t("新增试听音频节点并运行，按所选模型计费")}
         onClick={() => preview.mutate(voice.id)}><Play size={16} /></button>
-    </div>)}{!choices.length ? <p>没有匹配的音色。</p> : null}</div>
-    <p className="voice-library-help">试听会新增音频节点并运行，使用所选模型，费用计入项目用量。</p>
-    {preview.isPending ? <p role="status">正在提交试听…</p> : null}
-    {preview.error ? <p role="alert">试听提交失败：{preview.error.message}</p> : null}
-    {assetId ? <AudioPlayer src={assetContentUrl(projectId, assetId)} title="音色试听" /> : previewNode ? <p role="status">{failedTask ? `试听${failedTask.status === "UNKNOWN" ? "结果未知，请在试听节点显式重试" : "未完成，请在试听节点查看任务"}` : "试听已排队，可在试听节点取消。"}</p> : null}
+    </div>)}{!choices.length ? <p>{t("没有匹配的音色。")}</p> : null}</div>
+    <p className="voice-library-help">{t("试听会新增音频节点并运行，使用所选模型，费用计入项目用量。")}</p>
+    {preview.isPending ? <p role="status">{t("正在提交试听…")}</p> : null}
+    {preview.error ? <p role="alert">{t("试听提交失败：{0}", { "0": preview.error.message })}</p> : null}
+    {assetId ? <AudioPlayer src={assetContentUrl(projectId, assetId)} title={t("音色试听")} /> : previewNode ? <p role="status">{failedTask ? t("试听{0}", { "0": failedTask.status === "UNKNOWN" ? t("结果未知，请在试听节点显式重试") : t("未完成，请在试听节点查看任务") }) : t("试听已排队，可在试听节点取消。")}</p> : null}
   </div>;
 }

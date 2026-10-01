@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { applyCanvasCommands, type CanvasItem } from "../../shared/api/client";
@@ -12,6 +13,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
   item: CanvasItem;
   kindLabel: string;
 }) {
+  useLocale();
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const cancelBlur = useRef(false);
@@ -87,7 +89,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
     if (save.isPending) return;
     const title = draft.trim();
     if (!title) {
-      setValidationError("标题不能为空");
+      setValidationError(t("标题不能为空"));
       queueMicrotask(() => input.current?.focus());
       return;
     }
@@ -111,15 +113,15 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
     }
   }
 
-  const error = validationError ?? (save.error ? "标题保存失败，请重试" : null);
+  const error = validationError ?? (save.error ? t("标题保存失败，请重试") : null);
   const inputWidth = Math.min(Math.max(draft.length + 2, MIN_INPUT_CHARS), MAX_INPUT_CHARS);
 
   return <span className="artifact-card-title-editor nodrag nowheel nopan">
     {editing ? <>
       <input ref={input} className={`artifact-card-title-input${error ? " is-error" : ""}`}
-        aria-label={`${kindLabel}标题`} aria-invalid={Boolean(error)}
+        aria-label={t("{0}标题", { "0": kindLabel })} aria-invalid={Boolean(error)}
         disabled={save.isPending} maxLength={MAX_TITLE_LENGTH} size={inputWidth}
-        title={error ?? "按 Enter 或移开焦点保存，按 Esc 取消"}
+        title={error ?? t("按 Enter 或移开焦点保存，按 Esc 取消")}
         value={draft} onBlur={commit} onChange={(event) => {
           setDraft(event.target.value);
           setValidationError(null);
@@ -127,7 +129,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
         }} onKeyDown={handleKeyDown} />
       {error ? <span className="sr-only" role="alert">{error}</span> : null}
     </> : <button type="button" className="artifact-card-caption nodrag nowheel nopan"
-      aria-label={`重命名${kindLabel}：${displayTitle}`} title="双击编辑标题"
+      aria-label={t("重命名{0}：{1}", { "0": kindLabel, "1": displayTitle })} title={t("双击编辑标题")}
       onClick={(event) => { if (event.detail === 2) beginEditing(); }}
       onDoubleClick={(event) => { event.stopPropagation(); beginEditing(); }}
       onKeyDown={(event) => {

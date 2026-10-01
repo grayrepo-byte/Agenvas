@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,7 @@ public interface ChatGateway {
     default void requireToolCalling(ConfigIdentity expected) {
         if (!capabilitiesFor(expected).toolCalling()) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE",
-                    "原模型配置不可用", "Run 固定的模型配置或工具能力已不可用，未切换到新配置。", false);
+                    ApiMessage.of("api.chat-gateway.the-original-model-configuration-is-not-available"), ApiMessage.of("api.chat-gateway.run-the-fixed-model-configuration-or-tool-capability-is-no"), false);
         }
     }
 

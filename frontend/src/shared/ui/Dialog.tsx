@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useId, useRef, type FormEventHandler, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "@phosphor-icons/react";
@@ -10,6 +11,7 @@ export function Dialog({ title, description, children, footer, onClose, onSubmit
   title: string; description?: string; children: ReactNode; footer: ReactNode;
   onClose: () => void; onSubmit: FormEventHandler<HTMLFormElement>; busy?: boolean;
 }) {
+  useLocale();
   const titleId = useId();
   const descriptionId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -43,7 +45,7 @@ export function Dialog({ title, description, children, footer, onClose, onSubmit
     }}>
     <header className="ui-dialog-header">
       <div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div>
-      <button type="button" className="ghost-button" aria-label="关闭窗口" disabled={busy} onClick={onClose}><X size={18} /></button>
+      <button type="button" className="ghost-button" aria-label={t("关闭窗口")} disabled={busy} onClick={onClose}><X size={18} /></button>
     </header>
     <form className="ui-dialog-form" onSubmit={onSubmit}>
       <div className="ui-dialog-body">{children}</div>

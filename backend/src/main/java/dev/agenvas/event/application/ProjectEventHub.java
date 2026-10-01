@@ -1,5 +1,6 @@
 package dev.agenvas.event.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.event.domain.ProjectEvent;
 import dev.agenvas.shared.error.ApiProblemException;
 import io.micrometer.core.instrument.Counter;
@@ -157,8 +158,8 @@ public class ProjectEventHub {
             throw new ApiProblemException(
                     HttpStatus.TOO_MANY_REQUESTS,
                     "EVENT_CONNECTION_LIMIT",
-                    "事件连接已满",
-                    "请稍后重连项目事件流。",
+                    ApiMessage.of("api.project-event-hub.event-connection-is-full"),
+                    ApiMessage.of("api.project-event-hub.please-reconnect-to-the-project-event-stream-later"),
                     true);
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);

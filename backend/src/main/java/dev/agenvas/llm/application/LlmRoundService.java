@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
 import java.util.List;
@@ -66,7 +67,7 @@ public class LlmRoundService {
         JsonNode request = codec.request(messages, tools);
         AgentRun run = runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                        "RUN_NOT_FOUND", "运行不存在", "无法访问该项目的运行。", false));
+                        "RUN_NOT_FOUND", ApiMessage.of("api.llm-round-service.run-does-not-exist"), ApiMessage.of("api.llm-round-service.unable-to-access-the-project-s-runtime"), false));
         ChatGateway.ConfigIdentity selected = new ChatGateway.ConfigIdentity(
                 run.policySnapshot().path("modelConfigSource").asText(""),
                 run.policySnapshot().path("modelConfigVersion").asInt(-1));

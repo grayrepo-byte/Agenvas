@@ -1,5 +1,6 @@
 package dev.agenvas.provider.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.math.BigDecimal;
@@ -62,7 +63,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     public static RunningHubDefinition parse(ObjectMapper mapper, JsonNode value, Task.Kind kind) {
         requireObject(value, ROOT_FIELDS);
         if (value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_DEFINITION_BYTES)
-            throw invalid("能力定义超过大小上限");
+            throw invalid(ApiMessage.of("api.running-hub-definition.capacity-definition-exceeds-size-limit"));
         for (JsonNode field : value.path("fields")) {
             requireObject(field, FIELD_FIELDS);
             for (JsonNode option : field.path("options")) requireObject(option, Set.of("label", "value"));
@@ -77,7 +78,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             for (String flag : List.of("required", "advanced")) if (!field.has(flag)) ((ObjectNode) field).put(flag, false);
         }
         try { definition = mapper.treeToValue(normalized, RunningHubDefinition.class); }
-        catch (RuntimeException failure) { throw invalid("RunningHub 能力字段类型无效"); }
+        catch (RuntimeException failure) { throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid")); }
         definition.validate(kind);
         return definition;
     }
@@ -85,14 +86,14 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     public void validate(Task.Kind kind) {
         if (schemaVersion != SCHEMA_VERSION || !PROTOCOL_VERSION.equals(protocolVersion)
                 || targetType == null || targetId == null || !targetId.matches("[0-9]{1,32}"))
-            throw invalid("必须指定 V2 协议、目标类型与真实目标 ID");
+            throw invalid(ApiMessage.of("api.running-hub-definition.v2-protocol-target-type-and-real-target-id-must-be"));
         if (fields == null || fields.size() > MAX_FIELDS || outputs == null || outputs.isEmpty()
                 || outputs.size() > MAX_OUTPUTS || fixedBindings != null && fixedBindings.size() > MAX_FIELDS)
-            throw invalid("能力字段或输出数量无效");
+            throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
         if (instanceType != null && !INSTANCES.contains(instanceType)
                 || retainSeconds != null && (retainSeconds < MIN_RETAIN_SECONDS || retainSeconds > MAX_RETAIN_SECONDS)
                 || sourceSha256 != null && !sourceSha256.matches("[0-9a-f]{64}"))
-            throw invalid("实例选项或来源摘要无效");
+            throw invalid(ApiMessage.of("api.running-hub-definition.invalid-instance-option-or-source-summary"));
         Set<String> keys = new HashSet<>();
         Set<String> bindings = new HashSet<>();
         Set<Source> sources = new HashSet<>();
@@ -100,67 +101,67 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             if (field == null || field.type() == null || field.key() == null
                     || !field.key().matches("[A-Za-z][A-Za-z0-9_]{0,63}")
                     || RESERVED_KEYS.contains(field.key()) || !keys.add(field.key()))
-                throw invalid("参数键必须有效、唯一且不能包含凭据字段");
+                throw invalid(ApiMessage.of("api.running-hub-definition.parameter-keys-must-be-valid-unique-and-cannot-contain-credential"));
             label(field.label());
             if (field.description() != null && field.description().length() > MAX_DESCRIPTION_LENGTH)
-                throw invalid("参数说明过长");
+                throw invalid(ApiMessage.of("api.running-hub-definition.parameter-description-is-too-long"));
             binding(field.nodeId(), field.fieldName(), bindings);
             if (field.effectiveSource() != Source.PARAMETER && !sources.add(field.effectiveSource()))
-                throw invalid("提示词与时长来源不能重复绑定");
+                throw invalid(ApiMessage.of("api.running-hub-definition.prompt-words-and-duration-sources-cannot-be-bound-repeatedly"));
             if (field.effectiveSource() == Source.PROMPT && field.type() != FieldType.STRING
                     || field.effectiveSource() == Source.DURATION_SECONDS && field.type() != FieldType.INTEGER
                     || field.media() && field.effectiveSource() != Source.PARAMETER)
-                throw invalid("参数来源与类型不匹配");
+                throw invalid(ApiMessage.of("api.running-hub-definition.parameter-source-and-type-do-not-match"));
             if (field.minimum() != null && field.maximum() != null && field.minimum().compareTo(field.maximum()) > 0
                     || field.maxLength() != null && (field.maxLength() < 1 || field.maxLength() > MAX_TEXT_LENGTH))
-                throw invalid("参数范围无效");
+                throw invalid(ApiMessage.of("api.running-hub-definition.invalid-parameter-range"));
             if (field.type() == FieldType.SELECT && (field.options() == null || field.options().isEmpty())
                     || field.options() != null && field.options().size() > MAX_OPTIONS)
-                throw invalid("下拉选项数量无效");
+                throw invalid(ApiMessage.of("api.running-hub-definition.invalid-number-of-drop-down-options"));
             Set<String> options = new HashSet<>();
             if (field.options() != null) for (Option option : field.options()) {
-                if (option == null) throw invalid("下拉选项无效");
+                if (option == null) throw invalid(ApiMessage.of("api.running-hub-definition.dropdown-option-is-invalid"));
                 label(option.label());
                 scalar(option.value());
                 String canonical = option.value().isNumber() ? "number:" + option.value().decimalValue().stripTrailingZeros()
                         : option.value().toString();
-                if (!options.add(canonical)) throw invalid("下拉选项值重复");
+                if (!options.add(canonical)) throw invalid(ApiMessage.of("api.running-hub-definition.duplicate-drop-down-option-value"));
             }
             if (field.defaultValue() != null && !field.defaultValue().isNull()) {
-                if (field.media()) throw invalid("素材默认值不能包含项目资源或外部 URL");
+                if (field.media()) throw invalid(ApiMessage.of("api.running-hub-definition.asset-defaults-cannot-contain-project-assets-or-external-urls"));
                 validateValue(field, field.defaultValue());
             }
         }
         for (Field field : fields) if (field.enabledWhen() != null) {
             Condition condition = field.enabledWhen();
             Field parent = fields.stream().filter(candidate -> candidate.key().equals(condition.field())).findFirst()
-                    .orElseThrow(() -> invalid("条件字段不存在"));
+                    .orElseThrow(() -> invalid(ApiMessage.of("api.running-hub-definition.condition-field-does-not-exist")));
             if (parent == field || parent.enabledWhen() != null || parent.media())
-                throw invalid("显示条件只能引用无条件的普通参数");
+                throw invalid(ApiMessage.of("api.running-hub-definition.display-conditions-can-only-refer-to-unconditional-ordinary-parameters"));
             validateValue(parent, condition.value());
         }
         if (fixedBindings != null) for (FixedBinding fixed : fixedBindings) {
-            if (fixed == null) throw invalid("固定映射无效");
+            if (fixed == null) throw invalid(ApiMessage.of("api.running-hub-definition.fixed-mapping-is-invalid"));
             binding(fixed.nodeId(), fixed.fieldName(), bindings);
             scalar(fixed.value());
         }
-        if (outputs.stream().anyMatch(java.util.Objects::isNull)) throw invalid("输出映射无效");
+        if (outputs.stream().anyMatch(java.util.Objects::isNull)) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
         long primaryCount = outputs.stream().filter(Output::primary).count();
-        if (primaryCount != 1) throw invalid("必须指定一个主输出");
+        if (primaryCount != 1) throw invalid(ApiMessage.of("api.running-hub-definition.a-primary-output-must-be-specified"));
         Set<String> outputKeys = new HashSet<>();
         int totalOutputs = 0;
         for (Output output : outputs) {
             if (output == null || output.kind() == null || output.maxCount() < 1 || output.maxCount() > MAX_OUTPUTS
                     || output.nodeId() != null && !output.nodeId().matches("[0-9]{1,32}")
-                    || !outputKeys.add(output.nodeId() + ":" + output.kind())) throw invalid("输出映射无效或重复");
+                    || !outputKeys.add(output.nodeId() + ":" + output.kind())) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-or-duplicate-output-map"));
             if (output.primary() && !output.kind().name().equals(kind.name().replace("_GENERATION", "")))
-                throw invalid("主输出与能力媒体类型不匹配");
+                throw invalid(ApiMessage.of("api.running-hub-definition.primary-output-does-not-match-capability-media-type"));
             totalOutputs += output.maxCount();
             if (outputs.stream().anyMatch(other -> other != output && other.kind() == output.kind()
                     && (other.nodeId() == null || output.nodeId() == null)))
-                throw invalid("同一媒体类型的通配输出不能与其他节点输出重叠");
+                throw invalid(ApiMessage.of("api.running-hub-definition.wildcard-output-of-the-same-media-type-cannot-overlap-with"));
         }
-        if (totalOutputs > MAX_OUTPUTS) throw invalid("所有输出映射的结果上限合计不能超过 16");
+        if (totalOutputs > MAX_OUTPUTS) throw invalid(ApiMessage.of("api.running-hub-definition.the-total-result-cap-for-all-output-mappings-cannot-exceed"));
     }
 
     /** Incomplete drafts are legal; execution resolves defaults and requires all active inputs. */
@@ -169,9 +170,9 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         JsonNode supplied = parameters == null ? mapper.createObjectNode() : parameters;
         requireObject(supplied, Set.of(VALUES_PROPERTY));
         JsonNode raw = supplied.path(VALUES_PROPERTY);
-        if (!raw.isMissingNode() && !raw.isObject()) throw invalid("动态参数必须是对象");
+        if (!raw.isMissingNode() && !raw.isObject()) throw invalid(ApiMessage.of("api.running-hub-definition.dynamic-parameters-must-be-objects"));
         for (String key : raw.propertyNames()) if (fields.stream().noneMatch(field -> field.key().equals(key)))
-            throw invalid("存在当前能力不支持的参数：" + key);
+            throw invalid(ApiMessage.of("api.running-hub-definition.the-current-capability-does-not-support-parameter", key));
         ObjectNode effective = mapper.createObjectNode();
         for (Field field : fields) {
             JsonNode value = switch (field.effectiveSource()) {
@@ -191,7 +192,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             if (!active) { effective.remove(field.key()); continue; }
             JsonNode value = effective.get(field.key());
             if (executing && field.required() && (value == null || value.isNull()
-                    || value.isTextual() && value.asText().isBlank())) throw invalid("请填写“" + field.label() + "”");
+                    || value.isTextual() && value.asText().isBlank())) throw invalid(ApiMessage.of("api.running-hub-definition.enter-a-value-for", field.label()));
         }
         return effective;
     }
@@ -218,7 +219,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         if (valid && field.effectiveSource() == Source.DURATION_SECONDS) valid = value.asLong() >= 1 && value.asLong() <= MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS;
         if (valid && value.isNumber()) valid = (field.minimum() == null || value.decimalValue().compareTo(field.minimum()) >= 0)
                 && (field.maximum() == null || value.decimalValue().compareTo(field.maximum()) <= 0);
-        if (!valid) throw invalid("“" + field.label() + "”的类型或范围无效");
+        if (!valid) throw invalid(ApiMessage.of("api.running-hub-definition.the-type-or-range-of-is-invalid", field.label()));
     }
 
     private static boolean uuid(String value) {
@@ -227,24 +228,24 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     }
     private static void scalar(JsonNode value) {
         if (value == null || value.isNull() || !(value.isTextual() || value.isNumber() || value.isBoolean())
-                || value.isTextual() && value.asText().length() > MAX_TEXT_LENGTH) throw invalid("参数值必须是有界的文字、数字或布尔值");
+                || value.isTextual() && value.asText().length() > MAX_TEXT_LENGTH) throw invalid(ApiMessage.of("api.running-hub-definition.parameter-value-must-be-a-bounded-literal-number-or-boolean"));
     }
     private static void label(String value) {
-        if (value == null || value.isBlank() || value.length() > MAX_LABEL_LENGTH) throw invalid("字段名称必须为 1–160 字符");
+        if (value == null || value.isBlank() || value.length() > MAX_LABEL_LENGTH) throw invalid(ApiMessage.of("api.running-hub-definition.field-name-must-be-1-160-characters"));
     }
     private static void binding(String node, String field, Set<String> seen) {
         if (node == null || !node.matches("[0-9]{1,32}") || !bindableFieldName(field)
-                || !seen.add(node + ":" + field)) throw invalid("节点映射必须有效且不能重复");
+                || !seen.add(node + ":" + field)) throw invalid(ApiMessage.of("api.running-hub-definition.node-mapping-must-be-valid-and-cannot-be-duplicated"));
     }
     /** Discovery also encounters ComfyUI upload-widget labels that are not supported bindings. */
     public static boolean bindableFieldName(String field) {
         return field != null && field.matches("[A-Za-z_][A-Za-z0-9_]{0,79}") && !RESERVED_KEYS.contains(field);
     }
     private static void requireObject(JsonNode value, Set<String> allowed) {
-        if (value == null || !value.isObject() || !allowed.containsAll(value.propertyNames())) throw invalid("能力定义包含未知字段或无效对象");
+        if (value == null || !value.isObject() || !allowed.containsAll(value.propertyNames())) throw invalid(ApiMessage.of("api.running-hub-definition.capability-definition-contains-unknown-fields-or-invalid-objects"));
     }
-    public static ApiProblemException invalid(String detail) {
+    public static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "RUNNINGHUB_INPUT_INVALID",
-                "RunningHub 配置或输入无效", detail, false);
+                ApiMessage.of("api.running-hub-definition.runninghub-configuration-or-input-is-invalid"), detail, false);
     }
 }

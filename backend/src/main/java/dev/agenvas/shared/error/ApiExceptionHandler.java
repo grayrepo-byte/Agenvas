@@ -1,6 +1,9 @@
 package dev.agenvas.shared.error;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import jakarta.servlet.http.HttpServletRequest;
+import dev.agenvas.shared.i18n.ApiMessages;
+import java.util.Locale;
 import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
 import java.util.List;
@@ -25,6 +28,12 @@ public class ApiExceptionHandler {
     /** 记录异常类别和追踪上下文，不记录请求字段值、提示词或密钥。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    private final ApiMessages messages;
+
+    public ApiExceptionHandler(ApiMessages messages) {
+        this.messages = messages;
+    }
+
     /** 浏览器关闭 SSE 连接属于正常断开，此时响应已不可写。 */
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     void handleDisconnectedStream(AsyncRequestNotUsableException exception) {
@@ -39,7 +48,7 @@ public class ApiExceptionHandler {
                 exception.status(),
                 exception.code(),
                 exception.title(),
-                exception.getMessage(),
+                exception.detail(),
                 exception.retryable(),
                 request,
                 null);
@@ -50,13 +59,14 @@ public class ApiExceptionHandler {
     ResponseEntity<ProblemDetail> handleInvalidBody(
             MethodArgumentNotValidException exception, HttpServletRequest request) {
         List<FieldError> fields = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> new FieldError(error.getField(), error.getDefaultMessage()))
+                .map(error -> new FieldError(error.getField(), error.getDefaultMessage() != null
+                        ? error.getDefaultMessage() : messages.invalidField(request)))
                 .toList();
         return build(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "请求参数无效",
-                "请修正标记的字段后重试。",
+                ApiMessage.of("api.identity-service.invalid-request"),
+                ApiMessage.of("api.api-exception-handler.correct-the-marked-fields-and-try-again"),
                 false,
                 request,
                 fields);
@@ -66,8 +76,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ProblemDetail> handleLargeUpload(
             MaxUploadSizeExceededException exception, HttpServletRequest request) {
-        return build(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE", "素材过大",
-                "上传文件超过大小限制。", false, request, null);
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE", ApiMessage.of("api.local-asset-storage.material-is-too-large"),
+                ApiMessage.of("api.api-exception-handler.the-uploaded-file-exceeds-the-size-limit"), false, request, null);
     }
 
     /** 映射 DTO 绑定之外触发的参数校验失败。 */
@@ -77,8 +87,8 @@ public class ApiExceptionHandler {
         return build(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "请求参数无效",
-                "请求未通过安全校验。",
+                ApiMessage.of("api.identity-service.invalid-request"),
+                ApiMessage.of("api.api-exception-handler.the-request-failed-the-security-check"),
                 false,
                 request,
                 null);
@@ -92,8 +102,8 @@ public class ApiExceptionHandler {
         return build(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "请求参数无效",
-                "请求正文、参数格式或必需请求头无效。",
+                ApiMessage.of("api.identity-service.invalid-request"),
+                ApiMessage.of("api.api-exception-handler.the-request-body-parameter-format-or-required-request-headers-are"),
                 false,
                 request,
                 null);
@@ -106,9 +116,9 @@ public class ApiExceptionHandler {
         String traceId = traceId(request);
         LOGGER.error("Unhandled API failure traceId={} path={}", traceId, request.getRequestURI(), exception);
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.INTERNAL_SERVER_ERROR, "服务端暂时无法完成请求。");
+                HttpStatus.INTERNAL_SERVER_ERROR, messages.text(ApiMessage.of("api.api-exception-handler.the-server-cannot-complete-the-request-right-now"), request));
         problem.setType(URI.create("urn:agenvas:problem:internal-error"));
-        problem.setTitle("服务端错误");
+        problem.setTitle(messages.text(ApiMessage.of("api.api-exception-handler.server-error"), request));
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("code", "INTERNAL_ERROR");
         problem.setProperty("traceId", traceId);
@@ -129,14 +139,14 @@ public class ApiExceptionHandler {
     private ResponseEntity<ProblemDetail> build(
             HttpStatus status,
             String code,
-            String title,
-            String detail,
+            ApiMessage title,
+            ApiMessage detail,
             boolean retryable,
             HttpServletRequest request,
             List<FieldError> fieldErrors) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setType(URI.create("urn:agenvas:problem:" + code.toLowerCase().replace('_', '-')));
-        problem.setTitle(title);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, messages.text(detail, request));
+        problem.setType(URI.create("urn:agenvas:problem:" + code.toLowerCase(Locale.ROOT).replace('_', '-')));
+        problem.setTitle(messages.text(title, request));
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("code", code);
         problem.setProperty("traceId", traceId(request));

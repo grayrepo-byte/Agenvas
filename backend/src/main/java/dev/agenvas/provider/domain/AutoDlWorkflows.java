@@ -1,5 +1,6 @@
 package dev.agenvas.provider.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.io.IOException;
@@ -36,19 +37,17 @@ public final class AutoDlWorkflows {
                 case "9:16" -> "竖";
                 case "16:9" -> "横";
                 case "1:1" -> "(1:1)";
-                default -> throw invalid("AutoDL 不支持此画幅");
+                default -> throw invalid(ApiMessage.of("api.auto-dl-workflows.autodl-does-not-support-this-frame"));
             };
             return resolutions.stream().filter(value -> value.startsWith(tier + orientation))
-                    .findFirst().orElseThrow(() -> invalid("该工作流不支持 " + tier + " / " + ratio));
+                    .findFirst().orElseThrow(() -> invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support", tier, ratio)));
         }
         public void validate(String prompt, int seconds, String inputMode, int images, int audios) {
             if (prompt.isBlank() || prompt.codePointCount(0, prompt.length()) > promptLimit
                     || seconds < minimumSeconds || seconds > maximumSeconds || !mode.equals(inputMode)
                     || images < minimumImages || images > imageFields.size()
                     || audios < minimumAudios || audios > audioFields.size()) {
-                throw invalid("AutoDL 工作流输入不匹配：" + label + "，需 " + minimumImages + "–"
-                        + imageFields.size() + " 张图片、" + minimumAudios + "–" + audioFields.size()
-                        + " 条音频及 " + minimumSeconds + "–" + maximumSeconds + " 秒时长");
+                throw invalid(ApiMessage.of("api.auto-dl-workflows.autodl-workflow-input-mismatch-requires-images-audio-inputs-and-a", label, minimumImages, imageFields.size(), minimumAudios, audioFields.size(), minimumSeconds, maximumSeconds));
             }
         }
     }
@@ -58,7 +57,7 @@ public final class AutoDlWorkflows {
     }
     public static Workflow require(String id) {
         return ALL.stream().filter(value -> value.id().equals(id)).findFirst()
-                .orElseThrow(() -> invalid("未支持的 AutoDL 工作流 ID"));
+                .orElseThrow(() -> invalid(ApiMessage.of("api.auto-dl-workflows.unsupported-autodl-workflow-id")));
     }
     public static void normalize(JsonNode source, ObjectNode target) {
         Workflow workflow = require(source);
@@ -68,13 +67,13 @@ public final class AutoDlWorkflows {
         if (value != null && !value.isTextual() || workflow.resolutions().stream()
                 .noneMatch(resolution -> resolution.startsWith(tier + "竖")
                         || resolution.startsWith(tier + "横") || resolution.startsWith(tier + "(1:1)")))
-            throw invalid("该工作流不支持此分辨率");
+            throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
         target.put("videoResolution", tier);
         if (source.has("seed")) {
             JsonNode seed = source.get("seed");
             if (!workflow.supportsSeed() || !seed.isIntegralNumber() || !seed.canConvertToLong()
                     || seed.longValue() < 1 || seed.longValue() > MAX_SEED)
-                throw invalid("该工作流不支持此随机种子；有效范围为 1–" + MAX_SEED);
+                throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-seed-the-valid-range", MAX_SEED));
             target.put("seed", seed.longValue());
         }
     }
@@ -84,8 +83,8 @@ public final class AutoDlWorkflows {
             return List.copyOf(Arrays.asList(new ObjectMapper().readValue(stream, Workflow[].class)));
         } catch (IOException failure) { throw new IllegalStateException("AutoDL manifest unreadable", failure); }
     }
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "PROVIDER_UNSUPPORTED_INPUT",
-                "AutoDL 输入无效", detail, false);
+                ApiMessage.of("api.auto-dl-workflows.invalid-autodl-input"), detail, false);
     }
 }

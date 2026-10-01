@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { Select } from "../../shared/ui/Select";
 import { ArrowUp, Stack, X } from "@phosphor-icons/react";
 import { useState, type PointerEvent } from "react";
@@ -19,17 +20,17 @@ const PRESETS: ReadonlyArray<{
   colorTemperature: number;
   filter: string;
 }> = [
-  { id: "GOLDEN_HOUR", label: "黄金时刻", brightness: 10, colorTemperature: 3200,
+  { id: "GOLDEN_HOUR", get label() { return t("黄金时刻"); }, brightness: 10, colorTemperature: 3200,
     filter: "brightness(1.08) saturate(1.12) sepia(.22)" },
-  { id: "BLUE_HOUR", label: "蓝调时刻", brightness: -6, colorTemperature: 7600,
+  { id: "BLUE_HOUR", get label() { return t("蓝调时刻"); }, brightness: -6, colorTemperature: 7600,
     filter: "brightness(.94) saturate(.9) hue-rotate(172deg)" },
-  { id: "OVERCAST_SOFT", label: "阴天柔光", brightness: 5, colorTemperature: 6500,
+  { id: "OVERCAST_SOFT", get label() { return t("阴天柔光"); }, brightness: 5, colorTemperature: 6500,
     filter: "brightness(1.05) saturate(.72) contrast(.9)" },
-  { id: "MOONLIGHT", label: "月光", brightness: -24, colorTemperature: 8200,
+  { id: "MOONLIGHT", get label() { return t("月光"); }, brightness: -24, colorTemperature: 8200,
     filter: "brightness(.76) saturate(.62) hue-rotate(174deg) contrast(1.08)" },
-  { id: "SOFT_STUDIO", label: "柔光棚拍", brightness: 16, colorTemperature: 5200,
+  { id: "SOFT_STUDIO", get label() { return t("柔光棚拍"); }, brightness: 16, colorTemperature: 5200,
     filter: "brightness(1.16) saturate(.86) contrast(.92)" },
-  { id: "NEON_NIGHT", label: "霓虹夜色", brightness: 2, colorTemperature: 7000,
+  { id: "NEON_NIGHT", get label() { return t("霓虹夜色"); }, brightness: 2, colorTemperature: 7000,
     filter: "brightness(1.02) saturate(1.42) hue-rotate(22deg) contrast(1.12)" },
 ];
 
@@ -43,6 +44,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
   onSubmit: (parameters: RelightParameters, instruction?: string,
     capabilityId?: string) => void;
 }) {
+  useLocale();
   const [preset, setPreset] = useState<LightingPreset>("GOLDEN_HOUR");
   const [brightness, setBrightness] = useState(10);
   const [colorTemperature, setColorTemperature] = useState(3200);
@@ -78,18 +80,18 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
   }
 
   return createPortal(<div className="relight-dialog nodrag nowheel nopan" role="dialog"
-    aria-label="打光" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+    aria-label={t("打光")} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
     <header className="relight-dialog-header">
-      <strong>打光</strong>
-      <button type="button" aria-label="关闭打光面板" onClick={onClose}><X size={19} /></button>
+      <strong>{t("打光")}</strong>
+      <button type="button" aria-label={t("关闭打光面板")} onClick={onClose}><X size={19} /></button>
     </header>
 
     <div className="relight-dialog-body">
-      <section className="relight-controls" aria-label="光线参数">
-        <div className="relight-preview-stage" aria-label="点击设置光源位置"
+      <section className="relight-controls" aria-label={t("光线参数")}>
+        <div className="relight-preview-stage" aria-label={t("点击设置光源位置")}
           onPointerDown={moveLight}>
           <div className="relight-preview-orbit">
-            <img src={sourceUrl} alt="当前图片打光预览" draggable={false}
+            <img src={sourceUrl} alt={t("当前图片打光预览")} draggable={false}
               style={{ filter: previewFilter }} />
             <span className="relight-source-dot" aria-hidden="true" style={{
               left: `${light.x * 100}%`, top: `${light.y * 100}%`,
@@ -98,20 +100,20 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
         </div>
 
         <label className="relight-slider-label">
-          <span>亮度 <output>{brightness > 0 ? "+" : ""}{brightness}</output></span>
+          <span>{t("亮度 ")}<output>{brightness > 0 ? "+" : ""}{brightness}</output></span>
           <input type="range" min={MIN_BRIGHTNESS} max={MAX_BRIGHTNESS} value={brightness}
             onChange={(event) => setBrightness(Number(event.target.value))} />
         </label>
         <label className="relight-slider-label relight-temperature">
-          <span>色温 <output>{colorTemperature}K</output></span>
+          <span>{t("色温 ")}<output>{colorTemperature}K</output></span>
           <input type="range" min={MIN_COLOR_TEMPERATURE} max={MAX_COLOR_TEMPERATURE}
             step={100} value={colorTemperature}
             onChange={(event) => setColorTemperature(Number(event.target.value))} />
         </label>
       </section>
 
-      <section className="relight-style-section" aria-label="预设风格">
-        <span className="relight-section-label">预设风格</span>
+      <section className="relight-style-section" aria-label={t("预设风格")}>
+        <span className="relight-section-label">{t("预设风格")}</span>
         <div className="relight-preset-grid">
           {PRESETS.map((entry) => <button type="button" key={entry.id}
             className={preset === entry.id ? "is-selected" : ""}
@@ -121,28 +123,28 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
           </button>)}
         </div>
         <textarea value={instruction} maxLength={4000}
-          aria-label="补充打光描述" placeholder="简单描述你想要的打光效果"
+          aria-label={t("补充打光描述")} placeholder={t("简单描述你想要的打光效果")}
           onChange={(event) => setInstruction(event.target.value)} />
       </section>
     </div>
 
     {error ? <p className="relight-error" role="alert">
-      {error instanceof ApiError ? error.message : "打光任务受理失败，请重试。"}</p> : null}
+      {error instanceof ApiError ? error.message : t("打光任务受理失败，请重试。")}</p> : null}
 
     <footer className="relight-dialog-footer">
       <label className="relight-capability-select">
-        <span>AI 图片能力</span>
-        <Select density="compact" value={capabilityId} aria-label="AI 图片能力"
+        <span>{t("AI 图片能力")}</span>
+        <Select density="compact" value={capabilityId} aria-label={t("AI 图片能力")}
           onChange={(event) => setCapabilityId(event.target.value)}>
           {capabilities.length ? capabilities.map((capability) => <option key={capability.id}
             value={capability.id}>{capability.name}</option>)
-            : <option value="">请先配置 OpenAI 或 Google</option>}
+            : <option value="">{t("请先配置 OpenAI 或 Google")}</option>}
         </Select>
       </label>
       <div className="relight-submit-group">
-        <span title="将按所选 AI 图片能力计费"><Stack size={19} weight="fill" />AI</span>
+        <span title={t("将按所选 AI 图片能力计费")}><Stack size={19} weight="fill" />AI</span>
         <button type="button" className="relight-submit" disabled={!canSubmit}
-          aria-label={busy ? "正在受理打光任务" : "开始打光"} onClick={submit}>
+          aria-label={busy ? t("正在受理打光任务") : t("开始打光")} onClick={submit}>
           <ArrowUp size={21} weight="bold" />
         </button>
       </div>

@@ -1,5 +1,6 @@
 package dev.agenvas.artifact.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
@@ -139,12 +140,12 @@ public class ArtifactService {
         String key = requestedKey == null ? "" : requestedKey.trim();
         if (key.isEmpty() || key.length() > 200) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "幂等键无效", "Idempotency-Key 必须为 1 至 200 个字符。", false);
+                    ApiMessage.of("api.artifact-service.idempotent-key-is-invalid"), ApiMessage.of("api.artifact-service.idempotency-key-must-be-1-to-200-characters"), false);
         }
         String title = validateTitle(requestedTitle);
         if (kind == null || (normalizedContent == null && !isMediaKind(kind))) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "产物内容无效", "必须提供产物类型和完整内容。", false);
+                    ApiMessage.of("api.artifact-content-validator.product-content-is-invalid"), ApiMessage.of("api.artifact-service.product-type-and-complete-content-must-be-provided"), false);
         }
         String scope = "project:" + projectId + ":create-artifact";
         String requestHash = sha256(kind.name() + "\n" + title + "\n" + normalizedContent);
@@ -155,7 +156,7 @@ public class ArtifactService {
                     .orElseThrow(this::createInProgress);
             if (!existing.requestHash().equals(requestHash)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
-                        "幂等键已用于不同请求", "请为不同的产物内容使用新的 Idempotency-Key。", false);
+                        ApiMessage.of("api.artifact-service.idempotent-keys-have-been-used-for-different-requests"), ApiMessage.of("api.artifact-service.please-use-new-idempotency-key-for-different-product-content"), false);
             }
             if (existing.state() != IdempotencyState.COMPLETED || existing.artifactId() == null
                     || existing.responseJson() == null) {
@@ -189,7 +190,7 @@ public class ArtifactService {
     /** 同一创建键已预留但尚未完成时返回可重试冲突。 */
     private ApiProblemException createInProgress() {
         return new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_IN_PROGRESS",
-                "相同请求正在处理", "请稍后使用相同 Idempotency-Key 重试。", true);
+                ApiMessage.of("api.artifact-service.the-same-request-is-being-processed"), ApiMessage.of("api.artifact-service.please-try-again-later-with-the-same-idempotency-key"), true);
     }
 
     /** 对类型、规范化标题及正文文本计算幂等请求摘要。 */
@@ -235,7 +236,7 @@ public class ArtifactService {
         if (content == null && isMediaKind(kind)) {
             if (createdByKind != ArtifactVersion.CreatedByKind.USER) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                        "媒体正文无效", "任务与 Agent 创建的媒体产物必须包含已归档结果。", false);
+                        ApiMessage.of("api.artifact-service.media-text-is-invalid"), ApiMessage.of("api.artifact-service.media-artifacts-created-by-tasks-and-agents-must-contain-archived"), false);
             }
             Instant now = clock.instant();
             Artifact empty = new Artifact(UUID.randomUUID(), projectId, kind, title,
@@ -390,7 +391,7 @@ public class ArtifactService {
             }
             if (current.kind() != Artifact.Kind.TEXT) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
-                        "工具参数无效", "Agent 不能修改已归档媒体内容。", false);
+                        ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"), ApiMessage.of("api.artifact-service.agents-cannot-modify-archived-media-content"), false);
             }
         }
         requireEditable(current);
@@ -540,7 +541,7 @@ public class ArtifactService {
         }
         if (!createdInRun && !explicitlyBound) {
             throw new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
-                    "输入超出授权范围", "Agent 只能引用本轮输出或开始时显式绑定的版本。", false);
+                    ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"), ApiMessage.of("api.artifact-service.agents-can-only-reference-the-output-of-this-round-or"), false);
         }
         return version;
     }
@@ -639,7 +640,7 @@ public class ArtifactService {
         requireEditable(current);
         if (current.kind() == Artifact.Kind.TEXT) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "请求参数无效", "只有图片和视频卡片可以追加上传版本。", false);
+                    ApiMessage.of("api.identity-service.invalid-request"), ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"), false);
         }
         List<ArtifactVersion.InputReference> references =
                 contentValidator.validate(current.kind(), content);
@@ -728,8 +729,8 @@ public class ArtifactService {
                 throw new ApiProblemException(
                         HttpStatus.BAD_REQUEST,
                         "ARTIFACT_REFERENCE_INVALID",
-                        "产物引用无效",
-                        "引用版本不存在、属于其他项目或类型不匹配。",
+                        ApiMessage.of("api.artifact-service.product-reference-is-invalid"),
+                        ApiMessage.of("api.artifact-service.the-referenced-version-does-not-exist-belongs-to-another-project"),
                         false);
             }
         }
@@ -750,14 +751,14 @@ public class ArtifactService {
             ArtifactVersion.CreatedByKind author) {
         if ("LIBRARY_IMPORT".equals(content.path("sourceType").asText())) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "ARTIFACT_ORIGIN_INVALID",
-                    "来源无效", "资产导入来源只能由资产库操作创建。", false);
+                    ApiMessage.of("api.artifact-service.invalid-source"), ApiMessage.of("api.artifact-service.asset-import-sources-can-only-be-created-by-asset-library"), false);
         }
         if (kind != Artifact.Kind.TEXT
                 && "UPLOAD".equals(content.path("sourceType").asText())
                 && author != ArtifactVersion.CreatedByKind.USER) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "ARTIFACT_ORIGIN_INVALID", "图片来源无效",
-                    "用户上传图片只能由用户操作创建版本。", false);
+                    "ARTIFACT_ORIGIN_INVALID", ApiMessage.of("api.artifact-service.invalid-image-source"),
+                    ApiMessage.of("api.artifact-service.images-uploaded-by-users-can-only-create-versions-by-user"), false);
         }
     }
 
@@ -772,8 +773,8 @@ public class ArtifactService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "ARTIFACT_ARCHIVED",
-                    "产物已归档",
-                    "归档产物不能创建或选择新版本。",
+                    ApiMessage.of("api.artifact-service.product-archived"),
+                    ApiMessage.of("api.artifact-service.archived-products-cannot-create-or-select-new-versions"),
                     false);
         }
     }
@@ -785,8 +786,8 @@ public class ArtifactService {
             throw new ApiProblemException(
                     HttpStatus.BAD_REQUEST,
                     "VALIDATION_ERROR",
-                    "请求参数无效",
-                    "产物标题必须为 1 至 160 个字符。",
+                    ApiMessage.of("api.identity-service.invalid-request"),
+                    ApiMessage.of("api.artifact-service.product-title-must-be-1-to-160-characters"),
                     false);
         }
         return normalized;
@@ -797,8 +798,8 @@ public class ArtifactService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "产物不存在",
-                "产物、版本或项目不存在，或当前用户无权访问。",
+                ApiMessage.of("api.artifact-service.product-does-not-exist"),
+                ApiMessage.of("api.artifact-service.the-product-version-or-project-does-not-exist-or-the"),
                 false);
     }
 
@@ -807,8 +808,8 @@ public class ArtifactService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "ARTIFACT_VERSION_CONFLICT",
-                "内容已更新",
-                "目标产物已被修改，请读取最新版本后重新提交。",
+                ApiMessage.of("api.artifact-service.content-has-been-updated"),
+                ApiMessage.of("api.artifact-service.the-target-product-has-been-modified-please-read-the-latest"),
                 false);
     }
 

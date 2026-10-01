@@ -1,8 +1,10 @@
 package dev.agenvas.asset.api;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.identity.application.AdminPrincipal;
+import dev.agenvas.shared.i18n.ApiMessages;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,10 +38,12 @@ public class AssetController {
 
     /** 校验媒体内容、检查项目权限并读取归档文件。 */
     private final AssetService assets;
+    private final ApiMessages messages;
 
     /** 注入资产归档和读取服务。 */
-    public AssetController(AssetService assets) {
+    public AssetController(AssetService assets, ApiMessages messages) {
         this.assets = assets;
+        this.messages = messages;
     }
 
     /** 忽略客户端文件名和声明 MIME，由服务端检查字节内容后归档。 */
@@ -143,9 +147,9 @@ public class AssetController {
     public ResponseEntity<ProblemDetail> invalidRange(InvalidRange exception,
             HttpServletRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE, "请求的字节范围不可用。");
+                HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE, messages.text(ApiMessage.of("api.asset-controller.the-requested-byte-range-is-not-available"), request));
         problem.setType(URI.create("urn:agenvas:problem:asset-range-invalid"));
-        problem.setTitle("范围无效");
+        problem.setTitle(messages.text(ApiMessage.of("api.asset-controller.invalid-range"), request));
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("code", "ASSET_RANGE_INVALID");
         problem.setProperty("retryable", false);

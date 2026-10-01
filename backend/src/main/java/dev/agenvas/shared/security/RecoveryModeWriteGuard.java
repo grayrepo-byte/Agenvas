@@ -1,5 +1,6 @@
 package dev.agenvas.shared.security;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,8 +42,8 @@ public class RecoveryModeWriteGuard implements WebMvcConfigurer {
                 return true;
             }
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "RECOVERY_MODE_READ_ONLY", "恢复核对模式",
-                    "数据库与媒体备份正在核对；项目和模型配置暂时只读。", false);
+                    "RECOVERY_MODE_READ_ONLY", ApiMessage.of("api.recovery-mode-write-guard.restore-verification-mode"),
+                    ApiMessage.of("api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"), false);
         }
     }
 }

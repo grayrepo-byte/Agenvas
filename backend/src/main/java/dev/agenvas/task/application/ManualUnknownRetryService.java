@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.event.application.ProjectEventService;
@@ -84,7 +85,7 @@ public class ManualUnknownRetryService {
         if (idempotencyKey == null || idempotencyKey.isBlank()
                 || idempotencyKey.length() > 120 || expectedTaskVersion < 0) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "重试请求无效", "请提供有效的任务版本与幂等键。", false);
+                    ApiMessage.of("api.manual-unknown-retry-service.invalid-retry-request"), ApiMessage.of("api.manual-unknown-retry-service.please-provide-a-valid-task-version-and-idempotent-key"), false);
         }
         return events.recordChange(ownerId, projectId, () -> {
             Task original = tasks.get(ownerId, projectId, originalTaskId);
@@ -93,16 +94,16 @@ public class ManualUnknownRetryService {
             if (replay != null) {
                 if (!replay.originalTaskId().equals(originalTaskId)
                         || replay.originalTaskVersion() != expectedTaskVersion) {
-                    throw conflict("相同幂等键已用于不同的任务或版本。");
+                    throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-same-idempotent-key-has-been-used-in-different-tasks"));
                 }
                 return ProjectEventService.Change.unchanged(tasks.get(ownerId, projectId,
                         replay.replacementTaskId()));
             }
             if (repository.findManualReplacement(projectId, originalTaskId).isPresent()) {
-                throw conflict("该 UNKNOWN 任务已有新尝试，请刷新任务列表。");
+                throw conflict(ApiMessage.of("api.manual-unknown-retry-service.there-is-a-new-attempt-for-this-unknown-task-please"));
             }
             if (original.runId() != null) {
-                throw conflict("只有用户直连的媒体任务可以创建新尝试。");
+                throw conflict(ApiMessage.of("api.manual-unknown-retry-service.only-media-tasks-to-which-the-user-is-directly-connected"));
             }
             return ProjectEventService.Change.unchanged(retryDirect(ownerId, projectId,
                     original, expectedTaskVersion, idempotencyKey));
@@ -118,23 +119,23 @@ public class ManualUnknownRetryService {
                 || (original.kind() != Task.Kind.IMAGE_GENERATION
                         && original.kind() != Task.Kind.VIDEO_GENERATION
                         && original.kind() != Task.Kind.AUDIO_GENERATION)) {
-            throw conflict("原任务状态或版本已变化，请刷新后重试。");
+            throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-task-status-or-version-has-changed-please-refresh"));
         }
         projects.requireActiveProject(ownerId, projectId);
         MediaCapabilityBinding binding = repository.mediaBinding(original.id())
-                .orElseThrow(() -> conflict("原媒体能力不可用，不能创建新尝试。"));
+                .orElseThrow(() -> conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-media-capabilities-are-unavailable-and-new-attempts-cannot")));
         int seconds = original.kind() == Task.Kind.VIDEO_GENERATION
                 ? original.input().path("durationSeconds").asInt(-1) : 0;
         if (!mediaCapabilities.isCurrentBinding(binding, original.kind(), seconds)) {
-            throw conflict("媒体能力已变化，请创建新的草稿任务。");
+            throw conflict(ApiMessage.of("api.manual-unknown-retry-service.media-capabilities-have-changed-please-create-a-new-draft-task"));
         }
         TaskRepository.ArtifactTarget target = repository.findArtifactTarget(original.id())
-                .orElseThrow(() -> conflict("原任务缺少固定输出目标。"));
+                .orElseThrow(() -> conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-task-lacks-a-fixed-output-target")));
         if (target.artifactId() == null) {
-            throw conflict("直接任务必须绑定一张媒体卡片。");
+            throw conflict(ApiMessage.of("api.manual-unknown-retry-service.direct-tasks-must-be-bound-to-a-media-card"));
         }
         Artifact card = artifacts.get(ownerId, projectId, target.artifactId()).artifact();
-        if (card.archivedAt() != null) throw conflict("卡片已归档，不能新尝试。");
+        if (card.archivedAt() != null) throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-card-has-been-archived-and-cannot-be-tried-again"));
         Instant now = clock.instant();
         Task replacement = new Task(UUID.randomUUID(), projectId, null,
                 "retry." + original.id() + "." + (original.attemptNo() + 1),
@@ -168,8 +169,8 @@ public class ManualUnknownRetryService {
     }
 
     /** 原任务状态或前提变化时返回稳定冲突码，不隐式创建新的外部请求。 */
-    private ApiProblemException conflict(String detail) {
+    private ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "UNKNOWN_RETRY_CONFLICT",
-                "不能创建新尝试", detail, false);
+                ApiMessage.of("api.manual-unknown-retry-service.cannot-create-new-attempt"), detail, false);
     }
 }

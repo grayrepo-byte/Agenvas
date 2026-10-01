@@ -5,6 +5,8 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.library.application.LibraryService;
 import dev.agenvas.library.domain.LibraryCommand;
 import dev.agenvas.library.domain.LibraryEntry;
+import dev.agenvas.shared.i18n.ApiMessages;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,7 +26,11 @@ public class LibraryController {
     private static final String MIN_CANVAS_COORDINATE = "-1000000";
     private static final String MAX_CANVAS_COORDINATE = "1000000";
     private final LibraryService library;
-    public LibraryController(LibraryService library) { this.library = library; }
+    private final ApiMessages messages;
+    public LibraryController(LibraryService library, ApiMessages messages) {
+        this.library = library;
+        this.messages = messages;
+    }
     @GetMapping("/library/entries")
     public LibraryService.Page list(@AuthenticationPrincipal AdminPrincipal principal,
             @RequestParam(required = false) LibraryEntry.Category category,
@@ -48,18 +54,18 @@ public class LibraryController {
     @PostMapping("/projects/{projectId}/canvas-items/{itemId}/library-saves")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public CommandResponse save(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
-            @PathVariable UUID itemId, @Valid @RequestBody SaveRequest request) {
-        return CommandResponse.from(library.save(principal.userId(), projectId, itemId, request.versionId(),
-                request.expectedSelectionEpoch(), request.expectedArtifactVersion(), request.name(), request.category(), request.commandKey()));
+            @PathVariable UUID itemId, @Valid @RequestBody SaveRequest request, HttpServletRequest httpRequest) {
+        return response(library.save(principal.userId(), projectId, itemId, request.versionId(),
+                request.expectedSelectionEpoch(), request.expectedArtifactVersion(), request.name(), request.category(), request.commandKey()), httpRequest);
     }
     @GetMapping("/library/commands/{commandId}")
-    public CommandResponse command(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID commandId) {
-        return CommandResponse.from(library.command(principal.userId(), commandId));
+    public CommandResponse command(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID commandId, HttpServletRequest httpRequest) {
+        return response(library.command(principal.userId(), commandId), httpRequest);
     }
     @PostMapping("/library/commands/{commandId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public CommandResponse retry(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID commandId) {
-        return CommandResponse.from(library.retry(principal.userId(), commandId));
+    public CommandResponse retry(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID commandId, HttpServletRequest httpRequest) {
+        return response(library.retry(principal.userId(), commandId), httpRequest);
     }
     @PatchMapping("/library/entries/{entryId}")
     public LibraryService.EntryResponse update(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID entryId,
@@ -113,26 +119,26 @@ public class LibraryController {
             @RequestParam @NotBlank @Size(max = LibraryService.MAX_NAME_LENGTH) String name,
             @RequestParam LibraryEntry.Category category, @RequestParam dev.agenvas.asset.domain.Asset.MediaKind kind,
             @RequestParam @NotBlank @Size(max = LibraryService.MAX_COMMAND_KEY_LENGTH) String commandKey,
-            @RequestParam org.springframework.web.multipart.MultipartFile file) {
-        return CommandResponse.from(library.upload(principal.userId(), name, category, kind, commandKey, file));
+            @RequestParam org.springframework.web.multipart.MultipartFile file, HttpServletRequest httpRequest) {
+        return response(library.upload(principal.userId(), name, category, kind, commandKey, file), httpRequest);
     }
 
     @PostMapping("/projects/{projectId}/library-imports")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public CommandResponse importEntry(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
-            @Valid @RequestBody ImportRequest request) {
-        return CommandResponse.from(library.importEntry(principal.userId(), projectId, request.entryId(), request.expectedVersion(),
-                request.x(), request.y(), request.commandKey()));
+            @Valid @RequestBody ImportRequest request, HttpServletRequest httpRequest) {
+        return response(library.importEntry(principal.userId(), projectId, request.entryId(), request.expectedVersion(),
+                request.x(), request.y(), request.commandKey()), httpRequest);
     }
     @PostMapping("/projects/{projectId}/canvas-items/{itemId}/library-references")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public CommandResponse reference(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
-            @PathVariable UUID itemId, @Valid @RequestBody ReferenceRequest request) {
+            @PathVariable UUID itemId, @Valid @RequestBody ReferenceRequest request, HttpServletRequest httpRequest) {
         var draft = request.draft();
-        return CommandResponse.from(library.reference(principal.userId(), projectId, itemId, request.entryId(), request.expectedVersion(),
+        return response(library.reference(principal.userId(), projectId, itemId, request.entryId(), request.expectedVersion(),
                 new LibraryService.ReferenceDraft(draft.expectedVersion(), draft.prompt(), draft.parameters(), draft.durationSeconds(),
                         draft.capabilityId(), draft.videoInputMode(), draft.mediaInputs(), draft.mentions()),
-                request.role(), request.color(), request.commandKey()));
+                request.role(), request.color(), request.commandKey()), httpRequest);
     }
     public record ReferenceDraftRequest(@PositiveOrZero long expectedVersion,
             @NotNull @Size(max = LibraryService.MAX_DRAFT_PROMPT_LENGTH) String prompt, JsonNode parameters, Integer durationSeconds, UUID capabilityId,
@@ -154,10 +160,10 @@ public class LibraryController {
     public record SaveRequest(@NotNull UUID versionId, @PositiveOrZero long expectedSelectionEpoch,
             @PositiveOrZero Long expectedArtifactVersion, @NotBlank @Size(max = LibraryService.MAX_NAME_LENGTH) String name,
             @NotNull LibraryEntry.Category category, @NotBlank @Size(max = LibraryService.MAX_COMMAND_KEY_LENGTH) String commandKey) {}
-    public record CommandResponse(UUID id, LibraryCommand.Status status, JsonNode result, String errorCode,
-            String errorDetail) {
-        public static CommandResponse from(LibraryCommand command) {
-            return new CommandResponse(command.id(), command.status(), command.result(), command.errorCode(), command.errorDetail());
-        }
+    public record CommandResponse(UUID id, LibraryCommand.Status status, JsonNode result, String errorCode, String errorDetail) {}
+
+    private CommandResponse response(LibraryCommand command, HttpServletRequest request) {
+        return new CommandResponse(command.id(), command.status(), command.result(), command.errorCode(),
+                messages.persisted(command.errorDetail(), request));
     }
 }

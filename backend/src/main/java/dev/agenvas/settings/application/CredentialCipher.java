@@ -1,5 +1,6 @@
 package dev.agenvas.settings.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -149,8 +150,8 @@ public class CredentialCipher {
         if ((requestedVersion != keyVersion && !previousKeys.containsKey(requestedVersion))
                 || (requestedVersion == keyVersion && key == null)) {
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "CREDENTIAL_KEY_VERSION_MISSING", "历史凭证密钥不可用",
-                    "部署者尚未提供该配置版本对应的解密主密钥。", false);
+                    "CREDENTIAL_KEY_VERSION_MISSING", ApiMessage.of("api.credential-cipher.historical-credential-key-is-not-available"),
+                    ApiMessage.of("api.credential-cipher.the-deployer-has-not-provided-a-decryption-master-key-for"), false);
         }
     }
 
@@ -164,8 +165,8 @@ public class CredentialCipher {
     private void requireKey() {
         if (key == null) {
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "CREDENTIAL_MASTER_KEY_MISSING", "密钥存储未就绪",
-                    "部署者尚未配置凭证加密主密钥。", false);
+                    "CREDENTIAL_MASTER_KEY_MISSING", ApiMessage.of("api.credential-cipher.key-store-not-ready"),
+                    ApiMessage.of("api.credential-cipher.the-deployer-has-not-configured-the-credential-encryption-master-key"), false);
         }
     }
 

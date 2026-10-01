@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
@@ -185,12 +186,12 @@ public final class RunningHubAdapter implements MediaAdapter {
         JsonNode pinned = null;
         for (JsonNode item : context.lease().input().path("mediaInput").path(array))
             if (item.path("versionId").asText().equals(versionId.toString())) pinned = item;
-        if (pinned == null) throw RunningHubDefinition.invalid("素材槽位没有匹配的冻结精确引用");
+        if (pinned == null) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-adapter.asset-slot-does-not-have-a-matching-frozen-exact-reference"));
         var version = artifacts.requireMediaVersionForTask(context.ownerId(), context.lease().projectId(), versionId, Artifact.Kind.valueOf(field.type().name()));
-        if (!version.artifactId().toString().equals(pinned.path("artifactId").asText())) throw RunningHubDefinition.invalid("冻结素材身份不匹配");
+        if (!version.artifactId().toString().equals(pinned.path("artifactId").asText())) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-adapter.frozen-footage-identity-mismatch"));
         var file = assets.get(context.ownerId(), context.lease().projectId(), UUID.fromString(version.content().path("assetId").asText()));
         if (!file.asset().mediaKind().name().equals(field.type().name()) || file.asset().byteSize() > RunningHubClient.MAX_UPLOAD_BYTES)
-            throw RunningHubDefinition.invalid("RunningHub 输入文件不能超过 30 MB");
+            throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-adapter.runninghub-input-file-cannot-exceed-30-mb"));
         return file;
     }
 

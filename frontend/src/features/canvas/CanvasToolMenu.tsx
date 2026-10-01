@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { DropdownMenu } from "../../shared/ui/DropdownMenu";
 import { Check, Cursor, DotsThree, Hand, Plus } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -7,6 +8,7 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children 
   tool: CanvasTool; spaceHeld: boolean; onToolChange: (tool: CanvasTool) => void; onAdd: () => void;
   children?: ReactNode;
 }) {
+  useLocale();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -31,17 +33,17 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children 
       event.stopPropagation(); setOpen(false); trigger.current?.focus();
     }
   }}>
-    <button aria-label="添加卡片" className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></button>
-    <button ref={trigger} type="button" className="workspace-tool-trigger" aria-label="画布工具"
+    <button aria-label={t("添加卡片")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></button>
+    <button ref={trigger} type="button" className="workspace-tool-trigger" aria-label={t("画布工具")}
       aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}
-      title={handActive ? "手形工具 · 拖动画布" : "选择工具 · 短按空格切换手形，长按临时拖动"}>
+      title={handActive ? t("手形工具 · 拖动画布") : t("选择工具 · 短按空格切换手形，长按临时拖动")}>
       {handActive ? <Hand size={20} /> : <Cursor size={20} />}<DotsThree size={16} />
     </button>
-    {open ? <DropdownMenu className="workspace-tool-menu" role="menu" aria-label="画布工具模式">
+    {open ? <DropdownMenu className="workspace-tool-menu" role="menu" aria-label={t("画布工具模式")}>
       <button ref={firstOption} type="button" role="menuitemradio" aria-checked={tool === "select"}
-        onClick={() => choose("select")}><span>{tool === "select" ? <Check size={14} /> : null}</span><Cursor size={18} />选择工具<kbd>V</kbd></button>
+        onClick={() => choose("select")}><span>{tool === "select" ? <Check size={14} /> : null}</span><Cursor size={18} />{t("选择工具")}<kbd>V</kbd></button>
       <button type="button" role="menuitemradio" aria-checked={tool === "hand"}
-        onClick={() => choose("hand")}><span>{tool === "hand" ? <Check size={14} /> : null}</span><Hand size={18} />手形工具<kbd>Space</kbd></button>
+        onClick={() => choose("hand")}><span>{tool === "hand" ? <Check size={14} /> : null}</span><Hand size={18} />{t("手形工具")}<kbd>Space</kbd></button>
     </DropdownMenu> : null}
     {children}
   </div>;

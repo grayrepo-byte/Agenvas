@@ -1,5 +1,6 @@
 package dev.agenvas.shared.lifecycle;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
@@ -44,8 +45,8 @@ public class ShutdownGate {
     public void requireAcceptingRuns() {
         if (closing) {
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "APPLICATION_STOPPING", "服务正在关闭",
-                    "当前实例不再接收新的 Agent Run，请稍后重试。", true);
+                    "APPLICATION_STOPPING", ApiMessage.of("api.shutdown-gate.service-is-shutting-down"),
+                    ApiMessage.of("api.shutdown-gate.the-current-instance-is-no-longer-receiving-new-agent-runs"), true);
         }
     }
 

@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useState } from "react";
 import "./LoadingState.css";
 
@@ -34,6 +35,7 @@ function elapsedLabel(elapsedMs: number) {
 }
 
 export function LoadingState({ label, startedAt, compact = false }: LoadingStateProps) {
+  useLocale();
   const parsedStart = startedAt === undefined ? Number.NaN : Date.parse(startedAt);
   const startTime = Number.isFinite(parsedStart) ? parsedStart : undefined;
   const [now, setNow] = useState(() => Date.now());
@@ -64,7 +66,7 @@ export function LoadingState({ label, startedAt, compact = false }: LoadingState
     {elapsed !== undefined && <span
       className="canvas-loading-state__elapsed"
       aria-hidden="true"
-      title="自任务开始至今的时间，不代表完成进度"
+      title={t("自任务开始至今的时间，不代表完成进度")}
     >{elapsed}</span>}
   </div>;
 }

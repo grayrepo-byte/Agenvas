@@ -1,5 +1,6 @@
 package dev.agenvas.canvas.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
@@ -127,12 +128,12 @@ public class CanvasService {
                     .orElseThrow(this::notFound);
             if (source.version() != expectedSourceVersion) throw conflict();
             if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-                throw validation("只有图片和视频卡片可以复制工作分支。");
+                throw validation(ApiMessage.of("api.canvas-service.only-picture-and-video-cards-can-copy-working-branches"));
             }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     source.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-                throw validation("只有图片和视频卡片可以复制工作分支。");
+                throw validation(ApiMessage.of("api.canvas-service.only-picture-and-video-cards-can-copy-working-branches"));
             }
             CanvasItem target = placement(targetItemId, projectId,
                     CanvasItem.SubjectType.ARTIFACT, source.subjectId(),
@@ -174,7 +175,7 @@ public class CanvasService {
             CanvasItem item = requireMediaItem(ownerId, projectId, itemId, true);
             if (item.version() != expectedVersion) throw conflict();
             if (!canvasItems.mediaVersionIds(ownerId, projectId, itemId).contains(versionId)) {
-                throw validation("只能选用当前节点的媒体版本。");
+                throw validation(ApiMessage.of("api.canvas-service.only-the-media-version-of-the-current-node-can-be"));
             }
             artifacts.requireVersion(ownerId, projectId, item.subjectId(), versionId);
             if (!canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
@@ -212,7 +213,7 @@ public class CanvasService {
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (item == null) return;
         if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || !item.subjectId().equals(artifactId)) throw validation("媒体任务目标不匹配。");
+                || !item.subjectId().equals(artifactId)) throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
         ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
         canvasItems.addMediaVersion(projectId, itemId, versionId, version.createdAt());
     }
@@ -221,11 +222,11 @@ public class CanvasService {
         CanvasItem item = (lock ? canvasItems.findForUpdate(ownerId, projectId, itemId)
                 : canvasItems.find(ownerId, projectId, itemId)).orElseThrow(this::notFound);
         if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-            throw validation("只有图片和视频节点拥有媒体版本。");
+            throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
         }
         Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
         if (kind == Artifact.Kind.TEXT) {
-            throw validation("只有图片和视频节点拥有媒体版本。");
+            throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
         }
         return item;
     }
@@ -252,7 +253,7 @@ public class CanvasService {
     public CanvasItem placeTaskMediaOutputWithinChange(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID artifactId, int outputIndex, JsonNode frozenInput) {
         projects.get(ownerId, projectId);
-        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.RunningHubDefinition.MAX_OUTPUTS) throw validation("结果序号无效。");
+        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.RunningHubDefinition.MAX_OUTPUTS) throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
         if (source == null) return null;
         var artifact = artifacts.get(ownerId, projectId, artifactId);
@@ -262,7 +263,7 @@ public class CanvasService {
         for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS && overlapsAny(x, y, existing); attempt++) y = y.add(source.height()).add(OUTPUT_GAP);
         int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1);
         validateGeometry(x, y, source.width(), source.height(), zIndex);
-        if (overlapsAny(x, y, existing)) throw validation("额外结果附近没有可用位置。");
+        if (overlapsAny(x, y, existing)) throw validation(ApiMessage.of("api.canvas-service.there-are-no-available-locations-near-the-additional-results"));
         CanvasItem item = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
                 artifactId, null, derivationTitle(source.title(), Integer.toString(outputIndex + 1)), x, y, source.width(), source.height(), zIndex, source.groupId(), false);
         if (!canvasItems.create(item)) throw conflict();
@@ -280,18 +281,18 @@ public class CanvasService {
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
             int outputIndex, MediaOutputDraft draftInitialization, String resultLabel) {
         if (outputIndex < 0 || outputIndex >= 4) {
-            throw validation("媒体输出序号必须在 0 到 3 之间。");
+            throw validation(ApiMessage.of("api.canvas-service.the-media-output-sequence-number-must-be-between-0-and"));
         }
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
         if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-            throw validation("只有媒体卡片可以创建输出分支。");
+            throw validation(ApiMessage.of("api.canvas-service.only-media-cards-can-create-output-branches"));
         }
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                 source.subjectId());
         if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-            throw validation("只有图片和视频支持新节点输出。");
+            throw validation(ApiMessage.of("api.canvas-service.only-images-and-videos-support-new-node-output"));
         }
         if (draftInitialization == MediaOutputDraft.EMPTY
                 && mediaDrafts.get(ownerId, projectId, sourceItemId).version()
@@ -303,7 +304,7 @@ public class CanvasService {
         for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS && overlapsAny(x, y, existing); attempt++) {
             y = y.add(source.height()).add(OUTPUT_GAP);
         }
-        if (overlapsAny(x, y, existing)) throw validation("新图片节点附近没有可用位置。");
+        if (overlapsAny(x, y, existing)) throw validation(ApiMessage.of("api.canvas-service.there-is-no-available-location-near-the-new-image-node"));
         validateGeometry(x, y, source.width(), source.height(),
                 Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1));
         int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
@@ -388,7 +389,7 @@ public class CanvasService {
             }
         }
         if (!found) {
-            throw validation("Agent 输出区域没有可用的画布位置。");
+            throw validation(ApiMessage.of("api.canvas-service.there-is-no-canvas-location-available-in-the-agent-output"));
         }
         int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
                 .max().orElse(-1) + 1);
@@ -414,7 +415,7 @@ public class CanvasService {
         if (artifactIds == null || artifactIds.isEmpty() || artifactIds.size() > 6
                 || artifactIds.stream().anyMatch(java.util.Objects::isNull)
                 || new HashSet<>(artifactIds).size() != artifactIds.size()) {
-            throw validation("输出分组放置须包含 1 到 6 个互异 Artifact。");
+            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
         }
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         List<CanvasItem> created = new ArrayList<>();
@@ -497,10 +498,10 @@ public class CanvasService {
         MediaUploadPurpose uploadPurpose = purpose == null ? MediaUploadPurpose.UPLOAD : purpose;
         boolean markup = uploadPurpose == MediaUploadPurpose.BRUSH_MARKUP;
         if (markup && (sourceVersionId == null || targetItemId.equals(itemId))) {
-            throw validation("画笔标注必须固定来源图片版本并保存到独立节点。");
+            throw validation(ApiMessage.of("api.canvas-service.brush-annotations-must-be-fixed-to-the-source-image-version"));
         }
         if (!markup && sourceVersionId != null) {
-            throw validation("普通上传不接受标注来源版本。");
+            throw validation(ApiMessage.of("api.canvas-service.ordinary-uploads-do-not-accept-source-versions"));
         }
         ObjectNode frozenInput = markup ? objectMapper.createObjectNode() : null;
         if (markup) {
@@ -535,10 +536,10 @@ public class CanvasService {
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-                throw validation("只有图片和视频卡片可以追加上传版本。");
+                throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"));
             }
             if (markup && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
-                throw validation("画笔标注只支持图片。");
+                throw validation(ApiMessage.of("api.canvas-service.brush-annotation-only-supports-images"));
             }
             CanvasItem target;
             if (fillsCurrent) {
@@ -612,12 +613,12 @@ public class CanvasService {
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {
         projects.requireActiveProject(ownerId, projectId);
         if (commands == null || commands.isEmpty() || commands.size() > MAX_COMMANDS) {
-            throw validation("commands 必须包含 1 到 100 个命令。");
+            throw validation(ApiMessage.of("api.canvas-service.commands-must-contain-between-1-and-100-commands"));
         }
         Set<UUID> itemIds = new HashSet<>();
         for (CanvasCommand command : commands) {
             if (!itemIds.add(command.itemId())) {
-                throw validation("同一批命令不能重复修改同一 CanvasItem。");
+                throw validation(ApiMessage.of("api.canvas-service.the-same-batch-of-commands-cannot-modify-the-same-canvasitem"));
             }
             switch (command) {
                 case PlaceArtifact place -> placeArtifact(ownerId, projectId, place);
@@ -791,8 +792,8 @@ public class CanvasService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "CANVAS_ITEM_LOCKED",
-                    "卡片已锁定",
-                    "请先解锁卡片，再修改位置或大小。",
+                    ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                    ApiMessage.of("api.canvas-service.please-unlock-the-card-first-before-modifying-the-position-or"),
                     false);
         }
         if (current.version() != command.expectedVersion()) {
@@ -959,7 +960,7 @@ public class CanvasService {
                 || outside(height, MIN_HEIGHT, MAX_HEIGHT)
                 || zIndex < -1000
                 || zIndex > 1000) {
-            throw validation("画布坐标、尺寸或层级超出允许范围。");
+            throw validation(ApiMessage.of("api.canvas-service.canvas-coordinates-dimensions-or-levels-are-outside-the-allowed-range"));
         }
     }
 
@@ -972,7 +973,7 @@ public class CanvasService {
     private String derivationTitle(String sourceTitle, String resultLabel) {
         String suffix = DERIVATION_TITLE_SEPARATOR + validateTitle(resultLabel);
         int sourceEnd = Math.min(sourceTitle.length(), MAX_TITLE_LENGTH - suffix.length());
-        if (sourceEnd < 1) throw validation("派生操作名称过长。");
+        if (sourceEnd < 1) throw validation(ApiMessage.of("api.canvas-service.derive-operation-name-is-too-long"));
         if (sourceEnd < sourceTitle.length()
                 && Character.isHighSurrogate(sourceTitle.charAt(sourceEnd - 1))
                 && Character.isLowSurrogate(sourceTitle.charAt(sourceEnd))) sourceEnd--;
@@ -983,7 +984,7 @@ public class CanvasService {
     private String validateTitle(String title) {
         String normalized = title == null ? "" : title.trim();
         if (normalized.isEmpty() || normalized.length() > MAX_TITLE_LENGTH) {
-            throw validation("卡片标题必须包含 1 到 160 个字符。");
+            throw validation(ApiMessage.of("api.canvas-service.card-title-must-contain-1-to-160-characters"));
         }
         return normalized;
     }
@@ -993,8 +994,8 @@ public class CanvasService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "画布卡片不存在",
-                "画布卡片不存在或当前用户无权访问。",
+                ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"),
+                ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user"),
                 false);
     }
 
@@ -1003,17 +1004,17 @@ public class CanvasService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "CANVAS_VERSION_CONFLICT",
-                "画布卡片已更新",
-                "画布卡片已被其他请求修改，请刷新后重试。",
+                ApiMessage.of("api.canvas-service.canvas-card-updated"),
+                ApiMessage.of("api.canvas-service.the-canvas-card-has-been-modified-by-other-requests-please"),
                 false);
     }
 
     /** 将坐标、尺寸、批量大小和命令结构错误映射为 HTTP 400。 */
-    private ApiProblemException validation(String detail) {
+    private ApiProblemException validation(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "画布命令无效",
+                ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"),
                 detail,
                 false);
     }

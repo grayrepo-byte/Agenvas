@@ -1,5 +1,6 @@
 package dev.agenvas.project.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
@@ -77,7 +78,7 @@ public class ProjectService {
                 .orElseThrow(this::notFound);
         if (snapshot.activeRunId() != null) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "ACTIVE_RUN_EXISTS",
-                    "项目已有活动运行", "请先完成或取消当前运行，再启动新的运行。", false);
+                    ApiMessage.of("api.project-service.the-project-already-has-activities-running"), ApiMessage.of("api.project-service.please-complete-or-cancel-the-current-run-before-starting-a"), false);
         }
     }
 
@@ -90,16 +91,16 @@ public class ProjectService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "PROJECT_ARCHIVED",
-                    "项目已归档",
-                    "归档项目不能启动新的运行。",
+                    ApiMessage.of("api.project-service.project-archived"),
+                    ApiMessage.of("api.project-service.archived-projects-cannot-start-new-runs"),
                     false);
         }
         if (slot.activeRunId() != null) {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "ACTIVE_RUN_EXISTS",
-                    "项目已有活动运行",
-                    "请先完成或取消当前运行，再启动新的运行。",
+                    ApiMessage.of("api.project-service.the-project-already-has-activities-running"),
+                    ApiMessage.of("api.project-service.please-complete-or-cancel-the-current-run-before-starting-a"),
                     false);
         }
     }
@@ -111,8 +112,8 @@ public class ProjectService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "ACTIVE_RUN_EXISTS",
-                    "项目已有活动运行",
-                    "请先完成或取消当前运行，再启动新的运行。",
+                    ApiMessage.of("api.project-service.the-project-already-has-activities-running"),
+                    ApiMessage.of("api.project-service.please-complete-or-cancel-the-current-run-before-starting-a"),
                     false);
         }
     }
@@ -124,8 +125,8 @@ public class ProjectService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "ACTIVE_RUN_SLOT_CONFLICT",
-                    "活动运行槽位已变化",
-                    "项目活动运行槽位不再属于当前运行。",
+                    ApiMessage.of("api.project-service.activity-running-slot-has-changed"),
+                    ApiMessage.of("api.project-service.the-project-activity-run-slot-is-no-longer-part-of"),
                     false);
         }
     }
@@ -136,7 +137,7 @@ public class ProjectService {
             UUID ownerId, boolean includeArchived, String encodedCursor, Integer requestedLimit) {
         int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
         if (limit < 1 || limit > MAX_PAGE_SIZE) {
-            throw validation("limit 必须在 1 到 100 之间。");
+            throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
         }
         ProjectCursor cursor = decodeCursor(encodedCursor);
         List<Project> rows = projects.list(
@@ -160,7 +161,7 @@ public class ProjectService {
             String requestedName,
             Project.AspectRatio requestedAspectRatio) {
         if (requestedName == null && requestedAspectRatio == null) {
-            throw validation("至少需要提供一个可修改字段。");
+            throw validation(ApiMessage.of("api.project-service.at-least-one-modifiable-field-needs-to-be-provided"));
         }
         Project current = get(ownerId, projectId);
         requireActive(current);
@@ -197,8 +198,8 @@ public class ProjectService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "PROJECT_ARCHIVED",
-                    "项目已归档",
-                    "归档项目不能再修改或启动新的运行。",
+                    ApiMessage.of("api.project-service.project-archived"),
+                    ApiMessage.of("api.project-service.archived-projects-can-no-longer-be-modified-or-new-runs"),
                     false);
         }
     }
@@ -207,7 +208,7 @@ public class ProjectService {
     private String validateName(String name) {
         String normalized = name == null ? "" : name.trim();
         if (normalized.isEmpty() || normalized.length() > 120) {
-            throw validation("项目名称必须为 1 至 120 个字符。");
+            throw validation(ApiMessage.of("api.project-service.project-name-must-be-1-to-120-characters"));
         }
         return normalized;
     }
@@ -228,7 +229,7 @@ public class ProjectService {
                     Long.parseLong(parts[0]), Long.parseLong(parts[1]));
             return new ProjectCursor(createdAt, UUID.fromString(parts[2]));
         } catch (IllegalArgumentException invalidCursor) {
-            throw validation("cursor 无效或已损坏。");
+            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
         }
     }
 
@@ -249,8 +250,8 @@ public class ProjectService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "项目不存在",
-                "项目不存在或当前用户无权访问。",
+                ApiMessage.of("api.project-service.project-does-not-exist"),
+                ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does"),
                 false);
     }
 
@@ -259,17 +260,17 @@ public class ProjectService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "VERSION_CONFLICT",
-                "项目已更新",
-                "项目已被其他请求修改，请读取最新版本后重试。",
+                ApiMessage.of("api.project-service.project-has-been-updated"),
+                ApiMessage.of("api.project-service.the-project-has-been-modified-by-other-requests-please-read"),
                 false);
     }
 
     /** 将请求字段和游标校验失败映射为 HTTP 400。 */
-    private ApiProblemException validation(String detail) {
+    private ApiProblemException validation(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "请求参数无效",
+                ApiMessage.of("api.identity-service.invalid-request"),
                 detail,
                 false);
     }

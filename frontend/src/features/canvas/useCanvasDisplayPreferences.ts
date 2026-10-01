@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { useEffect, useState } from "react";
 
 export type CanvasDisplayPreferences = {
@@ -74,7 +75,7 @@ export function useCanvasDisplayPreferences(userId: string | undefined, projectI
 
   return {
     preferences: state.preferences,
-    persistenceError: state.persistenceError,
+    persistenceError: state.persistenceError ? t(state.persistenceError) : null,
     setPreference: (key: keyof CanvasDisplayPreferences, enabled: boolean) =>
       save({ ...state.preferences, [key]: enabled }),
     retrySave: () => save(state.preferences),

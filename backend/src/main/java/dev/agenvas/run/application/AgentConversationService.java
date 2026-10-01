@@ -1,5 +1,6 @@
 package dev.agenvas.run.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
@@ -86,7 +87,7 @@ public class AgentConversationService {
     @Transactional
     public AgentConversation create(UUID ownerId, UUID projectId, UUID agentId, String requestedKey) {
         String key = requestedKey == null ? "" : requestedKey.trim();
-        if (key.isEmpty() || key.length() > 200) throw validation("Idempotency-Key 必须为 1 到 200 个字符。");
+        if (key.isEmpty() || key.length() > 200) throw validation(ApiMessage.of("api.agent-conversation-service.idempotency-key-must-be-1-to-200-characters"));
         projects.requireActiveProject(ownerId, projectId);
         agents.get(ownerId, projectId, agentId);
         String scope = "agent:" + agentId + ":create-conversation";
@@ -94,8 +95,8 @@ public class AgentConversationService {
         Instant now = clock.instant();
         if (!runs.reserveIdempotency(ownerId, scope, key, hash, now.plus(KEY_RETENTION), now)) {
             var prior = runs.findIdempotency(ownerId, scope, key).orElseThrow(this::notFound);
-            if (!hash.equals(prior.requestHash())) throw validation("幂等键不属于此会话请求。");
-            if (prior.resourceId() == null) throw conflict("相同会话请求正在处理，请使用原键重试。");
+            if (!hash.equals(prior.requestHash())) throw validation(ApiMessage.of("api.agent-conversation-service.idempotent-keys-are-not-part-of-this-session-request"));
+            if (prior.resourceId() == null) throw conflict(ApiMessage.of("api.agent-conversation-service.the-same-session-request-is-being-processed-please-try-again"));
             return get(ownerId, projectId, agentId, prior.resourceId());
         }
         return events.recordChange(ownerId, projectId, () -> {
@@ -123,12 +124,12 @@ public class AgentConversationService {
     public AgentConversation appendTurn(UUID ownerId, AgentConversation before, String instruction,
             Long expectedVersion, Instant now) {
         if (expectedVersion != null && expectedVersion != before.version()) {
-            throw conflict("会话已有新消息，请重新检查上下文后发送。");
+            throw conflict(ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"));
         }
         int end = instruction.offsetByCodePoints(0,
                 Math.min(TITLE_LENGTH, instruction.codePointCount(0, instruction.length())));
         if (!conversations.appendTurn(before.projectId(), before.id(), before.version(),
-                instruction.substring(0, end), now)) throw conflict("会话版本已变化，请重新读取。");
+                instruction.substring(0, end), now)) throw conflict(ApiMessage.of("api.agent-conversation-service.the-session-version-has-changed-please-read-again"));
         return get(ownerId, before.projectId(), before.agentInstanceId(), before.id());
     }
 
@@ -160,19 +161,19 @@ public class AgentConversationService {
 
     private int pageSize(Integer requested) {
         int limit = requested == null ? DEFAULT_PAGE_SIZE : requested;
-        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation("limit 必须在 1 到 100 之间。");
+        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
         return limit;
     }
 
     private Cursor decodeCursor(String value) {
         if (value == null) return null;
-        if (value.isBlank() || value.length() > 160) throw validation("cursor 无效或已损坏。");
+        if (value.isBlank() || value.length() > 160) throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
         try {
             String[] parts = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8).split(":", 3);
             if (parts.length != 3) throw new IllegalArgumentException();
             return new Cursor(Instant.ofEpochSecond(Long.parseLong(parts[0]), Long.parseLong(parts[1])),
                     UUID.fromString(parts[2]));
-        } catch (RuntimeException invalid) { throw validation("cursor 无效或已损坏。"); }
+        } catch (RuntimeException invalid) { throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt")); }
     }
 
     private String encodeCursor(AgentConversation conversation) {
@@ -188,14 +189,14 @@ public class AgentConversationService {
     }
 
     private ApiProblemException notFound() {
-        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "会话不存在",
-                "会话不存在或不属于当前项目与 Agent。", false);
+        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.agent-conversation-service.session-does-not-exist"),
+                ApiMessage.of("api.agent-conversation-service.the-session-does-not-exist-or-does-not-belong-to"), false);
     }
-    private ApiProblemException validation(String detail) {
-        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "会话请求无效", detail, false);
+    private ApiProblemException validation(ApiMessage detail) {
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.agent-conversation-service.invalid-session-request"), detail, false);
     }
-    private ApiProblemException conflict(String detail) {
-        return new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT", "会话已变化", detail, false);
+    private ApiProblemException conflict(ApiMessage detail) {
+        return new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT", ApiMessage.of("api.agent-run-service.session-has-changed"), detail, false);
     }
     private record Cursor(Instant updatedAt, UUID id) {}
     public record ConversationPage(List<AgentConversation> items, String nextCursor, UUID currentConversationId) {}

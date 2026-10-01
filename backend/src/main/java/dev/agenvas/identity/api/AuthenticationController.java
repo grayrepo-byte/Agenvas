@@ -1,5 +1,6 @@
 package dev.agenvas.identity.api;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.AdminSessionService;
 import dev.agenvas.identity.application.AuthenticationAttemptLimiter;
@@ -105,8 +106,8 @@ public class AuthenticationController {
             throw new ApiProblemException(
                     HttpStatus.UNAUTHORIZED,
                     "INVALID_CREDENTIALS",
-                    "登录失败",
-                    "登录名或密码不正确。",
+                    ApiMessage.of("api.authentication-controller.login-failed"),
+                    ApiMessage.of("api.authentication-controller.the-login-name-or-password-is-incorrect"),
                     false);
         }
     }
@@ -160,7 +161,7 @@ public class AuthenticationController {
     public record SetupRequest(
             @NotBlank
                     @Size(min = 3, max = 64)
-                    @Pattern(regexp = "[A-Za-z0-9._-]+", message = "只能包含字母、数字、点、下划线和连字符")
+                    @Pattern(regexp = "[A-Za-z0-9._-]+", message = "{validation.username-pattern}")
                     String loginName,
             @NotBlank @Size(min = 12, max = 128) String password) {}
 

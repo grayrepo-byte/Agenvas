@@ -1,5 +1,6 @@
 package dev.agenvas.run.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
@@ -217,7 +218,7 @@ public class AgentRunService {
         String key = validateIdempotencyKey(requestedIdempotencyKey);
         List<UUID> selection = validateSelection(selectedItemIds);
         if ((expectedModelConfigSource == null) != (expectedModelConfigVersion == null)) {
-            throw validation("模型配置来源和版本必须一起提交。");
+            throw validation(ApiMessage.of("api.agent-run-service.model-configuration-source-and-version-must-be-submitted-together"));
         }
         String scope = "project:" + projectId + ":create-run";
         String requestFingerprint = agentId + "\n" + instruction + "\n"
@@ -243,8 +244,8 @@ public class AgentRunService {
                 throw new ApiProblemException(
                         HttpStatus.CONFLICT,
                         "IDEMPOTENCY_CONFLICT",
-                        "幂等键已用于不同请求",
-                        "请为不同的 Agent 或指令使用新的 Idempotency-Key。",
+                        ApiMessage.of("api.artifact-service.idempotent-keys-have-been-used-for-different-requests"),
+                        ApiMessage.of("api.agent-run-service.please-use-new-idempotency-key-for-different-agents-or-commands"),
                         false);
             }
             if (existing.state() != IdempotencyState.COMPLETED
@@ -259,7 +260,7 @@ public class AgentRunService {
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         if (expectedAgentVersion != null && agent.version() != expectedAgentVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "AGENT_VERSION_CONFLICT",
-                    "Agent 配置已变化", "输入或指令可能已变化，请重新检查运行范围。", false);
+                    ApiMessage.of("api.agent-run-service.agent-configuration-has-changed"), ApiMessage.of("api.agent-run-service.the-input-or-instructions-may-have-changed-please-recheck-the"), false);
         }
         ObjectNode policy = policySnapshot();
         if (expectedModelConfigSource != null
@@ -267,12 +268,12 @@ public class AgentRunService {
                         policy.path("modelConfigSource").asText())
                     || expectedModelConfigVersion != policy.path("modelConfigVersion").asInt())) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "MODEL_CONFIG_CONFLICT",
-                    "模型配置已变化", "将使用的模型配置与运行前预览不同，请重新检查运行范围。", false);
+                    ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"), ApiMessage.of("api.agent-run-service.the-model-configuration-that-will-be-used-is-different-from"), false);
         }
         if (expectedSystemPromptVersion != null
                 && expectedSystemPromptVersion != policy.path("systemPromptVersion").asInt(-1)) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "SYSTEM_PROMPT_CONFLICT",
-                    "系统提示词已变化", "运行规则与运行前预览不同，请重新检查后再启动。", false);
+                    ApiMessage.of("api.agent-run-service.the-system-prompt-word-has-changed"), ApiMessage.of("api.agent-run-service.the-running-rules-are-different-from-the-pre-run-preview"), false);
         }
         UUID runId = UUID.randomUUID();
         CreatedRun created = shutdownGate.admitRun(() -> events.recordChange(ownerId, projectId, () -> {
@@ -281,13 +282,13 @@ public class AgentRunService {
                     AgentInstance pinnedAgent = agents.get(ownerId, projectId, agentId);
                     if (pinnedAgent.version() != agent.version()) {
                         throw new ApiProblemException(HttpStatus.CONFLICT, "AGENT_VERSION_CONFLICT",
-                                "Agent 配置已变化", "输入或指令可能已变化，请重新检查运行范围。", false);
+                                ApiMessage.of("api.agent-run-service.agent-configuration-has-changed"), ApiMessage.of("api.agent-run-service.the-input-or-instructions-may-have-changed-please-recheck-the"), false);
                     }
                     AgentConversation conversation = conversations.resolveOrCreate(ownerId, projectId,
                             agentId, requestedConversationId);
                     if (expectedConversationVersion != null && expectedConversationVersion != conversation.version()) {
                         throw new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT",
-                                "会话已变化", "会话已有新消息，请重新检查上下文后发送。", false);
+                                ApiMessage.of("api.agent-run-service.session-has-changed"), ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"), false);
                     }
                     ConversationInputs context = conversationInputs(ownerId, projectId, agent, conversation);
                     ObjectNode snapshot = contextSnapshot(ownerId, agent, project,
@@ -343,7 +344,7 @@ public class AgentRunService {
         agents.get(ownerId, projectId, agentId);
         int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
         if (limit < 1 || limit > MAX_PAGE_SIZE) {
-            throw validation("limit 必须在 1 到 100 之间。");
+            throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
         }
         RunCursor cursor = decodeCursor(encodedCursor);
         List<AgentRun> rows = runs.list(ownerId, projectId, agentId,
@@ -361,7 +362,7 @@ public class AgentRunService {
             String encodedCursor, Integer requestedLimit) {
         conversations.get(ownerId, projectId, agentId, conversationId);
         int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
-        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation("limit 必须在 1 到 100 之间。");
+        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
         Long beforeTurn = null;
         if (encodedCursor != null) {
             try {
@@ -369,7 +370,7 @@ public class AgentRunService {
                 beforeTurn = Long.parseLong(new String(Base64.getUrlDecoder().decode(encodedCursor),
                         StandardCharsets.UTF_8));
                 if (beforeTurn < 1) throw new IllegalArgumentException();
-            } catch (IllegalArgumentException invalid) { throw validation("cursor 无效或已损坏。"); }
+            } catch (IllegalArgumentException invalid) { throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt")); }
         }
         List<AgentRun> rows = runs.listConversation(ownerId, projectId, agentId, conversationId, beforeTurn, limit + 1);
         boolean more = rows.size() > limit;
@@ -397,7 +398,7 @@ public class AgentRunService {
             return null;
         }
         if (encoded.isBlank() || encoded.length() > 160) {
-            throw validation("cursor 无效或已损坏。");
+            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
         }
         try {
             String value = new String(Base64.getUrlDecoder().decode(encoded),
@@ -410,7 +411,7 @@ public class AgentRunService {
                     Long.parseLong(parts[0]), Long.parseLong(parts[1]));
             return new RunCursor(createdAt, UUID.fromString(parts[2]));
         } catch (IllegalArgumentException | DateTimeException invalidCursor) {
-            throw validation("cursor 无效或已损坏。");
+            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
         }
     }
 
@@ -514,8 +515,8 @@ public class AgentRunService {
                         throw new ApiProblemException(
                                 HttpStatus.CONFLICT,
                                 "RUN_STATE_CONFLICT",
-                                "Run 状态不可转换",
-                                "不能从 " + current.status() + " 转换到 " + target + "。",
+                                ApiMessage.of("api.agent-run-service.run-status-cannot-be-converted"),
+                                ApiMessage.of("api.agent-run-service.cannot-transition-from-to", current.status(), target),
                                 false);
                     }
                     AgentRun updated = updateStatusLocked(
@@ -538,7 +539,7 @@ public class AgentRunService {
     public AgentRun advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex) {
         if (expectedStepIndex < 0 || expectedStepIndex >= 11) {
-            throw validation("模型回合已达到默认上限。");
+            throw validation(ApiMessage.of("api.agent-run-service.model-turns-have-reached-the-default-limit"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
@@ -698,7 +699,7 @@ public class AgentRunService {
             CanvasService.CanvasEntry selected = items.stream()
                     .filter(entry -> entry.item().id().equals(itemId))
                     .findFirst().orElseThrow(() -> validation(
-                            "选中卡片已不存在或不属于当前项目，请重新选择后运行。"));
+                            ApiMessage.of("api.agent-run-service.the-selected-card-no-longer-exists-or-does-not-belong")));
             CanvasItem item = selected.item();
             ObjectNode reference = selection.addObject();
             reference.put("itemId", item.id().toString());
@@ -763,7 +764,7 @@ public class AgentRunService {
     private String validateInstruction(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > MAX_INSTRUCTION_LENGTH) {
-            throw validation("运行指令必须为 1 至 20000 个字符。");
+            throw validation(ApiMessage.of("api.agent-run-service.run-instructions-must-be-between-1-and-20-000-characters"));
         }
         return normalized;
     }
@@ -774,7 +775,7 @@ public class AgentRunService {
         if (requested.size() > MAX_SELECTED_ITEMS
                 || requested.stream().anyMatch(Objects::isNull)
                 || new HashSet<>(requested).size() != requested.size()) {
-            throw validation("选中卡片最多 20 个，且不能重复或为空。");
+            throw validation(ApiMessage.of("api.agent-run-service.a-maximum-of-20-cards-can-be-selected-and-they"));
         }
         return List.copyOf(requested);
     }
@@ -783,7 +784,7 @@ public class AgentRunService {
     private String validateIdempotencyKey(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 200) {
-            throw validation("Idempotency-Key 必须为 1 至 200 个字符。");
+            throw validation(ApiMessage.of("api.artifact-service.idempotency-key-must-be-1-to-200-characters"));
         }
         return normalized;
     }
@@ -804,8 +805,8 @@ public class AgentRunService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "Run 不存在",
-                "Run 不存在或当前用户无权访问。",
+                ApiMessage.of("api.agent-run-service.run-does-not-exist"),
+                ApiMessage.of("api.agent-run-service.run-does-not-exist-or-the-current-user-does-not"),
                 false);
     }
 
@@ -814,8 +815,8 @@ public class AgentRunService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "RUN_VERSION_CONFLICT",
-                "Run 状态已更新",
-                "Run 已被其他执行器修改，请读取最新状态。",
+                ApiMessage.of("api.agent-run-service.run-status-updated"),
+                ApiMessage.of("api.agent-run-service.run-has-been-modified-by-other-executors-please-read-the"),
                 false);
     }
 
@@ -824,17 +825,17 @@ public class AgentRunService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "IDEMPOTENCY_IN_PROGRESS",
-                "相同请求正在处理",
-                "请稍后使用相同 Idempotency-Key 重试。",
+                ApiMessage.of("api.artifact-service.the-same-request-is-being-processed"),
+                ApiMessage.of("api.artifact-service.please-try-again-later-with-the-same-idempotency-key"),
                 true);
     }
 
     /** 构造 Run 创建输入或状态迁移不符合业务规则时的 400 响应。 */
-    private ApiProblemException validation(String detail) {
+    private ApiProblemException validation(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "运行请求无效",
+                ApiMessage.of("api.agent-run-service.invalid-run-request"),
                 detail,
                 false);
     }

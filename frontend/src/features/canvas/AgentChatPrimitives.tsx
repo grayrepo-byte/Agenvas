@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { CaretDown, Check, Clock, MinusCircle, Question, Robot,
   User, WarningCircle, type Icon } from "@phosphor-icons/react";
 import { useId, type ReactNode } from "react";
@@ -12,11 +13,11 @@ import "./AgentChatPrimitives.css";
  */
 const CHAT_ICON_SIZE = 14;
 const TASK_ICON_SIZE = 15;
-const MESSAGE_ROLE_LABELS = { user: "你", assistant: "Agent" } as const;
+const MESSAGE_ROLE_LABELS = { get user() { return t("你"); }, assistant: "Agent" } as const;
 type TaskStatus = "running" | "pending" | "completed" | "failed" | "unknown" | "canceled";
 const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  running: "运行中", pending: "等待中", completed: "已完成", failed: "失败",
-  unknown: "未知", canceled: "已取消",
+  get running() { return t("运行中"); }, get pending() { return t("等待中"); }, get completed() { return t("已完成"); }, get failed() { return t("失败"); },
+  get unknown() { return t("未知"); }, get canceled() { return t("已取消"); },
 };
 const TASK_STATUS_ICONS: Record<Exclude<TaskStatus, "running">, Icon> = {
   pending: Clock, completed: Check, failed: WarningCircle, unknown: Question, canceled: MinusCircle,
@@ -27,6 +28,7 @@ export function AgentChatMessage({ role, children, label }: {
   children: ReactNode;
   label?: string;
 }) {
+  useLocale();
   const labelId = useId();
   const RoleIcon = role === "user" ? User : Robot;
   return <article className={`agent-chat-message agent-chat-message--${role}`} aria-labelledby={labelId}>
@@ -39,6 +41,7 @@ export function AgentChatMessage({ role, children, label }: {
 }
 
 function TaskHeadline({ label, status }: { label: string; status: TaskStatus }) {
+  useLocale();
   const StatusIcon = status === "running" ? undefined : TASK_STATUS_ICONS[status];
   return <>
     {status === "running" ? <div className="agent-chat-task__running">
@@ -59,6 +62,7 @@ export function AgentChatTaskRow({ label, status, detail }: {
   status: TaskStatus;
   detail?: string;
 }) {
+  useLocale();
   return <div className={`agent-chat-task agent-chat-task--${status}`}>
     {detail ? <details className="agent-chat-task__disclosure nodrag nowheel">
       <summary className="agent-chat-task__headline">
@@ -80,6 +84,7 @@ export function AgentChatApproval({ title, description, children, footer, classN
   footer?: ReactNode;
   className?: string;
 }) {
+  useLocale();
   const titleId = useId();
   const descriptionId = useId();
   return <section className={`agent-chat-approval nodrag nowheel${className ? ` ${className}` : ""}`}

@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
@@ -69,12 +70,12 @@ public class MediaCapabilityService {
             String origin, String apiKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank()
                 || idempotencyKey.length() > 160) {
-            throw invalid("必须提供有效的 Idempotency-Key");
+            throw invalid(ApiMessage.of("api.media-capability-service.a-valid-idempotency-key-must-be-provided"));
         }
         String normalizedName = requireName(name);
         MediaPlatform normalizedPlatform = requirePlatform(platform);
         if (normalizedPlatform == MediaPlatform.LOCAL) {
-            throw invalid("本地图片处理是应用内置能力，不能创建重复连接");
+            throw invalid(ApiMessage.of("api.media-capability-service.local-image-processing-is-a-built-in-capability-of-the"));
         }
         String normalizedOrigin = validatedOrigin(normalizedPlatform, origin);
         validateCredential(normalizedPlatform, apiKey, true);
@@ -85,7 +86,7 @@ public class MediaCapabilityService {
         if (!repository.claimCreateKey(idempotencyKey, hash, id, now)) {
             var previous = repository.createKey(idempotencyKey).orElseThrow();
             if (!previous.payloadSha256().equals(hash)) {
-                throw conflict("相同 Idempotency-Key 对应不同配置内容");
+                throw conflict(ApiMessage.of("api.media-capability-service.the-same-idempotency-key-corresponds-to-different-configuration-content"));
             }
             return getConnection(previous.entityId());
         }
@@ -106,7 +107,7 @@ public class MediaCapabilityService {
         Connection current = getConnection(id);
         rejectSystemManaged(current);
         if (current.version() != expectedVersion) {
-            throw conflict("连接已被其他操作修改");
+            throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
         }
         ConnectionVersion previous = getConnectionVersion(id, current.currentVersion())
                 .orElseThrow();
@@ -118,7 +119,7 @@ public class MediaCapabilityService {
         Instant now = clock.instant();
         if (!repository.updateConnection(id, expectedVersion, requireName(name),
                 enabled, nextVersion, now)) {
-            throw conflict("连接已被其他操作修改");
+            throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
         }
         if (newVersion) {
             String versionKey = apiKey;
@@ -152,7 +153,7 @@ public class MediaCapabilityService {
     public Snapshot capabilitySnapshot(UUID capabilityId) {
         return repository.snapshot(capabilityId).orElseThrow(() ->
                 new ApiProblemException(HttpStatus.NOT_FOUND, "MEDIA_CAPABILITY_NOT_FOUND",
-                        "媒体能力不存在", "找不到该媒体能力", false));
+                        ApiMessage.of("api.media-capability-service.media-capabilities-do-not-exist"), ApiMessage.of("api.media-capability-service.the-media-capability-cannot-be-found"), false));
     }
 
     @Transactional
@@ -179,7 +180,7 @@ public class MediaCapabilityService {
             String name, String adapterId, JsonNode settings) {
         if (idempotencyKey == null || idempotencyKey.isBlank()
                 || idempotencyKey.length() > 160) {
-            throw invalid("必须提供有效的 Idempotency-Key");
+            throw invalid(ApiMessage.of("api.media-capability-service.a-valid-idempotency-key-must-be-provided"));
         }
         String normalizedName = requireName(name);
         String spec = spec(adapterId, settings);
@@ -189,7 +190,7 @@ public class MediaCapabilityService {
         if (!repository.claimCapabilityCreateKey(idempotencyKey, hash, id, clock.instant())) {
             var previous = repository.capabilityCreateKey(idempotencyKey).orElseThrow();
             if (!previous.payloadSha256().equals(hash)) {
-                throw conflict("相同 Idempotency-Key 对应不同能力内容");
+                throw conflict(ApiMessage.of("api.media-capability-service.the-same-idempotency-key-corresponds-to-different-capability-content"));
             }
             return repository.capability(previous.entityId()).orElseThrow();
         }
@@ -202,21 +203,21 @@ public class MediaCapabilityService {
         rejectSystemManaged(connection);
         MediaAdapterRegistry.Declaration declaration = registry.declaration(adapterId);
         if (!connection.enabled()) {
-            throw conflict("连接已停用");
+            throw conflict(ApiMessage.of("api.media-capability-service.connection-disabled"));
         }
         ConnectionVersion version = getConnectionVersion(connectionId,
                 connection.currentVersion()).orElseThrow();
         if (declaration.originRequired() && version.origin() == null) {
-            throw invalid("该适配器需要连接地址");
+            throw invalid(ApiMessage.of("api.media-capability-service.the-adapter-requires-a-connection-address"));
         }
         // OpenAI 与 Google 的固定适配器都允许把端点指向自托管网关或中转站。
         if (!declaration.originRequired() && version.origin() != null
                 && connection.platform() != MediaPlatform.OPENAI
                 && connection.platform() != MediaPlatform.GOOGLE) {
-            throw invalid("该适配器不接受连接地址");
+            throw invalid(ApiMessage.of("api.media-capability-service.the-adapter-does-not-accept-the-connection-address"));
         }
         if (connection.platform() != declaration.platform()) {
-            throw invalid("适配器与平台连接不匹配");
+            throw invalid(ApiMessage.of("api.media-capability-service.adapter-does-not-match-platform-connection"));
         }
         String spec = spec(adapterId, settings);
         repository.insertCapability(id, connectionId, requireName(name), adapterId,
@@ -237,18 +238,18 @@ public class MediaCapabilityService {
             JsonNode settings) {
         Snapshot current = capabilitySnapshot(capabilityId);
         if (!current.connection().id().equals(connectionId)) {
-            throw invalid("能力不属于此连接");
+            throw invalid(ApiMessage.of("api.media-capability-service.capability-does-not-belong-to-this-connection"));
         }
         rejectSystemManaged(current.connection());
         if (current.capability().version() != expectedVersion) {
-            throw conflict("能力已被其他操作修改");
+            throw conflict(ApiMessage.of("api.media-capability-service.ability-has-been-modified-by-another-operation"));
         }
         MediaAdapterRegistry.Declaration replacement = registry.declaration(adapterId);
         if (current.connection().platform() != replacement.platform()) {
-            throw invalid("适配器与平台连接不匹配");
+            throw invalid(ApiMessage.of("api.media-capability-service.adapter-does-not-match-platform-connection"));
         }
         if (registry.declaration(current.adapterId()).kind() != replacement.kind()) {
-            throw invalid("能力的输出类型不可变；请发布新能力");
+            throw invalid(ApiMessage.of("api.media-capability-service.ability-s-output-type-is-immutable-please-publish-new-capabilities"));
         }
         JsonNode effectiveSettings = settings == null && current.adapterId().equals(adapterId)
                 ? mapper.readTree(current.specJson()).path("settings") : settings;
@@ -265,7 +266,7 @@ public class MediaCapabilityService {
         Instant now = clock.instant();
         if (!repository.updateCapability(capabilityId, expectedVersion, requireName(name),
                 enabled, nextVersion, now)) {
-            throw conflict("能力已被其他操作修改");
+            throw conflict(ApiMessage.of("api.media-capability-service.ability-has-been-modified-by-another-operation"));
         }
         if (newVersion) {
             repository.insertCapabilityVersion(capabilityId, nextVersion, adapterId,
@@ -277,7 +278,7 @@ public class MediaCapabilityService {
     public Connection getConnection(UUID connectionId) {
         return repository.connection(connectionId).orElseThrow(() ->
                 new ApiProblemException(HttpStatus.NOT_FOUND, "MEDIA_CONNECTION_NOT_FOUND",
-                        "媒体连接不存在", "找不到该媒体连接", false));
+                        ApiMessage.of("api.media-capability-service.media-connection-does-not-exist"), ApiMessage.of("api.media-capability-service.the-media-connection-cannot-be-found"), false));
     }
 
     public Optional<ConnectionVersion> getConnectionVersion(UUID connectionId, int version) {
@@ -334,10 +335,10 @@ public class MediaCapabilityService {
         }
         ObjectNode settings = normalized.putObject("settings");
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
-        if (!source.isObject()) throw invalid("能力模板参数必须为对象");
+        if (!source.isObject()) throw invalid(ApiMessage.of("api.media-capability-service.capability-template-parameters-must-be-objects"));
         if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId)) {
             if (!java.util.Set.of("runningHub", "pricing").containsAll(source.propertyNames()))
-                throw invalid("RunningHub 能力只接受参数定义与估算价格");
+                throw invalid(ApiMessage.of("api.media-capability-service.runninghub-capabilities-only-accept-parameter-definitions-and-estimated-prices"));
             var definition = RunningHubDefinition.parse(mapper, source.get("runningHub"), declaration.kind());
             settings.set("runningHub", mapper.valueToTree(definition));
             ObjectNode price = mapper.createObjectNode();
@@ -356,14 +357,14 @@ public class MediaCapabilityService {
         for (String field : source.propertyNames()) {
             if (!fields.contains(field) && !MediaCapabilityConfiguration.FIELDS.contains(field)
                     && !(AutoDlWorkflows.ADAPTER_ID.equals(adapterId) && AutoDlWorkflows.SETTINGS.contains(field)))
-                throw invalid("能力模板包含不允许的参数");
+                throw invalid(ApiMessage.of("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
         }
         for (String field : fields) {
             JsonNode value = source.path(field);
             if ("quality".equals(field)) {
                 String quality = value.isMissingNode() ? "medium" : value.asText();
                 if (!List.of("low", "medium", "high").contains(quality)) {
-                    throw invalid("GPT Image 2 质量只能为 low、medium 或 high");
+                    throw invalid(ApiMessage.of("api.media-capability-service.gpt-image-2-quality-can-only-be-low-medium-or"));
                 }
                 settings.put(field, quality);
                 continue;
@@ -372,14 +373,14 @@ public class MediaCapabilityService {
             if ("model".equals(field)) {
                 String model = value.isMissingNode() || value.isNull() ? "" : value.asText();
                 if (!model.isEmpty() && !model.matches("[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}")) {
-                    throw invalid("模型名只能包含字母、数字及 . _ : / -，且不超过 120 字符");
+                    throw invalid(ApiMessage.of("api.media-capability-service.the-model-name-can-only-contain-letters-numbers-and-and"));
                 }
                 settings.put(field, model);
                 continue;
             }
             if (!value.isTextual() || !value.asText().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
                     || value.asText().contains("..") || !value.asText().endsWith(".safetensors")) {
-                throw invalid("ComfyUI 模板模型文件名必须为 .safetensors 文件名");
+                throw invalid(ApiMessage.of("api.media-capability-service.comfyui-template-model-file-name-must-be-safetensors-file-name"));
             }
             settings.put(field, value.asText());
         }
@@ -389,7 +390,7 @@ public class MediaCapabilityService {
         if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
             var workflow = AutoDlWorkflows.require(settings);
             if (policy.maxReferenceImages() < workflow.minimumImages() || policy.maxReferenceAudios() < workflow.minimumAudios())
-                throw invalid("参考上限不能低于 AutoDL 工作流必填数量");
+                throw invalid(ApiMessage.of("api.media-capability-service.the-reference-upper-limit-cannot-be-lower-than-the-required"));
             if (settings.has("defaultParameters")) {
                 String ratio = settings.path("defaultParameters").path("aspectRatio").asText();
                 if (!"AUTO".equals(ratio)) workflow.resolution(settings.path("videoResolution").asText(), ratio);
@@ -408,7 +409,7 @@ public class MediaCapabilityService {
         rejectSystemManaged(getConnection(connectionId));
         if (!repository.updateConnectionEnabled(connectionId, expectedVersion, enabled,
                 clock.instant())) {
-            throw conflict("连接已被其他操作修改");
+            throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
         }
         return getConnection(connectionId);
     }
@@ -442,9 +443,9 @@ public class MediaCapabilityService {
     /** Validates only supplied values so incomplete dynamic drafts can still be persisted. */
     public void validateDynamicDraft(UUID capabilityId, Task.Kind kind, JsonNode parameters,
             String prompt, Integer seconds) {
-        if (capabilityId == null) throw invalid("动态参数必须选择明确的能力");
+        if (capabilityId == null) throw invalid(ApiMessage.of("api.media-capability-service.dynamic-parameters-must-be-selected-with-explicit-capabilities"));
         var definition = runningHubDefinition(forDraft(capabilityId, kind));
-        if (definition == null) throw invalid("当前能力不接受动态参数");
+        if (definition == null) throw invalid(ApiMessage.of("api.media-capability-service.the-current-capability-does-not-accept-dynamic-parameters"));
         definition.values(mapper, parameters, prompt, seconds, false);
     }
 
@@ -472,13 +473,13 @@ public class MediaCapabilityService {
         Task.Kind mediaKind = requireMediaKind(kind);
         Snapshot snapshot = enabledSnapshot(capabilityId);
         if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(snapshot.adapterId())) {
-            throw invalid("本地图片处理能力不能设为普通图片生成默认能力");
+            throw invalid(ApiMessage.of("api.media-capability-service.local-image-processing-capabilities-cannot-be-set-as-the-default"));
         }
         if (registry.declaration(snapshot.adapterId()).kind() != mediaKind) {
-            throw invalid("默认能力与媒体类型不匹配");
+            throw invalid(ApiMessage.of("api.media-capability-service.default-capabilities-do-not-match-media-type"));
         }
         if (!repository.updateDefault(mediaKind.name(), expectedVersion, capabilityId)) {
-            throw conflict("默认能力已被其他操作修改");
+            throw conflict(ApiMessage.of("api.media-capability-service.default-capabilities-have-been-modified-by-other-operations"));
         }
         return binding(snapshot);
     }
@@ -551,10 +552,10 @@ public class MediaCapabilityService {
             int durationSeconds, boolean skipDuration) {
         Snapshot snapshot = enabledSnapshot(capabilityId);
         if (registry.declaration(snapshot.adapterId()).kind() != kind) {
-            throw invalid("能力输出类型与任务类别不匹配");
+            throw invalid(ApiMessage.of("api.media-capability-service.ability-output-type-does-not-match-task-category"));
         }
         if (!skipDuration && !supports(snapshot, kind, durationSeconds)) {
-            throw invalid("该能力不支持当前时长，请调整时长");
+            throw invalid(ApiMessage.of("api.media-capability-service.this-ability-does-not-support-the-current-duration-please-adjust"));
         }
         return binding(snapshot);
     }
@@ -570,9 +571,9 @@ public class MediaCapabilityService {
     private Snapshot enabledSnapshot(UUID capabilityId) {
         Snapshot snapshot = repository.snapshot(capabilityId).orElseThrow(() ->
                 new ApiProblemException(HttpStatus.NOT_FOUND, "MEDIA_CAPABILITY_NOT_FOUND",
-                        "媒体能力不存在", "找不到该媒体能力", false));
+                        ApiMessage.of("api.media-capability-service.media-capabilities-do-not-exist"), ApiMessage.of("api.media-capability-service.the-media-capability-cannot-be-found"), false));
         if (!snapshot.connection().enabled() || !snapshot.capability().enabled()) {
-            throw conflict("媒体连接或能力已停用");
+            throw conflict(ApiMessage.of("api.media-capability-service.media-connection-or-capability-is-disabled"));
         }
         registry.declaration(snapshot.adapterId());
         return snapshot;
@@ -587,13 +588,13 @@ public class MediaCapabilityService {
 
     private static void rejectSystemManaged(Connection connection) {
         if (connection.platform() == MediaPlatform.LOCAL) {
-            throw invalid("本地图片处理是应用管理的内置能力，不能修改");
+            throw invalid(ApiMessage.of("api.media-capability-service.local-image-processing-is-a-built-in-capability-of-application"));
         }
     }
 
     private static Task.Kind requireMediaKind(Task.Kind kind) {
         if (kind != Task.Kind.IMAGE_GENERATION && kind != Task.Kind.VIDEO_GENERATION && kind != Task.Kind.AUDIO_GENERATION) {
-            throw invalid("仅支持图片或视频能力");
+            throw invalid(ApiMessage.of("api.media-capability-service.only-supports-picture-or-video-capabilities"));
         }
         return kind;
     }
@@ -601,7 +602,7 @@ public class MediaCapabilityService {
     private static String requireName(String value) {
         String name = value == null ? "" : value.trim();
         if (name.isEmpty() || name.length() > 160) {
-            throw invalid("名称长度必须为 1–160 个字符");
+            throw invalid(ApiMessage.of("api.media-capability-service.name-must-be-1-160-characters-long"));
         }
         return name;
     }
@@ -610,7 +611,7 @@ public class MediaCapabilityService {
         try {
             return MediaPlatform.valueOf(value);
         } catch (IllegalArgumentException | NullPointerException unknownPlatform) {
-            throw invalid("不支持的平台类型");
+            throw invalid(ApiMessage.of("api.media-capability-service.unsupported-platform-types"));
         }
     }
 
@@ -629,22 +630,22 @@ public class MediaCapabilityService {
                         || uri.getRawQuery() != null || uri.getRawFragment() != null
                         || path != null && (path.contains("..") || path.contains("%")
                                 || path.contains("\\") || path.contains("//"))) {
-                    throw invalid("Base URL 必须是公开的 HTTPS API 根地址，不能包含凭证、查询或片段");
+                    throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
                 }
                 // 本机回环是自托管服务与本地假 API 的固定例外，与 ComfyUI 的规则一致。
                 boolean loopback = "http".equals(uri.getScheme())
                         && "127.0.0.1".equals(uri.getHost()) && uri.getPort() > 0;
                 if (!"https".equals(uri.getScheme()) && !loopback) {
-                    throw invalid("Base URL 必须是公开的 HTTPS API 根地址，不能包含凭证、查询或片段");
+                    throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
                 }
                 return uri.toASCIIString().replaceAll("/+$", "");
             } catch (IllegalArgumentException invalidUri) {
-                throw invalid("Base URL 无效");
+                throw invalid(ApiMessage.of("api.media-capability-service.base-url-is-invalid"));
             }
         }
         if (platform != MediaPlatform.COMFYUI) {
             if (origin != null && !origin.isBlank()) {
-                throw invalid("该平台使用内置固定端点，不能填写自定义地址");
+                throw invalid(ApiMessage.of("api.media-capability-service.the-platform-uses-built-in-fixed-endpoints-and-cannot-fill"));
             }
             return null;
         }
@@ -654,11 +655,11 @@ public class MediaCapabilityService {
                     || uri.getPort() < 1 || uri.getPort() > 65535
                     || uri.getRawUserInfo() != null || uri.getRawQuery() != null
                     || uri.getRawFragment() != null || !"".equals(uri.getRawPath())) {
-                throw invalid("ComfyUI 仅允许精确的本机 127.0.0.1 地址和端口");
+                throw invalid(ApiMessage.of("api.media-capability-service.comfyui-only-allows-the-exact-native-127-0-0-1"));
             }
             return uri.toASCIIString();
         } catch (IllegalArgumentException invalidUri) {
-            throw invalid("ComfyUI 地址无效");
+            throw invalid(ApiMessage.of("api.media-capability-service.comfyui-address-is-invalid"));
         }
     }
 
@@ -667,10 +668,10 @@ public class MediaCapabilityService {
                 || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE
                 || platform == MediaPlatform.RUNNINGHUB || platform == MediaPlatform.AUTODL;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
-            throw invalid("云平台连接必须填写 API Key");
+            throw invalid(ApiMessage.of("api.media-capability-service.cloud-platform-connection-must-fill-in-the-api-key"));
         }
         if (!cloud && apiKey != null && !apiKey.isBlank()) {
-            throw invalid("该平台不接受 API Key");
+            throw invalid(ApiMessage.of("api.media-capability-service.the-platform-does-not-accept-api-key"));
         }
     }
 
@@ -688,13 +689,13 @@ public class MediaCapabilityService {
         }
     }
 
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "PROVIDER_UNSUPPORTED_INPUT", "媒体能力不支持该输入", detail, false);
+                "PROVIDER_UNSUPPORTED_INPUT", ApiMessage.of("api.media-capability-service.media-capability-does-not-support-this-input"), detail, false);
     }
 
-    private static ApiProblemException conflict(String detail) {
+    private static ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CONFLICT",
-                "媒体配置冲突", detail, false);
+                ApiMessage.of("api.media-capability-service.media-configuration-conflict"), detail, false);
     }
 }

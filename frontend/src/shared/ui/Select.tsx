@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -30,13 +31,14 @@ function readLabel(select: HTMLSelectElement): string {
     const copy = label.cloneNode(true) as HTMLElement;
     copy.querySelectorAll("select, .ui-select, input, textarea, small").forEach((element) => element.remove());
     return copy.textContent?.trim() ?? "";
-  }).join(" ") || "选项";
+  }).join(" ") || t("选项");
 }
 
 /** Keeps native labels, form submission, validation and change events. The visible
  * option panel is shared across platforms and portaled out of clipped/zoomed canvas nodes. */
 export function Select({ children, className = "", density = "regular", onKeyDown,
   onMouseDown, onBlur, onChange, ...props }: SelectProps) {
+  useLocale();
   const id = useId();
   const control = useRef<HTMLSelectElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -160,7 +162,7 @@ export function Select({ children, className = "", density = "regular", onKeyDow
           <span>{option.label}</span>{option.value === control.current?.value ? <Check size={14} aria-hidden /> : null}
         </button>
       </div>)}
-      {!popup.options.length ? <p className="ui-dropdown-heading">暂无可选项</p> : null}
+      {!popup.options.length ? <p className="ui-dropdown-heading">{t("暂无可选项")}</p> : null}
     </DropdownMenu>, control.current?.closest("dialog") ?? document.body) : null}
   </span>;
 }

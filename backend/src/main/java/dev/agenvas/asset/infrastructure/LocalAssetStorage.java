@@ -1,5 +1,6 @@
 package dev.agenvas.asset.infrastructure;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.asset.application.AssetProperties;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.awt.Graphics2D;
@@ -254,7 +255,7 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                     "-of", "json", path.toString())));
         } catch (MediaToolRunner.MediaToolException exception) {
             if (exception.invalidInput()) {
-                throw invalid("无法解析视频媒体。", "ASSET_INVALID_VIDEO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-parse-video-media"), "ASSET_INVALID_VIDEO");
             }
             throw exception;
         }
@@ -267,11 +268,11 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 || !format.contains("mp4") || width < 1 || height < 1
                 || (long) width * height > MAX_IMAGE_PIXELS
                 || !Double.isFinite(duration) || duration <= 0 || duration > 60) {
-            throw invalid("视频必须是可解码且不超过 60 秒的 MP4。", "ASSET_INVALID_VIDEO");
+            throw invalid(ApiMessage.of("api.local-asset-storage.video-must-be-decodable-mp4-and-no-longer-than-60"), "ASSET_INVALID_VIDEO");
         }
         int durationMs = Math.toIntExact(Math.round(duration * 1_000));
         if (durationMs < 1 || durationMs > 60_000) {
-            throw invalid("视频时长超出支持范围。", "ASSET_INVALID_VIDEO");
+            throw invalid(ApiMessage.of("api.local-asset-storage.the-video-length-exceeds-the-supported-range"), "ASSET_INVALID_VIDEO");
         }
         return new VideoDetails(width, height, durationMs);
     }
@@ -491,13 +492,13 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                     || !"audio".equals(streams.path(0).path("codec_type").asText())
                     || !Double.isFinite(seconds) || seconds < 0.1
                     || seconds * 1000 > MAX_AUDIO_DURATION_MS)
-                throw invalid("音频必须是可解码的 MP3、WAV 或 OGG，且不超过 10 分钟。", "ASSET_INVALID_AUDIO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"), "ASSET_INVALID_AUDIO");
             mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                     "-protocol_whitelist", "file,pipe", "-i", file.toString(), "-map", "0:a:0",
                     "-f", "null", "-"));
             return new StoredAudio(key, mime, size, hash, (int) Math.round(seconds * 1000));
         } catch (MediaToolRunner.MediaToolException failure) {
-            if (failure.invalidInput()) throw invalid("音频无法解码。", "ASSET_INVALID_AUDIO");
+            if (failure.invalidInput()) throw invalid(ApiMessage.of("api.local-asset-storage.audio-cannot-be-decoded"), "ASSET_INVALID_AUDIO");
             throw failure;
         }
     }
@@ -524,13 +525,13 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                         "-vf", "scale=480:-2", "-y", posterTemporary.toString()));
             } catch (MediaToolRunner.MediaToolException exception) {
                 if (exception.invalidInput()) {
-                    throw invalid("无法解码视频首帧。", "ASSET_INVALID_VIDEO");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-the-first-frame-of-the-video"), "ASSET_INVALID_VIDEO");
                 }
                 throw exception;
             }
             if (Files.size(posterTemporary) < 1 || Files.size(posterTemporary) > MAX_IMAGE_BYTES
                     || ImageIO.read(posterTemporary.toFile()) == null) {
-                throw invalid("无法解码视频首帧。", "ASSET_INVALID_VIDEO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-the-first-frame-of-the-video"), "ASSET_INVALID_VIDEO");
             }
             String key = projectId + "/" + assetId + ".mp4";
             String posterKey = projectId + "/" + assetId + ".thumb.png";
@@ -774,16 +775,16 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 count += read;
                 if (count > maximum) {
                     throw new ApiProblemException(HttpStatus.PAYLOAD_TOO_LARGE,
-                            "ASSET_TOO_LARGE", "素材过大", "素材超过归档大小限制。", false);
+                            "ASSET_TOO_LARGE", ApiMessage.of("api.local-asset-storage.material-is-too-large"), ApiMessage.of("api.local-asset-storage.the-material-exceeds-the-archive-size-limit"), false);
                 }
                 output.write(buffer, 0, read);
             }
         }
         if (count == 0) {
             throw maximum == MAX_VIDEO_BYTES
-                    ? invalid("视频文件不能为空。", "ASSET_INVALID_VIDEO")
-                    : maximum == MAX_AUDIO_BYTES ? invalid("音频文件不能为空。", "ASSET_INVALID_AUDIO")
-                    : invalid("图片文件不能为空。", "ASSET_INVALID_IMAGE");
+                    ? invalid(ApiMessage.of("api.local-asset-storage.video-file-cannot-be-empty"), "ASSET_INVALID_VIDEO")
+                    : maximum == MAX_AUDIO_BYTES ? invalid(ApiMessage.of("api.local-asset-storage.audio-file-cannot-be-empty"), "ASSET_INVALID_AUDIO")
+                    : invalid(ApiMessage.of("api.local-asset-storage.image-file-cannot-be-empty"), "ASSET_INVALID_IMAGE");
         }
         return count;
     }
@@ -797,11 +798,11 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     private ImageDetails inspectImage(Path file) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(file.toFile())) {
             if (input == null) {
-                throw invalid("无法解码图片。", "ASSET_INVALID_IMAGE");
+                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-picture"), "ASSET_INVALID_IMAGE");
             }
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
             if (!readers.hasNext()) {
-                throw invalid("仅支持可解码的 PNG、JPEG 或 WebP 图片。", "ASSET_INVALID_IMAGE");
+                throw invalid(ApiMessage.of("api.local-asset-storage.only-decodable-png-jpeg-or-webp-images-are-supported"), "ASSET_INVALID_IMAGE");
             }
             ImageReader reader = readers.next();
             try {
@@ -819,21 +820,21 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                     contentType = "image/webp";
                     extension = ".webp";
                 } else {
-                    throw invalid("暂不支持该图片编码。", "ASSET_UNSUPPORTED_IMAGE");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.this-image-encoding-is-not-supported-yet"), "ASSET_UNSUPPORTED_IMAGE");
                 }
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 if (width < 1 || height < 1 || (long) width * height > MAX_IMAGE_PIXELS) {
-                    throw invalid("图片像素超出 40 MP 限制。", "ASSET_TOO_MANY_PIXELS");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.image-pixels-exceed-40-mp-limit"), "ASSET_TOO_MANY_PIXELS");
                 }
                 BufferedImage decoded = reader.read(0);
                 if (decoded == null || decoded.getWidth() != width
                         || decoded.getHeight() != height) {
-                    throw invalid("图片解码失败。", "ASSET_INVALID_IMAGE");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"), "ASSET_INVALID_IMAGE");
                 }
                 return new ImageDetails(contentType, extension, width, height, decoded);
             } catch (IOException | IndexOutOfBoundsException exception) {
-                throw invalid("图片解码失败。", "ASSET_INVALID_IMAGE");
+                throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"), "ASSET_INVALID_IMAGE");
             } finally {
                 reader.dispose();
             }
@@ -841,9 +842,9 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     }
 
     /** 将不可解码、超限或不支持的媒体映射为稳定 422 错误。 */
-    private ApiProblemException invalid(String detail, String code) {
+    private ApiProblemException invalid(ApiMessage detail, String code) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, code,
-                "素材无效", detail, false);
+                ApiMessage.of("api.local-asset-storage.invalid-material"), detail, false);
     }
 
     /** 图像解码得到的媒体类型、尺寸及用于生成缩略图的像素缓冲。

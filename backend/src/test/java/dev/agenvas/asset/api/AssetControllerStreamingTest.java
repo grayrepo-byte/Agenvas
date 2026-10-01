@@ -55,7 +55,9 @@ class AssetControllerStreamingTest {
         when(service.open(org.mockito.ArgumentMatchers.eq(descriptor), org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong())).thenAnswer(invocation ->
                         storage.open("large-video.mp4", invocation.getArgument(1), invocation.getArgument(2), size));
-        AssetController controller = new AssetController(service);
+        AssetController controller = new AssetController(service,
+                new dev.agenvas.shared.i18n.ApiMessages(new dev.agenvas.shared.i18n.I18nConfiguration().messageSource(),
+                        new tools.jackson.databind.ObjectMapper()));
 
         ResponseEntity<InputStreamResource> full = controller.content(
                 principal, projectId, assetId, null);

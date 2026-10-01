@@ -1,5 +1,6 @@
 package dev.agenvas.artifact.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -47,7 +48,7 @@ public class ArtifactContentValidator {
         requireObject(content, "content");
         if (content.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
                 > MAX_CONTENT_BYTES) {
-            throw invalid("content 不能超过 256 KiB。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.content-cannot-exceed-256-kib"));
         }
         rejectProtectedFields(content);
         return switch (kind) {
@@ -90,7 +91,7 @@ public class ArtifactContentValidator {
         Set<String> allowed = Set.of(allowedNames);
         for (String propertyName : content.propertyNames()) {
             if (!allowed.contains(propertyName)) {
-                throw invalid("content 包含不允许的字段：" + propertyName + "。");
+                throw invalid(ApiMessage.of("api.artifact-content-validator.content-contains-a-disallowed-field", propertyName));
             }
         }
     }
@@ -103,7 +104,7 @@ public class ArtifactContentValidator {
         while (!pending.isEmpty()) {
             JsonNode node = pending.removeFirst();
             if (++visited > MAX_CONTENT_NODES) {
-                throw invalid("content 结构过于复杂。");
+                throw invalid(ApiMessage.of("api.artifact-content-validator.the-content-structure-is-too-complex"));
             }
             if (node.isObject()) {
                 for (String propertyName : node.propertyNames()) {
@@ -112,7 +113,7 @@ public class ArtifactContentValidator {
                             .replace("-", "")
                             .toLowerCase(java.util.Locale.ROOT);
                     if (PROTECTED_FIELD_NAMES.contains(normalized)) {
-                        throw invalid("content 不能包含受保护字段：" + propertyName + "。");
+                        throw invalid(ApiMessage.of("api.artifact-content-validator.content-cannot-contain-the-protected-field", propertyName));
                     }
                     pending.addLast(node.get(propertyName));
                 }
@@ -125,7 +126,7 @@ public class ArtifactContentValidator {
     /** 要求字段存在且为 JSON 对象。 */
     private void requireObject(JsonNode value, String field) {
         if (value == null || !value.isObject()) {
-            throw invalid(field + " 必须是 JSON 对象。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-json-object", field));
         }
     }
 
@@ -133,11 +134,11 @@ public class ArtifactContentValidator {
     private String requireText(JsonNode content, String field, int minimum, int maximum) {
         JsonNode value = content.get(field);
         if (value == null || !value.isString()) {
-            throw invalid(field + " 必须是字符串。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-string", field));
         }
         String text = value.stringValue().trim();
         if (text.length() < minimum || text.length() > maximum) {
-            throw invalid(field + " 长度必须在 " + minimum + " 到 " + maximum + " 之间。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.the-length-of-must-be-between-and", field, minimum, maximum));
         }
         return text;
     }
@@ -149,7 +150,7 @@ public class ArtifactContentValidator {
             return;
         }
         if (!value.isString() || value.stringValue().length() > maximum) {
-            throw invalid(field + " 必须是长度不超过 " + maximum + " 的字符串。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-string-no-longer-than-characters", field, maximum));
         }
     }
 
@@ -157,7 +158,7 @@ public class ArtifactContentValidator {
     private void requireEnum(JsonNode content, String field, String... values) {
         String actual = requireText(content, field, 1, 80);
         if (!Set.of(values).contains(actual)) {
-            throw invalid(field + " 不在允许的枚举值中。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.is-not-an-allowed-enum-value", field));
         }
     }
 
@@ -165,11 +166,11 @@ public class ArtifactContentValidator {
     private int requireInteger(JsonNode content, String field, int minimum, int maximum) {
         JsonNode value = content.get(field);
         if (value == null || !value.isIntegralNumber()) {
-            throw invalid(field + " 必须是整数。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-an-integer", field));
         }
         int number = value.intValue();
         if (number < minimum || number > maximum) {
-            throw invalid(field + " 必须在 " + minimum + " 到 " + maximum + " 之间。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-between-and", field, minimum, maximum));
         }
         return number;
     }
@@ -182,21 +183,21 @@ public class ArtifactContentValidator {
     /** 解析 UUID 字符串并将结构错误转换为产物 Schema 错误。 */
     private UUID parseUuid(JsonNode value, String field) {
         if (value == null || !value.isString()) {
-            throw invalid(field + " 必须是 UUID 字符串。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-uuid-string", field));
         }
         try {
             return UUID.fromString(value.stringValue());
         } catch (IllegalArgumentException invalidUuid) {
-            throw invalid(field + " 必须是 UUID 字符串。");
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-uuid-string", field));
         }
     }
 
     /** 将正文结构或字段约束失败映射为稳定的 HTTP 400 错误。 */
-    private ApiProblemException invalid(String detail) {
+    private ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "ARTIFACT_SCHEMA_INVALID",
-                "产物内容无效",
+                ApiMessage.of("api.artifact-content-validator.product-content-is-invalid"),
                 detail,
                 false);
     }

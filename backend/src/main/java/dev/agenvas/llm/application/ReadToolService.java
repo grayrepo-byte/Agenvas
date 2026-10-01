@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.project.application.ProjectService;
@@ -59,7 +60,7 @@ public class ReadToolService {
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         if (!input.isEmpty()) {
-            throw invalid("read_project_summary takes no arguments");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-project-summary-takes-no-arguments"));
         }
         Project project = projects.get(context.ownerId(), context.projectId());
         ObjectNode output = result(operationId, "已读取项目概要");
@@ -82,7 +83,7 @@ public class ReadToolService {
     public JsonNode selection(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         if (!input.isEmpty()) {
-            throw invalid("read_selection takes no arguments");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-selection-takes-no-arguments"));
         }
         JsonNode selected = run.contextSnapshot().path("selection");
         if (!selected.isMissingNode() && (!selected.isArray()
@@ -100,12 +101,12 @@ public class ReadToolService {
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         if (input.size() != 1 || !input.has("versionIds")) {
-            throw invalid("read_artifacts requires only versionIds");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-artifacts-requires-only-versionids"));
         }
         JsonNode requested = input.path("versionIds");
         if (!requested.isArray() || requested.isEmpty()
                 || requested.size() > MAX_READ_VERSIONS) {
-            throw invalid("read_artifacts requires one to twelve version IDs");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-artifacts-requires-one-to-twelve-version-ids"));
         }
         List<UUID> versionIds = validatedIds(requested, "read_artifacts");
         ObjectNode output = result(operationId, "已读取允许范围内的产物版本");
@@ -151,11 +152,11 @@ public class ReadToolService {
     public JsonNode taskStatus(TrustedToolContext context, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         if (input.size() != 1 || !input.has("taskIds")) {
-            throw invalid("read_task_status requires only taskIds");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-task-status-requires-only-taskids"));
         }
         JsonNode requested = input.path("taskIds");
         if (!requested.isArray() || requested.isEmpty() || requested.size() > MAX_READ_TASKS) {
-            throw invalid("read_task_status requires one to twelve task IDs");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-task-status-requires-one-to-twelve-task-ids"));
         }
         List<UUID> taskIds = validatedIds(requested, "read_task_status");
         ObjectNode output = result(operationId, "已读取本次运行的任务状态");
@@ -164,7 +165,7 @@ public class ReadToolService {
             Task task = tasks.get(context.ownerId(), context.projectId(), taskId);
             if (!context.runId().equals(task.runId())) {
                 throw new ApiProblemException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND",
-                        "任务不存在", "Task is not accessible to this Run", false);
+                        ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.read-tool-service.task-is-not-accessible-to-this-run"), false);
             }
             ObjectNode item = items.addObject();
             item.put("taskId", task.id().toString());
@@ -219,10 +220,10 @@ public class ReadToolService {
         try {
             value = mapper.readTree(arguments);
         } catch (RuntimeException malformed) {
-            throw invalid("Read tool arguments are not valid JSON");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-tool-arguments-are-not-valid-json"));
         }
         if (!(value instanceof ObjectNode object)) {
-            throw invalid("Read tool arguments must be an object");
+            throw invalid(ApiMessage.of("api.read-tool-service.read-tool-arguments-must-be-an-object"));
         }
         return object;
     }
@@ -230,12 +231,12 @@ public class ReadToolService {
     /** 只接受 UUID 文本节点，避免 Jackson 对数字等类型进行宽松转换。 */
     private UUID uuid(JsonNode value) {
         if (!value.isTextual()) {
-            throw invalid("IDs must contain UUID strings");
+            throw invalid(ApiMessage.of("api.read-tool-service.ids-must-contain-uuid-strings"));
         }
         try {
             return UUID.fromString(value.asText());
         } catch (IllegalArgumentException malformed) {
-            throw invalid("IDs must contain UUID strings");
+            throw invalid(ApiMessage.of("api.read-tool-service.ids-must-contain-uuid-strings"));
         }
     }
 
@@ -246,7 +247,7 @@ public class ReadToolService {
         for (JsonNode supplied : requested) {
             UUID id = uuid(supplied);
             if (!unique.add(id)) {
-                throw invalid(toolName + " IDs must be unique");
+                throw invalid(ApiMessage.of("api.read-tool-service.ids-must-be-unique", toolName));
             }
             ids.add(id);
         }
@@ -254,8 +255,8 @@ public class ReadToolService {
     }
 
     /** 构造读取工具输入不符合契约时的 400 问题响应。 */
-    private ApiProblemException invalid(String detail) {
+    private ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
-                "工具参数无效", detail, false);
+                ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"), detail, false);
     }
 }

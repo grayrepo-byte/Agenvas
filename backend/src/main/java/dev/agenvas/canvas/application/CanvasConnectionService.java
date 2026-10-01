@@ -1,5 +1,6 @@
 package dev.agenvas.canvas.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
@@ -74,14 +75,14 @@ public class CanvasConnectionService {
             if (sourceArtifact.kind() != Artifact.Kind.IMAGE
                     && (sourceArtifact.kind() != Artifact.Kind.AUDIO
                         || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
-                throw invalid("画布图片输入连线必须从 IMAGE 卡片发起。");
+                throw invalid(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
             }
             if (sourceVersionId == null
                     || !sourceVersionId.equals(source.selectedVersionId())) {
-                throw conflict("拖拽期间来源图片版本已变化，请重新连接。");
+                throw conflict(ApiMessage.of("api.canvas-connection-service.the-source-image-version-has-changed-during-dragging-please-reconnect"));
             }
             if (relationType == CanvasConnection.RelationType.MEDIA_DERIVATION) {
-                throw invalid("媒体派生线只能由媒体变更命令创建。");
+                throw invalid(ApiMessage.of("api.canvas-connection-service.media-derived-lines-can-only-be-created-by-media-change"));
             }
             artifacts.requireVersion(ownerId, projectId, source.subjectId(), sourceVersionId);
             List<CanvasConnection> current = connections.list(ownerId, projectId);
@@ -89,10 +90,10 @@ public class CanvasConnectionService {
                     connection.sourceCanvasItemId().equals(sourceItemId)
                             && connection.targetCanvasItemId().equals(targetItemId)
                             && connection.relationType() == relationType)) {
-                throw conflict("这两张卡片之间已经存在同类连线。");
+                throw conflict(ApiMessage.of("api.canvas-connection-service.there-is-already-a-connection-of-the-same-kind-between"));
             }
             if (reaches(current, targetItemId, sourceItemId)) {
-                throw invalid("该连线会形成 CanvasItem 环路。");
+                throw invalid(ApiMessage.of("api.canvas-connection-service.this-connection-forms-a-canvasitem-loop"));
             }
             Instant now = clock.instant();
             CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
@@ -107,7 +108,7 @@ public class CanvasConnectionService {
                         target.subjectId()).artifact();
                 if (targetArtifact.kind() == Artifact.Kind.TEXT
                         || expectedTargetDraftVersion == null) {
-                    throw invalid("媒体输入连线必须指向带草稿版本的图片或视频卡片。");
+                    throw invalid(ApiMessage.of("api.canvas-connection-service.the-media-input-connection-must-point-to-the-image-or"));
                 }
                 draft = drafts.addConnectionInputWithinChange(ownerId, projectId,
                         targetItemId, expectedTargetDraftVersion, sourceVersionId,
@@ -115,13 +116,13 @@ public class CanvasConnectionService {
             } else if (relationType == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
                 CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId, targetItemId);
                 if (expectedTargetAgentVersion == null) {
-                    throw invalid("Agent 图片连线必须携带目标 Agent 版本。");
+                    throw invalid(ApiMessage.of("api.canvas-connection-service.the-agent-image-connection-must-carry-the-target-agent-version"));
                 }
                 agent = agents.addImageBindingWithinChange(ownerId, projectId,
                         target.subjectId(), expectedTargetAgentVersion,
                         sourceArtifact.id(), sourceVersionId);
             } else {
-                throw invalid("不支持的画布连线类型。");
+                throw invalid(ApiMessage.of("api.canvas-connection-service.unsupported-canvas-wire-type"));
             }
             return ProjectEventService.Change.changed(new ConnectionResult(connection, draft, agent),
                     connectionEvent(connection, "canvas.connection.created"));
@@ -142,7 +143,7 @@ public class CanvasConnectionService {
                 || !source.subjectId().equals(target.subjectId())
                 || !sourceVersionId.equals(source.selectedVersionId())
                 || !sourceVersionId.equals(target.selectedVersionId())) {
-            throw invalid("媒体派生线必须连接同一媒体产物中固定来源版本与新结果节点。");
+            throw invalid(ApiMessage.of("api.canvas-connection-service.media-derivation-lines-must-connect-fixed-source-versions-and-new"));
         }
         Instant now = clock.instant();
         CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
@@ -164,19 +165,19 @@ public class CanvasConnectionService {
             MediaDraft draft = null;
             AgentInstance agent = null;
             if (connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT) {
-                if (expectedTargetDraftVersion == null) throw invalid("断开媒体连线缺少草稿版本。");
+                if (expectedTargetDraftVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnected-media-is-missing-draft-versions"));
                 draft = drafts.removeConnectionInputWithinChange(ownerId, projectId,
                         connection.targetCanvasItemId(), expectedTargetDraftVersion, connectionId);
             } else if (connection.relationType()
                     == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
                 CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId,
                         connection.targetCanvasItemId());
-                if (expectedTargetAgentVersion == null) throw invalid("断开 Agent 连线缺少 Agent 版本。");
+                if (expectedTargetAgentVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnecting-agent-missing-agent-version"));
                 agent = removeAgentBindingIfFinal(ownerId, projectId, connection,
                         target.subjectId(), expectedTargetAgentVersion);
             }
             if (!connections.delete(projectId, connectionId)) {
-                throw conflict("连线已被其他操作删除。");
+                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             }
             return ProjectEventService.Change.changed(new ConnectionResult(connection, draft, agent),
                     connectionEvent(connection, "canvas.connection.deleted"));
@@ -192,7 +193,7 @@ public class CanvasConnectionService {
             MediaDraft before = drafts.get(ownerId, projectId, targetCanvasItemId);
             MediaDraft.MediaInput input = before.mediaInputs().stream()
                     .filter(candidate -> candidate.versionId().equals(imageVersionId))
-                    .findFirst().orElseThrow(() -> invalid("媒体草稿中没有该图片输入。"));
+                    .findFirst().orElseThrow(() -> invalid(ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft")));
             MediaDraft updated = drafts.removeMediaInputWithinChange(ownerId, projectId,
                     targetCanvasItemId, expectedDraftVersion, imageVersionId);
             List<UUID> connectionIds = input.sources().stream()
@@ -202,7 +203,7 @@ public class CanvasConnectionService {
                     .toList();
             for (UUID connectionId : connectionIds) {
                 if (!connections.delete(projectId, connectionId)) {
-                    throw conflict("图片输入关联的连线已被其他操作删除。");
+                    throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-associated-with-the-image-input-has-been-deleted"));
                 }
             }
             ObjectNode payload = mapper.createObjectNode();
@@ -246,7 +247,7 @@ public class CanvasConnectionService {
                         current.version());
             }
             if (!connections.delete(projectId, connection.id())) {
-                throw conflict("连线已被其他操作删除。");
+                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             }
         }
     }
@@ -270,7 +271,7 @@ public class CanvasConnectionService {
         MediaDraft current = drafts.get(ownerId, projectId, targetCanvasItemId);
         if (current.version() != expectedDraftVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    "草稿版本冲突", "恢复历史输入前目标草稿已变化。", true);
+                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.canvas-connection-service.the-target-draft-has-changed-before-restoring-history-input"), true);
         }
         List<CanvasConnection> affected = connections.list(ownerId, projectId).stream()
                 .filter(connection -> connection.targetCanvasItemId().equals(targetCanvasItemId)
@@ -280,7 +281,7 @@ public class CanvasConnectionService {
             current = drafts.removeConnectionInputWithinChange(ownerId, projectId,
                     targetCanvasItemId, current.version(), connection.id());
             if (!connections.delete(projectId, connection.id())) {
-                throw conflict("恢复输入时连线已被其他操作删除。");
+                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-has-been-deleted-by-other-operations-when-restoring"));
             }
         }
         return current.version();
@@ -314,17 +315,17 @@ public class CanvasConnectionService {
 
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
-                "连线不存在", "连线不存在或当前用户无权访问。", false);
+                ApiMessage.of("api.canvas-connection-service.the-connection-does-not-exist"), ApiMessage.of("api.canvas-connection-service.the-connection-does-not-exist-or-the-current-user-does"), false);
     }
 
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                "画布连线无效", detail, false);
+                ApiMessage.of("api.canvas-connection-service.canvas-connection-is-invalid"), detail, false);
     }
 
-    private static ApiProblemException conflict(String detail) {
+    private static ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_CONNECTION_CONFLICT",
-                "画布连线冲突", detail, true);
+                ApiMessage.of("api.canvas-connection-service.canvas-connection-conflict"), detail, true);
     }
 
     public record ConnectionResult(CanvasConnection connection, MediaDraft draft,

@@ -120,14 +120,15 @@ class ToolAuthorityPostgresIT {
                     .as(field).isInstanceOfSatisfying(ApiProblemException.class, error -> {
                         assertThat(error.code()).isEqualTo("TOOL_ARGUMENT_INVALID");
                         // 拒绝原因必须是未知字段，而不是被当作有效参数接受。
-                        assertThat(error.getMessage())
-                                .contains("create_text has an unknown field");
+                        assertThat(error.detail().key())
+                                .isEqualTo("api.tool-execution-service.create-text-has-an-unknown-field");
                     });
         }
         assertThatThrownBy(() -> executor.execute(trusted, 0, "forged-approval"))
                 .as("approve_plan").isInstanceOfSatisfying(ApiProblemException.class, error -> {
                     assertThat(error.code()).isEqualTo("TOOL_ARGUMENT_INVALID");
-                    assertThat(error.getMessage()).contains("not allowlisted");
+                    assertThat(error.detail().key())
+                            .isEqualTo("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime");
                 });
         assertNoCommittedWork(project.id(), running.id());
 

@@ -6,10 +6,13 @@ info:
     Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
     部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects 与 /api/v1/settings 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
+    所有 API 接受 Accept-Language 语言协商（en、zh、ru、ja，地区变体按基础语言匹配；不支持、缺失或无效时回退 zh，q=0 不选用）。响应携带 Content-Language 与 Vary: Accept-Language，包括认证和 CSRF 错误。Problem 的 title、detail、fieldErrors.message 使用协商语言；code、状态、字段路径、ID 和用户内容不随语言变化。语言偏好仅由浏览器保存，无账号配置 API 或数据库迁移。
 servers:
   - url: /
 paths:
   /api/v1/settings/system-logs:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: listSystemLogs
       summary: 读取当前后端进程的 stdout / stderr
@@ -43,6 +46,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/call-logs:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: listCallLogs
       summary: 分页读取管理员本人项目的调用审计元数据
@@ -88,6 +93,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/settings/debug:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getDebugSettings
       summary: 读取系统 debug 模式（默认关闭，仅管理员）
@@ -127,6 +134,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/call-logs/{id}/debug:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getCallDebug
       summary: 查看本人项目的脱敏原始调用详情
@@ -150,6 +159,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/auth/setup-status:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getSetupStatus
       summary: 查询是否需要初始化管理员
@@ -166,6 +177,8 @@ paths:
               schema: {$ref: "#/components/schemas/SetupStatus"}
         "500": {$ref: "#/components/responses/InternalError"}
   /api/v1/auth/csrf:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getCsrfToken
       summary: 获取浏览器写请求所需的 CSRF token
@@ -181,6 +194,8 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/CsrfToken"}
   /api/v1/auth/setup:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: setupAdministrator
       summary: 一次性创建管理员
@@ -206,6 +221,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/auth/login:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: login
       summary: 创建数据库持久化会话
@@ -226,6 +243,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "429": {$ref: "#/components/responses/RateLimited"}
   /api/v1/auth/logout:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: logout
       summary: 退出并失效当前会话
@@ -235,6 +254,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/auth/me:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getCurrentUser
       summary: 获取当前管理员
@@ -247,6 +268,8 @@ paths:
               schema: {$ref: "#/components/schemas/CurrentUser"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
   /api/v1/auth/change-password:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: changePassword
       summary: 修改密码并失效其他会话
@@ -264,6 +287,8 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/RateLimited"}
   /api/v1/settings/storage:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getStorageSettings
       summary: Read administrator storage destinations without credentials
@@ -279,6 +304,8 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /api/v1/settings/storage/profiles:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: createStorageProfile
       summary: Save an encrypted immutable destination without activating it
@@ -299,6 +326,8 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/v1/settings/storage/active:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     put:
       operationId: activateStorageProfile
       summary: Switch future archives only; existing assets retain their location
@@ -319,6 +348,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/settings/storage/profiles/{profileId}/credentials:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - in: path
         name: profileId
         required: true
@@ -344,6 +374,8 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /api/v1/settings/llm:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getLlmSettings
       summary: 读取管理员模型配置的脱敏状态
@@ -382,6 +414,8 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/settings/diagnostics:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getSystemDiagnostics
       summary: 读取管理员本地系统诊断，不连接或生成付费 Provider 请求
@@ -397,6 +431,8 @@ paths:
               schema: {$ref: "#/components/schemas/SystemDiagnostics"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
   /api/v1/settings/llm/diagnose:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: diagnoseLlmSettings
       summary: 管理员显式发起最多两次可能计费的工具协议诊断
@@ -430,6 +466,8 @@ paths:
             application/problem+json:
               schema: {$ref: "#/components/schemas/Problem"}
   /api/v1/settings/media-connections:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getMediaSettings
       summary: 读取脱敏媒体连接、能力及默认值
@@ -468,6 +506,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/media-connections/{connectionId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - name: connectionId
         in: path
         required: true
@@ -491,6 +530,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/media-connections/{connectionId}/runninghub/preview:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: previewRunningHubImport
       summary: 只读发现或导入 RunningHub 参数候选，不提交生成
@@ -526,6 +567,7 @@ paths:
               schema: {$ref: "#/components/schemas/Problem"}
   /api/v1/settings/media-connections/{connectionId}/capabilities:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - name: connectionId
         in: path
         required: true
@@ -555,6 +597,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - name: connectionId
         in: path
         required: true
@@ -583,6 +626,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/media-defaults/{kind}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - name: kind
         in: path
         required: true
@@ -606,6 +650,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: listProjects
       summary: 游标分页列出当前用户项目
@@ -642,6 +688,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/projects/{projectId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: getProject
@@ -677,6 +724,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/archive:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: archiveProject
@@ -700,6 +748,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/snapshot:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: getProjectSnapshot
@@ -715,6 +764,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/export-manifest:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: getProjectExportManifest
@@ -733,6 +783,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/usage:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: listProjectUsage
@@ -750,6 +801,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/events:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: streamProjectEvents
@@ -776,6 +828,7 @@ paths:
         "429": {$ref: "#/components/responses/RateLimited"}
   /api/v1/projects/{projectId}/assets:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: uploadImageAsset
@@ -805,6 +858,7 @@ paths:
         "422": {description: 图片格式、解码或像素限制未通过}
   /api/v1/projects/{projectId}/assets/audio:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: uploadAudioAsset
@@ -834,6 +888,7 @@ paths:
         "422": {description: 音频格式、解码或像素限制未通过}
   /api/v1/projects/{projectId}/assets/video:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: uploadVideoAsset
@@ -863,6 +918,7 @@ paths:
         "422": {description: 视频格式、解码或像素限制未通过}
   /api/v1/projects/{projectId}/assets/{assetId}/content:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: assetId
         in: path
@@ -912,6 +968,7 @@ paths:
         "416": {description: 请求的字节范围不可用}
   /api/v1/projects/{projectId}/assets/{assetId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: assetId
         in: path
@@ -931,6 +988,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/assets/{assetId}/thumbnail:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: assetId
         in: path
@@ -952,6 +1010,7 @@ paths:
         "503": {$ref: "#/components/responses/ObjectStorageFailure"}
   /api/v1/projects/{projectId}/artifacts:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: listArtifacts
@@ -995,6 +1054,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     get:
@@ -1011,6 +1071,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/CanvasItemId"}
     get:
@@ -1046,6 +1107,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/restore-version-inputs:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/CanvasItemId"}
     post:
@@ -1069,6 +1131,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/media-inputs/{versionId}/remove:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/CanvasItemId"}
       - name: versionId
@@ -1096,6 +1159,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/connections:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: listCanvasConnections
@@ -1130,6 +1194,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/connections/{connectionId}/disconnect:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: connectionId
         in: path
@@ -1156,6 +1221,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/run:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     get:
@@ -1201,6 +1267,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/text-generations:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     get:
@@ -1241,6 +1308,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/image-operations:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     post:
@@ -1270,6 +1338,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: taskId
         in: path
@@ -1290,6 +1359,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/tasks/{taskId}/queue:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: taskId
         in: path
@@ -1309,6 +1379,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/revisions:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     post:
@@ -1333,6 +1404,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/versions:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     get:
@@ -1349,6 +1421,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/set-default-version:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/ArtifactId"}
     post:
@@ -1373,6 +1446,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/upload-version:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {$ref: "#/components/parameters/CanvasItemId"}
     post:
@@ -1398,6 +1472,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/items/{itemId}/media-versions:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {name: itemId, in: path, required: true, schema: {type: string, format: uuid}}
     get:
@@ -1415,6 +1490,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/canvas/items/{itemId}/select-media-version:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - {name: itemId, in: path, required: true, schema: {type: string, format: uuid}}
     post:
@@ -1439,6 +1515,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/items:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: listCanvasItems
@@ -1454,6 +1531,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/agents:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: listAgents
@@ -1487,6 +1565,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/agents/{agentId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: agentId
         in: path
@@ -1525,6 +1604,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/agents/{agentId}/conversations:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: agentId
         in: path
@@ -1571,6 +1651,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/select:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: agentId
         in: path
@@ -1594,6 +1675,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/runs:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: agentId
         in: path
@@ -1625,6 +1707,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/runs:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: listAgentRuns
@@ -1680,6 +1763,7 @@ paths:
         "503": {$ref: "#/components/responses/ServiceStopping"}
   /api/v1/projects/{projectId}/runs/preflight:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     get:
       operationId: getRunPreflight
@@ -1706,6 +1790,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/runs/{runId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: runId
         in: path
@@ -1725,6 +1810,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/runs/{runId}/actions:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: runId
         in: path
@@ -1748,6 +1834,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/runs/{runId}/cancel:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: runId
         in: path
@@ -1768,6 +1855,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/runs/{runId}/tasks:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: runId
         in: path
@@ -1789,6 +1877,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/tasks/{taskId}:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: taskId
         in: path
@@ -1808,6 +1897,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/tasks/{taskId}/new-attempt:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: taskId
         in: path
@@ -1839,6 +1929,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/commands:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: applyCanvasCommands
@@ -1862,6 +1953,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/canvas/items/{sourceItemId}/duplicate:
     parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
       - name: sourceItemId
         in: path
@@ -1887,6 +1979,8 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/library/entries:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: "listLibraryEntries"
       responses:
@@ -1938,6 +2032,8 @@ paths:
             type: "string"
             maxLength: 1000
   /api/v1/library/entries/{entryId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: "getLibraryEntry"
       responses:
@@ -2014,6 +2110,8 @@ paths:
             minimum: 0
           required: true
   /api/v1/library/entries/{entryId}/trash:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: "trashLibraryEntry"
       responses:
@@ -2043,6 +2141,8 @@ paths:
             schema:
               $ref: "#/components/schemas/LibraryVersionRequest"
   /api/v1/library/entries/{entryId}/restore:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: "restoreLibraryEntry"
       responses:
@@ -2072,6 +2172,8 @@ paths:
             schema:
               $ref: "#/components/schemas/LibraryVersionRequest"
   /api/v1/library/entries/{entryId}/content:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: "getLibraryContent"
       responses:
@@ -2118,6 +2220,8 @@ paths:
             type: "string"
             format: "uuid"
   /api/v1/library/entries/{entryId}/thumbnail:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: "getLibraryThumbnail"
       responses:
@@ -2142,6 +2246,8 @@ paths:
             type: "string"
             format: "uuid"
   /api/v1/library/commands/{commandId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: "getLibraryCommand"
       responses:
@@ -2165,6 +2271,8 @@ paths:
             type: "string"
             format: "uuid"
   /api/v1/library/commands/{commandId}/retry:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: "retryLibraryCommand"
       responses:
@@ -2188,6 +2296,8 @@ paths:
             type: "string"
             format: "uuid"
   /api/v1/projects/{projectId}/canvas-items/{itemId}/library-saves:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: "getLibrarySaveSource"
       responses:
@@ -2251,6 +2361,8 @@ paths:
             schema:
               $ref: "#/components/schemas/SaveLibraryRequest"
   /api/v1/projects/{projectId}/library-imports:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: "importLibraryEntry"
       responses:
@@ -2280,6 +2392,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ImportLibraryRequest"
   /api/v1/projects/{projectId}/canvas-items/{itemId}/library-references:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: "referenceLibraryEntry"
       responses:
@@ -2315,6 +2429,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ReferenceLibraryRequest"
   /api/v1/library/uploads:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: "uploadLibraryEntry"
       responses:
@@ -2471,6 +2587,7 @@ components:
           type: ["string", "null"]
         errorDetail:
           type: ["string", "null"]
+          description: Public failure explanation localized using Accept-Language. Internal message keys and interpolation arguments are never exposed.
     LibrarySource:
       type: "object"
       additionalProperties: false
@@ -2893,6 +3010,7 @@ components:
         definition: {$ref: "#/components/schemas/RunningHubDefinition"}
         warnings:
           type: array
+          description: Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content.
           items: {type: string}
     MediaCapabilityPricing:
       type: object
@@ -4358,60 +4476,107 @@ components:
   responses:
     ValidationError:
       description: 请求参数无效
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     Unauthenticated:
       description: 未登录或凭据不正确
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     Forbidden:
       description: CSRF、初始化凭据或权限校验失败
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     Conflict:
       description: 初始化或乐观版本冲突
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     NotFound:
       description: 资源不存在或当前用户无权访问
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     RateLimited:
       description: 认证尝试次数过多
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     InternalError:
       description: 服务端错误
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     ProviderFailure:
       description: 原 Provider 请求核对不可用或身份不匹配，任务仍为 UNKNOWN
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     ObjectStorageFailure:
       description: 对象存储连接、权限或网络不可用；生成结果只重试归档，不重新生成
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     Unavailable:
       description: 部署凭证加密主密钥尚未配置
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
     ServiceStopping:
       description: 实例正在关闭，拒绝创建新的 Agent Run；稍后以新的请求重试
+      headers:
+        Content-Language: {$ref: "#/components/headers/ContentLanguage"}
+        Vary: {$ref: "#/components/headers/VaryLanguage"}
       content:
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
+  headers:
+    ContentLanguage:
+      description: 协商后的界面语言；不改变用户内容、枚举或错误码。
+      schema: {type: string, enum: [en, zh, ru, ja]}
+    VaryLanguage:
+      description: 包含 Accept-Language，避免不同语言的响应共用缓存。
+      schema: {type: string}
   parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+      schema: {type: string}
+      example: ru-RU, en;q=0.8
     ProjectId:
       name: projectId
       in: path

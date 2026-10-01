@@ -1,5 +1,6 @@
 package dev.agenvas.artifact.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
@@ -22,15 +23,15 @@ public record VideoGenerationParameters(String aspectRatio) {
         if (input == null || input.isMissingNode() || input.isNull()) {
             return new VideoGenerationParameters(AUTO_ASPECT_RATIO);
         }
-        if (!input.isObject()) throw invalid("视频生成参数必须是对象。");
+        if (!input.isObject()) throw invalid(ApiMessage.of("api.video-generation-parameters.video-generation-parameters-must-be-objects"));
         for (String field : input.propertyNames()) {
-            if (!FIELDS.contains(field)) throw invalid("视频生成参数包含未知字段：" + field + "。");
+            if (!FIELDS.contains(field)) throw invalid(ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", field));
         }
         JsonNode value = input.get("aspectRatio");
         String aspectRatio = value == null ? AUTO_ASPECT_RATIO
                 : value.isTextual() && !value.asText().isBlank() ? value.asText() : null;
         if (aspectRatio == null || !ASPECT_RATIOS.contains(aspectRatio)) {
-            throw invalid("视频比例必须为 AUTO、16:9、9:16 或 1:1。");
+            throw invalid(ApiMessage.of("api.video-generation-parameters.video-ratio-must-be-auto-16-9-9-16-or"));
         }
         return new VideoGenerationParameters(aspectRatio);
     }
@@ -41,8 +42,8 @@ public record VideoGenerationParameters(String aspectRatio) {
         return result;
     }
 
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                "视频生成参数无效", detail, false);
+                ApiMessage.of("api.video-generation-parameters.invalid-video-generation-parameters"), detail, false);
     }
 }

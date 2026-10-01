@@ -1,5 +1,6 @@
 package dev.agenvas.identity.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -72,23 +73,23 @@ public class IdentityService {
                 .orElseThrow(() -> new ApiProblemException(
                         HttpStatus.UNAUTHORIZED,
                         "UNAUTHENTICATED",
-                        "登录已失效",
-                        "当前管理员账户不可用，请重新登录。",
+                        ApiMessage.of("api.identity-service.login-has-expired"),
+                        ApiMessage.of("api.identity-service.the-current-administrator-account-is-unavailable-please-log-in-again"),
                         false));
         if (!passwordEncoder.matches(currentPassword, account.passwordHash())) {
             throw new ApiProblemException(
                     HttpStatus.UNAUTHORIZED,
                     "CURRENT_PASSWORD_INVALID",
-                    "当前密码不正确",
-                    "请核对当前密码后重试。",
+                    ApiMessage.of("api.identity-service.the-current-password-is-incorrect"),
+                    ApiMessage.of("api.identity-service.please-check-the-current-password-and-try-again"),
                     false);
         }
         if (passwordEncoder.matches(newPassword, account.passwordHash())) {
             throw new ApiProblemException(
                     HttpStatus.BAD_REQUEST,
                     "PASSWORD_UNCHANGED",
-                    "新密码未变化",
-                    "新密码必须与当前密码不同。",
+                    ApiMessage.of("api.identity-service.new-password-unchanged"),
+                    ApiMessage.of("api.identity-service.the-new-password-must-be-different-from-the-current-password"),
                     false);
         }
         boolean updated = accounts.updatePassword(
@@ -97,8 +98,8 @@ public class IdentityService {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
                     "VERSION_CONFLICT",
-                    "账户已更新",
-                    "管理员账户已在其他请求中更新，请重新登录后再试。",
+                    ApiMessage.of("api.identity-service.account-updated"),
+                    ApiMessage.of("api.identity-service.the-administrator-account-has-been-updated-in-other-requests-please"),
                     false);
         }
     }
@@ -121,8 +122,8 @@ public class IdentityService {
             throw new ApiProblemException(
                     HttpStatus.FORBIDDEN,
                     "BOOTSTRAP_SECRET_INVALID",
-                    "初始化凭据无效",
-                    "部署提供的初始化凭据不正确。",
+                    ApiMessage.of("api.identity-service.invalid-initialization-credentials"),
+                    ApiMessage.of("api.identity-service.the-initialization-credentials-provided-by-the-deployment-are-incorrect"),
                     false);
         }
     }
@@ -130,14 +131,14 @@ public class IdentityService {
     /** 限制密码字符长度和 UTF-8 字节数，避免 BCrypt 截断产生等价密码。 */
     private void validatePassword(String password) {
         if (password == null || password.length() < 12 || password.length() > 128) {
-            throw validationProblem("密码必须为 12 至 128 个字符。");
+            throw validationProblem(ApiMessage.of("api.identity-service.password-must-be-12-to-128-characters"));
         }
         if (password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
             throw new ApiProblemException(
                     HttpStatus.BAD_REQUEST,
                     "VALIDATION_ERROR",
-                    "密码过长",
-                    "密码的 UTF-8 编码不能超过 72 字节。",
+                    ApiMessage.of("api.identity-service.password-too-long"),
+                    ApiMessage.of("api.identity-service.the-utf-8-encoding-of-the-password-cannot-exceed-72"),
                     false);
         }
     }
@@ -145,16 +146,16 @@ public class IdentityService {
     /** 仅允许规范化后的 ASCII 登录标识及规定长度。 */
     private void validateLoginName(String loginName) {
         if (!loginName.matches("[a-z0-9._-]{3,64}")) {
-            throw validationProblem("登录名必须为 3 至 64 位字母、数字、点、下划线或连字符。");
+            throw validationProblem(ApiMessage.of("api.identity-service.login-name-must-be-3-to-64-letters-numbers-dots"));
         }
     }
 
     /** 构造登录名或通用密码规则失败时使用的 400 响应。 */
-    private ApiProblemException validationProblem(String detail) {
+    private ApiProblemException validationProblem(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "请求参数无效",
+                ApiMessage.of("api.identity-service.invalid-request"),
                 detail,
                 false);
     }
@@ -164,8 +165,8 @@ public class IdentityService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "SETUP_ALREADY_COMPLETED",
-                "系统已初始化",
-                "管理员已经存在，不能再次执行初始化。",
+                ApiMessage.of("api.identity-service.system-has-been-initialized"),
+                ApiMessage.of("api.identity-service.the-administrator-already-exists-and-cannot-perform-initialization-again"),
                 false);
     }
 }

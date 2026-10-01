@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { WarningCircle } from "@phosphor-icons/react";
 import "./AgentChatPanels.css";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +9,7 @@ import { taskErrorDetail } from "./taskErrorMessages";
 export function BlockedRunNotice({ projectId, runId }: {
   projectId: string; runId: string;
 }) {
+  useLocale();
   const tasks = useQuery({
     queryKey: ["run-tasks", projectId, runId],
     queryFn: () => listRunTasks(projectId, runId),
@@ -21,19 +23,19 @@ export function BlockedRunNotice({ projectId, runId }: {
     (task.kind === "IMAGE_GENERATION" || task.kind === "VIDEO_GENERATION") &&
     task.status === "BLOCKED" && task.errorCode === "TASK_PROJECT_ARCHIVED");
   const explanation = archivedMedia ?
-    "项目已归档，尚未提交的媒体任务已阻断，不会再发起生成或扣除这笔预留。已受理的外部请求仍会核对，晚到结果仅归档到历史，不会继续编排。" : staleMedia ?
-    "镜头、参考图或人工选定的关键帧版本已变化，旧计划尚未提交的媒体任务已阻断且不会自动重试。请核对最新输入版本，停止此 Run，重新绑定当前镜头与所需素材后发起新 Run；新图片和视频计划仍须分别由你审批。" :
+    t("项目已归档，尚未提交的媒体任务已阻断，不会再发起生成或扣除这笔预留。已受理的外部请求仍会核对，晚到结果仅归档到历史，不会继续编排。") : staleMedia ?
+    t("镜头、参考图或人工选定的关键帧版本已变化，旧计划尚未提交的媒体任务已阻断且不会自动重试。请核对最新输入版本，停止此 Run，重新绑定当前镜头与所需素材后发起新 Run；新图片和视频计划仍须分别由你审批。") :
     switchOnFailure(modelFailure?.errorCode);
 
-  return <section aria-label="运行已阻断" className="agent-chat-panel agent-chat-blocked">
-    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />运行已阻断；系统不会自动重复调用模型或提交媒体任务。</p>
-    {tasks.isPending ? <p>正在读取持久化任务原因…</p> : null}
-    {tasks.error ? <p role="alert">暂时无法读取阻断原因，请检查运行记录。</p> : null}
-    {tasks.error ? <button className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">重试读取</button> : null}
+  return <section aria-label={t("运行已阻断")} className="agent-chat-panel agent-chat-blocked">
+    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("运行已阻断；系统不会自动重复调用模型或提交媒体任务。")}</p>
+    {tasks.isPending ? <p>{t("正在读取持久化任务原因…")}</p> : null}
+    {tasks.error ? <p role="alert">{t("暂时无法读取阻断原因，请检查运行记录。")}</p> : null}
+    {tasks.error ? <button className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("重试读取")}</button> : null}
     {tasks.data ? <p>{explanation}</p> : null}
-    {archivedMedia ? <p className="text-xs">诊断码：TASK_PROJECT_ARCHIVED</p> : null}
-    {staleMedia ? <p className="text-xs">诊断码：TASK_INPUT_STALE</p> : null}
-    {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">诊断码：{modelFailure.errorCode}{taskErrorDetail(modelFailure.errorCode)}</p> : null}
+    {archivedMedia ? <p className="text-xs">{t("诊断码：TASK_PROJECT_ARCHIVED")}</p> : null}
+    {staleMedia ? <p className="text-xs">{t("诊断码：TASK_INPUT_STALE")}</p> : null}
+    {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">{t("诊断码：{0}{1}", { "0": modelFailure.errorCode, "1": taskErrorDetail(modelFailure.errorCode) })}</p> : null}
   </section>;
 }
 
@@ -41,16 +43,16 @@ export function BlockedRunNotice({ projectId, runId }: {
 function switchOnFailure(code: string | null | undefined): string {
   switch (code) {
     case "LLM_CONFIG_UNAVAILABLE":
-      return "此 Run 固定的模型配置或工具调用能力不可用。请管理员检查配置；系统不会擅自切换到另一个模型。";
+      return t("此 Run 固定的模型配置或工具调用能力不可用。请管理员检查配置；系统不会擅自切换到另一个模型。");
     case "CREDENTIAL_KEY_VERSION_MISSING":
-      return "此 Run 使用的历史加密密钥版本缺失。请管理员恢复相应密钥；不要用新密钥假装解开旧配置。";
+      return t("此 Run 使用的历史加密密钥版本缺失。请管理员恢复相应密钥；不要用新密钥假装解开旧配置。");
     case "MODEL_OUTPUT_INVALID":
-      return "模型输出未通过结构或领域校验，且已达到两次修复或回合上限；无效回合的工具操作未写入业务数据。请调整指令或模型配置后重新运行。";
+      return t("模型输出未通过结构或领域校验，且已达到两次修复或回合上限；无效回合的工具操作未写入业务数据。请调整指令或模型配置后重新运行。");
     case "MODEL_TURN_LIMIT":
-      return "模型连续请求工具，已达到本次 Run 的 12 回合上限。系统未再调用模型或自动重试；请检查运行记录后调整指令并发起新 Run。";
+      return t("模型连续请求工具，已达到本次 Run 的 12 回合上限。系统未再调用模型或自动重试；请检查运行记录后调整指令并发起新 Run。");
     case "AGENT_TURN_FAILED":
-      return "模型回合未能完成，可能是无效输出或服务故障。已停止后续编排；可展开 Agent 运行记录查看任务状态。";
+      return t("模型回合未能完成，可能是无效输出或服务故障。已停止后续编排；可展开 Agent 运行记录查看任务状态。");
     default:
-      return "请检查下方结果未知的任务或展开 Agent 运行记录确认受阻任务；取消 Run 不代表外部已停止或退款。";
+      return t("请检查下方结果未知的任务或展开 Agent 运行记录确认受阻任务；取消 Run 不代表外部已停止或退款。");
   }
 }

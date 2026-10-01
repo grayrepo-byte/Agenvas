@@ -1,5 +1,6 @@
 package dev.agenvas.audit.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.audit.domain.CallLog;
 import dev.agenvas.audit.domain.DebugSettings;
 import dev.agenvas.audit.domain.CallDebug;
@@ -96,14 +97,14 @@ public class CallLogService {
 
     public DebugSettings updateSettings(boolean enabled, int expectedVersion) {
         return repository.updateSettings(enabled, expectedVersion).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT", "设置已变化",
-                        "请重新读取 debug 模式设置后再保存。", false));
+                new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.call-log-service.settings-changed"),
+                        ApiMessage.of("api.call-log-service.please-re-read-the-debug-mode-settings-before-saving"), false));
     }
 
     public CallDebug debug(UUID ownerId, UUID id) {
         return repository.debug(ownerId, id).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.NOT_FOUND, "CALL_LOG_NOT_FOUND", "调用记录不存在",
-                        "调用记录不存在或不属于当前账户。", false));
+                new ApiProblemException(HttpStatus.NOT_FOUND, "CALL_LOG_NOT_FOUND", ApiMessage.of("api.call-log-service.call-record-does-not-exist"),
+                        ApiMessage.of("api.call-log-service.the-call-record-does-not-exist-or-does-not-belong"), false));
     }
 
     private static long elapsed(long started) {
@@ -129,7 +130,7 @@ public class CallLogService {
                 || filter.from() != null && filter.to() != null && filter.from().isAfter(filter.to())
                 || filter.traceId() != null && !filter.traceId().matches("[0-9a-f]{32}")) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "日志筛选无效", "请检查页码、每页数量、时间范围和 traceId。", false);
+                    ApiMessage.of("api.system-log-buffer.log-filtering-is-invalid"), ApiMessage.of("api.call-log-service.please-check-the-page-number-quantity-per-page-time-range"), false);
         }
         return repository.list(ownerId, filter);
     }

@@ -1,5 +1,6 @@
+import { t } from "../../shared/i18n";
 /**
- * 任务失败原因码到可读中文的映射。
+ * 任务失败原因码到共享多语言文案的映射。
  *
  * 后端把每个失败点写成稳定的原因是刻意的：卡片、Run 对话与调用日志只展示码本身，
  * 不展示响应体、请求地址或凭据。因此这里必须给出能读懂的说法，否则用户只能看到
@@ -24,30 +25,30 @@ export const PROVIDER_FAILURE_CODES = {
 const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
   // 所以不能说成「已提交但没拿到结果」。
-  [PROVIDER_FAILURE_CODES.CALL_TIMEOUT]: "调用超时，结果未知",
-  [PROVIDER_FAILURE_CODES.DOWNLOAD_FAILED]: "结果已生成但下载失败",
-  [PROVIDER_FAILURE_CODES.RESPONSE_LOST]: "连接中断，结果未知",
-  [PROVIDER_FAILURE_CODES.PROTOCOL_INVALID]: "返回内容不符合固定协议",
-  [PROVIDER_FAILURE_CODES.RESULT_URL_INVALID]: "结果地址非法，已拒绝下载",
-  [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]: "响应超出大小上限",
-  [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]: "结果超出大小上限",
-  [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]: "提交结果未确认，需人工核对",
-  SEED_AUDIO_RESULT_UNKNOWN: "音频生成结果未确认，需在节点中显式重试",
-  SEED_AUDIO_REJECTED: "上游拒绝了音频请求（参数或凭证）",
-  AUTODL_CREATE_UNCERTAIN: "AutoDL 提交结果未确认，需在节点中显式重试",
-  AUTODL_CREDENTIAL_REJECTED: "AutoDL 拒绝了凭证，请检查 Token 的 ComfyUI 权限",
-  AUTODL_CREATE_REJECTED: "AutoDL 拒绝了请求，请检查工作流参数",
-  AUTODL_INPUT_UNAVAILABLE: "AutoDL 参考资源或固定配置不可读取",
-  AUTODL_TASK_FAILED: "AutoDL 工作流执行失败",
-  AUTODL_RESULT_REJECTED: "AutoDL 结果地址或媒体不符合协议，已拒绝下载",
-  AUTODL_RESULT_EXPIRED: "AutoDL 结果地址已过期，原任务未返回可用地址",
-  AUTODL_RESULT_MISSING_VIDEO: "AutoDL 成功响应缺少唯一的视频结果",
-  ARK_CREATE_UNCERTAIN: "提交结果未确认",
-  OPENAI_IMAGE_REJECTED: "上游拒绝了请求（参数或凭证）",
-  GOOGLE_IMAGE_REJECTED: "上游拒绝了请求（参数或凭证）",
-  LOCAL_DEPTH_MODEL_UNAVAILABLE: "本地深度模型未配置或文件不可用",
-  LOCAL_IMAGE_PROCESSING_FAILED: "本地图片处理失败",
-  LOCAL_IMAGE_ENCODING_FAILED: "本地图片编码失败",
+  get [PROVIDER_FAILURE_CODES.CALL_TIMEOUT]() { return t("调用超时，结果未知"); },
+  get [PROVIDER_FAILURE_CODES.DOWNLOAD_FAILED]() { return t("结果已生成但下载失败"); },
+  get [PROVIDER_FAILURE_CODES.RESPONSE_LOST]() { return t("连接中断，结果未知"); },
+  get [PROVIDER_FAILURE_CODES.PROTOCOL_INVALID]() { return t("返回内容不符合固定协议"); },
+  get [PROVIDER_FAILURE_CODES.RESULT_URL_INVALID]() { return t("结果地址非法，已拒绝下载"); },
+  get [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]() { return t("响应超出大小上限"); },
+  get [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]() { return t("结果超出大小上限"); },
+  get [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]() { return t("提交结果未确认，需人工核对"); },
+  get SEED_AUDIO_RESULT_UNKNOWN() { return t("音频生成结果未确认，需在节点中显式重试"); },
+  get SEED_AUDIO_REJECTED() { return t("上游拒绝了音频请求（参数或凭证）"); },
+  get AUTODL_CREATE_UNCERTAIN() { return t("AutoDL 提交结果未确认，需在节点中显式重试"); },
+  get AUTODL_CREDENTIAL_REJECTED() { return t("AutoDL 拒绝了凭证，请检查 Token 的 ComfyUI 权限"); },
+  get AUTODL_CREATE_REJECTED() { return t("AutoDL 拒绝了请求，请检查工作流参数"); },
+  get AUTODL_INPUT_UNAVAILABLE() { return t("AutoDL 参考资源或固定配置不可读取"); },
+  get AUTODL_TASK_FAILED() { return t("AutoDL 工作流执行失败"); },
+  get AUTODL_RESULT_REJECTED() { return t("AutoDL 结果地址或媒体不符合协议，已拒绝下载"); },
+  get AUTODL_RESULT_EXPIRED() { return t("AutoDL 结果地址已过期，原任务未返回可用地址"); },
+  get AUTODL_RESULT_MISSING_VIDEO() { return t("AutoDL 成功响应缺少唯一的视频结果"); },
+  get ARK_CREATE_UNCERTAIN() { return t("提交结果未确认"); },
+  get OPENAI_IMAGE_REJECTED() { return t("上游拒绝了请求（参数或凭证）"); },
+  get GOOGLE_IMAGE_REJECTED() { return t("上游拒绝了请求（参数或凭证）"); },
+  get LOCAL_DEPTH_MODEL_UNAVAILABLE() { return t("本地深度模型未配置或文件不可用"); },
+  get LOCAL_IMAGE_PROCESSING_FAILED() { return t("本地图片处理失败"); },
+  get LOCAL_IMAGE_ENCODING_FAILED() { return t("本地图片编码失败"); },
 };
 
 /** @returns 可读原因；没有登记时返回 null，由调用方回退展示原始错误码。 */

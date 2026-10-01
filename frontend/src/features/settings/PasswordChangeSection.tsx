@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { Key } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { ApiError, changePassword } from "../../shared/api/client";
@@ -9,6 +10,7 @@ const PASSWORD_MAX_LENGTH = 128;
 
 /** Credentials stay in form memory and are cleared after every server response. */
 export function PasswordChangeSection() {
+  useLocale();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -22,7 +24,7 @@ export function PasswordChangeSection() {
     setError("");
     setSaved(false);
     if (newPassword !== confirmation) {
-      setError("两次输入的新密码不一致。");
+      setError(t("两次输入的新密码不一致。"));
       return;
     }
     setSaving(true);
@@ -30,7 +32,7 @@ export function PasswordChangeSection() {
       await changePassword({ currentPassword, newPassword });
       setSaved(true);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : "修改密码失败，请重试。");
+      setError(cause instanceof ApiError ? cause.message : t("修改密码失败，请重试。"));
     } finally {
       setCurrentPassword("");
       setNewPassword("");
@@ -39,27 +41,24 @@ export function PasswordChangeSection() {
     }
   }
 
-  return <Panel title="修改管理员密码" description="修改成功后，其他已登录会话会失效；当前会话继续有效。">
+  return <Panel title={t("修改管理员密码")} description={t("修改成功后，其他已登录会话会失效；当前会话继续有效。")}>
     <form className="ui-form" onSubmit={(event) => { void submit(event); }} aria-busy={saving}>
       <div className="ui-stack password-fields">
-        <label className="ui-field">当前密码
-          <input autoComplete="current-password" type="password" required maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setSaved(false); }} />
+        <label className="ui-field">{t("当前密码")}<input autoComplete="current-password" type="password" required maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setSaved(false); }} />
         </label>
         <div className="ui-form-grid">
-          <label className="ui-field">新密码
-            <input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setSaved(false); }} aria-describedby="password-length-hint" />
+          <label className="ui-field">{t("新密码")}<input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setSaved(false); }} aria-describedby="password-length-hint" />
           </label>
-          <label className="ui-field">确认新密码
-            <input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setSaved(false); }} />
+          <label className="ui-field">{t("确认新密码")}<input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setSaved(false); }} />
           </label>
         </div>
-        <p className="ui-muted" id="password-length-hint">密码长度为 {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} 个字符。</p>
+        <p className="ui-muted" id="password-length-hint">{t("密码长度为 {0}–{1} 个字符。", { "0": PASSWORD_MIN_LENGTH, "1": PASSWORD_MAX_LENGTH })}</p>
       </div>
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      {saved ? <Notice tone="success">密码已修改，其他会话已失效。</Notice> : null}
+      {saved ? <Notice tone="success">{t("密码已修改，其他会话已失效。")}</Notice> : null}
       <div className="ui-form-actions">
-        {saving ? <LoadingState compact label="正在修改密码…" /> : <span className="ui-muted">提交完成后，密码输入会自动清空。</span>}
-        <button className="primary-button" type="submit" disabled={saving}><Key size={16} aria-hidden />{saving ? "正在修改…" : "修改密码"}</button>
+        {saving ? <LoadingState compact label={t("正在修改密码…")} /> : <span className="ui-muted">{t("提交完成后，密码输入会自动清空。")}</span>}
+        <button className="primary-button" type="submit" disabled={saving}><Key size={16} aria-hidden />{saving ? t("正在修改…") : t("修改密码")}</button>
       </div>
     </form>
   </Panel>;

@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, getArtifact, type Artifact } from "../../shared/api/client";
@@ -50,7 +51,7 @@ export function useArtifactRevision<Fields extends object, Revision>({
   const reload = useMutation({
     mutationFn: async () => {
       const latest = await getArtifact(base.projectId, base.id);
-      if (!hasCurrentVersion(latest)) throw new Error("当前产物没有可编辑版本。");
+      if (!hasCurrentVersion(latest)) throw new Error(t("当前产物没有可编辑版本。"));
       return latest;
     },
     onSuccess: (latest) => { acceptVersion(latest); save.reset(); },

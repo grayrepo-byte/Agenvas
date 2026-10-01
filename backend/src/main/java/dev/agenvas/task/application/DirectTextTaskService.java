@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.event.application.ProjectEventService;
@@ -57,7 +58,7 @@ public class DirectTextTaskService {
                 || expectedArtifactVersion < 0 || expectedCurrentVersionId == null
                 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
-            throw invalid("需要有效提示词、当前文字版本、产物版本和 Idempotency-Key。");
+            throw invalid(ApiMessage.of("api.direct-text-task-service.requires-a-valid-prompt-word-current-text-version-product-version"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
@@ -69,7 +70,7 @@ public class DirectTextTaskService {
                                 != expectedArtifactVersion
                         || !prior.input().path("expectedCurrentVersionId").asText()
                                 .equals(expectedCurrentVersionId.toString())) {
-                    throw conflict("相同幂等键已用于不同的文字生成请求。");
+                    throw conflict(ApiMessage.of("api.direct-text-task-service.the-same-idempotent-key-has-been-used-in-different-text"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
@@ -81,13 +82,13 @@ public class DirectTextTaskService {
                     || artifact.version() != expectedArtifactVersion
                     || !expectedCurrentVersionId.equals(artifact.resourceDefaultVersionId())
                     || target.resourceDefaultVersion() == null) {
-                throw conflict("文字卡片已变化，请刷新后重新生成。");
+                throw conflict(ApiMessage.of("api.direct-text-task-service.the-text-card-has-changed-please-refresh-and-regenerate"));
             }
             ChatGateway.ConfigIdentity config = gateway.configIdentity();
             ChatGateway.ModelDetails model = gateway.modelDetailsFor(config);
             if (!model.available()) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE",
-                        "文字模型不可用", "请先配置可用的文字模型。", false);
+                        ApiMessage.of("api.direct-text-task-service.text-model-is-not-available"), ApiMessage.of("api.direct-text-task-service.please-configure-available-text-models-first"), false);
             }
             JsonNode current = target.resourceDefaultVersion().content();
             ObjectNode input = mapper.createObjectNode();
@@ -126,7 +127,7 @@ public class DirectTextTaskService {
     @Transactional(readOnly = true)
     public List<Task> list(UUID ownerId, UUID projectId, UUID artifactId) {
         ArtifactService.ArtifactView target = artifacts.get(ownerId, projectId, artifactId);
-        if (target.artifact().kind() != Artifact.Kind.TEXT) throw invalid("目标不是文字卡片。");
+        if (target.artifact().kind() != Artifact.Kind.TEXT) throw invalid(ApiMessage.of("api.direct-text-task-service.the-goal-is-not-a-word-card"));
         return tasks.listDirectForArtifact(ownerId, projectId, artifactId).stream()
                 .filter(task -> task.kind() == Task.Kind.TEXT_GENERATION).toList();
     }
@@ -140,13 +141,13 @@ public class DirectTextTaskService {
         }
     }
 
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                "文字生成输入无效", detail, false);
+                ApiMessage.of("api.direct-text-task-service.invalid-text-generation-input"), detail, false);
     }
 
-    private static ApiProblemException conflict(String detail) {
+    private static ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "DIRECT_TEXT_CONFLICT",
-                "文字生成冲突", detail, true);
+                ApiMessage.of("api.direct-text-task-service.text-generation-conflict"), detail, true);
     }
 }

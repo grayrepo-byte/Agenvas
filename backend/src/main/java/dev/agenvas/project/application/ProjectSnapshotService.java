@@ -1,5 +1,6 @@
 package dev.agenvas.project.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.canvas.application.CanvasService;
@@ -101,8 +102,8 @@ public class ProjectSnapshotService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "项目不存在",
-                "项目不存在或当前用户无权访问。",
+                ApiMessage.of("api.project-service.project-does-not-exist"),
+                ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does"),
                 false);
     }
 

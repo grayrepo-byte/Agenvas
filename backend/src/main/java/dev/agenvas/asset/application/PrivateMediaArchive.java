@@ -1,5 +1,6 @@
 package dev.agenvas.asset.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
@@ -49,7 +50,7 @@ public class PrivateMediaArchive {
             return key;
         } catch (IOException failure) {
             throw new ApiProblemException(HttpStatus.INSUFFICIENT_STORAGE, "LIBRARY_STORAGE_FAILED",
-                    "无法保存资产", "无法固定媒体文件，请检查文件卷空间与权限。", true);
+                    ApiMessage.of("api.private-media-archive.unable-to-save-asset"), ApiMessage.of("api.private-media-archive.unable-to-pin-media-file-please-check-the-file-volume"), true);
         }
     }
 
@@ -94,7 +95,7 @@ public class PrivateMediaArchive {
         String key = thumbnail ? media.thumbnailKey() : media.objectKey();
         Long size = thumbnail ? media.thumbnailByteSize() : media.byteSize();
         if (key == null || size == null) throw new ApiProblemException(HttpStatus.NOT_FOUND,
-                "ASSET_THUMBNAIL_NOT_FOUND", "没有预览", "该资产没有缩略图。", false);
+                "ASSET_THUMBNAIL_NOT_FOUND", ApiMessage.of("api.private-media-archive.no-preview"), ApiMessage.of("api.private-media-archive.this-asset-has-no-thumbnail"), false);
         requireOwnedKey(ownerId, key);
         Path path = storage.checkedPath(key);
         try {

@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -113,7 +114,7 @@ public class DirectMediaTaskService {
             long expectedDraftVersion, String commandKey) {
         if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
-            throw invalid("需要有效的 Idempotency-Key 和草稿版本。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             // The project event row lock serializes acceptance with all other card commands.
@@ -124,7 +125,7 @@ public class DirectMediaTaskService {
                 if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
                         || !priorSourceCanvasItemId.equals(canvasItemId.toString())
                         || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion) {
-                    throw conflict("相同幂等键已用于不同卡片或草稿版本。");
+                    throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-key-has-been-used-in-different-card"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
@@ -132,35 +133,35 @@ public class DirectMediaTaskService {
             CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId,
                     canvasItemId);
             if (!canvasItem.subjectId().equals(artifactId)) {
-                throw invalid("运行目标必须是该媒体产物的画布卡片。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-run-target-must-be-the-canvas-card-of-the"));
             }
             Task occupying = tasks.findOccupyingDirectMediaTask(projectId, canvasItemId)
                     .orElse(null);
             if (occupying != null) return ProjectEventService.Change.unchanged(occupying);
-            if (target.archivedAt() != null) throw conflict("已归档的卡片不能运行。");
+            if (target.archivedAt() != null) throw conflict(ApiMessage.of("api.direct-media-task-service.archived-cards-cannot-be-run"));
             Task.Kind kind = switch (target.kind()) {
                 case IMAGE -> Task.Kind.IMAGE_GENERATION;
                 case VIDEO -> Task.Kind.VIDEO_GENERATION;
                 case AUDIO -> Task.Kind.AUDIO_GENERATION;
-                default -> throw invalid("只能直接运行图片或视频卡片。");
+                default -> throw invalid(ApiMessage.of("api.direct-media-task-service.only-picture-or-video-cards-can-be-run-directly"));
             };
             MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
-            if (draft.version() != expectedDraftVersion) throw conflict("草稿已变化，请检查保存状态后重试。");
+            if (draft.version() != expectedDraftVersion) throw conflict(ApiMessage.of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
             MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
             var definition = capabilities.runningHubDefinition(selected);
             boolean dynamic = definition != null;
-            if (!dynamic && draft.prompt().isBlank()) throw invalid("运行前需要填写提示词。");
+            if (!dynamic && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
             if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
                     && (draft.mediaInputs().isEmpty()
                             || draft.mediaInputs().getFirst().role()
                                     != MediaDraft.InputRole.START_FRAME)) {
-                throw invalid("首尾帧视频运行前需要选择首帧。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.before-running-the-first-and-last-frame-video-you-need"));
             }
             if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
                     && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
                     && draft.mediaInputs().isEmpty()) {
-                throw invalid("全能参考视频运行前至少需要一张图片。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-all-in-one-reference-video-requires-at-least-one"));
             }
             JsonNode configuredSettings = capabilities.settings(selected);
             Integer duration = draft.durationSeconds();
@@ -173,13 +174,13 @@ public class DirectMediaTaskService {
                 if (durationField != null && durationField.defaultValue() != null && !durationField.defaultValue().isNull()) duration = durationField.defaultValue().asInt();
             }
             if (!dynamic && kind == Task.Kind.VIDEO_GENERATION && duration == null) {
-                throw invalid("视频运行前需要选择时长。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.you-need-to-select-the-duration-before-running-the-video"));
             }
             int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
             MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
-            if (!selected.equals(binding)) throw conflict("媒体配置已变化，请刷新后重试。");
+            if (!selected.equals(binding)) throw conflict(ApiMessage.of("api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
             if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
-                throw invalid("本地图片处理能力只能从图片后处理入口使用。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
             }
             ObjectNode dynamicParameters = null;
             if (dynamic) {
@@ -208,7 +209,7 @@ public class DirectMediaTaskService {
                 workflow.validate(renderedPrompt, seconds, draft.videoInputMode().name(),
                         draft.mediaInputs().size() - audios, audios);
                 if ("START_END".equals(workflow.mode()) && draft.mediaInputs().stream().noneMatch(reference ->
-                        reference.role() == MediaDraft.InputRole.END_FRAME)) throw invalid("此 AutoDL 工作流需要首帧和尾帧。");
+                        reference.role() == MediaDraft.InputRole.END_FRAME)) throw invalid(ApiMessage.of("api.direct-media-task-service.this-autodl-workflow-requires-first-and-last-frames"));
                 String ratio = videoParameters.aspectRatio();
                 if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
                     ratio = switch (projects.get(ownerId, projectId).aspectRatio()) {
@@ -327,31 +328,31 @@ public class DirectMediaTaskService {
         if (canvasItemId == null || sourceVersionId == null || operation == null
                 || expectedCanvasItemVersion < 0 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
-            throw invalid("需要有效的图片、操作、卡片版本和 Idempotency-Key。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-image-action-card-version-and-idempotency-key"));
         }
         ObjectNode operationParameters = normalizeOperationParameters(operation,
                 requestedParameters);
         List<UUID> normalizedReferenceIds = referenceVersionIds == null
                 ? List.of() : List.copyOf(referenceVersionIds);
         if (new HashSet<>(normalizedReferenceIds).size() != normalizedReferenceIds.size()) {
-            throw invalid("智能编辑参考图不能重复。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.intelligent-editing-reference-pictures-cannot-be-repeated"));
         }
         if (operation != ImageOperation.SMART_EDIT
                 && (!normalizedReferenceIds.isEmpty() || maskAssetId != null)) {
-            throw invalid("只有智能编辑支持额外参考图和蒙版。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.only-smart-editing-supports-additional-reference-images-and-masks"));
         }
         ArrayNode requestedReferenceIds = mapper.createArrayNode();
         normalizedReferenceIds.forEach(id -> requestedReferenceIds.add(id.toString()));
         String normalizedInstruction = instruction == null ? "" : instruction.trim();
-        if (normalizedInstruction.length() > 4000) throw invalid("编辑说明不能超过 4000 字符。");
+        if (normalizedInstruction.length() > 4000) throw invalid(ApiMessage.of("api.direct-media-task-service.edit-description-cannot-exceed-4000-characters"));
         if (operation.instructionRequired() && normalizedInstruction.isBlank()) {
-            throw invalid("此 AI 图片处理需要填写处理说明。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.this-ai-image-processing-requires-filling-in-processing-instructions"));
         }
         if (operation.cloud() && capabilityId == null) {
-            throw invalid("AI 图片处理需要选择 OpenAI 或 Google 图片能力。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.ai-image-processing-requires-selecting-openai-or-google-image-capabilities"));
         }
         if (!operation.cloud() && capabilityId != null) {
-            throw invalid("本地图片处理不能指定云端图片能力。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-cannot-specify-cloud-image-capabilities"));
         }
         // Remote masks are materialized before the event transaction acquires project locks.
         // Immutable READY bytes allow the acceptance transaction to recheck only identity and capability.
@@ -379,53 +380,53 @@ public class DirectMediaTaskService {
                         || prior.input().path("sourceCanvasItemVersion").asLong(-1)
                                 != expectedCanvasItemVersion
                         || !saved.path("parameters").equals(operationParameters)) {
-                    throw conflict("相同幂等键已用于不同的图片处理命令。");
+                    throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-keys-have-been-used-for-different-image"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
             Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
             if (target.kind() != Artifact.Kind.IMAGE || target.archivedAt() != null) {
-                throw invalid("图片处理只能用于未归档的图片卡片。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-can-only-be-used-on-unarchived-image-cards"));
             }
             CanvasItem card = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
             if (!card.subjectId().equals(artifactId)
                     || !sourceVersionId.equals(card.selectedVersionId())) {
-                throw conflict("卡片当前图片已变化，请基于最新图片重新处理。");
+                throw conflict(ApiMessage.of("api.direct-media-task-service.the-current-image-of-the-card-has-changed-please-reprocess"));
             }
             if (card.version() != expectedCanvasItemVersion) {
-                throw conflict("卡片已变化，请刷新后重试。");
+                throw conflict(ApiMessage.of("api.direct-media-task-service.the-card-has-changed-please-refresh-and-try-again"));
             }
             ArtifactVersion source = artifacts.requireImageVersionForTask(ownerId, projectId,
                     sourceVersionId);
             if (!source.artifactId().equals(artifactId)) {
-                throw invalid("处理来源必须是当前卡片所属图片的版本。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-processing-source-must-be-the-version-of-the-image"));
             }
             MediaCapabilityBinding binding = operation.cloud()
                     ? cloudImageBinding(capabilityId) : capabilities.resolve(
                             LOCAL_IMAGE_CAPABILITY_ID, Task.Kind.IMAGE_GENERATION, 0);
             var inputPolicy = capabilities.inputPolicy(binding);
             if (1 + normalizedReferenceIds.size() > inputPolicy.maxReferenceImages()) {
-                throw invalid("所选 AI 图片能力无法接收这么多参考图。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-image-capability-cannot-accept-this-many-reference"));
             }
             List<ArtifactVersion> referenceVersions = new ArrayList<>(
                     normalizedReferenceIds.size());
             for (UUID referenceVersionId : normalizedReferenceIds) {
                 if (referenceVersionId.equals(sourceVersionId)) {
-                    throw invalid("来源图片已经是智能编辑的第一张输入，无需重复引用。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-source-image-is-already-the-first-input-for-smart"));
                 }
                 referenceVersions.add(artifacts.requireImageVersionForTask(ownerId, projectId,
                         referenceVersionId));
             }
             if (maskAssetId != null) {
                 if (!inputPolicy.supportsImageMask()) {
-                    throw invalid("所选 AI 图片能力不支持显式蒙版编辑。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-explicit-mask"));
                 }
                 assets.requireReadyMedia(ownerId, projectId, maskAssetId, Asset.MediaKind.IMAGE);
             }
             boolean transparentOutput = requiresTransparentOutput(operation,
                     operationParameters);
             if (transparentOutput && !inputPolicy.supportsTransparentBackground()) {
-                throw invalid("所选 AI 图片能力不支持透明背景输出。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-transparent-background"));
             }
             String prompt = operationPrompt(operation, normalizedInstruction,
                     operationParameters);
@@ -531,15 +532,15 @@ public class DirectMediaTaskService {
     }
 
     private MediaCapabilityBinding cloudImageBinding(UUID capabilityId) {
-        if (capabilityId == null) throw invalid("AI 图片处理需要选择 OpenAI 或 Google 图片能力。");
+        if (capabilityId == null) throw invalid(ApiMessage.of("api.direct-media-task-service.ai-image-processing-requires-selecting-openai-or-google-image-capabilities"));
         MediaCapabilityBinding binding = capabilities.resolve(capabilityId,
                 Task.Kind.IMAGE_GENERATION, 0);
         if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
                 && !MediaAdapterRegistry.GOOGLE_NANO_BANANA_2.equals(binding.adapterId())) {
-            throw invalid("AI 图片处理仅支持 OpenAI 或 Google 图片能力。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.ai-image-processing-only-supports-openai-or-google-image-capabilities"));
         }
         if (capabilities.inputPolicy(binding).maxReferenceImages() < 1) {
-            throw invalid("所选 AI 图片能力不支持参考图编辑。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-reference-picture"));
         }
         return binding;
     }
@@ -547,7 +548,7 @@ public class DirectMediaTaskService {
     ObjectNode normalizeOperationParameters(ImageOperation operation, JsonNode supplied) {
         JsonNode source = supplied == null || supplied.isNull()
                 ? mapper.createObjectNode() : supplied;
-        if (!source.isObject()) throw invalid("图片处理参数必须为对象。");
+        if (!source.isObject()) throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-parameters-must-be-objects"));
         ObjectNode result = mapper.createObjectNode();
         switch (operation) {
             case DEPTH_MAP, SMART_EDIT, EXPRESSION_EDIT,
@@ -559,18 +560,18 @@ public class DirectMediaTaskService {
                 double lightX = source.path("lightX").asDouble(0.15);
                 double lightY = source.path("lightY").asDouble(0.75);
                 if (!RELIGHT_PRESETS.contains(preset)) {
-                    throw invalid("打光预设不受支持。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.lighting-presets-are-not-supported"));
                 }
                 if (brightness < MIN_RELIGHT_BRIGHTNESS
                         || brightness > MAX_RELIGHT_BRIGHTNESS) {
-                    throw invalid("打光亮度必须位于 -100 到 100 之间。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-lighting-brightness-must-be-between-100-and-100"));
                 }
                 if (colorTemperature < MIN_RELIGHT_COLOR_TEMPERATURE
                         || colorTemperature > MAX_RELIGHT_COLOR_TEMPERATURE) {
-                    throw invalid("色温必须位于 2000K 到 10000K 之间。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.color-temperature-must-be-between-2000k-and-10000k"));
                 }
                 if (lightX < 0 || lightX > 1 || lightY < 0 || lightY > 1) {
-                    throw invalid("光源位置必须位于图片范围内。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-light-source-position-must-be-within-the-image-range"));
                 }
                 result.put("lightingPreset", preset);
                 result.put("brightness", brightness);
@@ -580,7 +581,7 @@ public class DirectMediaTaskService {
             }
             case UPSCALE -> {
                 int scale = source.path("scale").asInt(2);
-                if (scale != 2 && scale != 4) throw invalid("放大倍数只能为 2 或 4。");
+                if (scale != 2 && scale != 4) throw invalid(ApiMessage.of("api.direct-media-task-service.magnification-can-only-be-2-or-4"));
                 result.put("scale", scale);
             }
             case CROP -> {
@@ -590,21 +591,21 @@ public class DirectMediaTaskService {
                 double height = source.path("height").asDouble(1);
                 if (x < 0 || y < 0 || width <= 0 || height <= 0
                         || x + width > 1.000001 || y + height > 1.000001) {
-                    throw invalid("裁剪区域必须位于图片范围内。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-cropped-area-must-be-within-the-image"));
                 }
                 result.put("x", x); result.put("y", y);
                 result.put("width", width); result.put("height", height);
             }
             case ROTATE -> {
                 int turns = source.path("quarterTurns").asInt(1);
-                if (turns < 1 || turns > 3) throw invalid("旋转只支持 90、180 或 270 度。");
+                if (turns < 1 || turns > 3) throw invalid(ApiMessage.of("api.direct-media-task-service.rotation-only-supports-90-180-or-270-degrees"));
                 result.put("quarterTurns", turns);
             }
             case OUTPAINT -> {
                 String ratio = source.path("aspectRatio").asText("");
                 if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
                         || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                    throw invalid("扩图需要选择明确的目标画幅。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.expanding-images-requires-choosing-a-clear-target-frame"));
                 }
                 result.put("aspectRatio", ratio);
             }
@@ -612,23 +613,23 @@ public class DirectMediaTaskService {
                 String ratio = source.path("aspectRatio").asText("");
                 if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
                         || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                    throw invalid("三视图需要选择明确的输出画幅。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.three-views-require-a-clear-output-frame-to-be-selected"));
                 }
                 String type = source.path("threeViewType").asText("");
                 if (!THREE_VIEW_RESULT_LABELS.containsKey(type)) {
-                    throw invalid("三视图类型不受支持。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
                 }
                 result.put("aspectRatio", ratio);
                 result.put("threeViewType", type);
             }
             case LAYER_SPLIT -> {
                 String target = source.path("layerTarget").asText("FOREGROUND");
-                if (!LAYER_RESULT_LABELS.containsKey(target)) throw invalid("图层输出类型不受支持。");
+                if (!LAYER_RESULT_LABELS.containsKey(target)) throw invalid(ApiMessage.of("api.direct-media-task-service.layer-output-type-is-not-supported"));
                 result.put("layerTarget", target);
             }
             case VIEW_ANGLE -> {
                 String angle = source.path("viewAngle").asText("FRONT");
-                if (!VIEW_ANGLES.contains(angle)) throw invalid("目标视角不受支持。");
+                if (!VIEW_ANGLES.contains(angle)) throw invalid(ApiMessage.of("api.direct-media-task-service.target-perspective-is-not-supported"));
                 result.put("viewAngle", angle);
             }
         }
@@ -716,7 +717,7 @@ public class DirectMediaTaskService {
             case "HIGH_ANGLE" -> "a high-angle view looking downward";
             case "LOW_ANGLE" -> "a low-angle view looking upward";
             case "BACK" -> "a straight-on back view";
-            default -> throw invalid("目标视角不受支持。");
+            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.target-perspective-is-not-supported"));
         };
     }
 
@@ -744,7 +745,7 @@ public class DirectMediaTaskService {
                     + "architecture, landmarks, materials, colors, time of day, weather, and lighting across "
                     + "all panels. Use clean equal gutters and do not add labels, characters, or unrelated "
                     + "objects unless they are already essential to the source scene.";
-            default -> throw invalid("三视图类型不受支持。");
+            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
         };
     }
 
@@ -755,15 +756,15 @@ public class DirectMediaTaskService {
         if (mask.mediaKind() != Asset.MediaKind.IMAGE
                 || !"image/png".equals(mask.contentType())
                 || mask.byteSize() < 1 || mask.byteSize() > MAX_OPENAI_MASK_BYTES) {
-            throw invalid("智能编辑蒙版必须是小于 4 MiB 的 PNG 图片。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-must-be-png-images-smaller-than-4"));
         }
         try {
             BufferedImage decoded = ImageIO.read(file.path().toFile());
             if (decoded == null || !decoded.getColorModel().hasAlpha()) {
-                throw invalid("智能编辑蒙版必须包含透明通道。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-must-contain-a-transparency-channel"));
             }
         } catch (IOException unreadable) {
-            throw invalid("智能编辑蒙版无法读取。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-cannot-be-read"));
         }
     }
 
@@ -775,7 +776,7 @@ public class DirectMediaTaskService {
             case "MOONLIGHT" -> "cool moonlight";
             case "SOFT_STUDIO" -> "soft studio";
             case "NEON_NIGHT" -> "colorful neon-night";
-            default -> throw invalid("打光预设不受支持。");
+            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.lighting-presets-are-not-supported"));
         };
     }
 
@@ -804,7 +805,7 @@ public class DirectMediaTaskService {
                 continue;
             }
             if (mentionIndex >= draft.mentions().size()) {
-                throw invalid("提示词图片标签已损坏，请重新保存草稿。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
             }
             MediaDraft.PromptMention mention = draft.mentions().get(mentionIndex++);
             rendered.append('@').append(switch (mention.role()) {
@@ -816,7 +817,7 @@ public class DirectMediaTaskService {
             });
         }
         if (mentionIndex != draft.mentions().size()) {
-            throw invalid("提示词图片标签已损坏，请重新保存草稿。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
         }
         return rendered.toString();
     }
@@ -829,7 +830,7 @@ public class DirectMediaTaskService {
                 return number;
             }
         }
-        throw invalid("提示词图片标签没有对应的图片输入。");
+        throw invalid(ApiMessage.of("api.direct-media-task-service.there-is-no-corresponding-image-input-for-the-prompt-word"));
     }
 
     /** Only queued direct work is guaranteed never to have reached the provider. */
@@ -838,15 +839,15 @@ public class DirectMediaTaskService {
         return events.recordChange(ownerId, projectId, () -> {
             Task current = tasks.find(ownerId, projectId, taskId)
                     .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                            "RESOURCE_NOT_FOUND", "任务不存在", "找不到该任务。", false));
+                            "RESOURCE_NOT_FOUND", ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.direct-media-task-service.the-task-cannot-be-found"), false));
             if (current.runId() != null) {
-                throw invalid("只能通过此入口取消直接媒体任务。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.direct-media-tasks-can-only-be-canceled-via-this-portal"));
             }
             if (current.status() == Task.Status.CANCELED) {
                 return ProjectEventService.Change.unchanged(current);
             }
             if (!tasks.cancelQueuedDirect(projectId, taskId, clock.instant())) {
-                throw conflict("任务已开始提交，请从任务状态查看取消选项。");
+                throw conflict(ApiMessage.of("api.direct-media-task-service.the-task-submission-has-started-please-check-the-cancellation-option"));
             }
             Task canceled = tasks.find(ownerId, projectId, taskId).orElseThrow();
             usage.releaseUnsubmittedMediaTask(ownerId, canceled);
@@ -865,7 +866,7 @@ public class DirectMediaTaskService {
         artifacts.get(ownerId, projectId, artifactId);
         CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
         if (!canvasItem.subjectId().equals(artifactId)) {
-            throw invalid("任务列表必须属于该媒体产物的画布卡片。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-task-list-must-belong-to-the-canvas-card-of"));
         }
         return tasks.listDirectForCanvasItem(ownerId, projectId, canvasItemId);
     }
@@ -874,9 +875,9 @@ public class DirectMediaTaskService {
     public TaskRepository.QueueStatus queueStatus(UUID ownerId, UUID projectId, UUID taskId) {
         Task task = tasks.find(ownerId, projectId, taskId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                        "RESOURCE_NOT_FOUND", "任务不存在", "找不到该任务。", false));
+                        "RESOURCE_NOT_FOUND", ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.direct-media-task-service.the-task-cannot-be-found"), false));
         if (task.runId() != null) {
-            throw invalid("此任务不是直接媒体任务。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.this-task-is-not-a-direct-media-task"));
         }
         return tasks.queueStatus(taskId);
     }
@@ -896,7 +897,7 @@ public class DirectMediaTaskService {
             case IMAGE -> Task.Kind.IMAGE_GENERATION;
             case VIDEO -> Task.Kind.VIDEO_GENERATION;
             case AUDIO -> Task.Kind.AUDIO_GENERATION;
-            default -> throw invalid("文字节点不能添加媒体参考。");
+            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.media-references-cannot-be-added-to-text-nodes"));
         };
         MediaCapabilityBinding binding = capabilities.forDraft(draft.capabilityId(), kind);
         validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
@@ -907,36 +908,34 @@ public class DirectMediaTaskService {
             dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy, JsonNode parametersJson) {
         long audioCount = draft.mediaInputs().stream().filter(input ->
                 input.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
-        if (audioCount > policy.maxReferenceAudios()) throw invalid("所选能力不支持此数量的音频参考。");
+        if (audioCount > policy.maxReferenceAudios()) throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-capability-does-not-support-this-number-of-audio"));
         if (kind == Task.Kind.AUDIO_GENERATION) {
             if (draft.prompt().codePointCount(0, draft.prompt().length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH)
-                throw invalid("Seed Audio 提示词最多 3000 字符。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-prompt-words-can-be-up-to-3000-characters"));
             long images = draft.mediaInputs().size() - audioCount;
             var parameters = dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parametersJson);
             if (images > policy.maxReferenceImages() || images > 0 && (audioCount > 0 || !parameters.speaker().isEmpty()))
-                throw invalid("音频生成最多参考一张图片，图片不能与音频或指定音色混用。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.audio-generation-can-refer-to-at-most-one-picture-and"));
             if (audioCount + (parameters.speaker().isEmpty() ? 0 : 1) > policy.maxReferenceAudios())
-                throw invalid("音色与音频参考合计最多三项。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-total-number-of-timbres-and-audio-references-can-be"));
             return;
         }
         if (kind == Task.Kind.IMAGE_GENERATION) {
             if (draft.mediaInputs().size() > policy.maxReferenceImages()) {
-                throw invalid("所选图片能力最多接受 " + policy.maxReferenceImages()
-                        + " 张参考图。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-image-capability-accepts-at-most-reference-images", policy.maxReferenceImages()));
             }
             return;
         }
         String mode = draft.videoInputMode().name();
         if (!policy.supportedVideoInputModes().contains(mode)) {
-            throw invalid("所选视频能力不支持当前图片输入模式。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-does-not-support-the-current-picture"));
         }
         if (!policy.supportsEndFrame() && draft.mediaInputs().stream().anyMatch(input ->
                 input.role() == MediaDraft.InputRole.END_FRAME)) {
-            throw invalid("所选视频能力不支持尾帧。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-does-not-support-end-frames"));
         }
         if (draft.mediaInputs().size() - audioCount > policy.maxReferenceImages()) {
-            throw invalid("所选视频能力最多接受 " + policy.maxReferenceImages()
-                    + " 张图片输入。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-accepts-at-most-image-inputs", policy.maxReferenceImages()));
         }
     }
 
@@ -950,7 +949,7 @@ public class DirectMediaTaskService {
                 var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()));
                 Asset asset = assets.requireReadyMedia(ownerId, projectId, UUID.fromString(version.content().path("assetId").asText()),
                         Asset.MediaKind.valueOf(dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()).name()));
-                if (asset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) throw invalid("RunningHub 单条素材不能超过 30 MB。");
+                if (asset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) throw invalid(ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
             }
             return;
         }
@@ -972,38 +971,38 @@ public class DirectMediaTaskService {
                 if (asset.byteSize() > AutoDlWorkflows.MAX_REFERENCE_BYTES
                         || autodlTotalBytes > AutoDlWorkflows.MAX_TOTAL_REFERENCE_BYTES
                         || audio && !Set.of("audio/mpeg", "audio/wav", "audio/flac").contains(asset.contentType()))
-                    throw invalid("AutoDL 参考资源每个最多 15 MiB、合计最多 60 MiB；音频仅接受 MP3/WAV/FLAC。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.autodl-reference-assets-are-limited-to-15-mib-each-and"));
             }
             if (!audio) {
                 imageCount++;
                 if (seed && asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES)
-                    throw invalid("Seed Audio 参考图片最大 10 MiB。");
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-reference-image-size-is-10-mib-maximum"));
                 continue;
             }
             audioCount++;
             audioDuration += asset.durationMs();
             if (seed && (asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES
                     || asset.durationMs() > AudioGenerationParameters.MAX_REFERENCE_DURATION_MS))
-                throw invalid("Seed Audio 单条参考音频最大 10 MiB、30 秒。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-the-maximum-size-of-a-single-reference-audio"));
             if (ark && (asset.byteSize() > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_BYTES
                     || asset.durationMs() < MediaAdapterRegistry.SEEDANCE_MIN_AUDIO_DURATION_MS
                     || asset.durationMs() > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS
                     || !Set.of("audio/mpeg", "audio/wav").contains(asset.contentType())))
-                throw invalid("Seedance 音频参考仅支持 MP3/WAV，单条 2–15 秒且最大 15 MiB。");
+                throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-supports-mp3-wav-only-2-15-seconds"));
         }
         if (ark && audioCount > 0 && (imageCount == 0
                 || draft.videoInputMode() != MediaDraft.VideoInputMode.GENERAL_REFERENCE
                 || audioDuration > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS))
-            throw invalid("Seedance 音频参考须在全能参考模式搭配图片，音频总时长最多 15 秒。");
+            throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-must-be-in-full-reference-mode-with"));
     }
 
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                "媒体任务输入无效", detail, false);
+                ApiMessage.of("api.direct-media-task-service.invalid-media-task-input"), detail, false);
     }
 
-    private static ApiProblemException conflict(String detail) {
+    private static ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT",
-                "媒体任务冲突", detail, true);
+                ApiMessage.of("api.direct-media-task-service.conflicting-media-assignments"), detail, true);
     }
 }

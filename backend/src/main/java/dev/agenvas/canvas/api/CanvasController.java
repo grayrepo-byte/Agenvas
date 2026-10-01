@@ -1,5 +1,6 @@
 package dev.agenvas.canvas.api;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.api.AgentInstanceController.AgentResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactVersionResponse;
@@ -157,8 +158,8 @@ public class CanvasController {
             throw new ApiProblemException(
                     HttpStatus.BAD_REQUEST,
                     "VALIDATION_ERROR",
-                    "画布命令无效",
-                    field + " 是当前命令的必填字段。",
+                    ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"),
+                    ApiMessage.of("api.canvas-controller.is-required-for-this-command", field),
                     false);
         }
         return value;

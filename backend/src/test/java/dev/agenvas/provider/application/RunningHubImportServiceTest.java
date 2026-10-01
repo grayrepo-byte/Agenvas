@@ -38,7 +38,7 @@ class RunningHubImportServiceTest {
                     """));
         assertThat(preview.definition().fields()).hasSize(1);
         assertThat(preview.definition().fields().getFirst().fieldName()).isEqualTo("file");
-        assertThat(preview.warnings()).anyMatch(warning -> warning.contains("choose video file to upload") && warning.contains("已跳过"));
+        assertThat(preview.warnings()).anyMatch(warning -> warning.source().contains("choose video file to upload") && warning.source().contains("已跳过"));
     }
     @Test void appComfyWidgetListsPreserveStringEnumsAndTheSavedSelection() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "2039199752025280513", Task.Kind.VIDEO_GENERATION,
@@ -61,7 +61,7 @@ class RunningHubImportServiceTest {
             assertThat(ratio.type()).isEqualTo(RunningHubDefinition.FieldType.SELECT);
             assertThat(ratio.options()).hasSize(8).anyMatch(option -> option.value().asText().equals("16:9 (Widescreen)"));
             assertThat(ratio.defaultValue().asText()).isEqualTo("16:9 (Widescreen)");
-            assertThat(preview.warnings()).noneMatch(warning -> warning.contains("缺少可识别的 LIST"));
+            assertThat(preview.warnings()).noneMatch(warning -> warning.source().contains("缺少可识别的 LIST"));
             assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).allMatch(field -> field.defaultValue() == null);
         }
     }

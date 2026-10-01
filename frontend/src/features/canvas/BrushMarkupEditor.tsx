@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { ArrowCounterClockwise, ArrowClockwise, ArrowUpRight, Eraser, PencilSimple,
   Rectangle, TextT, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -15,17 +16,17 @@ const MIN_STROKE_SIZE = 4;
 const MAX_STROKE_SIZE = 40;
 const MAX_TEXT_LENGTH = 200;
 const COLORS = [
-  { name: "红色", value: "#ff3038" }, { name: "橙色", value: "#ff8a00" },
-  { name: "黄色", value: "#ffe51a" }, { name: "绿色", value: "#05d66d" },
-  { name: "青色", value: "#00d7ee" }, { name: "蓝色", value: "#2477ff" },
-  { name: "紫色", value: "#843dff" }, { name: "粉色", value: "#ff26bf" },
+  { get name() { return t("红色"); }, value: "#ff3038" }, { get name() { return t("橙色"); }, value: "#ff8a00" },
+  { get name() { return t("黄色"); }, value: "#ffe51a" }, { get name() { return t("绿色"); }, value: "#05d66d" },
+  { get name() { return t("青色"); }, value: "#00d7ee" }, { get name() { return t("蓝色"); }, value: "#2477ff" },
+  { get name() { return t("紫色"); }, value: "#843dff" }, { get name() { return t("粉色"); }, value: "#ff26bf" },
 ] as const;
 const TOOLS = [
-  { tool: "BRUSH", label: "画笔", icon: PencilSimple },
-  { tool: "ERASER", label: "橡皮", icon: Eraser },
-  { tool: "RECTANGLE", label: "矩形", icon: Rectangle },
-  { tool: "ARROW", label: "箭头", icon: ArrowUpRight },
-  { tool: "TEXT", label: "文字", icon: TextT },
+  { tool: "BRUSH", get label() { return t("画笔"); }, icon: PencilSimple },
+  { tool: "ERASER", get label() { return t("橡皮"); }, icon: Eraser },
+  { tool: "RECTANGLE", get label() { return t("矩形"); }, icon: Rectangle },
+  { tool: "ARROW", get label() { return t("箭头"); }, icon: ArrowUpRight },
+  { tool: "TEXT", get label() { return t("文字"); }, icon: TextT },
 ] as const;
 
 /** Local image editor; saving archives user bytes and a derived node, without a generation task. */
@@ -33,6 +34,7 @@ export function BrushMarkupEditor(props: {
   projectId: string; canvasItemId: string; sourceVersionId: string; expectedVersion: number;
   sourceUrl: string; sourceTitle: string; onClose: () => void;
 }) {
+  useLocale();
   // Keep the exact editing source even if SSE refreshes the underlying node mid-edit.
   const [{ projectId, canvasItemId, sourceVersionId, expectedVersion,
     sourceUrl, sourceTitle, onClose }] = useState(props);
@@ -58,7 +60,7 @@ export function BrushMarkupEditor(props: {
   const save = useMutation({
     mutationFn: async () => {
       const image = imageRef.current;
-      if (!image || !ready) throw new Error("请等待原图载入后保存。");
+      if (!image || !ready) throw new Error(t("请等待原图载入后保存。"));
       if (!pending.current) pending.current = { file: await exportMarkup(image, strokes.slice(0, cursor)) };
       const attempt = pending.current;
       if (!attempt.assetId) attempt.assetId = (await uploadImageAsset(projectId, attempt.file)).id;
@@ -134,12 +136,12 @@ export function BrushMarkupEditor(props: {
     changed(); setText(null); setCursor(next);
   }
   const error = localError ?? (save.error instanceof ApiError && save.error.status === 409
-    ? "来源节点已有更新，标注已保留。请关闭后基于当前图片重新标注。"
+    ? t("来源节点已有更新，标注已保留。请关闭后基于当前图片重新标注。")
     : save.error?.message);
 
   return createPortal(<div className="markup-backdrop nodrag nowheel nopan"
     onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="画笔标注"
+    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t("画笔标注")}
       className="markup-dialog" onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Tab") {
@@ -158,20 +160,20 @@ export function BrushMarkupEditor(props: {
         }
       }}>
       <div className="markup-tools-shell">
-        {paletteOpen ? <div className="markup-palette" aria-label="标注颜色">
+        {paletteOpen ? <div className="markup-palette" aria-label={t("标注颜色")}>
           {COLORS.map((entry) => <button type="button" key={entry.value} title={entry.name}
             aria-label={entry.name} aria-pressed={color === entry.value} disabled={save.isPending}
             style={{ backgroundColor: entry.value }} onClick={() => setColor(entry.value)} />)}
         </div> : null}
-        <div className="markup-toolbar" role="toolbar" aria-label="画笔标注工具">
-          <button type="button" className="markup-close" aria-label="关闭画笔标注" disabled={save.isPending}
-            onClick={onClose}><X size={17} /><span>画笔标注</span></button>
+        <div className="markup-toolbar" role="toolbar" aria-label={t("画笔标注工具")}>
+          <button type="button" className="markup-close" aria-label={t("关闭画笔标注")} disabled={save.isPending}
+            onClick={onClose}><X size={17} /><span>{t("画笔标注")}</span></button>
           <div className="markup-tool-group">
-            <button type="button" className="markup-color" aria-label="选择标注颜色"
+            <button type="button" className="markup-color" aria-label={t("选择标注颜色")}
               aria-expanded={paletteOpen} onClick={() => setPaletteOpen(!paletteOpen)}>
               <span style={{ backgroundColor: color }} /></button>
             {TOOLS.map((entry) => <button type="button" key={entry.tool}
-              title={entry.tool === "BRUSH" || entry.tool === "ERASER" ? `${entry.label}（再次点击调整大小）` : entry.label}
+              title={entry.tool === "BRUSH" || entry.tool === "ERASER" ? t("{0}（再次点击调整大小）", { "0": entry.label }) : entry.label}
               aria-label={entry.label} aria-pressed={tool === entry.tool} disabled={save.isPending}
               onClick={() => {
                 finishText();
@@ -181,7 +183,7 @@ export function BrushMarkupEditor(props: {
               <entry.icon size={20} /></button>)}
           </div>
         </div>
-        {sizeOpen ? <label className="markup-stroke-size">笔刷大小<input aria-label="笔刷大小" type="range"
+        {sizeOpen ? <label className="markup-stroke-size">{t("笔刷大小")}<input aria-label={t("笔刷大小")} type="range"
           min={MIN_STROKE_SIZE} max={MAX_STROKE_SIZE} value={strokeSize} disabled={save.isPending}
           onChange={(event) => setStrokeSize(Number(event.target.value))} /></label> : null}
       </div>
@@ -189,8 +191,8 @@ export function BrushMarkupEditor(props: {
         <div className="markup-image-title"><span>{sourceTitle}</span>
           {imageSize ? <small>{imageSize.width} × {imageSize.height}</small> : null}</div>
         <div className={`markup-image-shell${tool === "TEXT" ? " is-text" : ""}`}>
-          <img ref={imageRef} key={reload} src={sourceUrl} alt="画笔标注原图" draggable={false}
-            onError={() => { setReady(false); setLocalError("原图载入失败，请重试。"); }}
+          <img ref={imageRef} key={reload} src={sourceUrl} alt={t("画笔标注原图")} draggable={false}
+            onError={() => { setReady(false); setLocalError(t("原图载入失败，请重试。")); }}
             onLoad={(event) => {
               const image = event.currentTarget; const canvas = canvasRef.current;
               if (!canvas || !image.naturalWidth || !image.naturalHeight) return;
@@ -201,15 +203,15 @@ export function BrushMarkupEditor(props: {
                 renderMarkup(canvas, strokes.slice(0, cursor));
                 setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
                 setReady(true); setLocalError(null);
-              } catch (failure) { setLocalError(failure instanceof Error ? failure.message : "图片编辑无法启动。"); }
+              } catch (failure) { setLocalError(failure instanceof Error ? failure.message : t("图片编辑无法启动。")); }
             }} />
-          <canvas ref={canvasRef} aria-label="图片标注画布" onPointerDown={pointerDown}
+          <canvas ref={canvasRef} aria-label={t("图片标注画布")} onPointerDown={pointerDown}
             onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => {
               activeStroke.current = null;
               if (canvasRef.current) renderMarkup(canvasRef.current, strokes.slice(0, cursor));
             }} />
-          {text ? <input ref={textRef} className="markup-text-input" aria-label="标注文字"
-            maxLength={MAX_TEXT_LENGTH} placeholder="输入文字，回车确认" value={text.value}
+          {text ? <input ref={textRef} className="markup-text-input" aria-label={t("标注文字")}
+            maxLength={MAX_TEXT_LENGTH} placeholder={t("输入文字，回车确认")} value={text.value}
             style={{ left: `${text.point.x * 100}%`, top: `${text.point.y * 100}%`, color }}
             onChange={(event) => setText({ ...text, value: event.target.value })}
             onBlur={finishText} onKeyDown={(event) => {
@@ -219,18 +221,18 @@ export function BrushMarkupEditor(props: {
             }} /> : null}
         </div>
       </div>
-      {!ready && !error ? <p role="status" className="markup-status">正在载入原图…</p> : null}
+      {!ready && !error ? <p role="status" className="markup-status">{t("正在载入原图…")}</p> : null}
       {error ? <p role="alert" className="markup-error">{error}
-        {!ready ? <button type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>重试载入</button> : null}
+        {!ready ? <button type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>{t("重试载入")}</button> : null}
       </p> : null}
       <div className="markup-save-toolbar">
-        <button type="button" aria-label="撤销" title="撤销" disabled={!cursor || save.isPending}
+        <button type="button" aria-label={t("撤销")} title={t("撤销")} disabled={!cursor || save.isPending}
           onClick={() => restore(cursor - 1)}><ArrowCounterClockwise size={20} /></button>
-        <button type="button" aria-label="重做" title="重做" disabled={cursor >= strokes.length || save.isPending}
+        <button type="button" aria-label={t("重做")} title={t("重做")} disabled={cursor >= strokes.length || save.isPending}
           onClick={() => restore(cursor + 1)}><ArrowClockwise size={20} /></button>
         <span className="markup-divider" />
         <button type="button" className="markup-save" disabled={!ready || !cursor || save.isPending || Boolean(text)}
-          onClick={() => save.mutate()}>{save.isPending ? "保存中…" : save.error ? "重试保存" : "保存"}</button>
+          onClick={() => save.mutate()}>{save.isPending ? t("保存中…") : save.error ? t("重试保存") : t("保存")}</button>
       </div>
     </div>
   </div>, document.body);

@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.shared.http.PinnedHttpClients;
@@ -44,12 +45,12 @@ public final class RunningHubClient {
     public static String validatedOrigin(String origin) {
         URI uri;
         try { uri = URI.create(origin == null || origin.isBlank() ? "https://www.runninghub.ai" : origin); }
-        catch (IllegalArgumentException invalid) { throw RunningHubDefinition.invalid("RunningHub 站点无效"); }
+        catch (IllegalArgumentException invalid) { throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.runninghub-site-is-invalid")); }
         boolean local = local(uri);
         if (!(local || "https".equals(uri.getScheme()) && uri.getHost() != null && (uri.getPort() == -1 || uri.getPort() == 443))
                 || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null
                 || !(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath())))
-            throw RunningHubDefinition.invalid("请输入 HTTPS API 根地址，不包含路径、凭据、查询参数或片段");
+            throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-the-https-api-root-address-without-paths-credentials"));
         return uri.toString().replaceAll("/+$", "");
     }
 
@@ -73,7 +74,7 @@ public final class RunningHubClient {
     }
 
     public JsonNode metadata(String origin, String key, RunningHubDefinition.TargetType type, String targetId) {
-        if (targetId == null || !targetId.matches("[0-9]{1,32}")) throw RunningHubDefinition.invalid("请输入真实工作流或应用 ID");
+        if (targetId == null || !targetId.matches("[0-9]{1,32}")) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-a-real-workflow-or-application-id"));
         if (type == RunningHubDefinition.TargetType.WORKFLOW) {
             JsonNode result = json(post(origin, key, "/api/openapi/getJsonApiFormat", mapper.createObjectNode()
                     .put("apiKey", key).put("workflowId", targetId)), false).path("data").path("prompt");

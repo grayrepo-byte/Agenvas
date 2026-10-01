@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { Select } from "../../shared/ui/Select";
 import { Check, Crop, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties,
@@ -19,8 +20,8 @@ const FALLBACK_IMAGE_WIDTH = 3;
 const FALLBACK_IMAGE_HEIGHT = 2;
 
 const RATIO_OPTIONS: ReadonlyArray<{ value: CropRatio; label: string; ratio?: number }> = [
-  { value: "original", label: "原始比例" },
-  { value: "free", label: "自由" },
+  { value: "original", get label() { return t("原始比例"); } },
+  { value: "free", get label() { return t("自由"); } },
   { value: "1:1", label: "1:1", ratio: 1 },
   { value: "4:3", label: "4:3", ratio: 4 / 3 },
   { value: "3:4", label: "3:4", ratio: 3 / 4 },
@@ -29,9 +30,9 @@ const RATIO_OPTIONS: ReadonlyArray<{ value: CropRatio; label: string; ratio?: nu
 ];
 
 const HANDLE_LABELS: Record<Exclude<CropHandle, "move">, string> = {
-  n: "调整裁剪框上边", ne: "调整裁剪框右上角", e: "调整裁剪框右边",
-  se: "调整裁剪框右下角", s: "调整裁剪框下边", sw: "调整裁剪框左下角",
-  w: "调整裁剪框左边", nw: "调整裁剪框左上角",
+  get n() { return t("调整裁剪框上边"); }, get ne() { return t("调整裁剪框右上角"); }, get e() { return t("调整裁剪框右边"); },
+  get se() { return t("调整裁剪框右下角"); }, get s() { return t("调整裁剪框下边"); }, get sw() { return t("调整裁剪框左下角"); },
+  get w() { return t("调整裁剪框左边"); }, get nw() { return t("调整裁剪框左上角"); },
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -131,6 +132,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
   onClose: () => void;
   onSubmit: (parameters: CropParameters) => void;
 }) {
+  useLocale();
   const [imageSize, setImageSize] = useState({
     width: sourceWidth ?? FALLBACK_IMAGE_WIDTH,
     height: sourceHeight ?? FALLBACK_IMAGE_HEIGHT,
@@ -215,10 +217,10 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
 
   return createPortal(<div className="crop-backdrop nodrag nowheel nopan"
     onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="crop-dialog" role="dialog" aria-label="裁剪图片"
+    <div className="crop-dialog" role="dialog" aria-label={t("裁剪图片")}
       onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-      <div className="crop-image-shell" ref={stageRef} aria-label="裁剪工作区">
-        <img src={sourceUrl} alt="当前图片裁剪预览" draggable={false}
+      <div className="crop-image-shell" ref={stageRef} aria-label={t("裁剪工作区")}>
+        <img src={sourceUrl} alt={t("当前图片裁剪预览")} draggable={false}
           onLoad={(event) => {
             if (sourceWidth && sourceHeight) return;
             const image = event.currentTarget;
@@ -228,7 +230,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
           }} />
         <div className={`crop-selection${drag ? " is-dragging" : ""}`} style={cropStyle}>
           <button type="button" className="crop-selection-surface"
-            aria-label="移动裁剪框" onPointerDown={(event) => startDrag("move", event)}
+            aria-label={t("移动裁剪框")} onPointerDown={(event) => startDrag("move", event)}
             onKeyDown={(event) => adjustWithKeyboard("move", event)} />
           {(Object.keys(HANDLE_LABELS) as Array<Exclude<CropHandle, "move">>).map((handle) =>
             <button type="button" key={handle} className={`crop-handle crop-handle-${handle}`}
@@ -238,21 +240,21 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
       </div>
 
       {error ? <p className="crop-error" role="alert">
-        {error instanceof ApiError ? error.message : "裁剪任务受理失败，请重试。"}</p> : null}
+        {error instanceof ApiError ? error.message : t("裁剪任务受理失败，请重试。")}</p> : null}
 
       <footer className="crop-toolbar">
         <button type="button" className="crop-cancel" onClick={onClose}>
-          <X size={18} weight="bold" />取消</button>
+          <X size={18} weight="bold" />{t("取消")}</button>
         <span className="crop-toolbar-divider" aria-hidden="true" />
         <label className="crop-ratio-control"><Crop size={19} />
-          <Select density="compact" aria-label="裁剪比例" value={ratio}
+          <Select density="compact" aria-label={t("裁剪比例")} value={ratio}
             onChange={(event) => selectRatio(event.target.value as CropRatio)}>
             {RATIO_OPTIONS.map((option) => <option key={option.value}
               value={option.value}>{option.label}</option>)}
           </Select>
         </label>
         <button type="button" className="crop-confirm" disabled={busy} onClick={submit}>
-          <Check size={18} weight="bold" />{busy ? "处理中…" : "确定"}</button>
+          <Check size={18} weight="bold" />{busy ? t("处理中…") : t("确定")}</button>
       </footer>
     </div>
   </div>, document.body);

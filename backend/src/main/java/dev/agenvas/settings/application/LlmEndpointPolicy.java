@@ -1,5 +1,6 @@
 package dev.agenvas.settings.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.security.EndpointAddressRules;
 import java.net.InetAddress;
@@ -113,6 +114,6 @@ public class LlmEndpointPolicy {
     /** 构造不允许的 Provider 地址统一使用的 400 响应。 */
     private ApiProblemException invalid() {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "PROVIDER_ENDPOINT_INVALID",
-                "模型服务地址无效", "只接受明确的 HTTPS 公网端点；本机 HTTP 需部署者显式开启。", false);
+                ApiMessage.of("api.llm-endpoint-policy.the-model-service-address-is-invalid"), ApiMessage.of("api.llm-endpoint-policy.only-explicit-https-public-network-endpoints-are-accepted-native-http"), false);
     }
 }

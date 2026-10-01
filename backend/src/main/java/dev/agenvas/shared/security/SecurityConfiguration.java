@@ -1,5 +1,6 @@
 package dev.agenvas.shared.security;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.identity.infrastructure.AdminAuthenticationProvider;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
@@ -113,8 +114,8 @@ public class SecurityConfiguration {
                 new ApiProblemException(
                         HttpStatus.UNAUTHORIZED,
                         "UNAUTHENTICATED",
-                        "需要登录",
-                        "请登录后继续。",
+                        ApiMessage.of("api.security-configuration.sign-in-required"),
+                        ApiMessage.of("api.security-configuration.please-sign-in-to-continue"),
                         false));
     }
 
@@ -129,8 +130,8 @@ public class SecurityConfiguration {
                 new ApiProblemException(
                         HttpStatus.FORBIDDEN,
                         "ACCESS_DENIED",
-                        "请求被拒绝",
-                        "请求缺少有效的权限或 CSRF 凭据。",
+                        ApiMessage.of("api.security-configuration.request-denied"),
+                        ApiMessage.of("api.security-configuration.the-request-lacks-valid-permissions-or-csrf-credentials"),
                         false));
     }
 

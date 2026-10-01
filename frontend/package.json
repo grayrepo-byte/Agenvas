@@ -12,7 +12,7 @@
     "dev": "vite",
     "api:generate": "openapi-typescript ../contracts/openapi.yaml -o src/shared/api/schema.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "node scripts/check-theme-colors.mjs && eslint . --max-warnings=0",
+    "lint": "node scripts/check-theme-colors.mjs && node scripts/check-i18n.mjs && eslint . --max-warnings=0",
     "test": "vitest run",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"

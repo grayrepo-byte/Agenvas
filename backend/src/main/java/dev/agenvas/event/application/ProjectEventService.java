@@ -1,5 +1,6 @@
 package dev.agenvas.event.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.event.domain.ProjectEvent;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
@@ -90,7 +91,7 @@ public class ProjectEventService {
     public List<ProjectEvent> listAfter(
             UUID ownerId, UUID projectId, long afterSequence, int requestedLimit) {
         if (afterSequence < 0 || requestedLimit < 1 || requestedLimit > MAX_REPLAY_PAGE) {
-            throw validation("事件游标必须非负，limit 必须在 1 到 1000 之间。");
+            throw validation(ApiMessage.of("api.project-event-service.the-event-cursor-must-be-non-negative-and-limit-must"));
         }
         return events.listAfter(ownerId, projectId, afterSequence, requestedLimit);
     }
@@ -99,11 +100,11 @@ public class ProjectEventService {
     @Transactional(readOnly = true)
     public void requireReplayableCursor(UUID ownerId, UUID projectId, long afterSequence) {
         if (afterSequence < 0) {
-            throw validation("事件游标必须非负。");
+            throw validation(ApiMessage.of("api.project-event-service.event-cursors-must-be-non-negative"));
         }
         ReplayWindow window = replayWindow(ownerId, projectId);
         if (afterSequence > window.latestSequence()) {
-            throw validation("事件游标超过项目当前水位。");
+            throw validation(ApiMessage.of("api.project-event-service.the-event-cursor-exceeds-the-current-water-level-of-the"));
         }
         if (window.expired(afterSequence)) {
             throw cursorExpired();
@@ -124,7 +125,7 @@ public class ProjectEventService {
     @Transactional
     public int pruneExpired(int limit) {
         if (limit < 1 || limit > MAX_REPLAY_PAGE) {
-            throw validation("清理批量必须在 1 到 1000 之间。");
+            throw validation(ApiMessage.of("api.project-event-service.the-cleanup-batch-size-must-be-between-1-and-1000"));
         }
         return events.pruneOlderThan(clock.instant().minus(RETENTION), limit);
     }
@@ -140,7 +141,7 @@ public class ProjectEventService {
                 || draft.aggregateVersion() < 0
                 || draft.payload() == null
                 || !draft.payload().isObject()) {
-            throw validation("项目事件类型、版本、聚合标识或对象 payload 无效。");
+            throw validation(ApiMessage.of("api.project-event-service.the-project-event-type-version-aggregate-id-or-object-payload"));
         }
         return draft;
     }
@@ -150,17 +151,17 @@ public class ProjectEventService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "项目不存在",
-                "项目不存在或当前用户无权访问。",
+                ApiMessage.of("api.project-service.project-does-not-exist"),
+                ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does"),
                 false);
     }
 
     /** 构造事件类型、游标或批量参数不符合协议时的 400 响应。 */
-    private ApiProblemException validation(String detail) {
+    private ApiProblemException validation(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "项目事件无效",
+                ApiMessage.of("api.project-event-service.project-event-is-invalid"),
                 detail,
                 false);
     }
@@ -170,8 +171,8 @@ public class ProjectEventService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "EVENT_CURSOR_EXPIRED",
-                "事件游标已过期",
-                "请重新获取项目快照并从新水位订阅。",
+                ApiMessage.of("api.project-event-service.event-cursor-has-expired"),
+                ApiMessage.of("api.project-event-service.please-retake-the-project-snapshot-and-subscribe-from-the-new"),
                 false);
     }
 

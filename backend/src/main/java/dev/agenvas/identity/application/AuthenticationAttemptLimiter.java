@@ -1,5 +1,6 @@
 package dev.agenvas.identity.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Duration;
@@ -41,8 +42,8 @@ public class AuthenticationAttemptLimiter {
             throw new ApiProblemException(
                     HttpStatus.TOO_MANY_REQUESTS,
                     "AUTH_RATE_LIMITED",
-                    "尝试次数过多",
-                    "请稍后再试。",
+                    ApiMessage.of("api.authentication-attempt-limiter.too-many-attempts"),
+                    ApiMessage.of("api.authentication-attempt-limiter.please-try-again-later"),
                     true);
         }
     }

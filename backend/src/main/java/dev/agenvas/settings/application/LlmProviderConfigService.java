@@ -1,5 +1,6 @@
 package dev.agenvas.settings.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
@@ -41,15 +42,15 @@ public class LlmProviderConfigService {
     @Transactional
     public Status replace(int expectedVersion, String requestedEndpoint,
             String requestedModelId, String requestedApiKey) {
-        if (expectedVersion < 0) throw invalid("配置版本必须为非负数。");
+        if (expectedVersion < 0) throw invalid(ApiMessage.of("api.llm-provider-config-service.configuration-version-must-be-non-negative"));
         String endpoint = endpoints.normalize(requestedEndpoint);
         String modelId = validateModelId(requestedModelId);
         String apiKey = validateApiKey(requestedApiKey);
         int currentVersion = configs.lockVersion();
         if (currentVersion != expectedVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT,
-                    "PROVIDER_CONFIG_VERSION_CONFLICT", "模型配置已变化",
-                    "请重新读取模型配置后再保存。", false);
+                    "PROVIDER_CONFIG_VERSION_CONFLICT", ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"),
+                    ApiMessage.of("api.llm-provider-config-service.please-re-read-the-model-configuration-before-saving"), false);
         }
         int next = Math.addExact(currentVersion, 1);
         UUID id = UUID.randomUUID();
@@ -71,7 +72,7 @@ public class LlmProviderConfigService {
     /** 限制模型 ID 为允许的 ASCII 名称字符及长度。 */
     private String validateModelId(String requested) {
         if (requested == null || !requested.matches("[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}")) {
-            throw invalid("模型 ID 必须是明确的安全名称。");
+            throw invalid(ApiMessage.of("api.llm-provider-config-service.the-model-id-must-be-an-unambiguous-security-name"));
         }
         return requested;
     }
@@ -80,15 +81,15 @@ public class LlmProviderConfigService {
     private String validateApiKey(String requested) {
         if (requested == null || requested.length() < 8 || requested.length() > 4096
                 || !requested.matches("[\\x21-\\x7E]+")) {
-            throw invalid("请提供有效的服务端模型凭证。");
+            throw invalid(ApiMessage.of("api.llm-provider-config-service.please-provide-valid-server-side-model-credentials"));
         }
         return requested;
     }
 
     /** 构造端点、模型 ID 或凭证未满足配置契约时的 400 响应。 */
-    private ApiProblemException invalid(String detail) {
+    private ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST,
-                "PROVIDER_CONFIG_INVALID", "模型配置无效", detail, false);
+                "PROVIDER_CONFIG_INVALID", ApiMessage.of("api.llm-provider-config-service.invalid-model-configuration"), detail, false);
     }
 
     /** 返回给管理员的安全配置视图，不包含密钥或加密材料。

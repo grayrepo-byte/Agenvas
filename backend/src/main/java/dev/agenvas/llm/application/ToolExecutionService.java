@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
@@ -112,7 +113,7 @@ public class ToolExecutionService {
             String toolCallId, Task lease, String workerId) {
         if (lease == null || context == null || !lease.projectId().equals(context.projectId())
                 || !lease.runId().equals(context.runId())) {
-            throw invalid("Agent turn lease and trusted Run scope do not match");
+            throw invalid(ApiMessage.of("api.tool-execution-service.agent-turn-lease-and-trusted-run-scope-do-not-match"));
         }
         return executeInternal(context, stepIndex, toolCallId, lease, workerId);
     }
@@ -131,7 +132,7 @@ public class ToolExecutionService {
             String toolCallId, Task lease, String workerId) {
         if (context == null || stepIndex < 0 || toolCallId == null
                 || toolCallId.isBlank() || toolCallId.length() > 200) {
-            throw invalid("Invalid Run step or tool call ID");
+            throw invalid(ApiMessage.of("api.tool-execution-service.invalid-run-step-or-tool-call-id"));
         }
         return events.recordChange(context.ownerId(), context.projectId(), () -> {
             if (lease != null) {
@@ -153,11 +154,11 @@ public class ToolExecutionService {
      */
     private JsonNode executeLocked(TrustedToolContext context, int stepIndex, String toolCallId) {
         AgentRun run = runs.findForUpdate(context.ownerId(), context.projectId(), context.runId())
-                .orElseThrow(() -> conflict("Run is not accessible"));
+                .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accessible")));
         LlmTurn turn = turns.find(context.projectId(), context.runId(), stepIndex)
-                .orElseThrow(() -> conflict("Model turn checkpoint is missing"));
+                .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.model-turn-checkpoint-is-missing")));
         if (turn.status() != LlmTurn.Status.RESPONDED) {
-            throw conflict("Complete model response must be committed before tool execution");
+            throw conflict(ApiMessage.of("api.tool-execution-service.complete-model-response-must-be-committed-before-tool-execution"));
         }
         JsonNode call = findCall(turn.response(), toolCallId);
         String toolName = call.path("name").asText();
@@ -169,20 +170,20 @@ public class ToolExecutionService {
             if (!existing.toolName().equals(toolName)
                     || !existing.argumentHash().equals(argumentHash)
                     || existing.status() != ToolExecution.Status.COMPLETED) {
-                throw conflict("Tool call ledger conflicts with recorded model response");
+                throw conflict(ApiMessage.of("api.tool-execution-service.tool-call-ledger-conflicts-with-recorded-model-response"));
             }
             return existing.result();
         }
         if (run.status() != AgentRun.Status.RUNNING) {
-            throw conflict("Run is not accepting tool execution");
+            throw conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accepting-tool-execution"));
         }
         if (ledger.countByRun(context.projectId(), context.runId()) >= MAX_TOOLS_PER_RUN) {
-            throw conflict("Run tool execution budget is exhausted");
+            throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
         }
         UUID operationId = UUID.randomUUID();
         if (!ledger.insertExecuting(operationId, context.projectId(), context.runId(),
                 stepIndex, toolCallId, toolName, argumentHash, clock.instant())) {
-            throw conflict("Tool call was executed concurrently");
+            throw conflict(ApiMessage.of("api.tool-execution-service.tool-call-was-executed-concurrently"));
         }
         JsonNode result = switch (toolName) {
             case "read_project_summary" -> reader.projectSummary(context, run,
@@ -196,7 +197,7 @@ public class ToolExecutionService {
                     operationId, arguments);
             case "arrange_items" -> creative.arrangeItems(context, run,
                     operationId, arguments);
-            default -> throw invalid("Tool is not allowlisted for this Runtime");
+            default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
         };
         if (!ledger.complete(operationId, result, clock.instant())) {
             throw new IllegalStateException("Reserved tool result could not be completed");
@@ -224,21 +225,21 @@ public class ToolExecutionService {
         try {
             input = mapper.readTree(arguments);
         } catch (RuntimeException exception) {
-            throw invalid("Tool arguments are not valid JSON");
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-arguments-are-not-valid-json"));
         }
         if (input == null || !input.isObject()) {
-            throw invalid("create_text requires an object");
+            throw invalid(ApiMessage.of("api.tool-execution-service.create-text-requires-an-object"));
         }
         for (String field : input.propertyNames()) {
             if (!CREATE_TEXT_FIELDS.contains(field)) {
-                throw invalid("create_text has an unknown field");
+                throw invalid(ApiMessage.of("api.tool-execution-service.create-text-has-an-unknown-field"));
             }
         }
         String title = requiredText(input, "title", 160);
         String text = requiredText(input, "text", 20_000);
         String format = requiredText(input, "format", 20);
         if (!Set.of("PLAIN_TEXT", "MARKDOWN").contains(format)) {
-            throw invalid("create_text format is not allowed");
+            throw invalid(ApiMessage.of("api.tool-execution-service.create-text-format-is-not-allowed"));
         }
         ObjectNode content = mapper.createObjectNode();
         content.put("format", format);
@@ -274,25 +275,25 @@ public class ToolExecutionService {
     private JsonNode findCall(JsonNode response, String toolCallId) {
         JsonNode generations = response.path("generations");
         if (!generations.isArray() || generations.isEmpty()) {
-            throw conflict("Saved model response lacks generations");
+            throw conflict(ApiMessage.of("api.tool-execution-service.saved-model-response-lacks-generations"));
         }
         JsonNode matched = null;
         JsonNode calls = generations.get(0).path("assistant").path("toolCalls");
         if (!calls.isArray()) {
-            throw conflict("Selected model generation lacks tool calls");
+            throw conflict(ApiMessage.of("api.tool-execution-service.selected-model-generation-lacks-tool-calls"));
         }
         for (JsonNode call : calls) {
             if (toolCallId.equals(call.path("id").asText())) {
                 if (matched != null || !"function".equals(call.path("type").asText())
                         || !call.path("name").isTextual()
                         || !call.path("arguments").isTextual()) {
-                    throw conflict("Saved model tool call is ambiguous or malformed");
+                    throw conflict(ApiMessage.of("api.tool-execution-service.saved-model-tool-call-is-ambiguous-or-malformed"));
                 }
                 matched = call;
             }
         }
         if (matched == null) {
-            throw conflict("Tool call ID was not present in the saved model response");
+            throw conflict(ApiMessage.of("api.tool-execution-service.tool-call-id-was-not-present-in-the-saved-model"));
         }
         return matched;
     }
@@ -309,7 +310,7 @@ public class ToolExecutionService {
         JsonNode value = input.get(field);
         if (value == null || !value.isTextual() || value.asText().isBlank()
                 || value.asText().length() > maximumLength) {
-            throw invalid("create_text has an invalid " + field);
+            throw invalid(ApiMessage.of("api.tool-execution-service.create-text-has-an-invalid", field));
         }
         return value.asText();
     }
@@ -330,14 +331,14 @@ public class ToolExecutionService {
     }
 
     /** 将工具参数或白名单校验失败映射为稳定的 HTTP 400 错误。 */
-    private ApiProblemException invalid(String detail) {
+    private ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
-                "工具参数无效", detail, false);
+                ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"), detail, false);
     }
 
     /** 将回合状态、账本或并发冲突映射为稳定的 HTTP 409 错误。 */
-    private ApiProblemException conflict(String detail) {
+    private ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "TOOL_EXECUTION_CONFLICT",
-                "工具执行冲突", detail, false);
+                ApiMessage.of("api.tool-execution-service.tool-execution-conflict"), detail, false);
     }
 }

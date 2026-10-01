@@ -1,3 +1,4 @@
+import { t, useLocale } from "../shared/i18n";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
@@ -30,12 +31,13 @@ const SystemLogsPage = lazy(() => import("../features/settings/SystemLogsPage")
   .then((module) => ({ default: module.SystemLogsPage })));
 
 export function App() {
+  useLocale();
   const [queryClient] = useState(createQueryClient);
 
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label="正在加载页面" /></main>}>
+        <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label={t("正在加载页面")} /></main>}>
           <Routes>
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />

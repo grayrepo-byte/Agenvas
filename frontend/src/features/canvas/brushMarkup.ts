@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 export type MarkupPoint = { x: number; y: number };
 export type MarkupTool = "BRUSH" | "ERASER" | "RECTANGLE" | "ARROW" | "TEXT";
 export type MarkupStroke = {
@@ -10,7 +11,7 @@ const TEXT_SIZE_MULTIPLIER = 6;
 /** Coordinates and widths scale with the image, so preview and original-size export agree. */
 export function renderMarkup(canvas: HTMLCanvasElement, strokes: readonly MarkupStroke[]) {
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("浏览器无法打开图片编辑画布。");
+  if (!context) throw new Error(t("浏览器无法打开图片编辑画布。"));
   context.clearRect(0, 0, canvas.width, canvas.height);
   for (const stroke of strokes) {
     const start = stroke.points[0];
@@ -61,9 +62,9 @@ export async function exportMarkup(image: HTMLImageElement, strokes: readonly Ma
   const output = document.createElement("canvas");
   output.width = overlay.width; output.height = overlay.height;
   const context = output.getContext("2d");
-  if (!context) throw new Error("浏览器无法保存图片。");
+  if (!context) throw new Error(t("浏览器无法保存图片。"));
   context.drawImage(image, 0, 0); context.drawImage(overlay, 0, 0);
   const blob = await new Promise<Blob>((resolve, reject) => output.toBlob((result) =>
-    result ? resolve(result) : reject(new Error("图片导出失败，请重试。")), "image/png"));
-  return new File([blob], "画笔标注.png", { type: "image/png" });
+    result ? resolve(result) : reject(new Error(t("图片导出失败，请重试。"))), "image/png"));
+  return new File([blob], t("画笔标注.png"), { type: "image/png" });
 }

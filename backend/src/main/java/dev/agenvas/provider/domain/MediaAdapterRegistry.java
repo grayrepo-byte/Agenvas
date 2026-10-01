@@ -1,5 +1,6 @@
 package dev.agenvas.provider.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.task.domain.Task;
@@ -143,7 +144,7 @@ public final class MediaAdapterRegistry {
 
     private static ApiProblemException unsupported() {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "PROVIDER_UNSUPPORTED_CAPABILITY", "媒体能力不可用",
-                "当前应用未安装此媒体适配器", false);
+                "PROVIDER_UNSUPPORTED_CAPABILITY", ApiMessage.of("api.media-adapter-registry.media-capabilities-are-not-available"),
+                ApiMessage.of("api.media-adapter-registry.this-media-adapter-is-not-installed-by-the-current-application"), false);
     }
 }

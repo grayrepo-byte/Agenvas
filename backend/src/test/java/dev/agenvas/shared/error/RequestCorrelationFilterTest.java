@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.servlet.ServletException;
+import dev.agenvas.shared.i18n.ApiMessages;
+import dev.agenvas.shared.i18n.I18nConfiguration;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
@@ -24,9 +26,10 @@ class RequestCorrelationFilterTest {
             assertThat(id).matches("[0-9a-f]{32}").isNotEqualTo("attacker-supplied-id\nforged");
             assertThat(MDC.get("requestId")).isEqualTo(id);
             assertThat(MDC.get("traceId")).isEqualTo(id);
-            var problem = new ApiExceptionHandler().handleApiProblem(
+            var problem = new ApiExceptionHandler(new ApiMessages(new I18nConfiguration().messageSource(), new tools.jackson.databind.ObjectMapper())).handleApiProblem(
                     new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                            "冲突", "版本已变化", false), request);
+                            dev.agenvas.shared.i18n.ApiMessage.of("api.agent-instance-service.agent-configuration-updated"),
+                            dev.agenvas.shared.i18n.ApiMessage.of("api.agent-instance-service.the-agent-configuration-has-been-modified-by-other-requests-please"), false), request);
             assertThat(problem.getBody()).isNotNull();
             assertThat(problem.getBody().getProperties()).containsEntry("traceId", id);
         });
@@ -40,7 +43,7 @@ class RequestCorrelationFilterTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/test");
         MockHttpServletResponse response = new MockHttpServletResponse();
         filter.doFilter(request, response, (servletRequest, servletResponse) -> {
-            var problem = new ApiExceptionHandler().handleUnexpected(
+            var problem = new ApiExceptionHandler(new ApiMessages(new I18nConfiguration().messageSource(), new tools.jackson.databind.ObjectMapper())).handleUnexpected(
                     new IllegalStateException("synthetic test failure"), request);
             assertThat(problem.getBody()).isNotNull();
             assertThat(problem.getBody().getProperties()).containsEntry("traceId",

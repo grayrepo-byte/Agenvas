@@ -3,7 +3,9 @@ package dev.agenvas.provider.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.RunningHubImportService;
 import dev.agenvas.provider.domain.RunningHubDefinition;
+import dev.agenvas.shared.i18n.ApiMessages;
 import dev.agenvas.task.domain.Task;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -23,13 +25,20 @@ import tools.jackson.databind.JsonNode;
 @RequestMapping("/api/v1/settings/media-connections/{connectionId}/runninghub")
 public final class RunningHubImportController {
     private final RunningHubImportService imports;
-    public RunningHubImportController(RunningHubImportService imports) { this.imports = imports; }
+    private final ApiMessages messages;
+    public RunningHubImportController(RunningHubImportService imports, ApiMessages messages) {
+        this.imports = imports;
+        this.messages = messages;
+    }
+    public record PreviewResponse(RunningHubDefinition definition, java.util.List<String> warnings) {}
     public record ImportRequest(@NotNull RunningHubDefinition.TargetType targetType,
             @NotNull @Pattern(regexp = "[0-9]{1,32}") String targetId, @NotNull Task.Kind kind, JsonNode source) {}
     @PostMapping("/preview")
-    public ResponseEntity<RunningHubImportService.Preview> preview(@AuthenticationPrincipal AdminPrincipal administrator,
-            @PathVariable UUID connectionId, @Valid @RequestBody ImportRequest request) {
+    public ResponseEntity<PreviewResponse> preview(@AuthenticationPrincipal AdminPrincipal administrator,
+            @PathVariable UUID connectionId, @Valid @RequestBody ImportRequest request, HttpServletRequest httpRequest) {
         Objects.requireNonNull(administrator, "Administrator required");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(imports.preview(connectionId, request.targetType(), request.targetId(), request.kind(), request.source()));
+        var preview = imports.preview(connectionId, request.targetType(), request.targetId(), request.kind(), request.source());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new PreviewResponse(preview.definition(),
+                preview.warnings().stream().map(warning -> messages.text(warning, httpRequest)).toList()));
     }
 }

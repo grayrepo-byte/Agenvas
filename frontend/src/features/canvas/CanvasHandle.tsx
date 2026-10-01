@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../shared/i18n";
 import { Handle, Position } from "@xyflow/react";
 import { PlusCircle, type Icon } from "@phosphor-icons/react";
 import { useRef, type PointerEvent } from "react";
@@ -27,13 +28,13 @@ type CanvasHandleConfig = {
 /** 每个连接点只在这里声明一次，卡片之间不会出现位置、方向或图标分叉。 */
 const CANVAS_HANDLES = {
   "artifact-output": { role: "out", position: Position.Right, direction: "source",
-    icon: PlusCircle, hint: "添加连线：拖到 Agent 输入或可引用的卡片" },
+    icon: PlusCircle, get hint() { return t("添加连线：拖到 Agent 输入或可引用的卡片"); } },
   "artifact-input": { role: "in", position: Position.Left, direction: "target",
-    icon: PlusCircle, hint: "接收素材引用或 Agent 输出组连线" },
+    icon: PlusCircle, get hint() { return t("接收素材引用或 Agent 输出组连线"); } },
   "agent-output": { role: "anchor", position: Position.Right, direction: "source",
-    icon: null, hint: "Agent 输出组锚点，不接受手工连线" },
+    icon: null, get hint() { return t("Agent 输出组锚点，不接受手工连线"); } },
   "agent-input": { role: "in", position: Position.Left, direction: "target",
-    icon: PlusCircle, hint: "接收素材卡片连线" },
+    icon: PlusCircle, get hint() { return t("接收素材卡片连线"); } },
 } as const satisfies Record<string, CanvasHandleConfig>;
 
 export type CanvasHandleId = keyof typeof CANVAS_HANDLES;
@@ -43,6 +44,7 @@ export type CanvasHandleId = keyof typeof CANVAS_HANDLES;
  * 使用不动的 home 测距离，避免圆点移动后重新测量导致追逐抖动，也不改变连线端点。
  */
 export function CanvasHandle({ id }: { id: CanvasHandleId }) {
+  useLocale();
   const { direction, hint, icon: IconComponent, position, role } = CANVAS_HANDLES[id];
   const homeRef = useRef<HTMLSpanElement>(null);
 

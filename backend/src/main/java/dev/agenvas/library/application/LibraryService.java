@@ -1,5 +1,6 @@
 package dev.agenvas.library.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -87,10 +88,10 @@ public class LibraryService {
             boolean text = artifact.artifact().kind() == Artifact.Kind.TEXT;
             UUID versionId = text ? artifact.artifact().resourceDefaultVersionId() : item.selectedVersionId();
             if (versionId == null || (!text && drafts.get(owner, project, itemId).displayMode() != MediaDraft.DisplayMode.RESULT))
-                throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_NO_CONTENT", "请先选用一个已保存的内容结果。");
+                throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_NO_CONTENT", ApiMessage.of("api.library-service.please-select-a-saved-content-result-first"));
             var version = artifacts.requireVersion(owner, project, item.subjectId(), versionId);
             if (text && version.content().path("text").asText().isBlank())
-                throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_NO_CONTENT", "空白文字不能保存为资产。");
+                throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_NO_CONTENT", ApiMessage.of("api.library-service.blank-text-cannot-be-saved-as-an-asset"));
             int versionNo = text ? version.versionNo() : canvas.listMediaVersions(owner, project, itemId).stream()
                     .sorted(java.util.Comparator.comparingInt(dev.agenvas.artifact.domain.ArtifactVersion::versionNo))
                     .map(dev.agenvas.artifact.domain.ArtifactVersion::id).toList().indexOf(versionId) + 1;
@@ -144,7 +145,7 @@ public class LibraryService {
             dev.agenvas.asset.domain.Asset.MediaKind kind, String key, org.springframework.web.multipart.MultipartFile file) {
         name = name(name); key = key(key);
         if (file.isEmpty() || file.getSize() > (kind == dev.agenvas.asset.domain.Asset.MediaKind.IMAGE ? MAX_IMAGE_UPLOAD_BYTES : MAX_UPLOAD_BYTES))
-            throw problem(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE", "文件为空或超过资产上传大小限制。");
+            throw problem(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE", ApiMessage.of("api.library-service.the-file-is-empty-or-exceeds-the-asset-upload-size"));
         UUID id = UUID.randomUUID();
         Media media;
         try (var stream = file.getInputStream()) { media = archive.archive(owner, id, kind, stream); }
@@ -189,7 +190,7 @@ public class LibraryService {
         var replay = replay(owner, key, hash); if (replay != null) return replay;
         LibraryEntry entry = require(owner, entryId); checkEntry(entry, expected);
         if (entry.kind() != Artifact.Kind.IMAGE && entry.kind() != Artifact.Kind.AUDIO)
-            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_REFERENCE_INVALID", "只有图片和音频资产可作为参考。");
+            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_REFERENCE_INVALID", ApiMessage.of("api.library-service.only-image-and-audio-assets-are-available-for-reference"));
         if (drafts.get(owner, project, item).version() != draft.expectedVersion()) throw conflict();
         UUID id = UUID.randomUUID();
         ObjectNode input = importInput(owner, id, project, entry).put("itemId", item.toString())
@@ -224,13 +225,13 @@ public class LibraryService {
         } catch (RuntimeException failure) { archive.discardPin(owner, input.path("pin").asText(null)); throw failure; }
     }
     private void checkEntry(LibraryEntry entry, long expected) {
-        if (entry.version() != expected) throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", "资产已变化，请刷新后重试。");
-        if (entry.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_TRASHED", "请先从回收站恢复资产。");
+        if (entry.version() != expected) throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.library-service.the-asset-has-changed-please-refresh-and-try-again"));
+        if (entry.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_TRASHED", ApiMessage.of("api.library-service.please-restore-assets-from-recycle-bin-first"));
     }
     public record MediaFile(java.nio.file.Path path, String contentType, long size) {}
     public MediaFile file(UUID owner, UUID entryId, boolean thumbnail) {
         LibraryEntry entry = require(owner, entryId);
-        if (entry.fileId() == null) throw problem(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", "文字资产没有媒体文件。");
+        if (entry.fileId() == null) throw problem(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", ApiMessage.of("api.library-service.text-assets-have-no-media-files"));
         Media media = repository.file(owner, entry.fileId());
         return new MediaFile(archive.file(owner, media, thumbnail), thumbnail ? "image/png" : media.contentType(),
                 thumbnail ? media.thumbnailByteSize() : media.byteSize());
@@ -240,7 +241,7 @@ public class LibraryService {
         if (!current.versionId().equals(version) || (current.kind() == Artifact.Kind.TEXT
                 ? artifactVersion == null || current.expectedArtifactVersion() != artifactVersion
                 : current.expectedSelectionEpoch() != epoch))
-            throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", "选中的内容已变化，请刷新预览后重新保存。");
+            throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.library-service.the-selected-content-has-changed-please-refresh-the-preview-and"));
     }
     private LibraryCommand accept(UUID owner, UUID id, String key, String hash, LibraryCommand.Kind kind, JsonNode input) {
         Instant now = clock.instant();
@@ -252,7 +253,7 @@ public class LibraryService {
     private LibraryCommand replay(UUID owner, String key, String hash) {
         var existing = repository.key(owner, key).orElse(null);
         if (existing != null && !existing.payloadHash().equals(hash))
-            throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", "相同命令键不能用于不同的内容。");
+            throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", ApiMessage.of("api.library-service.the-same-command-key-cannot-be-used-for-different-content"));
         return existing;
     }
 
@@ -273,7 +274,7 @@ public class LibraryService {
                         throw new IllegalArgumentException("Invalid cursor fields");
                     if (sort != LibraryEntry.Sort.NAME) Instant.parse(after.value());
                 }
-                catch (RuntimeException invalid) { throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "分页游标无效。"); }
+                catch (RuntimeException invalid) { throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.library-service.the-paging-cursor-is-invalid")); }
             }
             var all = repository.list(owner, category, kind, query, favorite, trash, sort, after, PAGE_SIZE + 1);
             var page = all.stream().limit(PAGE_SIZE).toList();
@@ -298,7 +299,7 @@ public class LibraryService {
                 entry.source(), entry.favorite(), entry.trashedAt(), entry.version(), entry.createdAt(), entry.updatedAt());
     }
     private LibraryEntry require(UUID owner, UUID id) {
-        return repository.entry(owner, id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "资产不存在或无权访问。"));
+        return repository.entry(owner, id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.library-service.the-asset-does-not-exist-or-you-do-not-have")));
     }
     public EntryResponse update(UUID owner, UUID id, long expected, String name, LibraryEntry.Category category, boolean favorite) {
         String normalized = name(name);
@@ -313,7 +314,7 @@ public class LibraryService {
         return tx.execute(ignored -> {
             LibraryEntry entry = require(owner, id);
             if ((entry.trashedAt() == null) == restore)
-                throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_STATE_INVALID", "资产的回收站状态已变化。");
+                throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_STATE_INVALID", ApiMessage.of("api.library-service.the-asset-s-recycle-bin-status-has-changed"));
             if (!repository.update(owner, id, expected, entry.name(), entry.category(), entry.favorite(),
                     restore ? null : clock.instant(), clock.instant())) throw conflict();
             return response(require(owner, id));
@@ -323,7 +324,7 @@ public class LibraryService {
         // Active commands hold their own hard-link pins; imported projects own independent bytes.
         Media removed = tx.execute(ignored -> {
             LibraryEntry entry = require(owner, id);
-            if (entry.trashedAt() == null) throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_NOT_TRASHED", "请先移入回收站。");
+            if (entry.trashedAt() == null) throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_NOT_TRASHED", ApiMessage.of("api.library-service.please-move-it-to-the-recycle-bin-first"));
             if (!repository.delete(owner, id, expected)) throw conflict();
             Media media = entry.fileId() == null ? null : repository.file(owner, entry.fileId());
             if (media != null) { repository.enqueueCleanup(media, clock.instant()); repository.deleteFile(owner, media.id()); }
@@ -333,23 +334,23 @@ public class LibraryService {
         if (removed != null) cleanupNext();
     }
     private ApiProblemException conflict() {
-        return problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", "资产已变化，请刷新后重试。输入已保留。");
+        return problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.library-service.the-asset-has-changed-please-refresh-and-try-again-input"));
     }
 
     private LibraryEntry requireLocked(UUID owner, UUID id) {
-        return repository.entryForUpdate(owner, id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "资产不存在或无权访问。"));
+        return repository.entryForUpdate(owner, id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.library-service.the-asset-does-not-exist-or-you-do-not-have")));
     }
 
     public LibraryCommand command(UUID owner, UUID id) {
-        return repository.command(owner, id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "转存命令不存在。"));
+        return repository.command(owner, id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.library-service.the-dump-command-does-not-exist")));
     }
     public LibraryCommand retry(UUID owner, UUID id) {
         return tx.execute(ignored -> {
             var before = command(owner, id);
             if (before.errorCode() != null && NON_RETRYABLE_CODES.contains(before.errorCode()))
-                throw problem(HttpStatus.CONFLICT, "LIBRARY_COMMAND_NOT_RETRYABLE", "输入或版本已失效，请关闭窗口、核对最新草稿后重新选择。");
+                throw problem(HttpStatus.CONFLICT, "LIBRARY_COMMAND_NOT_RETRYABLE", ApiMessage.of("api.library-service.the-input-or-version-has-expired-please-close-the-window"));
             if (before.status() != LibraryCommand.Status.FAILED || !repository.retry(owner, id, clock.instant()))
-                throw problem(HttpStatus.CONFLICT, "LIBRARY_COMMAND_NOT_FAILED", "只有失败的本地转存可以重试。");
+                throw problem(HttpStatus.CONFLICT, "LIBRARY_COMMAND_NOT_FAILED", ApiMessage.of("api.library-service.only-failed-local-dumps-can-be-retried"));
             return command(owner, id);
         });
     }
@@ -403,7 +404,8 @@ public class LibraryService {
             var rejectedImport = preparedImport;
             tx.executeWithoutResult(ignored -> {
                 boolean finished = repository.finish(command, LibraryCommand.Status.FAILED, null,
-                        code, failure instanceof ApiProblemException ? failure.getMessage() : "本地转存未完成，输入已保留。请检查存储后重试。", clock.instant());
+                        code, mapper.writeValueAsString(failure instanceof ApiProblemException problem ? problem.detail()
+                                : ApiMessage.of("api.library-service.the-local-transfer-is-not-completed-and-the-input-has")), clock.instant());
                 if (finished && NON_RETRYABLE_CODES.contains(code)) {
                     if (rejectedImport != null) repository.enqueueRejectedImport(command.ownerId(), rejectedImport, clock.instant());
                     repository.enqueuePinCleanup(command, clock.instant());
@@ -471,19 +473,19 @@ public class LibraryService {
     private String name(String value) {
         String name = value == null ? "" : value.trim();
         if (name.isEmpty() || name.length() > MAX_NAME_LENGTH)
-            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "资产名称须为 1 至 160 个字符。");
+            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.library-service.asset-name-must-be-1-to-160-characters"));
         return name;
     }
     private String key(String value) {
         if (value == null || value.isBlank() || value.length() > MAX_COMMAND_KEY_LENGTH)
-            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "命令键须为 1 至 200 个字符。");
+            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.library-service.command-keys-must-be-between-1-and-200-characters"));
         return value;
     }
     private String hash(String value) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
-    private ApiProblemException problem(HttpStatus status, String code, String detail) {
-        return new ApiProblemException(status, code, "资产操作未完成", detail, status == HttpStatus.CONFLICT);
+    private ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
+        return new ApiProblemException(status, code, ApiMessage.of("api.library-service.asset-operation-not-completed"), detail, status == HttpStatus.CONFLICT);
     }
 }

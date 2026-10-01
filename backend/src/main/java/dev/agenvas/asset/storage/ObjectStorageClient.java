@@ -1,5 +1,6 @@
 package dev.agenvas.asset.storage;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.security.EndpointAddressRules;
 import java.io.FilterInputStream;
@@ -98,8 +99,8 @@ public class ObjectStorageClient {
             String meta = response.header(p.provider() == StorageProfile.Provider.ALIYUN_OSS
                     ? "x-oss-meta-sha256" : "x-amz-meta-sha256");
             if (!Long.toString(size).equals(response.header("Content-Length")) || !hash.equals(meta))
-                throw new ApiProblemException(HttpStatus.CONFLICT, "STORAGE_OBJECT_CONFLICT", "归档对象冲突",
-                        "对象内容与归档记录不同，已停止写入。", false);
+                throw new ApiProblemException(HttpStatus.CONFLICT, "STORAGE_OBJECT_CONFLICT", ApiMessage.of("api.object-storage-client.archive-object-conflict"),
+                        ApiMessage.of("api.object-storage-client.the-object-content-is-different-from-the-archive-record-and"), false);
             return true;
         } catch (IOException failure) { throw unavailable(); }
     }
@@ -146,7 +147,7 @@ public class ObjectStorageClient {
     }
     private static ApiProblemException unavailable() {
         // Vendor errors and request URLs can include credentials/signatures; never relay them.
-        return new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "OBJECT_STORAGE_UNAVAILABLE", "对象存储不可用",
-                "请检查存储连接、权限和网络后重试。生成结果仅重试归档，不重新生成。", true);
+        return new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "OBJECT_STORAGE_UNAVAILABLE", ApiMessage.of("api.object-storage-client.object-storage-is-not-available"),
+                ApiMessage.of("api.object-storage-client.please-check-the-storage-connection-permissions-and-network-and-try"), true);
     }
 }

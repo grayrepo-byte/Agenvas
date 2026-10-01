@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.run.application.AgentRunRepository;
 import dev.agenvas.run.domain.AgentRun;
@@ -76,13 +77,13 @@ public class LlmTurnCheckpointService {
                     .asInt(-1);
             String pinnedSource = run.policySnapshot().path("modelConfigSource").asText("");
             if (pinnedVersion != configVersion || !pinnedSource.equals(configSource)) {
-                throw conflict("Run model configuration changed; explicit recovery is required");
+                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-model-configuration-changed-explicit-recovery-is-required"));
             }
             boolean inserted = turns.insertRequested(projectId, runId, stepIndex,
                     configVersion, request, clock.instant());
             LlmTurn turn = turns.find(projectId, runId, stepIndex).orElseThrow();
             if (turn.modelConfigVersion() != configVersion || !turn.request().equals(request)) {
-                throw conflict("Model step already exists with a different request or config version");
+                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-step-already-exists-with-a-different-request-or-config"));
             }
             if (inserted) {
                 usage.reserveModelTurn(ownerId, turn);
@@ -112,20 +113,20 @@ public class LlmTurnCheckpointService {
         }
         return events.recordChange(ownerId, projectId, () -> {
             AgentRun run = runs.find(ownerId, projectId, runId)
-                    .orElseThrow(() -> conflict("Run is not accessible"));
+                    .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accessible")));
             LlmTurn existing = turns.find(projectId, runId, stepIndex)
-                    .orElseThrow(() -> conflict("Model request checkpoint is missing"));
+                    .orElseThrow(() -> conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-request-checkpoint-is-missing")));
             if (existing.modelConfigVersion() != configVersion) {
-                throw conflict("Model config version changed during this round");
+                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-config-version-changed-during-this-round"));
             }
             if (existing.status() == LlmTurn.Status.RESPONDED) {
                 if (!existing.response().equals(response)) {
-                    throw conflict("Model response was already recorded differently");
+                    throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-was-already-recorded-differently"));
                 }
                 return ProjectEventService.Change.unchanged(existing);
             }
             if (!turns.saveResponse(projectId, runId, stepIndex, response, clock.instant())) {
-                throw conflict("Model response checkpoint was updated concurrently");
+                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-checkpoint-was-updated-concurrently"));
             }
             LlmTurn saved = turns.find(projectId, runId, stepIndex).orElseThrow();
             usage.settleModelTurn(ownerId, saved);
@@ -137,9 +138,9 @@ public class LlmTurnCheckpointService {
     /** 新请求只能附着于仍在运行、且属于该所有者项目的 Run。 */
     private AgentRun requireRunning(UUID ownerId, UUID projectId, UUID runId) {
         AgentRun run = runs.find(ownerId, projectId, runId)
-                .orElseThrow(() -> conflict("Run is not accessible"));
+                .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accessible")));
         if (run.status() != AgentRun.Status.RUNNING) {
-            throw conflict("Run is not accepting a model round");
+            throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
         }
         return run;
     }
@@ -154,8 +155,8 @@ public class LlmTurnCheckpointService {
     }
 
     /** 将步骤、配置或持久化响应冲突映射到同一稳定错误码。 */
-    private ApiProblemException conflict(String detail) {
+    private ApiProblemException conflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "LLM_TURN_CONFLICT",
-                "模型回合冲突", detail, false);
+                ApiMessage.of("api.llm-turn-checkpoint-service.model-turn-conflict"), detail, false);
     }
 }

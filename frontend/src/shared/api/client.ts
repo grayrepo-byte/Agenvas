@@ -1,3 +1,4 @@
+import { getLocale, t } from "../i18n";
 import type { components, paths } from "./schema";
 
 export type SetupStatus = paths["/api/v1/auth/setup-status"]["get"]["responses"][200]["content"]["application/json"];
@@ -86,11 +87,11 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
-  return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, "无法读取调用日志");
+  return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, t("无法读取调用日志"));
 }
 
 export async function getDebugSettings(): Promise<DebugSettings> {
-  return readJson<DebugSettings>("/api/v1/settings/debug", "无法读取 debug 模式设置");
+  return readJson<DebugSettings>("/api/v1/settings/debug", t("无法读取 debug 模式设置"));
 }
 
 export async function updateDebugSettings(request: UpdateDebugSettingsRequest): Promise<DebugSettings> {
@@ -100,7 +101,7 @@ export async function updateDebugSettings(request: UpdateDebugSettingsRequest): 
 }
 
 export async function getCallDebug(id: string): Promise<CallDebug> {
-  return readJson<CallDebug>(`/api/v1/call-logs/${encodeURIComponent(id)}/debug`, "无法读取调用正文");
+  return readJson<CallDebug>(`/api/v1/call-logs/${encodeURIComponent(id)}/debug`, t("无法读取调用正文"));
 }
 
 /**
@@ -123,19 +124,19 @@ export function assetContentUrl(projectId: string, assetId: string): string {
 export async function getAssetMetadata(projectId: string, assetId: string): Promise<Asset> {
   return readJson<Asset>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`,
-    "无法读取素材时长",
+    t("无法读取素材时长"),
   );
 }
 
 /** Uploads real image bytes with the session CSRF token; the browser supplies the multipart boundary. */
 export async function uploadImageAsset(projectId: string, file: File): Promise<Asset> {
   if (file.size > 20 * 1024 * 1024) {
-    throw new ApiError(413, "ASSET_TOO_LARGE", "图片不能超过 20 MiB。", false);
+    throw new ApiError(413, "ASSET_TOO_LARGE", t("图片不能超过 20 MiB。"), false);
   }
   const form = new FormData();
   form.append("file", file);
   const token = await getCsrfToken();
-  const response = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets`, {
+  const response = await apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets`, {
     method: "POST",
     credentials: "same-origin",
     headers: {
@@ -144,19 +145,19 @@ export async function uploadImageAsset(projectId: string, file: File): Promise<A
     },
     body: form,
   });
-  if (!response.ok) throw await apiError(response, "图片上传未完成");
+  if (!response.ok) throw await apiError(response, t("图片上传未完成"));
   return (await response.json()) as Asset;
 }
 
 /** Session-protected metadata download; the manifest contains no signed media URLs. */
 export async function uploadAudioAsset(projectId: string, file: File): Promise<Asset> {
   if (file.size > 50 * 1024 * 1024) {
-    throw new ApiError(413, "ASSET_TOO_LARGE", "音频不能超过 50 MiB。", false);
+    throw new ApiError(413, "ASSET_TOO_LARGE", t("音频不能超过 50 MiB。"), false);
   }
   const form = new FormData();
   form.append("file", file);
   const token = await getCsrfToken();
-  const response = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, {
+  const response = await apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, {
     method: "POST",
     credentials: "same-origin",
     headers: {
@@ -165,7 +166,7 @@ export async function uploadAudioAsset(projectId: string, file: File): Promise<A
     },
     body: form,
   });
-  if (!response.ok) throw await apiError(response, "音频上传未完成");
+  if (!response.ok) throw await apiError(response, t("音频上传未完成"));
   return (await response.json()) as Asset;
 }
 
@@ -173,12 +174,12 @@ const MAX_VIDEO_UPLOAD_BYTES = 500 * 1024 * 1024;
 /** MP4 uploads use actual backend decoding and the selected per-asset storage destination. */
 export async function uploadVideoAsset(projectId: string, file: File): Promise<Asset> {
   if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
-    throw new ApiError(413, "ASSET_TOO_LARGE", "视频不能超过 500 MiB。", false);
+    throw new ApiError(413, "ASSET_TOO_LARGE", t("视频不能超过 500 MiB。"), false);
   }
   const form = new FormData();
   form.append("file", file);
   const token = await getCsrfToken();
-  const response = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, {
+  const response = await apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, {
     method: "POST",
     credentials: "same-origin",
     headers: {
@@ -187,7 +188,7 @@ export async function uploadVideoAsset(projectId: string, file: File): Promise<A
     },
     body: form,
   });
-  if (!response.ok) throw await apiError(response, "视频上传未完成");
+  if (!response.ok) throw await apiError(response, t("视频上传未完成"));
   return (await response.json()) as Asset;
 }
 
@@ -200,7 +201,7 @@ export function projectExportManifestUrl(projectId: string): string {
 export async function listProjectUsage(projectId: string): Promise<UsageEntry[]> {
   return readJson<UsageEntry[]>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/usage`,
-    "无法读取项目用量记录",
+    t("无法读取项目用量记录"),
   );
 }
 
@@ -219,7 +220,7 @@ export class ApiError extends Error {
 
 /** Reads the public one-time setup state. */
 export async function getSetupStatus(): Promise<SetupStatus> {
-  return readJson<SetupStatus>("/api/v1/auth/setup-status", "无法读取系统初始化状态");
+  return readJson<SetupStatus>("/api/v1/auth/setup-status", t("无法读取系统初始化状态"));
 }
 
 /** Creates the sole administrator. The bootstrap secret is sent once and never persisted. */
@@ -246,17 +247,17 @@ export async function login(input: LoginRequest): Promise<CurrentUser> {
 
 /** Loads the authenticated administrator represented by the session cookie. */
 export async function getCurrentUser(): Promise<CurrentUser> {
-  return readJson<CurrentUser>("/api/v1/auth/me", "登录状态已失效");
+  return readJson<CurrentUser>("/api/v1/auth/me", t("登录状态已失效"));
 }
 
 /** Reads only masked administrator LLM configuration metadata. */
 export async function getLlmSettings(): Promise<LlmSettings> {
-  return readJson<LlmSettings>("/api/v1/settings/llm", "无法读取模型配置");
+  return readJson<LlmSettings>("/api/v1/settings/llm", t("无法读取模型配置"));
 }
 
 /** Media settings expose only public connection and capability metadata. */
 export async function getMediaSettings(): Promise<MediaSettings> {
-  return readJson<MediaSettings>("/api/v1/settings/media-connections", "无法读取媒体配置");
+  return readJson<MediaSettings>("/api/v1/settings/media-connections", t("无法读取媒体配置"));
 }
 
 export async function createMediaConnection(input: CreateMediaConnectionRequest,
@@ -301,7 +302,7 @@ export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATI
 
 /** Reads only local, non-billable installation checks and aggregate Task statuses. */
 export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
-  return readJson<SystemDiagnostics>("/api/v1/settings/diagnostics", "无法读取系统诊断");
+  return readJson<SystemDiagnostics>("/api/v1/settings/diagnostics", t("无法读取系统诊断"));
 }
 
 /** Sends a replacement key once over the authenticated, CSRF-protected session. */
@@ -345,7 +346,7 @@ export async function listProjects(options: {
   if (options.cursor) query.set("cursor", options.cursor);
   if (options.limit) query.set("limit", String(options.limit));
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return readJson<ProjectList>(`/api/v1/projects${suffix}`, "无法读取项目列表");
+  return readJson<ProjectList>(`/api/v1/projects${suffix}`, t("无法读取项目列表"));
 }
 
 /** Creates a project under the current session owner. */
@@ -358,14 +359,14 @@ export async function createProject(input: CreateProjectRequest): Promise<Projec
 
 /** Reads one owner-scoped project. */
 export async function getProject(projectId: string): Promise<Project> {
-  return readJson<Project>(`/api/v1/projects/${projectId}`, "无法读取项目");
+  return readJson<Project>(`/api/v1/projects/${projectId}`, t("无法读取项目"));
 }
 
 /** Loads workspace entities and the exclusive event replay cursor from one database snapshot. */
 export async function getProjectSnapshot(projectId: string): Promise<ProjectSnapshot> {
   return readJson<ProjectSnapshot>(
     `/api/v1/projects/${projectId}/snapshot`,
-    "无法读取项目快照",
+    t("无法读取项目快照"),
   );
 }
 
@@ -405,20 +406,20 @@ export async function createArtifact(
 export async function getArtifact(projectId: string, artifactId: string): Promise<Artifact> {
   return readJson<Artifact>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}`,
-    "无法读取产物",
+    t("无法读取产物"),
   );
 }
 
 /** Lists project resources independently of which CanvasItems are currently visible. */
 export async function listArtifacts(projectId: string): Promise<ArtifactList> {
-  return readJson<ArtifactList>(`/api/v1/projects/${projectId}/artifacts`, "无法读取项目资源");
+  return readJson<ArtifactList>(`/api/v1/projects/${projectId}/artifacts`, t("无法读取项目资源"));
 }
 
 /** Loads one media card's editable generation input independently of its selected result. */
 export async function getMediaDraft(projectId: string, canvasItemId: string): Promise<MediaDraft> {
   return readJson<MediaDraft>(
     `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
-    "无法读取媒体草稿",
+    t("无法读取媒体草稿"),
   );
 }
 
@@ -454,7 +455,7 @@ export async function removeMediaDraftMediaInput(projectId: string, canvasItemId
 export async function listCanvasConnections(projectId: string): Promise<CanvasConnectionList> {
   return readJson<CanvasConnectionList>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections`,
-    "无法读取画布连线",
+    t("无法读取画布连线"),
   );
 }
 
@@ -488,7 +489,7 @@ export async function duplicateCanvasItem(projectId: string, sourceItemId: strin
 /** Result history belonging to one media node. */
 export async function listCanvasMediaVersions(projectId: string, itemId: string): Promise<ArtifactVersionList> {
   return readJson<ArtifactVersionList>(
-    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`, "无法读取媒体版本");
+    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`, t("无法读取媒体版本"));
 }
 
 export async function selectCanvasMediaVersion(projectId: string, itemId: string,
@@ -522,7 +523,7 @@ export async function listDirectMediaTasks(projectId: string, artifactId: string
   canvasItemId: string): Promise<Task[]> {
   const query = new URLSearchParams({ canvasItemId });
   return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run?${query}`,
-    "无法读取卡片任务");
+    t("无法读取卡片任务"));
 }
 
 /** Pins the visible text version and sends one prompt to the configured text model. */
@@ -538,7 +539,7 @@ export async function runDirectTextGeneration(projectId: string, artifactId: str
 export async function listDirectTextTasks(projectId: string, artifactId: string): Promise<Task[]> {
   return readJson<Task[]>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}/text-generations`,
-    "无法读取文字生成任务",
+    t("无法读取文字生成任务"),
   );
 }
 
@@ -550,7 +551,7 @@ export async function cancelQueuedDirectMediaTask(projectId: string, taskId: str
 export async function getDirectMediaQueueStatus(projectId: string,
   taskId: string): Promise<DirectMediaQueueStatus> {
   return readJson<DirectMediaQueueStatus>(
-    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`, "无法读取排队状态");
+    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`, t("无法读取排队状态"));
 }
 
 /** Appends and selects a complete content revision with optimistic concurrency. */
@@ -572,7 +573,7 @@ export async function listArtifactVersions(
 ): Promise<ArtifactVersionList> {
   return readJson<ArtifactVersionList>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}/versions`,
-    "无法读取版本历史",
+    t("无法读取版本历史"),
   );
 }
 
@@ -606,7 +607,7 @@ export async function uploadCanvasItemVersion(
 
 /** Loads the authoritative canvas projection for refresh recovery. */
 export async function listCanvasItems(projectId: string): Promise<Canvas> {
-  return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, "无法读取画布");
+  return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, t("无法读取画布"));
 }
 
 /** Atomically applies one or more presentation-only canvas commands. */
@@ -622,7 +623,7 @@ export async function applyCanvasCommands(
 
 /** Lists persistent Agent card configurations and only their explicitly bound inputs. */
 export async function listAgents(projectId: string): Promise<AgentList> {
-  return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, "无法读取 Agent 列表");
+  return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, t("无法读取 Agent 列表"));
 }
 
 /** Creates an idle Creator Agent; creation does not start a model run. */
@@ -655,7 +656,7 @@ export async function getRunPreflight(projectId: string, agentId: string,
   if (conversationId) params.set("conversationId", conversationId);
   return readJson<RunPreflight>(
     `/api/v1/projects/${projectId}/runs/preflight?${params}`,
-    "无法核对运行前配置",
+    t("无法核对运行前配置"),
   );
 }
 
@@ -665,7 +666,7 @@ export async function listAgentConversations(projectId: string, agentId: string,
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentConversationList>(
-    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`, "无法读取会话记录");
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`, t("无法读取会话记录"));
 }
 
 /** Creates and selects an empty conversation; reuse the same key after an uncertain response. */
@@ -690,7 +691,7 @@ export async function listConversationRuns(projectId: string, agentId: string,
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentRunList>(
     `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/runs?${params}`,
-    "无法读取会话消息");
+    t("无法读取会话消息"));
 }
 
 /** Creates or exactly replays one durable Run command under a project activity slot. */
@@ -708,14 +709,14 @@ export async function createRun(
 
 /** Loads one owner-scoped Run and its immutable creation snapshots. */
 export async function getRun(projectId: string, runId: string): Promise<AgentRun> {
-  return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, "无法读取运行状态");
+  return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, t("无法读取运行状态"));
 }
 
 /** Lists only committed, server-authored action summaries for one owned Run. */
 export async function listRunActions(projectId: string, runId: string): Promise<RunAction[]> {
   return readJson<RunAction[]>(
     `/api/v1/projects/${projectId}/runs/${runId}/actions`,
-    "无法读取执行动作",
+    t("无法读取执行动作"),
   );
 }
 
@@ -725,7 +726,7 @@ export async function listAgentRuns(projectId: string, agentId: string,
   const params = new URLSearchParams({ agentId, limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentRunList>(`/api/v1/projects/${projectId}/runs?${params}`,
-    "无法读取运行记录");
+    t("无法读取运行记录"));
 }
 
 /** Stops future orchestration; external work may still require later reconciliation. */
@@ -737,7 +738,7 @@ export async function cancelRun(projectId: string, runId: string): Promise<Agent
 
 /** Reads durable Task state; lease ownership remains an internal worker concern. */
 export async function getTask(projectId: string, taskId: string): Promise<Task> {
-  return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, "无法读取任务状态");
+  return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, t("无法读取任务状态"));
 }
 
 /** Starts a separately reserved attempt for a task whose result is unknown. */
@@ -753,11 +754,11 @@ export async function createManualUnknownAttempt(projectId: string, taskId: stri
 /** Loads all task outcomes for one owned Run. */
 export async function listRunTasks(projectId: string, runId: string): Promise<Task[]> {
   return readJson<Task[]>(`/api/v1/projects/${projectId}/runs/${runId}/tasks`,
-    "无法读取运行任务");
+    t("无法读取运行任务"));
 }
 
 async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
   });
@@ -778,7 +779,7 @@ async function writeEmpty(path: string, init: RequestInit): Promise<void> {
 
 async function write(path: string, init: RequestInit): Promise<Response> {
   const token = await getCsrfToken();
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...init,
     credentials: "same-origin",
     headers: {
@@ -789,7 +790,7 @@ async function write(path: string, init: RequestInit): Promise<Response> {
     },
   });
   if (!response.ok) {
-    throw await apiError(response, "请求未完成");
+    throw await apiError(response, t("请求未完成"));
   }
   return response;
 }
@@ -798,7 +799,7 @@ async function getCsrfToken(): Promise<CsrfToken> {
   if (csrfToken) {
     return csrfToken;
   }
-  csrfToken = await readJson<CsrfToken>("/api/v1/auth/csrf", "无法建立安全会话");
+  csrfToken = await readJson<CsrfToken>("/api/v1/auth/csrf", t("无法建立安全会话"));
   return csrfToken;
 }
 
@@ -824,7 +825,7 @@ export async function listSystemLogs(input: { stream?: SystemLogStream; search?:
   const params = new URLSearchParams({ limit: String(input.limit) });
   if (input.stream) params.set("stream", input.stream);
   if (input.search) params.set("search", input.search);
-  return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, "无法读取系统日志");
+  return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, t("无法读取系统日志"));
 }
 
 export type LibraryEntry = components["schemas"]["LibraryEntry"];
@@ -841,15 +842,15 @@ export type LibraryFilters = NonNullable<paths["/api/v1/library/entries"]["get"]
 export function listLibraryEntries(filters: LibraryFilters): Promise<LibraryPage> {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
-  return readJson(`/api/v1/library/entries?${query}`, "无法读取我的资产");
+  return readJson(`/api/v1/library/entries?${query}`, t("无法读取我的资产"));
 }
 export function getLibraryEntry(id: string): Promise<LibraryEntry> {
-  return readJson(`/api/v1/library/entries/${id}`, "无法读取资产");
+  return readJson(`/api/v1/library/entries/${id}`, t("无法读取资产"));
 }
 export function libraryContentUrl(id: string) { return `/api/v1/library/entries/${id}/content`; }
 export function libraryThumbnailUrl(id: string) { return `/api/v1/library/entries/${id}/thumbnail`; }
 export function getLibrarySource(project: string, item: string): Promise<LibrarySource> {
-  return readJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, "无法读取当前结果");
+  return readJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, t("无法读取当前结果"));
 }
 export function saveLibraryEntry(project: string, item: string, request: SaveLibraryRequest): Promise<LibraryCommand> {
   return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, { method: "POST", body: JSON.stringify(request) });
@@ -861,7 +862,7 @@ export function referenceLibraryEntry(project: string, item: string, request: Re
   return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-references`, { method: "POST", body: JSON.stringify(request) });
 }
 export function getLibraryCommand(id: string): Promise<LibraryCommand> {
-  return readJson(`/api/v1/library/commands/${id}`, "暂时无法核对转存结果");
+  return readJson(`/api/v1/library/commands/${id}`, t("暂时无法核对转存结果"));
 }
 export function retryLibraryCommand(id: string): Promise<LibraryCommand> {
   return writeJson(`/api/v1/library/commands/${id}/retry`, { method: "POST" });
@@ -878,9 +879,9 @@ export function deleteLibraryEntry(id: string, expectedVersion: number): Promise
 export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | "VIDEO" | "AUDIO"; name: string; category: LibraryCategory; commandKey: string }): Promise<LibraryCommand> {
   const body = new FormData(); Object.entries(request).forEach(([key, value]) => body.append(key, value));
   const token = await getCsrfToken();
-  const response = await fetch("/api/v1/library/uploads", { method: "POST", credentials: "same-origin", body,
+  const response = await apiFetch("/api/v1/library/uploads", { method: "POST", credentials: "same-origin", body,
     headers: { Accept: "application/json, application/problem+json", [token.headerName]: token.token } });
-  if (!response.ok) throw await apiError(response, "资产上传未完成");
+  if (!response.ok) throw await apiError(response, t("资产上传未完成"));
   return await response.json() as LibraryCommand;
 }
 
@@ -889,7 +890,7 @@ export type StorageProvider = components["schemas"]["StorageProvider"];
 export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
 export type RotateStorageCredentialsRequest = components["schemas"]["RotateStorageCredentialsRequest"];
 export async function getStorageSettings(): Promise<StorageSettings> {
-  return readJson<StorageSettings>("/api/v1/settings/storage", "无法读取存储配置");
+  return readJson<StorageSettings>("/api/v1/settings/storage", t("无法读取存储配置"));
 }
 export async function createStorageProfile(input: CreateStorageProfileRequest): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/profiles", {
@@ -905,4 +906,11 @@ export async function rotateStorageCredentials(id: string, input: RotateStorageC
   return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}/credentials`, {
     method: "PUT", body: JSON.stringify(input),
   });
+}
+
+/** All JSON and multipart requests negotiate the same language as the UI. */
+function apiFetch(path: string, init: RequestInit): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept-Language", getLocale());
+  return fetch(path, { ...init, headers });
 }

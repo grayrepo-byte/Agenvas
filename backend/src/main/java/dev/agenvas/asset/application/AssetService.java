@@ -1,5 +1,6 @@
 package dev.agenvas.asset.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.event.application.ProjectEventService;
@@ -377,7 +378,7 @@ public class AssetService {
         projects.get(ownerId, projectId);
         Asset asset = assets.find(projectId, assetId).orElseThrow(() ->
                 new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND",
-                        "素材不存在", "找不到该项目中的素材。", false));
+                        ApiMessage.of("api.asset-service.material-does-not-exist"), ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
         Path path = checkedReadyFile(asset.objectKey(), asset.byteSize());
         return new AssetFile(asset, path);
     }
@@ -386,16 +387,16 @@ public class AssetService {
     public Asset metadata(UUID ownerId, UUID projectId, UUID assetId) {
         projects.get(ownerId, projectId);
         return assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                "ASSET_NOT_FOUND", "素材不存在", "找不到该项目中的素材。", false));
+                "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"), ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
     }
 
     /** Authorize before accessing storage; metadata/HEAD never materialize a remote video. */
     public AssetContent content(UUID ownerId, UUID projectId, UUID assetId, boolean thumbnail) {
         projects.get(ownerId, projectId);
         Asset asset = assets.find(projectId, assetId).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", "素材不存在", "找不到该项目中的素材。", false));
+                new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"), ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
         if (thumbnail && (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null))
-            throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND", "预览不存在", "该素材没有可用的缩略图。", false);
+            throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND", ApiMessage.of("api.asset-service.preview-does-not-exist"), ApiMessage.of("api.asset-service.there-is-no-thumbnail-available-for-this-footage"), false);
         String key = thumbnail ? asset.thumbnailKey() : asset.objectKey();
         long size = thumbnail ? asset.thumbnailByteSize() : asset.byteSize();
         String hash = thumbnail ? asset.thumbnailSha256() : asset.sha256();
@@ -422,7 +423,7 @@ public class AssetService {
         Asset asset = metadata(ownerId, projectId, assetId);
         if (asset.mediaKind() != expectedKind) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "ARTIFACT_ASSET_KIND_INVALID",
-                    "素材类型不匹配", "产物引用的素材类型不匹配。", false);
+                    ApiMessage.of("api.asset-service.material-type-mismatch"), ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"), false);
         }
         return asset;
     }
@@ -432,7 +433,7 @@ public class AssetService {
         Asset asset = metadata(ownerId, projectId, assetId);
         if (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null) {
             throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND",
-                    "预览不存在", "该素材没有可用的缩略图。", false);
+                    ApiMessage.of("api.asset-service.preview-does-not-exist"), ApiMessage.of("api.asset-service.there-is-no-thumbnail-available-for-this-footage"), false);
         }
         return new ThumbnailFile(asset,
                 checkedReadyFile(asset.thumbnailKey(), asset.thumbnailByteSize()));

@@ -7,7 +7,13 @@ export interface paths {
     "/api/v1/settings/system-logs": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -31,7 +37,13 @@ export interface paths {
     "/api/v1/call-logs": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -53,7 +65,13 @@ export interface paths {
     "/api/v1/settings/debug": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -74,7 +92,13 @@ export interface paths {
     "/api/v1/call-logs/{id}/debug": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -94,7 +118,13 @@ export interface paths {
     "/api/v1/auth/setup-status": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -111,7 +141,13 @@ export interface paths {
     "/api/v1/auth/csrf": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -128,7 +164,13 @@ export interface paths {
     "/api/v1/auth/setup": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -145,7 +187,13 @@ export interface paths {
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -162,7 +210,13 @@ export interface paths {
     "/api/v1/auth/logout": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -179,7 +233,13 @@ export interface paths {
     "/api/v1/auth/me": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -196,7 +256,13 @@ export interface paths {
     "/api/v1/auth/change-password": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -213,7 +279,13 @@ export interface paths {
     "/api/v1/settings/storage": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -230,7 +302,13 @@ export interface paths {
     "/api/v1/settings/storage/profiles": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -247,7 +325,13 @@ export interface paths {
     "/api/v1/settings/storage/active": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -264,7 +348,13 @@ export interface paths {
     "/api/v1/settings/storage/profiles/{profileId}/credentials": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 profileId: string;
             };
@@ -283,7 +373,13 @@ export interface paths {
     "/api/v1/settings/llm": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -301,7 +397,13 @@ export interface paths {
     "/api/v1/settings/diagnostics": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -318,7 +420,13 @@ export interface paths {
     "/api/v1/settings/llm/diagnose": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -335,7 +443,13 @@ export interface paths {
     "/api/v1/settings/media-connections": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -353,7 +467,13 @@ export interface paths {
     "/api/v1/settings/media-connections/{connectionId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 connectionId: string;
             };
@@ -372,7 +492,13 @@ export interface paths {
     "/api/v1/settings/media-connections/{connectionId}/runninghub/preview": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -389,7 +515,13 @@ export interface paths {
     "/api/v1/settings/media-connections/{connectionId}/capabilities": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 connectionId: string;
             };
@@ -408,7 +540,13 @@ export interface paths {
     "/api/v1/settings/media-connections/{connectionId}/capabilities/{capabilityId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 connectionId: string;
                 capabilityId: string;
@@ -428,7 +566,13 @@ export interface paths {
     "/api/v1/settings/media-defaults/{kind}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             };
@@ -447,7 +591,13 @@ export interface paths {
     "/api/v1/projects": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -465,7 +615,13 @@ export interface paths {
     "/api/v1/projects/{projectId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -485,7 +641,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/archive": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -504,7 +666,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/snapshot": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -523,7 +691,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/export-manifest": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -542,7 +716,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/usage": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -561,7 +741,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/events": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -580,7 +766,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/assets": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -599,7 +791,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/assets/audio": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -618,7 +816,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/assets/video": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -637,7 +841,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/assets/{assetId}/content": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 assetId: string;
@@ -658,7 +868,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/assets/{assetId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 assetId: string;
@@ -678,7 +894,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/assets/{assetId}/thumbnail": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 assetId: string;
@@ -698,7 +920,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -718,7 +946,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -738,7 +972,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -759,7 +999,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/restore-version-inputs": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -779,7 +1025,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/media-draft/media-inputs/{versionId}/remove": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -800,7 +1052,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/connections": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -820,7 +1078,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/connections/{connectionId}/disconnect": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 connectionId: string;
@@ -840,7 +1104,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/run": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -861,7 +1131,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/text-generations": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -882,7 +1158,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/image-operations": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -905,7 +1187,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -925,7 +1213,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/tasks/{taskId}/queue": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -945,7 +1239,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/revisions": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -965,7 +1265,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/versions": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -985,7 +1291,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/set-default-version": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -1005,7 +1317,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/upload-version": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -1028,7 +1346,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/items/{itemId}/media-versions": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 itemId: string;
@@ -1048,7 +1372,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/items/{itemId}/select-media-version": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 itemId: string;
@@ -1068,7 +1398,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/items": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -1087,7 +1423,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/agents": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -1107,7 +1449,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/agents/{agentId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -1128,7 +1476,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/agents/{agentId}/conversations": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -1149,7 +1503,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/select": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -1170,7 +1530,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/agents/{agentId}/conversations/{conversationId}/runs": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -1191,7 +1557,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/runs": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -1211,7 +1583,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/runs/preflight": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -1233,7 +1611,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/runs/{runId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -1253,7 +1637,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/runs/{runId}/actions": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -1276,7 +1666,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/runs/{runId}/cancel": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -1296,7 +1692,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/runs/{runId}/tasks": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -1316,7 +1718,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/tasks/{taskId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -1336,7 +1744,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/tasks/{taskId}/new-attempt": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -1356,7 +1770,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/commands": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -1375,7 +1795,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas/items/{sourceItemId}/duplicate": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 sourceItemId: string;
@@ -1395,7 +1821,13 @@ export interface paths {
     "/api/v1/library/entries": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1411,7 +1843,13 @@ export interface paths {
     "/api/v1/library/entries/{entryId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1427,7 +1865,13 @@ export interface paths {
     "/api/v1/library/entries/{entryId}/trash": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1443,7 +1887,13 @@ export interface paths {
     "/api/v1/library/entries/{entryId}/restore": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1459,7 +1909,13 @@ export interface paths {
     "/api/v1/library/entries/{entryId}/content": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1475,7 +1931,13 @@ export interface paths {
     "/api/v1/library/entries/{entryId}/thumbnail": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1491,7 +1953,13 @@ export interface paths {
     "/api/v1/library/commands/{commandId}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1507,7 +1975,13 @@ export interface paths {
     "/api/v1/library/commands/{commandId}/retry": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1523,7 +1997,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas-items/{itemId}/library-saves": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1539,7 +2019,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/library-imports": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1555,7 +2041,13 @@ export interface paths {
     "/api/v1/projects/{projectId}/canvas-items/{itemId}/library-references": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1571,7 +2063,13 @@ export interface paths {
     "/api/v1/library/uploads": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1648,6 +2146,7 @@ export interface components {
                 trashed?: boolean;
             } | null;
             errorCode: string | null;
+            /** @description Public failure explanation localized using Accept-Language. Internal message keys and interpolation arguments are never exposed. */
             errorDetail: string | null;
         };
         LibrarySource: {
@@ -1941,6 +2440,7 @@ export interface components {
         };
         RunningHubImportPreview: {
             definition: components["schemas"]["RunningHubDefinition"];
+            /** @description Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content. */
             warnings: string[];
         };
         MediaCapabilityPricing: {
@@ -3250,6 +3750,8 @@ export interface components {
         /** @description 请求参数无效 */
         ValidationError: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3259,6 +3761,8 @@ export interface components {
         /** @description 未登录或凭据不正确 */
         Unauthenticated: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3268,6 +3772,8 @@ export interface components {
         /** @description CSRF、初始化凭据或权限校验失败 */
         Forbidden: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3277,6 +3783,8 @@ export interface components {
         /** @description 初始化或乐观版本冲突 */
         Conflict: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3286,6 +3794,8 @@ export interface components {
         /** @description 资源不存在或当前用户无权访问 */
         NotFound: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3295,6 +3805,8 @@ export interface components {
         /** @description 认证尝试次数过多 */
         RateLimited: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3304,6 +3816,8 @@ export interface components {
         /** @description 服务端错误 */
         InternalError: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3313,6 +3827,8 @@ export interface components {
         /** @description 原 Provider 请求核对不可用或身份不匹配，任务仍为 UNKNOWN */
         ProviderFailure: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3322,6 +3838,8 @@ export interface components {
         /** @description 对象存储连接、权限或网络不可用；生成结果只重试归档，不重新生成 */
         ObjectStorageFailure: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3331,6 +3849,8 @@ export interface components {
         /** @description 部署凭证加密主密钥尚未配置 */
         Unavailable: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3340,6 +3860,8 @@ export interface components {
         /** @description 实例正在关闭，拒绝创建新的 Agent Run；稍后以新的请求重试 */
         ServiceStopping: {
             headers: {
+                "Content-Language": components["headers"]["ContentLanguage"];
+                Vary: components["headers"]["VaryLanguage"];
                 [name: string]: unknown;
             };
             content: {
@@ -3348,12 +3870,22 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+         * @example ru-RU, en;q=0.8
+         */
+        AcceptLanguage: string;
         ProjectId: string;
         ArtifactId: string;
         CanvasItemId: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description 协商后的界面语言；不改变用户内容、枚举或错误码。 */
+        ContentLanguage: "en" | "zh" | "ru" | "ja";
+        /** @description 包含 Accept-Language，避免不同语言的响应共用缓存。 */
+        VaryLanguage: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -3365,7 +3897,13 @@ export interface operations {
                 search?: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3400,7 +3938,13 @@ export interface operations {
                 page?: number;
                 size?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3423,7 +3967,13 @@ export interface operations {
     getDebugSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3445,7 +3995,13 @@ export interface operations {
     updateDebugSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3476,7 +4032,13 @@ export interface operations {
     getCallDebug: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 id: string;
             };
@@ -3502,7 +4064,13 @@ export interface operations {
     getSetupStatus: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3524,7 +4092,13 @@ export interface operations {
     getCsrfToken: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3546,6 +4120,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "X-Agenvas-Bootstrap-Secret": string;
             };
             path?: never;
@@ -3574,7 +4153,13 @@ export interface operations {
     login: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3601,7 +4186,13 @@ export interface operations {
     logout: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3621,7 +4212,13 @@ export interface operations {
     getCurrentUser: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3642,7 +4239,13 @@ export interface operations {
     changePassword: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3669,7 +4272,13 @@ export interface operations {
     getStorageSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3692,7 +4301,13 @@ export interface operations {
     createStorageProfile: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3721,7 +4336,13 @@ export interface operations {
     activateStorageProfile: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3749,7 +4370,13 @@ export interface operations {
     rotateStorageCredentials: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 profileId: string;
             };
@@ -3781,7 +4408,13 @@ export interface operations {
     getLlmSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3803,7 +4436,13 @@ export interface operations {
     replaceLlmSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3833,7 +4472,13 @@ export interface operations {
     getSystemDiagnostics: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3855,7 +4500,13 @@ export interface operations {
     diagnoseLlmSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3902,7 +4553,13 @@ export interface operations {
     getMediaSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -3925,6 +4582,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path?: never;
@@ -3954,7 +4616,13 @@ export interface operations {
     updateMediaConnection: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 connectionId: string;
             };
@@ -3983,7 +4651,13 @@ export interface operations {
     previewRunningHubImport: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 connectionId: string;
             };
@@ -4031,6 +4705,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -4061,7 +4740,13 @@ export interface operations {
     updateMediaCapability: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 connectionId: string;
                 capabilityId: string;
@@ -4091,7 +4776,13 @@ export interface operations {
     setMediaDefault: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
             };
@@ -4124,7 +4815,13 @@ export interface operations {
                 cursor?: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4146,7 +4843,13 @@ export interface operations {
     createProject: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4173,7 +4876,13 @@ export interface operations {
     getProject: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4197,7 +4906,13 @@ export interface operations {
     updateProject: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4228,7 +4943,13 @@ export interface operations {
     archiveProject: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4259,7 +4980,13 @@ export interface operations {
     getProjectSnapshot: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4283,7 +5010,13 @@ export interface operations {
     getProjectExportManifest: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4308,7 +5041,13 @@ export interface operations {
     listProjectUsage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4335,6 +5074,11 @@ export interface operations {
                 after?: number;
             };
             header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 /** @description 浏览器自动重连游标；提供时优先于 after */
                 "Last-Event-ID"?: string;
             };
@@ -4364,7 +5108,13 @@ export interface operations {
     uploadImageAsset: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4412,7 +5162,13 @@ export interface operations {
     uploadAudioAsset: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4460,7 +5216,13 @@ export interface operations {
     uploadVideoAsset: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4509,6 +5271,11 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 Range?: string;
             };
             path: {
@@ -4555,6 +5322,11 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 Range?: string;
             };
             path: {
@@ -4595,7 +5367,13 @@ export interface operations {
     getAssetMetadata: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 assetId: string;
@@ -4620,7 +5398,13 @@ export interface operations {
     getAssetThumbnail: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 assetId: string;
@@ -4647,7 +5431,13 @@ export interface operations {
     listArtifacts: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4672,6 +5462,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -4705,7 +5500,13 @@ export interface operations {
     getArtifact: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -4730,7 +5531,13 @@ export interface operations {
     getMediaDraft: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -4755,7 +5562,13 @@ export interface operations {
     saveMediaDraft: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -4786,7 +5599,13 @@ export interface operations {
     restoreMediaDraftVersionInputs: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -4817,7 +5636,13 @@ export interface operations {
     removeMediaDraftMediaInput: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -4849,7 +5674,13 @@ export interface operations {
     listCanvasConnections: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4873,7 +5704,13 @@ export interface operations {
     createCanvasConnection: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -4903,7 +5740,13 @@ export interface operations {
     disconnectCanvasConnection: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 connectionId: string;
@@ -4936,7 +5779,13 @@ export interface operations {
             query: {
                 canvasItemId: string;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -4962,6 +5811,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -4994,7 +5848,13 @@ export interface operations {
     listDirectTextTasks: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -5020,6 +5880,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -5053,6 +5918,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -5085,7 +5955,13 @@ export interface operations {
     cancelQueuedDirectMediaTask: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -5111,7 +5987,13 @@ export interface operations {
     getDirectMediaQueueStatus: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -5136,7 +6018,13 @@ export interface operations {
     reviseArtifact: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -5168,7 +6056,13 @@ export interface operations {
     listArtifactVersions: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -5193,7 +6087,13 @@ export interface operations {
     setArtifactResourceDefaultVersion: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 artifactId: components["parameters"]["ArtifactId"];
@@ -5225,7 +6125,13 @@ export interface operations {
     uploadCanvasItemVersion: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 canvasItemId: components["parameters"]["CanvasItemId"];
@@ -5257,7 +6163,13 @@ export interface operations {
     listCanvasMediaVersions: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 itemId: string;
@@ -5283,7 +6195,13 @@ export interface operations {
     selectCanvasMediaVersion: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 itemId: string;
@@ -5315,7 +6233,13 @@ export interface operations {
     listCanvasItems: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -5339,7 +6263,13 @@ export interface operations {
     listAgents: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -5363,7 +6293,13 @@ export interface operations {
     createAgent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -5392,7 +6328,13 @@ export interface operations {
     getAgent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -5417,7 +6359,13 @@ export interface operations {
     updateAgent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -5451,7 +6399,13 @@ export interface operations {
                 cursor?: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -5478,6 +6432,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -5506,7 +6465,13 @@ export interface operations {
     selectAgentConversation: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -5535,7 +6500,13 @@ export interface operations {
                 cursor?: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 agentId: string;
@@ -5566,7 +6537,13 @@ export interface operations {
                 cursor?: string;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -5592,6 +6569,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -5629,7 +6611,13 @@ export interface operations {
                 conversationId?: string;
                 agentId: string;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -5654,7 +6642,13 @@ export interface operations {
     getRun: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -5679,7 +6673,13 @@ export interface operations {
     listRunActions: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -5704,7 +6704,13 @@ export interface operations {
     cancelRun: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -5730,7 +6736,13 @@ export interface operations {
     listRunTasks: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 runId: string;
@@ -5755,7 +6767,13 @@ export interface operations {
     getTask: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 taskId: string;
@@ -5781,6 +6799,11 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
                 "Idempotency-Key": string;
             };
             path: {
@@ -5813,7 +6836,13 @@ export interface operations {
     applyCanvasCommands: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
             };
@@ -5844,7 +6873,13 @@ export interface operations {
     duplicateCanvasItem: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: components["parameters"]["ProjectId"];
                 sourceItemId: string;
@@ -5883,7 +6918,13 @@ export interface operations {
                 sort?: components["schemas"]["LibrarySort"];
                 cursor?: string;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5912,7 +6953,13 @@ export interface operations {
     getLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -5945,7 +6992,13 @@ export interface operations {
             query: {
                 expectedVersion: number;
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -5974,7 +7027,13 @@ export interface operations {
     updateLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -6009,7 +7068,13 @@ export interface operations {
     trashLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -6044,7 +7109,13 @@ export interface operations {
     restoreLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -6079,7 +7150,13 @@ export interface operations {
     getLibraryContent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -6124,7 +7201,13 @@ export interface operations {
     headLibraryContent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -6153,7 +7236,13 @@ export interface operations {
     getLibraryThumbnail: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 entryId: string;
             };
@@ -6184,7 +7273,13 @@ export interface operations {
     getLibraryCommand: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 commandId: string;
             };
@@ -6215,7 +7310,13 @@ export interface operations {
     retryLibraryCommand: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 commandId: string;
             };
@@ -6246,7 +7347,13 @@ export interface operations {
     getLibrarySaveSource: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: string;
                 itemId: string;
@@ -6278,7 +7385,13 @@ export interface operations {
     saveLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: string;
                 itemId: string;
@@ -6314,7 +7427,13 @@ export interface operations {
     importLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: string;
             };
@@ -6349,7 +7468,13 @@ export interface operations {
     referenceLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path: {
                 projectId: string;
                 itemId: string;
@@ -6385,7 +7510,13 @@ export interface operations {
     uploadLibraryEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
             path?: never;
             cookie?: never;
         };

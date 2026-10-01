@@ -1,5 +1,6 @@
 package dev.agenvas.settings.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
@@ -43,7 +44,7 @@ public final class SystemLogBuffer {
     public synchronized Snapshot snapshot(Stream stream, String search, int limit) {
         if (limit < 1 || limit > MAX_LIMIT || (search != null && search.length() > MAX_SEARCH_LENGTH)) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    "日志筛选无效", "日志数量或关键词长度超出允许范围。", false);
+                    ApiMessage.of("api.system-log-buffer.log-filtering-is-invalid"), ApiMessage.of("api.system-log-buffer.the-number-of-logs-or-the-length-of-keywords-exceeds"), false);
         }
         String keyword = search == null ? "" : search.strip().toLowerCase(Locale.ROOT);
         List<Entry> matches = entries.stream()

@@ -1,5 +1,6 @@
 package dev.agenvas.artifact.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
@@ -24,15 +25,15 @@ public record AudioGenerationParameters(String speaker, int speechRate, int loud
         if (source == null || source.isMissingNode() || source.isNull())
             return new AudioGenerationParameters(DEFAULT_SPEAKER, 0, 0, 0);
         if (!source.isObject() || !FIELDS.containsAll(source.propertyNames()))
-            throw invalid("音频参数只接受音色、语速、音量和音调。");
+            throw invalid(ApiMessage.of("api.audio-generation-parameters.audio-parameters-only-accept-timbre-speech-rate-volume-and-pitch"));
         JsonNode voice = source.get("speaker");
         String speaker = voice == null ? DEFAULT_SPEAKER : voice.asText("");
         if (voice != null && !voice.isTextual() || !speaker.isEmpty() && !speaker.matches("[A-Za-z0-9_-]{1,120}"))
-            throw invalid("请选择有效的音色。");
+            throw invalid(ApiMessage.of("api.audio-generation-parameters.please-select-a-valid-tone"));
         JsonNode rate = source.get("speechRate");
         if (rate != null && (!rate.isIntegralNumber() || !rate.canConvertToInt()
                 || rate.intValue() < MIN_RATE || rate.intValue() > MAX_RATE))
-            throw invalid("语速必须为 -50–100 的整数。");
+            throw invalid(ApiMessage.of("api.audio-generation-parameters.speech-rate-must-be-an-integer-from-50-100"));
         return new AudioGenerationParameters(speaker, rate == null ? 0 : rate.intValue(),
                 integer(source, "loudnessRate", MIN_RATE, MAX_RATE), integer(source, "pitchRate", -12, 12));
     }
@@ -47,12 +48,12 @@ public record AudioGenerationParameters(String speaker, int speechRate, int loud
         if (value == null) return 0;
         if (!value.isIntegralNumber() || !value.canConvertToInt()
                 || value.intValue() < minimum || value.intValue() > maximum)
-            throw invalid(field + " 超出允许范围。");
+            throw invalid(ApiMessage.of("api.audio-generation-parameters.is-outside-the-allowed-range", field));
         return value.intValue();
     }
 
-    private static ApiProblemException invalid(String detail) {
+    private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST,"VALIDATION_ERROR",
-                "音频参数无效",detail,false);
+                ApiMessage.of("api.audio-generation-parameters.invalid-audio-parameter"),detail,false);
     }
 }

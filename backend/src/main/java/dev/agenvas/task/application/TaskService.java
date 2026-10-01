@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.project.application.ProjectService;
@@ -132,20 +133,20 @@ public class TaskService {
         AgentRun run = runs.get(ownerId, projectId, runId);
         if (run.status().terminal() || run.status() == AgentRun.Status.CANCEL_REQUESTED) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
-                    "Run 已停止", "已取消或结束的 Run 不能创建新任务。", false);
+                    ApiMessage.of("api.task-service.run-has-stopped"), ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
         }
         String stepKey = validateStepKey(requestedStepKey);
         if (kind == null || input == null || attemptNo < 1) {
-            throw validation("Task kind、input 与正数 attemptNo 都是必填项。");
+            throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
         }
         List<UUID> dependencies = dependencyIds == null ? List.of() : List.copyOf(dependencyIds);
         if (dependencies.size() > 100 || dependencies.stream().distinct().count() != dependencies.size()) {
-            throw validation("Task 依赖最多 100 个且不能重复。");
+            throw validation(ApiMessage.of("api.task-service.task-dependencies-can-have-up-to-100-and-cannot-be"));
         }
         for (UUID dependencyId : dependencies) {
             Task dependency = get(ownerId, projectId, dependencyId);
             if (!dependency.runId().equals(runId)) {
-                throw validation("Task 依赖必须属于同一个 Run。");
+                throw validation(ApiMessage.of("api.task-service.task-dependencies-must-belong-to-the-same-run"));
             }
         }
         Instant now = clock.instant();
@@ -177,7 +178,7 @@ public class TaskService {
             if (current.status().terminal()
                     || current.status() == AgentRun.Status.CANCEL_REQUESTED) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
-                        "Run 已停止", "已取消或结束的 Run 不能创建新任务。", false);
+                        ApiMessage.of("api.task-service.run-has-stopped"), ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
             }
             tasks.create(task, dependencies);
             return ProjectEventService.Change.changed(task, taskEvent(task, false));
@@ -192,18 +193,18 @@ public class TaskService {
         Artifact.Kind expectedKind = switch (kind) {
             case IMAGE_GENERATION -> Artifact.Kind.IMAGE;
             case VIDEO_GENERATION -> Artifact.Kind.VIDEO;
-            default -> throw validation("只有图片和视频生成 Task 可绑定媒体产物目标。");
+            default -> throw validation(ApiMessage.of("api.task-service.only-image-and-video-generation-tasks-can-be-bound-to"));
         };
         Artifact target = artifacts.get(ownerId, projectId, targetArtifactId).artifact();
         if (target.kind() != expectedKind || target.archivedAt() != null) {
-            throw validation("媒体任务目标必须是同项目、未归档且类型匹配的 Artifact。");
+            throw validation(ApiMessage.of("api.task-service.the-media-task-target-must-be-an-artifact-from-the"));
         }
         Task task = create(ownerId, projectId, runId, stepKey, kind, input,
                 providerId, attemptNo, dependencyIds);
         Task occupying = tasks.findOccupyingMediaTask(projectId, target.id()).orElse(null);
         if (occupying != null) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CARD_BUSY",
-                    "卡片任务占用", "这张媒体卡片已有排队、执行或待核对任务。", true);
+                    ApiMessage.of("api.task-service.card-task-occupation"), ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), true);
         }
         tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                 target.id(), target.resourceDefaultVersionId(), target.version(), null, null));
@@ -271,7 +272,7 @@ public class TaskService {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
-            throw validation("claim limit 必须为正数。");
+            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         }
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDue(
@@ -283,7 +284,7 @@ public class TaskService {
     public List<Task> claimBoundMedia(String requestedWorkerId, int requestedLimit) {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation("claim limit 必须为正数。");
+        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueBoundMedia(workerId, limit,
                 now, now.plus(properties.leaseDuration())), List.of());
@@ -294,7 +295,7 @@ public class TaskService {
     public List<Task> claimBoundMediaPolls(String requestedWorkerId, int requestedLimit) {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation("claim limit 必须为正数。");
+        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueBoundMediaPolls(workerId, limit,
                 now, now.plus(properties.leaseDuration())), List.of());
@@ -311,7 +312,7 @@ public class TaskService {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
-            throw validation("claim limit 必须为正数。");
+            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         }
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueImages(workerId, limit, now,
@@ -345,7 +346,7 @@ public class TaskService {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
-            throw validation("claim limit 必须为正数。");
+            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         }
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueVideos(workerId, limit, now,
@@ -358,7 +359,7 @@ public class TaskService {
         if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation("claim limit 必须为正数。");
+        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueProviderPolls(workerId, limit, now,
                 now.plus(properties.leaseDuration())), List.of());
@@ -370,7 +371,7 @@ public class TaskService {
         if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation("claim limit 必须为正数。");
+        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyImagePolls(workerId, limit, now,
                 now.plus(properties.leaseDuration())), List.of());
@@ -382,7 +383,7 @@ public class TaskService {
         if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation("claim limit 必须为正数。");
+        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyVideoPolls(workerId, limit, now,
                 now.plus(properties.leaseDuration())), List.of());
@@ -406,7 +407,7 @@ public class TaskService {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
-            throw validation("claim limit 必须为正数。");
+            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         }
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueAgentTurns(workerId, limit, now,
@@ -419,7 +420,7 @@ public class TaskService {
         if (shutdownGate.isClosing()) return List.of();
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation("claim limit 必须为正数。");
+        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> tasks.claimDueTextGenerations(workerId, limit,
                 now, now.plus(properties.leaseDuration())), List.of());
@@ -430,7 +431,7 @@ public class TaskService {
     public JsonNode checkpointTextResponse(Task lease, String workerId, JsonNode response) {
         if (lease.kind() != Task.Kind.TEXT_GENERATION || response == null
                 || !response.isObject()) {
-            throw validation("文字模型响应检查点无效。");
+            throw validation(ApiMessage.of("api.task-service.literal-model-response-checkpoint-is-invalid"));
         }
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         Instant now = clock.instant();
@@ -456,14 +457,14 @@ public class TaskService {
     public ArtifactService.TaskVersionResult succeedWithTextArtifact(
             Task lease, String workerId, JsonNode content) {
         if (lease.kind() != Task.Kind.TEXT_GENERATION) {
-            throw validation("任务不是文字生成任务。");
+            throw validation(ApiMessage.of("api.task-service.the-task-is-not-a-text-generation-task"));
         }
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         Instant now = clock.instant();
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
-                    .orElseThrow(() -> validation("文字生成任务缺少目标快照。"));
+                    .orElseThrow(() -> validation(ApiMessage.of("api.task-service.text-generation-task-is-missing-target-snapshot")));
             boolean liveLease = current.status() == Task.Status.RUNNING
                     && workerId.equals(current.leaseOwner())
                     && current.leaseEpoch() == lease.leaseEpoch()
@@ -544,12 +545,12 @@ public class TaskService {
                 || manifest.results() == null || manifest.results().isEmpty()
                 || manifest.results().size() > RunningHubDefinition.MAX_OUTPUTS
                 || manifest.results().stream().anyMatch(java.util.Objects::isNull)
-                || manifest.results().stream().filter(ProviderResultManifest.Result::primary).count() != 1) throw validation("结果清单无效。");
+                || manifest.results().stream().filter(ProviderResultManifest.Result::primary).count() != 1) throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
         for (int index = 0; index < manifest.results().size(); index++) {
             var result = manifest.results().get(index);
             if (result.ordinal() != index || result.kind() == null || result.url() == null || result.url().isBlank()
                     || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
-                throw validation("结果清单的顺序或媒体类型无效。");
+                throw validation(ApiMessage.of("api.task-service.the-result-list-has-an-invalid-order-or-media-type"));
         }
         if (!tasks.checkpointProviderResults(lease, validateWorkerId(workerId), manifest, clock.instant())) throw leaseLost();
     }
@@ -571,12 +572,12 @@ public class TaskService {
             List<ArchivedProviderResult> results, JsonNode providerUsage) {
         if (results == null || results.isEmpty() || results.size() > RunningHubDefinition.MAX_OUTPUTS
                 || results.stream().anyMatch(java.util.Objects::isNull)
-                || results.stream().filter(ArchivedProviderResult::primary).count() != 1) throw validation("生成结果清单无效。");
+                || results.stream().filter(ArchivedProviderResult::primary).count() != 1) throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid-bf2a2fd8"));
         for (int index = 0; index < results.size(); index++) {
             var result = results.get(index);
             if (result.ordinal() != index || result.kind() == null || result.kind() == Artifact.Kind.TEXT
                     || result.content() == null || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
-                throw validation("生成结果的顺序或媒体类型无效。");
+                throw validation(ApiMessage.of("api.task-service.the-resulting-order-or-media-type-is-invalid"));
         }
         JsonNode content = results.stream().filter(ArchivedProviderResult::primary).findFirst().orElseThrow().content();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
@@ -584,7 +585,7 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
-                    .orElseThrow(() -> validation("媒体任务缺少创建时的产物目标快照。"));
+                    .orElseThrow(() -> validation(ApiMessage.of("api.task-service.the-media-task-is-missing-a-snapshot-of-the-production")));
             AgentRun run = lease.runId() == null ? null
                     : runs.get(ownerId, lease.projectId(), lease.runId());
             boolean canceled = current.cancelRequested()
@@ -596,7 +597,7 @@ public class TaskService {
             if (canvasItemId != null
                     && !canvasItemId.toString().equals(
                             lease.input().path("canvasItemId").asText())) {
-                throw validation("媒体任务的卡片目标与固定输入不一致。");
+                throw validation(ApiMessage.of("api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
             }
             boolean selectResult = !canceled && !projectArchived
                     && pinnedMediaInputsCurrent(ownerId, lease)
@@ -619,7 +620,7 @@ public class TaskService {
             }
             if (content == null || !content.path("sourceTaskId").asText("")
                     .equals(lease.id().toString())) {
-                throw validation("生成结果必须标识匹配的 sourceTaskId。");
+                throw validation(ApiMessage.of("api.task-service.the-generated-result-must-identify-the-matching-sourcetaskid"));
             }
             UUID artifactId = target.artifactId();
             ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
@@ -647,7 +648,7 @@ public class TaskService {
             int outputIndex = 1;
             for (ArchivedProviderResult extra : results) {
                 if (extra.primary()) continue;
-                if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) throw validation("额外结果 sourceTaskId 无效。");
+                if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
                 Artifact extraArtifact = artifacts.get(ownerId, lease.projectId(), artifactId).artifact();
                 if (extraArtifact.kind() != extra.kind()) extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(), "RunningHub " + extra.kind() + " " + (outputIndex + 1));
                 var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,
@@ -752,7 +753,7 @@ public class TaskService {
                 && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)
                 && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
                 && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)) {
-            throw validation("不支持的提交前阻断原因。");
+            throw validation(ApiMessage.of("api.task-service.unsupported-pre-commit-blocking-reason"));
         }
         Instant now = clock.instant();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
@@ -837,7 +838,7 @@ public class TaskService {
                 || requestId.length() > 240
                 || nextActionAt == null
                 || nextActionAt.isBefore(now)) {
-            throw validation("Provider requestId 或下次核对时间无效。");
+            throw validation(ApiMessage.of("api.task-service.provider-requestid-or-next-check-time-is-invalid"));
         }
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         events.recordChange(ownerId, lease.projectId(), () -> {
@@ -856,7 +857,7 @@ public class TaskService {
         Instant now = clock.instant();
         if (lease.providerRequestId() == null || nextActionAt == null
                 || !nextActionAt.isAfter(now)) {
-            throw validation("原 Provider requestId 与未来核对时间必填。");
+            throw validation(ApiMessage.of("api.task-service.the-original-provider-requestid-and-future-verification-time-are-required"));
         }
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         events.recordChange(ownerId, lease.projectId(), () -> {
@@ -923,7 +924,7 @@ public class TaskService {
             MediaCapabilityBinding binding) {
         if (candidateOriginSha256 != null
                 && !candidateOriginSha256.matches("[0-9a-f]{64}")) {
-            throw validation("Provider origin 指纹无效。");
+            throw validation(ApiMessage.of("api.task-service.provider-origin-fingerprint-is-invalid"));
         }
         Instant now = clock.instant();
         UUID requestKey = UUID.randomUUID();
@@ -933,15 +934,15 @@ public class TaskService {
             // preflight-to-submission race before any provider request is sent.
             if (projects.get(ownerId, lease.projectId()).status() == Project.Status.ARCHIVED) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_PROJECT_ARCHIVED",
-                        "项目已归档", "项目归档后不会提交新的媒体生成请求。", false);
+                        ApiMessage.of("api.project-service.project-archived"), ApiMessage.of("api.task-service.no-new-media-build-requests-will-be-submitted-after-the"), false);
             }
             if (binding != null && !tasks.lockCurrentMediaBinding(binding)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED",
-                        "媒体能力已变化", "连接或能力已停用、修改，请重新检查草稿。", false);
+                        ApiMessage.of("api.task-service.media-capabilities-have-changed"), ApiMessage.of("api.task-service.the-connection-or-capability-has-been-deactivated-modified-please-check"), false);
             }
             if (!pinnedMediaInputsCurrent(ownerId, lease)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_INPUT_STALE",
-                        "任务输入已过期", "输入图片或草稿已修改，旧媒体任务不会提交生成请求。", false);
+                        ApiMessage.of("api.task-service.task-input-has-expired"), ApiMessage.of("api.task-service.the-input-image-or-draft-has-been-modified-and-the"), false);
             }
             if (!tasks.beginSubmission(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
                     UUID.randomUUID(), requestKey, candidateOriginSha256, now)) {
@@ -962,7 +963,7 @@ public class TaskService {
     public int recoverExpiredSubmissions(int requestedLimit) {
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
-            throw validation("恢复扫描 limit 必须为正数。");
+            throw validation(ApiMessage.of("api.task-service.recovery-scan-limit-must-be-positive"));
         }
         Instant now = clock.instant();
         int recovered = 0;
@@ -993,7 +994,7 @@ public class TaskService {
     public int recoverExpiredCancellations(int requestedLimit) {
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) {
-            throw validation("恢复扫描 limit 必须为正数。");
+            throw validation(ApiMessage.of("api.task-service.recovery-scan-limit-must-be-positive"));
         }
         Instant now = clock.instant();
         int recovered = 0;
@@ -1151,7 +1152,7 @@ public class TaskService {
     private String validateStepKey(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 160) {
-            throw validation("stepKey 必须为 1 至 160 个字符。");
+            throw validation(ApiMessage.of("api.task-service.stepkey-must-be-1-to-160-characters"));
         }
         return normalized;
     }
@@ -1160,7 +1161,7 @@ public class TaskService {
     private String validateWorkerId(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 160) {
-            throw validation("workerId 必须为 1 至 160 个字符。");
+            throw validation(ApiMessage.of("api.task-service.workerid-must-be-1-to-160-characters"));
         }
         return normalized;
     }
@@ -1169,7 +1170,7 @@ public class TaskService {
     private String validateErrorCode(String errorCode) {
         String normalized = errorCode == null ? "TASK_FAILED" : errorCode.trim();
         if (normalized.isEmpty() || normalized.length() > 120) {
-            throw validation("Task errorCode 必须为 1 至 120 个字符。");
+            throw validation(ApiMessage.of("api.task-service.task-errorcode-must-be-1-to-120-characters"));
         }
         return normalized;
     }
@@ -1189,8 +1190,8 @@ public class TaskService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "Task 不存在",
-                "Task 不存在或当前用户无权访问。",
+                ApiMessage.of("api.task-service.task-does-not-exist"),
+                ApiMessage.of("api.task-service.the-task-does-not-exist-or-the-current-user-does"),
                 false);
     }
 
@@ -1199,17 +1200,17 @@ public class TaskService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "TASK_LEASE_LOST",
-                "Task 租约已失效",
-                "当前 Worker 或 leaseEpoch 已过期，结果未写入。",
+                ApiMessage.of("api.task-service.task-lease-has-expired"),
+                ApiMessage.of("api.task-service.the-current-worker-or-leaseepoch-has-expired-and-the-results"),
                 false);
     }
 
     /** 将任务命令的输入校验失败映射为稳定的 HTTP 400 错误。 */
-    private ApiProblemException validation(String detail) {
+    private ApiProblemException validation(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "Task 请求无效",
+                ApiMessage.of("api.task-service.task-request-is-invalid"),
                 detail,
                 false);
     }

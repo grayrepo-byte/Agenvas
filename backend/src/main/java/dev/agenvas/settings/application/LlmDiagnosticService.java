@@ -1,5 +1,6 @@
 package dev.agenvas.settings.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.List;
@@ -48,13 +49,13 @@ public class LlmDiagnosticService {
     public LlmProviderConfigService.Status diagnose(int expectedVersion, boolean acknowledgeCost) {
         if (!acknowledgeCost || expectedVersion < 1) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST,
-                    "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED", "需要确认诊断调用",
-                    "请确认此诊断会向模型端点发起最多两次可能计费的请求。", false);
+                    "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED", ApiMessage.of("api.llm-diagnostic-service.need-to-confirm-diagnostic-call"),
+                    ApiMessage.of("api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"), false);
         }
         if (!inFlight.compareAndSet(false, true)) {
             throw new ApiProblemException(HttpStatus.CONFLICT,
-                    "PROVIDER_DIAGNOSTIC_IN_PROGRESS", "模型诊断正在运行",
-                    "请等待当前诊断结束后再试。", true);
+                    "PROVIDER_DIAGNOSTIC_IN_PROGRESS", ApiMessage.of("api.llm-diagnostic-service.model-diagnostics-running"),
+                    ApiMessage.of("api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"), true);
         }
         try {
             LlmProviderConfig config = repository.active().orElseThrow(this::changed);
@@ -101,14 +102,14 @@ public class LlmDiagnosticService {
                     || !finalMessage.getText().contains(resultProof)) throw protocolFailure();
         } catch (DiagnosticProtocolFailure mismatch) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "PROVIDER_TOOL_PROTOCOL_UNVERIFIED", "工具协议未通过",
-                    "模型未完成工具请求、结果回填与下一轮响应的完整诊断。", false);
+                    "PROVIDER_TOOL_PROTOCOL_UNVERIFIED", ApiMessage.of("api.llm-diagnostic-service.tool-agreement-failed"),
+                    ApiMessage.of("api.llm-diagnostic-service.the-model-does-not-complete-complete-diagnostics-of-tool-requests"), false);
         } catch (ApiProblemException known) {
             throw known;
         } catch (RuntimeException failure) {
             throw new ApiProblemException(HttpStatus.BAD_GATEWAY,
-                    "PROVIDER_DIAGNOSTIC_UNAVAILABLE", "模型诊断调用失败",
-                    "端点未完成诊断；请检查服务地址、凭证、模型和网络后重试。", true);
+                    "PROVIDER_DIAGNOSTIC_UNAVAILABLE", ApiMessage.of("api.llm-diagnostic-service.model-diagnostic-call-failed"),
+                    ApiMessage.of("api.llm-diagnostic-service.the-endpoint-did-not-complete-diagnostics-please-check-the-service"), true);
         }
     }
 
@@ -130,8 +131,8 @@ public class LlmDiagnosticService {
     /** 构造诊断期间配置版本被修改时使用的冲突响应。 */
     private ApiProblemException changed() {
         return new ApiProblemException(HttpStatus.CONFLICT,
-                "PROVIDER_CONFIG_VERSION_CONFLICT", "模型配置已变化",
-                "请重新读取模型配置后再诊断。", false);
+                "PROVIDER_CONFIG_VERSION_CONFLICT", ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"),
+                ApiMessage.of("api.llm-diagnostic-service.please-re-read-the-model-configuration-before-diagnosing"), false);
     }
 
     /** Spring AI 回调若被自动执行即视为失败，确保工具结果只由诊断流程回填。 */

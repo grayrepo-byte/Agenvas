@@ -1,5 +1,6 @@
 package dev.agenvas.agent.application;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.event.application.ProjectEventService;
@@ -203,7 +204,7 @@ public class AgentInstanceService {
         // retain them but cannot create or remove them independently of that topology.
         bindings.addAll(connectedImages.values());
         if (bindings.size() > MAX_BINDINGS) {
-            throw validation("Agent 输入最多绑定 40 个 Artifact。");
+            throw validation(ApiMessage.of("api.agent-instance-service.agent-input-can-bind-up-to-40-artifacts"));
         }
         AgentInstance replacement = new AgentInstance(
                 current.id(),
@@ -232,7 +233,7 @@ public class AgentInstanceService {
         if (current.version() != expectedVersion) throw versionConflict();
         ArtifactService.ArtifactView target = artifacts.get(ownerId, projectId, artifactId);
         if (target.artifact().kind() != dev.agenvas.artifact.domain.Artifact.Kind.IMAGE) {
-            throw validation("Agent 图片连线只能绑定 IMAGE 版本。");
+            throw validation(ApiMessage.of("api.agent-instance-service.agent-image-connections-can-only-be-bound-to-the-image"));
         }
         artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
         AgentInstance.Binding existing = current.bindings().stream()
@@ -240,12 +241,12 @@ public class AgentInstanceService {
                 .findFirst().orElse(null);
         if (existing != null) {
             if (!existing.selectedVersionId().equals(versionId)) {
-                throw validation("同一 Agent 不能通过画布连线同时绑定同一图片的不同版本。");
+                throw validation(ApiMessage.of("api.agent-instance-service.the-same-agent-cannot-bind-different-versions-of-the-same"));
             }
             return current;
         }
         if (current.bindings().size() >= MAX_BINDINGS) {
-            throw validation("Agent 输入最多绑定 40 个 Artifact。");
+            throw validation(ApiMessage.of("api.agent-instance-service.agent-input-can-bind-up-to-40-artifacts"));
         }
         List<AgentInstance.Binding> bindings = new java.util.ArrayList<>(current.bindings());
         bindings.add(new AgentInstance.Binding(UUID.randomUUID(), artifactId, versionId,
@@ -296,7 +297,7 @@ public class AgentInstanceService {
             Map<UUID, UUID> allowedImageVersions) {
         List<BindingInput> inputs = requestedBindings == null ? List.of() : requestedBindings;
         if (inputs.size() > MAX_BINDINGS) {
-            throw validation("Agent 输入最多绑定 40 个 Artifact。");
+            throw validation(ApiMessage.of("api.agent-instance-service.agent-input-can-bind-up-to-40-artifacts"));
         }
         Set<UUID> artifactIds = new HashSet<>();
         return inputs.stream()
@@ -305,7 +306,7 @@ public class AgentInstanceService {
                             || input.artifactId() == null
                             || input.selectedVersionId() == null
                             || !artifactIds.add(input.artifactId())) {
-                        throw validation("输入绑定必须完整且不能重复 Artifact。");
+                        throw validation(ApiMessage.of("api.agent-instance-service.input-bindings-must-be-complete-and-cannot-duplicate-artifacts"));
                     }
                     ArtifactService.ArtifactView target = artifacts.get(
                             ownerId, projectId, input.artifactId());
@@ -315,7 +316,7 @@ public class AgentInstanceService {
                             == dev.agenvas.artifact.domain.Artifact.Kind.IMAGE
                             && !input.selectedVersionId().equals(
                                     allowedImageVersions.get(input.artifactId()))) {
-                        throw validation("Agent 图片输入只能通过画布连线添加或移除。");
+                        throw validation(ApiMessage.of("api.agent-instance-service.agent-image-inputs-can-only-be-added-or-removed-via"));
                     }
                     return new AgentInstance.Binding(
                             UUID.randomUUID(),
@@ -336,7 +337,7 @@ public class AgentInstanceService {
     private String validateName(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 120) {
-            throw validation("Agent 名称必须为 1 至 120 个字符。");
+            throw validation(ApiMessage.of("api.agent-instance-service.agent-name-must-be-1-to-120-characters"));
         }
         return normalized;
     }
@@ -345,7 +346,7 @@ public class AgentInstanceService {
     private String validateInstruction(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > 8_000) {
-            throw validation("Agent 指令必须为 1 至 8000 个字符。");
+            throw validation(ApiMessage.of("api.agent-instance-service.agent-directive-must-be-1-to-8000-characters"));
         }
         return normalized;
     }
@@ -355,8 +356,8 @@ public class AgentInstanceService {
         return new ApiProblemException(
                 HttpStatus.NOT_FOUND,
                 "RESOURCE_NOT_FOUND",
-                "Agent 不存在",
-                "Agent 不存在或当前用户无权访问。",
+                ApiMessage.of("api.agent-instance-service.agent-does-not-exist"),
+                ApiMessage.of("api.agent-instance-service.the-agent-does-not-exist-or-the-current-user-does"),
                 false);
     }
 
@@ -365,17 +366,17 @@ public class AgentInstanceService {
         return new ApiProblemException(
                 HttpStatus.CONFLICT,
                 "AGENT_VERSION_CONFLICT",
-                "Agent 配置已更新",
-                "Agent 配置已被其他请求修改，请刷新后重试。",
+                ApiMessage.of("api.agent-instance-service.agent-configuration-updated"),
+                ApiMessage.of("api.agent-instance-service.the-agent-configuration-has-been-modified-by-other-requests-please"),
                 false);
     }
 
     /** 将绑定或字段校验失败映射为稳定的 HTTP 400 错误。 */
-    private ApiProblemException validation(String detail) {
+    private ApiProblemException validation(ApiMessage detail) {
         return new ApiProblemException(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
-                "Agent 配置无效",
+                ApiMessage.of("api.agent-instance-service.agent-configuration-is-invalid"),
                 detail,
                 false);
     }

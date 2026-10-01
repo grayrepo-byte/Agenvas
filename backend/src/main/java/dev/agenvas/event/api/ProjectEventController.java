@@ -1,5 +1,6 @@
 package dev.agenvas.event.api;
 
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.event.application.ProjectEventHub;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -61,8 +62,8 @@ public class ProjectEventController {
             throw new ApiProblemException(
                     HttpStatus.BAD_REQUEST,
                     "VALIDATION_ERROR",
-                    "事件游标无效",
-                    "Last-Event-ID 必须是项目事件序号。",
+                    ApiMessage.of("api.project-event-controller.the-event-cursor-is-invalid"),
+                    ApiMessage.of("api.project-event-controller.last-event-id-must-be-the-project-event-sequence-number"),
                     false);
         }
     }
