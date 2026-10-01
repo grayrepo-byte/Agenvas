@@ -104,6 +104,6 @@ server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当�
 
 ## 2026-10-01 RunningHub 验证范围
 
-RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务内核与媒体归档，没有引入 Go SDK、脚本运行时或新依赖。第三方 Go SDK 仅作只读参考，不代表 Provider 协议保证。jOOQ 由隔离 PostgreSQL 17.11 执行 V65 后重新生成，普通构建继续不连接生成数据库；OpenAPI 生成 TypeScript。动态表单复用现有 React 控件与类型，没有增加前端服务端。
+RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务内核与媒体归档，没有引入 Go SDK、脚本运行时或新依赖。第三方 Go SDK 仅作只读参考，不代表 Provider 协议保证。jOOQ 初始由隔离 PostgreSQL 17.11 执行 V65 后重新生成；合并 main 后保留 AutoDL V65，RunningHub 改为 V66 并重新生成，普通构建继续不连接生成数据库；OpenAPI 生成 TypeScript。动态表单复用现有 React 控件与类型，没有增加前端服务端。
 
 固定 HTTP 协议、输入契约、归档恢复与动态表单经定向测试；准确命令、计数与未验证事项见 [RunningHub 证据](evidence/runninghub-api-integration-2026-10-01.md)。没有真实 RunningHub Key 或付费调用，也没有运行全量测试或浏览器端到端。

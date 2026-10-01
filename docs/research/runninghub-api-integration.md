@@ -83,7 +83,7 @@ V2 提交响应包含 `taskId`、`status`、错误字段、`clientId`、`promptT
 
 ## 8. 接入设计依据（原始提案）
 
-以下为研究阶段的原始设计依据。用户随后要求实施 RunningHub API 与动态表单，已接受 [ADR 0024](../adr/0024-runninghub-versioned-input-contracts.md)，覆盖 ADR 0002 的 RunningHub 暂缓部分。实际实现范围以第 10 节和规格 6.12 为准；原提案中的可识别链接、cURL 导入和运行前远程摘要核验没有实施。
+以下为研究阶段的原始设计依据。用户随后要求实施 RunningHub API 与动态表单，已接受 [ADR 0025](../adr/0025-runninghub-versioned-input-contracts.md)，覆盖 ADR 0002 的 RunningHub 暂缓部分。实际实现范围以第 10 节和规格 6.13 为准；原提案中的可识别链接、cURL 导入和运行前远程摘要核验没有实施。
 
 ### 8.1 复用连接和能力目录
 
@@ -217,7 +217,7 @@ SDK 可用于核对请求与响应、构造本地假 HTTP 协议测试；项目�
 
 ### 10.4 合约、升级与验收范围
 
-OpenAPI 新增管理员只读导入预览 `POST /api/v1/settings/media-connections/{connectionId}/runninghub/preview`，以及受约束的 RunningHub 定义、动态值、平台和 `VIDEO_REFERENCE`。前端类型从合约重新生成。V65 为原有连接/媒体引用枚举增加值，并添加任务的私有 `provider_result_manifest`；jOOQ 由隔离 PostgreSQL 17.11 执行 Flyway 后重新生成。没有删除旧字段或清空既有数据，前后端与迁移需一起升级；旧客户端不识别新平台/引用枚举，不能单独沿用旧前端管理新能力。
+OpenAPI 新增管理员只读导入预览 `POST /api/v1/settings/media-connections/{connectionId}/runninghub/preview`，以及受约束的 RunningHub 定义、动态值、平台和 `VIDEO_REFERENCE`。前端类型从合约重新生成。V66 为原有连接/媒体引用枚举增加值，并添加任务的私有 `provider_result_manifest`；jOOQ 由隔离 PostgreSQL 17.11 执行 Flyway 后重新生成。没有删除旧字段或清空既有数据，前后端与迁移需一起升级；旧客户端不识别新平台/引用枚举，不能单独沿用旧前端管理新能力。
 
 定向测试覆盖固定路径和鉴权、导入候选/类型/拒绝凭据、动态表单、发布前人工核对、具名视频与跨项目拒绝、UNKNOWN、能力版本固定、多结果断点恢复、混合输出、取消晚到结果、fencing 及既有媒体行为。实际命令与计数见 [专项证据](../evidence/runninghub-api-integration-2026-10-01.md)。
 

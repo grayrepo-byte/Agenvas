@@ -17,5 +17,7 @@ public enum MediaPlatform {
     /** Fixed Volcano Engine speech synthesis API. */
     VOLCENGINE,
     /** Fixed RunningHub V2 task protocol with administrator-published input mappings. */
-    RUNNINGHUB
+    RUNNINGHUB,
+    /** AutoDL hosted ComfyUI workflow task API. */
+    AUTODL
 }

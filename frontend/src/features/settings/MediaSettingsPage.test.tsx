@@ -617,4 +617,44 @@ describe("MediaSettingsPage", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("creates an AutoDL token connection and publishes a versioned H3 workflow", async () => {
+    let config: MediaSettings = { connections: [], defaults: [] };
+    const connectionWrites: unknown[] = [];
+    const capabilityWrites: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(config)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "fake" })),
+      http.post("/api/v1/settings/media-connections", async ({ request }) => {
+        connectionWrites.push(await request.json());
+        config = settingsFixture({ platform: "AUTODL", name: "AutoDL", origin: null });
+        config.connections[0]!.capabilities = [];
+        return HttpResponse.json(config);
+      }),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        capabilityWrites.push(await request.json()); return HttpResponse.json(config);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    await user.type(screen.getByRole("textbox", { name: "连接名称" }), "AutoDL");
+    await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "AUTODL");
+    expect(screen.getByText(/分组为 ComfyUI 的 Token/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("API Key"), "fake-autodl-key");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(connectionWrites).toEqual([{ name: "AutoDL", platform: "AUTODL", origin: null, apiKey: "fake-autodl-key" }]));
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "H3 mixed");
+    expect(screen.getByRole("combobox", { name: "AutoDL 工作流" })).toHaveValue("minimax_h3_z0903");
+    await user.selectOptions(screen.getByRole("combobox", { name: "AutoDL 输出分辨率" }), "480p");
+    await user.type(screen.getByRole("spinbutton", { name: "随机种子（留空使用工作流默认）" }), "123");
+    await user.click(screen.getByRole("tab", { name: "输入限制" }));
+    expect(screen.getByRole("spinbutton", { name: "最多参考图数量" })).toHaveAttribute("max", "6");
+    expect(screen.getByRole("spinbutton", { name: "最多参考音频数量" })).toHaveAttribute("min", "1");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(capabilityWrites).toEqual([{ name: "H3 mixed", adapterId: "AUTODL_COMFY_VIDEO",
+      settings: { workflowId: "minimax_h3_z0903", videoResolution: "480p", seed: 123 } }]));
+    expect(window.localStorage.getItem("mediaApiKey")).toBeNull();
+  });
+
 });

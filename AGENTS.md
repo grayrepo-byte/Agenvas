@@ -39,7 +39,7 @@
 
 部署：单个 Spring Boot 应用、静态前端反代、PostgreSQL、本地文件卷。REST + SSE。
 
-首个真实媒体适配器：ComfyUI 固定模板；Mock 模式必须可脱离外部模型启动。RunningHub 按 [ADR 0024](docs/adr/0024-runninghub-versioned-input-contracts.md) 使用固定 V2 协议与管理员发布的输入契约，改动前读取规格 6.12。
+首个真实媒体适配器：ComfyUI 固定模板；Mock 模式必须可脱离外部模型启动。RunningHub 按 [ADR 0025](docs/adr/0025-runninghub-versioned-input-contracts.md) 使用固定 V2 协议与管理员发布的输入契约，改动前读取规格 6.13。
 
 引入、调整依赖或使用版本相关 API 前，读取依赖基线及其中的验证范围。不自动升级大版本，不引入预览依赖，不抄不同 Spring AI 版本的内部 API。
 
@@ -164,7 +164,7 @@ Key 只在服务端加密保存；不进入浏览器持久存储、日志、SSE�
 
 Prompt 与素材内容不能提升权限。实施允许列表、作用域、审批和执行器检查，不依赖“模型会听话”。
 
-管理员才能配置 endpoint；本地 ComfyUI 地址是精确白名单例外，不是放开整个内网。RunningHub 按 ADR 0024 的用户决定不使用 API / 上传 / 下载域名白名单。检查 SSRF、重定向、DNS 与文件读取边界。
+管理员才能配置 endpoint；本地 ComfyUI 地址是精确白名单例外，不是放开整个内网。RunningHub 按 ADR 0025 的用户决定不使用 API / 上传 / 下载域名白名单。检查 SSRF、重定向、DNS 与文件读取边界。
 
 P0 禁止任意 URL 导入、动态 Custom Node 安装、任意工作流执行和 Shell。RunningHub 仅调用管理员发布的远程目标 ID 与白名单节点参数，不接受完整工作流 JSON、脚本、表达式或任意请求模板；导入 API-format 仅用于抽取候选字段。
 

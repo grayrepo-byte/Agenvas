@@ -70,7 +70,8 @@ public final class MediaAdapterRegistry {
                     GOOGLE_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
                     ImageGenerationParameters.RESOLUTIONS, Set.of(), false, false)),
             Map.entry("ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 9,
-                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true)));
+                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true)),
+            Map.entry(AutoDlWorkflows.ADAPTER_ID, AutoDlWorkflows.require(AutoDlWorkflows.DEFAULT_WORKFLOW).declaration()));
 
     private static Declaration runningHub(Task.Kind kind) {
         return new Declaration(MediaPlatform.RUNNINGHUB, kind, 0,

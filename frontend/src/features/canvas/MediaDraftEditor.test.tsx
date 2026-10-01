@@ -129,6 +129,37 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
+
+  it("blocks an unsupported AutoDL ratio and enables the saved supported ratio", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
+      name: "H3 text", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 0,
+      supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT", supportsEndFrame: false,
+      settings: { workflowId: "minimax_h3_z0901", videoResolution: "480p" } };
+    setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT", durationSeconds: 1, parameters: { aspectRatio: "1:1" } } });
+    expect(await screen.findByText("当前 AutoDL 工作流不支持此画幅，请选择支持的比例。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const picker = screen.getByRole("dialog", { name: "尺寸与画质设置" });
+    expect(within(picker).queryByRole("button", { name: "1:1" })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole("button", { name: "16:9" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("explains required AutoDL mixed references before generation", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
+      name: "H3 mixed", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 6, maxReferenceAudios: 3,
+      supportedVideoInputModes: ["GENERAL_REFERENCE"], defaultVideoInputMode: "GENERAL_REFERENCE", supportsEndFrame: false,
+      settings: { workflowId: "minimax_h3_z0903", videoResolution: "480p" } };
+    setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "GENERAL_REFERENCE", durationSeconds: 1 } });
+    expect(await screen.findByText(/此 AutoDL 工作流至少需要 1 张图片、1 条音频/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+  });
+
   it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
     const audioCapability: MediaCapability = { ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
       kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,

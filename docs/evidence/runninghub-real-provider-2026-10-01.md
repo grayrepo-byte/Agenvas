@@ -53,4 +53,4 @@ AGENVAS_RUNNINGHUB_REAL_CALLS=true AGENVAS_RUNNINGHUB_REAL_DIRECTORY=<private-di
 
 仅证明上述两个目标和参数组合。其他工作流、AI 应用、真实音频 / 视频输入、混合输出、24 小时结果有效期和过期 URL 恢复未真实验证。浏览器端到端、全量测试、升级演练与部署未运行。能力版本固定本地契约，不冻结 Provider 内部工作流。取消不保证外部停止或退款。
 
-本轮没有新增合约形状或迁移；API origin 说明与生成 TS 同步。全部实现仍在当前工作区，未提交或部署。验证结束后移除私有明文 Key 和加密主密钥临时文件。
+本轮没有新增合约形状或迁移；API origin 说明与生成 TS 同步。上述真实验证时尚未提交或部署；随后 main 合并与编号调整见 [合并验证](runninghub-main-merge-2026-10-01.md)。验证结束后移除私有明文 Key 和加密主密钥临时文件。

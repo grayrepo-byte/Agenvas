@@ -18,6 +18,8 @@ import { adapterLabel, adapterMetadata, adapterModel, platformAdapters } from ".
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp, googleImageApiLabel } from "./GoogleImageConnectionHelp";
+import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
+import { AUTODL_ADAPTER, AUTODL_DEFAULT_WORKFLOW } from "../../shared/autodlWorkflows";
 type AdapterSettings = MediaCapability["settings"];
 const MODEL_LIMIT = 120;
 
@@ -50,7 +52,11 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
     maxReferenceImages, maxReferenceAudios, pricing } = values;
-  return { ...fields, ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
+  return { ...fields, ...(adapterId === AUTODL_ADAPTER ? {
+    workflowId: values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
+    ...(values.videoResolution ? { videoResolution: values.videoResolution } : {}),
+    ...(values.seed !== undefined ? { seed: values.seed } : {}),
+  } : {}), ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
     ...(defaultParameters ? { defaultParameters } : {}),
     ...(defaultDurationSeconds !== undefined ? { defaultDurationSeconds } : {}),
     ...(minimumSeconds !== undefined ? { minimumSeconds } : {}),
@@ -76,6 +82,7 @@ function FixedModelFields({ adapterId, values, onChange }: {
   onChange: (value: AdapterSettings) => void;
 }) {
   return <>
+    {adapterId === AUTODL_ADAPTER ? <AutoDlWorkflowFields values={values} onChange={onChange} /> : null}
     {adapterModel(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1"].includes(adapterId) ? <label className="ui-field">模型选项
       <Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
         model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
@@ -187,11 +194,12 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
         maxLength={ORIGIN_LIMIT} placeholder={platform === "GOOGLE" ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"} />
     </label> : null}
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
+    {platform === "AUTODL" ? <><label className="ui-field">固定 API 地址<input value="https://autodl.art/api/v1/comfyui/comfyui_workflow" readOnly /></label><p className="ui-muted">填写令牌管理中分组为 ComfyUI 的 Token。任务异步查询，取消不保证外部停止或退款。</p></> : null}
     {platform === "VOLCENGINE" ? <label className="ui-field">固定 API 地址<input value="https://openspeech.bytedance.com/api/v3/tts/create" readOnly /></label> : null}
     {platform === "ARK" ? <label className="ui-field">固定 API 地址
       <input value="https://ark.cn-beijing.volces.com/api/v3" readOnly />
     </label> : null}
-    {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" ? <label className="ui-field">
+    {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" ? <label className="ui-field">
       {creating ? "API Key" : "替换 API Key（留空则不修改）"}
       <input type="password" autoComplete="new-password" value={apiKey}
         onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
@@ -519,7 +527,7 @@ export function MediaSettingsPage() {
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"RUNNINGHUB" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE">("COMFYUI");
+  const [platform, setPlatform] = useState<"RUNNINGHUB" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL">("COMFYUI");
   const [origin, setOrigin] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -602,7 +610,7 @@ export function MediaSettingsPage() {
               <label className="ui-field">平台
                 <Select value={platform} onChange={(event) => { setPlatform(event.target.value as typeof platform); setOrigin(""); setApiKey(""); }}>
                   <option value="RUNNINGHUB">RunningHub</option><option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
-                  <option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">火山方舟</option><option value="VOLCENGINE">火山引擎 · Seed Audio</option>
+                  <option value="AUTODL">AutoDL · ComfyUI 工作流</option><option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">火山方舟</option><option value="VOLCENGINE">火山引擎 · Seed Audio</option>
                 </Select>
               </label>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}

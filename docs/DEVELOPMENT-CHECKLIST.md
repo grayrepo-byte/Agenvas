@@ -111,6 +111,8 @@
 
 2026-10-01 连线流光与设置：工具栏增加画布设置，保留现有关系颜色、历史虚线与删除操作；只为可见线播放 SVG/CSS 动画，并遵循系统减少动态效果偏好。设置刷新/重新打开恢复，同源标签页同步；存储失败保留本页选择并提供重试。无 API 或数据库迁移。定向单元测试、类型检查、lint、生产构建及 Mock API 下的真实 Chromium 交互验证见 [连线显示证据](evidence/T07-canvas-connection-display.md)；未运行全量测试或大画布性能验收。
 
+同日流光视觉修订：替换等亮硬边光段，改为中心明亮、两端透明的连续渐变光带，沿曲线移动并在起终点淡入淡出。系统减少动态效果开启时卸载原生动画。3 个相关文件、8 项测试与类型检查、lint、构建通过；真实 Chromium（Mock API）复验方向、渐变呈现与原有开关/显隐/刷新恢复。验证范围见同一证据文档。
+
 2026-09-26 画布显示补充：按用户图稿实现纯媒体卡片、空态上传、浮动扩展工具栏、Prompt 编辑器、模型菜单、参数摘要和 Beautiful UI 加载态；修复保存草稿后刷新错误切换展示模式的问题。定向验证与未完成的浏览器视觉验收见 [T07 显示重构证据](evidence/T07-canvas-display-refactor.md)。本轮不增加草稿级尺寸/画质覆盖参数，未接入的扩展能力保持禁用。
 
 2026-09-26 其他节点体验统一（已随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 部分撤回，2026-09-27）：文字与其他内容节点复用黑色卡片/浮动工具栏/底部编辑器交互，保留版本与引用操作；视频增加精确输入图缩略图选择及播放加载/失败重试。内容草稿固定 CAS 基准并保留冲突输入。实现范围、定向验证与浏览器阻断见 [T07 节点统一证据](evidence/T07-other-canvas-nodes.md)；无 API 或数据库迁移，浏览器视觉验收仍未完成。角色、场景、镜头的节点编辑区随三类产物一并移除。
@@ -717,17 +719,34 @@ pnpm test:e2e
 - [ ] 真实 OSS、COS、Amazon S3 与其他兼容服务的账户验收及大文件吞吐（未使用真实云端凭证）。
 - [ ] 历史资源批量搬迁、浏览器直传与云端孤立对象批量清理（本次没有实现，切换不会触发这些操作）。
 
+## 2026-10-01 AutoDL ComfyUI 工作流
+
+依据 [ADR 0024](adr/0024-autodl-comfyui-workflows.md)，局部扩展 ADR 0002；复用既有直接媒体生成、版本化能力与持久任务。配置与边界见 [接入说明](autodl-comfyui.md)，实际检查见 [验证证据](evidence/autodl-comfyui-2026-10-01.md)，合并及后续验收跟踪 [Issue #25](https://github.com/grayrepo-byte/Agenvas/issues/25)。
+
+- [x] AUTODL 加密连接、固定官方端点、14 个显式时长 H3 声明、工作流/分辨率/种子设置；V65、OpenAPI、生成 TS/jOOQ 同步。
+- [x] 精确图片/音频版本以 base64 提交；必填数量、输入模式、时长、资源大小与比例预检，最终供应商参数冻结。
+- [x] task_id 持久异步查询、UNKNOWN 显式重试、下载/归档恢复不重发生成、过期签名地址按原 ID 刷新、音轨保留与选择保护。
+- [x] 37 个后端单元测试、53 个前端测试、3 个真实 PostgreSQL 集成用例、类型检查/lint/构建、声明一致性与差异检查通过。
+- [x] z0903 真实 API 与正式后端 Worker 各完成一次 1 秒请求；后端真实集成测试 1 例通过，返回带音轨的 864×480 MP4，实际时长 1.625 秒。
+- [ ] 其余 13 个工作流与全部分辨率/种子/参考组合的真实 Provider 验收。
+- [ ] 浏览器端到端、生产升级演练与压力测试；全量测试未运行。
+- [ ] 自动音频时长、视频动作迁移、IndexTTS 等不同契约工作流另行扩展。
+
+合并 main 复验：保留对象存储与画布连线改动，AutoDL 使用 V65 / ADR 0024。清理改名前的构建资源后，37 个后端单元测试、53 个前端测试、4 个 PostgreSQL 集成用例、类型检查/lint/构建通过；TS/jOOQ 重新生成一致。未重跑付费真实生成、全量测试或部署。
+
 ## 2026-10-01 RunningHub 与动态表单
 
-跟踪：[GitHub Issue #26](https://github.com/grayrepo-byte/Agenvas/issues/26)。依据 [ADR 0024](adr/0024-runninghub-versioned-input-contracts.md) 与规格 6.12，操作说明见 [RunningHub 接入文档](research/runninghub-api-integration.md)，验证记录见 [专项证据](evidence/runninghub-api-integration-2026-10-01.md)。
+跟踪：[GitHub Issue #26](https://github.com/grayrepo-byte/Agenvas/issues/26)。依据 [ADR 0025](adr/0025-runninghub-versioned-input-contracts.md) 与规格 6.13，操作说明见 [RunningHub 接入文档](research/runninghub-api-integration.md)，验证记录见 [专项证据](evidence/runninghub-api-integration-2026-10-01.md)。
 
 - [x] 固定 V2 工作流 / AI 应用提交、原 taskId 查询、服务端加密 Key、管理员配置 HTTPS 地址（取消域名白名单）；生成请求不自动重试。
 - [x] 同一连接发布多个版本化能力；只读候选发现、脱敏 JSON 回退、人工整理字段和离线表单预览，不执行 cURL / 脚本 / 完整工作流。
 - [x] 动态文字、数值、布尔、枚举、条件与高级字段，以及具名图片 / 音频 / 视频精确槽位；不完整草稿保存，运行时服务端验证，无通用提示词或时长强制要求。
 - [x] UNKNOWN、多结果私有清单与断点归档、混合输出、取消晚到历史、选择 CAS、能力版本固定和 fencing 的 PostgreSQL + 假 HTTP 验证。
-- [x] V65 / 生成的 jOOQ / OpenAPI / 生成 TS，规格、术语与 ADR 同步；定向后端、前端测试及构建检查。
+- [x] V66 / 生成的 jOOQ / OpenAPI / 生成 TS，规格、术语与 ADR 同步；定向后端、前端测试及构建检查。
 - [x] 用户提供的两份 RunningHub 视频示例分别完成真实图片上传、4 秒 / 480p 生成、原 taskId 查询、解码归档、节点选用与费用核对；共 0.80 USD + 8 积分，见 [真实验证记录](evidence/runninghub-real-provider-2026-10-01.md)。
 - [ ] 其他工作流 / 应用、音频与视频输入、结果有效期及过期恢复的真实验收。
 - [ ] 浏览器端到端与旧部署升级演练（本轮未运行）。
 
 目录链接自动解析、文本结果、旧式生成、Webhook、远程取消、运行前远程摘要核验和视频输入画布连线没有实施，不属于本次交付。
+
+RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用 V66 / ADR 0025 / 规格 6.13。jOOQ 与 TS 重新生成；62 项后端单元测试、16 项 PostgreSQL 集成测试、60 项前端测试、类型检查、构建和定向 ESLint 通过，见 [合并验证](evidence/runninghub-main-merge-2026-10-01.md)。未重跑付费生成、全量测试或部署。

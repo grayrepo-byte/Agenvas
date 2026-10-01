@@ -1,6 +1,6 @@
 # RunningHub API 与动态表单定向验证
 
-日期：2026-10-01。实现依据为 [ADR 0024](../adr/0024-runninghub-versioned-input-contracts.md)、规格 6.12 与 [接入说明](../research/runninghub-api-integration.md)。本记录的下列初始测试只证明本地固定协议、动态表单和任务行为，使用本地假服务。随后真实 Key 验证已完成，见 [真实 Provider 补充记录](runninghub-real-provider-2026-10-01.md)。第三方 Go SDK 只读审阅，不作为运行依赖。
+日期：2026-10-01。实现依据为 [ADR 0025](../adr/0025-runninghub-versioned-input-contracts.md)、规格 6.13 与 [接入说明](../research/runninghub-api-integration.md)。本记录的下列初始测试只证明本地固定协议、动态表单和任务行为，使用本地假服务。随后真实 Key 验证已完成，见 [真实 Provider 补充记录](runninghub-real-provider-2026-10-01.md)。第三方 Go SDK 只读审阅，不作为运行依赖。
 
 ## 交付内容
 
@@ -68,4 +68,4 @@ jOOQ 在隔离空库 PostgreSQL 17.11 执行 Flyway 至 V65 后，运行：
 - 文本结果、旧式生成、Webhook、远程取消/退款、密码保护目标、目录链接/cURL 解析与视频输入画布连线未实施。
 - 结果 URL 超过上游有效期时不能承诺恢复；没有验证重新查询能否刷新过期 URL，归档失败不会重做生成。
 
-升级需同时发布后端、V65 与前端：旧客户端不识别新增平台/输入角色。迁移只增加允许值和私有清单列，保留既有资源、草稿、任务与加密凭据。代码仍位于当前工作区，未提交、未发布部署。
+合并 main 后 RunningHub 使用 V66（V65 保留给已合入的 AutoDL），升级需同时发布后端、V66 与前端：旧客户端不识别新增平台/输入角色。迁移只增加允许值和私有清单列，保留既有资源、草稿、任务与加密凭据。上述初始验证时尚未提交；main 合并补证见 [合并验证](runninghub-main-merge-2026-10-01.md)。未发布部署。

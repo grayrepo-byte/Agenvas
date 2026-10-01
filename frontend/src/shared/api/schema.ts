@@ -1479,7 +1479,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "RUNNINGHUB";
+            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB";
             enabled: boolean;
             /** Format: int64 */
             version: number;
@@ -1521,6 +1521,18 @@ export interface components {
         /** @description Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
             runningHub?: components["schemas"]["RunningHubDefinition"];
+            /** @description AUTODL_COMFY_VIDEO only; reviewed H3 workflow ID. Defaults to minimax_h3_z0903. Each workflow fixes its input mode, duration, required references and supported resolutions. */
+            workflowId?: string;
+            /**
+             * @description AutoDL resolution tier; mapped to the workflow's exact enum using the frozen card/project aspect ratio. Unsupported combinations are rejected before task acceptance.
+             * @enum {string}
+             */
+            videoResolution?: "480p" | "736p" | "768p" | "1080p" | "1088p" | "1440p";
+            /**
+             * Format: int64
+             * @description Optional AutoDL seed, only for workflows that declare it.
+             */
+            seed?: number;
             checkpoint?: string;
             diffusionModel?: string;
             textEncoder?: string;
@@ -1641,7 +1653,7 @@ export interface components {
         CreateMediaConnectionRequest: {
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "RUNNINGHUB";
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB";
             /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;

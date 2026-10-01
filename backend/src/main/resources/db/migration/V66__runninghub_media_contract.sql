@@ -1,7 +1,7 @@
 -- Additive; existing projects, drafts, encrypted credentials and immutable histories survive.
 ALTER TABLE media_provider_connection DROP CONSTRAINT ck_media_connection_platform;
 ALTER TABLE media_provider_connection ADD CONSTRAINT ck_media_connection_platform
-    CHECK (platform IN ('LOCAL','MOCK','COMFYUI','OPENAI','GOOGLE','ARK','VOLCENGINE','RUNNINGHUB'));
+    CHECK (platform IN ('LOCAL','MOCK','COMFYUI','OPENAI','GOOGLE','ARK','VOLCENGINE','AUTODL','RUNNINGHUB'));
 ALTER TABLE canvas_item_media_input DROP CONSTRAINT ck_canvas_item_media_input_role;
 ALTER TABLE canvas_item_media_input ADD CONSTRAINT ck_canvas_item_media_input_role
     CHECK (input_role IN ('REFERENCE','START_FRAME','END_FRAME','AUDIO_REFERENCE','VIDEO_REFERENCE'));

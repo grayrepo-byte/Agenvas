@@ -1,4 +1,4 @@
-# ADR 0024：RunningHub 固定协议与版本化输入契约
+# ADR 0025：RunningHub 固定协议与版本化输入契约
 
 状态：接受（2026-10-01，用户要求实施 RunningHub API 接入及动态表单）。覆盖 [ADR 0002](0002-fixed-media-adapters-before-workflow-platforms.md) 中暂缓 RunningHub 平台接入的决定；动态脚本、Agent 媒体工具及任意工作流执行的禁令继续有效。
 
