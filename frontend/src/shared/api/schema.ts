@@ -1552,7 +1552,7 @@ export interface components {
             pricing?: components["schemas"]["MediaCapabilityPricing"];
         };
         RunningHubScalar: string | number | boolean;
-        /** @description Data-only local contract. No scripts, endpoints or credentials. Local versions do not freeze remote workflow implementations. */
+        /** @description Data-only local contract. No scripts, endpoints or credentials. Local versions do not freeze remote workflow implementations. Companion ZIP results are skipped without download or extraction; mapped primary media remains required. */
         RunningHubDefinition: {
             /** @enum {integer} */
             schemaVersion: 1;

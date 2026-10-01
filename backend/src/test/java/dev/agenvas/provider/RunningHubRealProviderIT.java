@@ -57,9 +57,9 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.provider.comfyui.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubRealProviderIT {
     private static final String ORIGIN = "https://www.runninghub.ai";
-    private static final String WORKFLOW_ID = "2037454919065673729";
-    private static final String APP_ID = "2039199752025280513";
-    private static final int VIDEO_SECONDS = 4;
+    private static final String APP_ID = "2084320751339032577";
+    private static final int VIDEO_SECONDS = 5;
+    private static final BigDecimal MEGAPIXELS = new BigDecimal("0.2");
     private static final Duration DEADLINE = Duration.ofMinutes(20);
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(5);
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -93,7 +93,7 @@ class RunningHubRealProviderIT {
     private record Attempt(String name, UUID projectId, UUID taskId) {}
 
     @Test @Timeout(1_800)
-    void realWorkflowAndAppSubmitQueryDecodeArchiveAndSelect() throws Exception {
+    void realMinimaxAppSubmitOnceQueryDecodeArchiveAndSelect() throws Exception {
         Path receipt = privateRoot().resolve("real-evidence.json");
         assertThat(Files.exists(receipt)).as("An existing receipt must be reconciled; this test must not submit it again").isFalse();
         Files.createDirectories(privateRoot().resolve("results"));
@@ -101,13 +101,11 @@ class RunningHubRealProviderIT {
         owner = identities.setup("runninghub-real-isolated-test", "real-rh-admin", "isolated-rh-password-123").userId();
         String key = readPrivate("api-key");
         var connection = catalog.createConnection(UUID.randomUUID().toString(), "RunningHub real verification", "RUNNINGHUB", ORIGIN, key);
-        var workflowPreview = imports.preview(connection.id(), RunningHubDefinition.TargetType.WORKFLOW, WORKFLOW_ID, Task.Kind.VIDEO_GENERATION, null);
-        assertThat(workflowPreview.definition().fields()).anyMatch(field -> field.nodeId().equals("1") && field.fieldName().equals("duration"));
         // Selected public inputs captured from the application page; Bearer-only discovery can fail upstream.
-        try (var input = RunningHubRealProviderIT.class.getResourceAsStream("/runninghub/seedance-app-inputs.json")) {
+        try (var input = RunningHubRealProviderIT.class.getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {
             assertThat(input).isNotNull();
             var appPreview = imports.preview(connection.id(), RunningHubDefinition.TargetType.AI_APP, APP_ID, Task.Kind.VIDEO_GENERATION, mapper.readTree(input));
-            assertThat(appPreview.definition().fields()).anyMatch(field -> field.fieldName().equals("resolution") && field.type() == RunningHubDefinition.FieldType.SELECT);
+            assertThat(appPreview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.type() == RunningHubDefinition.FieldType.SELECT);
         }
         byte[] reference = referenceImage();
         Path upload = privateRoot().resolve("reference.png");
@@ -116,12 +114,10 @@ class RunningHubRealProviderIT {
         String uploadedUrl = client.upload(ORIGIN, key, upload, "image/png", RunningHubDefinition.ResourceFormat.URL);
         RunningHubClient.validateDownload(ORIGIN, uploadedUrl);
         System.out.println("REAL_RUNNINGHUB URL_UPLOAD_OK");
-        submit(connection.id(), "workflow", RunningHubDefinition.TargetType.WORKFLOW, WORKFLOW_ID, "1", "2", reference);
-        submit(connection.id(), "app", RunningHubDefinition.TargetType.AI_APP, APP_ID, "15", "12", reference);
+        submit(connection.id(), reference);
         Instant deadline = Instant.now().plus(DEADLINE);
         String previous = "";
         while (Instant.now().isBefore(deadline)) {
-            worker.pollOnce("rh-real-poll");
             worker.pollOnce("rh-real-poll");
             writeReceipts();
             String current = attempts.stream().map(attempt -> attempt.name() + ":" + current(attempt).status()).reduce("", (a, b) -> a + " " + b);
@@ -147,8 +143,8 @@ class RunningHubRealProviderIT {
         assertThat(worker.pollOnce("rh-real-no-repoll")).isZero();
     }
 
-    private void submit(UUID connectionId, String name, RunningHubDefinition.TargetType type, String id,
-            String generationNode, String imageNode, byte[] reference) throws Exception {
+    private void submit(UUID connectionId, byte[] reference) throws Exception {
+        String name = "minimax-h3-app";
         var project = projects.create(owner, "Real RunningHub " + name, Project.AspectRatio.LANDSCAPE_16_9);
         var referenceAsset = assets.archiveImage(owner, project.id(), new ByteArrayInputStream(reference));
         var referenceArtifact = artifacts.create(owner, project.id(), Artifact.Kind.IMAGE, "Synthetic reference",
@@ -157,26 +153,14 @@ class RunningHubRealProviderIT {
         UUID card = UUID.randomUUID();
         canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(card, artifact.id(), BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
-        ObjectNode settings = mapper.createObjectNode();
-        ObjectNode definition = settings.putObject("runningHub");
-        definition.put("schemaVersion", 1).put("protocolVersion", "V2").put("targetType", type.name()).put("targetId", id);
-        var fields = definition.putArray("fields");
-        fields.addObject().put("key", "prompt").put("label", "提示词").put("type", "STRING").put("required", true)
-                .put("nodeId", generationNode).put("fieldName", "prompt").put("source", "PROMPT");
-        fields.addObject().put("key", "seconds").put("label", "时长").put("type", "INTEGER").put("required", true)
-                .put("nodeId", generationNode).put("fieldName", "duration").put("source", "DURATION_SECONDS").put("encoding", "STRING")
-                .put("minimum", VIDEO_SECONDS).put("maximum", VIDEO_SECONDS);
-        fields.addObject().put("key", "reference").put("label", "参考图片").put("type", "IMAGE").put("required", true)
-                .put("nodeId", imageNode).put("fieldName", "image").put("resourceFormat", "FILE_NAME");
-        var fixed = definition.putArray("fixedBindings");
-        fixed.addObject().put("nodeId", generationNode).put("fieldName", "resolution").put("value", "480p");
-        fixed.addObject().put("nodeId", generationNode).put("fieldName", "ratio").put("value", "16:9");
-        if (type == RunningHubDefinition.TargetType.WORKFLOW) {
-            fixed.addObject().put("nodeId", generationNode).put("fieldName", "generateAudio").put("value", false);
-            fixed.addObject().put("nodeId", generationNode).put("fieldName", "real_person_mode").put("value", false);
+        ObjectNode settings;
+        try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-settings.json")) {
+            assertThat(input).isNotNull();
+            settings = (ObjectNode) mapper.readTree(input);
         }
-        definition.putArray("outputs").addObject().put("kind", "VIDEO").put("primary", true).put("maxCount", 1);
-        var capability = catalog.publishCapability(connectionId, "Real " + name + " 4s 480p", "RUNNINGHUB_VIDEO", settings);
+        // This reviewed data contract disables unused sample images/audio and expensive optional nodes.
+        // The video loader's existing sample is left intact, with its reference switch disabled.
+        var capability = catalog.publishCapability(connectionId, "Minimax H3 5s 0.2MP", "RUNNINGHUB_VIDEO", settings);
         var parameters = mapper.createObjectNode();
         parameters.putObject("dynamicValues").put("reference", referenceArtifact.resourceDefaultVersion().id().toString());
         var draft = drafts.save(owner, project.id(), card, 0,
@@ -198,7 +182,7 @@ class RunningHubRealProviderIT {
     }
     private void writeReceipts() throws Exception {
         var evidence = mapper.createObjectNode().put("origin", ORIGIN).put("updatedAt", Instant.now().toString())
-                .put("durationSeconds", VIDEO_SECONDS).put("resolution", "480p");
+                .put("targetId", APP_ID).put("durationSeconds", VIDEO_SECONDS).put("megapixels", MEGAPIXELS);
         var array = evidence.putArray("attempts");
         for (var attempt : attempts) {
             var task = current(attempt);

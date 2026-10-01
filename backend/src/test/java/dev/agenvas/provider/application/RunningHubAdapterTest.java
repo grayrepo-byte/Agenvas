@@ -1,6 +1,7 @@
 package dev.agenvas.provider.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.Task;
@@ -38,5 +39,21 @@ class RunningHubAdapterTest {
              "usage":{"consumeMoney":"NaN","consumeCoins":"-1","taskCostTime":"1e999999","thirdPartyConsumeMoney":{"amount":1}}}
             """);
         assertThat(adapter.manifest(response, definition, "https://www.runninghub.ai").usage().isEmpty()).isTrue();
+    }
+
+    @Test void companionZipIsNeverDownloadedAndDoesNotPreventMappedVideoArchive() {
+        var response = mapper.readTree("""
+            {"results":[{"nodeId":"157","outputType":"zip","url":"http://127.0.0.1/never-download.zip"},
+                        {"nodeId":"155","outputType":"mp4","url":"https://cdn.example.com/video.mp4"}]}
+            """);
+        var manifest = adapter.manifest(response, definition, "https://www.runninghub.ai");
+        assertThat(manifest.results()).hasSize(1);
+        assertThat(manifest.results().getFirst().nodeId()).isEqualTo("155");
+        assertThat(manifest.results().getFirst().primary()).isTrue();
+        assertThat(manifest.results().getFirst().ordinal()).isZero();
+        assertThatThrownBy(() -> adapter.manifest(mapper.readTree("{\"results\":[{\"outputType\":\"zip\"}]}"), definition, "https://www.runninghub.ai"))
+                .isInstanceOf(dev.agenvas.provider.infrastructure.RunningHubClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> adapter.manifest(mapper.readTree("{\"results\":[{\"outputType\":\"html\"}]}"), definition, "https://www.runninghub.ai"))
+                .isInstanceOf(dev.agenvas.provider.infrastructure.RunningHubClient.ProtocolFailure.class);
     }
 }

@@ -744,6 +744,7 @@ pnpm test:e2e
 - [x] UNKNOWN、多结果私有清单与断点归档、混合输出、取消晚到历史、选择 CAS、能力版本固定和 fencing 的 PostgreSQL + 假 HTTP 验证。
 - [x] V66 / 生成的 jOOQ / OpenAPI / 生成 TS，规格、术语与 ADR 同步；定向后端、前端测试及构建检查。
 - [x] 用户提供的两份 RunningHub 视频示例分别完成真实图片上传、4 秒 / 480p 生成、原 taskId 查询、解码归档、节点选用与费用核对；共 0.80 USD + 8 积分，见 [真实验证记录](evidence/runninghub-real-provider-2026-10-01.md)。
+- [x] 改用 MinimaxH3 应用 `2084320751339032577` 提交一次 5 秒 / 0.2MP / 8 步真实生成：SUCCESS，26 RH币、USD 余额无差额。首次本地归档因附带 ZIP 失败；兼容修复后只查询原 ID，完成真实视频解码与 Asset 归档。25 单元 + 8 假服务 PostgreSQL + 1 原真实结果归档通过，未重复付费验证完整 Task 选用，见 [新应用证据](evidence/runninghub-minimax-h3-2026-10-01.md)。
 - [ ] 其他工作流 / 应用、音频与视频输入、结果有效期及过期恢复的真实验收。
 - [ ] 浏览器端到端与旧部署升级演练（本轮未运行）。
 

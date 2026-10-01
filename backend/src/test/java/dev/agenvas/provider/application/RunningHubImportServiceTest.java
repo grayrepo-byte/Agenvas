@@ -52,4 +52,17 @@ class RunningHubImportServiceTest {
         assertThat(field.options().getFirst().value().asText()).isEqualTo("4");
         assertThat(field.defaultValue().asText()).isEqualTo("5");
     }
+    @Test void minimaxAppTypedComboPreservesAspectRatioValuesWithoutInterpretingWidgetSettings() throws Exception {
+        try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {
+            assertThat(input).isNotNull();
+            var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "2084320751339032577",
+                    Task.Kind.VIDEO_GENERATION, mapper.readTree(input));
+            var ratio = preview.definition().fields().stream().filter(field -> field.fieldName().equals("aspect_ratio")).findFirst().orElseThrow();
+            assertThat(ratio.type()).isEqualTo(RunningHubDefinition.FieldType.SELECT);
+            assertThat(ratio.options()).hasSize(8).anyMatch(option -> option.value().asText().equals("16:9 (Widescreen)"));
+            assertThat(ratio.defaultValue().asText()).isEqualTo("16:9 (Widescreen)");
+            assertThat(preview.warnings()).noneMatch(warning -> warning.contains("缺少可识别的 LIST"));
+            assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).allMatch(field -> field.defaultValue() == null);
+        }
+    }
 }

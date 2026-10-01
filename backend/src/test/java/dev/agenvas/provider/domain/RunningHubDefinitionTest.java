@@ -77,4 +77,23 @@ class RunningHubDefinitionTest {
         options.addObject().put("label", "重复数字").put("value", 1);
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("重复");
     }
+
+    @Test void reviewedMinimaxAppContractResolvesLowCostDefaultsAndDisablesUnusedSampleReferences() throws Exception {
+        try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-settings.json")) {
+            assertThat(input).isNotNull();
+            var definition = RunningHubDefinition.parse(mapper, mapper.readTree(input).path("runningHub"), Task.Kind.VIDEO_GENERATION);
+            assertThat(definition.targetId()).isEqualTo("2084320751339032577");
+            var parameters = mapper.readTree("{\"dynamicValues\":{\"reference\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
+            var values = definition.values(mapper, parameters, "Synthetic geometry in a studio", 5, true);
+            assertThat(values.path("megapixels").decimalValue()).isEqualByComparingTo("0.2");
+            assertThat(values.path("seconds").asInt()).isEqualTo(5);
+            assertThat(values.path("steps").asInt()).isEqualTo(8);
+            assertThat(values.path("aspectRatio").asText()).isEqualTo("16:9 (Widescreen)");
+            assertThat(definition.fixedBindings().stream().filter(binding -> binding.fieldName().equals("image") || binding.fieldName().equals("audio")))
+                    .hasSize(8).allMatch(binding -> binding.value().asText().equals("None"));
+            assertThat(definition.fixedBindings()).anyMatch(binding -> binding.nodeId().equals("158") && !binding.value().asBoolean());
+            assertThat(definition.retainSeconds()).isNull();
+            assertThatThrownBy(() -> definition.values(mapper, parameters, "Synthetic geometry in a studio", 4, true)).hasMessageContaining("时长");
+        }
+    }
 }

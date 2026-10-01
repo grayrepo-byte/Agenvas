@@ -35,6 +35,7 @@ public final class RunningHubAdapter implements MediaAdapter {
     private static final int MAX_USAGE_PRECISION = 40;
     private static final int MAX_USAGE_SCALE = 20;
     private static final Set<String> USAGE_FIELDS = Set.of("consumeMoney", "consumeCoins", "taskCostTime", "thirdPartyConsumeMoney");
+    private static final String AUXILIARY_ARCHIVE_TYPE = "zip";
     private final String id;
     private final Task.Kind kind;
     private final JooqMediaCapabilityRepository catalog;
@@ -123,6 +124,9 @@ public final class RunningHubAdapter implements MediaAdapter {
         Set<String> seen = new HashSet<>();
         boolean primary = false;
         for (JsonNode item : raw) {
+            // RunningHub apps can return a companion ZIP even with their ZIP-only switch disabled.
+            // It is neither downloaded nor extracted; a valid mapped primary media result is still required.
+            if (AUXILIARY_ARCHIVE_TYPE.equalsIgnoreCase(item.path("outputType").asText(""))) continue;
             String url = item.path("url").asText("");
             var outputKind = outputKind(item.path("outputType").asText(""));
             if (outputKind == null) throw new RunningHubClient.ProtocolFailure();

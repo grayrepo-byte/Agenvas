@@ -135,6 +135,9 @@ public final class RunningHubImportService {
             try { data = mapper.readTree(data.asText()); } catch (RuntimeException invalid) { return List.of(); }
         }
         if (data.isObject()) data = data.path("options");
+        // Some AI apps export enum widgets as ["COMBO", {"options": [...]}].
+        if (data.isArray() && data.size() == 2 && data.get(0).isTextual()
+                && "COMBO".equals(data.get(0).asText()) && data.get(1).isObject()) data = data.get(1).path("options");
         // ComfyUI exports enum widgets as [allowedValues, widgetSettings].
         if (data.isArray() && data.size() == 2 && data.get(0).isArray() && data.get(1).isObject()) data = data.get(0);
         if (!data.isArray() || data.size() > RunningHubDefinition.MAX_OPTIONS) return List.of();

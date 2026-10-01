@@ -91,7 +91,7 @@ class RunningHubPostgresIT {
     private static UUID owner;
     @BeforeEach void owner() { if (owner == null) owner = identities.setup("runninghub-integration-test-secret", "rh-admin", "runninghub-password-123").userId(); }
 
-    @Test void archivesMultipleOutputsResumesFromManifestAndPreservesANewerDraft() throws Exception {
+    @Test void archivesMultipleMediaOutputsSkipsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
         try (var provider = new Fake(2, true, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
             Task task = accept(fixture, "");
@@ -116,6 +116,7 @@ class RunningHubPostgresIT {
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
             assertThat(provider.firstDownloads).hasValue(1); assertThat(provider.secondDownloads).hasValue(2);
+            assertThat(provider.zipDownloads).hasValue(0);
             assertThat(completed.output().path("additionalResults")).hasSize(1);
             assertThat(completed.output().path("selected").asBoolean()).isFalse();
             assertThat(drafts.get(owner, fixture.project.id(), fixture.card).prompt()).isEqualTo("new local draft");
@@ -315,6 +316,7 @@ class RunningHubPostgresIT {
         final HttpServer server;
         final int resultCount;
         final AtomicInteger submits = new AtomicInteger(), queries = new AtomicInteger(), firstDownloads = new AtomicInteger(), secondDownloads = new AtomicInteger(), uploads = new AtomicInteger();
+        final AtomicInteger zipDownloads = new AtomicInteger();
         final AtomicReference<String> submitted = new AtomicReference<>();
         final AtomicReference<String> submissionPath = new AtomicReference<>();
         volatile String secondType = "png";
@@ -335,12 +337,14 @@ class RunningHubPostgresIT {
                     queries.incrementAndGet();
                     response = ("{\"status\":\"SUCCESS\",\"results\":[{\"nodeId\":\"9\",\"outputType\":\"png\",\"url\":\"" + origin() + "/first.png\"}"
                             + (resultCount > 1 ? ",{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png\"}" : "")
+                            + ",{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip\"}"
                             + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}").getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/task/openapi/upload")) {
                     uploads.incrementAndGet(); exchange.getRequestBody().readAllBytes();
                     response = "{\"code\":0,\"data\":{\"fileName\":\"input/reference.mp4\"}}".getBytes(StandardCharsets.UTF_8);
                 } else {
                     if (path.equals("/first.png")) firstDownloads.incrementAndGet();
+                    else if (path.equals("/companion.zip")) zipDownloads.incrementAndGet();
                     else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce) status = 503;
                     response = path.equals("/second.png") && secondBytes != null ? secondBytes : bytes.toByteArray();
                 }
