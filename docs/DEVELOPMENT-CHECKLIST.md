@@ -56,7 +56,7 @@
 - [x] bootstrap secret、CSRF、会话失效、暴力尝试限制经过测试。
 - [x] 重启后会话按设计保存；生产不存在无认证旁路。
 
-补充：`/settings/general` 已接入管理员改密表单，复用现有 CSRF/会话失效 API；前端对密码确认、提交及清空输入有测试，见 `docs/evidence/T28-system-diagnostics-partial.md`。语言选择已接入英语、中文、俄语、日语的共享词典、浏览器偏好和后端请求语言协商；保留页面实例与输入，详见 [i18n 配置](i18n.md) 和 [定向验证](evidence/i18n-2026-10-01.md)。
+补充：`/settings/general` 已接入管理员改密表单，复用现有 CSRF/会话失效 API；前端对密码确认、提交及清空输入有测试，见 `docs/evidence/T28-system-diagnostics-partial.md`。语言选择已接入英语、中文、俄语、日语的共享词典、浏览器偏好和后端请求语言协商；保留页面实例与输入，详见 [i18n 配置](i18n.md) 和 [定向及后端全量验证](evidence/i18n-2026-10-01.md)。后端全量补验已修复日志测试上下文缺少 i18n 依赖和资产清理队列混用时钟的问题，364 项通过、5 项环境条件跳过，0 失败；前端全量与真实 Provider 调用未运行。
 
 部署安全补验：Compose 不再为数据库密码或管理员初始化密钥提供公开回退值，README/恢复命令显式读取根目录 `.env`，后端拒绝历史示例 bootstrap secret；见 `docs/evidence/T03-bootstrap-secret-fail-closed.md`。已有本机默认实例仍使用旧值，未获授权前不自动轮换。
 

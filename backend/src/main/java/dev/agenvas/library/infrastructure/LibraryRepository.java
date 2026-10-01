@@ -97,8 +97,10 @@ public class LibraryRepository {
         enqueueCleanup(new Cleanup(SCHEMA_VERSION, id, owner, null, null, prepared), now);
     }
     private void enqueueCleanup(Cleanup cleanup, Instant now) {
+        // Eligibility uses the application Clock too; a database clock ahead must not delay a new job.
         db.insertInto(LIBRARY_CLEANUP).set(LIBRARY_CLEANUP.ID, cleanup.id()).set(LIBRARY_CLEANUP.OWNER_ID, cleanup.owner())
                 .set(LIBRARY_CLEANUP.METADATA_JSON, json(mapper.valueToTree(cleanup))).set(LIBRARY_CLEANUP.CREATED_AT, time(now))
+                .set(LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, time(now))
                 .onConflictDoNothing().execute();
     }
     public Optional<Cleanup> cleanup(Instant now) {
