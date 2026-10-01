@@ -22,8 +22,8 @@ const MediaSettingsPage = lazy(() => import("../features/settings/MediaSettingsP
   .then((module) => ({ default: module.MediaSettingsPage })));
 const StorageSettingsPage = lazy(() => import("../features/settings/StorageSettingsPage")
   .then((module) => ({ default: module.StorageSettingsPage })));
-const SystemDiagnosticsPage = lazy(() => import("../features/settings/SystemDiagnosticsPage")
-  .then((module) => ({ default: module.SystemDiagnosticsPage })));
+const SystemSettingsPage = lazy(() => import("../features/settings/SystemSettingsPage")
+  .then((module) => ({ default: module.SystemSettingsPage })));
 const CallLogsPage = lazy(() => import("../features/settings/CallLogsPage")
   .then((module) => ({ default: module.CallLogsPage })));
 
@@ -47,7 +47,7 @@ export function App() {
           <Route path="/settings/providers" element={<LlmSettingsPage />} />
           <Route path="/settings/storage" element={<StorageSettingsPage />} />
           <Route path="/settings/media" element={<MediaSettingsPage />} />
-          <Route path="/settings/general" element={<SystemDiagnosticsPage />} />
+          <Route path="/settings/general" element={<SystemSettingsPage />} />
           <Route path="/settings/logs" element={<SystemLogsPage />} />
           <Route path="/settings/calls" element={<CallLogsPage />} />
           <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />

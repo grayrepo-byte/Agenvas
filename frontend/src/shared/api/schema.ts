@@ -62,6 +62,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/call-log-retention": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取调用日志保留策略（默认永久，仅管理员） */
+        get: operations["getCallLogRetentionSettings"];
+        /**
+         * 设置调用日志保留天数
+         * @description null 表示永久保留，天数范围 1–3650。仅更新策略；后台每五分钟分批清理已结束且超过保留期的完整执行，以完成时间和最近活动时间判断过期。调用日志、debug 正文、模型回合、工具执行及 Provider 提交账本在同一事务删除，未结束与 UNKNOWN 执行继续保留。保留业务任务、Run 身份、产物和素材；旧对话的执行明细会消失。缩短策略也影响历史记录，删除不可恢复，改回永久不能恢复已清理日志。默认永久保证升级不主动删除数据。不会触发 Provider 请求。
+         */
+        put: operations["updateCallLogRetentionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/debug": {
         parameters: {
             query?: never;
@@ -79,7 +106,7 @@ export interface paths {
         get: operations["getDebugSettings"];
         /**
          * 修改系统 debug 模式
-         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭不清理历史，旧调用不会补录。不会触发 Provider 请求。
+         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
          */
         put: operations["updateDebugSettings"];
         post?: never;
@@ -2207,6 +2234,11 @@ export interface components {
             color: string;
             commandKey: string;
         };
+        CallLogRetentionSettings: {
+            /** @default null */
+            retentionDays: number | null;
+            version: number;
+        };
         DebugSettings: {
             /** @default false */
             debugMode: boolean;
@@ -3962,6 +3994,71 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getCallLogRetentionSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 持久化设置；Cache-Control 为 no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallLogRetentionSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateCallLogRetentionSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    retentionDays: number | null;
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 保存后的策略和版本 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallLogRetentionSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     getDebugSettings: {

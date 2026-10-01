@@ -83,7 +83,7 @@ describe("LlmSettingsPage", () => {
     expect(document.body).not.toHaveTextContent("secret-7890");
     expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: "secret-7890" }]);
     expect(screen.getByText(/ComfyUI 模式 · 图片已配置 · 视频未配置/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看系统诊断" })).toHaveAttribute("href", "/settings/general");
+    expect(screen.getByRole("link", { name: "查看系统诊断" })).toHaveAttribute("href", "/settings/general?tab=diagnostics");
   });
 
   it("requires visible cost consent and updates the verified state after a full probe", async () => {

@@ -15,6 +15,7 @@ import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.AssetStorageRoute;
 import dev.agenvas.db.tables.AuditDebugSettings;
+import dev.agenvas.db.tables.AuditLogRetentionSettings;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
 import dev.agenvas.db.tables.CanvasConnection;
@@ -126,6 +127,13 @@ public class Tables {
      * The table <code>public.audit_debug_settings</code>.
      */
     public static final AuditDebugSettings AUDIT_DEBUG_SETTINGS = AuditDebugSettings.AUDIT_DEBUG_SETTINGS;
+
+    /**
+     * System-wide retention for terminal execution history: calls, debug
+     * bodies, model rounds, tools and provider attempts. Null keeps forever;
+     * business identities/results remain.
+     */
+    public static final AuditLogRetentionSettings AUDIT_LOG_RETENTION_SETTINGS = AuditLogRetentionSettings.AUDIT_LOG_RETENTION_SETTINGS;
 
     /**
      * Safe metadata for individual adapter invocations; no bodies, endpoints or

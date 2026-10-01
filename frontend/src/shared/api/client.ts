@@ -54,6 +54,8 @@ export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAt
 export type UsageEntry = components["schemas"]["UsageEntry"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
+export type CallLogRetentionSettings = components["schemas"]["CallLogRetentionSettings"];
+export type UpdateCallLogRetentionRequest = NonNullable<paths["/api/v1/settings/call-log-retention"]["put"]["requestBody"]>["content"]["application/json"];
 export type DebugSettings = components["schemas"]["DebugSettings"];
 export type CallDebug = components["schemas"]["CallDebug"];
 export type DebugBody = components["schemas"]["DebugBody"];
@@ -88,6 +90,15 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, t("无法读取调用日志"));
+}
+
+export async function getCallLogRetentionSettings(): Promise<CallLogRetentionSettings> {
+  return readJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", t("无法读取调用日志保留设置"));
+}
+export async function updateCallLogRetentionSettings(request: UpdateCallLogRetentionRequest): Promise<CallLogRetentionSettings> {
+  return writeJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", {
+    method: "PUT", body: JSON.stringify(request),
+  });
 }
 
 export async function getDebugSettings(): Promise<DebugSettings> {
