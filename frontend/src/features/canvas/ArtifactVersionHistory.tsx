@@ -1,8 +1,11 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, listArtifactVersions, setArtifactResourceDefaultVersion,
-  type Artifact } from "../../shared/api/client";
+import {
+ApiError,listArtifactVersions,setArtifactResourceDefaultVersion,
+type Artifact
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
 
 /** On-demand resource history for text; media nodes intentionally expose no version switching. */
 export function ArtifactVersionHistory({ artifact }: { artifact: Artifact }) {
@@ -49,10 +52,10 @@ function TextArtifactVersionHistory({ artifact }: { artifact: Artifact }) {
         {version.id === artifact.resourceDefaultVersionId
           ? <span className="ml-2">{t("资源默认")}</span> : null}
         {version.id === selectedVersionId ? null
-          : <button className="node-action ml-2" disabled={select.isPending}
+          : <Button variant="ghost" className="node-action ml-2" disabled={select.isPending}
             onClick={() => select.mutate(version.id)} type="button">
             {select.isPending && select.variables === version.id ? t("选用中…") : t("选用此版本")}
-          </button>}
+          </Button>}
       </li>)}
     </ol> : null}
     {select.error ? <p className="mt-2 text-red-700" role="alert">

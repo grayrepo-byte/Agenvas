@@ -1,10 +1,12 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, Navigate } from "react-router";
-import { ApiError, getDebugSettings, updateDebugSettings } from "../../shared/api/client";
+import { Link,Navigate } from "react-router";
+import { ApiError,getDebugSettings,updateDebugSettings } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
+import { Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
+import { Button } from "../../shared/ui/primitives/button";
+import { Checkbox } from "../../shared/ui/primitives/checkbox";
 
 const SETTINGS_KEY = ["settings", "debug"] as const;
 const UNAUTHORIZED_STATUS = 401;
@@ -36,16 +38,16 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
       {settings.isPending && enabled ? <LoadingState compact label={t("正在读取 debug 模式")} /> : null}
       {error ? <Notice tone="danger" title={forbidden ? t("无权修改 debug 模式") : conflict ? t("Debug 设置已变化") : save.isError ? t("保存 debug 模式失败") : t("读取 debug 模式失败")}>
         <p>{conflict ? t("其他操作已修改设置。请重新读取后再保存，你的选择会保留。") : t("请确认当前会话和服务状态后重试，你的选择会保留。")}</p>
-        {!forbidden ? <button className="secondary-button" type="button" disabled={settings.isFetching || save.isPending}
-          onClick={() => { save.reset(); void settings.refetch(); }}>{t("重新读取设置")}</button> : null}
+        {!forbidden ? <Button variant="outline"  type="button" disabled={settings.isFetching || save.isPending}
+          onClick={() => { save.reset(); void settings.refetch(); }}>{t("重新读取设置")}</Button> : null}
       </Notice> : null}
-      <label className="ui-checkbox"><input type="checkbox" checked={checked} disabled={!settings.data || settings.isError || forbidden || save.isPending}
-        onChange={(event) => { setDraft(event.target.checked); save.reset(); }} />{t("开启 debug 模式")}</label>
+      <label className="ui-checkbox"><Checkbox  checked={checked} disabled={!settings.data || settings.isError || forbidden || save.isPending}
+        onCheckedChange={(event) => { setDraft(event === true); save.reset(); }} />{t("开启 debug 模式")}</label>
       {save.isSuccess && draft === null ? <p role="status">{t("Debug 模式已{0}。", { "0": settings.data?.debugMode ? t("开启") : t("关闭") })}</p> : null}
       <div className="ui-form-actions">
         <Link className="secondary-button" to="/settings/calls">{t("查看调用日志")}</Link>
-        <button className="primary-button" type="button" disabled={!settings.data || settings.isError || forbidden || conflict || save.isPending || checked === settings.data.debugMode}
-          onClick={() => { if (settings.data) save.mutate({ debugMode: checked, expectedVersion: settings.data.version }); }}>{save.isPending ? t("正在保存…") : t("保存 debug 设置")}</button>
+        <Button variant="default"  type="button" disabled={!settings.data || settings.isError || forbidden || conflict || save.isPending || checked === settings.data.debugMode}
+          onClick={() => { if (settings.data) save.mutate({ debugMode: checked, expectedVersion: settings.data.version }); }}>{save.isPending ? t("正在保存…") : t("保存 debug 设置")}</Button>
       </div>
     </div>
   </Panel>;

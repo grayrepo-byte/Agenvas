@@ -1,9 +1,10 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { act,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { http,HttpResponse } from "msw";
+import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { ArtifactVersionList, CanvasItem } from "../../shared/api/client";
+import type { ArtifactVersionList,CanvasItem } from "../../shared/api/client";
+import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaVersionPicker } from "./MediaVersionPicker";
 
@@ -39,12 +40,12 @@ describe("MediaVersionPicker", () => {
     setup([version("derived-later", 12), version("derived-first", 8)], {
       ...item, selectedVersionId: "derived-first", selectedVersion: version("derived-first", 8),
     });
-    fireEvent.click(await screen.findByRole("button", { name: "版本 v1" }));
+    await clickControl(await screen.findByRole("button", { name: "版本 v1" }));
     expect(await screen.findByRole("menuitem", { name: "v1 当前选用" })).toBeVisible();
     expect(screen.getByRole("menuitem", { name: "v2 选用此版本" })).toBeVisible();
     expect(screen.queryByText("v8")).not.toBeInTheDocument();
     expect(screen.queryByText("v12")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: "v2 选用此版本" }));
+    await clickControl(screen.getByRole("menuitem", { name: "v2 选用此版本" }));
     await waitFor(() => expect(request).toEqual({ versionId: "derived-later", expectedVersion: 7 }));
   });
 
@@ -64,10 +65,10 @@ describe("MediaVersionPicker", () => {
       request = await incoming.json();
       return HttpResponse.json({ ...item, version: 8, selectedVersionId: "v1" });
     }));
-    fireEvent.click(await screen.findByRole("button", { name: "版本 v2" }));
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
     expect(await screen.findByText("2 个版本")).toBeVisible();
     expect(screen.getByRole("menuitem", { name: "v2 当前选用" })).toHaveAttribute("aria-current", "true");
-    fireEvent.click(screen.getByRole("menuitem", { name: "v1 选用此版本" }));
+    await clickControl(screen.getByRole("menuitem", { name: "v1 选用此版本" }));
     await waitFor(() => expect(request).toEqual({ versionId: "v1", expectedVersion: 7 }));
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["canvas", "project-1"] });
@@ -79,8 +80,8 @@ describe("MediaVersionPicker", () => {
     server.use(http.post(`${base}/select-media-version`, () => HttpResponse.json({
       code: "VERSION_CONFLICT", title: "版本冲突", detail: "节点已变化，请刷新后重试。",
     }, { status: 409, headers: { "content-type": "application/problem+json" } })));
-    fireEvent.click(await screen.findByRole("button", { name: "版本 v2" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "v1 选用此版本" }));
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
+    await clickControl(await screen.findByRole("menuitem", { name: "v1 选用此版本" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("节点已变化");
     expect(screen.getByRole("menuitem", { name: "v2 当前选用" })).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("button", { name: "刷新版本" })).toBeVisible();
@@ -91,7 +92,7 @@ describe("MediaVersionPicker", () => {
     setup(undefined, undefined, () => ++attempts === 1
       ? HttpResponse.json({ detail: "读取失败" }, { status: 503 })
       : HttpResponse.json({ items: [version("v2", 2)] }));
-    fireEvent.click(await screen.findByRole("button", { name: "重试读取" }));
+    await clickControl(await screen.findByRole("button", { name: "重试读取" }));
     await waitFor(() => expect(attempts).toBe(2));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /^版本/ })).not.toBeInTheDocument();
@@ -99,10 +100,10 @@ describe("MediaVersionPicker", () => {
 
   it("closes with Escape and restores focus", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("button", { name: "版本 v2" }));
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "版本 v2" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("button", { name: "版本 v2" })).toHaveFocus());
   });
 
   it("shows the picker when a second node result arrives", async () => {
@@ -114,7 +115,7 @@ describe("MediaVersionPicker", () => {
       items: [version("v5", 5), version("v2", 2)],
     })));
     await act(async () => { await client.invalidateQueries({ queryKey: ["canvas-media-versions", "project-1"] }); });
-    fireEvent.click(await screen.findByRole("button", { name: "版本 v1" }));
+    await clickControl(await screen.findByRole("button", { name: "版本 v1" }));
     expect(screen.getByRole("menuitem", { name: "v2 选用此版本" })).toBeVisible();
   });
 

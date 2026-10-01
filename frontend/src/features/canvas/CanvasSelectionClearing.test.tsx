@@ -1,12 +1,13 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { NodeSelectionChange, ReactFlowInstance, ReactFlowProps } from "@xyflow/react";
-import { http, HttpResponse } from "msw";
+import { act,createEvent,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import type { NodeSelectionChange,ReactFlowInstance,ReactFlowProps } from "@xyflow/react";
+import { http,HttpResponse } from "msw";
 import { useLayoutEffect } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasCommand, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
+import type { CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
+import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { useCanvasStore } from "./canvasStore";
@@ -457,7 +458,7 @@ describe("canvas interaction tools", () => {
 
   it("switches tools through the menu and V, preserving hand mode after Space", async () => {
     await renderFlow();
-    fireEvent.click(screen.getByRole("button", { name: "画布工具" }));
+    await clickControl(screen.getByRole("button", { name: "画布工具" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
     expect(flowProps.panOnDrag).toBe(true);
     expect(flowProps.elementsSelectable).toBe(false);
@@ -466,7 +467,7 @@ describe("canvas interaction tools", () => {
     expect(flowProps.panOnDrag).toBe(true);
     fireEvent.keyDown(window, { key: "v", code: "KeyV" });
     expect(flowProps.panOnDrag).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "画布工具" }));
+    await clickControl(screen.getByRole("button", { name: "画布工具" }));
     const menu = screen.getByRole("menu", { name: "画布工具模式" });
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -478,7 +479,7 @@ describe("canvas interaction tools", () => {
     document.body.append(input);
     fireEvent.keyDown(input, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "画布工具" }));
+    await clickControl(screen.getByRole("button", { name: "画布工具" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
     fireEvent.keyDown(input, { key: "v", code: "KeyV" });
     expect(flowProps.panOnDrag).toBe(true);

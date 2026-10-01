@@ -1,9 +1,11 @@
-import { t, useLocale } from "../../shared/i18n";
-import { Select } from "../../shared/ui/Select";
-import { ArrowUp, Stack, X } from "@phosphor-icons/react";
-import { useState, type PointerEvent } from "react";
+import { ArrowUp,Stack,X } from "@phosphor-icons/react";
+import { useState,type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { ApiError, type MediaCapability, type RunImageOperationRequest } from "../../shared/api/client";
+import { ApiError,type MediaCapability,type RunImageOperationRequest } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Textarea } from "../../shared/ui/primitives/textarea";
+import { Select } from "../../shared/ui/Select";
 
 type RelightParameters = RunImageOperationRequest["parameters"];
 type LightingPreset = NonNullable<RelightParameters["lightingPreset"]>;
@@ -83,7 +85,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
     aria-label={t("打光")} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
     <header className="relight-dialog-header">
       <strong>{t("打光")}</strong>
-      <button type="button" aria-label={t("关闭打光面板")} onClick={onClose}><X size={19} /></button>
+      <Button variant="ghost" type="button" aria-label={t("关闭打光面板")} onClick={onClose}><X size={19} /></Button>
     </header>
 
     <div className="relight-dialog-body">
@@ -115,14 +117,14 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
       <section className="relight-style-section" aria-label={t("预设风格")}>
         <span className="relight-section-label">{t("预设风格")}</span>
         <div className="relight-preset-grid">
-          {PRESETS.map((entry) => <button type="button" key={entry.id}
+          {PRESETS.map((entry) => <Button variant="ghost" type="button" key={entry.id}
             className={preset === entry.id ? "is-selected" : ""}
             aria-pressed={preset === entry.id} onClick={() => selectPreset(entry)}>
             <img src={sourceUrl} alt="" draggable={false} style={{ filter: entry.filter }} />
             <span>{entry.label}</span>
-          </button>)}
+          </Button>)}
         </div>
-        <textarea value={instruction} maxLength={4000}
+        <Textarea value={instruction} maxLength={4000}
           aria-label={t("补充打光描述")} placeholder={t("简单描述你想要的打光效果")}
           onChange={(event) => setInstruction(event.target.value)} />
       </section>
@@ -143,10 +145,10 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
       </label>
       <div className="relight-submit-group">
         <span title={t("将按所选 AI 图片能力计费")}><Stack size={19} weight="fill" />AI</span>
-        <button type="button" className="relight-submit" disabled={!canSubmit}
+        <Button variant="ghost" type="button" className="relight-submit" disabled={!canSubmit}
           aria-label={busy ? t("正在受理打光任务") : t("开始打光")} onClick={submit}>
           <ArrowUp size={21} weight="bold" />
-        </button>
+        </Button>
       </div>
     </footer>
   </div>, document.body);

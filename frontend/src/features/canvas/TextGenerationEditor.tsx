@@ -1,14 +1,18 @@
-import { t, useLocale } from "../../shared/i18n";
-import { ArrowUp, Coins, Cube } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
-import { ApiError, getLlmSettings, getSystemDiagnostics, listDirectTextTasks, runDirectTextGeneration,
-  type Artifact } from "../../shared/api/client";
-import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
-import { taskErrorDetail } from "./taskErrorMessages";
-import { hasCurrentVersion } from "./versionedArtifact";
+import { ArrowUp,Coins,Cube } from "@phosphor-icons/react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useId,useRef,useState } from "react";
+import {
+ApiError,getLlmSettings,getSystemDiagnostics,listDirectTextTasks,runDirectTextGeneration,
+type Artifact
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Textarea } from "../../shared/ui/primitives/textarea";
 import "./MediaDraftEditor.css";
+import { latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS,occupiesMediaCard } from "./mediaTaskState";
+import { taskErrorDetail } from "./taskErrorMessages";
 import "./TextGenerationEditor.css";
+import { hasCurrentVersion } from "./versionedArtifact";
 
 const MAX_PROMPT_LENGTH = 20_000;
 
@@ -88,7 +92,7 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
       <span className="media-draft-save-state">{t("生成结果会保存为新版本")}</span>
     </div>
     <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("文字生成提示词")}</label>
-    <textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
+    <Textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
       placeholder={t("描述你希望模型如何改写、补充或创作卡片内容…")} value={prompt}
       onChange={(event) => {
         intent.current = null;
@@ -100,18 +104,18 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
         <Cube size={17} /><span>{modelLabel}</span>
       </span>
       <span className="media-draft-cost" title={t("预计费用未知")}><Coins size={16} />{t("费用未知")}</span>
-      <button className="media-draft-run" type="button" disabled={!canRun}
+      <Button variant="ghost" className="media-draft-run" type="button" disabled={!canRun}
         aria-label={run.isPending ? t("正在提交文字生成") : t("生成文字")}
         title={occupied ? t("此卡片已有文字生成任务") : t("生成文字")}
-        onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></button>
+        onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>
     </div>
     <div className="media-draft-feedback" aria-live="polite">
-      {settings.error ? <p role="alert">{t("无法读取文字模型配置。")}<button className="media-draft-text-action" type="button"
-          onClick={() => void settings.refetch()}>{t("重试")}</button></p> : null}
-      {diagnostics.error ? <p role="alert">{t("无法确认文字模型运行模式。")}<button className="media-draft-text-action" type="button"
-          onClick={() => void diagnostics.refetch()}>{t("重试")}</button></p> : null}
-      {directTasks.error ? <p role="alert">{t("无法读取文字生成任务。")}<button className="media-draft-text-action" type="button"
-          onClick={() => void directTasks.refetch()}>{t("重试")}</button></p> : null}
+      {settings.error ? <p role="alert">{t("无法读取文字模型配置。")}<Button variant="ghost" className="media-draft-text-action" type="button"
+          onClick={() => void settings.refetch()}>{t("重试")}</Button></p> : null}
+      {diagnostics.error ? <p role="alert">{t("无法确认文字模型运行模式。")}<Button variant="ghost" className="media-draft-text-action" type="button"
+          onClick={() => void diagnostics.refetch()}>{t("重试")}</Button></p> : null}
+      {directTasks.error ? <p role="alert">{t("无法读取文字生成任务。")}<Button variant="ghost" className="media-draft-text-action" type="button"
+          onClick={() => void directTasks.refetch()}>{t("重试")}</Button></p> : null}
       {run.error ? <p role="alert">{run.error instanceof ApiError
         ? run.error.message : t("文字生成提交失败；输入已保留，请重试。")}</p> : null}
       {taskMessage ? <p className="media-draft-task-status">{taskMessage}</p> : null}

@@ -1,10 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render,screen,waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
-import { http, HttpResponse } from "msw";
-import { expect, it } from "vitest";
+import { expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { SaveToLibraryButton } from "./SaveToLibraryButton";
 
@@ -25,7 +26,7 @@ it("saves the fixed displayed result with the selected category, waiting for dur
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "保存为资产" }));
   expect(await screen.findByText("海边旅馆 · 节点 v2")).toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox", { name: "资产分类" }), "SCENE");
+  await selectValue(screen.getByRole("combobox", { name: "资产分类" }), "SCENE");
   await user.click(screen.getByRole("button", { name: "保存资产" }));
   await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("已保存到我的资产 · 场景"));
   await waitFor(() => expect(submitted).toEqual([expect.objectContaining({ versionId: "v2", expectedSelectionEpoch: 3, category: "SCENE", name: "海边旅馆" })]));

@@ -1,8 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { http,HttpResponse } from "msw";
+import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 
@@ -51,30 +52,30 @@ describe("BrushMarkupEditor", () => {
     props.onClose.mockClear();
   });
 
-  it("provides direct drawing tools, branching undo/redo and text without model inputs", () => {
+  it("provides direct drawing tools, branching undo/redo and text without model inputs", async () => {
     const { canvas } = show();
     expect(screen.queryByLabelText("图片能力")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("标注说明")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     draw(canvas);
-    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    await clickControl(screen.getByRole("button", { name: "撤销" }));
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "重做" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "重做" }));
+    await clickControl(screen.getByRole("button", { name: "重做" }));
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
-    fireEvent.click(screen.getByRole("button", { name: "矩形" }));
+    await clickControl(screen.getByRole("button", { name: "撤销" }));
+    await clickControl(screen.getByRole("button", { name: "矩形" }));
     draw(canvas);
     expect(context.strokeRect).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "重做" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: /^文字$/ }));
+    await clickControl(screen.getByRole("button", { name: /^文字$/ }));
     fireEvent.pointerDown(canvas, { button: 0, clientX: 40, clientY: 60 });
-    fireEvent.change(screen.getByRole("textbox", { name: "标注文字" }), { target: { value: "这里" } });
+    await changeControl(screen.getByRole("textbox", { name: "标注文字" }), { target: { value: "这里" } });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "标注文字" }), { key: "Enter" });
     expect(context.fillText).toHaveBeenCalledWith("这里", expect.any(Number), expect.any(Number));
     expect(screen.getByRole("dialog", { name: "画笔标注" })).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: /^画笔$/ }));
-    fireEvent.click(screen.getByRole("button", { name: /^画笔$/ }));
+    await clickControl(screen.getByRole("button", { name: /^画笔$/ }));
+    await clickControl(screen.getByRole("button", { name: /^画笔$/ }));
     expect(screen.getByRole("slider", { name: "笔刷大小" })).toBeInTheDocument();
   });
 
@@ -90,10 +91,10 @@ describe("BrushMarkupEditor", () => {
       }),
     );
     const { canvas } = show(); draw(canvas);
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await clickControl(screen.getByRole("button", { name: "保存" }));
     await screen.findByRole("button", { name: "重试保存" });
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "重试保存" }));
+    await clickControl(screen.getByRole("button", { name: "重试保存" }));
     await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
     expect(uploads).toBe(1);
     expect(requests).toHaveLength(2);
@@ -117,20 +118,20 @@ describe("BrushMarkupEditor", () => {
     view.rerender(<QueryClientProvider client={client}><BrushMarkupEditor {...props}
       sourceVersionId="version-2" expectedVersion={3} sourceUrl="/new.png" /></QueryClientProvider>);
     expect(screen.getByRole("img", { name: "画笔标注原图" })).toHaveAttribute("src", "/original.png");
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await clickControl(screen.getByRole("button", { name: "保存" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("来源节点已有更新，标注已保留");
     expect(requestBody).toEqual(expect.objectContaining({ sourceVersionId: "version-1", expectedVersion: 2 }));
     expect(screen.getByRole("button", { name: "撤销" })).toBeEnabled();
     expect(props.onClose).not.toHaveBeenCalled();
   });
 
-  it("supports retrying a failed source load and cancellation without saving", () => {
+  it("supports retrying a failed source load and cancellation without saving", async () => {
     const { canvas } = show(); draw(canvas);
     fireEvent.error(screen.getByRole("img", { name: "画笔标注原图" }));
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "重试载入" }));
+    await clickControl(screen.getByRole("button", { name: "重试载入" }));
     expect(screen.getByRole("status")).toHaveTextContent("正在载入原图");
-    fireEvent.click(screen.getByRole("button", { name: "关闭画笔标注" }));
+    await clickControl(screen.getByRole("button", { name: "关闭画笔标注" }));
     expect(props.onClose).toHaveBeenCalledOnce();
   });
 });

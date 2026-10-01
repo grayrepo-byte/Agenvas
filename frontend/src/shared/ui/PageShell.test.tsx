@@ -1,14 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
+import { getLocale,LOCALE_NAMES,SUPPORTED_LOCALES } from "../i18n";
 import { PageShell } from "./PageShell";
 import { useNavigationStore } from "./navigationStore";
-import { getLocale, LOCALE_NAMES, SUPPORTED_LOCALES } from "../i18n";
 
 function showShell(path = "/projects") {
   const client = createQueryClient();
@@ -31,13 +32,13 @@ describe("PageShell", () => {
   it("preserves collapsed navigation across pages and identifies the active route", async () => {
     showShell("/settings/llm");
     expect(await screen.findByRole("link", { name: "Provider 配置" })).toHaveAttribute("aria-current", "page");
-    fireEvent.click(screen.getByRole("button", { name: "收起导航" }));
-    fireEvent.click(screen.getByRole("link", { name: "媒体配置" }));
+    await clickControl(screen.getByRole("button", { name: "收起导航" }));
+    await clickControl(screen.getByRole("link", { name: "媒体配置" }));
     expect(await screen.findByText("媒体内容")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("link", { name: "媒体配置" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "跳至页面内容" })).toHaveAttribute("href", "#page-content");
-    fireEvent.click(screen.getByRole("link", { name: "调用日志" }));
+    await clickControl(screen.getByRole("link", { name: "调用日志" }));
     expect(await screen.findByText("调用记录内容")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "调用日志" })).toHaveAttribute("aria-current", "page");
   });
@@ -60,15 +61,15 @@ describe("PageShell", () => {
     await user.click(dialog.getByRole("button", { name: "Русский" }));
     expect(getLocale()).toBe("ru");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
+    await waitFor(() => expect(trigger).toHaveFocus());
     expect(trigger).toHaveAccessibleName(/Русский/);
     expect(useNavigationStore.getState().collapsed).toBe(true);
     expect(draft).toHaveValue("保留这份草稿");
     await user.click(trigger);
-    // jsdom's dialog fallback does not move focus like native showModal().
+    // Radix restores focus after its focus scope unmounts.
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("keeps a failed session read recoverable without pretending the user is logged out", async () => {
@@ -81,7 +82,7 @@ describe("PageShell", () => {
     expect(screen.queryByText("项目内容")).not.toBeInTheDocument();
     expect(screen.queryByText("登录页")).not.toBeInTheDocument();
     failed = false;
-    fireEvent.click(screen.getByRole("button", { name: "重试连接" }));
+    await clickControl(screen.getByRole("button", { name: "重试连接" }));
     expect(await screen.findByText("项目内容")).toBeInTheDocument();
   });
 
@@ -94,13 +95,13 @@ describe("PageShell", () => {
 
   it("preserves page drafts when a cached session fails to refresh", async () => {
     const client = showShell();
-    fireEvent.change(await screen.findByRole("textbox", { name: "临时草稿" }), { target: { value: "尚未保存的输入" } });
+    await changeControl(await screen.findByRole("textbox", { name: "临时草稿" }), { target: { value: "尚未保存的输入" } });
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })));
     await client.invalidateQueries({ queryKey: ["auth", "me"] });
     expect(await screen.findByRole("alert")).toHaveTextContent("会话暂时无法刷新");
     expect(screen.getByRole("textbox", { name: "临时草稿" })).toHaveValue("尚未保存的输入");
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })));
-    fireEvent.click(screen.getByRole("button", { name: "重试连接" }));
+    await clickControl(screen.getByRole("button", { name: "重试连接" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.getByRole("textbox", { name: "临时草稿" })).toHaveValue("尚未保存的输入");
   });
@@ -113,11 +114,11 @@ describe("PageShell", () => {
     );
     const client = showShell();
     client.setQueryData(["private-project"], { id: "project" });
-    fireEvent.click(await screen.findByRole("button", { name: "退出登录" }));
+    await clickControl(await screen.findByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("退出失败");
     expect(client.getQueryData(["private-project"])).toBeDefined();
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    await clickControl(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
     await waitFor(() => expect(client.getQueryData(["private-project"])).toBeUndefined());
   });

@@ -8,7 +8,7 @@
   font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased;
 }
 :where(.app-page, .auth-page) :is(button, input, textarea) { font: inherit; }
-:is(.app-page, .auth-page) :is(input:not([type="checkbox"]):not([type="radio"]), textarea) {
+:is(.app-page, .auth-page) :is(input:not([data-slot]):not([type="checkbox"]):not([type="radio"]), textarea:not([data-slot])) {
   display: block; width: 100%; min-width: 0; margin-top: var(--ui-space-2); border: 1px solid var(--line);
   border-radius: var(--ui-radius-md); background: var(--field); color: var(--ink); padding: var(--ui-space-2) var(--ui-space-3); font-size: var(--ui-text-md);
   min-height: var(--ui-control-height); outline: none; transition: border-color 150ms, box-shadow 150ms;
@@ -50,6 +50,7 @@
 .ui-panel-header p { margin: var(--ui-space-2) 0 0; color: var(--muted); font-size: var(--ui-text-sm); line-height: 1.7; max-width: 70ch; }
 .ui-form { display: flex; flex-direction: column; gap: 18px; }
 .ui-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
+.ui-field > :is([data-slot="input"], [data-slot="textarea"]) { margin-top: var(--ui-space-2); }
 .ui-field { display: block; min-width: 0; font-size: var(--ui-text-sm); font-weight: 500; color: var(--ui-text-secondary); }
 .ui-field small { display: block; margin-top: 6px; font-size: var(--ui-text-xs); font-weight: 400; color: var(--muted); }
 .ui-form-actions, .ui-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }

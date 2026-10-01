@@ -1,7 +1,9 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { applyCanvasCommands, type CanvasItem } from "../../shared/api/client";
+import { useMutation,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState,type KeyboardEvent } from "react";
+import { applyCanvasCommands,type CanvasItem } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
 
 const MAX_TITLE_LENGTH = 160;
 const MIN_INPUT_CHARS = 8;
@@ -118,7 +120,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
 
   return <span className="artifact-card-title-editor nodrag nowheel nopan">
     {editing ? <>
-      <input ref={input} className={`artifact-card-title-input${error ? " is-error" : ""}`}
+      <Input ref={input} className={`artifact-card-title-input${error ? " is-error" : ""}`}
         aria-label={t("{0}标题", { "0": kindLabel })} aria-invalid={Boolean(error)}
         disabled={save.isPending} maxLength={MAX_TITLE_LENGTH} size={inputWidth}
         title={error ?? t("按 Enter 或移开焦点保存，按 Esc 取消")}
@@ -128,7 +130,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
           if (save.isError) save.reset();
         }} onKeyDown={handleKeyDown} />
       {error ? <span className="sr-only" role="alert">{error}</span> : null}
-    </> : <button type="button" className="artifact-card-caption nodrag nowheel nopan"
+    </> : <Button variant="ghost" type="button" className="artifact-card-caption nodrag nowheel nopan"
       aria-label={t("重命名{0}：{1}", { "0": kindLabel, "1": displayTitle })} title={t("双击编辑标题")}
       onClick={(event) => { if (event.detail === 2) beginEditing(); }}
       onDoubleClick={(event) => { event.stopPropagation(); beginEditing(); }}
@@ -138,6 +140,6 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
           event.stopPropagation();
           beginEditing();
         }
-      }}>{displayTitle}</button>}
+      }}>{displayTitle}</Button>}
   </span>;
 }

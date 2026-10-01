@@ -1,15 +1,16 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Node, ReactFlowProps, ResizeParams } from "@xyflow/react";
-import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import type { Node,ReactFlowProps,ResizeParams } from "@xyflow/react";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasCommand, CanvasItem, ImageGenerationParameters, SaveMediaDraftRequest } from "../../shared/api/client";
+import type { CanvasCommand,CanvasItem,ImageGenerationParameters,SaveMediaDraftRequest } from "../../shared/api/client";
+import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { useCanvasStore } from "./canvasStore";
-import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { MediaDraftEditor } from "./MediaDraftEditor";
+import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
 type TestNode = Node<{ onResizeEnd: (id: string, layout: Pick<ResizeParams, "x" | "y" | "width" | "height">) => void }>;
 
@@ -137,12 +138,12 @@ describe("workspace image dimensions", () => {
   it.each(["canvas background", "关闭编辑区"])("saves a ratio when %s closes the editor before the autosave delay", async (closeButton) => {
     const view = showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
-    fireEvent.click(screen.getByRole("button", { name: "select image-card" }));
-    fireEvent.click(await screen.findByRole("button", { name: "尺寸与画质" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" }))
-      .getByRole("button", { name: "9:16" }));
+    await clickControl(screen.getByRole("button", { name: "select image-card" }));
+    await clickControl(await screen.findByRole("button", { name: "尺寸与画质" }));
+    await clickControl(within(screen.getByRole("dialog", { name: "尺寸与画质设置" }))
+      .getByRole("radio", { name: "9:16" }));
     expect(draftSaves).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: closeButton }));
+    await clickControl(screen.getByRole("button", { name: closeButton }));
     expect(screen.queryByRole("dialog", { name: "尺寸与画质设置" })).not.toBeInTheDocument();
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "168.75px", height: "300px" });
     await waitFor(() => expect(parameters.aspectRatio).toBe("9:16"));
@@ -157,17 +158,17 @@ describe("workspace image dimensions", () => {
     saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
     showWorkspace();
     await screen.findByTestId("image-card");
-    fireEvent.click(screen.getByRole("button", { name: "select image-card" }));
-    fireEvent.click(await screen.findByRole("button", { name: "尺寸与画质" }));
+    await clickControl(screen.getByRole("button", { name: "select image-card" }));
+    await clickControl(await screen.findByRole("button", { name: "尺寸与画质" }));
     const choices = screen.getByRole("dialog", { name: "尺寸与画质设置" });
-    fireEvent.click(within(choices).getByRole("button", { name: "9:16" }));
+    await clickControl(within(choices).getByRole("radio", { name: "9:16" }));
     await waitFor(() => expect(draftSaves).toHaveLength(1));
-    fireEvent.click(within(choices).getByRole("button", { name: finalRatio }));
-    fireEvent.click(screen.getByRole("button", { name: "canvas background" }));
+    await clickControl(within(choices).getByRole("radio", { name: finalRatio }));
+    await clickControl(screen.getByRole("button", { name: "canvas background" }));
     const finalSize = finalRatio === "1:1" ? { width: "300px", height: "300px" }
       : { width: "168.75px", height: "300px" };
     expect(screen.getByTestId("image-card")).toHaveStyle(finalSize);
-    fireEvent.click(screen.getByRole("button", { name: "select image-card" }));
+    await clickControl(screen.getByRole("button", { name: "select image-card" }));
     await screen.findByText("正在保存工作草稿");
     expect(draftSaves).toHaveLength(1);
     finishSave?.();
@@ -182,22 +183,22 @@ describe("workspace image dimensions", () => {
     conflict = true;
     showWorkspace();
     await screen.findByTestId("image-card");
-    fireEvent.click(screen.getByRole("button", { name: "select image-card" }));
+    await clickControl(screen.getByRole("button", { name: "select image-card" }));
     const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
     prompt.textContent = "保留提示词";
     fireEvent.input(prompt);
-    fireEvent.click(screen.getByRole("button", { name: "尺寸与画质" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" }))
-      .getByRole("button", { name: "9:16" }));
-    fireEvent.click(screen.getByRole("button", { name: "canvas background" }));
+    await clickControl(screen.getByRole("button", { name: "尺寸与画质" }));
+    await clickControl(within(screen.getByRole("dialog", { name: "尺寸与画质设置" }))
+      .getByRole("radio", { name: "9:16" }));
+    await clickControl(screen.getByRole("button", { name: "canvas background" }));
     await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries["project-1:image-card"]?.saving).toBe(false));
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "168.75px", height: "300px" });
-    fireEvent.click(screen.getByRole("button", { name: "select image-card" }));
+    await clickControl(screen.getByRole("button", { name: "select image-card" }));
     await screen.findByText("保存失败，本地输入已保留");
     expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent("保留提示词");
     expect(draftSaves).toHaveLength(1);
     conflict = false;
-    fireEvent.click(screen.getByRole("button", { name: "重新读取版本" }));
+    await clickControl(screen.getByRole("button", { name: "重新读取版本" }));
     await waitFor(() => expect(parameters.aspectRatio).toBe("9:16"));
     expect(draftSaves.at(-1)?.prompt).toBe("保留提示词");
   });
@@ -206,14 +207,14 @@ describe("workspace image dimensions", () => {
     conflict = true;
     showWorkspace(true);
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
-    fireEvent.click(await screen.findByRole("button", { name: "尺寸与画质" }));
+    await clickControl(await screen.findByRole("button", { name: "尺寸与画质" }));
     const choices = screen.getByRole("dialog", { name: "尺寸与画质设置" });
-    fireEvent.click(within(choices).getByRole("button", { name: "9:16" }));
+    await clickControl(within(choices).getByRole("radio", { name: "9:16" }));
     expect(draftSaves).toEqual([]);
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "168.75px", height: "300px" });
     await screen.findByText("保存失败，本地输入已保留");
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "168.75px", height: "300px" });
-    fireEvent.click(within(choices).getByRole("button", { name: "自动" }));
+    await clickControl(within(choices).getByRole("radio", { name: "自动" }));
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" });
     expect(commands).toEqual([]);
   });
@@ -235,9 +236,9 @@ describe("workspace image dimensions", () => {
     let finishSave: (() => void) | undefined;
     saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
     const view = showWorkspace(true);
-    fireEvent.click(await screen.findByRole("button", { name: "尺寸与画质" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" }))
-      .getByRole("button", { name: "1:1" }));
+    await clickControl(await screen.findByRole("button", { name: "尺寸与画质" }));
+    await clickControl(within(screen.getByRole("dialog", { name: "尺寸与画质设置" }))
+      .getByRole("radio", { name: "1:1" }));
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "300px" });
     await waitFor(() => expect(draftSaves).toHaveLength(1));
     expect(draftSaves[0]?.parameters.aspectRatio).toBe("1:1");
@@ -255,9 +256,9 @@ describe("workspace image dimensions", () => {
     const view = showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
     expect(commands).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: "measure image-card" }));
+    await clickControl(screen.getByRole("button", { name: "measure image-card" }));
     expect(useCanvasStore.getState().drafts).toEqual({});
-    fireEvent.click(screen.getByRole("button", { name: "drag image-card" }));
+    await clickControl(screen.getByRole("button", { name: "drag image-card" }));
     await waitFor(() => expect(commands[0]).toMatchObject({ type: "UPDATE_LAYOUT", x: 140, y: 180,
       width: 300, height: 80, expectedVersion: 0 }));
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
@@ -271,7 +272,7 @@ describe("workspace image dimensions", () => {
     conflict = true;
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
-    fireEvent.click(screen.getByRole("button", { name: "resize image-card" }));
+    await clickControl(screen.getByRole("button", { name: "resize image-card" }));
     await waitFor(() => expect(screen.getByText("内容有冲突，当前修改未保存")).toBeInTheDocument());
     expect(commands[0]).toMatchObject({ width: 500, height: 80 });
     expect(useCanvasStore.getState().drafts["image-card"]).toMatchObject({ width: 500, height: 25 });
@@ -281,7 +282,7 @@ describe("workspace image dimensions", () => {
   it("preserves a successful proportional resize after the server replaces the draft", async () => {
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
-    fireEvent.click(screen.getByRole("button", { name: "resize image-card" }));
+    await clickControl(screen.getByRole("button", { name: "resize image-card" }));
     await waitFor(() => expect(commands[0]).toMatchObject({ width: 500, height: 80 }));
     await waitFor(() => expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined());
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "500px", height: "25px" });
@@ -316,7 +317,7 @@ describe("workspace image dimensions", () => {
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     expect(metadataReads).toBe(1);
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
-    fireEvent.click(screen.getByRole("button", { name: "左对齐" }));
+    await clickControl(screen.getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(commands).toHaveLength(2));
     for (const command of commands) expect(command).toMatchObject({ x: 10, width: 300, height: 80 });
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
@@ -329,7 +330,7 @@ describe("workspace image dimensions", () => {
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
-    fireEvent.click(screen.getByRole("button", { name: "左对齐" }));
+    await clickControl(screen.getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
     expect(useCanvasStore.getState().drafts["second-card"]).toEqual({ x: 10, y: 30, width: 300, height: 15 });
   });
@@ -341,7 +342,7 @@ describe("workspace image dimensions", () => {
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
-    fireEvent.click(screen.getByRole("button", { name: "左对齐" }));
+    await clickControl(screen.getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(commands).toHaveLength(2));
     act(() => {
       useCanvasStore.getState().setSelectedIds(["unrelated-card"]);

@@ -74,7 +74,7 @@
 .text-card-version-picker { position: relative; flex: none; }
 .text-card-version-tag { cursor: pointer; }
 button.text-card-version-tag { font: inherit; }
-.text-card-version-menu { position: absolute; z-index: 4; bottom: calc(100% + 7px); left: 0; width: 190px; max-height: 240px; }
+.text-card-version-menu {   width: 190px; max-height: 240px; }
 
 .text-card-version-option { justify-content: space-between; }
 

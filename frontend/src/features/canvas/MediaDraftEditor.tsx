@@ -1,32 +1,53 @@
-import { t, useLocale } from "../../shared/i18n";
-import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
-import { RunningHubForm, runningHubErrors, runningHubUsedVersions, type RunningHubValue } from "./RunningHubForm";
-import { AUTODL_ADAPTER, getAutoDlWorkflow, autoDlRatioSupported } from "../../shared/autodlWorkflows";
-import { AudioPromptTools } from "./AudioPromptTools";
-import { VOICES } from "./voiceCatalog";
-import { VoiceLibrary } from "./VoiceLibrary";
+import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
+import { FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
+import { Switch } from "../../shared/ui/primitives/switch";
+import {
+ArrowUp,BoundingBox,CaretDown,Check,Coins,Cube,
+ImageSquare,
+ImagesSquare,
+MusicNotes,
+PaintBrush,Plus,SlidersHorizontal,UploadSimple,VideoCamera,
+X
+} from "@phosphor-icons/react";
+import { useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
+import type { CSSProperties,FormEvent,KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";
+import {
+ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
+getMediaDraft,getMediaSettings,
+listArtifactVersions,listArtifacts,listCanvasItems,listDirectMediaTasks,
+removeMediaDraftMediaInput,
+runMediaDraft,saveMediaDraft,
+uploadAudioAsset,
+uploadImageAsset,
+uploadVideoAsset,
+type Artifact,
+type ImageGenerationParameters,
+type MediaCapability,type MediaDraft,
+type RunningHubField,
+type SaveMediaDraftRequest
+} from "../../shared/api/client";
+import { AUTODL_ADAPTER,autoDlRatioSupported,getAutoDlWorkflow } from "../../shared/autodlWorkflows";
+import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
-import { adapterModel } from "../settings/mediaAdapterCatalog";
-import { DropdownMenu } from "../../shared/ui/DropdownMenu";
-import { ArrowUp, BoundingBox, CaretDown, Check, Coins, Cube, ImagesSquare, ImageSquare,
-  PaintBrush, Plus, SlidersHorizontal, UploadSimple, VideoCamera, MusicNotes, X } from "@phosphor-icons/react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
-import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
-import { taskErrorDetail } from "./taskErrorMessages";
-import { latestMediaTask, occupiesMediaCard, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
-import { readContentText } from "./artifactContent";
-import { ApiError, assetContentUrl, cancelQueuedDirectMediaTask, createArtifact, getDirectMediaQueueStatus,
-  getMediaDraft, getMediaSettings,
-  listArtifactVersions, listArtifacts, listCanvasItems, listDirectMediaTasks, runMediaDraft, saveMediaDraft,
-  removeMediaDraftMediaInput,
-  uploadImageAsset, uploadAudioAsset, uploadVideoAsset, type RunningHubField, type Artifact, type MediaCapability, type MediaDraft,
-  type ImageGenerationParameters, type SaveMediaDraftRequest } from "../../shared/api/client";
+import { Button } from "../../shared/ui/primitives/button";
+import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
+import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { Input } from "../../shared/ui/primitives/input";
+import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
+import { adapterModel } from "../settings/mediaAdapterCatalog";
+import { AudioPromptTools } from "./AudioPromptTools";
 import "./MediaDraftEditor.css";
+import { RunningHubForm,runningHubErrors,runningHubUsedVersions,type RunningHubValue } from "./RunningHubForm";
+import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
+import { VoiceLibrary } from "./VoiceLibrary";
+import { readContentText } from "./artifactContent";
 import { useCanvasStore } from "./canvasStore";
-import { saveClosedMediaDraft, type PendingMediaDraftSave } from "./mediaDraftCloseSave";
+import { saveClosedMediaDraft,type PendingMediaDraftSave } from "./mediaDraftCloseSave";
+import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard } from "./mediaTaskState";
+import { taskErrorDetail } from "./taskErrorMessages";
+import { VOICES } from "./voiceCatalog";
 
 const AUTOSAVE_DELAY_MS = 650;
 const REFERENCE_SOURCE_CLOSE_DELAY_MS = 120;
@@ -350,17 +371,17 @@ function PromptMentionEditor({ id, label, placeholder, prompt, mentions, referen
     <div ref={editorRef} id={id} className="media-draft-prompt" role="textbox"
       aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
       data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
-    {menu ? <DropdownMenu className="media-draft-mention-menu" role="listbox" aria-label={t("图片引用")}
+    {menu ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("图片引用")}
       style={{ left: menu.left, top: menu.top }}>
-      <span className="media-draft-mention-menu-title">Image</span>
-      {references.map((reference, index) => <button key={reference.versionId} type="button"
+      <CommandList label={t("图片引用")}><CommandGroup heading="Image">
+      {references.map((reference, index) => <CommandItem key={reference.versionId} value={reference.versionId}
         role="option" aria-selected={index === menu.selected}
         aria-label={`${reference.label} ${reference.versionId}`}
-        onMouseDown={(event) => event.preventDefault()} onClick={() => insert(reference)}>
+        onMouseDown={(event) => event.preventDefault()} onSelect={() => insert(reference)}>
         {reference.thumbnailUrl ? <img src={reference.thumbnailUrl} alt="" /> : reference.role === "AUDIO_REFERENCE" ? <MusicNotes size={28} /> : <ImageSquare size={28} />}
         <span>{reference.label}</span>
-      </button>)}
-    </DropdownMenu> : null}
+      </CommandItem>)}
+    </CommandGroup></CommandList></Command> : null}
   </div>;
 }
 
@@ -400,10 +421,10 @@ function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, 
     {thumbnailUrl ? <img src={thumbnailUrl} alt="" draggable={false} />
       : audio ? <MusicNotes className="media-draft-reference-fallback" size={25} aria-hidden="true" /> : <ImageSquare className="media-draft-reference-fallback" size={25} aria-hidden="true" />}
     <span className="media-draft-reference-index" aria-hidden="true">{index + 1}</span>
-    <button className="media-draft-reference-remove" type="button"
+    <Button variant="ghost" className="media-draft-reference-remove" type="button"
       aria-label={t("取消引入 {0}", { "0": accessibleLabel })} disabled={busy}
       title={connected ? t("取消引入并断开画布连线") : t("取消引入")}
-      onClick={onRemove}><X size={13} /></button>
+      onClick={onRemove}><X size={13} /></Button>
   </div>;
 }
 
@@ -467,6 +488,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const referenceSourcesCloseTimer = useRef<number | null>(null);
   const suppressReferenceSourceFocusOpen = useRef(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const focusModelMenu = useCallback((element: HTMLDivElement | null) => {
+    popoverRef.current = element;
+    if (element) queueMicrotask(() => element.querySelector<HTMLElement>("[aria-checked=true]")?.focus());
+  }, []);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const uploadedKinds = useRef(new Map<string, "IMAGE" | "AUDIO">());
@@ -534,7 +559,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }, [popover, referenceSourcesOpen]);
 
   useEffect(() => {
-    if (!popover) return;
+    if (!popover || popover === "models" || popover === "modes") return;
     const firstControl = popoverRef.current?.querySelector<HTMLElement>(popover === "voices"
       ? "input[type=search]" : "[aria-checked='true'], button, select, input");
     (firstControl ?? popoverRef.current)?.focus();
@@ -867,8 +892,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   if (!fields) return <div className="media-draft-editor media-draft-initial" aria-label={t("媒体生成编辑器")}>
-    {draft.error ? <div role="alert">{t("无法读取工作草稿：{0}", { "0": draft.error.message })}<button className="media-draft-text-action" disabled={draft.isFetching}
-        onClick={() => void draft.refetch()} type="button">{t("重试读取草稿")}</button></div>
+    {draft.error ? <div role="alert">{t("无法读取工作草稿：{0}", { "0": draft.error.message })}<Button variant="ghost" className="media-draft-text-action" disabled={draft.isFetching}
+        onClick={() => void draft.refetch()} type="button">{t("重试读取草稿")}</Button></div>
       : <CanvasLoadingState compact label={recovery?.saving ? t("正在保存工作草稿") : t("正在读取工作草稿")} />}
   </div>;
 
@@ -1190,15 +1215,15 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   return <div className="media-draft-editor" aria-label={t("媒体生成编辑器")}>
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
-      {isAudio && onOpenAgentConversation ? <button className="media-draft-tab"
+      {isAudio && onOpenAgentConversation ? <Button variant="ghost" className="media-draft-tab"
         type="button" onClick={onOpenAgentConversation} disabled={openingAgentConversation}
-        title={t("打开绑定当前音频版本的 Agent 对话")}>{openingAgentConversation ? t("打开中…") : t("Agent 对话")}</button> : null}
+        title={t("打开绑定当前音频版本的 Agent 对话")}>{openingAgentConversation ? t("打开中…") : t("Agent 对话")}</Button> : null}
       {!runningHub && isAudio ? <AudioPromptTools projectId={artifact.projectId} canvasItemId={canvasItemId}
         prompt={fields.prompt} hasMentions={fields.mentions.length > 0} onApply={(prompt) => edit({ prompt, mentions: [] })} /> : null}
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
     {!runningHub ? <div className="media-draft-reference-row" aria-label={audioCapacity > 0 ? t("图片与音频输入") : t("图片输入")}>
-      <div className="media-draft-popover-anchor"
+      <DropdownMenu open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} modal={false}><div className="media-draft-popover-anchor"
         onPointerEnter={(event) => {
           if (referenceSourcesCloseTimer.current !== null) {
             window.clearTimeout(referenceSourcesCloseTimer.current);
@@ -1215,9 +1240,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             referenceSourcesCloseTimer.current = null;
           }, REFERENCE_SOURCE_CLOSE_DELAY_MS);
         }}>
-        <input ref={uploadInputRef} className="media-draft-upload-input" type="file"
+        <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept={audioCapacity > 0 ? "image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"} multiple aria-label={audioCapacity > 0 ? t("选择本地图片或音频") : t("选择本地图片")} onChange={handleUploadSelection} />
-        <button className="media-draft-reference-add" type="button"
+        <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-reference-add" type="button"
           disabled={!chosenCapability || referenceLimitReached || uploading
             || commitAssetReferences.isPending}
           aria-label={audioCapacity > 0 ? t("添加图片或音频输入") : t("添加图片输入")}
@@ -1236,35 +1261,44 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             setReferenceSourcesOpen(true);
           }}>
           <Plus size={20} />
-        </button>
-        {referenceSourcesOpen && !popover ? <DropdownMenu className="media-draft-popover media-draft-reference-sources"
-          ref={popoverRef} id={`${id}-reference-sources`} role="menu" aria-label={t("图片来源")}>
-          <button type="button" role="menuitem" onClick={() => {
+        </Button></DropdownMenuTrigger>
+        {referenceSourcesOpen && !popover ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-reference-sources"
+          onPointerEnter={() => {
+            if (referenceSourcesCloseTimer.current !== null) window.clearTimeout(referenceSourcesCloseTimer.current);
+            referenceSourcesCloseTimer.current = null;
+          }}
+          onPointerLeave={() => {
+            referenceSourcesCloseTimer.current = window.setTimeout(() => {
+              setReferenceSourcesOpen(false);
+              referenceSourcesCloseTimer.current = null;
+            }, REFERENCE_SOURCE_CLOSE_DELAY_MS);
+          }}
+          ref={popoverRef} id={`${id}-reference-sources`} role="menu" aria-label={t("图片来源")}><DropdownMenuGroup>
+          <DropdownMenuItem role="menuitem" onSelect={(event) => { event.preventDefault();
             setReferenceSourcesOpen(false);
             uploadInputRef.current?.click();
-          }}><UploadSimple size={17} /><span>{t("从设备上传")}</span></button>
-          <button type="button" role="menuitem" onClick={() => {
+           }}><UploadSimple size={17} /><span>{t("从设备上传")}</span></DropdownMenuItem>
+          <DropdownMenuItem role="menuitem" onSelect={(event) => { event.preventDefault();
             setReferenceSourcesOpen(false);
             openAssetReferences();
-          }}>
+           }}>
             <ImagesSquare size={17} /><span>{t("从资源库选择")}</span>
-          </button>
-          <button type="button" role="menuitem" onClick={() => {
+          </DropdownMenuItem>
+          <DropdownMenuItem role="menuitem" onSelect={(event) => { event.preventDefault();
             setReferenceSourcesOpen(false);
             setPopover("canvasReferences");
-          }}>
+           }}>
             <BoundingBox size={17} /><span>{t("从画布选择")}</span>
-          </button>
-          <button type="button" role="menuitem" disabled={save.isPending || expectedVersion === null} onClick={() => {
+          </DropdownMenuItem>
+          <DropdownMenuItem role="menuitem" disabled={save.isPending || expectedVersion === null} onSelect={(event) => { event.preventDefault();
             setReferenceSourcesOpen(false); setPopover("libraryReferences");
-          }}><ImagesSquare size={17} /><span>{t("从我的资产选择")}</span></button>
-          <button type="button" role="menuitem" disabled aria-disabled="true"
-            aria-label={t("绘制引用图（暂未接入）")} title={t("绘制引用图暂未接入")}>
+           }}><ImagesSquare size={17} /><span>{t("从我的资产选择")}</span></DropdownMenuItem>
+          <DropdownMenuItem role="menuitem" disabled aria-disabled="true" aria-label={t("绘制引用图（暂未接入）")} title={t("绘制引用图暂未接入")} onSelect={(event) => event.preventDefault()}>
             <PaintBrush size={17} /><span>{t("绘制引用图")}</span><small>{t("暂未接入")}</small>
-          </button>
-        </DropdownMenu> : null}
+          </DropdownMenuItem>
+        </DropdownMenuGroup></DropdownMenuContent> : null}
         {popover === "libraryReferences" && expectedVersion !== null ? <div className="ui-popover-surface media-draft-popover media-draft-library-popover" ref={popoverRef} role="dialog" aria-label={t("我的资产参考")}>
-          <button type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>{t("关闭资产选择")}</button>
+          <Button variant="ghost" type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>{t("关闭资产选择")}</Button>
           <LibraryReferencePicker projectId={artifact.projectId} itemId={canvasItemId}
             kinds={audioCapacity > 0 ? ["IMAGE", "AUDIO"] : ["IMAGE"]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
             plan={(entry) => {
@@ -1294,7 +1328,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           id={`${id}-asset-references`} role="dialog" aria-label={audioCapacity > 0 ? t("输入媒体版本") : t("输入图片版本")}>
           <p className="media-draft-popover-title">{audioCapacity > 0 ? t("选择精确图片或音频版本") : t("选择精确图片版本")}</p>
           <label htmlFor={`${id}-asset-search`}>{audioCapacity > 0 ? t("搜索媒体资源") : t("搜索资源图片")}</label>
-          <input id={`${id}-asset-search`} type="search" value={assetSearch}
+          <Input id={`${id}-asset-search`} type="search" value={assetSearch}
             placeholder={t("搜索名称或版本")}
             onChange={(event) => setAssetSearch(event.target.value)} />
           <div className="media-draft-reference-options" role="group" aria-label={audioCapacity > 0 ? t("可选媒体版本") : t("可选图片版本")}>
@@ -1318,28 +1352,28 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           {!historyPending && !resources.error && !historyError && !imageChoices.length ? <p>{t("暂无已生成或上传的图片，请先添加图片。")}</p> : null}
           {!historyPending && !resources.error && !historyError && imageChoices.length > 0
             && !filteredImageChoices.length ? <p>{t("没有匹配的图片版本。")}</p> : null}
-          {resources.error || historyError ? <div role="alert">{t("无法读取图片版本。")}<button className="media-draft-text-action" onClick={() => {
+          {resources.error || historyError ? <div role="alert">{t("无法读取图片版本。")}<Button variant="ghost" className="media-draft-text-action" onClick={() => {
               void resources.refetch();
               imageHistories.forEach((history) => { void history.refetch(); });
-            }} type="button">{t("重试读取图片")}</button></div> : null}
+            }} type="button">{t("重试读取图片")}</Button></div> : null}
           {assetSelectionError ? <div className="media-draft-reference-error" role="alert">
             {t("整批未添加；资源已刷新，请重新选择。")}</div> : null}
           <p>{t("按勾选顺序添加，运行时固定精确版本。本次还可选择 {0} 张。", { "0": Math.max(0,
             remainingAssetCapacity - assetSelection.length) })}</p>
           <div className="media-draft-reference-actions">
-            <button type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("取消")}</button>
-            <button type="button" className="is-primary"
+            <Button variant="ghost" type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("取消")}</Button>
+            <Button variant="ghost" type="button" className="is-primary"
               disabled={!assetSelection.length || save.isPending || commitAssetReferences.isPending}
               onClick={confirmAssetReferences}>
               {commitAssetReferences.isPending ? t("正在添加…") : t("添加所选{0}（{1}）", { "0": audioCapacity > 0 ? t("素材") : t("图片"), "1": assetSelection.length })}
-            </button>
+            </Button>
           </div>
         </div> : null}
         {popover === "canvasReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-canvas-references`} role="dialog" aria-label={audioCapacity > 0 ? t("从画布选择媒体") : t("从画布选择图片")}>
           <p className="media-draft-popover-title">{audioCapacity > 0 ? t("画布中的图片和音频") : t("画布中的其他图片")}</p>
           <div className="media-draft-reference-options">
-            {canvasChoices.map((choice) => <button key={choice.canvasItemId} type="button"
+            {canvasChoices.map((choice) => <Button variant="ghost" key={choice.canvasItemId} type="button"
               className="media-draft-reference-option" aria-label={t("使用画布{0} {1}", { "0": choice.kind === "AUDIO" ? t("音频") : t("图片"), "1": choice.title })}
               aria-pressed={fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
               disabled={fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(choice.versionId, fields.mediaInputs)}
@@ -1347,15 +1381,15 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
               {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
               <span><strong>{choice.title}</strong><small>{t("画布当前选用 · v{0}", { "0": choice.versionNo })}</small></span>
               {fields.mediaInputs.some((input) => input.versionId === choice.versionId) ? <Check size={15} /> : null}
-            </button>)}
+            </Button>)}
           </div>
           {canvas.isPending ? <CanvasLoadingState compact label={t("正在读取画布图片")} /> : null}
           {canvas.isSuccess && !canvasChoices.length ? <p>{t("画布中没有其他可用图片。")}</p> : null}
-          {canvas.error ? <div role="alert">{t("无法读取画布图片。")}<button className="media-draft-text-action" onClick={() => void canvas.refetch()}
-              type="button">{t("重试读取画布")}</button></div> : null}
+          {canvas.error ? <div role="alert">{t("无法读取画布图片。")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void canvas.refetch()}
+              type="button">{t("重试读取画布")}</Button></div> : null}
           <p>{t("这里只显示其他媒体卡片当前选用的已归档版本，不包含当前卡片。")}</p>
         </div> : null}
-      </div>
+      </div></DropdownMenu>
       <div className="media-draft-reference-list" role="list" aria-label={audioCapacity > 0 ? t("已选择的媒体参考") : t("已选择的图片")}>
         {selectedReferences.map(({ input, choice }, index) => <MediaReferenceThumbnail
           key={input.versionId} index={index} audio={input.role === "AUDIO_REFERENCE"} color={input.color}
@@ -1384,15 +1418,15 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       prompt={fields.prompt} mentions={fields.mentions} references={promptReferences}
       onChange={(prompt, mentions) => edit({ prompt, mentions })} /> : null}
     <div className="media-draft-toolbar">
-      {!runningHub && artifact.kind === "VIDEO" ? <div className="media-draft-popover-anchor media-draft-mode-anchor">
-        <button className="media-draft-toolbar-button media-draft-mode-trigger" type="button"
+      {!runningHub && artifact.kind === "VIDEO" ? <DropdownMenu open={popover === "modes"} onOpenChange={(open) => { if (!libraryBusy) setPopover(open ? "modes" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-mode-anchor">
+        <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-mode-trigger" type="button"
           aria-label={t("选择视频输入模式")} aria-haspopup="menu" aria-expanded={popover === "modes"}
-          aria-controls={`${id}-modes`} onClick={(event) => togglePopover("modes", event.currentTarget)}>
+          aria-controls={`${id}-modes`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>
           <VideoCamera size={17} /><span>{VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label
             ?? t("选择输入模式")}</span><CaretDown size={12} />
-        </button>
-        {popover === "modes" ? <DropdownMenu className="media-draft-popover media-draft-modes" ref={popoverRef}
-          id={`${id}-modes`} role="menu" aria-label={t("视频输入模式")}>
+        </Button></DropdownMenuTrigger>
+        {popover === "modes" ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-modes" ref={popoverRef}
+          id={`${id}-modes`} role="menu" aria-label={t("视频输入模式")}><DropdownMenuGroup>
           <p className="media-draft-popover-title">{t("视频生成模式")}</p>
           {VIDEO_MODE_OPTIONS.map((option) => {
             const missingImage = option.value === "START_END" ? imageCount === 0
@@ -1402,47 +1436,42 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             const disabled = missingImage || hasImagesForText || unsupported;
             const reason = missingImage ? t("添加图片后可用") : hasImagesForText ? t("移除参考素材后自动切换")
               : unsupported ? t("当前模型不支持") : option.value === "START_END" && autodlWorkflow ? t("首帧和尾帧均为必填") : option.description;
-            return <button key={option.value} className="media-draft-model-option" role="menuitemradio"
-              type="button" aria-checked={effectiveMode === option.value} disabled={disabled}
-              title={reason} onClick={() => chooseVideoMode(option.value)}>
+            return <DropdownMenuItem className="media-draft-model-option" role="menuitemradio" aria-checked={effectiveMode === option.value} disabled={disabled} title={reason} key={option.value} onSelect={(event) => { event.preventDefault(); chooseVideoMode(option.value); }}>
               <span><strong>{option.label}</strong><small>{reason}</small></span>
               {effectiveMode === option.value ? <Check size={16} /> : null}
-            </button>;
+            </DropdownMenuItem>;
           })}
-        </DropdownMenu> : null}
-      </div> : null}
-      <div className="media-draft-popover-anchor media-draft-model-anchor">
-        <button className="media-draft-toolbar-button media-draft-model-trigger" type="button"
+        </DropdownMenuGroup></DropdownMenuContent> : null}
+      </div></DropdownMenu> : null}
+      <DropdownMenu open={popover === "models"} onOpenChange={(open) => { if (!libraryBusy) setPopover(open ? "models" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-model-anchor">
+        <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-model-trigger" type="button"
           aria-label={t("选择生成模型")} aria-haspopup="menu" aria-expanded={popover === "models"}
-          aria-controls={`${id}-models`} onClick={(event) => togglePopover("models", event.currentTarget)}>
+          aria-controls={`${id}-models`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>
           <Cube size={17} /><span>{settings.isPending ? t("加载模型…") : settings.error ? t("模型配置读取失败") : chosenCapability?.name
             ?? (fields.capabilityId ? t("所选模型不可用") : t("未配置默认模型"))}</span><CaretDown size={12} />
-        </button>
-        {popover === "models" ? <DropdownMenu className="media-draft-popover media-draft-models" ref={popoverRef}
-          id={`${id}-models`} role="menu" aria-label={t("生成模型")}>
+        </Button></DropdownMenuTrigger>
+        {popover === "models" ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-models" ref={focusModelMenu}
+          id={`${id}-models`} role="menu" aria-label={t("生成模型")}><DropdownMenuGroup>
           <p className="media-draft-popover-title">{artifact.kind === "IMAGE" ? t("图片模型") : isAudio ? t("音频模型") : t("视频模型")}</p>
-          <button className="media-draft-model-option" role="menuitemradio" aria-checked={!fields.capabilityId}
-            onClick={() => chooseCapability(null)} type="button">
+          <DropdownMenuItem className="media-draft-model-option" role="menuitemradio" aria-checked={!fields.capabilityId} onSelect={(event) => { event.preventDefault(); chooseCapability(null); }}>
             <span><strong>{t("项目默认能力")}</strong><small>{defaultCapabilityId ? t("跟随当前默认模型") : t("尚未配置默认模型")}</small></span>{!fields.capabilityId ? <Check size={16} /> : null}
-          </button>
-          {availableCapabilities.map((capability) => <button key={capability.id} type="button"
-            className="media-draft-model-option" role="menuitemradio" aria-checked={fields.capabilityId === capability.id}
-            onClick={() => chooseCapability(capability.id)}>
+          </DropdownMenuItem>
+          {availableCapabilities.map((capability) => <DropdownMenuItem className="media-draft-model-option" role="menuitemradio" aria-checked={fields.capabilityId === capability.id} key={capability.id} onSelect={(event) => { event.preventDefault(); chooseCapability(capability.id); }}>
             <span><strong>{capability.name}</strong><small>{capability.connectionName} · {modelName(capability)}</small>
               {capability.mock ? <small className="media-draft-model-mock">{t("Mock 演示")}</small> : null}</span>
             {fields.capabilityId === capability.id ? <Check size={16} /> : null}
-          </button>)}
+          </DropdownMenuItem>)}
           {settings.isPending ? <p role="status">{t("正在读取可用模型…")}</p> : null}
-          {settings.error ? <div role="alert">{t("无法读取模型。")}<button className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("重试读取模型")}</button></div> : null}
+          {settings.error ? <div role="alert">{t("无法读取模型。")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("重试读取模型")}</Button></div> : null}
           {settings.isSuccess && !availableCapabilities.length ? <p>{t("尚无可用模型，请在媒体设置中启用对应能力。")}</p> : null}
-        </DropdownMenu> : null}
-      </div>
+        </DropdownMenuGroup></DropdownMenuContent> : null}
+      </div></DropdownMenu>
       {!runningHub ? <div className="media-draft-popover-anchor media-draft-parameters-anchor">
-        <button className="media-draft-toolbar-button" type="button" aria-label={isAudio ? t("音频参数") : t("尺寸与画质")}
+        <Button variant="ghost" className="media-draft-toolbar-button" type="button" aria-label={isAudio ? t("音频参数") : t("尺寸与画质")}
           aria-expanded={popover === "parameters"} aria-controls={`${id}-parameters`}
           onClick={(event) => togglePopover("parameters", event.currentTarget)}>
           <SlidersHorizontal size={16} /><span>{isAudio ? t("语速 · 音量 · 音调") : `${artifact.kind === "VIDEO" ? t("{0} 秒 · ", { "0": duration ?? "—" }) : ""}${dimensionLabel} · ${qualityLabel}${artifact.kind === "IMAGE" ? t(" · {0} 张", { "0": imageParameters.generationCount }) : ""}`}</span><CaretDown size={12} />
-        </button>
+        </Button>
         {popover === "parameters" ? <div className="ui-popover-surface media-draft-popover media-draft-parameters" ref={popoverRef}
           tabIndex={-1} id={`${id}-parameters`} role="dialog" aria-label={t("尺寸与画质设置")}>
           <p className="media-draft-popover-title">{t("生成参数")}</p>
@@ -1450,57 +1479,65 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             {([{ key: "speechRate", label: t("语速"), min: -50, max: 100 },
               { key: "loudnessRate", label: t("音量"), min: -50, max: 100 },
               { key: "pitchRate", label: t("音调"), min: -12, max: 12 }] as const).map((control) =>
-              <label key={control.key}>{control.label}<input type="number" min={control.min} max={control.max} step={1}
+              <label key={control.key}>{control.label}<Input type="number" min={control.min} max={control.max} step={1}
                 value={fields.parameters[control.key] ?? 0} onChange={(event) => edit({ parameters: {
                   ...fields.parameters, [control.key]: Number(event.target.value) } })} /></label>)}
             <p className="ui-muted">{t("时长、语言和情绪可在提示词中描述，最长生成 120 秒。")}</p>
           </div> : artifact.kind === "IMAGE" ? <div className="media-draft-image-parameters">
-            <fieldset><legend>{t("比例")}</legend><div className="media-draft-choice-grid media-draft-aspect-grid">
+            <FieldSet><FieldLegend>{t("比例")}</FieldLegend><ToggleGroup type="single" value={imageParameters.aspectRatio} className="media-draft-choice-grid media-draft-aspect-grid" onValueChange={(selected) => {
+              const next = ASPECT_RATIO_OPTIONS.find((option) => String(option) === selected);
+              if (next !== undefined) edit({ parameters: { ...imageParameters, aspectRatio: next } });
+            }}>
               {ASPECT_RATIO_OPTIONS.filter((value) => supportedImageAspectRatios.includes(value))
-                .map((value) => <button key={value} type="button" aria-pressed={imageParameters.aspectRatio === value}
-                  onClick={() => edit({ parameters: { ...imageParameters, aspectRatio: value } })}>
+                .map((value) => <ToggleGroupItem key={value} value={String(value)}>
                   <span className={`media-draft-ratio-icon ratio-${value.replace(":", "-").toLowerCase()}`} aria-hidden="true" />
                   <small>{ASPECT_RATIO_LABELS[value]}</small>
-                </button>)}
-            </div></fieldset>
-            <fieldset><legend>{t("分辨率")}</legend><div className="media-draft-segmented">
+                </ToggleGroupItem>)}
+            </ToggleGroup></FieldSet>
+            <FieldSet><FieldLegend>{t("分辨率")}</FieldLegend><ToggleGroup type="single" value={imageParameters.resolution} className="media-draft-segmented" onValueChange={(selected) => {
+              const next = RESOLUTION_OPTIONS.find((option) => String(option) === selected);
+              if (next !== undefined) edit({ parameters: { ...imageParameters, resolution: next } });
+            }}>
               {RESOLUTION_OPTIONS.filter((value) => supportedImageResolutions.includes(value))
-                .map((value) => <button key={value} type="button" aria-pressed={imageParameters.resolution === value}
-                  onClick={() => edit({ parameters: { ...imageParameters, resolution: value } })}>{value}</button>)}
-            </div></fieldset>
-            <div className="media-draft-switch-row"><span>{t("透明背景")}</span><button type="button" role="switch"
+                .map((value) => <ToggleGroupItem key={value} value={String(value)}>{value}</ToggleGroupItem>)}
+            </ToggleGroup></FieldSet>
+            <div className="media-draft-switch-row"><span>{t("透明背景")}</span><Switch
               aria-label={t("透明背景")}
-              aria-checked={imageParameters.transparentBackground}
+              checked={imageParameters.transparentBackground}
               disabled={!chosenCapability?.supportsTransparentBackground}
               title={chosenCapability?.supportsTransparentBackground ? undefined : t("所选模型不支持透明背景")}
-              onClick={() => edit({ parameters: { ...imageParameters,
-                transparentBackground: !imageParameters.transparentBackground } })}><span /></button></div>
-            <fieldset><legend>{t("画质")}</legend>{supportedImageQualities.length
-              ? <div className="media-draft-segmented">{QUALITY_OPTIONS
+              onCheckedChange={(checked) => edit({ parameters: { ...imageParameters,
+                transparentBackground: checked } })} /></div>
+            <FieldSet><FieldLegend>{t("画质")}</FieldLegend>{supportedImageQualities.length
+              ? <ToggleGroup type="single" value={imageParameters.quality} className="media-draft-segmented" onValueChange={(selected) => {
+              const next = QUALITY_OPTIONS.find((option) => String(option) === selected);
+              if (next !== undefined) edit({ parameters: { ...imageParameters, quality: next } });
+            }}>{QUALITY_OPTIONS
                 .filter((value) => supportedImageQualities.includes(value))
-                .map((value) => <button key={value} type="button" aria-pressed={imageParameters.quality === value}
-                  onClick={() => edit({ parameters: { ...imageParameters, quality: value } })}>{QUALITY_LABELS[value]}</button>)}</div>
-              : <p className="media-draft-fixed-parameter">{t("由所选模型固定")}</p>}</fieldset>
-            <fieldset><legend>{t("生成数量")}</legend><div className="media-draft-segmented">
-              {GENERATION_COUNT_OPTIONS.map((value) => <button key={value} type="button"
-                aria-pressed={imageParameters.generationCount === value}
-                onClick={() => edit({ parameters: { ...imageParameters, generationCount: value } })}>{value}</button>)}
-            </div></fieldset>
+                .map((value) => <ToggleGroupItem key={value} value={String(value)}>{QUALITY_LABELS[value]}</ToggleGroupItem>)}</ToggleGroup>
+              : <p className="media-draft-fixed-parameter">{t("由所选模型固定")}</p>}</FieldSet>
+            <FieldSet><FieldLegend>{t("生成数量")}</FieldLegend><ToggleGroup type="single" value={String(imageParameters.generationCount)} className="media-draft-segmented" onValueChange={(selected) => {
+              const next = GENERATION_COUNT_OPTIONS.find((option) => String(option) === selected);
+              if (next !== undefined) edit({ parameters: { ...imageParameters, generationCount: next } });
+            }}>
+              {GENERATION_COUNT_OPTIONS.map((value) => <ToggleGroupItem key={value} value={String(value)}>{value}</ToggleGroupItem>)}
+            </ToggleGroup></FieldSet>
             <p className="media-draft-fixed-parameter">{t("空节点首个结果留在当前节点，其余结果创建独立节点")}</p>
           </div> : <div className="media-draft-video-parameters">
-            <fieldset><legend>{t("比例")}</legend><div className="media-draft-choice-grid media-draft-video-aspect-grid">
-              {VIDEO_ASPECT_RATIO_OPTIONS.filter((value) => !autodlWorkflow || autoDlRatioSupported(autodlWorkflow, autodlTier, value)).map((value) => <button key={value} type="button"
-                aria-pressed={videoParameters.aspectRatio === value}
-                aria-label={ASPECT_RATIO_LABELS[value]}
-                onClick={() => edit({ parameters: { aspectRatio: value } })}>
+            <FieldSet><FieldLegend>{t("比例")}</FieldLegend><ToggleGroup type="single" value={videoParameters.aspectRatio} className="media-draft-choice-grid media-draft-video-aspect-grid" onValueChange={(selected) => {
+              const next = VIDEO_ASPECT_RATIO_OPTIONS.find((option) => String(option) === selected);
+              if (next !== undefined) edit({ parameters: { aspectRatio: next } });
+            }}>
+              {VIDEO_ASPECT_RATIO_OPTIONS.filter((value) => !autodlWorkflow || autoDlRatioSupported(autodlWorkflow, autodlTier, value)).map((value) => <ToggleGroupItem key={value} value={String(value)}
+                aria-label={ASPECT_RATIO_LABELS[value]}>
                 <span className={`media-draft-ratio-icon ratio-${value.replace(":", "-").toLowerCase()}`} aria-hidden="true" />
                 <small>{ASPECT_RATIO_LABELS[value]}</small>
-              </button>)}
-            </div></fieldset>
+              </ToggleGroupItem>)}
+            </ToggleGroup></FieldSet>
             <p className="media-draft-fixed-parameter">{t("画质由所选视频模型固定")}</p>
           </div>}
           {artifact.kind === "VIDEO" ? <div className="media-draft-duration"><label htmlFor={`${id}-duration`}>{t("时长（秒）")}</label>
-            <input id={`${id}-duration`} aria-describedby={chosenCapability ? `${id}-duration-help` : undefined}
+            <Input id={`${id}-duration`} aria-describedby={chosenCapability ? `${id}-duration-help` : undefined}
               min={Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)}
               max={Math.min(MAX_VIDEO_SECONDS, chosenCapability?.maximumSeconds ?? MAX_VIDEO_SECONDS)} step={1} type="number"
               value={duration ?? ""} onChange={(event) => edit({ durationSeconds: event.target.value ? Number(event.target.value) : null })} />
@@ -1510,36 +1547,36 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       </div>
       : null}
       {!runningHub && isAudio ? <div className="media-draft-popover-anchor">
-        <button type="button" className="media-draft-toolbar-button" aria-label={t("选择音色")} aria-expanded={popover === "voices"}
-          onClick={(event) => togglePopover("voices", event.currentTarget)}><MusicNotes size={17} />{VOICES.find((voice) => voice.id === audioSpeaker)?.name ?? t("音色库")}<CaretDown size={12} /></button>
+        <Button variant="ghost" type="button" className="media-draft-toolbar-button" aria-label={t("选择音色")} aria-expanded={popover === "voices"}
+          onClick={(event) => togglePopover("voices", event.currentTarget)}><MusicNotes size={17} />{VOICES.find((voice) => voice.id === audioSpeaker)?.name ?? t("音色库")}<CaretDown size={12} /></Button>
         {popover === "voices" ? <VoiceLibrary containerRef={popoverRef} projectId={artifact.projectId} canvasItemId={canvasItemId} capabilityId={chosenCapability?.id} mock={chosenCapability?.mock ?? true} selected={audioSpeaker} onSelect={(speaker) => {
           edit({ parameters: { ...fields.parameters, speaker } }); setPopover(null); triggerRef.current?.focus();
         }} onClose={() => setPopover(null)} /> : null}
       </div> : null}
       <span className="media-draft-cost" title={t("按管理员配置估算，实际费用以平台账单为准")}><Coins size={16} /><span>{estimatedMediaCost(chosenCapability, runningHub ? 1 : imageParameters.generationCount, isAudio && !runningHub ? 120 : duration)}</span></span>
-      <button className="media-draft-run" type="button" disabled={!canRun}
+      <Button variant="ghost" className="media-draft-run" type="button" disabled={!canRun}
         aria-label={run.isPending ? t("正在提交运行") : t("运行")} title={occupied ? t("此卡片已有任务，请等待完成或先重试") : t("运行")}
-        onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></button>
+        onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>
     </div>
     <div className="media-draft-feedback">
       {runningHub ? <>
         {dynamicErrors.map((message) => <p role="status" key={message}>{message}</p>)}
-        {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("素材未分配到具名槽位。")}<button type="button" disabled={dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("移除未使用素材引用")}</button></p>)}
+        {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("素材未分配到具名槽位。")}<Button variant="ghost" type="button" disabled={dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("移除未使用素材引用")}</Button></p>)}
         {runningHub.retainSeconds ? <p>{t("实例保留 {0} 秒会额外计费。", { "0": runningHub.retainSeconds })}</p> : null}
       </> : null}
       {uploading ? <CanvasLoadingState compact label={t("正在上传引用图片")} /> : null}
-      {uploadError ? <div role="alert">{t("上传引用图片失败：{0}", { "0": uploadError.message })}{failedUploads.length ? <button className="media-draft-text-action" type="button"
-          disabled={uploading} onClick={() => void uploadFiles(failedUploads)}>{t("重试失败图片")}</button> : null}
+      {uploadError ? <div role="alert">{t("上传引用图片失败：{0}", { "0": uploadError.message })}{failedUploads.length ? <Button variant="ghost" className="media-draft-text-action" type="button"
+          disabled={uploading} onClick={() => void uploadFiles(failedUploads)}>{t("重试失败图片")}</Button> : null}
       </div> : null}
       {run.isPending ? <CanvasLoadingState compact label={t("正在提交任务")} /> : null}
       {run.error ? <p role="alert">{t("运行失败：{0}", { "0": run.error.message })}</p> : null}
       {directTasks.isPending ? <p role="status">{t("正在检查卡片任务…")}</p> : null}
-      {directTasks.error ? <div role="alert">{t("无法确认卡片任务状态：{0}", { "0": directTasks.error.message })}<button className="media-draft-text-action" type="button" onClick={() => void directTasks.refetch()}>{t("重试检查任务")}</button></div> : null}
+      {directTasks.error ? <div role="alert">{t("无法确认卡片任务状态：{0}", { "0": directTasks.error.message })}<Button variant="ghost" className="media-draft-text-action" type="button" onClick={() => void directTasks.refetch()}>{t("重试检查任务")}</Button></div> : null}
       {settings.isSuccess && fields.capabilityId && !chosenCapability ? <p role="status">{t("所选模型不可用，请选择其他模型。")}</p> : null}
       {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <p role="status">{t("尚未配置默认模型，请选择可用模型或先在媒体设置中配置。")}</p> : null}
       {!runningHub && artifact.kind === "VIDEO" && chosenCapability && effectiveMode && !videoModeSupported
         ? <p role="alert">{t("当前模型不支持{0}，请切换模型或添加/移除图片。", { "0": VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label })}</p> : null}
-      {settings.error ? <div role="alert">{t("无法读取模型配置。")}<button className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("重试读取模型")}</button></div> : null}
+      {settings.error ? <div role="alert">{t("无法读取模型配置。")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("重试读取模型")}</Button></div> : null}
       {autodlWorkflow && !autodlInputsValid ? <p role="alert">{t("此 AutoDL 工作流至少需要 {0} 张图片、{1} 条音频{2}，提示词最多 {3} 字符。", { "0": autodlWorkflow.minimumImages, "1": autodlWorkflow.minimumAudios, "2": autodlWorkflow.mode === "START_END" ? t("（首帧和尾帧均需提供）") : "", "3": autodlWorkflow.promptLimit })}</p> : null}
       {autodlWorkflow && !autodlRatioValid ? <p role="alert">{t("当前 AutoDL 工作流不支持此画幅，请选择支持的比例。")}</p> : null}
       {!runningHub && isAudio && !semanticInputsValid ? <p role="alert">{t("音频生成最多参考 1 张图片或 3 个音频/音色；图片不能与音频或指定音色混用，提示词最多 3000 字符。")}</p> : null}
@@ -1553,17 +1590,17 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {latestTask?.status === "READY" ? <div className="media-draft-task-status">
         {queue.data && latestTask.status === "READY" ? <span>{t("前方 {0} 项 · {1}（排位可能变化）", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })}</span> : null}
         {queue.error && latestTask.status === "READY" ? <span role="alert">{t("暂时无法读取排位，任务仍在排队。")}</span> : null}
-        {latestTask.status === "READY" ? <button className="media-draft-text-action" type="button"
-          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("取消中…") : t("取消排队")}</button> : null}
+        {latestTask.status === "READY" ? <Button variant="ghost" className="media-draft-text-action" type="button"
+          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("取消中…") : t("取消排队")}</Button> : null}
       </div> : null}
       {cancel.error ? <p role="alert">{t("取消失败：{0}", { "0": cancel.error.message })}</p> : null}
       {latestTask?.status === "UNKNOWN" ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} /> : null}
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === CONFLICT_STATUS
         ? t("草稿有冲突；本地输入已保留。重新读取版本后可再保存。") : error.message}</span>
-        <button className="media-draft-text-action" onClick={() => void retry()} type="button">
+        <Button variant="ghost" className="media-draft-text-action" onClick={() => void retry()} type="button">
           {error instanceof ApiError && error.status === CONFLICT_STATUS ? t("重新读取版本")
-            : failedRemovalVersionId ? t("重试取消引入") : t("重试保存")}</button></div> : null}
+            : failedRemovalVersionId ? t("重试取消引入") : t("重试保存")}</Button></div> : null}
     </div>
   </div>;
 }

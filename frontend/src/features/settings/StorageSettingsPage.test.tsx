@@ -1,11 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render,screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { StorageSettings } from "../../shared/api/client";
+import { changeControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { StorageSettingsPage } from "./StorageSettingsPage";
 
@@ -22,7 +23,7 @@ function setup(value: StorageSettings = { version: 0, activeProfileId: null, pro
 async function fill() {
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText("连接名称"), "新连接");
-  fireEvent.change(screen.getByLabelText("存储类型"), { target: { value: "S3" } });
+  await changeControl(screen.getByLabelText("存储类型"), { target: { value: "S3" } });
   await user.type(screen.getByLabelText("Endpoint"), "https://s3.example.com");
   await user.type(screen.getByLabelText("Region"), "us-east-1");
   await user.type(screen.getByLabelText("Bucket"), "test-bucket");

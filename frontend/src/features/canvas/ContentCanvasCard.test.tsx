@@ -1,12 +1,13 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http,HttpResponse } from "msw";
 import { readFileSync } from "node:fs";
 import type { ReactNode } from "react";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll,beforeAll,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact, CanvasItem } from "../../shared/api/client";
+import type { Artifact,CanvasItem } from "../../shared/api/client";
+import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 
@@ -80,11 +81,11 @@ describe("ContentCanvasCard", () => {
     expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
   });
 
-  it("uses the toolbar action for direct output editing and keeps details available", () => {
+  it("uses the toolbar action for direct output editing and keeps details available", async () => {
     const { onInspect } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "正文" }), true, true);
-    fireEvent.click(screen.getByRole("button", { name: "编辑内容" }));
+    await clickControl(screen.getByRole("button", { name: "编辑内容" }));
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("正文");
-    fireEvent.click(screen.getByRole("button", { name: "卡片详情" }));
+    await clickControl(screen.getByRole("button", { name: "卡片详情" }));
     expect(onInspect).toHaveBeenCalledOnce();
     expect(screen.getByRole("article")).toHaveClass("is-selected");
     expect(screen.getByRole("article")).toHaveAccessibleName("创作内容 · 文字 · 已锁定");
@@ -118,7 +119,7 @@ describe("ContentCanvasCard", () => {
     const editor = screen.getByRole("textbox", { name: "内容" });
     await user.clear(editor);
     await user.type(editor, "节点内新正文");
-    await user.selectOptions(screen.getByRole("combobox", { name: "文字格式" }), "MARKDOWN");
+    await selectValue(screen.getByRole("combobox", { name: "文字格式" }), "MARKDOWN");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
     await waitFor(() => expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
       content: { format: "MARKDOWN", text: "节点内新正文" } }));
@@ -145,7 +146,7 @@ describe("ContentCanvasCard", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /v2/ }));
     const menu = await screen.findByRole("menu", { name: "文字版本" });
-    expect(getComputedStyle(menu.closest(".content-card-sources")!).overflow).toBe("visible");
+    expect(menu.closest(".content-card-sources")).toBeNull(); // Portal avoids clipping by the card.
     await user.click(within(menu).getByRole("menuitem", { name: /v1/ }));
     await waitFor(() => expect(selection).toEqual({ versionId: "version-1", expectedVersion: 3 }));
   });
@@ -162,7 +163,7 @@ describe("ContentCanvasCard", () => {
     await user.click(screen.getByRole("button", { name: /v2/ }));
     const menu = await screen.findByRole("menu", { name: "文字版本" });
     expect(within(menu).getByText("请先保存或退出编辑，再切换版本。")).toBeVisible();
-    expect(within(menu).getByRole("menuitem", { name: /v1/ })).toBeDisabled();
+    expect(within(menu).getByRole("menuitem", { name: /v1/ })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("第二版，尚未保存");
   });
 });

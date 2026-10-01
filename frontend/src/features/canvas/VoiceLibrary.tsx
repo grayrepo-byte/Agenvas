@@ -1,13 +1,15 @@
-import { t, useLocale } from "../../shared/i18n";
-import { Check, Star, X, Play } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState, type Ref } from "react";
-import { assetContentUrl, listCanvasItems, listDirectMediaTasks, runMediaDraft } from "../../shared/api/client";
+import { Check,Play,Star,X } from "@phosphor-icons/react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useLayoutEffect,useRef,useState,type Ref } from "react";
+import { assetContentUrl,listCanvasItems,listDirectMediaTasks,runMediaDraft } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
+import { Select } from "../../shared/ui/Select";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
-import { prepareMediaNode, type PreparedMediaNode } from "./mediaNodeActions";
+import { prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
 import { VOICES } from "./voiceCatalog";
-import { Select } from "../../shared/ui/Select";
 import "./VoiceLibrary.css";
 const PREFERENCE_KEY = "agenvas.voice-preferences.v1";
 const RECENT_LIMIT = 8;
@@ -93,27 +95,27 @@ export function VoiceLibrary({ selected, onSelect, onClose, projectId, canvasIte
     className="ui-popover-surface voice-library" role="dialog" aria-label={t("音色库")} onKeyDown={(event) => {
     if (event.key === "Escape") { event.stopPropagation(); onClose(); }
   }}>
-    <div className="voice-library-heading"><strong>{t("音色库")}</strong><button type="button" aria-label={t("关闭音色库")} onClick={onClose}><X size={17} /></button></div>
-    <input autoFocus type="search" aria-label={t("搜索音色")} placeholder={t("搜索音色名称")} value={search} onChange={(event) => setSearch(event.target.value)} />
+    <div className="voice-library-heading"><strong>{t("音色库")}</strong><Button variant="ghost" type="button" aria-label={t("关闭音色库")} onClick={onClose}><X size={17} /></Button></div>
+    <Input autoFocus type="search" aria-label={t("搜索音色")} placeholder={t("搜索音色名称")} value={search} onChange={(event) => setSearch(event.target.value)} />
     <div className="voice-library-filters"><Select aria-label={t("音色语言")} value={language} onChange={(event) => setLanguage(event.target.value)}>
       <option value="">{t("全部语言")}</option>{Array.from(new Set(VOICES.map((voice) => voice.language))).map((value) => <option key={value} value={value}>{t(value)}</option>)}</Select>
       <Select aria-label={t("音色场景")} value={scene} onChange={(event) => setScene(event.target.value)}><option value="">{t("全部场景")}</option>
         {Array.from(new Set(VOICES.map((voice) => voice.scene))).map((value) => <option key={value} value={value}>{t(value)}</option>)}</Select></div>
     <div className="voice-library-tabs" role="group" aria-label={t("音色范围")}>
       {([{ key: "all", label: t("全部") }, { key: "recent", label: t("最近使用") }, { key: "favorites", label: t("我的收藏") }] as const).map((item) =>
-        <button key={item.key} type="button" aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}
+        <Button variant="ghost" key={item.key} type="button" aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</Button>)}
     </div>
-    <button type="button" className="voice-library-automatic" aria-pressed={!selected} onClick={() => onSelect("")}>{t("由提示词决定音色")}{!selected ? <Check size={15} /> : null}</button>
+    <Button variant="ghost" type="button" className="voice-library-automatic" aria-pressed={!selected} onClick={() => onSelect("")}>{t("由提示词决定音色")}{!selected ? <Check size={15} /> : null}</Button>
     <div className="voice-library-list" style={availableHeight !== undefined && availableHeight > 0
       ? { maxHeight: Math.max(VOICE_LIST_MIN_HEIGHT, Math.min(VOICE_LIST_MAX_HEIGHT, availableHeight - VOICE_LIBRARY_CHROME_HEIGHT)) } : undefined}>{choices.map((voice) => <div className="voice-library-row" key={voice.id}>
-      <button type="button" className="voice-library-choice" aria-pressed={selected === voice.id} onClick={() => {
+      <Button variant="ghost" type="button" className="voice-library-choice" aria-pressed={selected === voice.id} onClick={() => {
         remember({ ...preferences, recent: [voice.id, ...preferences.recent.filter((id) => id !== voice.id)].slice(0, RECENT_LIMIT) }); onSelect(voice.id);
-      }}><span className="voice-library-avatar">{voice.name.slice(0, 1)}</span><span><strong>{voice.name}</strong><small>{t(voice.language)} · {t(voice.scene)}</small></span>{selected === voice.id ? <Check size={15} /> : null}</button>
-      <button type="button" aria-label={t("收藏 {0}", { "0": voice.name })} aria-pressed={preferences.favorites.includes(voice.id)} onClick={() => remember({ ...preferences,
-        favorites: preferences.favorites.includes(voice.id) ? preferences.favorites.filter((id) => id !== voice.id) : [...preferences.favorites, voice.id] })}><Star size={17} weight={preferences.favorites.includes(voice.id) ? "fill" : "regular"} /></button>
-      <button type="button" aria-label={t("生成试听 {0}", { "0": voice.name })} disabled={!capabilityId || preview.isPending || mock}
+      }}><span className="voice-library-avatar">{voice.name.slice(0, 1)}</span><span><strong>{voice.name}</strong><small>{t(voice.language)} · {t(voice.scene)}</small></span>{selected === voice.id ? <Check size={15} /> : null}</Button>
+      <Button variant="ghost" type="button" aria-label={t("收藏 {0}", { "0": voice.name })} aria-pressed={preferences.favorites.includes(voice.id)} onClick={() => remember({ ...preferences,
+        favorites: preferences.favorites.includes(voice.id) ? preferences.favorites.filter((id) => id !== voice.id) : [...preferences.favorites, voice.id] })}><Star size={17} weight={preferences.favorites.includes(voice.id) ? "fill" : "regular"} /></Button>
+      <Button variant="ghost" type="button" aria-label={t("生成试听 {0}", { "0": voice.name })} disabled={!capabilityId || preview.isPending || mock}
         title={mock ? t("Mock 只生成提示音，不提供音色试听") : t("新增试听音频节点并运行，按所选模型计费")}
-        onClick={() => preview.mutate(voice.id)}><Play size={16} /></button>
+        onClick={() => preview.mutate(voice.id)}><Play size={16} /></Button>
     </div>)}{!choices.length ? <p>{t("没有匹配的音色。")}</p> : null}</div>
     <p className="voice-library-help">{t("试听会新增音频节点并运行，使用所选模型，费用计入项目用量。")}</p>
     {preview.isPending ? <p role="status">{t("正在提交试听…")}</p> : null}

@@ -1,12 +1,22 @@
-import { t, useLocale } from "../../shared/i18n";
-import { ArrowCounterClockwise, ArrowClockwise, ArrowUpRight, Eraser, PencilSimple,
-  Rectangle, TextT, X } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+ArrowClockwise,
+ArrowCounterClockwise,
+ArrowUpRight,Eraser,PencilSimple,
+Rectangle,TextT,X
+} from "@phosphor-icons/react";
+import { useMutation,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError, uploadImageAsset, uploadCanvasItemVersion,
-  type UploadCanvasItemVersionRequest } from "../../shared/api/client";
-import { exportMarkup, renderMarkup, type MarkupPoint, type MarkupStroke, type MarkupTool } from "./brushMarkup";
+import {
+ApiError,
+uploadCanvasItemVersion,
+uploadImageAsset,
+type UploadCanvasItemVersionRequest
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
+import { exportMarkup,renderMarkup,type MarkupPoint,type MarkupStroke,type MarkupTool } from "./brushMarkup";
 import "./BrushMarkupEditor.css";
 
 const PREVIEW_LONG_EDGE = 1600;
@@ -161,18 +171,18 @@ export function BrushMarkupEditor(props: {
       }}>
       <div className="markup-tools-shell">
         {paletteOpen ? <div className="markup-palette" aria-label={t("标注颜色")}>
-          {COLORS.map((entry) => <button type="button" key={entry.value} title={entry.name}
+          {COLORS.map((entry) => <Button variant="ghost" type="button" key={entry.value} title={entry.name}
             aria-label={entry.name} aria-pressed={color === entry.value} disabled={save.isPending}
             style={{ backgroundColor: entry.value }} onClick={() => setColor(entry.value)} />)}
         </div> : null}
         <div className="markup-toolbar" role="toolbar" aria-label={t("画笔标注工具")}>
-          <button type="button" className="markup-close" aria-label={t("关闭画笔标注")} disabled={save.isPending}
-            onClick={onClose}><X size={17} /><span>{t("画笔标注")}</span></button>
+          <Button variant="ghost" type="button" className="markup-close" aria-label={t("关闭画笔标注")} disabled={save.isPending}
+            onClick={onClose}><X size={17} /><span>{t("画笔标注")}</span></Button>
           <div className="markup-tool-group">
-            <button type="button" className="markup-color" aria-label={t("选择标注颜色")}
+            <Button variant="ghost" type="button" className="markup-color" aria-label={t("选择标注颜色")}
               aria-expanded={paletteOpen} onClick={() => setPaletteOpen(!paletteOpen)}>
-              <span style={{ backgroundColor: color }} /></button>
-            {TOOLS.map((entry) => <button type="button" key={entry.tool}
+              <span style={{ backgroundColor: color }} /></Button>
+            {TOOLS.map((entry) => <Button variant="ghost" type="button" key={entry.tool}
               title={entry.tool === "BRUSH" || entry.tool === "ERASER" ? t("{0}（再次点击调整大小）", { "0": entry.label }) : entry.label}
               aria-label={entry.label} aria-pressed={tool === entry.tool} disabled={save.isPending}
               onClick={() => {
@@ -180,7 +190,7 @@ export function BrushMarkupEditor(props: {
                 setSizeOpen(tool === entry.tool && (entry.tool === "BRUSH" || entry.tool === "ERASER") && !sizeOpen);
                 setTool(entry.tool);
               }}>
-              <entry.icon size={20} /></button>)}
+              <entry.icon size={20} /></Button>)}
           </div>
         </div>
         {sizeOpen ? <label className="markup-stroke-size">{t("笔刷大小")}<input aria-label={t("笔刷大小")} type="range"
@@ -210,7 +220,7 @@ export function BrushMarkupEditor(props: {
               activeStroke.current = null;
               if (canvasRef.current) renderMarkup(canvasRef.current, strokes.slice(0, cursor));
             }} />
-          {text ? <input ref={textRef} className="markup-text-input" aria-label={t("标注文字")}
+          {text ? <Input ref={textRef} className="markup-text-input" aria-label={t("标注文字")}
             maxLength={MAX_TEXT_LENGTH} placeholder={t("输入文字，回车确认")} value={text.value}
             style={{ left: `${text.point.x * 100}%`, top: `${text.point.y * 100}%`, color }}
             onChange={(event) => setText({ ...text, value: event.target.value })}
@@ -223,16 +233,16 @@ export function BrushMarkupEditor(props: {
       </div>
       {!ready && !error ? <p role="status" className="markup-status">{t("正在载入原图…")}</p> : null}
       {error ? <p role="alert" className="markup-error">{error}
-        {!ready ? <button type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>{t("重试载入")}</button> : null}
+        {!ready ? <Button variant="ghost" type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>{t("重试载入")}</Button> : null}
       </p> : null}
       <div className="markup-save-toolbar">
-        <button type="button" aria-label={t("撤销")} title={t("撤销")} disabled={!cursor || save.isPending}
-          onClick={() => restore(cursor - 1)}><ArrowCounterClockwise size={20} /></button>
-        <button type="button" aria-label={t("重做")} title={t("重做")} disabled={cursor >= strokes.length || save.isPending}
-          onClick={() => restore(cursor + 1)}><ArrowClockwise size={20} /></button>
+        <Button variant="ghost" type="button" aria-label={t("撤销")} title={t("撤销")} disabled={!cursor || save.isPending}
+          onClick={() => restore(cursor - 1)}><ArrowCounterClockwise size={20} /></Button>
+        <Button variant="ghost" type="button" aria-label={t("重做")} title={t("重做")} disabled={cursor >= strokes.length || save.isPending}
+          onClick={() => restore(cursor + 1)}><ArrowClockwise size={20} /></Button>
         <span className="markup-divider" />
-        <button type="button" className="markup-save" disabled={!ready || !cursor || save.isPending || Boolean(text)}
-          onClick={() => save.mutate()}>{save.isPending ? t("保存中…") : save.error ? t("重试保存") : t("保存")}</button>
+        <Button variant="ghost" type="button" className="markup-save" disabled={!ready || !cursor || save.isPending || Boolean(text)}
+          onClick={() => save.mutate()}>{save.isPending ? t("保存中…") : save.error ? t("重试保存") : t("保存")}</Button>
       </div>
     </div>
   </div>, document.body);

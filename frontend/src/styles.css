@@ -1,4 +1,34 @@
 @import "tailwindcss";
+@import "./shared/ui/design-tokens.css";
+
+/* shadcn semantic tokens share the existing application theme, including portals. */
+@theme inline {
+  --color-background: var(--ui-bg);
+  --color-foreground: var(--ui-text);
+  --color-card: var(--ui-surface);
+  --color-card-foreground: var(--ui-text);
+  --color-popover: var(--ui-surface-raised);
+  --color-popover-foreground: var(--ui-text);
+  --color-primary: var(--ui-accent);
+  --color-primary-foreground: var(--ui-accent-foreground);
+  --color-secondary: var(--ui-surface-raised);
+  --color-secondary-foreground: var(--ui-text-secondary);
+  --color-muted: var(--ui-field);
+  --color-muted-foreground: var(--ui-text-muted);
+  --color-accent: var(--ui-hover);
+  --color-accent-foreground: var(--ui-text);
+  --color-destructive: var(--ui-danger);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-border);
+  --color-ring: var(--ui-focus);
+  --radius-sm: var(--ui-radius-sm);
+  --radius-md: var(--ui-radius-md);
+  --radius-lg: var(--ui-radius-lg);
+}
+
+@layer base {
+  * { border-color: var(--ui-border); }
+}
 
 :root {
   font-family:
@@ -32,7 +62,7 @@ select {
   font: inherit;
 }
 
-input {
+input:not([data-slot]) {
   display: block;
   width: 100%;
   margin-top: 0.5rem;
@@ -44,7 +74,7 @@ input {
   outline: none;
 }
 
-input:focus {
+input:not([data-slot]):focus {
   border-color: var(--accent);
   box-shadow: var(--ui-focus-shadow);
 }
@@ -76,6 +106,7 @@ button:disabled {
 }
 
 .workspace-shell {
+  isolation: isolate; /* Keep React Flow toolbars below body-portaled UI primitives. */
   --canvas: #141414;
   --panel: #202020;
   --ink: #f4f4f5;
@@ -185,7 +216,7 @@ button:disabled {
   color: #ededed;
 }
 .workspace-tool-trigger:hover { background: #39393d; }
-.workspace-tool-menu { position: absolute; right: calc(100% + 8px); bottom: 0; width: 200px; }
+.workspace-tool-menu {    width: 200px; }
 
 .workspace-tool-menu button > span { width: 0.85rem; }
 .workspace-tool-menu kbd { margin-left: auto; color: #999; font: inherit; }
@@ -202,7 +233,7 @@ button:disabled {
 .workspace-settings-trigger:hover:enabled { background: var(--ui-hover); }
 .workspace-settings-trigger:focus-visible { outline: 1px solid var(--ui-focus); }
 .workspace-settings-trigger:disabled { opacity: .5; }
-.workspace-settings-menu { position: absolute; right: calc(100% + 12px); top: 0; width: 290px; }
+.workspace-settings-menu {    width: 290px; }
 .workspace-settings-menu .workspace-settings-check { display: grid; place-items: center; width: 16px; flex-shrink: 0; }
 .workspace-settings-menu button strong, .workspace-settings-menu button small { display: block; }
 .workspace-canvas.is-select-tool .react-flow__pane { cursor: default; }
@@ -969,6 +1000,6 @@ button:disabled {
 .workspace-canvas.is-hand-tool .react-flow__node * { pointer-events: none !important; }
 /* Media history belongs to the node whose toolbar opens this menu. */
 .media-version-picker { position: relative; }
-.media-version-menu { position: absolute; top: calc(100% + 8px); left: 0; width: 230px; max-height: 320px; }
+.media-version-menu {    width: 230px; max-height: 320px; }
 
 .media-version-menu > button { justify-content: space-between; }

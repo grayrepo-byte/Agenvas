@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render,screen,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import type { CallDebug } from "../../shared/api/client";
 import { setLocale } from "../../shared/i18n";
+import { clickControl,selectValue } from "../../test/controls";
 import { FormattedCallExchange } from "./FormattedCallExchange";
 import { RAW_PAGE_CHARS } from "./callLogFormatting";
 
@@ -50,7 +51,7 @@ describe("FormattedCallExchange", () => {
     await user.click(within(dialog).getByRole("button", { name: "查看消息 JSON" }));
     expect(within(dialog).getByText(/"tool_calls"/)).toBeInTheDocument();
     await user.clear(within(dialog).getByRole("searchbox"));
-    await user.selectOptions(within(dialog).getByRole("combobox", { name: "消息角色" }), "tool");
+    await selectValue(within(dialog).getByRole("combobox", { name: "消息角色" }), "tool");
     expect(within(dialog).getByText("第 1 / 1 条")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "查看正文" }));
     expect(within(dialog).getByText('{ "result": "A quiet sea" }')).toBeInTheDocument();
@@ -72,7 +73,7 @@ describe("FormattedCallExchange", () => {
     expect(screen.getByRole("status")).toHaveTextContent("复制失败");
   });
 
-  it("formats other JSON but retains unsupported and incomplete raw content", () => {
+  it("formats other JSON but retains unsupported and incomplete raw content", async () => {
     const { rerender } = render(<FormattedCallExchange exchange={{ ...exchange, requestBody: { content: '{"size":1}', encoding: "UTF8", truncated: false }, responseBody: { content: "YWJj", encoding: "BASE64", truncated: true } }} mode="formatted" llm={false} />);
     expect(screen.getByText('{ "size": 1 }')).toBeInTheDocument();
     expect(screen.getByText("YWJj")).toBeInTheDocument();
@@ -80,7 +81,7 @@ describe("FormattedCallExchange", () => {
     const content = "x".repeat(RAW_PAGE_CHARS) + "END";
     rerender(<FormattedCallExchange exchange={{ ...exchange, requestBody: { content, encoding: "UTF8", truncated: false }, responseBody: null }} mode="raw" llm={false} />);
     expect(screen.queryByText(/END/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /加载更多正文/ }));
+    await clickControl(screen.getByRole("button", { name: /加载更多正文/ }));
     expect(screen.getByText(/END/)).toBeInTheDocument();
   });
 

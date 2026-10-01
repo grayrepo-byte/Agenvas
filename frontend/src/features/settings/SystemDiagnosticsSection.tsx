@@ -1,11 +1,12 @@
-import { getFormatLocale, t, useLocale } from "../../shared/i18n";
+import { ArrowsClockwise,CheckCircle,Cpu,Database,HardDrives,Plugs } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwise, CheckCircle, Cpu, Database, HardDrives, Plugs } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { Link, Navigate } from "react-router";
-import { ApiError, getSystemDiagnostics } from "../../shared/api/client";
+import { Link,Navigate } from "react-router";
+import { ApiError,getSystemDiagnostics } from "../../shared/api/client";
+import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
+import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
+import { Button } from "../../shared/ui/primitives/button";
 
 const UNAUTHORIZED_STATUS = 401;
 
@@ -16,8 +17,8 @@ export function SystemDiagnosticsSection({ enabled }: { enabled: boolean }) {
   if (diagnostics.error instanceof ApiError && diagnostics.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
   const snapshot = diagnostics.data;
   return <div className="ui-stack">
-    <div className="ui-form-actions"><button className="secondary-button" type="button" disabled={diagnostics.isFetching || !enabled}
-      onClick={() => void diagnostics.refetch()}><ArrowsClockwise size={16} aria-hidden />{diagnostics.isFetching ? t("正在检查…") : t("刷新状态")}</button></div>
+    <div className="ui-form-actions"><Button variant="outline"  type="button" disabled={diagnostics.isFetching || !enabled}
+      onClick={() => void diagnostics.refetch()}><ArrowsClockwise size={16} aria-hidden />{diagnostics.isFetching ? t("正在检查…") : t("刷新状态")}</Button></div>
       {diagnostics.isPending && enabled ? <LoadingState label={t("正在读取诊断…")} /> : null}
       {diagnostics.isError ? <Notice tone="danger" title={t("读取诊断失败")}><p>{t("数据库或会话可能不可用。请稍后重试。")}</p>{snapshot ? <p>{t("下面保留上一次读取的状态，尚未更新。")}</p> : null}</Notice> : null}
       {snapshot ? <>

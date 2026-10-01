@@ -1,28 +1,46 @@
-import { t, useLocale } from "../../shared/i18n";
-import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
-import { AudioPlayer } from "./AudioPlayer";
-import { DropdownMenu } from "../../shared/ui/DropdownMenu";
-import { Select } from "../../shared/ui/Select";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowsOutSimple, ArrowClockwise, Buildings, CaretDown, CaretRight, Crop, Cube,
-  DownloadSimple, CopySimple, Eraser, Image as ImageIcon, Stack, MagicWand, PaintBrush,
-  PersonSimple, Play, Scissors, SlidersHorizontal, Smiley, Sun, UploadSimple,
-  VideoCamera, MusicNotes, X } from "@phosphor-icons/react";
-import { ApiError, assetContentUrl, assetThumbnailUrl, getMediaSettings, listDirectMediaTasks,
-  runImageOperation, type Artifact, type CanvasItem, type MediaCapability,
-  type RunImageOperationRequest, type Task } from "../../shared/api/client";
+import {
+ArrowClockwise,
+ArrowsOutSimple,
+Buildings,CaretDown,
+CopySimple,
+Crop,Cube,
+DownloadSimple,
+Eraser,Image as ImageIcon,
+MagicWand,
+MusicNotes,
+PaintBrush,
+PersonSimple,Play,Scissors,SlidersHorizontal,Smiley,
+Stack,
+Sun,UploadSimple,
+VideoCamera,
+X
+} from "@phosphor-icons/react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState,type ReactNode } from "react";
+import {
+ApiError,assetContentUrl,assetThumbnailUrl,getMediaSettings,listDirectMediaTasks,
+runImageOperation,type Artifact,type CanvasItem,type MediaCapability,
+type RunImageOperationRequest,type Task
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { Button } from "../../shared/ui/primitives/button";
+import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { Input } from "../../shared/ui/primitives/input";
+import { Textarea } from "../../shared/ui/primitives/textarea";
+import { Select } from "../../shared/ui/Select";
+import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
-import { CropPanel } from "./CropPanel";
+import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
+import { CropPanel } from "./CropPanel";
+import { ImagePreviewDialog } from "./ImagePreviewDialog";
 import { MediaCardUpload } from "./MediaCardUpload";
+import { assetMetadataQueryOptions,displayedMediaAssetId,isMediaDraftDisplayed,mediaDraftQueryOptions } from "./mediaDisplay";
+import { isMediaTaskRunning,latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { MediaVersionPicker } from "./MediaVersionPicker";
 import { RelightPanel } from "./RelightPanel";
 import { SmartEditDialog } from "./SmartEditDialog";
-import { ImagePreviewDialog } from "./ImagePreviewDialog";
-import { isMediaTaskRunning, latestMediaTask, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
-import { assetMetadataQueryOptions, displayedMediaAssetId, isMediaDraftDisplayed, mediaDraftQueryOptions } from "./mediaDisplay";
 import { taskErrorMessage } from "./taskErrorMessages";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
@@ -79,7 +97,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -159,18 +176,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     setOperationOpen("THREE_VIEW");
   }
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function close(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as globalThis.Node)) {
-        setMenuOpen(false);
-        setThreeViewMenuOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [menuOpen]);
-
   return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("图片") : isAudio ? t("音频") : t("视频")}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
     toolbarRaised={menuOpen || operationOpen !== null}
@@ -178,47 +183,31 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     toolbarLabel={t("媒体卡片操作")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
         {isImage ? <>
-          <button type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
-            onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("智能编辑")}</button>
-          <button type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
+          <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
+            onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("智能编辑")}</Button>
+          <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             title={t("使用服务端内置的本地 Depth Anything V2 Small 模型")}
-            onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("深度提取")}</button>
-          <div className="media-extension-anchor" ref={menuRef} onKeyDown={(event) => {
-            if (event.key === "Escape" && menuOpen) {
-              event.stopPropagation();
-              if (threeViewMenuOpen) setThreeViewMenuOpen(false);
-              else { setMenuOpen(false); menuButton.current?.focus(); }
-            }
-          }}>
-            <button type="button" ref={menuButton} aria-expanded={menuOpen} aria-haspopup="true"
-              className={menuOpen ? "is-open" : ""} onClick={() => {
-                setMenuOpen(!menuOpen); setThreeViewMenuOpen(false);
-              }}>
-              <MagicWand size={17} />{t("扩展")}<CaretDown size={12} /></button>
-            {menuOpen ? <DropdownMenu className="media-extension-menu" aria-label={t("图片扩展功能")}>
-              {EXTENSIONS.map((entry) => <button role="menuitem" key={entry.label} type="button"
-                disabled={!assetId || Boolean(busy) || operation.isPending}
-                aria-haspopup={entry.submenu ? "menu" : undefined}
-                aria-expanded={entry.submenu ? threeViewMenuOpen : undefined}
-                onPointerEnter={() => setThreeViewMenuOpen(Boolean(entry.submenu))}
-                onFocus={() => setThreeViewMenuOpen(Boolean(entry.submenu))}
-                onClick={() => entry.submenu
-                  ? setThreeViewMenuOpen(true)
-                  : chooseOperation(entry.operation)}>
-                <entry.icon size={17} /><span>{entry.label}</span>
-                {entry.submenu ? <CaretRight className="media-extension-chevron" size={13} />
-                  : <small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? t("本地") : "AI"}</small>}
-              </button>)}
-            </DropdownMenu> : null}
-            {menuOpen && threeViewMenuOpen ? <DropdownMenu className="media-three-view-submenu"
-              role="menu" aria-label={t("三视图类型")}>
-              {THREE_VIEW_OPTIONS.map((option) => <button key={option.value} type="button"
-                role="menuitem" disabled={!assetId || Boolean(busy) || operation.isPending}
-                onClick={() => chooseThreeView(option.value)}>
-                <option.icon size={17} /><span>{option.label}</span><small>AI</small>
-              </button>)}
-            </DropdownMenu> : null}
-          </div>
+            onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("深度提取")}</Button>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+            <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={menuButton}>
+              <MagicWand />{t("扩展")}<CaretDown /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent aria-labelledby={undefined} aria-label={t("图片扩展功能")} className="w-56 nodrag nowheel nopan"><DropdownMenuGroup>
+              {EXTENSIONS.map((entry) => entry.submenu ? <DropdownMenuSub key={entry.label} open={threeViewMenuOpen} onOpenChange={setThreeViewMenuOpen}>
+                <DropdownMenuSubTrigger disabled={!assetId || Boolean(busy) || operation.isPending}>
+                  <entry.icon /><span>{entry.label}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent aria-labelledby={undefined} aria-label={t("三视图类型")}><DropdownMenuGroup>
+                  {THREE_VIEW_OPTIONS.map((option) => <DropdownMenuItem key={option.value}
+                    disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseThreeView(option.value)}>
+                    <option.icon /><span>{option.label}</span><small>AI</small>
+                  </DropdownMenuItem>)}
+                </DropdownMenuGroup></DropdownMenuSubContent>
+              </DropdownMenuSub> : <DropdownMenuItem key={entry.label}
+                disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseOperation(entry.operation)}>
+                <entry.icon /><span>{entry.label}</span><small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? t("本地") : "AI"}</small>
+              </DropdownMenuItem>)}
+            </DropdownMenuGroup></DropdownMenuContent>
+          </DropdownMenu>
           {operationOpen === "BRUSH_MARKUP" ? (assetId && item.selectedVersionId ? <BrushMarkupEditor
             key={item.id}
             projectId={artifact.projectId} canvasItemId={item.id}
@@ -253,18 +242,18 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               onSubmit={(operationParameters, instruction, capabilityId) =>
                 runOperation(operationOpen, operationParameters, instruction, capabilityId)} /> : null}
         </> : null}
-        {isAudio && assetId && onMakeMV ? <button type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("MV 制作")}</button> : null}
-        <button type="button" onClick={onEdit} title={t("编辑工作草稿，运行后为当前节点增加版本")}>
-          <ArrowClockwise size={17} />{item.selectedVersionId ? t("重新生成") : t("编辑草稿")}</button>
+        {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("MV 制作")}</Button> : null}
+        <Button variant="ghost" type="button" onClick={onEdit} title={t("编辑工作草稿，运行后为当前节点增加版本")}>
+          <ArrowClockwise size={17} />{item.selectedVersionId ? t("重新生成") : t("编辑草稿")}</Button>
         <MediaVersionPicker projectId={artifact.projectId} item={item} />
-        {onDuplicate ? <button type="button" onClick={onDuplicate} title={t("复制完整工作草稿，不复制任务和连线")}>
-          <CopySimple size={17} />{t("复制")}</button> : null}
-        <button type="button" onClick={onInspect} aria-label={t("卡片详情")}><SlidersHorizontal size={17} /></button>
+        {onDuplicate ? <Button variant="ghost" type="button" onClick={onDuplicate} title={t("复制完整工作草稿，不复制任务和连线")}>
+          <CopySimple size={17} />{t("复制")}</Button> : null}
+        <Button variant="ghost" type="button" onClick={onInspect} aria-label={t("卡片详情")}><SlidersHorizontal size={17} /></Button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
           aria-label={isImage ? t("下载图片") : isAudio ? t("下载音频") : t("下载视频")}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
-      {(isImage || isAudio) && !assetId ? <input ref={uploadInput} className="sr-only nodrag" type="file"
+      {(isImage || isAudio) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
         aria-label={isAudio ? t("选择要上传的音频") : t("选择要上传的图片")} accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
@@ -277,8 +266,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
         title={item.title} demo={demo} selected={selected} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
           {metadata.data ? t("图片尺寸刷新失败，请重试") : t("图片尺寸读取失败，暂按原卡片尺寸显示")}
-          <button type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
-            {metadata.isFetching ? t("正在重试…") : t("重试尺寸")}</button></p> : null}</>
+          <Button variant="ghost" type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
+            {metadata.isFetching ? t("正在重试…") : t("重试尺寸")}</Button></p> : null}</>
         : <div className="media-card-empty">
           {busy ? <CanvasLoadingState label={status ?? t("正在生成")} /> : <>
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
@@ -291,17 +280,17 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               artifact={artifact} item={item} initialFile={uploadFile} compact
               onDone={() => setUploadFile(null)} />
             : latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
-              <button className="media-upload-button nodrag" type="button" onClick={onEdit}>
-                <SlidersHorizontal size={15} />{t("查看任务")}</button>
-              : isImage || isAudio ? <button className="media-upload-button nodrag" type="button"
+              <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
+                <SlidersHorizontal size={15} />{t("查看任务")}</Button>
+              : isImage || isAudio ? <Button variant="ghost" className="media-upload-button nodrag" type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => { event.stopPropagation(); uploadInput.current?.click(); }}>
-              <UploadSimple size={15} />{isAudio ? t("上传音频") : t("上传图片")}</button>
-              : <button className="media-upload-button nodrag" type="button" onClick={onEdit}>
-                <Play size={15} />{t("生成视频")}</button>}
+              <UploadSimple size={15} />{isAudio ? t("上传音频") : t("上传图片")}</Button>
+              : <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
+                <Play size={15} />{t("生成视频")}</Button>}
           </>}
-          {draft.error ? <p className="media-card-error" role="alert">{t("草稿读取失败")}<button type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("重试")}</button></p> : null}
-          {tasks.error ? <p className="media-card-error" role="alert">{t("任务状态暂不可用")}<button type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("重试状态")}</button></p> : null}
+          {draft.error ? <p className="media-card-error" role="alert">{t("草稿读取失败")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("重试")}</Button></p> : null}
+          {tasks.error ? <p className="media-card-error" role="alert">{t("任务状态暂不可用")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("重试状态")}</Button></p> : null}
         </div>}
   </ArtifactCardFrame>;
 }
@@ -381,7 +370,7 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
     onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
     <header><div><strong>{operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}</strong>
       <span>{cloud ? t("使用 OpenAI / Google 图片能力") : t("在本机处理，不上传图片")}</span></div>
-      <button type="button" aria-label={t("关闭图片处理面板")} onClick={onClose}><X size={16} /></button>
+      <Button variant="ghost" type="button" aria-label={t("关闭图片处理面板")} onClick={onClose}><X size={16} /></Button>
     </header>
     {operation === "THREE_VIEW" ? <fieldset className="media-three-view-types">
       <legend>{t("输出类型")}</legend>
@@ -413,7 +402,7 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
     </Select></label> : null}
     {instructionCopy
       ? <label>{instructionCopy.label}
-        <textarea value={instruction} maxLength={4000}
+        <Textarea value={instruction} maxLength={4000}
           placeholder={instructionCopy.placeholder}
           onChange={(event) => setInstruction(event.target.value)} /></label> : null}
     {operation === "UPSCALE" ? <label>{t("放大倍数")}<Select density="compact" value={scale}
@@ -425,9 +414,9 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
       {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].map((value) =>
         <option key={value} value={value}>{value}</option>)}</Select></label> : null}
     {error ? <p role="alert">{error instanceof ApiError ? error.message : t("图片处理任务受理失败，请重试。")}</p> : null}
-    <footer><button type="button" onClick={onClose}>{t("取消")}</button>
-      <button type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
-        {busy ? t("正在受理…") : t("开始处理")}</button></footer>
+    <footer><Button variant="ghost" type="button" onClick={onClose}>{t("取消")}</Button>
+      <Button variant="ghost" type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
+        {busy ? t("正在受理…") : t("开始处理")}</Button></footer>
   </div>;
 }
 
@@ -474,25 +463,25 @@ function MediaPreview({ artifact, assetId, title, demo, selected }: {
         src={video ? assetThumbnailUrl(artifact.projectId, assetId)
           : assetContentUrl(artifact.projectId, assetId)} />
         : <div className="media-card-empty">{video ? <VideoCamera size={36} /> : <ImageIcon size={36} />}<span>{video ? t("视频封面暂不可用") : t("预览暂不可用")}</span>
-          <button className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("重试预览")}</button></div>}
+          <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("重试预览")}</Button></div>}
     {video && playing && buffering ? <div className="media-playback-loading">
       <CanvasLoadingState compact label={t("正在加载视频")} />
     </div> : null}
     {video && playbackFailed ? <div className="media-playback-error nodrag nowheel nopan" role="alert">
       <VideoCamera size={28} /><p>{t("视频播放失败")}</p><span>{t("请重试播放，或打开原视频文件。")}</span>
-      <button type="button" className="media-upload-button" onClick={startPlayback}><ArrowClockwise size={15} />{t("重试播放")}</button>
+      <Button variant="ghost" type="button" className="media-upload-button" onClick={startPlayback}><ArrowClockwise size={15} />{t("重试播放")}</Button>
     </div> : null}
-    {video && playing ? <button type="button" className="media-stop-preview nodrag" aria-label={t("关闭视频预览")}
-      title={t("关闭视频预览")} onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></button> : null}
+    {video && playing ? <Button variant="ghost" type="button" className="media-stop-preview nodrag" aria-label={t("关闭视频预览")}
+      title={t("关闭视频预览")} onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></Button> : null}
     {demo ? <span className="media-demo-badge">{video ? t("演示视频") : t("演示素材")}</span> : null}
     {video ? <a className="media-expand-button nodrag" href={assetContentUrl(artifact.projectId, assetId)}
       aria-label={t("打开视频文件")} title={t("打开视频文件")}
       rel="noopener noreferrer" target="_blank"><ArrowsOutSimple size={19} /></a>
-      : <button className="media-expand-button nodrag" type="button" aria-label={t("放大图片")} title={t("放大图片")}
-        onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></button>}
+      : <Button variant="ghost" className="media-expand-button nodrag" type="button" aria-label={t("放大图片")} title={t("放大图片")}
+        onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>}
     {!video && expanded ? <ImagePreviewDialog title={title}
       sourceUrl={assetContentUrl(artifact.projectId, assetId)} onClose={() => setExpanded(false)} /> : null}
-    {video && !playing ? <button className="media-play-button nodrag" type="button"
-      aria-label={t("播放视频")} onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">{t("播放视频")}</span></button> : null}
+    {video && !playing ? <Button variant="ghost" className="media-play-button nodrag" type="button"
+      aria-label={t("播放视频")} onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">{t("播放视频")}</span></Button> : null}
   </div>;
 }

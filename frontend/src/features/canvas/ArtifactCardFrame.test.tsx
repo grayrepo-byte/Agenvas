@@ -1,6 +1,7 @@
-import { ReactFlow, ReactFlowProvider, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render,screen,waitFor } from "@testing-library/react";
+import { ReactFlow,ReactFlowProvider,useReactFlow,type Node,type NodeProps } from "@xyflow/react";
+import { describe,expect,it } from "vitest";
+import { clickControl } from "../../test/controls";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 
 type FrameNode = Node<{ title: string }, "frame">;
@@ -50,11 +51,11 @@ describe("ArtifactCardFrame toolbar", () => {
     await waitFor(() => expect(toolbar()).toHaveStyle({
       transform: "translate(220px, 168px) translate(-50%, -100%)",
     }));
-    fireEvent.click(screen.getByRole("button", { name: "移动节点" }));
+    await clickControl(screen.getByRole("button", { name: "移动节点" }));
     await waitFor(() => expect(toolbar()).toHaveStyle({
       transform: "translate(520px, 318px) translate(-50%, -100%)",
     }));
-    fireEvent.click(screen.getByRole("button", { name: "平移并缩放" }));
+    await clickControl(screen.getByRole("button", { name: "平移并缩放" }));
     await waitFor(() => expect(toolbar()).toHaveStyle({
       transform: "translate(860px, 533px) translate(-50%, -100%)",
     }));
@@ -64,12 +65,12 @@ describe("ArtifactCardFrame toolbar", () => {
     showCanvas();
     await screen.findByRole("button", { name: "编辑图片" });
     expect(toolbar()).toHaveAttribute("data-id", "first");
-    fireEvent.click(screen.getByRole("button", { name: "选择第二张" }));
+    await clickControl(screen.getByRole("button", { name: "选择第二张" }));
     await waitFor(() => expect(toolbar()).toHaveAttribute("data-id", "second"));
     expect(toolbar()).toHaveStyle({ transform: "translate(820px, 68px) translate(-50%, -100%)" });
-    fireEvent.click(screen.getByRole("button", { name: "多选" }));
+    await clickControl(screen.getByRole("button", { name: "多选" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "编辑图片" })).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "取消选择" }));
+    await clickControl(screen.getByRole("button", { name: "取消选择" }));
     expect(screen.queryByRole("button", { name: "编辑图片" })).not.toBeInTheDocument();
   });
 });

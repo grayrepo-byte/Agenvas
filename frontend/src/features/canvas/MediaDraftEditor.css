@@ -39,7 +39,7 @@
 .media-draft-reference-add:hover:enabled { border-color: #8a8a90; background: #252527; }
 .media-draft-upload-input { position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip-path: inset(50%); white-space: nowrap; }
-.media-draft-popover.media-draft-reference-sources { top: calc(100% + 10px); bottom: auto;
+.media-draft-popover.media-draft-reference-sources {
   width: 220px;
   overflow: visible; transform-origin: top left; }
 .media-draft-reference-sources > button > span { flex: 1; }
@@ -108,9 +108,10 @@
 .media-draft-editor button:focus-visible, .media-draft-editor select:focus-visible,
 .media-draft-editor input:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
 .media-draft-popover {
-  position: absolute; z-index: 30; left: 0; bottom: calc(100% + 12px); width: 320px; max-width: calc(100vw - 40px);
+  width: 320px; max-width: calc(100vw - 40px);
   max-height: min(420px, 55vh); overflow-y: auto; transform-origin: bottom left;
 }
+.ui-popover-surface.media-draft-popover { position: absolute; bottom: calc(100% + 10px); left: 0; }
 .media-draft-popover-title { margin: 4px 8px 8px; color: #93939a; font-size: 11px; }
 .media-draft-model-option { justify-content: space-between; }
 
@@ -122,7 +123,7 @@
 .media-draft-popover > p:not(.media-draft-popover-title) { margin: 9px; color: #9999a0; font-size: 11px; line-height: 1.6; }
 .media-draft-modes { width: 260px; }
 
-.media-draft-parameters { z-index: 40; left: auto; right: 0; width: 540px; max-height: min(520px, 70vh);
+.ui-popover-surface.media-draft-parameters { left: auto; right: 0; width: 540px; max-height: min(520px, 70vh);
   padding: 18px 20px; border-radius: var(--ui-radius-lg); background: var(--ui-surface); }
 .media-draft-parameters .media-draft-popover-title { margin-left: 0; }
 .media-draft-parameters dl { margin: 14px 0; }
@@ -133,13 +134,13 @@
 .media-draft-image-parameters, .media-draft-video-parameters { display: flex; flex-direction: column; gap: 18px; }
 .media-draft-image-parameters fieldset, .media-draft-video-parameters fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .media-draft-image-parameters legend, .media-draft-video-parameters legend { margin-bottom: 9px; color: #d8d8dc; font-size: 12px; font-weight: 600; }
-.media-draft-choice-grid { display: grid; gap: 4px; padding: 4px; border-radius: 14px; background: #303031; }
+.media-draft-choice-grid { width: 100%; display: grid; gap: 4px; padding: 4px; border-radius: 14px; background: #303031; }
 .media-draft-aspect-grid { grid-template-columns: repeat(9, minmax(42px, 1fr)); }
 .media-draft-video-aspect-grid { grid-template-columns: repeat(4, minmax(58px, 1fr)); }
 .media-draft-choice-grid button { display: flex; min-width: 0; height: 57px; flex-direction: column;
   align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 11px;
   background: transparent; color: #97979c; }
-.media-draft-choice-grid button[aria-pressed="true"] { background: #565657; color: #fff; }
+.media-draft-choice-grid button[data-state="on"] { background: #565657; color: #fff; }
 .media-draft-choice-grid button:hover { color: #fff; }
 .media-draft-choice-grid small { font-size: 9px; }
 .media-draft-ratio-icon { display: block; width: 16px; height: 16px; border: 2px solid currentColor; border-radius: 2px; }
@@ -149,11 +150,11 @@
 .media-draft-ratio-icon.ratio-16-9, .media-draft-ratio-icon.ratio-21-9 { width: 18px; height: 11px; }
 .media-draft-ratio-icon.ratio-21-9 { width: 21px; height: 8px; }
 .media-draft-ratio-icon.ratio-auto { border-radius: 50%; border-style: dashed; }
-.media-draft-segmented { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
+.media-draft-segmented { width: 100%; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
   padding: 3px; border-radius: 13px; background: #343435; }
 .media-draft-segmented button { height: 34px; border: 0; border-radius: 10px; background: transparent;
   color: #aaaab0; font-size: 12px; }
-.media-draft-segmented button[aria-pressed="true"] { background: #5a5a5c; color: #fff; font-weight: 600; }
+.media-draft-segmented button[data-state="on"] { background: #5a5a5c; color: #fff; font-weight: 600; }
 .media-draft-switch-row { display: flex; min-height: 32px; align-items: center; justify-content: space-between;
   gap: 18px; color: #d8d8dc; font-size: 12px; }
 .media-draft-switch-row > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }

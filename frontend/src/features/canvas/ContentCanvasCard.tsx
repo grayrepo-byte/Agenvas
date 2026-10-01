@@ -1,16 +1,19 @@
-import { t, useLocale } from "../../shared/i18n";
-import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
-import { LinkSimple, LockSimple, PencilSimple,
-  SlidersHorizontal, Stack, TextT } from "@phosphor-icons/react";
+import {
+LinkSimple,LockSimple,PencilSimple,
+SlidersHorizontal,Stack,TextT
+} from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import type { Artifact, CanvasItem } from "../../shared/api/client";
+import type { Artifact,CanvasItem } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText as readText } from "./artifactContent";
+import "./ContentCanvasCard.css";
 import { TextCanvasEditor } from "./TextCanvasEditor";
 import { TextVersionPicker } from "./TextVersionPicker";
 import { hasCurrentVersion } from "./versionedArtifact";
-import "./ContentCanvasCard.css";
 
 /**
  * Content bars and source chips adapted from Beautiful UI's ContextCards;
@@ -47,10 +50,10 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
     toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
         {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
-        <button type="button" disabled={!hasCurrentVersion(artifact)}
+        <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact)}
           onClick={() => setEditingText(true)}>
-          <PencilSimple size={17} aria-hidden />{t("编辑内容")}</button>
-        <button type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("卡片详情")}</button>
+          <PencilSimple size={17} aria-hidden />{t("编辑内容")}</Button>
+        <Button variant="ghost" type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("卡片详情")}</Button>
       </>}>
       {children}
       {hasCurrentVersion(artifact) && editingText

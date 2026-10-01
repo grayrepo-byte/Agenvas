@@ -1,4 +1,4 @@
-# 前端公共样式与下拉框
+# 前端公共组件与样式
 
 2026-09-30 按用户确认统一，视觉参考 [Beautiful UI](https://www.beautifului.dev/) 的深灰表面、细边框、紧凑选项、柔和悬停态与层次清晰的字体。
 
@@ -7,8 +7,9 @@
 | 内容 | 维护位置 |
 | --- | --- |
 | 配色、间距、字号、圆角、控件高度、阴影与动效时长 | `frontend/src/shared/ui/design-tokens.css` |
-| 单选控件与选项弹层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
-| 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/DropdownMenu.tsx`、`Dropdown.css` |
+| shadcn 基础组件 | `frontend/components.json`、`frontend/src/shared/ui/primitives/` |
+| 单选表单兼容层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
+| 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/primitives/dropdown-menu.tsx`、`command.tsx` |
 | 页面表单、面板、提示、状态、摘要与图标容器 | `PagePrimitives.tsx`、`PageTheme.css` |
 | 导航与页面框架 | `PageShell.tsx`、`PageShell.css` |
 | 语言入口与四语言选择窗口 | `shared/i18n/LanguageSelect.tsx`，复用 `Dialog.tsx` 与 `PageTheme.css` |
@@ -25,15 +26,15 @@
 
 ## 单选控件
 
-使用 `Select`，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。设置与项目页面使用默认高度 40px；画布使用 `density="compact"`（32px）。选项字体 13px，次级说明 11px；选项区使用 8px 内边距、12px 圆角和共享悬停/选中颜色。
+使用基于 shadcn/Radix 的 `Select` 兼容层，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。常规控件使用 shadcn 默认尺寸；画布使用 `density="compact"`。视觉、交互和选项结构由 `primitives/select.tsx` 维护，语义颜色映射到现有 `--ui-*` 主题。
 
-原生 select 保留 label、表单提交、必填校验和 change 事件；鼠标与键盘使用统一的可见选项面板。弹层挂到 body，以屏幕坐标定位，避开画布缩放和祖先容器裁切；靠近视口底部向上展开，宽度与高度限制在视口内。提供方向键、Home/End、Enter/Space、前缀键入、Escape、Tab 和外部点击；禁用选项与禁用 optgroup 不可选择，禁用 fieldset 不可打开。选项更新会同步到已打开的面板，保存与业务版本检查仍由原应用服务处理。
+隐藏原生 select 只作为表单提交、必填校验和 change 事件桥接；label 指向可见的 shadcn 触发器。选项由 Radix Portal 与定位机制管理，避开画布缩放和祖先容器裁切；靠近视口底部向上展开，宽度与高度限制在视口内。提供方向键、Home/End、Enter/Space、前缀键入、Escape、Tab 和外部点击；禁用选项与禁用 optgroup 不可选择，禁用 fieldset 不可打开。选项更新会同步到已打开的面板，保存与业务版本检查仍由原应用服务处理。
 
 ## 动作菜单
 
-使用 `DropdownMenu` 并赋予选项 `menuitem`、`menuitemradio` 或 `menuitemcheckbox` 语义；引用补全可传入 `role="listbox"`，由原编辑器管理文字光标和活动引用。组件共用视觉与动作菜单的方向键/Home/End遍历。
+使用 `primitives/dropdown-menu.tsx` 的 Root、Trigger、Content、Group、Item 和 Sub 组合。模型、版本和工具菜单由 Radix 管理键盘、禁用、Portal、外部关闭及焦点恢复；异步保存继续由调用方控制关闭时机。引用补全和画布添加卡片使用 `Command`、`CommandList`、`CommandGroup`、`CommandItem`，由编辑器保留文字光标与活动引用。
 
-版本菜单使用 `anchorRef`、`triggerRef`、`onDismiss` 和 `focusOnOpen`，统一打开时聚焦、外部点击关闭以及 Escape 后恢复触发器焦点。具有悬停子菜单、上传选择、编辑器光标或异步参数面板的调用方保留相应业务关闭规则。普通参数/资源浮层共用 `ui-popover-surface` 表面，业务文件只管理内部布局。
+引用来源菜单保留悬停入口，指针进入 Portal 后取消延迟关闭。参数/资源选择器包含专用编辑逻辑，仍使用 `ui-popover-surface`；画布通过 `isolation` 将 React Flow 工具栏限制在自身层级中，使 body Portal 的组件可正常显示。
 
 ESLint 禁止公共 Select 之外的原生 `<select>`，禁止以普通 `<div role="menu/listbox">` 新建菜单；必须复用上述组件。检查命令：在 `frontend` 执行 `./node_modules/.bin/eslint . --max-warnings=0`。
 
@@ -58,8 +59,16 @@ Provider 的配置编辑与工具诊断并排显示，辅助栏最多 400px；�
 
 能力编辑分为模型配置、默认参数、输入限制、估算价格四个页签；切换分区保留所有字段。窗口最大高度为 680px，且受动态视口高度约束；标题与保存栏固定，仅表单内容滚动。小屏表格只在各自区域内横向滚动。关闭窗口保留页面内草稿，成功保存后关闭；未保存内容不会写入浏览器持久存储。
 
-原生模态窗口隔离背景，打开时锁定背景滚动，Tab/Shift+Tab 在窗口控件间循环，关闭后恢复触发按钮焦点。Escape 先关闭展开的下拉菜单，再关闭窗口；请求执行中禁止关闭。Select 将选项面板挂载到所在 dialog，使其处于同一模态层，避免被背景隔离阻断。隐藏页签中的必填项校验失败时自动显示对应页签并聚焦字段。配置版本变化、CAS、错误保留和显式载入规则延续原有行为。
+shadcn/Radix Dialog 隔离背景，打开时锁定背景滚动，Tab/Shift+Tab 在窗口控件间循环，关闭后恢复触发按钮焦点。Escape 先关闭展开的下拉菜单，再关闭窗口；请求执行中禁止关闭。Select 使用 Radix Portal 与嵌套焦点机制；Tab 在其关闭焦点回调中转移到下一个表单字段。隐藏页签中的必填项校验失败时自动显示对应页签并聚焦字段。配置版本变化、CAS、错误保留和显式载入规则延续原有行为。
 
 语言选择复用 `Dialog` 的紧凑尺寸，不显示无操作的页脚；四个原名按钮直接选择，当前语言以选中边框与勾号标识。入口在桌面折叠导航中只显示地球图标，在展开导航和手机顶部显示当前语言名。语言控件的外观集中在 `PageTheme.css`，侧栏只管理间距；验证见 [语言交互调整](evidence/language-picker-2026-10-01.md)。
 
 验证及 Mock 截图见 [媒体设置表格与模态框](evidence/media-settings-tables.md)。
+
+## shadcn 公共组件迁移（2026-10-02）
+
+公共按钮、输入、文本域、复选框、开关、提示、空态、状态标记、表格、页签、表单字段和选项组采用仓库中的 shadcn 源码。媒体设置、系统日志与调用日志表格使用 `Table` 组合；媒体和系统设置使用 `Tabs`；图片/视频参数使用 `ToggleGroup`；媒体表单使用 `FieldSet`、`FieldGroup`、`Field`、`FieldLabel`。共享 `Dialog` 只承担业务表单组合，旧的手写 DropdownMenu 已删除。
+
+配置为 Radix、Vite、Tailwind 4、Phosphor 图标，`@/` 同时由 TypeScript 和 Vite 解析。新增组件前在 `frontend` 执行 `pnpm dlx shadcn@latest info` 和 `docs <component>`，沿用当前组件目录与公共语义变量。新增第三方依赖须同步依赖基线。专用媒体播放器、画笔、卡片手势和资源编辑器继续由领域组件维护。
+
+实际命令、回归覆盖与 Mock 截图见 [shadcn 迁移验证](evidence/shadcn-migration.md)。

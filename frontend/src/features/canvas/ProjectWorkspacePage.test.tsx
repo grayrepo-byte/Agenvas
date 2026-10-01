@@ -1,14 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import type { Agent,CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
+import { changeControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { useCanvasStore } from "./canvasStore";
-import type { Agent, CanvasCommand, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
 
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
@@ -208,7 +209,7 @@ describe("ProjectWorkspacePage", () => {
     await screen.findByText("Text project");
     const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
     fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
-    await user.click(screen.getByRole("menuitem", { name: "文字" }));
+    await user.click(screen.getByRole("option", { name: "文字" }));
     expect(await screen.findByRole("article", { name: "新文字 · 文字" })).toHaveClass("is-selected");
     expect(creates).toEqual([{ kind: "TEXT", title: "新文字",
       content: { format: "PLAIN_TEXT", text: "" } }]);
@@ -294,12 +295,12 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
-    expect(screen.getByRole("menuitem", { name: "文字" })).toHaveFocus();
+    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(screen.getByRole("option", { name: "文字" })).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    await user.click(screen.getByRole("menuitem", { name: "图片" }));
+    await user.click(screen.getByRole("option", { name: "图片" }));
     await waitFor(() => expect(created).toBe(1));
     fireEvent.click(await screen.findByText("新图片"));
     const editor = await screen.findByLabelText("图片提示词");
@@ -329,15 +330,15 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
+    expect(screen.getAllByRole("option")).toHaveLength(5);
     await user.click(screen.getByLabelText("项目画布"));
-    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
-    screen.getByRole("menuitem", { name: "文字" }).blur();
+    expect(screen.getAllByRole("option")).toHaveLength(5);
+    screen.getByRole("option", { name: "文字" }).blur();
     await user.keyboard("{Escape}");
-    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
   });
 
   it("closes the bottom editor from its close button and from Escape", async () => {
@@ -830,7 +831,7 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    await user.click(screen.getByRole("menuitem", { name: "文字" }));
+    await user.click(screen.getByRole("option", { name: "文字" }));
     await screen.findByRole("alert");
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试创建文字节点" }));
@@ -1240,22 +1241,22 @@ describe("ProjectWorkspacePage", () => {
     const editorArea = heading.closest("article") as HTMLElement;
     const name = within(editorArea).getByDisplayValue("Agent Alpha");
     const instruction = within(editorArea).getByDisplayValue("Initial instruction");
-    fireEvent.change(name, { target: { value: "Agent Beta" } });
-    fireEvent.change(instruction, { target: { value: "Updated instruction" } });
+    await changeControl(name, { target: { value: "Agent Beta" } });
+    await changeControl(instruction, { target: { value: "Updated instruction" } });
     fireEvent.submit(name.closest("form") as HTMLFormElement);
 
     expect(await screen.findByText("Agent Beta")).toBeInTheDocument();
     expect(updated).toBe(true);
 
     const taskInput = within(editorArea).getByLabelText("本次任务");
-    fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
+    await changeControl(taskInput, { target: { value: "规划三个镜头" } });
     fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
     expect(await within(editorArea).findByText("确认开始")).toBeInTheDocument();
     expect(within(editorArea).getByText("确认开始")).toBeDisabled();
     expect(starts).toBe(0);
     modelAvailable = true;
-    fireEvent.change(taskInput, { target: { value: "规划三个镜头！" } });
-    fireEvent.change(taskInput, { target: { value: "规划三个镜头" } });
+    await changeControl(taskInput, { target: { value: "规划三个镜头！" } });
+    await changeControl(taskInput, { target: { value: "规划三个镜头" } });
     fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));
     await waitFor(() => expect(within(editorArea).getByText("确认开始")).not.toBeDisabled());
     expect(within(editorArea).getByText(/首轮只发送有上限的内容预览/)).toBeInTheDocument();

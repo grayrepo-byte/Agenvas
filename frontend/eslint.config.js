@@ -24,7 +24,7 @@ export default tseslint.config(
         message: "Use shared/ui/Select. Dropdown colors, spacing and options must stay in the shared UI layer.",
       }, {
         selector: "JSXOpeningElement[name.name='div']:has(JSXAttribute[name.name='role'][value.value=/^(menu|listbox)$/])",
-        message: "Use shared/ui/DropdownMenu for menu and listbox surfaces.",
+        message: "Use shared/ui/primitives/dropdown-menu or command for menu and listbox surfaces.",
       }],
     },
   },

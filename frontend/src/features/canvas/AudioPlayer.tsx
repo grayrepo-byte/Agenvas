@@ -1,7 +1,8 @@
-import { t, useLocale } from "../../shared/i18n";
-import { Pause, Play, SpeakerHigh, ArrowClockwise } from "@phosphor-icons/react";
+import { ArrowClockwise,Pause,Play,SpeakerHigh } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect,useRef,useState } from "react";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
 import "./AudioPlayer.css";
 
 const WAVEFORM_BARS = 72;
@@ -60,8 +61,8 @@ export function AudioPlayer({ src, title, selected = true, demo = false }: {
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
       onError={() => { setError(t("音频读取失败，请重试。")); setPlaying(false); }} />
     <div className="audio-player-controls">
-      <button type="button" className="audio-player-play" onClick={() => void toggle()}
-        aria-label={playing ? t("暂停音频") : t("播放音频")}>{playing ? <Pause size={20} weight="fill" /> : <Play size={20} weight="fill" />}</button>
+      <Button variant="ghost" type="button" className="audio-player-play" onClick={() => void toggle()}
+        aria-label={playing ? t("暂停音频") : t("播放音频")}>{playing ? <Pause size={20} weight="fill" /> : <Play size={20} weight="fill" />}</Button>
       <span className="audio-player-time">{timeLabel(position)} / {timeLabel(duration)}</span>
       <SpeakerHigh size={18} aria-hidden="true" />
     </div>
@@ -75,9 +76,9 @@ export function AudioPlayer({ src, title, selected = true, demo = false }: {
       max={duration || 1} step={0.01} value={Math.min(position, duration || 1)} disabled={duration <= 0}
       onChange={(event) => { const value = Number(event.target.value); if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
     {waveform.isFetching ? <small role="status">{t("正在读取波形…")}</small> : null}
-    {waveform.error ? <small>{t("波形暂不可用 ")}<button type="button" onClick={() => void waveform.refetch()}>{t("重试波形")}</button></small> : null}
-    {error ? <div className="audio-player-error" role="alert">{error}<button type="button"
-      onClick={() => { setError(null); audio.current?.load(); }}><ArrowClockwise size={14} />{t("重试播放")}</button></div> : null}
+    {waveform.error ? <small>{t("波形暂不可用 ")}<Button variant="ghost" type="button" onClick={() => void waveform.refetch()}>{t("重试波形")}</Button></small> : null}
+    {error ? <div className="audio-player-error" role="alert">{error}<Button variant="ghost" type="button"
+      onClick={() => { setError(null); audio.current?.load(); }}><ArrowClockwise size={14} />{t("重试播放")}</Button></div> : null}
     {demo ? <small className="audio-player-demo">{t("Mock 演示音频（非语音合成）")}</small> : null}
   </div>;
 }

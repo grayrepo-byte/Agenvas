@@ -1,12 +1,16 @@
-import { getFormatLocale, t, useLocale } from "../../shared/i18n";
+import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { ArrowsClockwise,TerminalWindow } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwise, TerminalWindow } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect,useRef,useState } from "react";
 import { Navigate } from "react-router";
-import { ApiError, getCurrentUser, listSystemLogs, type SystemLogStream } from "../../shared/api/client";
+import { ApiError,getCurrentUser,listSystemLogs,type SystemLogStream } from "../../shared/api/client";
+import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState, Notice, Panel } from "../../shared/ui/PagePrimitives";
+import { EmptyState,Notice,Panel } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
+import { Button } from "../../shared/ui/primitives/button";
+import { Checkbox } from "../../shared/ui/primitives/checkbox";
+import { Input } from "../../shared/ui/primitives/input";
 import { Select } from "../../shared/ui/Select";
 import "./SystemLogsPage.css";
 
@@ -45,26 +49,26 @@ export function SystemLogsPage() {
     || logs.error instanceof ApiError && logs.error.status === FORBIDDEN_STATUS;
   const snapshot = logs.data;
   return <PageShell title={t("系统日志")} description={t("查看当前后端进程的标准输出与标准错误，帮助排查运行问题。")} actions={
-    <button type="button" className="secondary-button" disabled={logs.isFetching || !currentUser.isSuccess || forbidden}
-      onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? t("正在刷新…") : t("刷新日志")}</button>
+    <Button variant="outline" type="button"  disabled={logs.isFetching || !currentUser.isSuccess || forbidden}
+      onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? t("正在刷新…") : t("刷新日志")}</Button>
   }>
     {forbidden ? <Notice tone="danger" title={t("无权查看系统日志")}>{t("仅管理员可以读取程序运行输出。")}</Notice> : <div className="ui-stack">
       <Panel title={t("控制台输出")} description={t("保留本次进程最近 2000 行；重启后重新记录。Java 输出在换行后显示，常见凭据会脱敏。")}>
         <form className="system-logs-filters" onSubmit={(event) => { event.preventDefault(); setSearch(keyword.trim()); }}>
-          <label className="ui-field">{t("输出通道")}<Select value={stream ?? ""} onChange={(event) => {
+          <Field><FieldLabel className="ui-field block">{t("输出通道")}<Select value={stream ?? ""} onChange={(event) => {
             const value = event.target.value;
             setStream(value === "STDOUT" || value === "STDERR" ? value : undefined);
-          }}><option value="">{t("全部输出")}</option><option value="STDOUT">{t("标准输出 stdout")}</option><option value="STDERR">{t("标准错误 stderr")}</option></Select></label>
-          <label className="ui-field system-logs-keyword">{t("关键词")}<input type="search" maxLength={MAX_SEARCH_LENGTH} value={keyword}
+          }}><option value="">{t("全部输出")}</option><option value="STDOUT">{t("标准输出 stdout")}</option><option value="STDERR">{t("标准错误 stderr")}</option></Select></FieldLabel></Field>
+          <label className="ui-field system-logs-keyword">{t("关键词")}<Input type="search" maxLength={MAX_SEARCH_LENGTH} value={keyword}
             placeholder={t("搜索日志内容或 Trace ID")} onChange={(event) => setKeyword(event.target.value)} /></label>
-          <label className="ui-field">{t("显示行数")}<Select value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
+          <Field><FieldLabel className="ui-field block">{t("显示行数")}<Select value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
             {LINE_LIMITS.map((value) => <option key={value} value={value}>{t("最近 {0} 行", { "0": value })}</option>)}
-          </Select></label>
-          <button type="submit" className="secondary-button">{t("搜索日志")}</button>
+          </Select></FieldLabel></Field>
+          <Button variant="outline" type="submit" >{t("搜索日志")}</Button>
         </form>
         <div className="system-logs-toolbar">
-          <label><input type="checkbox" checked={automatic} onChange={(event) => setAutomatic(event.target.checked)} />{t("自动刷新（每 3 秒）")}</label>
-          <label><input type="checkbox" checked={follow} onChange={(event) => setFollow(event.target.checked)} />{t("跟随最新输出")}</label>
+          <label><Checkbox  checked={automatic} onCheckedChange={(event) => setAutomatic(event === true)} />{t("自动刷新（每 3 秒）")}</label>
+          <label><Checkbox  checked={follow} onCheckedChange={(event) => setFollow(event === true)} />{t("跟随最新输出")}</label>
           <span className="ui-muted">{logs.isError ? t("刷新已停止，请手动重试") : automatic ? t("自动刷新中") : t("已暂停自动刷新")}</span>
         </div>
         {logs.isPending ? <LoadingState label={t("正在读取系统日志…")} /> : null}

@@ -1,8 +1,14 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, listCanvasItems, uploadCanvasItemVersion, uploadImageAsset, uploadAudioAsset,
-  type Artifact, type CanvasItem } from "../../shared/api/client";
+import { useMutation,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState,type FormEvent } from "react";
+import {
+ApiError,listCanvasItems,
+uploadAudioAsset,
+uploadCanvasItemVersion,uploadImageAsset,
+type Artifact,type CanvasItem
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
 
 /** Upload fills an empty media node, and only derives when the source already has a result. */
 export function MediaCardUpload({ artifact, item, initialFile, onDone, compact = false }: {
@@ -78,11 +84,11 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     {upload.isPending ? <p role="status">{t("正在上传{0}…", { "0": label })}</p> : null}
     {upload.error ? <div className="media-card-error" role="alert">
       <span>{errorMessage}</span>
-      <button type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
+      <Button variant="ghost" type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
         {refreshing ? t("读取中…") : t("重试上传")}
-      </button>
-      {upload.error instanceof ApiError && upload.error.status === 409 ? <button type="button"
-        disabled={refreshing} onClick={() => void refreshVersion()}>{t("读取最新版本")}</button> : null}
+      </Button>
+      {upload.error instanceof ApiError && upload.error.status === 409 ? <Button variant="ghost" type="button"
+        disabled={refreshing} onClick={() => void refreshVersion()}>{t("读取最新版本")}</Button> : null}
     </div> : null}
     {refreshError ? <p className="media-card-error" role="alert">{refreshError}</p> : null}
   </div>;
@@ -90,7 +96,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     <p>{item.selectedVersionId ? t("基于「{0}」上传{1}，并创建一个新节点。", { "0": artifact.title, "1": label })
       : t("上传{0}到「{1}」。", { "0": label, "1": artifact.title })}</p>
     <p className="text-xs text-[var(--muted)]">{t("已选择：{0}", { "0": file?.name })}</p>
-    <label>{t("更换{0}", { "0": label })}<input type="file" accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
+    <label>{t("更换{0}", { "0": label })}<Input type="file" accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
       disabled={upload.isPending} onChange={(event) => {
         const selected = event.target.files?.[0] ?? null;
         setFile(selected);
@@ -98,12 +104,12 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
         if (selected) upload.mutate(selected);
       }} /></label>
     <p className="text-xs text-[var(--muted)]">{isAudio ? t("MP3、WAV、OGG · 最大 50 MiB / 10 分钟") : t("PNG、JPEG、WebP · 最大 20 MiB / 40 MP")}</p>
-    <button className="primary-button" type="submit" disabled={!file || upload.isPending || refreshing}>
-      {upload.isPending ? t("正在上传…") : upload.error ? t("重试上传") : t("上传并创建节点")}</button>
+    <Button variant="default"  type="submit" disabled={!file || upload.isPending || refreshing}>
+      {upload.isPending ? t("正在上传…") : upload.error ? t("重试上传") : t("上传并创建节点")}</Button>
     {upload.error ? <p role="alert">{errorMessage}</p> : null}
-    {upload.error instanceof ApiError && upload.error.status === 409 ? <button className="secondary-button"
+    {upload.error instanceof ApiError && upload.error.status === 409 ? <Button variant="outline"
       type="button" disabled={refreshing} onClick={() => void refreshVersion()}>
-      {refreshing ? t("读取中…") : t("读取最新版本")}</button> : null}
+      {refreshing ? t("读取中…") : t("读取最新版本")}</Button> : null}
     {expectedVersion !== item.version ? <p role="status">{t("已读取当前节点状态，可再次上传并创建新节点。")}</p> : null}
     {refreshError ? <p role="alert">{refreshError}</p> : null}
   </form>;

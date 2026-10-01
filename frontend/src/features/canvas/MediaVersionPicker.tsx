@@ -1,10 +1,13 @@
-import { t, useLocale } from "../../shared/i18n";
-import { DropdownMenu } from "../../shared/ui/DropdownMenu";
-import { CaretDown, Stack } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
-import { ApiError, listCanvasMediaVersions, selectCanvasMediaVersion,
-  type CanvasItem } from "../../shared/api/client";
+import { CaretDown,Stack } from "@phosphor-icons/react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useRef,useState } from "react";
+import {
+ApiError,listCanvasMediaVersions,selectCanvasMediaVersion,
+type CanvasItem
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 
 const MIN_SELECTABLE_VERSION_COUNT = 2;
 const FIRST_NODE_VERSION_NO = 1;
@@ -40,39 +43,34 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
   });
 
   if (!canSelect) return history.error ? <div className="media-version-picker" role="alert">
-    {t("版本历史读取失败")}<button type="button" disabled={history.isFetching}
-      onClick={() => void history.refetch()}>{t("重试读取")}</button>
+    {t("版本历史读取失败")}<Button variant="ghost" type="button" disabled={history.isFetching}
+      onClick={() => void history.refetch()}>{t("重试读取")}</Button>
   </div> : null;
 
-  return <div className="media-version-picker" ref={anchor}
+  return <DropdownMenu open={menuOpen} onOpenChange={setOpen} modal={false}><div className="media-version-picker" ref={anchor}
     onKeyDown={(event) => {
       if (event.key === "Escape") { event.stopPropagation(); setOpen(false); toggle.current?.focus(); }
     }}>
-    <button type="button" ref={toggle} aria-expanded={menuOpen} aria-haspopup="menu"
-      onClick={() => { select.reset(); setOpen((value) => !value); }}>
+    <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={toggle} aria-expanded={menuOpen} aria-haspopup="menu"
+      onPointerDown={() => select.reset()}>
       <Stack size={17} />{t("版本{0}", { "0": selectedNumber !== undefined ? ` v${selectedNumber}` : "" })}<CaretDown size={12} />
-    </button>
-    {menuOpen ? <DropdownMenu className="media-version-menu" role="menu" aria-label={t("媒体版本")}
-      anchorRef={anchor} triggerRef={toggle} onDismiss={() => setOpen(false)} focusOnOpen>
+    </Button></DropdownMenuTrigger>
+    {menuOpen ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-version-menu" role="menu" aria-label={t("媒体版本")}><DropdownMenuGroup>
       <p>{history.data ? t("{0} 个版本", { "0": history.data.items.length }) : t("节点版本历史")}</p>
       {history.isPending ? <p role="status">{t("正在读取版本…")}</p> : null}
-      {history.error ? <div role="alert">{t("版本历史读取失败")}<button type="button" onClick={() => void history.refetch()}>{t("重试读取")}</button></div> : null}
-      {versions.map(({ version, nodeVersionNo }) => <button type="button" role="menuitem"
-        key={version.id} disabled={select.isPending}
-        aria-label={`v${nodeVersionNo} ${version.id === item.selectedVersionId ? t("当前选用") : t("选用此版本")}`}
-        aria-current={version.id === item.selectedVersionId ? "true" : undefined}
-        onClick={() => select.mutate(version.id)}>
+      {history.error ? <div role="alert">{t("版本历史读取失败")}<Button variant="ghost" type="button" onClick={() => void history.refetch()}>{t("重试读取")}</Button></div> : null}
+      {versions.map(({ version, nodeVersionNo }) => <DropdownMenuItem role="menuitem" disabled={select.isPending} aria-label={`v${nodeVersionNo} ${version.id === item.selectedVersionId ? t("当前选用") : t("选用此版本")}`} aria-current={version.id === item.selectedVersionId ? "true" : undefined} key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
         <span>v{nodeVersionNo}</span>
         <small>{version.id === item.selectedVersionId ? t("当前选用") : t("选用此版本")}</small>
-      </button>)}
+      </DropdownMenuItem>)}
       {select.isPending ? <p role="status">{t("正在切换版本…")}</p> : null}
       {select.error ? <div role="alert">{select.error instanceof ApiError
         ? select.error.message : t("版本切换失败，当前结果已保留。")}
-        <button type="button" onClick={() => {
+        <Button variant="ghost" type="button" onClick={() => {
           void client.invalidateQueries({ queryKey: ["canvas", projectId] });
           void history.refetch();
-        }}>{t("刷新版本")}</button></div> : null}
+        }}>{t("刷新版本")}</Button></div> : null}
       <p>{t("切换结果会保留当前草稿和已有引用。")}</p>
-    </DropdownMenu> : null}
-  </div>;
+    </DropdownMenuGroup></DropdownMenuContent> : null}
+  </div></DropdownMenu>;
 }

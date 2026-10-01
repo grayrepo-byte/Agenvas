@@ -1,13 +1,22 @@
-import { t, useLocale } from "../../shared/i18n";
-import { Select } from "../../shared/ui/Select";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowClockwise, ArrowCounterClockwise, BoundingBox, Eraser, Image as ImageIcon,
-  PaintBrush, PaperPlaneTilt, Plus, UploadSimple, X } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState, type FormEvent,
-  type PointerEvent as ReactPointerEvent } from "react";
+import {
+ArrowClockwise,ArrowCounterClockwise,BoundingBox,Eraser,Image as ImageIcon,
+PaintBrush,PaperPlaneTilt,Plus,UploadSimple,X
+} from "@phosphor-icons/react";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
+import {
+useEffect,useMemo,useRef,useState,type FormEvent,
+type PointerEvent as ReactPointerEvent
+} from "react";
 import { createPortal } from "react-dom";
-import { ApiError, assetContentUrl, createArtifact, listArtifacts, listCanvasItems, uploadImageAsset,
-  type MediaCapability } from "../../shared/api/client";
+import {
+ApiError,assetContentUrl,createArtifact,listArtifacts,listCanvasItems,uploadImageAsset,
+type MediaCapability
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
+import { Textarea } from "../../shared/ui/primitives/textarea";
+import { Select } from "../../shared/ui/Select";
 import { readContentText } from "./artifactContent";
 
 const MASK_LONG_EDGE = 1024;
@@ -296,29 +305,29 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     <section className="smart-edit-dialog nodrag nowheel nopan" role="dialog"
       aria-label={t("智能编辑图片")} aria-modal="true">
       <div className="smart-edit-toolbar">
-        <button type="button" className="smart-edit-close" onClick={onClose}
-          aria-label={t("退出智能编辑")}><X size={19} />{t("智能编辑")}</button>
+        <Button variant="ghost" type="button" className="smart-edit-close" onClick={onClose}
+          aria-label={t("退出智能编辑")}><X size={19} />{t("智能编辑")}</Button>
         <span className="smart-edit-divider" />
-        <button type="button" className={tool === "BRUSH" ? "is-active" : ""}
+        <Button variant="ghost" type="button" className={tool === "BRUSH" ? "is-active" : ""}
           aria-pressed={tool === "BRUSH"} onClick={() => setTool("BRUSH")}>
-          <PaintBrush size={17} />{t("涂抹")}</button>
-        <button type="button" className={tool === "RECTANGLE" ? "is-active" : ""}
+          <PaintBrush size={17} />{t("涂抹")}</Button>
+        <Button variant="ghost" type="button" className={tool === "RECTANGLE" ? "is-active" : ""}
           aria-pressed={tool === "RECTANGLE"} onClick={() => setTool("RECTANGLE")}>
-          <BoundingBox size={17} />{t("框选")}</button>
+          <BoundingBox size={17} />{t("框选")}</Button>
         <span className="smart-edit-divider" />
-        <button type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
+        <Button variant="ghost" type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
           aria-label={t("添加蒙版")} aria-pressed={strokeMode === "PAINT"}
-          onClick={() => setStrokeMode("PAINT")}><PaintBrush size={18} /></button>
-        <button type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
+          onClick={() => setStrokeMode("PAINT")}><PaintBrush size={18} /></Button>
+        <Button variant="ghost" type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
           aria-label={t("擦除蒙版")} aria-pressed={strokeMode === "ERASE"}
-          onClick={() => setStrokeMode("ERASE")}><Eraser size={18} /></button>
+          onClick={() => setStrokeMode("ERASE")}><Eraser size={18} /></Button>
         <label className="smart-edit-brush-size"><span className="sr-only">{t("笔刷大小")}</span>
           <input type="range" min={8} max={120} value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <button type="button" className="is-icon" aria-label={t("撤销蒙版")} disabled={!historyState.canUndo}
-          onClick={() => restoreHistory(historyIndex.current - 1)}><ArrowCounterClockwise size={18} /></button>
-        <button type="button" className="is-icon" aria-label={t("重做蒙版")} disabled={!historyState.canRedo}
-          onClick={() => restoreHistory(historyIndex.current + 1)}><ArrowClockwise size={18} /></button>
+        <Button variant="ghost" type="button" className="is-icon" aria-label={t("撤销蒙版")} disabled={!historyState.canUndo}
+          onClick={() => restoreHistory(historyIndex.current - 1)}><ArrowCounterClockwise size={18} /></Button>
+        <Button variant="ghost" type="button" className="is-icon" aria-label={t("重做蒙版")} disabled={!historyState.canRedo}
+          onClick={() => restoreHistory(historyIndex.current + 1)}><ArrowClockwise size={18} /></Button>
       </div>
 
       <div className="smart-edit-stage" aria-label={t("蒙版编辑区")}>
@@ -333,10 +342,10 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
 
       <div className="smart-edit-composer">
         <div className="smart-edit-reference-actions">
-          <button type="button" aria-expanded={referencePickerOpen}
-            onClick={() => setReferencePickerOpen((open) => !open)}><Plus size={17} />{t("引用")}</button>
-          <button type="button" onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("上传")}</button>
-          <input ref={uploadRef} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp"
+          <Button variant="ghost" type="button" aria-expanded={referencePickerOpen}
+            onClick={() => setReferencePickerOpen((open) => !open)}><Plus size={17} />{t("引用")}</Button>
+          <Button variant="ghost" type="button" onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("上传")}</Button>
+          <Input ref={uploadRef} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp"
             multiple aria-label={t("上传智能编辑参考图")} onChange={handleUpload} />
           {referencePickerOpen ? <div className="smart-edit-reference-picker" role="dialog"
             aria-label={t("选择智能编辑参考图")}>
@@ -344,24 +353,24 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
             <div>{referenceSources.isLoading ? <span>{t("正在读取…")}</span>
               : availableReferences.length ? availableReferences.map((reference) => {
                 const selected = references.some((item) => item.versionId === reference.versionId);
-                return <button key={reference.versionId} type="button" className={selected ? "is-selected" : ""}
+                return <Button variant="ghost" key={reference.versionId} type="button" className={selected ? "is-selected" : ""}
                   disabled={!selected && references.length >= referenceCapacity}
                   onClick={() => setReferences((current) => selected
                     ? current.filter((item) => item.versionId !== reference.versionId)
                     : [...current, reference])}>
                   <img src={reference.thumbnailUrl} alt="" /><span>{reference.label}</span>
-                </button>;
+                </Button>;
               }) : <span>{t("项目资源中暂无可引用图片")}</span>}</div>
           </div> : null}
         </div>
         {references.length ? <div className="smart-edit-references" aria-label={t("已选参考图")}>
           {references.map((reference, index) => <div key={reference.versionId}>
             <img src={reference.thumbnailUrl} alt="" /><span>{index + 2}</span>
-            <button type="button" aria-label={t("移除参考图 {0}", { "0": reference.label })}
+            <Button variant="ghost" type="button" aria-label={t("移除参考图 {0}", { "0": reference.label })}
               onClick={() => setReferences((current) => current.filter(
-                (item) => item.versionId !== reference.versionId))}><X size={12} /></button>
+                (item) => item.versionId !== reference.versionId))}><X size={12} /></Button>
           </div>)}</div> : null}
-        <textarea value={instruction} maxLength={4000}
+        <Textarea value={instruction} maxLength={4000}
           aria-label={t("智能编辑提示词")}
           placeholder={t("描述你想要的修改，例如“把背景换成海边”；可引用或上传图片作为视觉参考")}
           onChange={(event) => setInstruction(event.target.value)} />
@@ -373,10 +382,10 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
                 : <option value="">{hasMask ? t("请配置支持蒙版的 OpenAI 图片能力") : t("请配置图片能力")}</option>}
             </Select></label>
           <span>{hasMask ? t("透明区域将被编辑") : t("未绘制蒙版，将编辑整张图片")}</span>
-          <button type="button" className="smart-edit-submit" aria-label={t("开始智能编辑")}
+          <Button variant="ghost" type="button" className="smart-edit-submit" aria-label={t("开始智能编辑")}
             disabled={!canSubmit} onClick={() => void submit()}>
             {busy || uploading ? <span className="smart-edit-submit-progress">…</span>
-              : <PaperPlaneTilt size={18} weight="fill" />}</button>
+              : <PaperPlaneTilt size={18} weight="fill" />}</Button>
         </div>
         {references.length > referenceCapacity ? <p role="alert">{t("当前模型最多还能接收 {0} 张额外参考图。", { "0": referenceCapacity })}</p> : null}
         {localError ? <p role="alert">{localError}</p> : null}

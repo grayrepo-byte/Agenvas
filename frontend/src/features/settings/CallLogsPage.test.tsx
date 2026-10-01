@@ -1,11 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CallLog, CallLogPage, Task } from "../../shared/api/client";
+import type { CallLog,CallLogPage,Task } from "../../shared/api/client";
+import { changeControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { CallLogsPage } from "./CallLogsPage";
 
@@ -48,12 +49,12 @@ describe("CallLogsPage", () => {
     await screen.findByText("test-model");
     expect(reads).not.toHaveBeenCalled();
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getAllByRole("row", { hidden: true })).toHaveLength(2);
     await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
     await screen.findByText(/本次调用未开启 debug 模式/);
     expect(reads).toHaveBeenCalledTimes(1);
     const dialog = screen.getByRole("dialog", { name: "调用详情" });
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getAllByRole("row", { hidden: true })).toHaveLength(2);
     expect(within(table).queryByRole("region", { name: "调用内容" })).not.toBeInTheDocument();
     await userEvent.setup().click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -93,11 +94,11 @@ describe("CallLogsPage", () => {
     await user.click(screen.getByRole("button", { name: "下一页" }));
     await screen.findByText("第 2 页 / 共 2 页 · 每页 20 条");
     expect(requests.at(-1)?.get("page")).toBe("1");
-    await user.selectOptions(screen.getByLabelText("调用类型"), "VIDEO");
-    await user.selectOptions(screen.getByLabelText("调用状态"), "UNKNOWN");
+    await selectValue(screen.getByLabelText("调用类型"), "VIDEO");
+    await selectValue(screen.getByLabelText("调用状态"), "UNKNOWN");
     await user.type(screen.getByLabelText("Trace ID"), "trace-filter");
-    fireEvent.change(screen.getByLabelText("开始时间"), { target: { value: "2026-09-25T08:00:00" } });
-    fireEvent.change(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T09:00:00" } });
+    await changeControl(screen.getByLabelText("开始时间"), { target: { value: "2026-09-25T08:00:00" } });
+    await changeControl(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T09:00:00" } });
     await user.click(screen.getByRole("button", { name: "筛选日志" }));
     await waitFor(() => expect(requests.at(-1)?.get("traceId")).toBe("trace-filter"));
     expect(Object.fromEntries(requests.at(-1)!)).toEqual({ projectId: PROJECT_ID, kind: "VIDEO", status: "UNKNOWN", traceId: "trace-filter",
@@ -111,8 +112,8 @@ describe("CallLogsPage", () => {
     server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
     showPage();
     await screen.findByText("test-model");
-    fireEvent.change(screen.getByLabelText("开始时间"), { target: { value: "2026-09-27T08:00:00" } });
-    fireEvent.change(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T08:00:00" } });
+    await changeControl(screen.getByLabelText("开始时间"), { target: { value: "2026-09-27T08:00:00" } });
+    await changeControl(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T08:00:00" } });
     await userEvent.setup().click(screen.getByRole("button", { name: "筛选日志" }));
     expect(screen.getByRole("alert")).toHaveTextContent("结束时间不能早于开始时间");
     expect(reads).toHaveBeenCalledTimes(1);
@@ -208,7 +209,7 @@ describe("CallLogsPage", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Prompt" })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "调用详情" })).toBeInTheDocument();
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.body).toHaveAttribute("data-scroll-locked");
     expect(expand).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

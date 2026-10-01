@@ -1,10 +1,13 @@
-import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
-import { listRunActions, listRunTasks,
-  type AgentRun, type Task } from "../../shared/api/client";
-import { AgentChatMessage, AgentChatTaskRow } from "./AgentChatPrimitives";
+import {
+listRunActions,listRunTasks,
+type AgentRun,type Task
+} from "../../shared/api/client";
+import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { Button } from "../../shared/ui/primitives/button";
+import { AgentChatMessage,AgentChatTaskRow } from "./AgentChatPrimitives";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
@@ -57,8 +60,8 @@ export function AgentRunConversation({ projectId, run, active }: {
     <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString(getFormatLocale())}</time>{run.conversationTurn ? t(" · 第 {0} 轮", { "0": run.conversationTurn }) : ""}</p>
     <AgentChatMessage role="user">{run.instruction}</AgentChatMessage>
     {tasks.isPending || actions.isPending ? <CanvasLoadingState compact label={t("正在读取任务消息…")} /> : null}
-    {tasks.error ? <div className="agent-chat-error" role="alert">{t("任务消息读取失败。")}<button className="node-action" onClick={() => void tasks.refetch()} type="button">{t("重试消息")}</button></div> : null}
-    {actions.error ? <div className="agent-chat-error" role="alert">{t("动作记录读取失败。")}<button className="node-action" onClick={() => void actions.refetch()} type="button">{t("重试动作")}</button></div> : null}
+    {tasks.error ? <div className="agent-chat-error" role="alert">{t("任务消息读取失败。")}<Button variant="ghost" className="node-action" onClick={() => void tasks.refetch()} type="button">{t("重试消息")}</Button></div> : null}
+    {actions.error ? <div className="agent-chat-error" role="alert">{t("动作记录读取失败。")}<Button variant="ghost" className="node-action" onClick={() => void actions.refetch()} type="button">{t("重试动作")}</Button></div> : null}
     {actions.data?.length ? <p className="agent-chat-eyebrow">{t("以下动作状态记录于提交时；当前进度见任务卡片。")}</p> : null}
     {steps.map((step) => <Fragment key={step}>
       {turns.filter((task) => stepIndex(task) === step).map((task) => {

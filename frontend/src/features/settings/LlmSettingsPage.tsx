@@ -1,12 +1,16 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, FloppyDisk, ShieldCheck } from "@phosphor-icons/react";
-import { type FormEvent, useState } from "react";
-import { Link, Navigate } from "react-router";
-import { ApiError, diagnoseLlmSettings, getCurrentUser, getLlmSettings, getSystemDiagnostics, replaceLlmSettings, type LlmSettings } from "../../shared/api/client";
+import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@phosphor-icons/react";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
+import { useState,type FormEvent } from "react";
+import { Link,Navigate } from "react-router";
+import { ApiError,diagnoseLlmSettings,getCurrentUser,getLlmSettings,getSystemDiagnostics,replaceLlmSettings,type LlmSettings } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice, Panel, StatusBadge, SummaryStrip } from "../../shared/ui/PagePrimitives";
+import { Notice,Panel,StatusBadge,SummaryStrip } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
+import { Button } from "../../shared/ui/primitives/button";
+import { Checkbox } from "../../shared/ui/primitives/checkbox";
+import { Input } from "../../shared/ui/primitives/input";
 import "./SettingsPages.css";
 
 const UNAUTHORIZED_STATUS = 401;
@@ -107,7 +111,7 @@ export function LlmSettingsPage() {
         {settings.isPending ? <LoadingState label={t("正在读取配置…")} /> : null}
         {settings.isError ? <Notice tone="danger" title={t("读取配置失败")}>
           <p>{t("暂时无法获取模型配置，请重试。")}</p>
-          <button className="secondary-button" type="button" disabled={settings.isFetching} onClick={() => { void settings.refetch(); }}>{t("重新读取配置")}</button>
+          <Button variant="outline"  type="button" disabled={settings.isFetching} onClick={() => { void settings.refetch(); }}>{t("重新读取配置")}</Button>
         </Notice> : null}
         {snapshot ? <>
           <Panel title={t("LLM 配置")} description={t("管理员配置 OpenAI 兼容模型端点。")} actions={<StatusBadge tone={snapshot.configured ? "success" : "neutral"}>{snapshot.configured ? t("已配置") : t("未配置")}</StatusBadge>}>
@@ -118,26 +122,26 @@ export function LlmSettingsPage() {
               </div>
               {hasRemoteUpdate ? <Notice tone="warning" title={t("已有更新的配置")}>
                 <p>{t("已保留当前输入；继续保存仍使用开始编辑时的版本。载入最新配置会替换当前草稿并清空密钥。")}</p>
-                <button className="secondary-button" type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setError(""); setAcknowledgedVersion(null); }}>{t("载入最新配置")}</button>
+                <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setError(""); setAcknowledgedVersion(null); }}>{t("载入最新配置")}</Button>
               </Notice> : null}
-              <label className="ui-field">{t("端点地址")}<input autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" />
-              </label>
-              <label className="ui-field">{t("模型 ID")}<input autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" />
-              </label>
-              <label className="ui-field">{t("API Key（每次修改均需重新输入）")}<input autoComplete="new-password" required type="password" disabled={busy} value={apiKey} onChange={(event) => {
+              <Field><FieldLabel className="ui-field block">{t("端点地址")}<Input autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" />
+              </FieldLabel></Field>
+              <Field><FieldLabel className="ui-field block">{t("模型 ID")}<Input autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" />
+              </FieldLabel></Field>
+              <Field><FieldLabel className="ui-field block">{t("API Key（每次修改均需重新输入）")}<Input autoComplete="new-password" required type="password" disabled={busy} value={apiKey} onChange={(event) => {
                   if (base && !draft) setDraft({ base, endpoint, modelId });
                   setApiKey(event.target.value); setSaved(false); setAcknowledgedVersion(null);
                 }} />
-              </label>
+              </FieldLabel></Field>
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("密钥输入已清空，重试前请重新输入。")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("配置已加密保存，密钥输入已清空。")}</Notice> : null}
               <div className="ui-form-actions settings-save-bar">
                 {saving ? <LoadingState compact label={t("正在保存配置…")} /> : <span className="ui-muted">{hasUnsavedChanges ? t("有未保存的修改") : t("保存后需验证当前版本的工具协议。")}</span>}
                 <div className="ui-form-actions">
-                  {hasUnsavedChanges ? <button className="ghost-button" type="button" disabled={busy} onClick={() => {
+                  {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
                     setDraft(null); setApiKey(""); setError(""); setSaved(false); setAcknowledgedVersion(null);
-                  }}>{t("撤销修改")}</button> : null}
-                  <button className="primary-button" disabled={busy} type="submit"><FloppyDisk size={16} aria-hidden />{saving ? t("正在保存…") : t("保存配置")}</button>
+                  }}>{t("撤销修改")}</Button> : null}
+                  <Button variant="default"  disabled={busy} type="submit"><FloppyDisk size={16} aria-hidden />{saving ? t("正在保存…") : t("保存配置")}</Button>
                 </div>
               </div>
             </form>
@@ -149,11 +153,11 @@ export function LlmSettingsPage() {
           <div className="ui-stack">
             <p className="settings-status-line"><ShieldCheck size={20} aria-hidden />{t("当前版本 {0}：{1}。", { "0": snapshot.version, "1": snapshot.toolCallingVerified ? t("完整工具往返已验证") : t("尚未验证，Agent Run 会被阻断") })}</p>
             <p className="ui-muted">{t("诊断最多向模型服务发送两次请求，可能产生费用。它验证工具请求、结果回填和下一轮响应，不验证视觉或输出质量。")}</p>
-            <label className="settings-consent"><input type="checkbox" checked={costAcknowledged} disabled={busy || hasUnsavedChanges || hasRemoteUpdate} onChange={(event) => setAcknowledgedVersion(event.target.checked ? snapshot.version : null)} /><span>{t("我确认此次诊断可能产生模型费用")}</span></label>
+            <label className="settings-consent"><Checkbox  checked={costAcknowledged} disabled={busy || hasUnsavedChanges || hasRemoteUpdate} onCheckedChange={(event) => setAcknowledgedVersion(event === true ? snapshot.version : null)} /><span>{t("我确认此次诊断可能产生模型费用")}</span></label>
             {diagnosticError ? <Notice tone="danger">{diagnosticError}</Notice> : null}
             {diagnosed ? <Notice tone="success">{t("已验证完整工具协议。")}</Notice> : null}
             {diagnosing ? <LoadingState compact label={t("正在验证工具协议…")} /> : null}
-            <div className="ui-form-actions"><span className="ui-muted">{hasUnsavedChanges || hasRemoteUpdate ? t("请先保存并清空未提交的密钥输入，再诊断已保存版本。") : t("每次诊断都需要确认费用。")}</span><button className="secondary-button" type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("正在诊断…") : t("执行可能计费的诊断")}</button></div>
+            <div className="ui-form-actions"><span className="ui-muted">{hasUnsavedChanges || hasRemoteUpdate ? t("请先保存并清空未提交的密钥输入，再诊断已保存版本。") : t("每次诊断都需要确认费用。")}</span><Button variant="outline"  type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("正在诊断…") : t("执行可能计费的诊断")}</Button></div>
           </div>
         </Panel> : null}
         <Notice title={t("配置与验证")}>
@@ -162,7 +166,7 @@ export function LlmSettingsPage() {
           <div className="ui-stack">
             <p className="ui-muted">{t("下方为当前运行模式的配置状态，读取状态不会执行付费生成。")}</p>
             {mediaStatus.isPending ? <LoadingState compact label={t("正在读取媒体状态…")} /> : null}
-            {mediaStatus.isError ? <Notice tone="danger"><p>{t("媒体配置状态读取失败。")}</p><button className="secondary-button" type="button" disabled={mediaStatus.isFetching} onClick={() => { void mediaStatus.refetch(); }}>{t("重新读取媒体状态")}</button></Notice> : null}
+            {mediaStatus.isError ? <Notice tone="danger"><p>{t("媒体配置状态读取失败。")}</p><Button variant="outline"  type="button" disabled={mediaStatus.isFetching} onClick={() => { void mediaStatus.refetch(); }}>{t("重新读取媒体状态")}</Button></Notice> : null}
             {mediaStatus.data ? <p className="settings-mode-summary">{t("{0} · 图片{1} · 视频{2}", { "0": mediaStatus.data.mediaMode === "MOCK" ? t("Mock 模式") : t("ComfyUI 模式"), "1": mediaStatus.data.imageConfigured ? t("已配置") : t("未配置"), "2": mediaStatus.data.videoConfigured ? t("已配置") : t("未配置") })}</p> : null}
             <Link className="settings-nav-link" to="/settings/media">{t("管理媒体连接")}<ArrowUpRight size={16} aria-hidden /></Link>
             <Link className="settings-nav-link" to="/settings/general?tab=diagnostics">{t("查看系统诊断")}<ArrowUpRight size={16} aria-hidden /></Link>

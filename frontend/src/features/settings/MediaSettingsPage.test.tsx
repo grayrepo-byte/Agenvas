@@ -1,13 +1,14 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
+import { describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import type { MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaSettingsPage } from "./MediaSettingsPage";
-import type { MediaCapability, MediaConnection, MediaSettings } from "../../shared/api/client";
 
 const mockDefault = [
   { kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 0 },
@@ -65,7 +66,7 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "RunningHub");
-    await user.selectOptions(within(dialog).getByRole("combobox", { name: "平台" }), "RUNNINGHUB");
+    await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "RUNNINGHUB");
     await user.type(within(dialog).getByRole("textbox", { name: "RunningHub API 地址" }), "https://custom-api.example.com");
     await user.type(within(dialog).getByLabelText("API Key"), "fixture-key");
     await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
@@ -94,11 +95,13 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "背景应用");
-    await user.selectOptions(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
+    await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
     expect(await within(dialog).findByRole("combobox", { name: "创作风格 *" })).toHaveValue("0");
-    expect(within(dialog).getByRole("option", { name: "写实" })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("combobox", { name: "创作风格 *" }));
+    expect(screen.getByRole("option", { name: "写实" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
     expect(published).toEqual([]);
     await user.click(within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" }));
@@ -280,7 +283,7 @@ describe("MediaSettingsPage", () => {
     expect(await screen.findByText("尚无媒体连接")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "添加连接" }));
     await user.type(screen.getByRole("textbox", { name: "连接名称" }), "OpenAI main");
-    await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "OPENAI");
+    await selectValue(screen.getByRole("combobox", { name: "平台" }), "OPENAI");
     const key = screen.getByLabelText("API Key") as HTMLInputElement;
     await user.type(key, "provider-secret-7890");
     await user.type(screen.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
@@ -393,7 +396,7 @@ describe("MediaSettingsPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Wan video");
-    await user.selectOptions(screen.getByRole("combobox", { name: "固定适配器" }), "COMFY_VIDEO_V1");
+    await selectValue(screen.getByRole("combobox", { name: "固定适配器" }), "COMFY_VIDEO_V1");
     await user.type(screen.getByRole("textbox", { name: "视频扩散模型文件名" }), "wan.safetensors");
     await user.type(screen.getByRole("textbox", { name: "文本编码器文件名" }), "text.safetensors");
     await user.type(screen.getByRole("textbox", { name: "VAE 文件名" }), "vae.safetensors");
@@ -435,7 +438,7 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Portrait image");
     expect(screen.getByRole("combobox", { name: "固定适配器" })).toHaveValue("OPENAI_GPT_IMAGE_2");
-    await user.selectOptions(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
+    await selectValue(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
       adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }));
@@ -500,7 +503,7 @@ describe("MediaSettingsPage", () => {
     expect(within(dialog).getByRole("spinbutton", { name: "单位价格" })).toHaveValue(0.125);
     await user.click(screen.getByRole("tab", { name: "默认参数" }));
     expect(within(dialog).getByRole("combobox", { name: "默认分辨率" })).toHaveValue("2K");
-    await user.selectOptions(within(dialog).getByRole("combobox", { name: "默认分辨率" }), "4K");
+    await selectValue(within(dialog).getByRole("combobox", { name: "默认分辨率" }), "4K");
     await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
     await waitFor(() => expect(submitted).toMatchObject({ settings: { model: "gateway-image", quality: "high",
       defaultParameters: { aspectRatio: "16:9", resolution: "4K", generationCount: 2 },
@@ -530,8 +533,10 @@ describe("MediaSettingsPage", () => {
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Nano Banana 2");
     expect(screen.getByRole("combobox", { name: "固定适配器" }))
       .toHaveValue("GOOGLE_NANO_BANANA_2");
-    expect(screen.getByRole("option", { name: "Nano Banana 2 · Google Gemini" })).toHaveValue("GOOGLE_NANO_BANANA_2");
-    expect(screen.getByRole("table", { name: "媒体连接" })).toHaveTextContent("Google Gemini");
+    await user.click(screen.getByRole("combobox", { name: "固定适配器" }));
+    expect(screen.getByRole("option", { name: "Nano Banana 2 · Google Gemini" })).toHaveAttribute("data-value", "GOOGLE_NANO_BANANA_2");
+    await user.keyboard("{Escape}");
+    expect(screen.getByText("Google Gemini", { selector: "strong" })).toBeInTheDocument();
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Nano Banana 2",
       adapterId: "GOOGLE_NANO_BANANA_2", settings: { model: "" } }));
@@ -554,7 +559,7 @@ describe("MediaSettingsPage", () => {
     expect(screen.queryByRole("textbox", { name: "能力名称" })).not.toBeInTheDocument();
     const resolution = screen.getByRole("combobox", { name: "默认分辨率" });
     await user.click(resolution);
-    expect(screen.getByRole("listbox").closest("dialog")).toBe(screen.getByRole("dialog"));
+    expect(screen.getByRole("listbox").closest("[role=dialog]")).toBeNull();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -606,7 +611,7 @@ describe("MediaSettingsPage", () => {
     );
     mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "GOOGLE");
+    await selectValue(screen.getByRole("combobox", { name: "平台" }), "GOOGLE");
     expect(screen.getByRole("note", { name: "Nano Banana 接口配置说明" }))
       .toHaveTextContent("当前接口格式：Gemini v1（默认）");
     await user.type(screen.getByRole("textbox", { name: "连接名称" }), "Google gateway");
@@ -638,7 +643,7 @@ describe("MediaSettingsPage", () => {
     mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     await user.type(screen.getByRole("textbox", { name: "连接名称" }), "AutoDL");
-    await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "AUTODL");
+    await selectValue(screen.getByRole("combobox", { name: "平台" }), "AUTODL");
     expect(screen.getByText(/分组为 ComfyUI 的 Token/)).toBeInTheDocument();
     await user.type(screen.getByLabelText("API Key"), "fake-autodl-key");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "添加连接" }));
@@ -646,7 +651,7 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "H3 mixed");
     expect(screen.getByRole("combobox", { name: "AutoDL 工作流" })).toHaveValue("minimax_h3_z0903");
-    await user.selectOptions(screen.getByRole("combobox", { name: "AutoDL 输出分辨率" }), "480p");
+    await selectValue(screen.getByRole("combobox", { name: "AutoDL 输出分辨率" }), "480p");
     await user.type(screen.getByRole("spinbutton", { name: "随机种子（留空使用工作流默认）" }), "123");
     await user.click(screen.getByRole("tab", { name: "输入限制" }));
     expect(screen.getByRole("spinbutton", { name: "最多参考图数量" })).toHaveAttribute("max", "6");

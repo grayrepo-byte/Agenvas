@@ -1,10 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render,screen,waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
+import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { SystemSettingsPage } from "./SystemSettingsPage";
 
@@ -109,7 +110,7 @@ describe("SystemSettingsPage", () => {
     await user.click(screen.getByRole("tab", { name: "调用日志" }));
     const select = screen.getByRole("combobox", { name: "保留时长" });
     await waitFor(() => expect(select).toBeEnabled());
-    await user.selectOptions(select, "custom"); const input = screen.getByRole("spinbutton");
+    await selectValue(select, "custom"); const input = screen.getByRole("spinbutton");
     await user.clear(input); await user.type(input, "77");
     await user.click(screen.getByRole("tab", { name: "常规" }));
     await user.click(screen.getByRole("tab", { name: "调用日志" }));
@@ -118,7 +119,7 @@ describe("SystemSettingsPage", () => {
     const logTab = screen.getByRole("tab", { name: "调用日志" }); logTab.focus();
     await user.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "系统诊断" })).toHaveFocus();
-    expect(screen.getByRole("tab", { name: "系统诊断" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(screen.getByRole("tab", { name: "系统诊断" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(diagnostics).toHaveBeenCalledTimes(1));
   });
 

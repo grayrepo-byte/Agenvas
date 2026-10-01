@@ -1,11 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act,render,screen,waitFor } from "@testing-library/react";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import { server } from "../../test/server";
 import type { SystemLogSnapshot } from "../../shared/api/client";
+import { changeControl,clickControl } from "../../test/controls";
+import { server } from "../../test/server";
 import { SystemLogsPage } from "./SystemLogsPage";
 
 const snapshot: SystemLogSnapshot = {
@@ -56,10 +57,10 @@ describe("SystemLogsPage", () => {
     }));
     showPage();
     await screen.findByText("Started AgenvasApplication");
-    fireEvent.change(screen.getByLabelText("输出通道"), { target: { value: "STDERR" } });
-    fireEvent.change(screen.getByLabelText("关键词"), { target: { value: "  Trace ID  " } });
-    fireEvent.click(screen.getByRole("button", { name: "搜索日志" }));
-    fireEvent.change(screen.getByLabelText("显示行数"), { target: { value: "1000" } });
+    await changeControl(screen.getByLabelText("输出通道"), { target: { value: "STDERR" } });
+    await changeControl(screen.getByLabelText("关键词"), { target: { value: "  Trace ID  " } });
+    await clickControl(screen.getByRole("button", { name: "搜索日志" }));
+    await changeControl(screen.getByLabelText("显示行数"), { target: { value: "1000" } });
     await waitFor(() => {
       const latest = requests.at(-1);
       expect(latest?.searchParams.get("stream")).toBe("STDERR");
@@ -75,12 +76,12 @@ describe("SystemLogsPage", () => {
     showPage();
     await screen.findByText("Started AgenvasApplication");
     fail = true;
-    fireEvent.click(screen.getByRole("button", { name: "刷新日志" }));
+    await clickControl(screen.getByRole("button", { name: "刷新日志" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("保留上一次成功读取的日志");
     expect(screen.getByText("Started AgenvasApplication")).toBeInTheDocument();
     expect(screen.getByText("刷新已停止，请手动重试")).toBeInTheDocument();
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "刷新日志" }));
+    await clickControl(screen.getByRole("button", { name: "刷新日志" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
@@ -95,8 +96,8 @@ describe("SystemLogsPage", () => {
     await screen.findByLabelText("正在读取系统日志…");
     finish?.();
     expect(await screen.findByText("暂无控制台输出")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("关键词"), { target: { value: "missing" } });
-    fireEvent.click(screen.getByRole("button", { name: "搜索日志" }));
+    await changeControl(screen.getByLabelText("关键词"), { target: { value: "missing" } });
+    await clickControl(screen.getByRole("button", { name: "搜索日志" }));
     expect(await screen.findByText("没有匹配的日志")).toBeInTheDocument();
   });
 
@@ -126,7 +127,7 @@ describe("SystemLogsPage", () => {
       expect(await screen.findByText("New process started")).toBeInTheDocument();
       expect(requests).toHaveBeenCalledTimes(2);
       expect(screen.queryByText("Started AgenvasApplication")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByLabelText("自动刷新（每 3 秒）"));
+      await clickControl(screen.getByLabelText("自动刷新（每 3 秒）"));
       await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
       expect(requests).toHaveBeenCalledTimes(2);
       expect(screen.getByText("已暂停自动刷新")).toBeInTheDocument();

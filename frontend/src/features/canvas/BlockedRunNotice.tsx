@@ -1,8 +1,9 @@
-import { t, useLocale } from "../../shared/i18n";
 import { WarningCircle } from "@phosphor-icons/react";
-import "./AgentChatPanels.css";
 import { useQuery } from "@tanstack/react-query";
 import { listRunTasks } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import "./AgentChatPanels.css";
 import { taskErrorDetail } from "./taskErrorMessages";
 
 /** Explains a durable BLOCKED Run using only safe Task codes, never model messages. */
@@ -31,7 +32,7 @@ export function BlockedRunNotice({ projectId, runId }: {
     <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("运行已阻断；系统不会自动重复调用模型或提交媒体任务。")}</p>
     {tasks.isPending ? <p>{t("正在读取持久化任务原因…")}</p> : null}
     {tasks.error ? <p role="alert">{t("暂时无法读取阻断原因，请检查运行记录。")}</p> : null}
-    {tasks.error ? <button className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("重试读取")}</button> : null}
+    {tasks.error ? <Button variant="ghost" className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("重试读取")}</Button> : null}
     {tasks.data ? <p>{explanation}</p> : null}
     {archivedMedia ? <p className="text-xs">{t("诊断码：TASK_PROJECT_ARCHIVED")}</p> : null}
     {staleMedia ? <p className="text-xs">{t("诊断码：TASK_INPUT_STALE")}</p> : null}

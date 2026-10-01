@@ -1,13 +1,14 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Routes, Route } from "react-router";
-import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import type { UpdateCallLogRetentionRequest } from "../../shared/api/client";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { CallLogRetentionSection } from "./CallLogRetentionSection";
-import type { UpdateCallLogRetentionRequest } from "../../shared/api/client";
 
 const PATH = "/api/v1/settings/call-log-retention";
 function show() {
@@ -34,7 +35,7 @@ describe("CallLogRetentionSection", () => {
     expect(screen.getByText(/模型回合、工具执行与 Provider 提交账本/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存保留设置" })).toBeDisabled();
     for (const [mode, days] of [["30", 30], ["90", 90], ["custom", 17], ["forever", null]] as const) {
-      await user.selectOptions(select, mode);
+      await selectValue(select, mode);
       if (mode === "custom") { const input = screen.getByRole("spinbutton"); await user.clear(input); await user.type(input, "17"); }
       await user.click(screen.getByRole("button", { name: "保存保留设置" }));
       await screen.findByText("日志保留设置已保存。");
@@ -46,7 +47,7 @@ describe("CallLogRetentionSection", () => {
   it("validates custom integers before writing and preserves selection on a failed save", async () => {
     const writes = vi.fn();
     server.use(http.put(PATH, () => { writes(); return HttpResponse.json({ status: 503 }, { status: 503 }); }));
-    show(); const user = userEvent.setup(); await user.selectOptions(await loaded(), "custom");
+    show(); const user = userEvent.setup(); await selectValue(await loaded(), "custom");
     const input = screen.getByRole("spinbutton"); const save = screen.getByRole("button", { name: "保存保留设置" });
     for (const value of ["", "0", "3651", "1.5"]) {
       await user.clear(input); if (value) await user.type(input, value);
@@ -54,7 +55,7 @@ describe("CallLogRetentionSection", () => {
     }
     expect(writes).not.toHaveBeenCalled();
     // Presets must still work after an invalid custom draft.
-    await user.selectOptions(screen.getByRole("combobox"), "90"); expect(save).toBeEnabled();
+    await selectValue(screen.getByRole("combobox"), "90"); expect(save).toBeEnabled();
     await user.click(save); await screen.findByText("保存日志保留设置失败");
     expect(screen.getByRole("combobox")).toHaveValue("90");
   });
@@ -66,7 +67,7 @@ describe("CallLogRetentionSection", () => {
         if (body.expectedVersion === 1) { version = 2; return HttpResponse.json({ status: 409, code: "VERSION_CONFLICT" }, { status: 409 }); }
         return HttpResponse.json({ retentionDays: body.retentionDays, version: 3 });
       }));
-    show(); const user = userEvent.setup(); await user.selectOptions(await loaded(), "custom");
+    show(); const user = userEvent.setup(); await selectValue(await loaded(), "custom");
     const input = screen.getByRole("spinbutton"); await user.clear(input); await user.type(input, "42");
     await user.click(screen.getByRole("button", { name: "保存保留设置" }));
     await screen.findByText("日志保留设置已变化"); expect(input).toHaveValue(42);
@@ -105,7 +106,7 @@ describe("CallLogRetentionSection", () => {
     dialog = screen.getByRole("dialog"); await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
     await waitFor(() => expect(requests).toHaveBeenCalledWith({ expectedVersion: 7 }));
     expect(within(dialog).getByRole("button", { name: "正在清理…" })).toBeDisabled();
-    expect(screen.getByRole("combobox")).toBeDisabled();
+    expect(document.querySelector('[data-slot="select-trigger"]')).toBeDisabled();
     finish?.(); await screen.findByText("本次已清理 12 个执行记录（含调用日志与账本）。");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(requests).toHaveBeenCalledTimes(1);
   });
@@ -113,7 +114,7 @@ describe("CallLogRetentionSection", () => {
     server.use(http.get(PATH, () => HttpResponse.json({ retentionDays: 30, version: 1 })),
       http.put(PATH, () => HttpResponse.json({ retentionDays: 90, version: 2 })),
       http.post(`${PATH}/cleanup`, () => HttpResponse.json({ cleanedExecutions: 10000, batchLimitReached: true })));
-    show(); const user = userEvent.setup(); await user.selectOptions(await loaded(), "90");
+    show(); const user = userEvent.setup(); await selectValue(await loaded(), "90");
     expect(screen.getByRole("button", { name: "立即清理" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "保存保留设置" })); await screen.findByText("日志保留设置已保存。");
     await user.click(screen.getByRole("button", { name: "立即清理" }));

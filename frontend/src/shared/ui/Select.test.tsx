@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import { Select } from "./Select";
 
 function Form() {
@@ -43,7 +43,7 @@ describe("Select", () => {
     expect(select).toHaveValue("c");
   });
 
-  it("dismisses with Escape, outside click and Tab without changing the value", async () => {
+  it("dismisses with Escape and outside pointer and Tab without changing the value", async () => {
     render(<Form />);
     const user = userEvent.setup();
     const select = screen.getByRole("combobox");
@@ -52,12 +52,13 @@ describe("Select", () => {
     expect(select).toHaveValue("a");
     expect(select).toHaveFocus();
     await user.click(select);
-    await user.click(screen.getByRole("button", { name: "下一项" }));
+    const outside = screen.getByRole("button", { name: "下一项", hidden: true });
+    fireEvent.pointerDown(outside);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     await user.click(select);
     await user.tab();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下一项" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("button", { name: "下一项" })).toHaveFocus());
   });
 
   it("honors disabled fieldsets and disabled option groups", async () => {
@@ -69,12 +70,12 @@ describe("Select", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     const select = screen.getByRole("combobox", { name: "分组" });
     await user.click(select);
-    expect(within(screen.getByRole("listbox")).getByRole("option", { name: "Alpha" })).toBeDisabled();
+    expect(within(screen.getByRole("listbox")).getByRole("option", { name: "Alpha" })).toHaveAttribute("aria-disabled", "true");
     await user.keyboard("{Home}{Enter}");
     expect(select).toHaveValue("c");
   });
 
-  it("fits the viewport and opens upward near the bottom", async () => {
+  it("delegates available viewport height to Radix positioning", async () => {
     render(<Form />);
     const select = screen.getByRole("combobox");
     vi.spyOn(select, "getBoundingClientRect").mockReturnValue({
@@ -84,9 +85,9 @@ describe("Select", () => {
     });
     await userEvent.setup().click(select);
     const list = screen.getByRole("listbox");
-    expect(list.style.bottom).toBe("51px");
-    expect(parseFloat(list.style.left) + parseFloat(list.style.width)).toBeLessThanOrEqual(window.innerWidth - 8);
-    fireEvent(window, new Event("resize"));
+    expect(list).toHaveAttribute("data-slot", "select-content");
+    expect(list.style.getPropertyValue("--radix-select-content-available-height")).toBe("var(--radix-popper-available-height)");
+    await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
@@ -99,6 +100,6 @@ describe("Select", () => {
     view.rerender(<Select aria-label="模型" defaultValue="a" onChange={change}><option value="a">Alpha</option></Select>);
     await waitFor(() => expect(within(screen.getByRole("listbox")).queryByRole("option", { name: "Charlie" })).not.toBeInTheDocument());
     expect(change).not.toHaveBeenCalled();
-    expect(screen.getByRole("combobox")).toHaveValue("a");
+    expect(screen.getByRole("combobox", { name: "模型", hidden: true })).toHaveValue("a");
   });
 });

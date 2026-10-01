@@ -1,19 +1,22 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient,QueryClientProvider } from "@tanstack/react-query";
+import { act,render,screen,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { HttpResponse,http } from "msw";
 import { MemoryRouter } from "react-router";
-import { HttpResponse, http } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
+import {
+DEFAULT_LOCALE,LOCALE_NAMES,LOCALE_STORAGE_KEY,SUPPORTED_LOCALES,
+detectLocale,formatDate,formatNumber,getLocale,resolveLocale,setLocale,t,translate
+} from ".";
 import { LoginPage } from "../../features/auth/LoginPage";
-import { getSetupStatus, uploadImageAsset } from "../api/client";
+import { changeControl } from "../../test/controls";
 import { server } from "../../test/server";
+import { getSetupStatus,uploadImageAsset } from "../api/client";
 import { LanguageSelect } from "./LanguageSelect";
-import { DEFAULT_LOCALE, LOCALE_NAMES, LOCALE_STORAGE_KEY, SUPPORTED_LOCALES,
-  detectLocale, formatDate, formatNumber, getLocale, resolveLocale, setLocale, t, translate } from ".";
 import en from "./locales/en.json";
-import zh from "./locales/zh.json";
-import ru from "./locales/ru.json";
 import ja from "./locales/ja.json";
+import ru from "./locales/ru.json";
+import zh from "./locales/zh.json";
 
 describe("shared locale configuration", () => {
   it("matches supported regions and rejects unsupported languages", () => {
@@ -64,12 +67,12 @@ describe("shared locale configuration", () => {
     expect(formatDate(date)).toBe(new Intl.DateTimeFormat("ru-RU").format(date));
   });
 
-  it("switches the actual login page without losing inputs or remounting it", () => {
+  it("switches the actual login page without losing inputs or remounting it", async () => {
     render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><LoginPage /></MemoryRouter></QueryClientProvider>);
     const username = screen.getByRole("textbox", { name: t("登录名") });
-    fireEvent.change(username, { target: { value: "my-admin" } });
+    await changeControl(username, { target: { value: "my-admin" } });
     const password = screen.getByLabelText(t("密码"));
-    fireEvent.change(password, { target: { value: "draft-password" } });
+    await changeControl(password, { target: { value: "draft-password" } });
     for (const locale of SUPPORTED_LOCALES) {
       act(() => { setLocale(locale); });
       expect(screen.getByRole("heading", { name: translate(locale, "登录 Agenvas") })).toBeInTheDocument();

@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { render,screen,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import { Dialog } from "./Dialog";
 
 const preventSubmit = (event: React.FormEvent<HTMLFormElement>) => event.preventDefault();
@@ -11,9 +11,10 @@ describe("Dialog stacking", () => {
     const { unmount } = render(<Dialog title="Parent" onClose={() => {}} onSubmit={preventSubmit} footer={null}>
       <Dialog title="Child" onClose={() => {}} onSubmit={preventSubmit} footer={null}>child</Dialog>
     </Dialog>);
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.body).toHaveAttribute("data-scroll-locked");
     unmount();
     expect(document.body.style.overflow).toBe("auto");
+    expect(document.body).not.toHaveAttribute("data-scroll-locked");
     document.body.style.overflow = "";
   });
 

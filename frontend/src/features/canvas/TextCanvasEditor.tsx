@@ -1,10 +1,14 @@
-import { t, useLocale } from "../../shared/i18n";
-import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
-import { Select } from "../../shared/ui/Select";
-import { ArrowUp, LockSimple, TextT, X } from "@phosphor-icons/react";
+import { ArrowUp,LockSimple,TextT,X } from "@phosphor-icons/react";
 import { type FormEvent } from "react";
-import { ApiError, reviseArtifact,
-  type ReviseArtifactRequest } from "../../shared/api/client";
+import {
+ApiError,reviseArtifact,
+type ReviseArtifactRequest
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Textarea } from "../../shared/ui/primitives/textarea";
+import { Select } from "../../shared/ui/Select";
+import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { readContentText } from "./artifactContent";
 import { TextVersionPicker } from "./TextVersionPicker";
 import { useArtifactRevision } from "./useArtifactRevision";
@@ -44,9 +48,9 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone }: {
     <div className="content-card-body text-card-editor-body">
       {status.newerAvailable || status.conflict ? <div className="text-card-notice">
         <span>{t("当前版本已更新，本地修改仍保留。")}</span>
-        <button type="button" onClick={reload}>{t("载入最新版本")}</button>
+        <Button variant="ghost" type="button" onClick={reload}>{t("载入最新版本")}</Button>
       </div> : null}
-      <textarea aria-label={t("内容")} data-content-editor-focus="true" maxLength={MAX_TEXT_LENGTH}
+      <Textarea aria-label={t("内容")} data-content-editor-focus="true" maxLength={MAX_TEXT_LENGTH}
         disabled={status.busy} placeholder={t("写下想法，让创作开始…")} required value={fields.text}
         onChange={(event) => edit({ text: event.target.value })} />
       {status.error ? <p className="text-card-error" role="alert">{status.conflict
@@ -67,10 +71,10 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone }: {
       </Select>
       <span className="text-card-count">{fields.text.length}/{MAX_TEXT_LENGTH}</span>
       {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("已锁定")} /> : null}
-      <button aria-label={t("退出内容编辑")} className="text-card-done" disabled={status.busy}
-        onClick={onDone} title={t("退出内容编辑")} type="button"><X size={14} /></button>
-      <button aria-label={t("保存新版本")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
-        title={status.saving ? t("保存中…") : t("保存新版本")} type="submit"><ArrowUp size={15} weight="bold" /></button>
+      <Button variant="ghost" aria-label={t("退出内容编辑")} className="text-card-done" disabled={status.busy}
+        onClick={onDone} title={t("退出内容编辑")} type="button"><X size={14} /></Button>
+      <Button variant="ghost" aria-label={t("保存新版本")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
+        title={status.saving ? t("保存中…") : t("保存新版本")} type="submit"><ArrowUp size={15} weight="bold" /></Button>
     </footer>
   </form>;
 }

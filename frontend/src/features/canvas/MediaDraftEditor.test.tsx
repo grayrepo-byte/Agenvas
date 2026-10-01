@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient,QueryClientProvider } from "@tanstack/react-query";
+import { act,cleanup,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse, type RequestHandler } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Artifact, MediaCapability, MediaDraft, MediaSettings, SaveMediaDraftRequest, Task } from "../../shared/api/client";
+import { http,HttpResponse,type RequestHandler } from "msw";
+import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
+import type { Artifact,MediaCapability,MediaDraft,MediaSettings,SaveMediaDraftRequest,Task } from "../../shared/api/client";
+import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { useCanvasStore } from "./canvasStore";
@@ -145,11 +146,13 @@ describe("MediaDraftEditor", () => {
       handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact, kind: "VIDEO", id: "video-reference", title: "原片段", resourceDefaultVersionId: "video-v1" }] })),
         http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/video-reference/versions`, () => HttpResponse.json({ items: [{ id: "video-v1", versionNo: 1, content: { assetId: "video-asset" } }] }))] });
     const slot = await screen.findByRole("combobox", { name: "参考视频 *" });
+    await userEvent.setup().click(slot);
     await screen.findByRole("option", { name: "原片段 · v1" });
+    await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByRole("textbox", { name: "视频提示词" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "选择视频输入模式" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
-    fireEvent.change(slot, { target: { value: "video-v1" } });
+    await changeControl(slot, { target: { value: "video-v1" } });
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ clip: "video-v1" }));
     expect(saves.at(-1)?.mediaInputs).toEqual([{ versionId: "video-v1", role: "VIDEO_REFERENCE", color: "#F15CAF" }]);
     expect(saves.at(-1)?.durationSeconds).toBeNull();
@@ -170,8 +173,8 @@ describe("MediaDraftEditor", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     const picker = screen.getByRole("dialog", { name: "尺寸与画质设置" });
-    expect(within(picker).queryByRole("button", { name: "1:1" })).not.toBeInTheDocument();
-    await user.click(within(picker).getByRole("button", { name: "16:9" }));
+    expect(within(picker).queryByRole("radio", { name: "1:1" })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole("radio", { name: "16:9" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
@@ -205,7 +208,7 @@ describe("MediaDraftEditor", () => {
     expect(saves.at(-1)?.durationSeconds).toBeNull();
     expect(saves.at(-1)?.videoInputMode).toBeNull();
     await user.click(screen.getByRole("button", { name: "音频参数" }));
-    fireEvent.change(screen.getByLabelText("语速"), { target: { value: "-20" } });
+    await changeControl(screen.getByLabelText("语速"), { target: { value: "-20" } });
     await waitFor(() => expect(saves.at(-1)?.parameters.speechRate).toBe(-20));
   });
 
@@ -462,10 +465,10 @@ describe("MediaDraftEditor", () => {
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     const parameters = screen.getByRole("dialog", { name: "尺寸与画质设置" });
-    await user.click(within(parameters).getByRole("button", { name: "9:16" }));
-    await user.click(within(parameters).getByRole("button", { name: "2K" }));
-    await user.click(within(parameters).getByRole("button", { name: "低" }));
-    await user.click(within(parameters).getByRole("button", { name: "4" }));
+    await user.click(within(parameters).getByRole("radio", { name: "9:16" }));
+    await user.click(within(parameters).getByRole("radio", { name: "2K" }));
+    await user.click(within(parameters).getByRole("radio", { name: "低" }));
+    await user.click(within(parameters).getByRole("radio", { name: "4" }));
     await user.click(within(parameters).getByRole("switch", { name: "透明背景" }));
     await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({
       aspectRatio: "9:16", resolution: "2K", quality: "low", transparentBackground: true,
@@ -527,12 +530,16 @@ describe("MediaDraftEditor", () => {
     const addImage = screen.getByRole("button", { name: "添加图片输入" });
     await user.hover(addImage);
     const menu = screen.getByRole("menu", { name: "图片来源" });
+    // The portaled menu must remain open when the pointer leaves its trigger.
+    await user.hover(menu);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)); });
+    expect(menu).toBeVisible();
     const uploadFromDevice = within(menu).getByRole("menuitem", { name: "从设备上传" });
     expect(uploadFromDevice).toBeEnabled();
     expect(within(menu).getByRole("menuitem", { name: "从资源库选择" })).toBeEnabled();
     expect(within(menu).getByRole("menuitem", { name: "从画布选择" })).toBeEnabled();
     const drawReference = within(menu).getByRole("menuitem", { name: "绘制引用图（暂未接入）" });
-    expect(drawReference).toBeDisabled();
+    expect(drawReference).toHaveAttribute("aria-disabled", "true");
     uploadFromDevice.focus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu", { name: "图片来源" })).not.toBeInTheDocument();
@@ -561,9 +568,9 @@ describe("MediaDraftEditor", () => {
     await user.hover(screen.getByRole("button", { name: "添加图片输入" }));
     const uploadInput = screen.getByLabelText("选择本地图片");
     const openPicker = vi.spyOn(uploadInput, "click");
-    fireEvent.click(screen.getByRole("menuitem", { name: "从设备上传" }));
+    await clickControl(screen.getByRole("menuitem", { name: "从设备上传" }));
     expect(openPicker).toHaveBeenCalledOnce();
-    fireEvent.change(uploadInput, { target: { files: [
+    await changeControl(uploadInput, { target: { files: [
       new File(["image bytes"], "reference.png", { type: "image/png" }),
     ] } });
     await waitFor(() => expect(artifactRequests).toHaveLength(1));
@@ -786,8 +793,8 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent("文生视频");
     await user.click(screen.getByRole("button", { name: "选择视频输入模式" }));
     expect(screen.getByRole("menuitemradio", { name: /文生视频/ })).toBeEnabled();
-    expect(screen.getByRole("menuitemradio", { name: /全能参考/ })).toBeDisabled();
-    expect(screen.getByRole("menuitemradio", { name: /首尾帧/ })).toBeDisabled();
+    expect(screen.getByRole("menuitemradio", { name: /全能参考/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitemradio", { name: /首尾帧/ })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("switches the first image to general reference and persists a video aspect ratio", async () => {
@@ -816,7 +823,7 @@ describe("MediaDraftEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
     const parameters = screen.getByRole("dialog", { name: "尺寸与画质设置" });
-    await user.click(within(parameters).getByRole("button", { name: "9:16" }));
+    await user.click(within(parameters).getByRole("radio", { name: "9:16" }));
     await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "9:16" }));
     expect(screen.getByRole("button", { name: "尺寸与画质" })).toHaveTextContent("9:16");
   });

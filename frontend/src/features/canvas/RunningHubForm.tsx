@@ -1,6 +1,10 @@
-import { t, useLocale } from "../../shared/i18n";
+import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { useState } from "react";
-import type { RunningHubDefinition, RunningHubField } from "../../shared/api/client";
+import type { RunningHubDefinition,RunningHubField } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
+import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Select } from "../../shared/ui/Select";
 
 export type RunningHubValue = string | number | boolean;
@@ -50,11 +54,11 @@ function UploadSlot({ field, disabled, onUpload }: { field: RunningHubField; dis
     finally { setBusy(false); }
   }
   return <div>
-    <label className="ui-field">{t("上传{0}", { "0": field.label })}<input type="file" disabled={disabled || busy}
+    <Field><FieldLabel className="ui-field block">{t("上传{0}", { "0": field.label })}<Input type="file" disabled={disabled || busy}
       accept={field.type === "IMAGE" ? "image/png,image/jpeg,image/webp" : field.type === "VIDEO" ? "video/mp4" : "audio/mpeg,audio/wav,audio/flac"}
-      onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ""; if (selected) void upload(selected); }} /></label>
+      onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ""; if (selected) void upload(selected); }} /></FieldLabel></Field>
     {busy ? <p role="status">{t("正在上传并保存精确版本…")}</p> : null}
-    {error ? <p role="alert">{error}{file ? <button type="button" disabled={busy || disabled} onClick={() => void upload(file)}>{t("重试上传")}</button> : null}</p> : null}
+    {error ? <p role="alert">{error}{file ? <Button variant="ghost" type="button" disabled={busy || disabled} onClick={() => void upload(file)}>{t("重试上传")}</Button> : null}</p> : null}
   </div>;
 }
 
@@ -71,7 +75,7 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
     const value = effective[field.key];
     const isMedia = ["IMAGE", "AUDIO", "VIDEO"].includes(field.type);
     return <div className="ui-stack" key={field.key}>
-      <label className="ui-field">{field.label}{field.required ? " *" : ""}
+      <Field><FieldLabel className="ui-field block">{field.label}{field.required ? " *" : ""}
         {isMedia ? <Select value={typeof value === "string" ? value : ""} disabled={disabled} onChange={(event) => onChange(field.key, event.target.value || undefined)}>
           <option value="">{t("选择{0}精确版本", { "0": field.type === "IMAGE" ? t("图片") : field.type === "AUDIO" ? t("音频") : t("视频") })}</option>
           {choices.filter((choice) => choice.kind === field.type).map((choice) => <option key={choice.id} value={choice.id} disabled={!choice.available}>{choice.label}</option>)}
@@ -81,12 +85,12 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
           <option value="">{t("请选择")}</option>{field.options?.map((option, index) => <option key={index} value={index}>{option.label}</option>)}
         </Select> : field.type === "BOOLEAN" ? <Select value={value === undefined ? "" : String(value)} disabled={disabled} onChange={(event) => onChange(field.key, event.target.value ? event.target.value === "true" : undefined)}>
           <option value="">{t("使用默认值")}</option><option value="true">{t("开启")}</option><option value="false">{t("关闭")}</option>
-        </Select> : field.type === "STRING" ? <textarea rows={3} maxLength={field.maxLength ?? 20000} disabled={disabled} value={value === undefined ? "" : String(value)}
-          onChange={(event) => onChange(field.key, event.target.value)} /> : <input type="number" value={value === undefined ? "" : Number(value)} disabled={disabled}
+        </Select> : field.type === "STRING" ? <Textarea rows={3} maxLength={field.maxLength ?? 20000} disabled={disabled} value={value === undefined ? "" : String(value)}
+          onChange={(event) => onChange(field.key, event.target.value)} /> : <Input type="number" value={value === undefined ? "" : Number(value)} disabled={disabled}
           min={field.source === "DURATION_SECONDS" ? Math.max(MIN_DURATION_SECONDS, field.minimum ?? MIN_DURATION_SECONDS) : field.minimum ?? undefined}
           max={field.source === "DURATION_SECONDS" ? Math.min(MAX_DURATION_SECONDS, field.maximum ?? MAX_DURATION_SECONDS) : field.maximum ?? undefined} step={field.type === "INTEGER" ? 1 : "any"}
           onChange={(event) => onChange(field.key, event.target.value ? Number(event.target.value) : undefined)} />}
-      </label>
+      </FieldLabel></Field>
       {field.description ? <p className="ui-muted">{field.description}</p> : null}
       {isMedia && onUpload ? <UploadSlot field={field} disabled={disabled} onUpload={onUpload} /> : null}
     </div>;

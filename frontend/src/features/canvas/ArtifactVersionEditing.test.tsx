@@ -1,14 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent,render,screen,waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http,HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { VersionedArtifact } from "./versionedArtifact";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { TextCanvasEditor } from "./TextCanvasEditor";
+import type { VersionedArtifact } from "./versionedArtifact";
 
 const now = "2026-09-24T00:00:00Z";
 const REVISIONS_URL = "/api/v1/projects/:projectId/artifacts/:artifactId/revisions";
@@ -79,7 +80,7 @@ describe("Artifact version editing", () => {
     );
     renderEditor(textEditor(artifact()));
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("文字格式"), "MARKDOWN");
+    await selectValue(screen.getByLabelText("文字格式"), "MARKDOWN");
     await user.clear(screen.getByLabelText("内容"));
     await user.type(screen.getByLabelText("内容"), "Revised");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));

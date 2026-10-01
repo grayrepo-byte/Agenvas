@@ -1,8 +1,9 @@
+import { render,screen } from "@testing-library/react";
 import { useState } from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe,expect,it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
-import { RunningHubForm, runningHubErrors, runningHubUsedVersions, type RunningHubValue } from "./RunningHubForm";
+import { changeControl,clickControl } from "../../test/controls";
+import { RunningHubForm,runningHubErrors,runningHubUsedVersions,type RunningHubValue } from "./RunningHubForm";
 
 const definition: RunningHubDefinition = { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
   fields: [
@@ -19,15 +20,15 @@ function Form() {
     <output>{JSON.stringify(values)}</output></>;
 }
 describe("RunningHubForm", () => {
-  it("renders typed enums and false defaults, conditionally reveals advanced fields and chooses an exact video version", () => {
+  it("renders typed enums and false defaults, conditionally reveals advanced fields and chooses an exact video version", async () => {
     render(<Form />);
     expect(screen.getByRole("combobox", { name: "模式 *" })).toHaveValue("0");
     expect(screen.getByRole("combobox", { name: "保留声音 *" })).toHaveValue("false");
     expect(screen.queryByRole("spinbutton", { name: "变化强度 *" })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "模式 *" }), { target: { value: "1" } });
-    fireEvent.click(screen.getByText("高级参数"));
+    await changeControl(screen.getByRole("combobox", { name: "模式 *" }), { target: { value: "1" } });
+    await clickControl(screen.getByText("高级参数"));
     expect(screen.getByRole("spinbutton", { name: "变化强度 *" })).toHaveAttribute("max", "1");
-    fireEvent.change(screen.getByRole("combobox", { name: "参考视频 *" }), { target: { value: "video-v1" } });
+    await changeControl(screen.getByRole("combobox", { name: "参考视频 *" }), { target: { value: "video-v1" } });
     expect(screen.getByRole("status")).toHaveTextContent('{"mode":2,"clip":"video-v1"}');
   });
   it("does not require universal prompt or duration and validates only active fields", () => {

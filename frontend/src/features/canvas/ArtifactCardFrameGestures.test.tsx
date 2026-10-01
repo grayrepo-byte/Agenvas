@@ -1,7 +1,8 @@
-import { createEvent, fireEvent, render, screen } from "@testing-library/react";
-import { ReactFlow, type NodeProps } from "@xyflow/react";
+import { createEvent,fireEvent,render,screen } from "@testing-library/react";
+import { ReactFlow,type NodeProps } from "@xyflow/react";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
+import { clickControl } from "../../test/controls";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 
 const action = vi.fn();
@@ -31,7 +32,7 @@ describe("ArtifactCardFrame toolbar gestures", () => {
     const up = createEvent.mouseUp(button, { button: 0 });
     Object.defineProperty(up, "view", { value: window });
     fireEvent(button, up);
-    fireEvent.click(button);
+    await clickControl(button);
     expect(action).toHaveBeenCalledOnce();
   });
 });

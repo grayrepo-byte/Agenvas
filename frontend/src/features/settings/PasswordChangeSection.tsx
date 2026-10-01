@@ -1,9 +1,12 @@
-import { t, useLocale } from "../../shared/i18n";
+import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { Key } from "@phosphor-icons/react";
-import { type FormEvent, useState } from "react";
-import { ApiError, changePassword } from "../../shared/api/client";
+import { type FormEvent,useState } from "react";
+import { ApiError,changePassword } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice, Panel } from "../../shared/ui/PagePrimitives";
+import { Notice,Panel } from "../../shared/ui/PagePrimitives";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
 
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_MAX_LENGTH = 128;
@@ -44,13 +47,13 @@ export function PasswordChangeSection() {
   return <Panel title={t("修改管理员密码")} description={t("修改成功后，其他已登录会话会失效；当前会话继续有效。")}>
     <form className="ui-form" onSubmit={(event) => { void submit(event); }} aria-busy={saving}>
       <div className="ui-stack password-fields">
-        <label className="ui-field">{t("当前密码")}<input autoComplete="current-password" type="password" required maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setSaved(false); }} />
-        </label>
+        <Field><FieldLabel className="ui-field block">{t("当前密码")}<Input autoComplete="current-password" type="password" required maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setSaved(false); }} />
+        </FieldLabel></Field>
         <div className="ui-form-grid">
-          <label className="ui-field">{t("新密码")}<input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setSaved(false); }} aria-describedby="password-length-hint" />
-          </label>
-          <label className="ui-field">{t("确认新密码")}<input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setSaved(false); }} />
-          </label>
+          <Field><FieldLabel className="ui-field block">{t("新密码")}<Input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setSaved(false); }} aria-describedby="password-length-hint" />
+          </FieldLabel></Field>
+          <Field><FieldLabel className="ui-field block">{t("确认新密码")}<Input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setSaved(false); }} />
+          </FieldLabel></Field>
         </div>
         <p className="ui-muted" id="password-length-hint">{t("密码长度为 {0}–{1} 个字符。", { "0": PASSWORD_MIN_LENGTH, "1": PASSWORD_MAX_LENGTH })}</p>
       </div>
@@ -58,7 +61,7 @@ export function PasswordChangeSection() {
       {saved ? <Notice tone="success">{t("密码已修改，其他会话已失效。")}</Notice> : null}
       <div className="ui-form-actions">
         {saving ? <LoadingState compact label={t("正在修改密码…")} /> : <span className="ui-muted">{t("提交完成后，密码输入会自动清空。")}</span>}
-        <button className="primary-button" type="submit" disabled={saving}><Key size={16} aria-hidden />{saving ? t("正在修改…") : t("修改密码")}</button>
+        <Button variant="default"  type="submit" disabled={saving}><Key size={16} aria-hidden />{saving ? t("正在修改…") : t("修改密码")}</Button>
       </div>
     </form>
   </Panel>;

@@ -1,11 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { http,HttpResponse } from "msw";
+import { MemoryRouter,Route,Routes } from "react-router";
+import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Project } from "../../shared/api/client";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { ProjectsPage } from "./ProjectsPage";
 
@@ -50,7 +51,7 @@ describe("ProjectsPage", () => {
     showPage(); const user = userEvent.setup();
     const input = await screen.findByRole("textbox", { name: "项目名称" });
     await user.type(input, "新世界");
-    await user.selectOptions(screen.getByRole("combobox", { name: "画幅" }), "PORTRAIT_9_16");
+    await selectValue(screen.getByRole("combobox", { name: "画幅" }), "PORTRAIT_9_16");
     await user.click(screen.getByRole("button", { name: "创建项目" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法创建");
     expect(input).toHaveValue("新世界");

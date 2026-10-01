@@ -1,8 +1,9 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { X } from "@phosphor-icons/react";
+import { useEffect,useRef,useState } from "react";
+import { createPortal } from "react-dom";
+import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
+import { Button } from "../../shared/ui/primitives/button";
 import "./ImagePreviewDialog.css";
 
 export function ImagePreviewDialog({ title, sourceUrl, onClose }: {
@@ -42,15 +43,15 @@ export function ImagePreviewDialog({ title, sourceUrl, onClose }: {
         }
       }}>
       <header><strong>{title}</strong>
-        <button ref={closeRef} type="button" aria-label={t("关闭图片预览")} onClick={onClose}><X size={22} /></button>
+        <Button variant="ghost" ref={closeRef} type="button" aria-label={t("关闭图片预览")} onClick={onClose}><X size={22} /></Button>
       </header>
       <div className="image-preview-stage">
         {status === "FAILED" ? <div className="image-preview-error" role="alert">
           <p>{t("图片加载失败，请重试。")}</p>
-          <button type="button" onClick={() => {
+          <Button variant="ghost" type="button" onClick={() => {
             closeRef.current?.focus();
             setStatus("LOADING");
-          }}>{t("重试加载图片")}</button>
+          }}>{t("重试加载图片")}</Button>
         </div> : <>
           <img src={sourceUrl} alt={t("{0} 的原图", { "0": title })} draggable={false}
             onLoad={() => setStatus("READY")} onError={() => setStatus("FAILED")} />

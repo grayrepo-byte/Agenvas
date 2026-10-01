@@ -1,77 +1,84 @@
-import { t, useLocale } from "../../shared/i18n";
-import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
-import { prepareMediaNode, AUDIO_CARD_WIDTH, AUDIO_CARD_HEIGHT, type PreparedMediaNode } from "./mediaNodeActions";
-import { DropdownMenu } from "../../shared/ui/DropdownMenu";
+import { ImageSquare,MusicNotes,Sparkle,TextT,VideoCamera,X,type Icon } from "@phosphor-icons/react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import {
-  Background,
-  ConnectionLineType,
-  Controls,
-  MiniMap,
-  NodeResizer,
-  NodeToolbar,
-  Position,
-  ReactFlow,
-  type Connection,
-  type Edge,
-  type EdgeChange,
-  type Node,
-  type NodeChange,
-  type NodeProps,
-  type ResizeParams,
-  type ReactFlowInstance,
+Background,
+ConnectionLineType,
+Controls,
+MiniMap,
+NodeResizer,
+NodeToolbar,
+Position,
+ReactFlow,
+type Connection,
+type Edge,
+type EdgeChange,
+type Node,
+type NodeChange,
+type NodeProps,
+type ReactFlowInstance,
+type ResizeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, Navigate, useParams } from "react-router";
+import { memo,useCallback,useEffect,useMemo,useRef,useState,type FormEvent } from "react";
+import { Link,Navigate,useParams } from "react-router";
 import {
-  ApiError,
-  applyCanvasCommands,
-  createCanvasConnection,
-  createAgent,
-  createArtifact,
-  getCurrentUser,
-  getMediaDraft,
-  getProject,
-  getProjectSnapshot,
-  listCanvasItems,
-  listAgents,
-  listCanvasConnections,
-  listArtifacts,
-  projectExportManifestUrl,
-  uploadImageAsset, uploadAudioAsset, uploadVideoAsset,
-  updateAgent,
-  disconnectCanvasConnection,
-  duplicateCanvasItem,
-  type Agent,
-  type AgentRun,
-  type Artifact,
-  type CanvasCommand,
-  type CanvasItem,
-  type ProjectSnapshot,
+ApiError,
+applyCanvasCommands,
+createAgent,
+createArtifact,
+createCanvasConnection,
+disconnectCanvasConnection,
+duplicateCanvasItem,
+getCurrentUser,
+getMediaDraft,
+getProject,
+getProjectSnapshot,
+listAgents,
+listArtifacts,
+listCanvasConnections,
+listCanvasItems,
+projectExportManifestUrl,
+updateAgent,
+uploadAudioAsset,
+uploadImageAsset,
+uploadVideoAsset,
+type Agent,
+type AgentRun,
+type Artifact,
+type CanvasCommand,
+type CanvasItem,
+type ProjectSnapshot,
 } from "../../shared/api/client";
-import { useCanvasStore } from "./canvasStore";
-import { subscribeProjectEvents, type EventSyncStatus } from "./projectEvents";
-import { AgentChatCard, AGENT_CHAT_WIDTH, AGENT_CHAT_HEIGHT, AGENT_CHAT_MIN_WIDTH, AGENT_CHAT_MIN_HEIGHT } from "./AgentChatCard";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
+import { Input } from "../../shared/ui/primitives/input";
+import { Textarea } from "../../shared/ui/primitives/textarea";
+import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
+import { AGENT_CHAT_HEIGHT,AGENT_CHAT_MIN_HEIGHT,AGENT_CHAT_MIN_WIDTH,AGENT_CHAT_WIDTH,AgentChatCard } from "./AgentChatCard";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
-import { canvasItemVersion } from "./versionedArtifact";
+import { CanvasHandle } from "./CanvasHandle";
+import { CanvasRelationEdge } from "./CanvasRelationEdge";
+import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
+import { CanvasToolMenu } from "./CanvasToolMenu";
+import { ContentCanvasCard } from "./ContentCanvasCard";
+import { MediaCanvasCard } from "./MediaCanvasCard";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
-import { MediaCanvasCard } from "./MediaCanvasCard";
-import { ContentCanvasCard } from "./ContentCanvasCard";
-import { ImageSquare, Sparkle, TextT, VideoCamera, MusicNotes, X, type Icon } from "@phosphor-icons/react";
-import { CanvasToolMenu } from "./CanvasToolMenu";
-import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
-import { CanvasRelationEdge } from "./CanvasRelationEdge";
 import { displayCanvasRelations } from "./canvasEdgeDisplay";
+import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteraction";
+import {
+agentImageConnection,canvasRelationRemoval,canvasTargetHandleId,inputConnectionUpdate,
+isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
+type CanvasRelationRemoval
+} from "./canvasRelations";
+import { useCanvasStore } from "./canvasStore";
+import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageNodeSize } from "./imageNodeLayout";
+import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
+import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
-import { CANVAS_POINTER_THRESHOLD, useCanvasInteraction } from "./canvasInteraction";
-import { CanvasHandle } from "./CanvasHandle";
-import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputConnectionUpdate,
-  isCanvasConnectionValid, mediaInputConnection, projectCanvasRelations,
-  type CanvasRelationRemoval } from "./canvasRelations";
-import { CANVAS_MAX_SIZE, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
 import { useImageNodeRatios } from "./useImageNodeRatios";
+import { canvasItemVersion } from "./versionedArtifact";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "AGENT";
@@ -1097,7 +1104,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   useEffect(() => {
-    if (creationMenu) creationMenuElement.current?.querySelector("button")?.focus();
+    if (creationMenu) creationMenuElement.current?.focus();
   }, [creationMenu]);
 
   // 关闭入口不依赖焦点：只有 div 上的 onKeyDown 时，用户一旦把焦点移出菜单就再也关不掉。
@@ -1212,12 +1219,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="secondary-button" onClick={() => {
+          <Button variant="outline"  onClick={() => {
             setToolsKind(null); setInspectingId(null); setResourcesOpen(true);
-          }} type="button">{t("资源")}</button>
-          <button className="secondary-button" onClick={() => {
+          }} type="button">{t("资源")}</Button>
+          <Button variant="outline"  onClick={() => {
             setResourcesOpen(false); setInspectingId(null); setToolsKind("UPLOAD");
-          }} type="button">{t("导入素材")}</button>
+          }} type="button">{t("导入素材")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <a className="secondary-button" download={`agenvas-project-${projectId}.json`}
             href={projectExportManifestUrl(projectId)}>{t("导出清单")}</a>
@@ -1233,17 +1240,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       {(toolsKind || resourcesOpen) ? <aside className="workspace-drawer" aria-label={resourcesOpen ? t("项目资源") : t("创建与工具")}>
         <div className="workspace-drawer-heading">
           <h2 className="font-semibold">{resourcesOpen ? t("项目资源") : t("创建与工具")}</h2>
-          <button aria-label={t("关闭抽屉")} className="node-action" onClick={() => {
+          <Button variant="ghost" aria-label={t("关闭抽屉")} className="node-action" onClick={() => {
             setToolsKind(null); setResourcesOpen(false);
-          }} type="button">{t("关闭")}</button>
+          }} type="button">{t("关闭")}</Button>
         </div>
         {resourcesOpen ? <>
-          <div className="library-tabs"><button type="button" aria-pressed={resourceTab === "PROJECT"} onClick={() => setResourceTab("PROJECT")}>{t("项目资源")}</button><button type="button" aria-pressed={resourceTab === "LIBRARY"} onClick={() => setResourceTab("LIBRARY")}>{t("我的资产")}</button></div>
+          <div className="library-tabs"><Button variant="ghost" type="button" aria-pressed={resourceTab === "PROJECT"} onClick={() => setResourceTab("PROJECT")}>{t("项目资源")}</Button><Button variant="ghost" type="button" aria-pressed={resourceTab === "LIBRARY"} onClick={() => setResourceTab("LIBRARY")}>{t("我的资产")}</Button></div>
           {resourceTab === "LIBRARY" ? <LibraryCanvasPicker projectId={projectId!} position={() => {
             const rect = canvasElement.current?.getBoundingClientRect();
             return rect && flow.current ? flow.current.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) : { x: 80, y: 80 };
           }} /> : <>
-          <label className="mt-3 block text-sm">{t("搜索资源")}<input value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)}
+          <label className="mt-3 block text-sm">{t("搜索资源")}<Input value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)}
               placeholder={t("标题或类型")} /></label>
           {resources.isPending ? <p className="mt-3 text-sm">{t("正在读取资源…")}</p> : null}
           {resources.error ? <WorkspaceError error={resources.error} /> : null}
@@ -1255,10 +1262,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               const duplicateAllowed = resource.subjectType === "ARTIFACT";
               return <li className="resource-entry" key={`${resource.subjectType}:${resource.subjectId}`}>
                 <span>{resource.label}</span>
-                <button className="node-action" disabled={(!duplicateAllowed && placed) || restoreResource.isPending}
+                <Button variant="ghost" className="node-action" disabled={(!duplicateAllowed && placed) || restoreResource.isPending}
                   onClick={() => restoreResource.mutate(resource)} type="button">
                   {duplicateAllowed ? placed ? t("再放一张") : t("放到画布")
-                    : placed ? t("已在画布") : t("放回画布")}</button>
+                    : placed ? t("已在画布") : t("放回画布")}</Button>
               </li>;
             })}
           </ul>
@@ -1269,9 +1276,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <h2 className="text-base font-semibold">{t("上传图片、视频或音频")}</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("图片支持 PNG、JPEG、WebP，最大 20 MiB/40 MP；视频支持 MP4，最大 500 MiB；音频支持 MP3、WAV、OGG Opus，最大 50 MiB/10 分钟。上传后创建对应媒体节点，可作为精确版本参考。")}</p>
           <form className="mt-4" onSubmit={submitImage}>
-            <label className="text-sm font-medium">{t("素材标题")}<input maxLength={160} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
-            <label className="mt-3 block text-sm font-medium">{t("图片、视频或音频")}<input accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
-            <button className="secondary-button mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? t("正在上传并放置…") : t("上传并放到画布")}</button>
+            <label className="text-sm font-medium">{t("素材标题")}<Input maxLength={160} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
+            <label className="mt-3 block text-sm font-medium">{t("图片、视频或音频")}<Input accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
+            <Button variant="outline" className="mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? t("正在上传并放置…") : t("上传并放到画布")}</Button>
           </form>
           {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}
           {imagePartialStage ? <p className="mt-2 text-xs text-amber-900" role="status">{t("{0}若请求结果不明，请先刷新确认，避免重复创建。", { "0": imagePartialStage === "artifact"
@@ -1282,9 +1289,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <h2 className="text-base font-semibold">{t("添加 Creator Agent")}</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("当前选中的 Artifact 会以精确版本绑定；创建 Agent 不会自动运行。")}</p>
           <form className="mt-4" onSubmit={submitAgent}>
-            <label className="text-sm font-medium">{t("名称")}<input maxLength={120} required value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
-            <label className="mt-3 block text-sm font-medium">{t("指令")}<textarea className="mt-2 min-h-24 w-full rounded-xl border border-[var(--line)] bg-white p-3" maxLength={8000} required value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} /></label>
-            <button className="primary-button mt-4 w-full" disabled={addAgentCard.isPending} type="submit">{addAgentCard.isPending ? t("正在添加…") : t("添加 Agent 到画布")}</button>
+            <label className="text-sm font-medium">{t("名称")}<Input maxLength={120} required value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
+            <label className="mt-3 block text-sm font-medium">{t("指令")}<Textarea className="mt-2 min-h-24 w-full rounded-xl border border-[var(--line)] bg-white p-3" maxLength={8000} required value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} /></label>
+            <Button variant="default" className="mt-4 w-full" disabled={addAgentCard.isPending} type="submit">{addAgentCard.isPending ? t("正在添加…") : t("添加 Agent 到画布")}</Button>
           </form>
           {addAgentCard.error ? <WorkspaceError error={addAgentCard.error} /> : null}
         </div> : null}
@@ -1297,9 +1304,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("按住 Cmd（macOS）或 Ctrl（其他系统）点击追加选择；按住 Shift 拖出选框可选择多张卡片。")}</p>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("选中卡片后从右侧连接点拖出：落在 Agent 卡片上可保存输入绑定；图片落在图片或视频卡片上会把当前展示的精确版本加入目标草稿，但不会触发生成。靠近可用落点时落点会浮现并显示为强调色，不能建立的关系显示为红色且松手不生效。蓝线是 Agent 输入，灰线是媒体输入，指向历史版本时使用虚线，绿线是输出组。")}</p>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("选中卡片按 Delete 或退格移除卡片，内容与历史仍保留在项目资源中；选中 Agent 输入线或媒体输入线可删除对应关系。输出组和生成版本内冻结的来源记录不能单独删除。")}</p>
-          <button className="secondary-button mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">{t("左对齐已选卡片")}</button>
-          <button className="secondary-button mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">{t("把已选 Artifact 绑定到 Agent")}</button>
-          <button className="secondary-button mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">{t("清空已选 Agent 输入")}</button>
+          <Button variant="outline" className="mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">{t("左对齐已选卡片")}</Button>
+          <Button variant="outline" className="mt-3 w-full" disabled={!canBindSelection || bindSelection.isPending} onClick={() => bindSelection.mutate()} type="button">{t("把已选 Artifact 绑定到 Agent")}</Button>
+          <Button variant="outline" className="mt-3 w-full" disabled={!canClearBindings || clearBindings.isPending} onClick={() => clearBindings.mutate()} type="button">{t("清空已选 Agent 输入")}</Button>
           {alignSelected.error ? <WorkspaceError error={alignSelected.error} /> : null}
           {bindSelection.error ? <WorkspaceError error={bindSelection.error} /> : null}
           {clearBindings.error ? <WorkspaceError error={clearBindings.error} /> : null}
@@ -1382,8 +1389,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
               className="workspace-media-toolbar nodrag nowheel nopan">
               <div className="workspace-media-editor" aria-label={t("所选卡片编辑区")}>
-                <button aria-label={t("关闭编辑区")} className="workspace-bottom-close"
-                  onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
+                <Button variant="ghost" aria-label={t("关闭编辑区")} className="workspace-bottom-close"
+                  onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
                   selectedItems[0].artifact.kind === "VIDEO" || selectedItems[0].artifact.kind === "AUDIO" ?
                   <MediaDraftEditor key={selectedItems[0].id}
@@ -1410,24 +1417,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </CanvasToolMenu>
         {displaySettings.persistenceError ? <div className="canvas-message" role="alert">
           {displaySettings.persistenceError}
-          <button type="button" className="node-action" onClick={displaySettings.retrySave}>{t("重试保存设置")}</button>
+          <Button variant="ghost" type="button" className="node-action" onClick={displaySettings.retrySave}>{t("重试保存设置")}</Button>
         </div> : null}
-        {creationMenu ? <DropdownMenu className="workspace-create-menu" role="menu" aria-label={t("添加卡片")}
+        {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
-          <p className="workspace-create-title">{t("添加卡片")}</p>
-          {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <button key={kind} role="menuitem"
+          <CommandList label={t("添加卡片")}><CommandGroup heading={t("添加卡片")}>
+          {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <CommandItem key={kind} value={kind}
             disabled={kind === "TEXT" && addTextCard.isPending}
-            onClick={() => chooseCreationKind(kind)} type="button">
+            onSelect={() => chooseCreationKind(kind)}>
             <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
-          </button>)}
-        </DropdownMenu> : null}
+          </CommandItem>)}
+        </CommandGroup></CommandList></Command> : null}
         {addTextCard.isPending ? <div className="canvas-message" role="status">{t("正在创建文字节点…")}</div> : null}
         {addTextCard.error ? <div className="canvas-message">
           <WorkspaceError error={addTextCard.error} />
-          <button className="node-action" type="button" onClick={() => {
+          <Button variant="ghost" className="node-action" type="button" onClick={() => {
             if (addTextCard.variables) addTextCard.mutate(addTextCard.variables);
-          }}>{t("重试创建文字节点")}</button>
+          }}>{t("重试创建文字节点")}</Button>
         </div> : null}
         {openAudioConversation.error ? <div className="canvas-message" role="alert"><WorkspaceError error={openAudioConversation.error} /></div> : null}
         {addBlankMedia.error ? <div className="canvas-message" role="alert">
@@ -1437,15 +1444,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {!toolsKind && !resourcesOpen && !inspectingId && (removeItem.error || toggleLocked.error) ?
           <div className="canvas-message"><WorkspaceError error={(removeItem.error ?? toggleLocked.error)!} /></div> : null}
         {draggingIds.length === 0 && selectedItems.length > 1 ? <div className="workspace-bottom-editor" aria-label={t("批量操作")}>
-          <button aria-label={t("关闭编辑区")} className="workspace-bottom-close"
-            onClick={() => setSelectedIds([])} type="button"><X size={15} /></button>
+          <Button variant="ghost" aria-label={t("关闭编辑区")} className="workspace-bottom-close"
+            onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
           <span>{t("{0} 张卡片已选中", { "0": selectedItems.length })}</span>
-          <button className="node-action" disabled={alignSelected.isPending}
-            onClick={() => alignSelected.mutate()} type="button">{t("左对齐")}</button>
-          <button className="node-action" disabled={!canBindSelection || bindSelection.isPending}
-            onClick={() => bindSelection.mutate()} type="button">{t("绑定到 Agent")}</button>
-          <button className="node-action" disabled={!canClearBindings || clearBindings.isPending}
-            onClick={() => clearBindings.mutate()} type="button">{t("清空 Agent 输入")}</button>
+          <Button variant="ghost" className="node-action" disabled={alignSelected.isPending}
+            onClick={() => alignSelected.mutate()} type="button">{t("左对齐")}</Button>
+          <Button variant="ghost" className="node-action" disabled={!canBindSelection || bindSelection.isPending}
+            onClick={() => bindSelection.mutate()} type="button">{t("绑定到 Agent")}</Button>
+          <Button variant="ghost" className="node-action" disabled={!canClearBindings || clearBindings.isPending}
+            onClick={() => clearBindings.mutate()} type="button">{t("清空 Agent 输入")}</Button>
         </div> : null}
       </section>
       {inspectingId && selectedItems.some((item) => item.id === inspectingId) ? (() => {
@@ -1454,7 +1461,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         const inspectedVersion = canvasItemVersion(item);
         return <aside className="workspace-drawer media-inspector" aria-label={t("卡片详情")}>
           <div className="workspace-drawer-heading"><h2>{item.artifact.title}</h2>
-            <button className="node-action" aria-label={t("关闭卡片详情")} type="button" onClick={() => setInspectingId(null)}><X size={16} /></button></div>
+            <Button variant="ghost" className="node-action" aria-label={t("关闭卡片详情")} type="button" onClick={() => setInspectingId(null)}><X size={16} /></Button></div>
           <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {inspectedVersion ? t("已有结果") : t("暂无结果")}</p>
           {item.artifact.kind === "TEXT" ? <ArtifactVersionHistory artifact={item.artifact} /> : null}
           {inspectedVersion?.inputReferences.length ? <div className="mt-4 text-xs">
@@ -1466,8 +1473,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             </ul>
           </div> : null}
           <div className="mt-5 flex gap-2">
-            <button className="node-action" type="button" disabled={toggleLocked.isPending} onClick={() => handleToggleLocked(item)}>{toggleLocked.isPending ? t("保存中…") : item.locked ? t("解锁") : t("锁定")}</button>
-            <button className="node-action" type="button" disabled={removeItem.isPending} onClick={() => handleRemove(item)}>{removeItem.isPending ? t("移除中…") : t("移除卡片")}</button>
+            <Button variant="ghost" className="node-action" type="button" disabled={toggleLocked.isPending} onClick={() => handleToggleLocked(item)}>{toggleLocked.isPending ? t("保存中…") : item.locked ? t("解锁") : t("锁定")}</Button>
+            <Button variant="ghost" className="node-action" type="button" disabled={removeItem.isPending} onClick={() => handleRemove(item)}>{removeItem.isPending ? t("移除中…") : t("移除卡片")}</Button>
           </div>
           {removeItem.error ? <WorkspaceError error={removeItem.error} /> : null}
           {toggleLocked.error ? <WorkspaceError error={toggleLocked.error} /> : null}

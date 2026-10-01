@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
-import { ArrowsOut, CaretLeft, CaretRight, Copy } from "@phosphor-icons/react";
-import { t, useLocale, formatNumber } from "../../shared/i18n";
-import type { CallDebug, DebugBody } from "../../shared/api/client";
+import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { ArrowsOut,CaretLeft,CaretRight,Copy } from "@phosphor-icons/react";
+import { useMemo,useState } from "react";
+import type { CallDebug,DebugBody } from "../../shared/api/client";
+import { formatNumber,t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
 import { Select } from "../../shared/ui/Select";
-import { parseDebugBody, llmLogView, prettyJson, RAW_PAGE_CHARS, type LogMessage, type ParsedBody, type LlmLogView } from "./callLogFormatting";
+import { llmLogView,parseDebugBody,prettyJson,RAW_PAGE_CHARS,type LlmLogView,type LogMessage,type ParsedBody } from "./callLogFormatting";
 import "./FormattedCallExchange.css";
 
 type Exchange = CallDebug["exchanges"][number];
@@ -69,7 +72,7 @@ function Fact({ title, value }: { title: string; value?: string }) {
 function MessageSection({ title, messages, tokens, onExpand }: { title: string; messages: LogMessage[]; tokens?: number; onExpand: () => void }) {
   return <section className="llm-log-section"><header className="llm-log-section-heading">
     <div><strong>{title}</strong><span>{t("{0} 条消息", { "0": messages.length })}{tokens !== undefined ? ` · ${formatNumber(tokens)} tokens` : ""}</span></div>
-    <button type="button" className="ghost-button" disabled={!messages.length} onClick={onExpand} aria-label={t("展开 {0}", { "0": title })}><ArrowsOut size={16} aria-hidden />{t("展开")}</button>
+    <Button variant="ghost" type="button"  disabled={!messages.length} onClick={onExpand} aria-label={t("展开 {0}", { "0": title })}><ArrowsOut size={16} aria-hidden />{t("展开")}</Button>
   </header>
     {messages.length ? <div className="llm-log-message-preview"><span className={`llm-log-role llm-log-role--${knownRole(messages[0]?.role ?? "")}`}>{roleLabel(messages[0]?.role ?? "unknown")}</span>
       <p>{preview(messages[0])}</p></div> : <p className="ui-muted">{t("没有已记录的消息；可在生成数据或原始内容中查看其他返回信息。")}</p>}
@@ -105,18 +108,18 @@ function MessageBrowser({ messages, tokens }: { messages: LogMessage[]; tokens?:
     <div className="llm-message-summary"><div><strong>{t("{0} 条消息", { "0": messages.length })}</strong><span>{tokens === undefined ? t("Token 未记录") : `${formatNumber(tokens)} tokens`}</span></div>
       <div className="llm-message-role-counts">{roles.map((name) => <span key={name} className={`llm-log-role llm-log-role--${knownRole(name)}`}>{roleLabel(name)} · {messages.filter((message) => message.role === name).length}</span>)}</div>
     </div>
-    <div className="llm-message-filters"><label className="ui-field"><span className="sr-only">{t("搜索消息")}</span><input type="search" value={search} placeholder={t("搜索消息、工具名称或参数…")} onChange={(event) => setSearch(event.target.value)} /></label>
-      <label className="ui-field"><span className="sr-only">{t("消息角色")}</span><Select value={role} onChange={(event) => setRole(event.target.value)}><option value="">{t("全部角色")}</option>{roles.map((name) => <option key={name} value={name}>{roleLabel(name)}</option>)}</Select></label>
+    <div className="llm-message-filters"><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("搜索消息")}</span><Input type="search" value={search} placeholder={t("搜索消息、工具名称或参数…")} onChange={(event) => setSearch(event.target.value)} /></FieldLabel></Field>
+      <Field><FieldLabel className="ui-field block"><span className="sr-only">{t("消息角色")}</span><Select value={role} onChange={(event) => setRole(event.target.value)}><option value="">{t("全部角色")}</option>{roles.map((name) => <option key={name} value={name}>{roleLabel(name)}</option>)}</Select></FieldLabel></Field>
     </div>
     {!visible.length ? <p className="llm-message-empty" role="status">{t("没有匹配的消息。调整搜索或角色筛选。")}</p> : <div className="llm-message-layout">
-      <div className="llm-message-list" aria-label={t("消息列表")}>{visible.map((message) => <button key={message.index} type="button" className="llm-message-row" aria-pressed={current?.index === message.index}
-        onClick={() => { setSelected(message.index); }}><span>{message.index + 1}</span><span className={`llm-log-role llm-log-role--${knownRole(message.role)}`}>{roleLabel(message.role)}</span><span className="llm-message-row-preview">{preview(message)}</span></button>)}</div>
+      <div className="llm-message-list" aria-label={t("消息列表")}>{visible.map((message) => <Button variant="ghost" key={message.index} type="button" className="llm-message-row" aria-pressed={current?.index === message.index}
+        onClick={() => { setSelected(message.index); }}><span>{message.index + 1}</span><span className={`llm-log-role llm-log-role--${knownRole(message.role)}`}>{roleLabel(message.role)}</span><span className="llm-message-row-preview">{preview(message)}</span></Button>)}</div>
       {current ? <article className="llm-message-detail"><div className="llm-message-toolbar">
         <CopyButton key={`${current.index}-${raw}`} content={raw ? prettyJson(current.raw) : messageText(current)} />
-        <button className="ghost-button" type="button" aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? t("查看正文") : t("查看消息 JSON")}</button>
-        <nav aria-label={t("消息翻页")}><button className="ghost-button" type="button" aria-label={t("上一条消息")} disabled={position === FIRST_MESSAGE} onClick={() => { const next = visible[position - 1]; if (next) setSelected(next.index); }}><CaretLeft size={16} /></button>
+        <Button variant="ghost"  type="button" aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? t("查看正文") : t("查看消息 JSON")}</Button>
+        <nav aria-label={t("消息翻页")}><Button variant="ghost"  type="button" aria-label={t("上一条消息")} disabled={position === FIRST_MESSAGE} onClick={() => { const next = visible[position - 1]; if (next) setSelected(next.index); }}><CaretLeft size={16} /></Button>
           <span>{t("第 {0} / {1} 条", { "0": position + 1, "1": visible.length })}</span>
-          <button className="ghost-button" type="button" aria-label={t("下一条消息")} disabled={position + 1 >= visible.length} onClick={() => { const next = visible[position + 1]; if (next) setSelected(next.index); }}><CaretRight size={16} /></button></nav>
+          <Button variant="ghost"  type="button" aria-label={t("下一条消息")} disabled={position + 1 >= visible.length} onClick={() => { const next = visible[position + 1]; if (next) setSelected(next.index); }}><CaretRight size={16} /></Button></nav>
       </div>
         <div className="llm-message-content" key={`${current.index}-${raw}`}>
           {raw ? <RawContent content={prettyJson(current.raw)} /> : <MessageContent message={current} />}
@@ -161,15 +164,15 @@ function BodyContent({ title, body, parsed, mode, empty }: { title: string; body
 }
 function RawContent({ content }: { content: string }) {
   const [limit, setLimit] = useState(RAW_PAGE_CHARS);
-  return <><pre>{content.slice(0, limit)}</pre>{content.length > limit ? <button className="secondary-button" type="button" onClick={() => setLimit(limit + RAW_PAGE_CHARS)}>{t("加载更多正文（剩余 {0} 个字符）", { "0": formatNumber(content.length - limit) })}</button> : null}</>;
+  return <><pre>{content.slice(0, limit)}</pre>{content.length > limit ? <Button variant="outline"  type="button" onClick={() => setLimit(limit + RAW_PAGE_CHARS)}>{t("加载更多正文（剩余 {0} 个字符）", { "0": formatNumber(content.length - limit) })}</Button> : null}</>;
 }
 function CopyButton({ content }: { content: string }) {
   const [status, setStatus] = useState<"idle" | "done" | "failed">("idle");
   const [pending, setPending] = useState(false);
-  return <span className="llm-copy-control"><button className="ghost-button" type="button" disabled={pending} onClick={async () => {
+  return <span className="llm-copy-control"><Button variant="ghost"  type="button" disabled={pending} onClick={async () => {
     setPending(true);
     try { await navigator.clipboard.writeText(content); setStatus("done"); }
     catch { setStatus("failed"); }
     finally { setPending(false); }
-  }}><Copy size={14} aria-hidden />{t("复制")}</button>{status !== "idle" ? <span role="status">{status === "done" ? t("已复制") : t("复制失败，请手动选择正文。")}</span> : null}</span>;
+  }}><Copy size={14} aria-hidden />{t("复制")}</Button>{status !== "idle" ? <span role="status">{status === "done" ? t("已复制") : t("复制失败，请手动选择正文。")}</span> : null}</span>;
 }

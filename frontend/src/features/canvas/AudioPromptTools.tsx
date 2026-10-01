@@ -1,16 +1,20 @@
-import { t, useLocale } from "../../shared/i18n";
-import { ArrowsOutSimple, Lightbulb, Translate, MagicWand } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { ArrowsOutSimple,Lightbulb,MagicWand,Translate } from "@phosphor-icons/react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useRef,useState } from "react";
+import {
+applyCanvasCommands,createArtifact,getLlmSettings,getSystemDiagnostics,
+listArtifactVersions,listCanvasItems,listDirectTextTasks,runDirectTextGeneration,
+type Artifact
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
+import { Button } from "../../shared/ui/primitives/button";
+import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Select } from "../../shared/ui/Select";
-import { applyCanvasCommands, createArtifact, getLlmSettings, getSystemDiagnostics,
-  listArtifactVersions, listCanvasItems, listDirectTextTasks, runDirectTextGeneration,
-  type Artifact } from "../../shared/api/client";
 import { readContentText } from "./artifactContent";
-import { MEDIA_TASK_REFRESH_INTERVAL_MS, isMediaTaskRunning } from "./mediaTaskState";
-import { taskErrorDetail } from "./taskErrorMessages";
 import "./AudioPromptTools.css";
+import { MEDIA_TASK_REFRESH_INTERVAL_MS,isMediaTaskRunning } from "./mediaTaskState";
+import { taskErrorDetail } from "./taskErrorMessages";
 
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
 const TEXT_NODE_WIDTH = 280;
@@ -32,10 +36,10 @@ export function AudioPromptTools({ projectId, canvasItemId, prompt, hasMentions,
   useLocale();
   const [mode, setMode] = useState<Mode | null>(null);
   return <><span className="audio-prompt-tools">
-    <button type="button" aria-label={t("音频提示词模板")} title={t("模板")} onClick={() => setMode("templates")}><Lightbulb size={15} /></button>
-    <button type="button" aria-label={t("音频提示词助手")} title={t("提示词助手")} onClick={() => setMode("assist")}><MagicWand size={15} /></button>
-    <button type="button" aria-label={t("翻译音频提示词")} title={t("翻译")} onClick={() => setMode("translate")}><Translate size={15} /></button>
-    <button type="button" aria-label={t("展开音频提示词")} title={t("展开编辑")} onClick={() => setMode("expand")}><ArrowsOutSimple size={15} /></button>
+    <Button variant="ghost" type="button" aria-label={t("音频提示词模板")} title={t("模板")} onClick={() => setMode("templates")}><Lightbulb size={15} /></Button>
+    <Button variant="ghost" type="button" aria-label={t("音频提示词助手")} title={t("提示词助手")} onClick={() => setMode("assist")}><MagicWand size={15} /></Button>
+    <Button variant="ghost" type="button" aria-label={t("翻译音频提示词")} title={t("翻译")} onClick={() => setMode("translate")}><Translate size={15} /></Button>
+    <Button variant="ghost" type="button" aria-label={t("展开音频提示词")} title={t("展开编辑")} onClick={() => setMode("expand")}><ArrowsOutSimple size={15} /></Button>
   </span>{mode ? <PromptToolDialog mode={mode} projectId={projectId} canvasItemId={canvasItemId}
     prompt={prompt} hasMentions={hasMentions} onApply={onApply} onClose={() => setMode(null)} /> : null}</>;
 }
@@ -88,14 +92,14 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
   return <Dialog title={LABELS[mode]} onClose={onClose} busy={run.isPending}
     description={generated ? t("使用文字模型新建独立文字节点，费用计入项目。生成后预览并应用；音频素材不会发送给文字模型。") : t("预览并应用到当前音频草稿。")}
     onSubmit={(event) => { event.preventDefault(); if (applyText?.trim() && applyText.length <= MAX_AUDIO_PROMPT_LENGTH) { onApply(applyText); onClose(); } }}
-    footer={<><button type="button" className="secondary-button" onClick={onClose} disabled={run.isPending}>{t("关闭")}</button>
-      {generated ? <button type="button" className="secondary-button" disabled={!text.trim() || !available || Boolean(target) || run.isPending || hasMentions}
-        onClick={() => run.mutate()}>{run.isPending ? t("正在提交…") : run.error ? t("重试提交") : t("生成")}</button> : null}
-      <button type="submit" className="primary-button" disabled={hasMentions || prompt !== basis || !applyText?.trim() || applyText.length > MAX_AUDIO_PROMPT_LENGTH}>{t("应用提示词")}</button></>}>
-    {mode === "templates" ? <div className="audio-prompt-templates">{TEMPLATES.map((template) => <button type="button" className="secondary-button"
-      key={template.title} onClick={() => setText(template.text)}>{template.title}</button>)}</div> : null}
+    footer={<><Button variant="outline" type="button"  onClick={onClose} disabled={run.isPending}>{t("关闭")}</Button>
+      {generated ? <Button variant="outline" type="button"  disabled={!text.trim() || !available || Boolean(target) || run.isPending || hasMentions}
+        onClick={() => run.mutate()}>{run.isPending ? t("正在提交…") : run.error ? t("重试提交") : t("生成")}</Button> : null}
+      <Button variant="default" type="submit"  disabled={hasMentions || prompt !== basis || !applyText?.trim() || applyText.length > MAX_AUDIO_PROMPT_LENGTH}>{t("应用提示词")}</Button></>}>
+    {mode === "templates" ? <div className="audio-prompt-templates">{TEMPLATES.map((template) => <Button variant="outline" type="button"
+      key={template.title} onClick={() => setText(template.text)}>{template.title}</Button>)}</div> : null}
     {mode === "translate" ? <label>{t("目标语言")}<Select value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="英文">{t("英文")}</option><option value="中文">{t("中文")}</option></Select></label> : null}
-    <label>{t("提示词")}<textarea className="audio-prompt-expanded" aria-label={t("完整音频提示词")} maxLength={MAX_AUDIO_PROMPT_LENGTH}
+    <label>{t("提示词")}<Textarea className="audio-prompt-expanded" aria-label={t("完整音频提示词")} maxLength={MAX_AUDIO_PROMPT_LENGTH}
       value={text} disabled={Boolean(target) || run.isPending || hasMentions} onChange={(event) => { if (!run.isPending) { progress.current = null; run.reset(); setText(event.target.value); } }} /></label>
     {prompt !== basis ? <p role="alert">{t("当前音频草稿已变化，请关闭窗口后重新编辑。")}</p> : null}
     {hasMentions ? <p role="alert">{t("提示词含素材标签，请在原编辑区修改，以保留精确引用。")}</p> : null}
@@ -104,7 +108,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
     {run.error ? <p role="alert">{t("提交失败：{0}；输入已保留。", { "0": run.error.message })}</p> : null}
     {tasks.error || versions.error ? <p role="alert">{t("结果读取失败，请关闭后在新增文字节点查看。")}</p> : null}
     {task && task.status !== "SUCCEEDED" ? <p role="status">{isMediaTaskRunning(task) ? t("正在生成，关闭窗口后任务继续。") : taskErrorDetail(task.errorCode)}</p> : null}
-    {output ? <label>{t("生成结果")}<textarea className="audio-prompt-expanded" aria-label={t("生成的音频提示词")} readOnly value={output} />
+    {output ? <label>{t("生成结果")}<Textarea className="audio-prompt-expanded" aria-label={t("生成的音频提示词")} readOnly value={output} />
       {output.length > MAX_AUDIO_PROMPT_LENGTH ? <p role="alert">{t("结果超过 3000 字符，请在文字节点精简后复制。")}</p> : null}</label> : null}
   </Dialog>;
 }

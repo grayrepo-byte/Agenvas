@@ -1,8 +1,9 @@
-import { t, useLocale } from "../../shared/i18n";
-import { useEffect, useRef, useState } from "react";
-import { getMediaDraft, referenceLibraryEntry, type Artifact, type LibraryEntry, type MediaDraft, type ReferenceLibraryRequest } from "../../shared/api/client";
+import { useEffect,useRef,useState } from "react";
+import { getMediaDraft,referenceLibraryEntry,type Artifact,type LibraryEntry,type MediaDraft,type ReferenceLibraryRequest } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
 import { LibraryBrowser } from "./LibraryBrowser";
-import { TransferState, useLibraryTransfer } from "./useLibraryTransfer";
+import { TransferState,useLibraryTransfer } from "./useLibraryTransfer";
 
 type ReferencePlan = Pick<ReferenceLibraryRequest, "role" | "color"> & { videoInputMode: ReferenceLibraryRequest["draft"]["videoInputMode"] };
 export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, onApplied, onBusy }: {
@@ -43,7 +44,7 @@ export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, 
   }
   return <div className="library-picker"><p>{t("选择资产加入本次参考，不额外创建画布节点。")}</p>
     {error ? <p role="alert">{error}</p> : null}
-    {confirmation ? <div role="alert">{t("添加此参考会切换视频输入模式，保留当前提示词与输入。")}<button type="button" onClick={() => add(confirmation, true)}>{t("确认切换并添加")}</button><button type="button" onClick={() => setConfirmation(null)}>{t("取消切换")}</button></div> : null}
+    {confirmation ? <div role="alert">{t("添加此参考会切换视频输入模式，保留当前提示词与输入。")}<Button variant="ghost" type="button" onClick={() => add(confirmation, true)}>{t("确认切换并添加")}</Button><Button variant="ghost" type="button" onClick={() => setConfirmation(null)}>{t("取消切换")}</Button></div> : null}
     <TransferState transfer={transfer} success={t("已添加为参考")} />
     <LibraryBrowser kinds={kinds} disabled={transfer.working || transfer.frozen} onPick={add} />
   </div>;

@@ -1,3 +1,4 @@
+import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { t, useLocale } from "../../shared/i18n";
 import type { ReactNode } from "react";
 import { ApiError } from "../../shared/api/client";
@@ -28,7 +29,7 @@ export function AuthLayout({ title, description, children }: {
 
 export function AuthField({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   useLocale();
-  return <label className="ui-field"><span>{label}</span>{children}{hint ? <small>{hint}</small> : null}</label>;
+  return <Field><FieldLabel className="ui-field block"><span>{label}</span>{children}{hint ? <small>{hint}</small> : null}</FieldLabel></Field>;
 }
 
 export function FormError({ error }: { error: Error }) {

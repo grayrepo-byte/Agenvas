@@ -1,10 +1,13 @@
-import { t, useLocale } from "../../shared/i18n";
-import { Select } from "../../shared/ui/Select";
-import { Check, Crop, X } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, type CSSProperties,
-  type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Check,Crop,X } from "@phosphor-icons/react";
+import {
+useEffect,useRef,useState,type CSSProperties,
+type KeyboardEvent,type PointerEvent as ReactPointerEvent
+} from "react";
 import { createPortal } from "react-dom";
-import { ApiError, type RunImageOperationRequest } from "../../shared/api/client";
+import { ApiError,type RunImageOperationRequest } from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { Button } from "../../shared/ui/primitives/button";
+import { Select } from "../../shared/ui/Select";
 import "./CropPanel.css";
 
 type CropParameters = RunImageOperationRequest["parameters"];
@@ -229,11 +232,11 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
             }
           }} />
         <div className={`crop-selection${drag ? " is-dragging" : ""}`} style={cropStyle}>
-          <button type="button" className="crop-selection-surface"
+          <Button variant="ghost" type="button" className="crop-selection-surface"
             aria-label={t("移动裁剪框")} onPointerDown={(event) => startDrag("move", event)}
             onKeyDown={(event) => adjustWithKeyboard("move", event)} />
           {(Object.keys(HANDLE_LABELS) as Array<Exclude<CropHandle, "move">>).map((handle) =>
-            <button type="button" key={handle} className={`crop-handle crop-handle-${handle}`}
+            <Button variant="ghost" type="button" key={handle} className={`crop-handle crop-handle-${handle}`}
               aria-label={HANDLE_LABELS[handle]} onPointerDown={(event) => startDrag(handle, event)}
               onKeyDown={(event) => adjustWithKeyboard(handle, event)} />)}
         </div>
@@ -243,8 +246,8 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
         {error instanceof ApiError ? error.message : t("裁剪任务受理失败，请重试。")}</p> : null}
 
       <footer className="crop-toolbar">
-        <button type="button" className="crop-cancel" onClick={onClose}>
-          <X size={18} weight="bold" />{t("取消")}</button>
+        <Button variant="ghost" type="button" className="crop-cancel" onClick={onClose}>
+          <X size={18} weight="bold" />{t("取消")}</Button>
         <span className="crop-toolbar-divider" aria-hidden="true" />
         <label className="crop-ratio-control"><Crop size={19} />
           <Select density="compact" aria-label={t("裁剪比例")} value={ratio}
@@ -253,8 +256,8 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
               value={option.value}>{option.label}</option>)}
           </Select>
         </label>
-        <button type="button" className="crop-confirm" disabled={busy} onClick={submit}>
-          <Check size={18} weight="bold" />{busy ? t("处理中…") : t("确定")}</button>
+        <Button variant="ghost" type="button" className="crop-confirm" disabled={busy} onClick={submit}>
+          <Check size={18} weight="bold" />{busy ? t("处理中…") : t("确定")}</Button>
       </footer>
     </div>
   </div>, document.body);

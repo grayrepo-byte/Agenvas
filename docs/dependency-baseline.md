@@ -39,6 +39,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 ## 前端直接依赖
 
+2026-10-02 shadcn 迁移新增精确版本：`radix-ui` 1.6.7、`class-variance-authority` 0.7.1、`cmdk` 1.1.1、`cn` 0.4.0。组件源码位于 `frontend/src/shared/ui/primitives`；CLI 为开发时工具，不加入生产 Node 服务。`components.json` 保持 Radix 与 Phosphor，未升级已有依赖的大版本。验证范围为相关前端组件/页面测试、TypeScript、lint、Vite 构建与隔离 Mock 浏览器；详见 [迁移验证](evidence/shadcn-migration.md)。
+
 运行依赖：React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5、Phosphor React 2.1.10（画布线性图标，MIT）。
 
 构建与测试：Vite 8.3.0、`@vitejs/plugin-react` 6.1.1、TypeScript 5.9.3、Tailwind CSS + `@tailwindcss/vite` 4.3.3、Vitest 5.0.1、Testing Library React 16.3.3、MSW 2.15.0、openapi-typescript 7.13.0、ESLint 10.11.0、typescript-eslint 8.70.1。Vitest 通过 `vite.config.ts` 复用同一插件，并按 `tsconfig.json` 的 `jsx: "react-jsx"` 转换测试文件；`@vitejs/plugin-react` 同时为 Vite dev server 提供 React Fast Refresh。Tailwind 走 `@tailwindcss/vite` 插件，不再需要 `postcss.config.mjs`。

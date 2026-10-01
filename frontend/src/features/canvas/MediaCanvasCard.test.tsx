@@ -1,11 +1,13 @@
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { http,HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import type { Artifact,CanvasItem } from "../../shared/api/client";
+import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
-import type { Artifact, CanvasItem } from "../../shared/api/client";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 
 // React Flow positions the toolbar; this component test exercises its actual controls and media state.
@@ -92,12 +94,12 @@ describe("MediaCanvasCard", () => {
       const { closeToolbar, reopenToolbar } = showResultCard();
       await screen.findByRole("img", { name: "湖边 的预览" });
       if (label !== "智能编辑") {
-        fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+        await clickControl(screen.getByRole("button", { name: "扩展" }));
         if (label === "脸部三视图") {
-          fireEvent.click(screen.getByRole("menuitem", { name: "三视图" }));
-          fireEvent.click(screen.getByRole("menuitem", { name: /脸部三视图/ }));
-        } else fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(`${label}.*(?:AI|本地)`) }));
-      } else fireEvent.click(screen.getByRole("button", { name: "智能编辑" }));
+          await clickControl(screen.getByRole("menuitem", { name: "三视图" }));
+          await clickControl(screen.getByRole("menuitem", { name: /脸部三视图/ }));
+        } else await clickControl(screen.getByRole("menuitem", { name: new RegExp(`${label}.*(?:AI|本地)`) }));
+      } else await clickControl(screen.getByRole("button", { name: "智能编辑" }));
       expect(screen.getByRole("dialog", { name: dialogName })).toBeInTheDocument();
       closeToolbar();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -111,14 +113,14 @@ describe("MediaCanvasCard", () => {
 
     it("resets the extension menu and its three-view submenu", async () => {
       const { closeToolbar, reopenToolbar } = showResultCard();
-      fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-      fireEvent.click(screen.getByRole("menuitem", { name: "三视图" }));
+      await clickControl(await screen.findByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("menuitem", { name: "三视图" }));
       expect(screen.getByRole("menu", { name: "三视图类型" })).toBeInTheDocument();
       closeToolbar();
       reopenToolbar();
       expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
       expect(screen.queryByRole("menu", { name: "三视图类型" })).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("button", { name: "扩展" }));
       expect(screen.queryByRole("menu", { name: "三视图类型" })).not.toBeInTheDocument();
     });
 
@@ -130,7 +132,7 @@ describe("MediaCanvasCard", () => {
           createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
         })) })));
       const { closeToolbar, reopenToolbar } = showResultCard();
-      fireEvent.click(await screen.findByRole("button", { name: "版本 v1" }));
+      await clickControl(await screen.findByRole("button", { name: "版本 v1" }));
       expect(await screen.findByText("2 个版本")).toBeInTheDocument();
       closeToolbar();
       reopenToolbar();
@@ -148,15 +150,15 @@ describe("MediaCanvasCard", () => {
       );
       const { closeToolbar, reopenToolbar } = showResultCard();
       await screen.findByRole("img", { name: "湖边 的预览" });
-      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
-      fireEvent.click(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
-      fireEvent.change(screen.getByRole("combobox", { name: "放大倍数" }), { target: { value: "4" } });
-      fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+      await clickControl(screen.getByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
+      await changeControl(screen.getByRole("combobox", { name: "放大倍数" }), { target: { value: "4" } });
+      await clickControl(screen.getByRole("button", { name: "开始处理" }));
       expect(await screen.findByRole("alert")).toHaveTextContent("模拟处理失败");
       closeToolbar();
       reopenToolbar();
-      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
-      fireEvent.click(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
+      await clickControl(screen.getByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       expect(screen.getByRole("combobox", { name: "放大倍数" })).toHaveValue("2");
     });
@@ -183,12 +185,12 @@ describe("MediaCanvasCard", () => {
       );
       const { closeToolbar, reopenToolbar } = showResultCard();
       await screen.findByRole("img", { name: "湖边 的预览" });
-      fireEvent.click(screen.getByRole("button", { name: "扩展" }));
-      fireEvent.click(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
+      await clickControl(screen.getByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
       await waitFor(() => expect(screen.getByRole("combobox", { name: "图片能力" }))
         .toHaveValue("ai-capability"));
-      fireEvent.change(screen.getByRole("textbox", { name: "目标表情" }), { target: { value: "微笑" } });
-      fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+      await changeControl(screen.getByRole("textbox", { name: "目标表情" }), { target: { value: "微笑" } });
+      await clickControl(screen.getByRole("button", { name: "开始处理" }));
       await waitFor(() => expect(submissions).toBe(1));
       try {
         closeToolbar();
@@ -206,18 +208,18 @@ describe("MediaCanvasCard", () => {
   it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
     const { onInspect, onCardClick } = showCard();
     const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
-    fireEvent.click(await screen.findByRole("button", { name: "上传图片" }));
+    await clickControl(await screen.findByRole("button", { name: "上传图片" }));
     expect(pickerClick).toHaveBeenCalledOnce();
     expect(onCardClick).not.toHaveBeenCalled();
     pickerClick.mockRestore();
-    fireEvent.click(screen.getByRole("button", { name: "扩展" }));
-    expect(screen.getByLabelText("图片扩展功能").closest(".react-flow__node-toolbar"))
+    await clickControl(screen.getByRole("button", { name: "扩展" }));
+    expect(screen.getByLabelText("媒体卡片操作").closest(".react-flow__node-toolbar"))
       .toHaveClass("artifact-card-toolbar-raised");
-    expect(screen.getByRole("menuitem", { name: /高清放大.*本地/ })).toBeDisabled();
-    fireEvent.keyDown(screen.getByRole("button", { name: "扩展" }), { key: "Escape" });
+    expect(screen.getByRole("menuitem", { name: /高清放大.*本地/ })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "卡片详情" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus());
+    await clickControl(screen.getByRole("button", { name: "卡片详情" }));
     expect(onInspect).toHaveBeenCalledOnce();
   });
 
@@ -247,7 +249,7 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "深度提取" }));
+    await clickControl(await screen.findByRole("button", { name: "深度提取" }));
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version",
       expectedCanvasItemVersion: 0, operation: "DEPTH_MAP", parameters: {},
@@ -277,15 +279,15 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /裁剪.*本地/ }));
+    await clickControl(await screen.findByRole("button", { name: "扩展" }));
+    await clickControl(screen.getByRole("menuitem", { name: /裁剪.*本地/ }));
     expect(screen.getByRole("dialog", { name: "裁剪图片" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "当前图片裁剪预览" })).toHaveAttribute("src",
       "/api/v1/projects/project-1/assets/image-asset/content");
-    fireEvent.change(screen.getByRole("combobox", { name: "裁剪比例" }), {
+    await changeControl(screen.getByRole("combobox", { name: "裁剪比例" }), {
       target: { value: "1:1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "确定" }));
+    await clickControl(screen.getByRole("button", { name: "确定" }));
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version", operation: "CROP",
@@ -322,16 +324,16 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /重新打光.*AI/ }));
+    await clickControl(await screen.findByRole("button", { name: "扩展" }));
+    await clickControl(screen.getByRole("menuitem", { name: /重新打光.*AI/ }));
     expect(screen.getByRole("dialog", { name: "打光" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "当前图片打光预览" })).toHaveAttribute("src",
       "/api/v1/projects/project-1/assets/image-asset/content");
-    fireEvent.click(screen.getByRole("button", { name: "月光" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "补充打光描述" }), {
+    await clickControl(screen.getByRole("button", { name: "月光" }));
+    await changeControl(screen.getByRole("textbox", { name: "补充打光描述" }), {
       target: { value: "让人物轮廓更清晰" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "开始打光" }));
+    await clickControl(screen.getByRole("button", { name: "开始打光" }));
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version", operation: "RELIGHT",
@@ -363,7 +365,7 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    await clickControl(await screen.findByRole("button", { name: "扩展" }));
     expect(screen.getByRole("menuitem", { name: "三视图" })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: /画笔标注.*本地/ })).toBeEnabled();
     for (const label of ["图层分离", "表情调整", "移除背景", "局部擦除", "视角调整"]) {
@@ -424,16 +426,16 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "智能编辑" }));
+    await clickControl(await screen.findByRole("button", { name: "智能编辑" }));
     expect(screen.getByRole("dialog", { name: "智能编辑图片" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "涂抹" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "框选" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "引用" }));
-    fireEvent.click(await screen.findByRole("button", { name: "海边参考" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "智能编辑提示词" }), {
+    await clickControl(screen.getByRole("button", { name: "引用" }));
+    await clickControl(await screen.findByRole("button", { name: "海边参考" }));
+    await changeControl(screen.getByRole("textbox", { name: "智能编辑提示词" }), {
       target: { value: "把背景替换成参考图中的海边，人物保持不变" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "开始智能编辑" }));
+    await clickControl(screen.getByRole("button", { name: "开始智能编辑" }));
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       operation: "SMART_EDIT", instruction: "把背景替换成参考图中的海边，人物保持不变",
@@ -472,21 +474,21 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
+    await clickControl(await screen.findByRole("button", { name: "扩展" }));
     const threeViewEntry = screen.getByRole("menuitem", { name: "三视图" });
     fireEvent.pointerEnter(threeViewEntry);
-    fireEvent.click(threeViewEntry);
+    await clickControl(threeViewEntry);
     expect(screen.getByRole("menu", { name: "三视图类型" })).toBeInTheDocument();
     for (const label of ["角色三视图", "脸部三视图", "道具三视图", "场景宫格图"]) {
       expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeEnabled();
     }
-    fireEvent.click(screen.getByRole("menuitem", { name: /脸部三视图/ }));
+    await clickControl(screen.getByRole("menuitem", { name: /脸部三视图/ }));
     expect(screen.getByRole("dialog", { name: "脸部三视图" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /脸部三视图/ })).toBeChecked();
-    fireEvent.change(screen.getByRole("textbox", { name: "主体说明（可选）" }), {
+    await changeControl(screen.getByRole("textbox", { name: "主体说明（可选）" }), {
       target: { value: "保留发饰和妆容" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    await clickControl(screen.getByRole("button", { name: "开始处理" }));
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version", operation: "THREE_VIEW",
@@ -525,14 +527,14 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
+    await clickControl(await screen.findByRole("button", { name: "扩展" }));
+    await clickControl(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
     const submit = screen.getByRole("button", { name: "开始处理" });
     expect(submit).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: "目标表情" }), {
+    await changeControl(screen.getByRole("textbox", { name: "目标表情" }), {
       target: { value: "自然微笑，嘴唇闭合" },
     });
-    fireEvent.click(submit);
+    await clickControl(submit);
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version",
@@ -566,14 +568,15 @@ describe("MediaCanvasCard", () => {
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "扩展" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /图层分离.*AI/ }));
+    await clickControl(await screen.findByRole("button", { name: "扩展" }));
+    await clickControl(screen.getByRole("menuitem", { name: /图层分离.*AI/ }));
     const capability = screen.getByRole("combobox", { name: "图片能力" });
     expect(capability).toHaveValue("transparent-capability");
     expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "输出图层" }), {
+    await changeControl(screen.getByRole("combobox", { name: "输出图层" }), {
       target: { value: "BACKGROUND" },
     });
+    await userEvent.setup().click(screen.getByRole("combobox", { name: "图片能力" }));
     expect(screen.getByRole("option", { name: "Opaque model" })).toBeInTheDocument();
   });
 
@@ -601,7 +604,7 @@ describe("MediaCanvasCard", () => {
       const { onCardClick } = showImage();
       const expand = await screen.findByRole("button", { name: "放大图片" });
       expand.focus();
-      fireEvent.click(expand);
+      await clickControl(expand);
       const dialog = screen.getByRole("dialog", { name: "湖边 的原图预览" });
       expect(dialog).toHaveAttribute("aria-modal", "true");
       expect(screen.queryByRole("link", { name: "打开原图" })).not.toBeInTheDocument();
@@ -613,11 +616,11 @@ describe("MediaCanvasCard", () => {
       expect(close).toHaveFocus();
       fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
       expect(close).toHaveFocus();
-      fireEvent.click(within(dialog).getByRole("img"));
+      await clickControl(within(dialog).getByRole("img"));
       expect(dialog).toBeInTheDocument();
-      if (method === "button") fireEvent.click(close);
+      if (method === "button") await clickControl(close);
       else if (method === "escape") fireEvent.keyDown(close, { key: "Escape" });
-      else fireEvent.click(dialog.parentElement!);
+      else await clickControl(dialog.parentElement!);
       expect(screen.queryByRole("dialog", { name: "湖边 的原图预览" })).not.toBeInTheDocument();
       expect(expand).toHaveFocus();
       expect(onCardClick).not.toHaveBeenCalled();
@@ -625,7 +628,7 @@ describe("MediaCanvasCard", () => {
 
     it("handles image loading failure and retry without passing canvas shortcuts through", async () => {
       showImage();
-      fireEvent.click(await screen.findByRole("button", { name: "放大图片" }));
+      await clickControl(await screen.findByRole("button", { name: "放大图片" }));
       const dialog = screen.getByRole("dialog", { name: "湖边 的原图预览" });
       expect(within(dialog).getByRole("status", { name: "正在加载图片" })).toBeInTheDocument();
       fireEvent.error(within(dialog).getByRole("img"));
@@ -642,7 +645,7 @@ describe("MediaCanvasCard", () => {
       } finally {
         document.removeEventListener("keydown", canvasShortcut);
       }
-      fireEvent.click(retry);
+      await clickControl(retry);
       expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
       fireEvent.load(within(dialog).getByRole("img"));
       expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
@@ -667,7 +670,7 @@ describe("MediaCanvasCard", () => {
     expect(screen.getByRole("img", { name: "湖边 的预览" })).toHaveAttribute("src",
       "/api/v1/projects/project-1/assets/image-asset/content");
     metadataFailed = false;
-    fireEvent.click(screen.getByRole("button", { name: "重试尺寸" }));
+    await clickControl(screen.getByRole("button", { name: "重试尺寸" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.getByRole("img", { name: "湖边 的预览" })).toBeInTheDocument();
   });
@@ -722,7 +725,7 @@ describe("MediaCanvasCard", () => {
 
   it("opens video generation from an empty surface without offering unsupported upload", async () => {
     const { onEdit } = showCard({ ...artifact, kind: "VIDEO" });
-    fireEvent.click(await screen.findByRole("button", { name: "生成视频" }));
+    await clickControl(await screen.findByRole("button", { name: "生成视频" }));
     expect(onEdit).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: /上传/ })).not.toBeInTheDocument();
   });
@@ -746,7 +749,7 @@ describe("MediaCanvasCard", () => {
     expect(screen.getByText("演示视频")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "打开视频文件" })).toHaveAttribute("target", "_blank");
 
-    fireEvent.click(screen.getByRole("button", { name: "播放视频" }));
+    await clickControl(screen.getByRole("button", { name: "播放视频" }));
     const video = screen.getByLabelText("湖边 的视频");
     expect(video).toHaveAttribute("controls");
     expect(video).toHaveAttribute("autoplay");
@@ -759,9 +762,9 @@ describe("MediaCanvasCard", () => {
     fireEvent.error(video);
     expect(screen.getByRole("alert")).toHaveTextContent("视频播放失败");
     expect(screen.queryByRole("status", { name: "正在加载视频" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "重试播放" }));
+    await clickControl(screen.getByRole("button", { name: "重试播放" }));
     expect(screen.getByLabelText("湖边 的视频")).not.toBe(video);
-    fireEvent.click(screen.getByRole("button", { name: "关闭视频预览" }));
+    await clickControl(screen.getByRole("button", { name: "关闭视频预览" }));
     expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "播放视频" })).toBeInTheDocument();
   });
@@ -771,7 +774,7 @@ describe("MediaCanvasCard", () => {
       { id: "video-task", status: "UNKNOWN", errorCode: "SUBMISSION_UNKNOWN" },
     ])));
     const { onEdit } = showCard({ ...artifact, kind: "VIDEO" });
-    fireEvent.click(await screen.findByRole("button", { name: "查看任务" }));
+    await clickControl(await screen.findByRole("button", { name: "查看任务" }));
     expect(onEdit).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
   });

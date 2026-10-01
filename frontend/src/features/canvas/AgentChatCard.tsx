@@ -1,16 +1,29 @@
-import { getFormatLocale, t, useLocale } from "../../shared/i18n";
-import { NodeResizer, type ResizeParams } from "@xyflow/react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowUp, ClockCounterClockwise, GearSix, Sparkle, Square, ArrowSquareOut, Plus } from "@phosphor-icons/react";
-import { ApiError, cancelRun, createRun, getRunPreflight, listAgentConversations, createAgentConversation, selectAgentConversation, listConversationRuns,
-  type Agent, type AgentRun, type AgentRunList, type AgentConversation, type AgentConversationList, type CreateRunRequest, type CanvasItem } from "../../shared/api/client";
-import { useCanvasStore } from "./canvasStore";
-import { CanvasHandle } from "./CanvasHandle";
-import { AgentChatApproval, AgentChatMessage } from "./AgentChatPrimitives";
-import { AgentRunConversation, RUN_STATUS_LABELS } from "./AgentRunConversation";
+import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@phosphor-icons/react";
+import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from "@tanstack/react-query";
+import { NodeResizer,type ResizeParams } from "@xyflow/react";
+import { useEffect,useRef,useState,type FormEvent } from "react";
+import {
+ApiError,cancelRun,
+createAgentConversation,
+createRun,getRunPreflight,listAgentConversations,
+listConversationRuns,
+selectAgentConversation,
+type Agent,
+type AgentConversation,type AgentConversationList,
+type AgentRun,type AgentRunList,
+type CanvasItem,
+type CreateRunRequest
+} from "../../shared/api/client";
+import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
+import { Textarea } from "../../shared/ui/primitives/textarea";
 import "./AgentChatCard.css";
+import { AgentChatApproval,AgentChatMessage } from "./AgentChatPrimitives";
+import { AgentRunConversation,RUN_STATUS_LABELS } from "./AgentRunConversation";
+import { CanvasHandle } from "./CanvasHandle";
+import { useCanvasStore } from "./canvasStore";
 
 export const AGENT_CHAT_WIDTH = 460;
 export const AGENT_CHAT_HEIGHT = 600;
@@ -238,33 +251,33 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         <div className="agent-chat-heading"><h3>{agent.name}</h3>
           <span>{ownRun ? RUN_STATUS_LABELS[ownRun.status] : data.activeRun ? t("其他 Agent 运行中") : t("准备就绪")}</span>
         </div>
-        <button aria-label={t("聊天")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
-          onClick={() => setView("chat")} type="button">{t("对话")}</button>
-        <button aria-label={t("会话列表")} aria-pressed={view === "history"} className="agent-chat-icon nodrag"
-          onClick={() => setView(view === "history" ? "chat" : "history")} title={t("会话列表")} type="button"><ClockCounterClockwise size={18} /></button>
-        <button aria-label={t("新建会话")} className="agent-chat-icon nodrag" disabled={sessionBusy || conversations.isPending}
-          onClick={() => createConversation.mutate({ transferDraft: false })} title={t("新建会话")} type="button"><Plus size={18} /></button>
-        <button aria-label={t("Agent 设置")} aria-pressed={view === "settings"} className="agent-chat-icon nodrag"
-          onClick={() => setView(view === "settings" ? "chat" : "settings")} type="button"><GearSix size={18} /></button>
+        <Button variant="ghost" aria-label={t("聊天")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
+          onClick={() => setView("chat")} type="button">{t("对话")}</Button>
+        <Button variant="ghost" aria-label={t("会话列表")} aria-pressed={view === "history"} className="agent-chat-icon nodrag"
+          onClick={() => setView(view === "history" ? "chat" : "history")} title={t("会话列表")} type="button"><ClockCounterClockwise size={18} /></Button>
+        <Button variant="ghost" aria-label={t("新建会话")} className="agent-chat-icon nodrag" disabled={sessionBusy || conversations.isPending}
+          onClick={() => createConversation.mutate({ transferDraft: false })} title={t("新建会话")} type="button"><Plus size={18} /></Button>
+        <Button variant="ghost" aria-label={t("Agent 设置")} aria-pressed={view === "settings"} className="agent-chat-icon nodrag"
+          onClick={() => setView(view === "settings" ? "chat" : "settings")} type="button"><GearSix size={18} /></Button>
       </header>
       <div className="agent-chat-context nodrag">
-        <button onClick={() => setView("settings")} type="button">{t("{0} 个绑定输入", { "0": agent.bindings.length })}</button>
-        <button disabled={!data.outputCount} onClick={(event) => { event.stopPropagation(); data.onShowOutputs(agent); }} type="button"><ArrowSquareOut size={13} />{t("查看产物{0}", { "0": data.outputCount ? ` · ${data.outputCount}` : "" })}</button>
+        <Button variant="ghost" onClick={() => setView("settings")} type="button">{t("{0} 个绑定输入", { "0": agent.bindings.length })}</Button>
+        <Button variant="ghost" disabled={!data.outputCount} onClick={(event) => { event.stopPropagation(); data.onShowOutputs(agent); }} type="button"><ArrowSquareOut size={13} />{t("查看产物{0}", { "0": data.outputCount ? ` · ${data.outputCount}` : "" })}</Button>
       </div>
       <div className="agent-chat-session-heading"><span>{currentConversation?.title || (conversationId ? t("当前会话") : t("新会话"))}</span>
         {createConversation.isPending ? <span>{t("正在新建…")}</span> : <small>{t("消息会保留在当前会话")}</small>}
       </div>
       {ownRun && ownRun.conversationId !== conversationId ? <div className="agent-chat-active-session">
         <span>{t("另一会话正在运行，停止操作保留在原会话。")}</span>
-        <button type="button" disabled={sessionBusy} onClick={() => selectConversation.mutate(ownRun.conversationId)}>{t("返回运行会话")}</button>
+        <Button variant="ghost" type="button" disabled={sessionBusy} onClick={() => selectConversation.mutate(ownRun.conversationId)}>{t("返回运行会话")}</Button>
       </div> : null}
       <div className="agent-chat-body nodrag nowheel nopan" ref={bodyRef}>
         {view === "settings" ? <section aria-label={t("Agent 配置")} className="agent-chat-settings">
           <p className="agent-chat-eyebrow">{agent.profileKey} · v{agent.profileVersion}</p>
           <form key={agent.version} onSubmit={submit}>
-            <label>{t("名称")}<input defaultValue={agent.name} maxLength={MAX_AGENT_NAME} name="name" required /></label>
-            <label>{t("指令")}<textarea defaultValue={agent.instruction} maxLength={MAX_INSTRUCTION} name="instruction" required rows={4} /></label>
-            <button className="node-action" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("保存中…") : t("保存配置")}</button>
+            <label>{t("名称")}<Input defaultValue={agent.name} maxLength={MAX_AGENT_NAME} name="name" required /></label>
+            <label>{t("指令")}<Textarea defaultValue={agent.instruction} maxLength={MAX_INSTRUCTION} name="instruction" required rows={4} /></label>
+            <Button variant="ghost" className="node-action" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("保存中…") : t("保存配置")}</Button>
             {data.updateAgentError ? <ChatError error={data.updateAgentError} /> : null}
           </form>
           <details className="agent-chat-binding-list"><summary>{t("明确输入（{0}）", { "0": agent.bindings.length })}</summary>
@@ -272,28 +285,28 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
               <li key={binding.id}>Artifact {binding.artifactId}<br />Version {binding.selectedVersionId}</li>)}</ul>}
           </details>
           <div className="agent-chat-settings-actions">
-            <button className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? t("解锁") : t("锁定")}</button>
-            <button className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">{t("移除卡片")}</button>
+            <Button variant="ghost" className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? t("解锁") : t("锁定")}</Button>
+            <Button variant="ghost" className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">{t("移除卡片")}</Button>
           </div>
         </section> : view === "history" ? <section aria-label={t("会话列表")} className="agent-chat-history">
           <h4>{t("会话列表")}</h4><p>{t("同一会话连续使用上下文；新建会话会从空白开始，已有消息仍保留。")}</p>
           {conversations.isPending ? <CanvasLoadingState compact label={t("正在读取会话…")} /> : null}
-          {conversations.error ? <><ChatError error={conversations.error} /><button className="node-action" onClick={() => void conversations.refetch()} type="button">{t("重试会话列表")}</button></> : null}
+          {conversations.error ? <><ChatError error={conversations.error} /><Button variant="ghost" className="node-action" onClick={() => void conversations.refetch()} type="button">{t("重试会话列表")}</Button></> : null}
           {conversations.isSuccess && !sessions.length ? <p>{t("尚无会话。")}</p> : null}
-          {sessions.map((session) => <button className="agent-chat-history-item" key={session.id}
+          {sessions.map((session) => <Button variant="ghost" className="agent-chat-history-item" key={session.id}
             aria-current={session.id === conversationId ? "true" : undefined} disabled={sessionBusy}
             onClick={() => selectConversation.mutate(session.id)} type="button">
             <span>{session.title || t("新会话")}</span><small>{t("{0} 轮消息 · {1}{2}", { "0": session.turnCount, "1": new Date(session.updatedAt).toLocaleString(getFormatLocale()), "2": session.id === conversationId ? t(" · 当前会话") : "" })}</small>
-          </button>)}
-          {conversations.hasNextPage ? <button className="node-action" disabled={conversations.isFetchingNextPage}
-            onClick={() => void conversations.fetchNextPage()} type="button">{conversations.isFetchingNextPage ? t("读取中…") : t("更多会话")}</button> : null}
+          </Button>)}
+          {conversations.hasNextPage ? <Button variant="ghost" className="node-action" disabled={conversations.isFetchingNextPage}
+            onClick={() => void conversations.fetchNextPage()} type="button">{conversations.isFetchingNextPage ? t("读取中…") : t("更多会话")}</Button> : null}
         </section> : <>
           {conversations.isPending ? <CanvasLoadingState compact label={t("正在恢复会话…")} /> : null}
-          {conversations.error ? <><ChatError error={conversations.error} /><button className="node-action" onClick={() => void conversations.refetch()} type="button">{t("重试会话列表")}</button></> : null}
+          {conversations.error ? <><ChatError error={conversations.error} /><Button variant="ghost" className="node-action" onClick={() => void conversations.refetch()} type="button">{t("重试会话列表")}</Button></> : null}
           {conversationId && runs.isPending ? <CanvasLoadingState compact label={t("正在读取对话…")} /> : null}
-          {conversationId && runs.error ? <><ChatError error={runs.error} /><button className="node-action" onClick={() => void runs.refetch()} type="button">{t("重试消息")}</button></> : null}
-          {runs.hasNextPage ? <button className="agent-chat-earlier" disabled={runs.isFetchingNextPage}
-            onClick={() => void runs.fetchNextPage()} type="button">{runs.isFetchingNextPage ? t("读取中…") : t("加载更早的消息")}</button> : null}
+          {conversationId && runs.error ? <><ChatError error={runs.error} /><Button variant="ghost" className="node-action" onClick={() => void runs.refetch()} type="button">{t("重试消息")}</Button></> : null}
+          {runs.hasNextPage ? <Button variant="ghost" className="agent-chat-earlier" disabled={runs.isFetchingNextPage}
+            onClick={() => void runs.fetchNextPage()} type="button">{runs.isFetchingNextPage ? t("读取中…") : t("加载更早的消息")}</Button> : null}
           {!displayedRuns.length && !reviewInstruction && conversations.isSuccess && (!conversationId || runs.isSuccess) ? <div className="agent-chat-empty">
             <Sparkle size={30} weight="duotone" /><h4>{t("从一个想法开始")}</h4>
             <p>{t("描述你想创作的内容，我会根据绑定素材创建或修改文字产物并整理画布。后续消息会延续当前会话的上下文。")}</p>
@@ -304,13 +317,13 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       {reviewInstruction !== null ? (
         <AgentChatApproval title={t("运行前确认")} description={t("确认本次任务的模型、输入与使用限额。")} className="agent-chat-panel"
           footer={preflight.data && !preflight.isFetching && !preflight.isError ? <div className="agent-chat-panel-actions">
-            <button className="agent-chat-panel-secondary" disabled={start.isPending} onClick={() => setReview(null)} type="button">{t("返回修改")}</button>
-            <button className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
+            <Button variant="ghost" className="agent-chat-panel-secondary" disabled={start.isPending} onClick={() => setReview(null)} type="button">{t("返回修改")}</Button>
+            <Button variant="ghost" className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
               preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
               !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
               preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null} onClick={confirmRun} type="button">
               {start.isPending ? t("启动中…") : t("确认开始")}
-            </button>
+            </Button>
           </div> : undefined}>
           {preflight.isPending || preflight.isFetching ? <p className="mt-2">{t("正在核对模型与输入…")}</p> : null}
           {preflight.error ? <ChatError error={preflight.error} /> : null}
@@ -349,7 +362,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         {stop.error && displayedRuns.some((run) => run.id === stop.variables) ? <ChatError error={stop.error} /> : null}
       </div>
       <form aria-label={t("发送新任务")} className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
-        <textarea aria-label={t("本次任务")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
+        <Textarea aria-label={t("本次任务")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
           setRunInstruction(event.target.value); setReview(null);
         }} onKeyDown={(event) => {
           // IME Enter confirms Chinese input; only an explicit modifier shortcut submits.
@@ -358,10 +371,10 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
           }
         }} placeholder={t("描述想创作的内容…")} required value={runInstruction} rows={2} />
         <div className="agent-chat-composer-footer"><span>{data.activeRun && !ownRun ? t("请等待其他 Agent 任务结束") : t("同一会话共享上下文 · ⌘ / Ctrl + Enter")}</span>
-          {currentActiveRun ? <button aria-label={t("停止")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
-            onClick={() => stop.mutate(currentActiveRun.id)} title={t("停止后续编排")} type="button"><Square weight="fill" size={14} /></button>
-            : <button aria-label={t("发送")} className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !runInstruction.trim()}
-              title={t("发送并确认本次输入")} type="submit"><ArrowUp size={20} weight="bold" /></button>}
+          {currentActiveRun ? <Button variant="ghost" aria-label={t("停止")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
+            onClick={() => stop.mutate(currentActiveRun.id)} title={t("停止后续编排")} type="button"><Square weight="fill" size={14} /></Button>
+            : <Button variant="ghost" aria-label={t("发送")} className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !runInstruction.trim()}
+              title={t("发送并确认本次输入")} type="submit"><ArrowUp size={20} weight="bold" /></Button>}
         </div>
       </form>
     </article>

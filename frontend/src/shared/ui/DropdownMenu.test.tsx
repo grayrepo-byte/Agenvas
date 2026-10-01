@@ -1,39 +1,42 @@
-import { render, screen } from "@testing-library/react";
-import { useRef, useState } from "react";
+import { render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { DropdownMenu } from "./DropdownMenu";
+import { describe, expect, it, vi } from "vitest";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem } from "./primitives/dropdown-menu";
+import { Button } from "./primitives/button";
 
-describe("DropdownMenu", () => {
+function Menu({ onChoice = () => {} }: { onChoice?: () => void }) {
+  const [open, setOpen] = useState(false);
+  return <><DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+    <DropdownMenuTrigger asChild><Button>打开</Button></DropdownMenuTrigger>
+    <DropdownMenuContent aria-label="工具" aria-labelledby={undefined} loop><DropdownMenuGroup>
+      <DropdownMenuItem onSelect={onChoice}>选择</DropdownMenuItem>
+      <DropdownMenuItem disabled>停用</DropdownMenuItem>
+      <DropdownMenuItem onSelect={onChoice}>手形</DropdownMenuItem>
+    </DropdownMenuGroup></DropdownMenuContent>
+  </DropdownMenu><Button>外部</Button></>;
+}
+
+describe("shadcn DropdownMenu", () => {
   it("traverses enabled items and wraps without triggering a choice", async () => {
-    render(<DropdownMenu aria-label="工具"><button role="menuitem">选择</button>
-      <button role="menuitem" disabled>停用</button><button role="menuitemradio">手形</button></DropdownMenu>);
-    const user = userEvent.setup();
-    screen.getByRole("menuitem", { name: "选择" }).focus();
-    await user.keyboard("{ArrowDown}");
-    expect(screen.getByRole("menuitemradio")).toHaveFocus();
+    const choose = vi.fn(); render(<Menu onChoice={choose} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "打开" }));
     await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("menuitem", { name: "选择" })).toHaveFocus();
-    await user.keyboard("{End}{Home}");
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "手形" })).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("menuitem", { name: "选择" })).toHaveFocus();
+    expect(choose).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}"); expect(choose).toHaveBeenCalledOnce();
   });
 
   it("dismisses with Escape and restores the trigger, while outside clicks keep their destination", async () => {
-    function Menu() {
-      const anchor = useRef<HTMLDivElement>(null);
-      const trigger = useRef<HTMLButtonElement>(null);
-      const [open, setOpen] = useState(false);
-      return <><div ref={anchor}><button ref={trigger} onClick={() => setOpen(true)}>打开</button>
-        {open ? <DropdownMenu anchorRef={anchor} triggerRef={trigger} onDismiss={() => setOpen(false)} focusOnOpen>
-          <button role="menuitem">选项</button></DropdownMenu> : null}</div><button>外部</button></>;
-    }
-    render(<Menu />);
-    const user = userEvent.setup();
+    render(<Menu />); const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "打开" }));
-    expect(screen.getByRole("menuitem")).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开" })).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "打开" }));
     await user.click(screen.getByRole("button", { name: "外部" }));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
