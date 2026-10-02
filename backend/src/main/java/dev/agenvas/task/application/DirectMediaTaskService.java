@@ -109,7 +109,7 @@ public class DirectMediaTaskService {
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             long expectedDraftVersion, String commandKey) {
         return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
-                expectedDraftVersion, commandKey);
+                expectedDraftVersion, commandKey, null);
     }
 
     /** Only the approval application service calls this after recording the user's decision. */
@@ -119,12 +119,19 @@ public class DirectMediaTaskService {
         if (runId == null || approvalId == null) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         }
+        return runApproved(ownerId, projectId, runId, approvalId, artifactId, canvasItemId, expectedDraftVersion, commandKey, null);
+    }
+
+    @Transactional
+    public Task runApproved(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill) {
+        if (runId == null || approvalId == null) throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         return runInternal(ownerId, projectId, runId, approvalId, artifactId, canvasItemId,
-                expectedDraftVersion, commandKey);
+                expectedDraftVersion, commandKey, creativeSkill);
     }
 
     private Task runInternal(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
-            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey) {
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill) {
         if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
@@ -250,6 +257,7 @@ public class DirectMediaTaskService {
                     imageNode.put("order", group.size() - 1);
                 }
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
+                if (creativeSkill != null) frozen.set("creativeSkill", creativeSkill.deepCopy());
                 String stepKey = outputIndex == 0 ? commandKey
                         : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
                 Task task = new Task(UUID.randomUUID(), projectId, runId, stepKey, kind,
@@ -419,6 +427,33 @@ public class DirectMediaTaskService {
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
             String renderedPrompt, String autodlResolution, String resolutionTier, String originHash,
             MediaStyleService.Snapshot style) {}
+
+    /** Only trusted Agent approval sources can add provenance to a preflight hash. */
+    public MediaPreflight preflightApproved(UUID ownerId, UUID projectId, UUID artifactId,
+            UUID canvasItemId, long expectedDraftVersion, JsonNode creativeSkill) {
+        MediaPreflight result = preflight(ownerId, projectId, artifactId, canvasItemId, expectedDraftVersion);
+        if (creativeSkill == null || creativeSkill.isNull()) return result;
+        ObjectNode summary = (ObjectNode) result.safeSummary().deepCopy();
+        summary.set("creativeSkill", creativeSkill.deepCopy());
+        return new MediaPreflight(result.kind(), result.binding(),
+                Sha256.hex(result.frozenInputHash() + "\n" + canonicalSkillSource(creativeSkill)), result.outputCount(), summary);
+    }
+
+    /** JSONB can reorder object fields between proposal and approval; array order remains semantic. */
+    private JsonNode canonicalSkillSource(JsonNode source) {
+        if (source.isObject()) {
+            ObjectNode ordered = mapper.createObjectNode();
+            source.propertyStream().sorted(java.util.Map.Entry.comparingByKey())
+                    .forEach(field -> ordered.set(field.getKey(), canonicalSkillSource(field.getValue())));
+            return ordered;
+        }
+        if (source.isArray()) {
+            ArrayNode ordered = mapper.createArrayNode();
+            source.forEach(value -> ordered.add(canonicalSkillSource(value)));
+            return ordered;
+        }
+        return source;
+    }
 
     /** Validates the exact proposal without creating cards, tasks, reservations or provider requests. */
     @Transactional(readOnly = true)

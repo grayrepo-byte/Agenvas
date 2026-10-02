@@ -9,3 +9,5 @@
 IMAGE/VIDEO/AUDIO 中的 `assetId` 先验证 UUID 形状，再由服务层核验同项目、媒体类型匹配且已归档可读。媒体的 `sourceType: UPLOAD` 分支仅包含已归档 `assetId`，用于用户上传图片，不伪造 Provider 配置或 Task ID；生成分支保留可验证的工作流元数据。`sourceTaskId` 由 Task 成功路径校验与当前 Task 一致。媒体的图片来源不再写入 IMAGE/VIDEO 内容字段；Task 和成功 ArtifactVersion 通过同一份 `frozenInput` 保存有序精确版本、角色、模式与结构化标签。
 
 `sourceType: LIBRARY_IMPORT` 是服务端资产导入专用的读取分支，只有目标项目自己的 `assetId`。OpenAPI 的 `WritableArtifactContent` 指向 `$defs/writable`，普通用户、Agent 与 Task 不能提交该来源；ArtifactService 的写入边界仍执行来源授权检查。文字导入保留原正文格式，来源摘要另存 `library_import`。读取合约使用 anyOf，因为图片与视频共享媒体字段结构；内容类型由外层 Artifact.kind 确定。
+
+IMAGE 的 `sourceType: SKILL_IMPORT` 是受信 Skill 参考安装专用的读取分支，同样仅包含项目自己的 `assetId`，不属于普通产物写入合约。服务端安装操作固定精确内容版本并单独记录 Skill 版本与别名；它不放置画布节点、不改变媒体草稿，也不赋予产物节点执行 Skill 的能力。

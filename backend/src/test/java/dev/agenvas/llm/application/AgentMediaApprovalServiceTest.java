@@ -70,7 +70,7 @@ class AgentMediaApprovalServiceTest {
             1, UUID.randomUUID(), 1, "mock-image", "synthetic-mapping");
     private final AgentMediaApprovalService service = new AgentMediaApprovalService(approvals,
             runs, artifacts, canvas, drafts, capabilities, mediaTasks, events, publisher,
-            mapper, Clock.fixed(NOW, ZoneOffset.UTC));
+            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class));
 
     @BeforeEach
     void lockedProjectMutationExecutes() {
@@ -237,6 +237,62 @@ class AgentMediaApprovalServiceTest {
         assertThat(result.taskIds()).containsExactly(first.id(), second.id());
         assertThat(result.executionDeadline()).isEqualTo(NOW.plusSeconds(86_400));
         verify(publisher).publishEvent(new AgentMediaApprovalChanged(ownerId, projectId, runId, approvalId));
+    }
+
+    @Test
+    void skillApprovalLocksTheStyleBeforeRevalidatingAndAcceptingItsExactSource() {
+        AgentMediaApproval approval = pending(NOW.plusSeconds(60), 1);
+        ObjectNode source = mapper.createObjectNode().put("schemaVersion", 1)
+                .put("skillVersionId", UUID.randomUUID().toString()).put("bundleHash", "synthetic-skill-bundle");
+        ((ObjectNode) approval.request()).set("creativeSkill", source);
+        UUID styleId = UUID.randomUUID();
+        ObjectNode preview = mapper.createObjectNode().put("styleId", styleId.toString())
+                .put("styleName", "Synthetic watercolor").put("styleVersion", 2);
+        preview.set("creativeSkill", source.deepCopy());
+        ((ObjectNode) approval.targets().path("outputs").get(0)).set("preview", preview);
+        when(approvals.findForUpdate(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
+        when(mediaTasks.preflightApproved(ownerId, projectId, artifactId, canvasItemId, 1, source))
+                .thenReturn(new DirectMediaTaskService.MediaPreflight(Task.Kind.IMAGE_GENERATION,
+                        binding, "frozen-hash", 1, preview));
+        Task task = mock(Task.class);
+        when(task.id()).thenReturn(UUID.randomUUID());
+        when(mediaTasks.runApproved(ownerId, projectId, runId, approvalId, artifactId,
+                canvasItemId, 1, "agent-media:" + approvalId + ":0", source)).thenReturn(task);
+
+        var result = service.decide(ownerId, projectId, runId, approvalId, 0,
+                AgentMediaApprovalService.Decision.APPROVE, "skill-style-approve");
+
+        var order = inOrder(mediaTasks, approvals);
+        order.verify(mediaTasks).lockApprovalStyle(ownerId, projectId, canvasItemId);
+        order.verify(mediaTasks).lockApprovalBinding(binding);
+        order.verify(mediaTasks).preflightApproved(ownerId, projectId, artifactId, canvasItemId, 1, source);
+        order.verify(mediaTasks).runApproved(ownerId, projectId, runId, approvalId, artifactId,
+                canvasItemId, 1, "agent-media:" + approvalId + ":0", source);
+        order.verify(approvals).update(any(), eq(0L));
+        assertThat(result.status()).isEqualTo(AgentMediaApproval.Status.APPROVED);
+        assertThat(result.request().path("creativeSkill")).isEqualTo(source);
+        assertThat(result.targets().path("outputs").get(0).path("preview").path("styleId").asText())
+                .isEqualTo(styleId.toString());
+        assertThat(result.taskIds()).containsExactly(task.id());
+    }
+
+    @Test
+    void changedStylePreflightRejectsTheSkillBatchBeforeCreatingAnyTask() {
+        AgentMediaApproval approval = pending(NOW.plusSeconds(60), 1);
+        ObjectNode source = mapper.createObjectNode().put("schemaVersion", 1)
+                .put("skillVersionId", UUID.randomUUID().toString());
+        ((ObjectNode) approval.request()).set("creativeSkill", source);
+        when(approvals.findForUpdate(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
+        when(mediaTasks.preflightApproved(ownerId, projectId, artifactId, canvasItemId, 1, source))
+                .thenReturn(preflight("changed-style-hash"));
+
+        assertThatThrownBy(() -> service.decide(ownerId, projectId, runId, approvalId, 0,
+                AgentMediaApprovalService.Decision.APPROVE, "changed-skill-style"))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("AGENT_MEDIA_APPROVAL_STALE"));
+        verify(mediaTasks).lockApprovalStyle(ownerId, projectId, canvasItemId);
+        verify(mediaTasks, never()).runApproved(any(), any(), any(), any(), any(), any(), anyLong(), any(), any());
+        verify(approvals, never()).update(any(), anyLong());
     }
 
     @Test

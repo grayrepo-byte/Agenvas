@@ -109,7 +109,8 @@ public class ArtifactService {
     public ArtifactView createLibraryImport(UUID ownerId, UUID projectId, Artifact.Kind kind,
             String title, JsonNode textContent, UUID assetId) {
         JsonNode content = kind == Artifact.Kind.TEXT ? textContent
-                : objectMapper.createObjectNode().put("sourceType", "LIBRARY_IMPORT").put("assetId", assetId.toString());
+                : objectMapper.createObjectNode().put("sourceType", ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name())
+                        .put("assetId", assetId.toString());
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
                     ArtifactVersion.CreatedByKind.USER, null, true);
@@ -122,6 +123,18 @@ public class ArtifactService {
     @Transactional
     public ArtifactView createTemplateImport(UUID ownerId, UUID projectId, String title, UUID assetId) {
         return createLibraryImport(ownerId, projectId, Artifact.Kind.IMAGE, title, null, assetId);
+    }
+
+    /** Trusted Skill installation only; ordinary writes cannot forge this origin. */
+    @Transactional
+    public ArtifactView createSkillImport(UUID ownerId, UUID projectId, String title, UUID assetId) {
+        JsonNode content = objectMapper.createObjectNode().put("sourceType", ArtifactVersion.MediaSourceType.SKILL_IMPORT.name())
+                .put("assetId", assetId.toString());
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView created = createLocked(ownerId, projectId, Artifact.Kind.IMAGE, title, content,
+                    ArtifactVersion.CreatedByKind.USER, null, true);
+            return ProjectEventService.Change.changed(created, artifactEvent("artifact.created", created));
+        }).value();
     }
 
     /**
@@ -212,7 +225,7 @@ public class ArtifactService {
     /** 统一创建边界；只允许在活动项目内创建产物。 */
     private ArtifactView createLocked(UUID ownerId, UUID projectId, Artifact.Kind kind,
             String requestedTitle, JsonNode content, ArtifactVersion.CreatedByKind createdByKind,
-            UUID runId, boolean libraryImport) {
+            UUID runId, boolean trustedImport) {
         if (content != null && content.isNull()) content = null;
         projects.requireActiveProject(ownerId, projectId);
         String title = validateTitle(requestedTitle);
@@ -229,7 +242,7 @@ public class ArtifactService {
         }
         List<ArtifactVersion.InputReference> references =
                 contentValidator.validate(kind, content);
-        if (!libraryImport) requireUploadAuthorship(kind, content, createdByKind);
+        if (!trustedImport) requireUploadAuthorship(kind, content, createdByKind);
         validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, kind, content);
         Instant now = clock.instant();
@@ -727,12 +740,13 @@ public class ArtifactService {
     /** 禁止 Agent 或生成任务伪造用户上传来源。 */
     private void requireUploadAuthorship(Artifact.Kind kind, JsonNode content,
             ArtifactVersion.CreatedByKind author) {
-        if ("LIBRARY_IMPORT".equals(content.path("sourceType").asText())) {
+        if (Set.of(ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name(),
+                ArtifactVersion.MediaSourceType.SKILL_IMPORT.name()).contains(content.path("sourceType").asText())) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "ARTIFACT_ORIGIN_INVALID",
-                    ApiMessage.of("api.artifact-service.invalid-source"), ApiMessage.of("api.artifact-service.asset-import-sources-can-only-be-created-by-asset-library"), false);
+                    ApiMessage.of("api.artifact-service.invalid-source"), ApiMessage.of("api.skill-asset-archive.server-only-origin"), false);
         }
         if (kind != Artifact.Kind.TEXT
-                && "UPLOAD".equals(content.path("sourceType").asText())
+                && ArtifactVersion.MediaSourceType.UPLOAD.name().equals(content.path("sourceType").asText())
                 && author != ArtifactVersion.CreatedByKind.USER) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "ARTIFACT_ORIGIN_INVALID", ApiMessage.of("api.artifact-service.invalid-image-source"),

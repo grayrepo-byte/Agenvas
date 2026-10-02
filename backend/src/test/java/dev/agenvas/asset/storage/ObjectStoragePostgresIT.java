@@ -188,6 +188,7 @@ class ObjectStoragePostgresIT {
         // Generated and uploaded video/audio share exactly the same configured archive boundary.
         settings.activate(settings.status().version(), cloudId);
         verifyCloudLibraryTransfers(mvc, auth, owner, png);
+        verifyPlannedSkillCloudCleanup(owner, project, png);
         Path video = ROOT.resolve("fixture.mp4"), audio = ROOT.resolve("fixture.wav");
         mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=red:s=64x64:r=10",
                 "-t", "0.3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", video.toString()));
@@ -207,6 +208,30 @@ class ObjectStoragePostgresIT {
             mvc.perform(get("/api/v1/projects/{p}/assets/{a}/content", project, sound.id()).with(authentication(auth)))
                     .andExpect(status().isOk()).andExpect(content().bytes(Files.readAllBytes(audio)));
         }
+    }
+
+    /** Failed Skill installation cleanup deletes the pinned destination without completing its upload. */
+    private void verifyPlannedSkillCloudCleanup(AdminPrincipal owner, UUID project, byte[] png) throws Exception {
+        Path source = Files.write(ROOT.resolve("synthetic-planned-skill.png"), png);
+        UUID plannedAsset = UUID.randomUUID();
+        STORE.failThumbnail.set(true);
+        assertThatThrownBy(() -> assets.prepareLibraryImport(owner.userId(), project, plannedAsset,
+                dev.agenvas.asset.domain.Asset.MediaKind.IMAGE, source)).isInstanceOf(ApiProblemException.class);
+        assertThat(STORE.objects.keySet()).anyMatch(key -> key.contains(plannedAsset.toString()));
+        int putsBeforeCleanup = STORE.puts.get();
+        assertThat(assets.cleanupPlannedSkillImport(owner.userId(), project, plannedAsset)).isTrue();
+        assertThat(assets.cleanupPlannedSkillImport(owner.userId(), project, plannedAsset)).isTrue();
+        assertThat(STORE.puts).hasValue(putsBeforeCleanup);
+        assertThat(STORE.objects.keySet()).noneMatch(key -> key.contains(plannedAsset.toString()));
+        assertThat(Files.exists(local.checkedPath(project + "/" + plannedAsset + ".png"))).isFalse();
+        assertThat(Files.exists(local.checkedPath(project + "/" + plannedAsset + ".thumb.png"))).isFalse();
+
+        var registered = assets.archiveImage(owner.userId(), project, new ByteArrayInputStream(png));
+        int requestsBeforeCleanup = STORE.requests.get();
+        assertThat(assets.cleanupPlannedSkillImport(owner.userId(), project, registered.id())).isTrue();
+        assertThat(STORE.requests).hasValue(requestsBeforeCleanup);
+        assertThat(Files.readAllBytes(assets.get(owner.userId(), project, registered.id()).path())).containsExactly(png);
+        Files.delete(source);
     }
 
     /** Real HTTP catalogue operations with fake cloud bytes exercise both storage lifetimes. */
@@ -288,7 +313,7 @@ class ObjectStoragePostgresIT {
         record Blob(byte[] bytes, String hash, boolean oss) {}
         final Map<String, Blob> objects = new ConcurrentHashMap<>();
         final Map<Integer, String> authorizations = new ConcurrentHashMap<>();
-        final AtomicInteger requests = new AtomicInteger(), gets = new AtomicInteger();
+        final AtomicInteger requests = new AtomicInteger(), gets = new AtomicInteger(), puts = new AtomicInteger();
         final AtomicBoolean failThumbnail = new AtomicBoolean(), networkInsideTransaction = new AtomicBoolean();
         final HttpServer server;
         FakeStore() {
@@ -302,6 +327,7 @@ class ObjectStoragePostgresIT {
                         String key = exchange.getRequestURI().getPath();
                         String method = exchange.getRequestMethod();
                         if (method.equals("PUT")) {
+                            puts.incrementAndGet();
                             if (key.endsWith(".thumb.png") && failThumbnail.compareAndSet(true, false)) { exchange.sendResponseHeaders(503, -1); return; }
                             byte[] bytes = exchange.getRequestBody().readAllBytes();
                             String hash = exchange.getRequestHeaders().getFirst(oss ? "x-oss-meta-sha256" : "x-amz-meta-sha256");

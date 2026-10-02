@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
@@ -22,6 +23,10 @@ import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.settings.application.LlmProviderConfigService;
+import dev.agenvas.settings.application.MediaStyleService;
+import dev.agenvas.skill.application.SkillRunService;
+import dev.agenvas.skill.application.SkillService;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.Base64;
@@ -49,6 +54,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=manifest-integration-secret",
+        "agenvas.skill.worker-enabled=false",
         "agenvas.settings.llm.allow-loopback-http=true"})
 class ProjectExportManifestPostgresIT {
 
@@ -72,6 +78,11 @@ class ProjectExportManifestPostgresIT {
     @Autowired private MediaDraftService mediaDrafts;
     @Autowired private CanvasConnectionService connections;
     @Autowired private LlmProviderConfigService llmConfigs;
+    @Autowired private MediaStyleService styles;
+    @Autowired private AgentInstanceService agents;
+    @Autowired private SkillService skills;
+    @Autowired private SkillRunService skillRuns;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
 
@@ -103,15 +114,32 @@ class ProjectExportManifestPostgresIT {
                 new CanvasService.PlaceArtifact(targetItemId, video.artifact().id(),
                         new BigDecimal("400"), BigDecimal.ZERO, new BigDecimal("320"),
                         new BigDecimal("240"), 1, null, false)));
+        var style = styles.create("Exported watercolor", "Synthetic", "Soft paper texture", true);
         mediaDrafts.save(owner.userId(), project.id(), targetItemId, 0,
                 "Animate the exact frame", mapper.createObjectNode(), 5, null,
                 MediaDraft.VideoInputMode.GENERAL_REFERENCE,
                 List.of(new MediaDraftService.SaveMediaInput(
                         revisedImage.resourceDefaultVersion().id(),
-                        MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of(), null);
+                        MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of(), style.id());
         connections.connect(owner.userId(), project.id(), sourceItemId, targetItemId,
                 revisedImage.resourceDefaultVersion().id(),
                 CanvasConnection.RelationType.MEDIA_INPUT, 1);
+
+        var skill = skills.create(owner.userId(), "Exported creative method", "Synthetic export fixture");
+        var publication = skills.publish(owner.userId(), skill.id(), 0, "manifest-skill-publish");
+        assertThat(skills.processNext()).isTrue();
+        UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
+        var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method", List.of());
+        skillRuns.install(owner.userId(), project.id(), agent.id(), skill.id(), skillVersionId, "manifest-skill-install");
+        assertThat(skillRuns.processNext()).isTrue();
+        ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
+                .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
+                .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
+        long draftVersion = mediaDrafts.get(owner.userId(), project.id(), targetItemId).version();
+        var styledPreflight = directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
+                targetItemId, draftVersion, skillSource);
+        assertThat(styledPreflight.safeSummary().path("styleId").asText()).isEqualTo(style.id().toString());
+        assertThat(styledPreflight.safeSummary().path("creativeSkill")).isEqualTo(skillSource);
 
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/projects/" + project.id() + "/export-manifest";
@@ -125,7 +153,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(5);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(6);
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();
@@ -147,6 +175,13 @@ class ProjectExportManifestPostgresIT {
         JsonNode targetCard = findById(manifest.path("canvasItems"), targetItemId);
         assertThat(targetCard.path("mediaVersionIds").isEmpty()).isTrue();
         assertThat(targetCard.path("selectedVersionId").isNull()).isTrue();
+        assertThat(targetCard.path("mediaDraft").path("styleId").asText()).isEqualTo(style.id().toString());
+        assertThat(targetCard.path("mediaDraft").path("style").path("promptSuffix").asText())
+                .isEqualTo("Soft paper texture");
+        assertThat(manifest.path("creativeSkills").size()).isEqualTo(1);
+        JsonNode exportedSkill = manifest.path("creativeSkills").get(0).path("version");
+        assertThat(exportedSkill.path("id").asText()).isEqualTo(skillVersionId.toString());
+        assertThat(exportedSkill.path("skillMd").asText()).isEqualTo(skills.getDraft(owner.userId(), skill.id()).skillMd());
         JsonNode input = targetCard.path("mediaDraft").path("mediaInputs").get(0);
         assertThat(input.path("versionId").asText())
                 .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
@@ -169,6 +204,14 @@ class ProjectExportManifestPostgresIT {
         mvc.perform(get("/api/v1/projects/" + UUID.randomUUID() + "/export-manifest")
                         .with(authentication(asUser(owner))))
                 .andExpect(status().isNotFound());
+        styles.update(style.id(), style.version(), style.name(), style.category(), "Charcoal texture", true);
+        var changedStyle = directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
+                targetItemId, draftVersion, skillSource);
+        assertThat(changedStyle.frozenInputHash()).isNotEqualTo(styledPreflight.frozenInputHash());
+        assertThat(changedStyle.safeSummary().path("creativeSkill")).isEqualTo(skillSource);
+        ObjectNode changedSource = skillSource.deepCopy().put("bundleHash", "synthetic-other-bundle");
+        assertThat(directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
+                targetItemId, draftVersion, changedSource).frozenInputHash()).isNotEqualTo(changedStyle.frozenInputHash());
     }
 
     private ObjectNode mediaContent(UUID assetId, String prompt) {

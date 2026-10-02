@@ -11,6 +11,9 @@ import java.util.function.Supplier;
 
 /** Validated immutable archives, including recovery of an already downloaded task result. */
 public interface AssetStorage {
+    /** Decoder-supported image originals and their fixed preview; used only for fenced failed installs. */
+    java.util.List<String> PREPARED_IMAGE_ORIGINAL_SUFFIXES = java.util.List.of(".png", ".jpg");
+    String PREPARED_IMAGE_THUMBNAIL_SUFFIX = ".thumb.png";
     StoredImage storeImage(UUID projectId, UUID assetId, InputStream source);
     StoredVideo storeVideo(UUID projectId, UUID assetId, InputStream source);
     StoredAudio storeAudio(UUID projectId, UUID assetId, InputStream source);
@@ -59,4 +62,11 @@ public interface AssetStorage {
         return objectKey.startsWith(projectId + "/");
     }
     void discard(String objectKey);
+
+    /** Removes controlled server-derived image keys without decoding or resuming an upload. */
+    default void discardPreparedImage(UUID projectId, UUID assetId) {
+        String prefix = projectId + "/" + assetId;
+        for (String suffix : PREPARED_IMAGE_ORIGINAL_SUFFIXES) discard(prefix + suffix);
+        discard(prefix + PREPARED_IMAGE_THUMBNAIL_SUFFIX);
+    }
 }

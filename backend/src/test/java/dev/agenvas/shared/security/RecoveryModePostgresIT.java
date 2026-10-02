@@ -99,6 +99,7 @@ class RecoveryModePostgresIT {
         assertThat(context.getBeansOfType(ComfyUiVideoScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(DirectTextGenerationScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(MediaExecutionScheduler.class)).isEmpty();
+        assertThat(context.getBeansOfType(dev.agenvas.skill.application.SkillWorker.class)).isEmpty();
 
         AdminPrincipal owner = identities.setup("recovery-integration-bootstrap-secret",
                 "recovery-admin", "recovery-password-123");
@@ -144,6 +145,10 @@ class RecoveryModePostgresIT {
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
         }
+        mvc.perform(post("/api/v1/skills").with(authentication).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"Frozen Skill\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
         assertThat(projects.list(owner.userId(), false, null, 20).items())
                 .extracting(Project::name).containsExactly("Restored project");
         assertThat(schemaVersion()).isEqualTo("27");

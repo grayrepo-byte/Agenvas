@@ -9,6 +9,8 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentMediaApproval.AgentMediaApprovalPath;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
+import dev.agenvas.db.tables.AgentSkillBinding.AgentSkillBindingPath;
+import dev.agenvas.db.tables.CreativeSkill.CreativeSkillPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
 import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
 import dev.agenvas.db.tables.LibraryCommand.LibraryCommandPath;
@@ -18,6 +20,10 @@ import dev.agenvas.db.tables.MediaTemplate.MediaTemplatePath;
 import dev.agenvas.db.tables.MediaTemplateImage.MediaTemplateImagePath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
+import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
+import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
+import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
+import dev.agenvas.db.tables.SkillPublishOperation.SkillPublishOperationPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.records.AppUserRecord;
 
@@ -192,6 +198,32 @@ public class AppUser extends TableImpl<AppUserRecord> {
         return Arrays.asList(Keys.UQ_APP_USER_LOGIN_NAME);
     }
 
+    private transient AgentSkillBindingPath _agentSkillBinding;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.agent_skill_binding</code> table
+     */
+    public AgentSkillBindingPath agentSkillBinding() {
+        if (_agentSkillBinding == null)
+            _agentSkillBinding = new AgentSkillBindingPath(this, null, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_FKEY.getInverseKey());
+
+        return _agentSkillBinding;
+    }
+
+    private transient CreativeSkillPath _creativeSkill;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.creative_skill</code> table
+     */
+    public CreativeSkillPath creativeSkill() {
+        if (_creativeSkill == null)
+            _creativeSkill = new CreativeSkillPath(this, null, Keys.CREATIVE_SKILL__CREATIVE_SKILL_OWNER_ID_FKEY.getInverseKey());
+
+        return _creativeSkill;
+    }
+
     private transient AgentMediaApprovalPath _agentMediaApproval;
 
     /**
@@ -333,6 +365,58 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _project = new ProjectPath(this, null, Keys.PROJECT__PROJECT_OWNER_ID_FKEY.getInverseKey());
 
         return _project;
+    }
+
+    private transient SkillBindingCommandPath _skillBindingCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_binding_command</code> table
+     */
+    public SkillBindingCommandPath skillBindingCommand() {
+        if (_skillBindingCommand == null)
+            _skillBindingCommand = new SkillBindingCommandPath(this, null, Keys.SKILL_BINDING_COMMAND__SKILL_BINDING_COMMAND_OWNER_ID_FKEY.getInverseKey());
+
+        return _skillBindingCommand;
+    }
+
+    private transient SkillInstallCommandPath _skillInstallCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_install_command</code> table
+     */
+    public SkillInstallCommandPath skillInstallCommand() {
+        if (_skillInstallCommand == null)
+            _skillInstallCommand = new SkillInstallCommandPath(this, null, Keys.SKILL_INSTALL_COMMAND__SKILL_INSTALL_COMMAND_OWNER_ID_FKEY.getInverseKey());
+
+        return _skillInstallCommand;
+    }
+
+    private transient SkillInstallOperationPath _skillInstallOperation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_install_operation</code> table
+     */
+    public SkillInstallOperationPath skillInstallOperation() {
+        if (_skillInstallOperation == null)
+            _skillInstallOperation = new SkillInstallOperationPath(this, null, Keys.SKILL_INSTALL_OPERATION__SKILL_INSTALL_OPERATION_OWNER_ID_FKEY.getInverseKey());
+
+        return _skillInstallOperation;
+    }
+
+    private transient SkillPublishOperationPath _skillPublishOperation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_publish_operation</code> table
+     */
+    public SkillPublishOperationPath skillPublishOperation() {
+        if (_skillPublishOperation == null)
+            _skillPublishOperation = new SkillPublishOperationPath(this, null, Keys.SKILL_PUBLISH_OPERATION__SKILL_PUBLISH_OPERATION_OWNER_ID_FKEY.getInverseKey());
+
+        return _skillPublishOperation;
     }
 
     private transient TaskManualReplacementPath _taskManualReplacement;

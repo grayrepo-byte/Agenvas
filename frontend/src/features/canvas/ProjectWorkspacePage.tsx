@@ -20,7 +20,7 @@ type ResizeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { memo,useCallback,useEffect,useMemo,useRef,useState,type FormEvent } from "react";
-import { Link,Navigate,useParams } from "react-router";
+import { Link,Navigate,useParams,useLocation } from "react-router";
 import {
 HTTP_STATUS,
 ApiError,
@@ -56,6 +56,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
+import { CreativeSkillSource } from "../skills/CreativeSkillSource";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AGENT_CHAT_HEIGHT,AGENT_CHAT_MIN_HEIGHT,AGENT_CHAT_MIN_WIDTH,AGENT_CHAT_WIDTH,AgentChatCard } from "./AgentChatCard";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
@@ -180,6 +181,8 @@ export function ProjectWorkspacePage() {
 }
 
 function ProjectWorkspace({ projectId }: { projectId: string }) {
+  const tryLocation = useLocation();
+  const focusedTryAgent = useRef<string | null>(null);
   useLocale();
   const queryClient = useQueryClient();
   const textProgress = useRef<{ fingerprint: string; createKey: string;
@@ -1113,6 +1116,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   const canClearBindings = selectedItems.filter((item) => item.agent !== null).length === 1;
   const canBindSelection = canClearBindings && selectedItems.some((item) => item.artifact !== null);
+  useEffect(() => {
+    const requestedAgentId = new URLSearchParams(tryLocation.search).get("agentId");
+    if (!requestedAgentId || focusedTryAgent.current === requestedAgentId) return;
+    const item = canvas.data?.items.find((candidate) => candidate.agent?.id === requestedAgentId);
+    if (!item) return;
+    focusedTryAgent.current = requestedAgentId;
+    setSelectedIds([item.id]);
+    window.setTimeout(() => { void flow.current?.fitView({ nodes: [{id:item.id}], padding:0.15, maxZoom:1 }); }, MEDIA_FOCUS_DELAY_MS);
+  }, [tryLocation.search,canvas.data?.items,setSelectedIds]);
   const projectResources = [
     ...(resources.data?.items ?? []).map((artifact) => ({
       subjectType: "ARTIFACT" as const, subjectId: artifact.id,
@@ -1382,6 +1394,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className="workspace-drawer-heading"><h2>{item.artifact.title}</h2>
             <Button variant="ghost" className="node-action" aria-label={t("canvas.workspace.closeDetails")} type="button" onClick={() => setInspectingId(null)}><X size={16} /></Button></div>
           <p className="mt-3 text-xs text-[var(--muted)]">{ARTIFACT_LABELS[item.artifact.kind]} · {inspectedVersion ? t("canvas.workspace.hasResult") : t("canvas.workspace.noResult")}</p>
+          <CreativeSkillSource source={inspectedVersion?.frozenInput?.creativeSkill} />
           {item.artifact.kind === "TEXT" ? <ArtifactVersionHistory artifact={item.artifact} /> : null}
           {inspectedVersion?.inputReferences.length ? <div className="mt-4 text-xs">
             <h3>{t("canvas.workspace.inputReferences", { "0": inspectedVersion.inputReferences.length })}</h3><ul className="mt-2 space-y-2">

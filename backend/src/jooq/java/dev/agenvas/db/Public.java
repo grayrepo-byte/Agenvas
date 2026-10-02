@@ -9,6 +9,7 @@ import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentMediaApproval;
 import dev.agenvas.db.tables.AgentRun;
+import dev.agenvas.db.tables.AgentSkillBinding;
 import dev.agenvas.db.tables.AppUser;
 import dev.agenvas.db.tables.Artifact;
 import dev.agenvas.db.tables.ArtifactVersion;
@@ -26,6 +27,7 @@ import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
 import dev.agenvas.db.tables.CreativeDataResetMarker;
+import dev.agenvas.db.tables.CreativeSkill;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LibraryCleanup;
@@ -56,6 +58,12 @@ import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.SkillBindingCommand;
+import dev.agenvas.db.tables.SkillDraft;
+import dev.agenvas.db.tables.SkillInstallCommand;
+import dev.agenvas.db.tables.SkillInstallOperation;
+import dev.agenvas.db.tables.SkillPublishOperation;
+import dev.agenvas.db.tables.SkillVersion;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
 import dev.agenvas.db.tables.StorageProfile;
@@ -117,6 +125,11 @@ public class Public extends SchemaImpl {
      * Persistent execution lifecycle with immutable input and policy snapshots.
      */
     public final AgentRun AGENT_RUN = AgentRun.AGENT_RUN;
+
+    /**
+     * Agent-only fixed version selection; no media node execution binding
+     */
+    public final AgentSkillBinding AGENT_SKILL_BINDING = AgentSkillBinding.AGENT_SKILL_BINDING;
 
     /**
      * The table <code>public.app_user</code>.
@@ -213,6 +226,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.creative_data_reset_marker</code>.
      */
     public final CreativeDataResetMarker CREATIVE_DATA_RESET_MARKER = CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER;
+
+    /**
+     * The table <code>public.creative_skill</code>.
+     */
+    public final CreativeSkill CREATIVE_SKILL = CreativeSkill.CREATIVE_SKILL;
 
     /**
      * Principal-scoped HTTP command replay record; same key with a different
@@ -373,6 +391,37 @@ public class Public extends SchemaImpl {
     public final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
 
     /**
+     * The table <code>public.skill_binding_command</code>.
+     */
+    public final SkillBindingCommand SKILL_BINDING_COMMAND = SkillBindingCommand.SKILL_BINDING_COMMAND;
+
+    /**
+     * The table <code>public.skill_draft</code>.
+     */
+    public final SkillDraft SKILL_DRAFT = SkillDraft.SKILL_DRAFT;
+
+    /**
+     * The table <code>public.skill_install_command</code>.
+     */
+    public final SkillInstallCommand SKILL_INSTALL_COMMAND = SkillInstallCommand.SKILL_INSTALL_COMMAND;
+
+    /**
+     * The table <code>public.skill_install_operation</code>.
+     */
+    public final SkillInstallOperation SKILL_INSTALL_OPERATION = SkillInstallOperation.SKILL_INSTALL_OPERATION;
+
+    /**
+     * Durable fenced local archival; no model or Provider execution
+     */
+    public final SkillPublishOperation SKILL_PUBLISH_OPERATION = SkillPublishOperation.SKILL_PUBLISH_OPERATION;
+
+    /**
+     * Immutable Skill body, bounded text resources and independently archived
+     * image bindings
+     */
+    public final SkillVersion SKILL_VERSION = SkillVersion.SKILL_VERSION;
+
+    /**
      * The table <code>public.spring_session</code>.
      */
     public final SpringSession SPRING_SESSION = SpringSession.SPRING_SESSION;
@@ -460,6 +509,7 @@ public class Public extends SchemaImpl {
             AgentInstance.AGENT_INSTANCE,
             AgentMediaApproval.AGENT_MEDIA_APPROVAL,
             AgentRun.AGENT_RUN,
+            AgentSkillBinding.AGENT_SKILL_BINDING,
             AppUser.APP_USER,
             Artifact.ARTIFACT,
             ArtifactVersion.ARTIFACT_VERSION,
@@ -477,6 +527,7 @@ public class Public extends SchemaImpl {
             CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION,
             ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION,
             CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER,
+            CreativeSkill.CREATIVE_SKILL,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
             InstallationLock.INSTALLATION_LOCK,
             LibraryCleanup.LIBRARY_CLEANUP,
@@ -507,6 +558,12 @@ public class Public extends SchemaImpl {
             Project.PROJECT,
             ProjectEvent.PROJECT_EVENT,
             ProviderAttempt.PROVIDER_ATTEMPT,
+            SkillBindingCommand.SKILL_BINDING_COMMAND,
+            SkillDraft.SKILL_DRAFT,
+            SkillInstallCommand.SKILL_INSTALL_COMMAND,
+            SkillInstallOperation.SKILL_INSTALL_OPERATION,
+            SkillPublishOperation.SKILL_PUBLISH_OPERATION,
+            SkillVersion.SKILL_VERSION,
             SpringSession.SPRING_SESSION,
             SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES,
             StorageProfile.STORAGE_PROFILE,

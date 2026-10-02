@@ -17,6 +17,9 @@ import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
+import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
+import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
+import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.UsageLedger.UsageLedgerPath;
 import dev.agenvas.db.tables.records.ProjectRecord;
@@ -348,6 +351,45 @@ public class Project extends TableImpl<ProjectRecord> {
             _mediaTemplateImportCommand = new MediaTemplateImportCommandPath(this, null, Keys.MEDIA_TEMPLATE_IMPORT_COMMAND__MEDIA_TEMPLATE_IMPORT_COMMAND_PROJECT_ID_FKEY.getInverseKey());
 
         return _mediaTemplateImportCommand;
+    }
+
+    private transient SkillBindingCommandPath _skillBindingCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_binding_command</code> table
+     */
+    public SkillBindingCommandPath skillBindingCommand() {
+        if (_skillBindingCommand == null)
+            _skillBindingCommand = new SkillBindingCommandPath(this, null, Keys.SKILL_BINDING_COMMAND__SKILL_BINDING_COMMAND_PROJECT_ID_FKEY.getInverseKey());
+
+        return _skillBindingCommand;
+    }
+
+    private transient SkillInstallCommandPath _skillInstallCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_install_command</code> table
+     */
+    public SkillInstallCommandPath skillInstallCommand() {
+        if (_skillInstallCommand == null)
+            _skillInstallCommand = new SkillInstallCommandPath(this, null, Keys.SKILL_INSTALL_COMMAND__SKILL_INSTALL_COMMAND_PROJECT_ID_FKEY.getInverseKey());
+
+        return _skillInstallCommand;
+    }
+
+    private transient SkillInstallOperationPath _skillInstallOperation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_install_operation</code> table
+     */
+    public SkillInstallOperationPath skillInstallOperation() {
+        if (_skillInstallOperation == null)
+            _skillInstallOperation = new SkillInstallOperationPath(this, null, Keys.SKILL_INSTALL_OPERATION__SKILL_INSTALL_OPERATION_PROJECT_ID_FKEY.getInverseKey());
+
+        return _skillInstallOperation;
     }
 
     private transient UsageLedgerPath _usageLedger;

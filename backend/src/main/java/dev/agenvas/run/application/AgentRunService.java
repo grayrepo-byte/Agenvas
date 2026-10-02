@@ -1,6 +1,8 @@
 package dev.agenvas.run.application;
 
 import dev.agenvas.shared.crypto.Sha256;
+import dev.agenvas.skill.application.SkillRunService;
+import dev.agenvas.llm.application.RunToolPolicy;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
@@ -80,6 +82,7 @@ public class AgentRunService {
     private final ShutdownGate shutdownGate;
     private final AgentConversationService conversations;
     private final ConversationMemoryReader memoryReader;
+    private final SkillRunService skills;
 
     /** 注入 Run 创建所需服务；事务提交由事件服务协调项目槽位、Run、任务与事件。 */
     public AgentRunService(
@@ -96,7 +99,7 @@ public class AgentRunService {
             Clock clock,
             ShutdownGate shutdownGate,
             AgentConversationService conversations,
-            ConversationMemoryReader memoryReader) {
+            ConversationMemoryReader memoryReader, SkillRunService skills) {
         this.projects = projects;
         this.agents = agents;
         this.artifacts = artifacts;
@@ -111,6 +114,7 @@ public class AgentRunService {
         this.shutdownGate = shutdownGate;
         this.conversations = conversations;
         this.memoryReader = memoryReader;
+        this.skills = skills;
     }
 
     /** 基础创建入口；完全相同的项目级命令键与载荷重放时返回原 Run。 */
@@ -211,6 +215,17 @@ public class AgentRunService {
             List<UUID> selectedItemIds, String expectedModelConfigSource,
             Integer expectedModelConfigVersion, Integer expectedSystemPromptVersion,
             UUID requestedConversationId, Long expectedConversationVersion) {
+        return create(ownerId, projectId, agentId, requestedInstruction, requestedIdempotencyKey,
+                expectedAgentVersion, selectedItemIds, expectedModelConfigSource, expectedModelConfigVersion,
+                expectedSystemPromptVersion, requestedConversationId, expectedConversationVersion, null);
+    }
+
+    @Transactional
+    public CreateResult create(UUID ownerId, UUID projectId, UUID agentId,
+            String requestedInstruction, String requestedIdempotencyKey, Long expectedAgentVersion,
+            List<UUID> selectedItemIds, String expectedModelConfigSource,
+            Integer expectedModelConfigVersion, Integer expectedSystemPromptVersion,
+            UUID requestedConversationId, Long expectedConversationVersion, SkillRunService.Selection skillSelection) {
         shutdownGate.requireAcceptingRuns();
         String instruction = validateInstruction(requestedInstruction);
         String key = validateIdempotencyKey(requestedIdempotencyKey);
@@ -231,6 +246,7 @@ public class AgentRunService {
         // Absent conversation fields preserve the legacy command hash, even after the current pointer changes.
         if (requestedConversationId != null) requestFingerprint += "\nconversation:" + requestedConversationId;
         if (expectedConversationVersion != null) requestFingerprint += "\nconversation-version:" + expectedConversationVersion;
+        if (skillSelection != null) requestFingerprint += "\nskill:" + objectMapper.valueToTree(skillSelection);
         String requestHash = Sha256.hex(requestFingerprint);
         Instant now = clock.instant();
         boolean reserved = runs.reserveIdempotency(
@@ -295,6 +311,7 @@ public class AgentRunService {
                     snapshot.put("conversationId", conversation.id().toString());
                     snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
                     appendInheritedBindings(snapshot, context.inherited());
+                    skills.freezeIntoRun(ownerId, projectId, pinnedAgent, runId, skillSelection, snapshot);
                     AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
                             instruction, expectedConversationVersion, now);
                     AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
@@ -430,6 +447,11 @@ public class AgentRunService {
     /** 预览同一会话已提交历史与可继承的精确产物；确认时仍在项目锁下再次核对版本。 */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId) {
+        return preflight(ownerId, projectId, agentId, conversationId, null);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId, SkillRunService.Selection selection) {
         projects.requireRunSlotAvailableSnapshot(ownerId, projectId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         AgentConversation conversation = conversations.resolve(ownerId, projectId, agentId, conversationId);
@@ -447,7 +469,7 @@ public class AgentRunService {
                 agent.instruction(), List.copyOf(bindings), model.available(), model.providerAdapter(),
                 model.modelId(), model.toolCalling(), policySnapshot(),
                 conversation == null ? null : conversation.id(), conversation == null ? null : conversation.version(),
-                conversation == null ? 0 : conversation.turnCount(), context.inherited().size(), context.memory().truncated());
+                conversation == null ? 0 : conversation.turnCount(), context.inherited().size(), context.memory().truncated(), skills.preview(ownerId, projectId, agentId, selection));
     }
 
     /** 运行前预览；不包含凭证、端点或模型私有消息。
@@ -471,7 +493,7 @@ public class AgentRunService {
             String agentInstruction, List<PreflightBinding> bindings,
             boolean modelAvailable, String providerAdapter, String modelId,
             boolean toolCalling, ObjectNode policySnapshot, UUID conversationId, Long conversationVersion,
-            long conversationTurnCount, int inheritedBindingCount, boolean memoryTruncated) {}
+            long conversationTurnCount, int inheritedBindingCount, boolean memoryTruncated, SkillRunService.Summary creativeSkill) {}
 
     /** 预检时将作为首轮文本上下文的产物版本绑定。
      * @param artifactId 输入产物 ID
@@ -714,7 +736,9 @@ public class AgentRunService {
     /** 把本次 Run 的模型配置版本及回合、工具预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
-        policy.put("schemaVersion", 2);
+        policy.put("schemaVersion", 3);
+        policy.put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
+        policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
         policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
         policy.put("modelConfigVersion", model.version());

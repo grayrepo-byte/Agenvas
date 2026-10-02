@@ -672,7 +672,10 @@ export async function updateAgent(
 
 /** Reads current trusted model status, pinned inputs and server policy before user consent. */
 export async function getRunPreflight(projectId: string, agentId: string,
-  conversationId?: string): Promise<RunPreflight> {
+  conversationId?: string, skillSelection?: SkillSelection): Promise<RunPreflight> {
+  if (skillSelection) return writeJson<RunPreflight>(`/api/v1/projects/${projectId}/runs/preflight`, {
+    method: "POST", body: JSON.stringify({ agentId, conversationId, skillSelection }),
+  });
   const params = new URLSearchParams({ agentId });
   if (conversationId) params.set("conversationId", conversationId);
   return readJson<RunPreflight>(
@@ -985,4 +988,82 @@ function apiFetch(path: string, init: RequestInit): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("Accept-Language", getLocale());
   return fetch(path, { ...init, headers });
+}
+
+export type CreativeSkill = components["schemas"]["CreativeSkill"];
+export type SkillDraft = components["schemas"]["SkillDraft"];
+export type SkillVersion = components["schemas"]["SkillVersion"];
+export type SkillVersionSummary = components["schemas"]["SkillVersionSummary"];
+export type SkillOperation = components["schemas"]["SkillOperation"];
+export type SkillSelection = components["schemas"]["SkillSelection"];
+export type AgentSkillBinding = components["schemas"]["AgentSkillBinding"];
+export type SaveAgentSkillBindingRequest = components["schemas"]["SaveAgentSkillBindingRequest"];
+export type SkillInstallation = components["schemas"]["SkillInstallation"];
+export type SaveSkillDraftRequest = NonNullable<paths["/api/v1/skills/{skillId}/draft"]["put"]["requestBody"]>["content"]["application/json"];
+
+export function listSkills(query = "", cursor?: string, trash = false) {
+  const params = new URLSearchParams({ query });
+  if (cursor) params.set("cursor", cursor);
+  if (trash) params.set("trash", "true");
+  return readJson<components["schemas"]["SkillPage"]>(`/api/v1/skills?${params}`, t("api.errors.requestFailed"));
+}
+export function createSkill(title: string) {
+  return writeJson<CreativeSkill>("/api/v1/skills", { method: "POST", body: JSON.stringify({ title }) });
+}
+export function getSkill(skillId: string) {
+  return readJson<CreativeSkill>(`/api/v1/skills/${skillId}`, t("api.errors.requestFailed"));
+}
+export function updateSkill(skillId: string, request: components["schemas"]["UpdateSkillRequest"]) {
+  return writeJson<CreativeSkill>(`/api/v1/skills/${skillId}`, { method: "PATCH", body: JSON.stringify(request) });
+}
+export function getSkillDraft(skillId: string) {
+  return readJson<SkillDraft>(`/api/v1/skills/${skillId}/draft`, t("api.errors.requestFailed"));
+}
+export function saveSkillDraft(skillId: string, request: SaveSkillDraftRequest) {
+  return writeJson<SkillDraft>(`/api/v1/skills/${skillId}/draft`, { method: "PUT", body: JSON.stringify(request) });
+}
+export function publishSkillVersion(skillId: string, expectedDraftVersion: number, commandKey: string) {
+  return writeJson<SkillOperation>(`/api/v1/skills/${skillId}/versions`, { method: "POST", body: JSON.stringify({ expectedDraftVersion, commandKey }) });
+}
+export function getSkillOperation(operationId: string) {
+  return readJson<SkillOperation>(`/api/v1/skills/operations/${operationId}`, t("api.errors.requestFailed"));
+}
+export function retrySkillOperation(operationId: string) {
+  return writeJson<SkillOperation>(`/api/v1/skills/operations/${operationId}/retry`, { method: "POST" });
+}
+export function listSkillVersions(skillId: string) {
+  return readJson<components["schemas"]["SkillVersionList"]>(`/api/v1/skills/${skillId}/versions`, t("api.errors.requestFailed"));
+}
+export function getSkillVersion(skillId: string, versionId: string) {
+  return readJson<SkillVersion>(`/api/v1/skills/${skillId}/versions/${versionId}`, t("api.errors.requestFailed"));
+}
+export function copySkillVersion(skillId: string, versionId: string, expectedDraftVersion: number) {
+  return writeJson<SkillDraft>(`/api/v1/skills/${skillId}/versions/${versionId}/copy`, { method: "POST", body: JSON.stringify({ expectedDraftVersion }) });
+}
+export function getAgentSkillBinding(projectId: string, agentId: string) {
+  return readJson<AgentSkillBinding>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-binding`, t("api.errors.requestFailed"));
+}
+export function saveAgentSkillBinding(projectId: string, agentId: string, request: components["schemas"]["SaveAgentSkillBindingRequest"], key: string) {
+  return writeJson<AgentSkillBinding>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-binding`, {
+    method: "PUT", headers: { "Idempotency-Key": key }, body: JSON.stringify(request),
+  });
+}
+export function installAgentSkill(projectId: string, agentId: string, skillId: string, skillVersionId: string, key: string) {
+  return writeJson<SkillInstallation>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-installations`, {
+    method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ skillId, skillVersionId }),
+  });
+}
+export function getSkillInstallation(projectId: string, agentId: string, operationId: string) {
+  return readJson<SkillInstallation>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-installations/${operationId}`, t("api.errors.requestFailed"));
+}
+
+export function copySkill(skillId: string, skillVersionId: string, title: string) {
+  return writeJson<CreativeSkill>(`/api/v1/skills/${skillId}/copy`, { method: "POST", body: JSON.stringify({title,skillVersionId}) });
+}
+export function skillAssetThumbnailUrl(skillId: string, versionId: string, alias: string) {
+  return `/api/v1/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/assets/${encodeURIComponent(alias)}/thumbnail`;
+}
+
+export function getRun(projectId: string, runId: string) {
+  return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, t("api.errors.requestFailed"));
 }

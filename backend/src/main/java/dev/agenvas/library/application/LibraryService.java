@@ -227,6 +227,52 @@ public class LibraryService {
         if (entry.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_TRASHED", ApiMessage.of("api.library-service.please-restore-assets-from-recycle-bin-first"));
     }
     public record MediaFile(java.nio.file.Path path, String contentType, long size) {}
+
+    /** Safe selection metadata; this is deliberately independent of private storage keys. */
+    public record SkillAssetSource(UUID entryId, long entryVersion, String title,
+            Artifact.Kind kind, String contentHash) {}
+
+    /** Internal frozen source for a durable Skill publication operation, never a public DTO. */
+    public record PinnedSkillAsset(UUID entryId, long entryVersion, String title,
+            Artifact.Kind kind, String contentHash, String pinKey, Media media) {}
+
+    /** Resolves the current owned, active image without trusting a client supplied digest. */
+    public SkillAssetSource skillAssetSource(UUID owner, UUID entryId, long expectedVersion) {
+        return reads.execute(ignored -> {
+            LibraryEntry entry = require(owner, entryId);
+            checkEntry(entry, expectedVersion);
+            Media media = requireSkillImage(owner, entry);
+            return new SkillAssetSource(entry.id(), entry.version(), entry.name(), entry.kind(), media.sha256());
+        });
+    }
+
+    /**
+     * Pins immutable verified bytes while holding the same row lock as permanent deletion.
+     * A caller may join this short transaction and persist the returned snapshot in its
+     * publication operation; subsequent copying uses the pin without reading the entry again.
+     */
+    public PinnedSkillAsset pinForSkill(UUID owner, UUID entryId, long expectedVersion, UUID pinId) {
+        return tx.execute(ignored -> {
+            LibraryEntry entry = requireLocked(owner, entryId);
+            checkEntry(entry, expectedVersion);
+            Media media = requireSkillImage(owner, entry);
+            String pin = archive.pin(owner, pinId, archive.file(owner, media, false));
+            return new PinnedSkillAsset(entry.id(), entry.version(), entry.name(), entry.kind(),
+                    media.sha256(), pin, media);
+        });
+    }
+
+    private Media requireSkillImage(UUID owner, LibraryEntry entry) {
+        if (entry.kind() != Artifact.Kind.IMAGE || entry.fileId() == null)
+            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "SKILL_ASSET_KIND_UNSUPPORTED",
+                    ApiMessage.of("api.skill-asset-archive.only-images"));
+        Media media = repository.file(owner, entry.fileId());
+        if (media.kind() != dev.agenvas.asset.domain.Asset.MediaKind.IMAGE)
+            throw new IllegalStateException("Library image metadata kind mismatch");
+        archive.file(owner, media, false);
+        return media;
+    }
+
     public MediaFile file(UUID owner, UUID entryId, boolean thumbnail) {
         LibraryEntry entry = require(owner, entryId);
         if (entry.fileId() == null) throw problem(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", ApiMessage.of("api.library-service.text-assets-have-no-media-files"));
@@ -321,7 +367,7 @@ public class LibraryService {
     public void delete(UUID owner, UUID id, long expected) {
         // Active commands hold their own hard-link pins; imported projects own independent bytes.
         Media removed = tx.execute(ignored -> {
-            LibraryEntry entry = require(owner, id);
+            LibraryEntry entry = requireLocked(owner, id);
             if (entry.trashedAt() == null) throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_NOT_TRASHED", ApiMessage.of("api.library-service.please-move-it-to-the-recycle-bin-first"));
             if (!repository.delete(owner, id, expected)) throw conflict();
             Media media = entry.fileId() == null ? null : repository.file(owner, entry.fileId());

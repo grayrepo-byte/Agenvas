@@ -108,7 +108,7 @@ class ToolAuthorityPostgresIT {
         checkpoints.reserve(owner.userId(), project.id(), running.id(), 0,
                 configVersion, configSource,
                 codec.request(List.of(new UserMessage("Draft one text")),
-                        registry.modelDefinitions()));
+                        registry.modelDefinitions(running.policySnapshot())));
         AssistantMessage response = AssistantMessage.builder().content("")
                 .toolCalls(calls).build();
         checkpoints.saveResponse(owner.userId(), project.id(), running.id(), 0,

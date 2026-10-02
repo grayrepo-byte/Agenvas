@@ -43,6 +43,9 @@ public record ArtifactVersion(
         TASK
     }
 
+    /** Server-recognized media origins; imported origins are never ordinary write authority. */
+    public enum MediaSourceType { UPLOAD, LIBRARY_IMPORT, SKILL_IMPORT }
+
     /**
      * 指向精确历史输入版本的类型化语义引用。
      *

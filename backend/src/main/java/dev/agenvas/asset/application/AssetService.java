@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -64,28 +65,44 @@ public class AssetService {
 
     /** Prepares fixed library bytes outside the caller's final business transaction. */
     public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind, Path source) {
+        return prepareLibraryImport(owner, project, id, kind, source, () -> true);
+    }
+
+    /**
+     * Rechecks a persistent preparation lease under the same file lock as cleanup.
+     * A worker delayed before acquiring that lock must not recreate already-cleaned bytes.
+     */
+    public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Path source, BooleanSupplier stillActive) {
         projects.requireActiveProject(owner, project);
         try (InputStream input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
             return switch (kind) {
                 case IMAGE -> storage.withTaskImageLock(project, id, () -> {
+                    requireActivePreparation(stillActive);
                     var file = storage.recoverImage(project, id).orElseGet(() -> storage.storeImage(project, id, input));
                     return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
                             file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
                             file.thumbnailByteSize(), file.thumbnailSha256(), now());
                 });
                 case VIDEO -> storage.withTaskVideoLock(project, id, () -> {
+                    requireActivePreparation(stillActive);
                     var file = storage.recoverVideo(project, id).orElseGet(() -> storage.storeVideo(project, id, input));
                     return new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
                             file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
                             file.thumbnailByteSize(), file.thumbnailSha256(), now());
                 });
                 case AUDIO -> storage.withTaskAudioLock(project, id, () -> {
+                    requireActivePreparation(stillActive);
                     var file = storage.recoverAudio(project, id).orElseGet(() -> storage.storeAudio(project, id, input));
                     return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
                             file.sha256(), null, null, file.durationMs(), null, null, null, now());
                 });
             };
         } catch (IOException failure) { throw new IllegalStateException("Cannot read library import", failure); }
+    }
+
+    private void requireActivePreparation(BooleanSupplier stillActive) {
+        if (!stillActive.getAsBoolean()) throw new IllegalStateException("Import preparation lease changed");
     }
 
     /** Only rejected, unregistered imports may be removed; READY project content is never garbage. */
@@ -99,6 +116,40 @@ public class AssetService {
             throw new IllegalStateException("Thumbnail partition mismatch");
         storage.discard(prepared.objectKey());
         if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey());
+    }
+
+    /**
+     * Durable failed-install cleanup shares the preparation lock and preserves any READY
+     * registration. Callers authorize cleanup against their persistent operation/fencing
+     * record; input metadata is server-created and never accepted from an HTTP request.
+     */
+    public boolean cleanupPreparedImport(UUID owner, Asset prepared) {
+        projects.get(owner, prepared.projectId());
+        Supplier<Boolean> cleanup = () -> {
+            if (assets.find(prepared.projectId(), prepared.id()).isPresent()) return true;
+            if (!storage.belongsToProject(prepared.objectKey(), prepared.projectId()))
+                throw new IllegalStateException("Import partition mismatch");
+            if (prepared.thumbnailKey() != null && !storage.belongsToProject(prepared.thumbnailKey(), prepared.projectId()))
+                throw new IllegalStateException("Thumbnail partition mismatch");
+            storage.discard(prepared.objectKey());
+            if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey());
+            return true;
+        };
+        return switch (prepared.mediaKind()) {
+            case IMAGE -> storage.withTaskImageLock(prepared.projectId(), prepared.id(), cleanup);
+            case VIDEO -> storage.withTaskVideoLock(prepared.projectId(), prepared.id(), cleanup);
+            case AUDIO -> storage.withTaskAudioLock(prepared.projectId(), prepared.id(), cleanup);
+        };
+    }
+
+    /** Cleanup covers the crash gap after stable image bytes move but before metadata is tracked. */
+    public boolean cleanupPlannedSkillImport(UUID owner, UUID project, UUID assetId) {
+        projects.get(owner, project);
+        return storage.withTaskImageLock(project, assetId, () -> {
+            if (assets.find(project, assetId).isPresent()) return true;
+            storage.discardPreparedImage(project, assetId);
+            return true;
+        });
     }
 
     /** Registers prepared immutable bytes in the same transaction as the imported content and events. */

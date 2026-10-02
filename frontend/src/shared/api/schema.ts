@@ -2058,7 +2058,7 @@ export interface paths {
          */
         get: operations["getRunPreflight"];
         put?: never;
-        post?: never;
+        post: operations["previewSkillRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2619,6 +2619,350 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["uploadLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/operations/{operationId}/retry": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retrySkillPublication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSkills"];
+        put?: never;
+        post: operations["createSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSkill"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateSkill"];
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/draft": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSkillDraft"];
+        put: operations["saveSkillDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/versions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listSkillVersions"];
+        put?: never;
+        post: operations["publishSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/versions/{skillVersionId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSkillVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/versions/{skillVersionId}/copy": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["copySkillVersionToDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/copy": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["copySkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/operations/{operationId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSkillOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/versions/{skillVersionId}/assets/{alias}/file": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+                alias: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSkillAssetFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{skillId}/versions/{skillVersionId}/assets/{alias}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+                alias: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSkillAssetThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/agents/{agentId}/skill-binding": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getAgentSkillBinding"];
+        put: operations["saveAgentSkillBinding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/agents/{agentId}/skill-installations": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["installAgentSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/agents/{agentId}/skill-installations/{operationId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getAgentSkillInstallation"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3360,8 +3704,11 @@ export interface components {
             createdAt: string;
         };
         ProjectExportManifest: {
+            creativeSkills?: {
+                [key: string]: unknown;
+            }[];
             /** @constant */
-            schemaVersion: 5;
+            schemaVersion: 6;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -4088,6 +4435,7 @@ export interface components {
             expectedModelConfigVersion?: number;
             /** @description 运行前预览中的系统提示词版本；规则变化时创建返回 409 */
             expectedSystemPromptVersion?: number;
+            skillSelection?: components["schemas"]["SkillSelection"];
             /** @description 启动 Run 时选中的同项目画布卡片；仅供上下文指向，不授予工具修改权限 */
             selectedItemIds?: string[];
         };
@@ -4174,6 +4522,7 @@ export interface components {
             /** Format: int64 */
             conversationTurnCount: number;
             inheritedBindingCount: number;
+            creativeSkill?: components["schemas"]["RunSkillSummary"] | null;
             /** @description 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。 */
             memoryTruncated: boolean;
             bindings: components["schemas"]["RunPreflightBinding"][];
@@ -4183,15 +4532,18 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New Run policies are schema v2 and pin systemPromptVersion=3. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
+        /** @description New Run policies are schema v3 and pin systemPromptVersion=4 plus their tool allowlist. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
         RunPolicySnapshot: {
             /** @enum {integer} */
-            schemaVersion: 1 | 2;
+            schemaVersion: 1 | 2 | 3;
+            /** @enum {integer} */
+            toolPolicyVersion?: 1;
+            allowedTools?: string[];
             /**
-             * @description New v2 snapshots pin version 3; historical versions 1/2 retain their original rules; absent on historical v1 snapshots.
+             * @description New v3 snapshots pin version 4; historical versions 1/2/3 retain their original rules; absent on historical v1 snapshots.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3;
+            systemPromptVersion?: 1 | 2 | 3 | 4;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
@@ -4530,6 +4882,223 @@ export interface components {
             }[];
         } & {
             [key: string]: unknown;
+        };
+        CreativeSkill: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string;
+            trashed: boolean;
+            /** Format: uuid */
+            currentVersionId: string | null;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SkillPage: {
+            items: components["schemas"]["CreativeSkill"][];
+            nextCursor?: string | null;
+            total: number;
+        };
+        CreateSkillRequest: {
+            title: string;
+            description?: string;
+        };
+        UpdateSkillRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            title: string;
+            description: string;
+            trashed: boolean;
+        };
+        SkillInputSlot: {
+            alias: string;
+            kind: components["schemas"]["ArtifactKind"];
+            required: boolean;
+        };
+        SkillResource: {
+            path: string;
+            content: string;
+            contentHash?: string;
+        };
+        SkillDraftAsset: {
+            alias: string;
+            /** Format: uuid */
+            libraryEntryId?: string | null;
+            /** Format: int64 */
+            expectedLibraryVersion?: number | null;
+            /** Format: uuid */
+            sourceVersionId?: string | null;
+            sourceAlias?: string | null;
+            /** @enum {string} */
+            usage: "GUIDE" | "PROVIDER_REFERENCE";
+            required: boolean;
+            purpose: string;
+            contentHash?: string | null;
+        };
+        SkillDraft: {
+            /** Format: uuid */
+            skillId: string;
+            /** Format: int64 */
+            version: number;
+            skillMd: string;
+            outputKinds: components["schemas"]["ArtifactKind"][];
+            inputSlots: components["schemas"]["SkillInputSlot"][];
+            resources: components["schemas"]["SkillResource"][];
+            assets: components["schemas"]["SkillDraftAsset"][];
+        };
+        SaveSkillDraftRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            skillMd: string;
+            outputKinds: components["schemas"]["ArtifactKind"][];
+            inputSlots: components["schemas"]["SkillInputSlot"][];
+            resources: components["schemas"]["SkillResource"][];
+            assets: components["schemas"]["SkillDraftAsset"][];
+        };
+        SkillPublishedAsset: {
+            alias: string;
+            kind: components["schemas"]["ArtifactKind"];
+            title: string;
+            contentHash: string;
+            /** @enum {string} */
+            usage: "GUIDE" | "PROVIDER_REFERENCE";
+            required: boolean;
+            purpose: string;
+            contentUrl?: string;
+            thumbnailUrl?: string;
+        };
+        SkillVersionSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            skillId: string;
+            name: string;
+            description: string;
+            /** Format: int64 */
+            versionNumber: number;
+            bundleHash: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SkillVersionList: components["schemas"]["SkillVersionSummary"][];
+        SkillVersion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            skillId: string;
+            /** Format: int64 */
+            versionNumber: number;
+            bundleHash: string;
+            name: string;
+            description: string;
+            skillMd: string;
+            outputKinds: components["schemas"]["ArtifactKind"][];
+            inputSlots: components["schemas"]["SkillInputSlot"][];
+            resources: components["schemas"]["SkillResource"][];
+            assets: components["schemas"]["SkillPublishedAsset"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PublishSkillRequest: {
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            commandKey: string;
+        };
+        CopySkillVersionRequest: {
+            /** Format: int64 */
+            expectedDraftVersion: number;
+        };
+        CopySkillRequest: {
+            title: string;
+            /** Format: uuid */
+            skillVersionId: string;
+        };
+        SkillOperation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            skillId: string;
+            /** @enum {string} */
+            status: "ACCEPTED" | "ARCHIVING" | "SUCCEEDED" | "FAILED";
+            /** Format: uuid */
+            resultVersionId: string | null;
+            errorCode: string | null;
+            errorDetail: string | null;
+        };
+        /** Format: binary */
+        SkillMediaBytes: string;
+        AgentSkillBinding: {
+            /** Format: int64 */
+            agentVersion: number;
+            /** Format: uuid */
+            skillId: string | null;
+            /** Format: uuid */
+            skillVersionId: string | null;
+        };
+        SaveAgentSkillBindingRequest: {
+            /** Format: int64 */
+            expectedAgentVersion: number;
+            /** Format: uuid */
+            skillId: string | null;
+            /** Format: uuid */
+            skillVersionId: string | null;
+        };
+        InstallAgentSkillRequest: {
+            /** Format: uuid */
+            skillId: string;
+            /** Format: uuid */
+            skillVersionId: string;
+        };
+        SkillInstallation: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "ACCEPTED" | "PREPARING" | "SUCCEEDED" | "FAILED" | "CLEANING";
+            /** Format: uuid */
+            skillId: string;
+            /** Format: uuid */
+            skillVersionId: string;
+            errorCode: string | null;
+            errorDetail: string | null;
+        };
+        SkillRunInput: {
+            alias: string;
+            /** Format: uuid */
+            artifactVersionId: string;
+        };
+        SkillSelection: {
+            /** @enum {string} */
+            mode: "DEFAULT" | "NONE" | "VERSION";
+            /** Format: uuid */
+            skillId?: string;
+            /** Format: uuid */
+            skillVersionId?: string;
+            inputs?: components["schemas"]["SkillRunInput"][];
+        };
+        RunPreflightRequest: {
+            /** Format: uuid */
+            agentId: string;
+            /** Format: uuid */
+            conversationId?: string;
+            skillSelection?: components["schemas"]["SkillSelection"];
+        };
+        RunSkillSummary: {
+            /** Format: uuid */
+            skillId: string;
+            /** Format: uuid */
+            skillVersionId: string;
+            title: string;
+            /** Format: int64 */
+            versionNumber: number;
+            bundleHash: string;
+            inputSlots: components["schemas"]["SkillInputSlot"][];
+            resources: components["schemas"]["SkillResource"][];
+            assets: components["schemas"]["SkillPublishedAsset"][];
+            installed: boolean;
         };
         /** TEXT Artifact content v1 */
         "text-v1.schema": {
@@ -8375,6 +8944,42 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    previewSkillRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunPreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunPreflight"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     getRun: {
         parameters: {
             query?: never;
@@ -9390,6 +9995,660 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    retrySkillPublication: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 恢复固定发布操作，只重试本地归档 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillOperation"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSkills: {
+        parameters: {
+            query?: {
+                query?: string;
+                cursor?: string;
+                trash?: boolean;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreativeSkill"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreativeSkill"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreativeSkill"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSkillDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveSkillDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveSkillDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSkillVersions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillVersionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillOperation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSkillVersion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillVersion"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    copySkillVersionToDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopySkillVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    copySkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopySkillRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreativeSkill"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSkillOperation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillOperation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSkillAssetFile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+                alias: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": components["schemas"]["SkillMediaBytes"];
+                    "image/jpeg": components["schemas"]["SkillMediaBytes"];
+                    "image/webp": components["schemas"]["SkillMediaBytes"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSkillAssetThumbnail: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                skillId: string;
+                skillVersionId: string;
+                alias: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": components["schemas"]["SkillMediaBytes"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAgentSkillBinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSkillBinding"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveAgentSkillBinding: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAgentSkillBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSkillBinding"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    installAgentSkill: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallAgentSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInstallation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAgentSkillInstallation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+                agentId: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已鉴权的固定内容或持久操作状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInstallation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
 }

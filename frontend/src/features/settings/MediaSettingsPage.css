@@ -27,4 +27,21 @@
 .media-api-help dd { margin: 0; color: var(--ui-text-muted); }
 .media-api-help code { overflow-wrap: anywhere; }
 .media-model-help { grid-column: 1 / -1; margin: 0; font-size: var(--ui-text-sm); line-height: 1.7; }
+.ui-dialog.app-page.autodl-capability-dialog { --ui-dialog-width: 1040px; max-height: calc(100dvh - var(--ui-space-8)); }
+.autodl-workflow-fields { grid-column: 1 / -1; min-width: 0; padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
+.autodl-workflow-fields > *, .autodl-workflow-definition [data-slot="field"] { min-width: 0; }
+.autodl-workflow-selector, .autodl-workflow-actions, .autodl-offline-import, .autodl-workflow-definition, .autodl-resolution-choices, .autodl-definition-resolutions,
+.autodl-workflow-fields > [role="alert"] { grid-column: 1 / -1; }
+.autodl-workflow-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--ui-space-2); }
+.autodl-offline-import { border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); }
+.autodl-offline-import > summary { padding: var(--ui-space-3) var(--ui-space-4); cursor: pointer; }
+.autodl-offline-import-fields { gap: var(--ui-space-4); padding: 0 var(--ui-space-4) var(--ui-space-4); }
+.autodl-offline-import-fields > button { align-self: flex-start; }
+.autodl-workflow-definition { gap: var(--ui-space-4); }
+.autodl-resolution-choices { gap: 0; }
+/* Respect row counts for long JSON and enum lists instead of expanding the whole form. */
+.autodl-workflow-fields [data-slot="textarea"] { field-sizing: fixed; max-width: 100%; resize: vertical; }
 @media (max-width: 720px) { .media-settings-table { min-width: 700px; } }
+@media (max-width: 560px) {
+  .ui-dialog.app-page.autodl-capability-dialog { max-height: calc(100dvh - var(--ui-space-4)); }
+}

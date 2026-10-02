@@ -183,6 +183,9 @@ public class ToolExecutionService {
         if (ledger.countByRun(context.projectId(), context.runId()) >= AgentRun.MAX_TOOL_EXECUTIONS) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
         }
+        if (!RunToolPolicy.allowed(run.policySnapshot()).contains(toolName)) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
+        }
         UUID operationId = UUID.randomUUID();
         if (!ledger.insertExecuting(operationId, context.projectId(), context.runId(),
                 stepIndex, toolCallId, toolName, argumentHash, clock.instant())) {
@@ -191,6 +194,7 @@ public class ToolExecutionService {
         JsonNode result = switch (toolName) {
             case "read_project_summary" -> reader.projectSummary(context, run,
                     operationId, arguments);
+            case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
             case "read_selection" -> reader.selection(run, operationId, arguments);
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
             case "read_task_status" -> reader.taskStatus(context, operationId, arguments);

@@ -8,6 +8,9 @@
     },
     {
       "$ref": "#/$defs/libraryImport"
+    },
+    {
+      "$ref": "#/$defs/skillImport"
     }
   ],
   "$defs": {
@@ -100,6 +103,25 @@
         }
       },
       "description": "Server-authored library provenance; ordinary artifact writes cannot create it."
+    },
+    "skillImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceType",
+        "assetId"
+      ],
+      "properties": {
+        "sourceType": {
+          "const": "SKILL_IMPORT",
+          "readOnly": true
+        },
+        "assetId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "description": "Server-authored Skill installation provenance; ordinary artifact writes cannot create it."
     }
   }
 }

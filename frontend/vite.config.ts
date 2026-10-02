@@ -1,6 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
@@ -13,6 +13,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Node script tests run separately before Vitest through the package test command.
+    exclude: [...configDefaults.exclude, "scripts/check-i18n.test.mjs"],
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     restoreMocks: true,

@@ -1,6 +1,7 @@
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
 import { ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { cn } from "cn";
 import { useId,useRef,useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
 import {
@@ -301,7 +302,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
           onClick={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</Button>
       </div></TableCell>
     </TableRow>
-    {editing ? <Dialog title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
+    {editing ? <Dialog className={cn(adapterId === AUTODL_ADAPTER && "autodl-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
       onClose={() => setEditing(false)} busy={rowBusy} onSubmit={(event) => {
         event.preventDefault(); if (isStale || rowBusy) return; setError(""); save.mutate();
       }} footer={<>
@@ -498,7 +499,7 @@ function ConnectionRow({ connection, settings, apply }: {
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
     </Dialog> : null}
-    {dialog === "capability" ? <Dialog title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
+    {dialog === "capability" ? <Dialog className={cn(adapterId === AUTODL_ADAPTER && "autodl-capability-dialog")} title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
       onClose={() => setDialog(null)} busy={busy} onSubmit={(event) => {
         event.preventDefault(); if (busy || !connection.enabled) return; setError(""); addCapability.mutate();
       }} footer={<>

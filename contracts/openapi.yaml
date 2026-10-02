@@ -2484,6 +2484,24 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+    post:
+      operationId: previewSkillRun
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RunPreflightRequest"}
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunPreflight"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/runs/{runId}:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -3255,6 +3273,441 @@ paths:
                   type: "string"
                   minLength: 1
                   maxLength: 200
+  /api/v1/skills/operations/{operationId}/retry:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {name: operationId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: retrySkillPublication
+      tags: [Skills]
+      responses:
+        "202":
+          description: 恢复固定发布操作，只重试本地归档
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillOperation"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: listSkills
+      parameters:
+        - {name: query, in: query, schema: {type: string, maxLength: 160}}
+        - {name: cursor, in: query, schema: {type: string, maxLength: 1000}}
+        - {name: trash, in: query, schema: {type: boolean, default: false}}
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillPage"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    post:
+      operationId: createSkill
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateSkillRequest"}
+      responses:
+        "201":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreativeSkill"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getSkill
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreativeSkill"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    patch:
+      operationId: updateSkill
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateSkillRequest"}
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreativeSkill"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/draft:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getSkillDraft
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    put:
+      operationId: saveSkillDraft
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveSkillDraftRequest"}
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/versions:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listSkillVersions
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillVersionList"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    post:
+      operationId: publishSkill
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PublishSkillRequest"}
+      responses:
+        "202":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillOperation"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/versions/{skillVersionId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: skillVersionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getSkillVersion
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillVersion"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/versions/{skillVersionId}/copy:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: skillVersionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: copySkillVersionToDraft
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CopySkillVersionRequest"}
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/copy:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: copySkill
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CopySkillRequest"}
+      responses:
+        "201":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreativeSkill"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/operations/{operationId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: operationId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getSkillOperation
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillOperation"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/versions/{skillVersionId}/assets/{alias}/file:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: skillVersionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: alias
+        in: path
+        required: true
+        schema: {type: string, maxLength: 64}
+    get:
+      operationId: getSkillAssetFile
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            image/png:
+              schema: {$ref: "#/components/schemas/SkillMediaBytes"}
+            image/jpeg:
+              schema: {$ref: "#/components/schemas/SkillMediaBytes"}
+            image/webp:
+              schema: {$ref: "#/components/schemas/SkillMediaBytes"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/skills/{skillId}/versions/{skillVersionId}/assets/{alias}/thumbnail:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: skillId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: skillVersionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: alias
+        in: path
+        required: true
+        schema: {type: string, maxLength: 64}
+    get:
+      operationId: getSkillAssetThumbnail
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            image/png:
+              schema: {$ref: "#/components/schemas/SkillMediaBytes"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/agents/{agentId}/skill-binding:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: projectId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getAgentSkillBinding
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillBinding"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    put:
+      operationId: saveAgentSkillBinding
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 200}
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveAgentSkillBindingRequest"}
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillBinding"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/agents/{agentId}/skill-installations:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: projectId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: installAgentSkill
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 200}
+      tags: [Skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InstallAgentSkillRequest"}
+      responses:
+        "202":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillInstallation"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/agents/{agentId}/skill-installations/{operationId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: projectId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: operationId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getAgentSkillInstallation
+      tags: [Skills]
+      responses:
+        "200":
+          description: 已鉴权的固定内容或持久操作状态
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SkillInstallation"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
     MediaStyleSummary:
@@ -4386,7 +4839,8 @@ components:
       required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
         canvasItems, connections]
       properties:
-        schemaVersion: {type: integer, const: 5}
+        creativeSkills: {type: array, items: {type: object, additionalProperties: true}}
+        schemaVersion: {type: integer, const: 6}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -5235,6 +5689,7 @@ components:
           type: integer
           minimum: 1
           description: 运行前预览中的系统提示词版本；规则变化时创建返回 409
+        skillSelection: {$ref: "#/components/schemas/SkillSelection"}
         selectedItemIds:
           type: array
           maxItems: 20
@@ -5331,6 +5786,10 @@ components:
         conversationVersion: {type: [integer, "null"], format: int64, minimum: 0}
         conversationTurnCount: {type: integer, format: int64, minimum: 0}
         inheritedBindingCount: {type: integer, minimum: 0, maximum: 40}
+        creativeSkill:
+          oneOf:
+            - {$ref: "#/components/schemas/RunSkillSummary"}
+            - {type: "null"}
         memoryTruncated: {type: boolean, description: 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。}
         bindings:
           type: array
@@ -5344,12 +5803,14 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New Run policies are schema v2 and pin systemPromptVersion=3. Historical v1
+        New Run policies are schema v3 and pin systemPromptVersion=4 plus their tool allowlist. Historical v1
         snapshots lack this field and cannot safely start an uncheckpointed model turn.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
-        schemaVersion: {type: integer, enum: [1, 2]}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3], description: New v2 snapshots pin version 3; historical versions 1/2 retain their original rules; absent on historical v1 snapshots.}
+        schemaVersion: {type: integer, enum: [1, 2, 3]}
+        toolPolicyVersion: {type: integer, enum: [1]}
+        allowedTools: {type: array, uniqueItems: true, items: {type: string}}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4], description: New v3 snapshots pin version 4; historical versions 1/2/3 retain their original rules; absent on historical v1 snapshots.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}
@@ -5697,6 +6158,248 @@ components:
             properties:
               field: {type: string}
               message: {type: string}
+    CreativeSkill:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, trashed, currentVersionId, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        description: {type: string}
+        trashed: {type: boolean}
+        currentVersionId: {type: [string, "null"], format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SkillPage:
+      type: object
+      additionalProperties: false
+      required: [items, total]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/CreativeSkill"}}
+        nextCursor: {type: [string, "null"]}
+        total: {type: integer, minimum: 0}
+    CreateSkillRequest:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 160}
+        description: {type: string, maxLength: 1024}
+    UpdateSkillRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, title, description, trashed]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        title: {type: string, minLength: 1, maxLength: 160}
+        description: {type: string, maxLength: 1024}
+        trashed: {type: boolean}
+    SkillInputSlot:
+      type: object
+      additionalProperties: false
+      required: [alias, kind, required]
+      properties:
+        alias: {type: string, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 64}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        required: {type: boolean}
+    SkillResource:
+      type: object
+      additionalProperties: false
+      required: [path, content]
+      properties:
+        path: {type: string, maxLength: 160}
+        content: {type: string, maxLength: 8000}
+        contentHash: {type: string}
+    SkillDraftAsset:
+      type: object
+      additionalProperties: false
+      required: [alias, usage, required, purpose]
+      properties:
+        alias: {type: string, maxLength: 64}
+        libraryEntryId: {type: [string, "null"], format: uuid}
+        expectedLibraryVersion: {type: [integer, "null"], format: int64, minimum: 0}
+        sourceVersionId: {type: [string, "null"], format: uuid}
+        sourceAlias: {type: [string, "null"]}
+        usage: {type: string, enum: [GUIDE, PROVIDER_REFERENCE]}
+        required: {type: boolean}
+        purpose: {type: string, maxLength: 1024}
+        contentHash: {type: [string, "null"]}
+    SkillDraft:
+      type: object
+      additionalProperties: false
+      required: [skillId, version, skillMd, outputKinds, inputSlots, resources, assets]
+      properties:
+        skillId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        skillMd: {type: string, maxLength: 8000}
+        outputKinds: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/ArtifactKind"}}
+        inputSlots: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillInputSlot"}}
+        resources: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillResource"}}
+        assets: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillDraftAsset"}}
+    SaveSkillDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, skillMd, outputKinds, inputSlots, resources, assets]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        skillMd: {type: string, maxLength: 8000}
+        outputKinds: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/ArtifactKind"}}
+        inputSlots: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillInputSlot"}}
+        resources: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillResource"}}
+        assets: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillDraftAsset"}}
+    SkillPublishedAsset:
+      type: object
+      additionalProperties: false
+      required: [alias, kind, title, contentHash, usage, required, purpose]
+      properties:
+        alias: {type: string}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        title: {type: string}
+        contentHash: {type: string}
+        usage: {type: string, enum: [GUIDE, PROVIDER_REFERENCE]}
+        required: {type: boolean}
+        purpose: {type: string}
+        contentUrl: {type: string}
+        thumbnailUrl: {type: string}
+    SkillVersionSummary:
+      type: object
+      additionalProperties: false
+      required: [id, skillId, versionNumber, name, description, bundleHash, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        skillId: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        versionNumber: {type: integer, format: int64, minimum: 0}
+        bundleHash: {type: string}
+        createdAt: {type: string, format: date-time}
+    SkillVersionList:
+      type: array
+      items: {$ref: "#/components/schemas/SkillVersionSummary"}
+    SkillVersion:
+      type: object
+      additionalProperties: false
+      required: [id, skillId, versionNumber, bundleHash, name, description, skillMd, outputKinds, inputSlots, resources, assets, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        skillId: {type: string, format: uuid}
+        versionNumber: {type: integer, format: int64, minimum: 0}
+        bundleHash: {type: string}
+        name: {type: string}
+        description: {type: string}
+        skillMd: {type: string, maxLength: 8000}
+        outputKinds: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/ArtifactKind"}}
+        inputSlots: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillInputSlot"}}
+        resources: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillResource"}}
+        assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
+        createdAt: {type: string, format: date-time}
+    PublishSkillRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedDraftVersion, commandKey]
+      properties:
+        expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+        commandKey: {type: string, minLength: 1, maxLength: 200}
+    CopySkillVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedDraftVersion]
+      properties:
+        expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+    CopySkillRequest:
+      type: object
+      additionalProperties: false
+      required: [title, skillVersionId]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 160}
+        skillVersionId: {type: string, format: uuid}
+    SkillOperation:
+      type: object
+      additionalProperties: false
+      required: [id, skillId, status, resultVersionId, errorCode, errorDetail]
+      properties:
+        id: {type: string, format: uuid}
+        skillId: {type: string, format: uuid}
+        status: {type: string, enum: [ACCEPTED, ARCHIVING, SUCCEEDED, FAILED]}
+        resultVersionId: {type: [string, "null"], format: uuid}
+        errorCode: {type: [string, "null"]}
+        errorDetail: {type: [string, "null"]}
+    SkillMediaBytes:
+      type: string
+      format: binary
+    AgentSkillBinding:
+      type: object
+      additionalProperties: false
+      required: [agentVersion, skillId, skillVersionId]
+      properties:
+        agentVersion: {type: integer, format: int64, minimum: 0}
+        skillId: {type: [string, "null"], format: uuid}
+        skillVersionId: {type: [string, "null"], format: uuid}
+    SaveAgentSkillBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedAgentVersion, skillId, skillVersionId]
+      properties:
+        expectedAgentVersion: {type: integer, format: int64, minimum: 0}
+        skillId: {type: [string, "null"], format: uuid}
+        skillVersionId: {type: [string, "null"], format: uuid}
+    InstallAgentSkillRequest:
+      type: object
+      additionalProperties: false
+      required: [skillId, skillVersionId]
+      properties:
+        skillId: {type: string, format: uuid}
+        skillVersionId: {type: string, format: uuid}
+    SkillInstallation:
+      type: object
+      additionalProperties: false
+      required: [id, status, skillId, skillVersionId, errorCode, errorDetail]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [ACCEPTED, PREPARING, SUCCEEDED, FAILED, CLEANING]}
+        skillId: {type: string, format: uuid}
+        skillVersionId: {type: string, format: uuid}
+        errorCode: {type: [string, "null"]}
+        errorDetail: {type: [string, "null"]}
+    SkillRunInput:
+      type: object
+      additionalProperties: false
+      required: [alias, artifactVersionId]
+      properties:
+        alias: {type: string, maxLength: 64}
+        artifactVersionId: {type: string, format: uuid}
+    SkillSelection:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {type: string, enum: [DEFAULT, NONE, VERSION]}
+        skillId: {type: string, format: uuid}
+        skillVersionId: {type: string, format: uuid}
+        inputs: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillRunInput"}}
+    RunPreflightRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId]
+      properties:
+        agentId: {type: string, format: uuid}
+        conversationId: {type: string, format: uuid}
+        skillSelection: {$ref: "#/components/schemas/SkillSelection"}
+    RunSkillSummary:
+      type: object
+      additionalProperties: false
+      required: [skillId, skillVersionId, title, versionNumber, bundleHash, inputSlots, resources, assets, installed]
+      properties:
+        skillId: {type: string, format: uuid}
+        skillVersionId: {type: string, format: uuid}
+        title: {type: string}
+        versionNumber: {type: integer, format: int64, minimum: 0}
+        bundleHash: {type: string}
+        inputSlots: {type: array, items: {$ref: "#/components/schemas/SkillInputSlot"}}
+        resources: {type: array, items: {$ref: "#/components/schemas/SkillResource"}}
+        assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
+        installed: {type: boolean}
   responses:
     ValidationError:
       description: 请求参数无效

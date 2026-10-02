@@ -79,6 +79,48 @@ public class ReadToolService {
         return output;
     }
 
+    public static final int MAX_SKILL_RESOURCE_PAGE = 4_000;
+
+    /** Reads only persisted text from the selected Run snapshot, never filesystem paths. */
+    public JsonNode skillResource(AgentRun run, UUID operationId, String arguments) {
+        ObjectNode input = parseObject(arguments);
+        if (input.properties().stream().anyMatch(entry -> !Set.of("path", "offset", "limit").contains(entry.getKey()))
+                || !input.path("path").isTextual()
+                || (input.has("offset") && !input.path("offset").isIntegralNumber())
+                || (input.has("limit") && !input.path("limit").isIntegralNumber())) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
+        int offset = input.path("offset").asInt(0);
+        int limit = input.path("limit").asInt(MAX_SKILL_RESOURCE_PAGE);
+        if (offset < 0 || limit < 1 || limit > MAX_SKILL_RESOURCE_PAGE
+                || (input.has("offset") && !input.path("offset").canConvertToInt())
+                || (input.has("limit") && !input.path("limit").canConvertToInt())) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
+        JsonNode skill = run.contextSnapshot().path("creativeSkill");
+        JsonNode resources = skill.path("resources");
+        for (JsonNode resource : resources) {
+            if (resource.path("path").asText().equals(input.path("path").asText())) {
+                String text = resource.path("content").asText();
+                int total = text.codePointCount(0, text.length());
+                if (offset > total) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+                int end = Math.min(total, offset + limit);
+                ObjectNode output = result(operationId, "已读取本次 Skill 的固定资源");
+                ObjectNode data = output.putObject("data");
+                data.put("skillVersionId", skill.path("skillVersionId").asText());
+                data.put("path", resource.path("path").asText());
+                data.put("contentHash", resource.path("contentHash").asText());
+                data.put("content", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
+                data.put("offset", offset);
+                data.put("total", total);
+                data.put("endOffset", end);
+                if (end < total) data.put("nextOffset", end); else data.putNull("nextOffset");
+                return output;
+            }
+        }
+        throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
+    }
+
     /** 返回 Run 创建时记录的界面选择供理解意图；该快照不能作为写入授权。 */
     public JsonNode selection(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
