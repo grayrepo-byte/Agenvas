@@ -4,18 +4,6 @@ import { useEffect, useState } from "react";
 import { HTTP_STATUS,ApiError, getArtifact, type Artifact } from "../../shared/api/client";
 import { hasCurrentVersion, type VersionedArtifact } from "./versionedArtifact";
 
-
-type ArtifactRevisionStatus = {
-  dirty: boolean;
-  busy: boolean;
-  saving: boolean;
-  saved: boolean;
-  newerAvailable: boolean;
-  conflict: boolean;
-  error: Error | null;
-  reloadError: Error | null;
-};
-
 type ArtifactRevisionOptions<Fields, Revision> = {
   artifact: VersionedArtifact;
   readFields: (artifact: VersionedArtifact) => Fields;
@@ -65,7 +53,7 @@ export function useArtifactRevision<Fields extends object, Revision>({
     }
   }, [artifact, base.id, base.version, dirty, busy, readFields]);
 
-  const status: ArtifactRevisionStatus = {
+  const status = {
     dirty, busy, saving: save.isPending, saved: save.isSuccess,
     newerAvailable: artifact.version > base.version,
     conflict: save.error instanceof ApiError && save.error.status === HTTP_STATUS.CONFLICT,
