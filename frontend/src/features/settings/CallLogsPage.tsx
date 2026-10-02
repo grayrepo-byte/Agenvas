@@ -1,6 +1,6 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowSquareOut,ArrowsClockwise,ListMagnifyingGlass } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { ArrowSquareOut,ListMagnifyingGlass } from "@phosphor-icons/react";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent,type ReactNode } from "react";
 import { Link,Navigate,useSearchParams } from "react-router";
 import { HTTP_STATUS,ApiError,getCurrentUser,getTask,listCallLogs,type CallLog,type CallLogFilters,type Task } from "../../shared/api/client";
@@ -49,6 +49,7 @@ function readFilters(params: URLSearchParams): CallLogFilters {
 /** A read-only audit list; recovery stays inside the owning Agent conversation or media card. */
 export function CallLogsPage() {
   useLocale();
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const filters = readFilters(params);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -67,13 +68,16 @@ export function CallLogsPage() {
     next.set("page", String(page));
     setParams(next);
   };
+  const applyFilters = (next: URLSearchParams) => {
+    setSelectedId(null);
+    // Refresh the target page even when its filters are unchanged or still cached.
+    void queryClient.invalidateQueries({ queryKey: ["call-logs", readFilters(next)], exact: true });
+    setParams(next);
+  };
 
-  return <PageShell title={t("common.callLogs")} description={t("logs.calls.description")} actions={
-    <Button variant="outline"  type="button" disabled={logs.isFetching || !currentUser.isSuccess}
-      onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? t("common.refreshing") : t("logs.refresh")}</Button>
-  }><div className="ui-stack">
+  return <PageShell title={t("common.callLogs")} description={t("logs.calls.description")}><div className="ui-stack">
     <Panel title={t("logs.calls.filterRecords")} description={t("logs.calls.filterTimeHint")}>
-      <CallLogFilterForm key={params.toString()} filters={filters} onApply={(next) => { setSelectedId(null); setParams(next); }} />
+      <CallLogFilterForm key={params.toString()} filters={filters} onApply={applyFilters} disabled={logs.isFetching || !currentUser.isSuccess} />
     </Panel>
     {logs.isPending && currentUser.isSuccess ? <LoadingState label={t("logs.calls.loading")} /> : null}
     {logs.isError ? <Notice tone="danger" title={forbidden ? t("logs.calls.forbidden") : invalidFilters ? t("logs.calls.invalidFilter") : t("logs.calls.loadFailed")}>
@@ -102,12 +106,13 @@ export function CallLogsPage() {
   </div></PageShell>;
 }
 
-function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onApply: (params: URLSearchParams) => void }) {
+function CallLogFilterForm({ filters, onApply, disabled }: { filters: CallLogFilters; onApply: (params: URLSearchParams) => void; disabled: boolean }) {
   useLocale();
   const [error, setError] = useState<string | null>(null);
   const filterCount = [filters.projectId, filters.kind, filters.status, filters.traceId, filters.from, filters.to].filter(Boolean).length;
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (disabled) return;
     const form = new FormData(event.currentTarget);
     const next = new URLSearchParams();
     for (const field of ["projectId", "kind", "status", "traceId", "from", "to"]) {
@@ -120,6 +125,7 @@ function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onAp
       setError(t("logs.calls.invalidTimeRange"));
       return;
     }
+    setError(null);
     onApply(next);
   }
   return <form className="ui-form" onSubmit={submit}>
@@ -135,8 +141,8 @@ function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onAp
     </div>
     {error ? <p className="ui-error" role="alert">{error}</p> : null}
     <div className="ui-toolbar"><span className="ui-muted" role="status">{filterCount ? t("logs.calls.filterCount", { "0": filterCount }) : t("logs.calls.allRecords")}</span>
-    <div className="ui-form-actions"><Button variant="default"  type="submit">{t("logs.calls.filter")}</Button>
-      <Button variant="ghost"  type="button" onClick={() => onApply(new URLSearchParams())}>{t("logs.calls.clearFilters")}</Button></div></div>
+    <div className="ui-form-actions"><Button variant="default"  type="submit" disabled={disabled}>{t("logs.calls.filter")}</Button>
+      <Button variant="ghost"  type="button" disabled={disabled} onClick={() => { setError(null); onApply(new URLSearchParams()); }}>{t("logs.calls.clearFilters")}</Button></div></div>
   </form>;
 }
 

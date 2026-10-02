@@ -107,6 +107,109 @@ describe("CallLogsPage", () => {
     await waitFor(() => expect(Object.fromEntries(requests.at(-1)!)).toEqual({ page: "0", size: "20" }));
   });
 
+  it.each(["", "trace-filter"])("fetches fresh logs when submitting unchanged filters (%s)", async (traceId) => {
+    const reads = vi.fn();
+    let model = "test-model";
+    server.use(http.get("/api/v1/call-logs", () => {
+      reads();
+      return HttpResponse.json(page([{ ...LOG, model }]));
+    }));
+    const user = userEvent.setup();
+    showPage();
+    await screen.findByText("test-model");
+    if (traceId) {
+      await user.type(screen.getByLabelText("Trace ID"), traceId);
+      await user.click(screen.getByRole("button", { name: "筛选日志" }));
+      await waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+    }
+
+    const previousReads = reads.mock.calls.length;
+    model = "latest-model";
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    expect(await screen.findByText("latest-model")).toBeInTheDocument();
+    expect(reads).toHaveBeenCalledTimes(previousReads + 1);
+  });
+
+  it("resets to the first page and reads it once when filtering from a later page", async () => {
+    const requestedPages: string[] = [];
+    let firstPageModel = "first-page-model";
+    server.use(http.get("/api/v1/call-logs", ({ request }) => {
+      const requestedPage = new URL(request.url).searchParams.get("page")!;
+      requestedPages.push(requestedPage);
+      return HttpResponse.json(page([{ ...LOG, model: requestedPage === "0" ? firstPageModel : "second-page-model" }],
+        { page: Number(requestedPage), totalElements: 21, totalPages: 2 }));
+    }));
+    const user = userEvent.setup();
+    showPage();
+    await screen.findByText("first-page-model");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByText("second-page-model");
+    expect(screen.getByText("第 2 页 / 共 2 页 · 每页 20 条")).toBeInTheDocument();
+
+    firstPageModel = "latest-first-page-model";
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    expect(await screen.findByText("latest-first-page-model")).toBeInTheDocument();
+    expect(screen.getByText("第 1 页 / 共 2 页 · 每页 20 条")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "筛选日志" })).toBeEnabled());
+    expect(requestedPages).toEqual(["0", "1", "0"]);
+  });
+
+  it("reads fresh logs once when returning to a recently queried filter", async () => {
+    const requestedTraceIds: string[] = [];
+    let firstFilterModel = "first-filter-model";
+    server.use(http.get("/api/v1/call-logs", ({ request }) => {
+      const traceId = new URL(request.url).searchParams.get("traceId")!;
+      requestedTraceIds.push(traceId);
+      return HttpResponse.json(page([{ ...LOG, model: traceId === "trace-first" ? firstFilterModel : "second-filter-model" }]));
+    }));
+    const user = userEvent.setup();
+    showPage("/settings/calls?traceId=trace-first");
+    await screen.findByText("first-filter-model");
+    await user.clear(screen.getByLabelText("Trace ID"));
+    await user.type(screen.getByLabelText("Trace ID"), "trace-second");
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    await screen.findByText("second-filter-model");
+
+    firstFilterModel = "latest-first-filter-model";
+    await user.clear(screen.getByLabelText("Trace ID"));
+    await user.type(screen.getByLabelText("Trace ID"), "trace-first");
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    expect(await screen.findByText("latest-first-filter-model")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "筛选日志" })).toBeEnabled());
+    expect(requestedTraceIds).toEqual(["trace-first", "trace-second", "trace-first"]);
+  });
+
+  it("disables filter actions and preserves records while an explicit read is pending", async () => {
+    let finishRead: (() => void) | undefined;
+    const pendingRead = new Promise<void>((resolve) => { finishRead = resolve; });
+    const reads = vi.fn();
+    server.use(http.get("/api/v1/call-logs", async () => {
+      reads();
+      if (reads.mock.calls.length === 1) return HttpResponse.json(page());
+      await pendingRead;
+      return HttpResponse.json(page([{ ...LOG, model: "latest-model" }]));
+    }));
+    const user = userEvent.setup();
+    showPage();
+    await screen.findByText("test-model");
+    expect(screen.queryByRole("button", { name: "刷新日志" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    expect(await screen.findByText("正在更新调用日志")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选日志" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "清空筛选" })).toBeDisabled();
+    expect(screen.getByText("test-model")).toBeInTheDocument();
+    expect(reads).toHaveBeenCalledTimes(2);
+
+    finishRead?.();
+    expect(await screen.findByText("latest-model")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "筛选日志" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "清空筛选" })).toBeEnabled();
+    expect(screen.queryByText("正在更新调用日志")).not.toBeInTheDocument();
+    expect(screen.queryByText("test-model")).not.toBeInTheDocument();
+    expect(reads).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects an inverted date range before issuing another read", async () => {
     const reads = vi.fn();
     server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
@@ -151,7 +254,7 @@ describe("CallLogsPage", () => {
     await user.click(screen.getByRole("button", { name: "重试读取日志" }));
     expect(await screen.findByText("test-model")).toBeInTheDocument();
     failed = true;
-    await user.click(screen.getByRole("button", { name: "刷新日志" }));
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("保留上次读取的记录");
     expect(screen.getByText("test-model")).toBeInTheDocument();
   });
