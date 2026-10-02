@@ -117,6 +117,13 @@ public class ArtifactService {
         }).value();
     }
 
+    /** Trusted template snapshot import. Template provenance is persisted by the caller's
+     * module; this creates only project content and never invents a LibraryEntry dependency. */
+    @Transactional
+    public ArtifactView createTemplateImport(UUID ownerId, UUID projectId, String title, UUID assetId) {
+        return createLibraryImport(ownerId, projectId, Artifact.Kind.IMAGE, title, null, assetId);
+    }
+
     /**
      * 使用项目内幂等键创建手工产物；同键同载荷返回原响应快照，同键异载荷返回冲突。
      * 重放时仍重新鉴权原产物，不会再次追加首个版本。

@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
-    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects 与 /api/v1/settings 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
+    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings 与 /api/v1/media-templates 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
     所有 API 接受 Accept-Language 语言协商（en、zh、ru、ja，地区变体按基础语言匹配；不支持、缺失或无效时回退 zh，q=0 不选用）。响应携带 Content-Language 与 Vary: Accept-Language，包括认证和 CSRF 错误。Problem 的 title、detail、fieldErrors.message 使用协商语言；code、状态、字段路径、ID 和用户内容不随语言变化。语言偏好仅由浏览器保存，无账号配置 API 或数据库迁移。
 servers:
@@ -130,6 +130,456 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
         "503": {$ref: "#/components/responses/Unavailable"}
+  "/api/v1/media-templates":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+    "get":
+      "operationId": "listMediaTemplates"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplateList"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "parameters":
+        - {"name":"targetKind","in":"query","required":false,"schema":{"type":"string","enum":["IMAGE","VIDEO"]}}
+        - {"name":"scope","in":"query","required":false,"schema":{"type":"string","enum":["PERSONAL","SYSTEM"]}}
+        - {"name":"query","in":"query","required":false,"schema":{"type":"string","maxLength":160}}
+      "description": "Lists the signed-in user’s personal templates and shared system templates. Presets support IMAGE and VIDEO only."
+    "post":
+      "operationId": "createMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "201":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplate"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/CreateMediaTemplateRequest"
+  "/api/v1/media-templates/{templateId}":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"templateId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "get":
+      "operationId": "getMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplate"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+    "patch":
+      "operationId": "updateMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplate"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/UpdateMediaTemplateRequest"
+    "delete":
+      "operationId": "deleteMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "204":
+          "description": "Success"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "parameters":
+        - {"name":"expectedVersion","in":"query","required":true,"schema":{"type":"integer","format":"int64","minimum":0}}
+  "/api/v1/settings/media-templates":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+    "post":
+      "operationId": "createSystemMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "201":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplate"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/CreateMediaTemplateRequest"
+      "description": "Administrator-only shared template creation. Uses independently archived images owned by the requesting administrator."
+  "/api/v1/settings/media-templates/{templateId}":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"templateId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "patch":
+      "operationId": "updateSystemMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplate"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/UpdateMediaTemplateRequest"
+      "description": "Administrator-only system template update with CAS. Existing attached images can be retained by another administrator."
+    "delete":
+      "operationId": "deleteSystemMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "204":
+          "description": "Success"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "parameters":
+        - {"name":"expectedVersion","in":"query","required":true,"schema":{"type":"integer","format":"int64","minimum":0}}
+  "/api/v1/media-templates/images":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+    "post":
+      "operationId": "uploadMediaTemplateImage"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "201":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplateImage"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "413":
+          "description": "Image exceeds the 20 MiB upload limit"
+          "content":
+            "application/problem+json":
+              "schema":
+                "$ref": "#/components/schemas/Problem"
+      "description": "Archives an independent owner-scoped image using actual MIME, decoder, 20 MiB and 40 MP validation. It becomes visible to other signed-in users only while attached to a system template."
+      "requestBody":
+        "required": true
+        "content":
+          "multipart/form-data":
+            "schema":
+              "type": "object"
+              "required":
+                - "file"
+              "properties":
+                "file":
+                  "type": "string"
+                  "format": "binary"
+  "/api/v1/media-templates/images/from-version":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+    "post":
+      "operationId": "copyMediaTemplateImage"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "201":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplateImage"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/CopyMediaTemplateImageRequest"
+      "description": "Copies an exact accessible project IMAGE version into an independent template image. Does not create canvas nodes or generate media."
+  "/api/v1/media-templates/images/{imageId}":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"imageId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "delete":
+      "operationId": "deleteMediaTemplateImage"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "204":
+          "description": "Success"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "description": "Owner-only cleanup of unattached images. Template or accepted-import references return 409 MEDIA_TEMPLATE_IMAGE_IN_USE."
+  "/api/v1/media-templates/images/{imageId}/content":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"imageId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "get":
+      "operationId": "getMediaTemplateImageContent"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "image/png":
+              "schema":
+                "type": "string"
+                "format": "binary"
+            "image/jpeg":
+              "schema":
+                "type": "string"
+                "format": "binary"
+            "image/webp":
+              "schema":
+                "type": "string"
+                "format": "binary"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "description": "Authenticated owner or currently shared system-template image access, Cache-Control: no-store."
+    "head":
+      "operationId": "headMediaTemplateImageContent"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/api/v1/media-templates/images/{imageId}/thumbnail":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"imageId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "get":
+      "operationId": "getMediaTemplateImageThumbnail"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "image/png":
+              "schema":
+                "type": "string"
+                "format": "binary"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "description": "Authenticated owner or currently shared system-template image preview, Cache-Control: no-store."
+  "/api/v1/projects/{projectId}/media-templates/{templateId}/import":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"projectId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+      - {"name":"templateId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "post":
+      "operationId": "importMediaTemplate"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaTemplateImport"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ImportMediaTemplateRequest"
+      "description": "Freezes the requested visible template version and copies its images into independent same-project exact versions. Never creates canvas nodes, saves media drafts, changes model parameters, or runs generation. The project-scoped commandKey resumes/replays the persisted result; mismatched template/version payload returns 409 IDEMPOTENCY_CONFLICT. Imported versions retain explicit template provenance and survive template deletion."
+  "/api/v1/projects/{projectId}/canvas-items/{itemId}/media-draft/replace-inputs":
+    "parameters":
+      - {"$ref":"#/components/parameters/AcceptLanguage"}
+      - {"name":"projectId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+      - {"name":"itemId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}
+    "post":
+      "operationId": "replaceMediaDraftInputs"
+      "tags":
+        - "MediaTemplates"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MediaDraft"
+        "400":
+          "$ref": "#/components/responses/ValidationError"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SaveMediaDraftRequest"
+      "description": "Atomically removes current media-input connection lines and saves the complete replacement draft with expectedVersion CAS. Preserves the previous draft and lines on conflict or validation failure. Does not generate media."
   /api/v1/settings/system-logs:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -2860,6 +3310,248 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         name: {type: string}
         promptSuffix: {type: string}
+    "MediaTemplateImage":
+      "type": "object"
+      "required":
+        - "id"
+        - "contentType"
+        - "byteSize"
+        - "width"
+        - "height"
+        - "thumbnailUrl"
+        - "contentUrl"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "contentType":
+          "type": "string"
+        "byteSize":
+          "type": "integer"
+          "format": "int64"
+        "width":
+          "type": "integer"
+          "minimum": 1
+        "height":
+          "type": "integer"
+          "minimum": 1
+        "thumbnailUrl":
+          "type": "string"
+        "contentUrl":
+          "type": "string"
+    "MediaTemplate":
+      "type": "object"
+      "required":
+        - "id"
+        - "name"
+        - "targetKind"
+        - "scope"
+        - "prompt"
+        - "images"
+        - "version"
+        - "createdAt"
+        - "updatedAt"
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 160
+        "targetKind":
+          "type": "string"
+          "enum":
+            - "IMAGE"
+            - "VIDEO"
+        "scope":
+          "type": "string"
+          "enum":
+            - "PERSONAL"
+            - "SYSTEM"
+        "prompt":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 20000
+        "images":
+          "type": "array"
+          "maxItems": 8
+          "items":
+            "$ref": "#/components/schemas/MediaTemplateImage"
+        "version":
+          "type": "integer"
+          "format": "int64"
+          "minimum": 0
+        "createdAt":
+          "type": "string"
+          "format": "date-time"
+        "updatedAt":
+          "type": "string"
+          "format": "date-time"
+    "MediaTemplateList":
+      "type": "object"
+      "required":
+        - "items"
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/MediaTemplate"
+    "CreateMediaTemplateRequest":
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "name"
+        - "targetKind"
+        - "prompt"
+        - "imageIds"
+      "properties":
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 160
+        "targetKind":
+          "type": "string"
+          "enum":
+            - "IMAGE"
+            - "VIDEO"
+        "prompt":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 20000
+        "imageIds":
+          "type": "array"
+          "maxItems": 8
+          "uniqueItems": true
+          "items":
+            "type": "string"
+            "format": "uuid"
+    "UpdateMediaTemplateRequest":
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "expectedVersion"
+        - "name"
+        - "targetKind"
+        - "prompt"
+        - "imageIds"
+      "properties":
+        "expectedVersion":
+          "type": "integer"
+          "format": "int64"
+          "minimum": 0
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 160
+        "targetKind":
+          "type": "string"
+          "enum":
+            - "IMAGE"
+            - "VIDEO"
+        "prompt":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 20000
+        "imageIds":
+          "type": "array"
+          "maxItems": 8
+          "uniqueItems": true
+          "items":
+            "type": "string"
+            "format": "uuid"
+    "CopyMediaTemplateImageRequest":
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "projectId"
+        - "versionId"
+      "properties":
+        "projectId":
+          "type": "string"
+          "format": "uuid"
+        "versionId":
+          "type": "string"
+          "format": "uuid"
+    "ImportMediaTemplateRequest":
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "expectedTemplateVersion"
+        - "commandKey"
+      "properties":
+        "expectedTemplateVersion":
+          "type": "integer"
+          "format": "int64"
+          "minimum": 0
+        "commandKey":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 200
+    "ImportedMediaTemplateImage":
+      "type": "object"
+      "required":
+        - "versionId"
+        - "assetId"
+        - "title"
+        - "contentType"
+        - "byteSize"
+        - "width"
+        - "height"
+        - "thumbnailUrl"
+      "properties":
+        "versionId":
+          "type": "string"
+          "format": "uuid"
+        "assetId":
+          "type": "string"
+          "format": "uuid"
+        "title":
+          "type": "string"
+          "maxLength": 160
+        "contentType":
+          "type": "string"
+        "byteSize":
+          "type": "integer"
+          "format": "int64"
+        "width":
+          "type": "integer"
+          "minimum": 1
+        "height":
+          "type": "integer"
+          "minimum": 1
+        "thumbnailUrl":
+          "type": "string"
+    "MediaTemplateImport":
+      "type": "object"
+      "required":
+        - "templateId"
+        - "templateVersion"
+        - "targetKind"
+        - "prompt"
+        - "images"
+      "properties":
+        "templateId":
+          "type": "string"
+          "format": "uuid"
+        "templateVersion":
+          "type": "integer"
+          "format": "int64"
+          "minimum": 0
+        "targetKind":
+          "type": "string"
+          "enum":
+            - "IMAGE"
+            - "VIDEO"
+        "prompt":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 20000
+        "images":
+          "type": "array"
+          "maxItems": 8
+          "items":
+            "$ref": "#/components/schemas/ImportedMediaTemplateImage"
     LibraryCategory:
       type: "string"
       enum: ["CHARACTER", "SCENE", "PROP", "OTHER"]

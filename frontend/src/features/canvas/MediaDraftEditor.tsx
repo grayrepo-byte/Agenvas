@@ -14,9 +14,11 @@ import type { CSSProperties,FormEvent } from "react";
 import { useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";
 import {
 HTTP_STATUS,ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
+assetThumbnailUrl,
 getMediaDraft,getMediaSettings,
 listArtifactVersions,listArtifacts,listCanvasItems,listDirectMediaTasks,
 removeMediaDraftMediaInput,
+replaceMediaDraftInputs,
 runMediaDraft,saveMediaDraft,
 uploadAudioAsset,
 uploadImageAsset,
@@ -26,6 +28,7 @@ type MediaDraft,
 type RunningHubField,
 type SaveMediaDraftRequest
 } from "../../shared/api/client";
+import type { MediaTemplateImport } from "../../shared/api/client";
 import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
@@ -36,6 +39,8 @@ import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
 import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
+import { MediaTemplatePicker } from "../templates/MediaTemplatePicker";
+import { templateDraftChanges, type TemplateApplyOptions } from "../templates/templateApplication";
 import { mediaModelDetails } from "./mediaModelPresentation";
 import { mediaDraftQueryOptions } from "./mediaDisplay";
 import { AudioPromptTools } from "./AudioPromptTools";
@@ -209,12 +214,16 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     }
   }, [artifact.kind, localAspectRatio, ratioDraftKey]);
   const [expectedVersion, setExpectedVersion] = useState<number | null>(null);
+  const expectedVersionRef = useRef<number | null>(null);
+  useLayoutEffect(() => { expectedVersionRef.current = expectedVersion; }, [expectedVersion]);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [failedRemovalVersionId, setFailedRemovalVersionId] = useState<string | null>(null);
   const draggedReferenceIndex = useRef<number | null>(null);
   const runIntent = useRef<RunIntent | null>(null);
   const [libraryBusy, setLibraryBusy] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [referenceSourcesOpen, setReferenceSourcesOpen] = useState(false);
   const referenceSourcesCloseTimer = useRef<number | null>(null);
@@ -448,8 +457,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     expectedVersion: number | null; error: Error | null; libraryBusy: boolean }>({ fields: null,
     dirty: false, expectedVersion: null, error: null, libraryBusy: false });
   useLayoutEffect(() => {
-    closeState.current = { fields, dirty, expectedVersion, error, libraryBusy };
-  }, [fields, dirty, expectedVersion, error, libraryBusy]);
+    closeState.current = { fields, dirty, expectedVersion, error, libraryBusy: libraryBusy || templateBusy };
+  }, [fields, dirty, expectedVersion, error, libraryBusy, templateBusy]);
   useEffect(() => () => {
     const state = closeState.current;
     if (state.dirty && state.fields && state.expectedVersion !== null) {
@@ -482,7 +491,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     // Run submission and result selection may advance the draft CAS version. Refresh only clean
     // fields; an in-flight save, local edit or conflict must keep its current input intact.
     if (recovery || !draft.data || dirty || save.isPending || commitAssetReferences.isPending
-        || libraryBusy || run.isPending || error) return;
+        || libraryBusy || templateBusy || run.isPending || error) return;
     // An earlier GET can finish after a successful save wrote its newer result to the cache.
     // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
     if (expectedVersion !== null && draft.data.version < expectedVersion) return;
@@ -491,20 +500,20 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     setFields(initial);
     setExpectedVersion(draft.data.version);
   }, [draft.data, dirty, save.isPending, commitAssetReferences.isPending,
-    run.isPending, libraryBusy, error, expectedVersion, recovery]);
+    run.isPending, libraryBusy, templateBusy, error, expectedVersion, recovery]);
 
   useEffect(() => {
     if (!dirty || !fields || expectedVersion === null || save.isPending
         || commitAssetReferences.isPending
-        || removeConnectedInput.isPending || libraryBusy || popover === "libraryReferences" || error) return;
+        || removeConnectedInput.isPending || libraryBusy || templateBusy || popover === "libraryReferences" || error) return;
     const timer = window.setTimeout(() => save.mutate({ ...fields, expectedVersion }), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [dirty, fields, expectedVersion, save.isPending, commitAssetReferences.isPending,
-    removeConnectedInput.isPending, libraryBusy, popover, error]);
+    removeConnectedInput.isPending, libraryBusy, templateBusy, popover, error]);
 
   useEffect(() => {
     if (runningHub || artifact.kind !== "VIDEO" || !fields || !chosenCapability || dirty || save.isPending
-        || commitAssetReferences.isPending || removeConnectedInput.isPending) return;
+        || commitAssetReferences.isPending || removeConnectedInput.isPending || templateBusy) return;
     const hasImages = fields.mediaInputs.length > 0;
     const desiredMode = hasImages
       ? fields.videoInputMode === null || fields.videoInputMode === "TEXT"
@@ -517,7 +526,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         mediaInputs: inputsForVideoMode(fields.mediaInputs, desiredMode), parameters });
     }
   }, [artifact.kind, chosenCapability, runningHub, commitAssetReferences.isPending, dirty, fields,
-    removeConnectedInput.isPending, save.isPending]);
+    removeConnectedInput.isPending, save.isPending, templateBusy]);
 
   function edit(changes: Partial<DraftFields>) {
     runIntent.current = null;
@@ -670,7 +679,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const selectedStyle = styles.data?.find((style) => style.id === fields.styleId);
   const styleAvailable = !fields.styleId || supportsStyle && styles.isSuccess && Boolean(selectedStyle?.enabled);
   const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
-    && !error && !run.isPending
+    && !error && !run.isPending && !templateBusy
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
     && !occupied && styleAvailable && (runningHub ? dynamicErrors.length === 0 && fields.mediaInputs.length <= INPUT_COLORS.length && fields.mediaInputs.every((input) => dynamicUsedVersions.has(input.versionId)) && allInputsAvailable
       : fields.prompt.trim().length > 0 && semanticInputsValid && autodlInputsValid && autodlRatioValid && autodlTierValid && allInputsAvailable && imageParametersSupported && videoModeSupported
@@ -899,11 +908,46 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       && source.connectionId) ?? false;
   }
 
+  async function applyTemplate(imported: MediaTemplateImport, options: TemplateApplyOptions) {
+    if (artifact.kind !== "IMAGE" && artifact.kind !== "VIDEO" || imported.targetKind !== artifact.kind) {
+      throw new Error(t("templates.kindMismatch"));
+    }
+    const pending = pendingSaveRef.current;
+    const settledSave = pending ? await pending.result : undefined;
+    const latest = fieldsRef.current;
+    const acknowledgedVersion = settledSave?.version ?? expectedVersionRef.current;
+    if (!latest || acknowledgedVersion === null) throw new Error(t("media.editor.waitForDraft"));
+    if (JSON.stringify(latest) !== JSON.stringify(currentFields)) throw new Error(t("templates.draftChanged"));
+    // Calculate the complete replacement before any current reference or line is removed.
+    const changes = templateDraftChanges(artifact.kind, latest, chosenCapability, imported, options, INPUT_COLORS);
+    const freshResources = await queryClient.fetchQuery({ queryKey: ["artifacts", artifact.projectId],
+      queryFn: () => listArtifacts(artifact.projectId), staleTime: 0 });
+    await Promise.all(freshResources.items.filter((item) => item.kind === "IMAGE").map((item) =>
+      queryClient.fetchQuery({ queryKey: ["artifact-versions", artifact.projectId, item.id],
+        queryFn: () => listArtifactVersions(artifact.projectId, item.id), staleTime: 0 })));
+    if (imported.images.length > 0) {
+      // Reference replacement and connected-line removal either commit together or leave the old draft intact.
+      const acknowledged = await replaceMediaDraftInputs(artifact.projectId, canvasItemId,
+        { ...latest, ...changes, expectedVersion: acknowledgedVersion });
+      const retained = fieldsFromDraft(acknowledged);
+      fieldsRef.current = retained; setFields(retained); setExpectedVersion(acknowledged.version);
+      setDirty(false); setError(null); queryClient.setQueryData(key, acknowledged);
+      runIntent.current = null; if (!run.isPending) run.reset();
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] })]);
+      return;
+    }
+    edit(changes);
+  }
+
   return <div className="media-draft-editor" aria-label={t("media.editor.title")}>
     {stylePickerOpen ? <MediaStylePicker selected={fields.styleId ?? null} onClose={() => setStylePickerOpen(false)}
       onSelect={(styleId) => edit({ styleId })} /> : null}
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
+      {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"
+        disabled={templateBusy || save.isPending || run.isPending || commitAssetReferences.isPending || removeConnectedInput.isPending || libraryBusy || Boolean(error)}
+        onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setTemplateOpen(true); }}>{t("templates.entry")}</Button> : null}
       {isAudio && onOpenAgentConversation ? <Button variant="ghost" className="media-draft-tab"
         type="button" onClick={onOpenAgentConversation} disabled={openingAgentConversation}
         title={t("media.editor.openAudioAgent")}>{openingAgentConversation ? t("media.editor.opening") : t("media.editor.agentConversation")}</Button> : null}
@@ -911,6 +955,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         prompt={fields.prompt} hasMentions={fields.mentions.length > 0} onApply={(prompt) => edit({ prompt, mentions: [] })} /> : null}
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
+    {templateOpen && (artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <MediaTemplatePicker projectId={artifact.projectId}
+      targetKind={artifact.kind} fields={fields} capability={chosenCapability}
+      seedImages={selectedReferences.flatMap(({ input, choice }) => choice?.kind === "IMAGE" ? [{ versionId: input.versionId,
+        title: choice.title, thumbnailUrl: assetThumbnailUrl(artifact.projectId, choice.assetId) }] : [])}
+      onApply={applyTemplate} onBusy={setTemplateBusy} onClose={() => setTemplateOpen(false)} /> : null}
     {!runningHub ? <div className="media-draft-reference-row" aria-label={audioCapacity > 0 ? t("media.editor.mixedInputs") : t("media.editor.imageInputs")}>
       <DropdownMenu open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} modal={false}><div className="media-draft-popover-anchor"
         onPointerEnter={(event) => {

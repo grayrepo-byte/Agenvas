@@ -32,6 +32,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -126,6 +127,23 @@ class RecoveryModePostgresIT {
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        mvc.perform(post("/api/v1/media-templates").with(authentication).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        mvc.perform(post("/api/v1/media-templates/images/from-version").with(authentication).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        var adminAuthentication = authentication(new UsernamePasswordAuthenticationToken(
+                owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        for (String settingsPath : List.of("/api/v1/settings/media-styles",
+                "/api/v1/settings/media-templates")) {
+            mvc.perform(post(settingsPath).with(adminAuthentication).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        }
         assertThat(projects.list(owner.userId(), false, null, 20).items())
                 .extracting(Project::name).containsExactly("Restored project");
         assertThat(schemaVersion()).isEqualTo("27");

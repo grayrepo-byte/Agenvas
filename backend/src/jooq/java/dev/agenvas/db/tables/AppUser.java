@@ -14,6 +14,9 @@ import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
 import dev.agenvas.db.tables.LibraryCommand.LibraryCommandPath;
 import dev.agenvas.db.tables.LibraryEntry.LibraryEntryPath;
 import dev.agenvas.db.tables.LibraryFile.LibraryFilePath;
+import dev.agenvas.db.tables.MediaTemplate.MediaTemplatePath;
+import dev.agenvas.db.tables.MediaTemplateImage.MediaTemplateImagePath;
+import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.records.AppUserRecord;
@@ -278,6 +281,45 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _libraryFile = new LibraryFilePath(this, null, Keys.LIBRARY_FILE__LIBRARY_FILE_OWNER_ID_FKEY.getInverseKey());
 
         return _libraryFile;
+    }
+
+    private transient MediaTemplateImagePath _mediaTemplateImage;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.media_template_image</code> table
+     */
+    public MediaTemplateImagePath mediaTemplateImage() {
+        if (_mediaTemplateImage == null)
+            _mediaTemplateImage = new MediaTemplateImagePath(this, null, Keys.MEDIA_TEMPLATE_IMAGE__MEDIA_TEMPLATE_IMAGE_OWNER_ID_FKEY.getInverseKey());
+
+        return _mediaTemplateImage;
+    }
+
+    private transient MediaTemplateImportCommandPath _mediaTemplateImportCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.media_template_import_command</code> table
+     */
+    public MediaTemplateImportCommandPath mediaTemplateImportCommand() {
+        if (_mediaTemplateImportCommand == null)
+            _mediaTemplateImportCommand = new MediaTemplateImportCommandPath(this, null, Keys.MEDIA_TEMPLATE_IMPORT_COMMAND__MEDIA_TEMPLATE_IMPORT_COMMAND_OWNER_ID_FKEY.getInverseKey());
+
+        return _mediaTemplateImportCommand;
+    }
+
+    private transient MediaTemplatePath _mediaTemplate;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.media_template</code> table
+     */
+    public MediaTemplatePath mediaTemplate() {
+        if (_mediaTemplate == null)
+            _mediaTemplate = new MediaTemplatePath(this, null, Keys.MEDIA_TEMPLATE__MEDIA_TEMPLATE_OWNER_ID_FKEY.getInverseKey());
+
+        return _mediaTemplate;
     }
 
     private transient ProjectPath _project;

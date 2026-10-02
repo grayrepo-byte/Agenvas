@@ -13,8 +13,9 @@ import { PasswordChangeSection } from "./PasswordChangeSection";
 import "./SettingsPages.css";
 import { SystemDiagnosticsSection } from "./SystemDiagnosticsSection";
 import { MediaStyleSettingsSection } from "./MediaStyleSettingsSection";
+import { SystemMediaTemplatesSection } from "../templates/MediaTemplatePicker";
 
-const TABS = ["general", "styles", "security", "logs", "diagnostics"] as const;
+const TABS = ["general", "styles", "security", "logs", "diagnostics", "templates"] as const;
 type SettingsTab = typeof TABS[number];
 const FIRST_TAB = 0;
 function tabLabel(tab: SettingsTab): string {
@@ -24,6 +25,7 @@ function tabLabel(tab: SettingsTab): string {
     case "security": return t("settings.general.security");
     case "logs": return t("common.callLogs");
     case "diagnostics": return t("settings.general.diagnostics");
+    case "templates": return t("templates.systemTitle");
   }
 }
 
@@ -46,6 +48,7 @@ export function SystemSettingsPage() {
       {tab === "security" ? <PasswordChangeSection /> : null}
       {tab === "logs" ? <><CallLogRetentionSection enabled={currentUser.isSuccess && selected === tab} /><DebugModeSection enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "diagnostics" ? <SystemDiagnosticsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
+      {tab === "templates" ? <SystemMediaTemplatesSection enabled={currentUser.data?.role === "ADMIN" && selected === tab} /> : null}
     </TabsContent>)}
     </Tabs>
   </PageShell>;

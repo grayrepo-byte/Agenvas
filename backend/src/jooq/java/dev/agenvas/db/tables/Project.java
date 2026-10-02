@@ -15,6 +15,7 @@ import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
 import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
+import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.UsageLedger.UsageLedgerPath;
@@ -334,6 +335,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _task = new TaskPath(this, null, Keys.TASK__FK_TASK_PROJECT.getInverseKey());
 
         return _task;
+    }
+
+    private transient MediaTemplateImportCommandPath _mediaTemplateImportCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.media_template_import_command</code> table
+     */
+    public MediaTemplateImportCommandPath mediaTemplateImportCommand() {
+        if (_mediaTemplateImportCommand == null)
+            _mediaTemplateImportCommand = new MediaTemplateImportCommandPath(this, null, Keys.MEDIA_TEMPLATE_IMPORT_COMMAND__MEDIA_TEMPLATE_IMPORT_COMMAND_PROJECT_ID_FKEY.getInverseKey());
+
+        return _mediaTemplateImportCommand;
     }
 
     private transient UsageLedgerPath _usageLedger;

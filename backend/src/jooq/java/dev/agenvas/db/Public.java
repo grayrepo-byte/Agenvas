@@ -47,6 +47,12 @@ import dev.agenvas.db.tables.MediaLegacyOriginMap;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
 import dev.agenvas.db.tables.MediaStyle;
+import dev.agenvas.db.tables.MediaTemplate;
+import dev.agenvas.db.tables.MediaTemplateAttachment;
+import dev.agenvas.db.tables.MediaTemplateImage;
+import dev.agenvas.db.tables.MediaTemplateImportCommand;
+import dev.agenvas.db.tables.MediaTemplateImportImage;
+import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -319,6 +325,37 @@ public class Public extends SchemaImpl {
     public final MediaStyle MEDIA_STYLE = MediaStyle.MEDIA_STYLE;
 
     /**
+     * The table <code>public.media_template</code>.
+     */
+    public final MediaTemplate MEDIA_TEMPLATE = MediaTemplate.MEDIA_TEMPLATE;
+
+    /**
+     * The table <code>public.media_template_attachment</code>.
+     */
+    public final MediaTemplateAttachment MEDIA_TEMPLATE_ATTACHMENT = MediaTemplateAttachment.MEDIA_TEMPLATE_ATTACHMENT;
+
+    /**
+     * The table <code>public.media_template_image</code>.
+     */
+    public final MediaTemplateImage MEDIA_TEMPLATE_IMAGE = MediaTemplateImage.MEDIA_TEMPLATE_IMAGE;
+
+    /**
+     * The table <code>public.media_template_import_command</code>.
+     */
+    public final MediaTemplateImportCommand MEDIA_TEMPLATE_IMPORT_COMMAND = MediaTemplateImportCommand.MEDIA_TEMPLATE_IMPORT_COMMAND;
+
+    /**
+     * Template provenance with no LibraryEntry dependency; template deletion
+     * never deletes project versions
+     */
+    public final MediaTemplateImportImage MEDIA_TEMPLATE_IMPORT_IMAGE = MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE;
+
+    /**
+     * The table <code>public.media_template_import_source</code>.
+     */
+    public final MediaTemplateImportSource MEDIA_TEMPLATE_IMPORT_SOURCE = MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE;
+
+    /**
      * Permission and configuration boundary for one creative workspace.
      */
     public final Project PROJECT = Project.PROJECT;
@@ -461,6 +498,12 @@ public class Public extends SchemaImpl {
             MediaProviderConnection.MEDIA_PROVIDER_CONNECTION,
             MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION,
             MediaStyle.MEDIA_STYLE,
+            MediaTemplate.MEDIA_TEMPLATE,
+            MediaTemplateAttachment.MEDIA_TEMPLATE_ATTACHMENT,
+            MediaTemplateImage.MEDIA_TEMPLATE_IMAGE,
+            MediaTemplateImportCommand.MEDIA_TEMPLATE_IMPORT_COMMAND,
+            MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE,
+            MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE,
             Project.PROJECT,
             ProjectEvent.PROJECT_EVENT,
             ProviderAttempt.PROVIDER_ATTEMPT,

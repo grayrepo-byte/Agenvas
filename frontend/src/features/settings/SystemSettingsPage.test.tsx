@@ -11,6 +11,24 @@ import { SystemSettingsPage } from "./SystemSettingsPage";
 
 /** Opening the page reads only the administrator's local diagnostic snapshot. */
 describe("SystemSettingsPage", () => {
+  it("loads system templates only in its tab and creates a typed administrator template", async () => {
+    const reads = vi.fn(); const writes: unknown[] = [];
+    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
+      http.get("/api/v1/media-templates", ({ request }) => { reads(); expect(new URL(request.url).searchParams.get("scope")).toBe("SYSTEM"); return HttpResponse.json({ items: [] }); }),
+      http.post("/api/v1/settings/media-templates", async ({ request }) => { const input = await request.json(); writes.push(input); return HttpResponse.json({
+        ...input as object, id: "system-template", images: [], scope: "SYSTEM", version: 0, createdAt: "2026-10-02T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z",
+      }); }));
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><SystemSettingsPage /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup(); expect(reads).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("tab", { name: "系统模板" })); await screen.findByText("暂无匹配的模板");
+    await user.click(screen.getByRole("button", { name: "创建系统模板" }));
+    await user.type(screen.getByLabelText("模板名称"), "Synthetic video");
+    await selectValue(screen.getByRole("combobox", { name: "模板类型", hidden: false }), "VIDEO");
+    await user.type(screen.getByLabelText("模板提示词"), "Slow camera movement");
+    await user.click(screen.getByRole("button", { name: "保存模板" }));
+    await waitFor(() => expect(writes).toEqual([{ name: "Synthetic video", targetKind: "VIDEO", prompt: "Slow camera movement", imageIds: [] }]));
+  });
   it("keeps password inputs when a delayed diagnostic snapshot arrives", async () => {
     let finishRead: (() => void) | undefined;
     const pending = new Promise<void>((resolve) => { finishRead = resolve; });

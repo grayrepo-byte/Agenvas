@@ -26,6 +26,7 @@ import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmTurn;
 import dev.agenvas.db.tables.MediaLegacyOriginMap;
+import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -75,6 +76,7 @@ public class Indexes {
     public static final Index IX_LIBRARY_ENTRY_LIST = Internal.createIndex(DSL.name("ix_library_entry_list"), LibraryEntry.LIBRARY_ENTRY, new OrderField[] { LibraryEntry.LIBRARY_ENTRY.OWNER_ID, LibraryEntry.LIBRARY_ENTRY.TRASHED_AT, LibraryEntry.LIBRARY_ENTRY.CATEGORY, LibraryEntry.LIBRARY_ENTRY.CREATED_AT.desc(), LibraryEntry.LIBRARY_ENTRY.ID.desc() }, false);
     public static final Index IX_LLM_TURN_PROJECT_RUN = Internal.createIndex(DSL.name("ix_llm_turn_project_run"), LlmTurn.LLM_TURN, new OrderField[] { LlmTurn.LLM_TURN.PROJECT_ID, LlmTurn.LLM_TURN.RUN_ID, LlmTurn.LLM_TURN.STEP_INDEX }, false);
     public static final Index IX_MEDIA_LEGACY_ORIGIN_MAP_SHA = Internal.createIndex(DSL.name("ix_media_legacy_origin_map_sha"), MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP, new OrderField[] { MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP.ORIGIN_SHA256, MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP.CONFIG_VERSION }, false);
+    public static final Index IX_MEDIA_TEMPLATE_LIST = Internal.createIndex(DSL.name("ix_media_template_list"), MediaTemplate.MEDIA_TEMPLATE, new OrderField[] { MediaTemplate.MEDIA_TEMPLATE.SCOPE, MediaTemplate.MEDIA_TEMPLATE.OWNER_ID, MediaTemplate.MEDIA_TEMPLATE.TARGET_KIND, MediaTemplate.MEDIA_TEMPLATE.UPDATED_AT.desc() }, false);
     public static final Index IX_PROJECT_EVENT_OCCURRED_AT = Internal.createIndex(DSL.name("ix_project_event_occurred_at"), ProjectEvent.PROJECT_EVENT, new OrderField[] { ProjectEvent.PROJECT_EVENT.OCCURRED_AT }, false);
     public static final Index IX_PROJECT_OWNER_CREATED = Internal.createIndex(DSL.name("ix_project_owner_created"), Project.PROJECT, new OrderField[] { Project.PROJECT.OWNER_ID, Project.PROJECT.CREATED_AT.desc(), Project.PROJECT.ID.desc() }, false);
     public static final Index IX_PROVIDER_ATTEMPT_TASK = Internal.createIndex(DSL.name("ix_provider_attempt_task"), ProviderAttempt.PROVIDER_ATTEMPT, new OrderField[] { ProviderAttempt.PROVIDER_ATTEMPT.TASK_ID, ProviderAttempt.PROVIDER_ATTEMPT.CREATED_AT }, false);

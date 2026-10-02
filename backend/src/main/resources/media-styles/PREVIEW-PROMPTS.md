@@ -61,4 +61,3 @@ Asset type: built-in style preview thumbnail for a creative canvas application. 
 Use case: stylized-concept. Style/medium: charming handcrafted clay stop-motion diorama, clearly visible sculpted clay forms and subtle fingerprints, adult backpack traveler, miniature riverside cottage, rounded lush greenery and layered clay mountains, warm studio lighting, tactile matte materials.
 Asset type: built-in style preview thumbnail for a creative canvas application. Primary request: a single beautiful portrait image of an adult traveler wearing a simple backpack, standing beside a lush riverside cottage with distant mountains. Composition/framing: portrait 2:3 aspect ratio; traveler in lower foreground, small cottage beside calm river in middle ground, mountains in background; readable at thumbnail size. Constraints: one adult, original fictional person, no text, logos, trademarks, watermark or identifiable real person. No typography, no collage, no border.
 ```
-
