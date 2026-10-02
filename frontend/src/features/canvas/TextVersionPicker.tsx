@@ -41,21 +41,21 @@ export function TextVersionPicker({ artifact, disabled = false }: {
     <DropdownMenuTrigger asChild><Button variant="ghost" aria-expanded={open} aria-haspopup="menu"
       className="text-card-version-tag" type="button">
       <Stack data-icon="inline-start" aria-hidden />
-      {t("版本{0}", { "0": ` v${artifact.resourceDefaultVersion.versionNo}` })}
+      {t("artifacts.versions.versionLabel", { "0": ` v${artifact.resourceDefaultVersion.versionNo}` })}
       <CaretDown data-icon="inline-end" aria-hidden />
     </Button></DropdownMenuTrigger>
-    {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="text-card-version-menu" role="menu" aria-label={t("文字版本")}><DropdownMenuGroup>
-      {disabled ? <p>{t("请先保存或退出编辑，再切换版本。")}</p> : null}
-      {history.isPending ? <p>{t("正在读取版本…")}</p> : null}
+    {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="text-card-version-menu" role="menu" aria-label={t("text.versions.title")}><DropdownMenuGroup>
+      {disabled ? <p>{t("text.versions.saveBeforeSelection")}</p> : null}
+      {history.isPending ? <p>{t("common.versionLoading")}</p> : null}
       {history.error ? <p role="alert">{history.error instanceof ApiError
-        ? history.error.message : t("版本历史读取失败，请重试。")}</p> : null}
+        ? history.error.message : t("artifacts.versions.loadFailed")}</p> : null}
       {history.data?.items.map((version) => <DropdownMenuItem className="text-card-version-option" disabled={disabled || select.isPending || version.id === artifact.resourceDefaultVersionId} aria-current={version.id === artifact.resourceDefaultVersionId ? "true" : undefined} role="menuitem" key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
         <span>v{version.versionNo}</span>
-        <small>{version.id === artifact.resourceDefaultVersionId ? t("当前选用") : version.createdByKind}</small>
+        <small>{version.id === artifact.resourceDefaultVersionId ? t("artifacts.versions.selected") : version.createdByKind}</small>
       </DropdownMenuItem>)}
       {select.error ? <p role="alert">{select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
-        ? t("内容有冲突，未切换版本；请重新打开版本列表后重试。")
-        : select.error instanceof ApiError ? select.error.message : t("版本选用失败，请重试。")}</p> : null}
+        ? t("text.versions.selectionConflict")
+        : select.error instanceof ApiError ? select.error.message : t("artifacts.versions.selectFailed")}</p> : null}
     </DropdownMenuGroup></DropdownMenuContent> : null}
   </div></DropdownMenu>;
 }

@@ -9,13 +9,13 @@ export function LanguageSelect({ compact = false }: { compact?: boolean }) {
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  const label = `${t("界面语言")} · ${LOCALE_NAMES[locale]}`;
+  const label = `${t("locale.label")} · ${LOCALE_NAMES[locale]}`;
   return <div className={`language-select${compact ? " language-select--compact" : ""}`}>
     <Button variant="outline" type="button" className="ui-language-trigger" aria-label={label} title={label}
       aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSaveFailed(false); setOpen(true); }}>
       <GlobeSimple size={18} aria-hidden /><span className="ui-language-label" lang={locale}>{LOCALE_NAMES[locale]}</span>
     </Button>
-    {open ? <Dialog compact title={t("界面语言")} onClose={() => setOpen(false)} onSubmit={(event) => event.preventDefault()}>
+    {open ? <Dialog compact title={t("locale.label")} onClose={() => setOpen(false)} onSubmit={(event) => event.preventDefault()}>
       <div className="ui-language-options">
         {SUPPORTED_LOCALES.map((value) => <Button variant="outline" key={value} type="button" className="ui-language-option"
           lang={value} aria-pressed={value === locale} onClick={() => {
@@ -26,7 +26,7 @@ export function LanguageSelect({ compact = false }: { compact?: boolean }) {
           <span>{LOCALE_NAMES[value]}</span>{value === locale ? <Check size={18} aria-hidden /> : null}
         </Button>)}
       </div>
-      {saveFailed ? <p className="ui-error" role="alert">{t("语言已切换，但浏览器未能保存偏好。")}</p> : null}
+      {saveFailed ? <p className="ui-error" role="alert">{t("locale.storageFailed")}</p> : null}
     </Dialog> : null}
   </div>;
 }

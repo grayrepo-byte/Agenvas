@@ -1,4 +1,5 @@
 import type { MediaCapability } from "./api/client";
+import type { MessageKey } from "./i18n";
 
 // Reviewed fixed workflow metadata, paired with providers/autodl-h3-workflows.json.
 export const autodlWorkflows = [
@@ -419,6 +420,24 @@ export const autodlWorkflows = [
     "supportsSeed": true
   }
 ] as const;
+
+/** Display identities stay separate from provider metadata sent in workflow definitions. */
+export const AUTODL_WORKFLOW_LABEL_KEYS = {
+  "minimax_h3_b99_001": "media.autoDl.textToVideo",
+  "minimax_h3_b99_002": "media.autoDl.startEndFrames",
+  "minimax_h3_b99_003_12s": "media.autoDl.multiImageTwelveSeconds",
+  "minimax_h3_image_audio_to_video_v2": "media.autoDl.multiImageAudio",
+  "minimax_h3_image_audio_to_video_v2_15s": "media.autoDl.multiImageAudioLong",
+  "minimax_h3_lightx2v": "media.autoDl.startEndFrames",
+  "minimax_h3_lightx2v_no_pic": "media.autoDl.textToVideo",
+  "minimax_h3_lightx2v_v5": "media.autoDl.multiImageReference",
+  "minimax_h3_lightx2v_v5_15s": "media.autoDl.multiImageFifteenSeconds",
+  "minimax_h3_z0901": "media.autoDl.textToVideoHq",
+  "minimax_h3_z0902": "media.autoDl.sixImageConsistent",
+  "minimax_h3_z0903": "media.autoDl.sixImageThreeAudioHq",
+  "minimax_h3_zm_u08": "media.autoDl.multiImageAudioFast",
+  "minimax_h3_zm_u24": "media.autoDl.multiImageAudioHq"
+} satisfies Record<typeof autodlWorkflows[number]["id"], MessageKey>;
 
 export const AUTODL_ADAPTER = "AUTODL_COMFY_VIDEO";
 export const AUTODL_DEFAULT_WORKFLOW = "minimax_h3_z0903";

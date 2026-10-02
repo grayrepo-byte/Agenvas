@@ -25,15 +25,15 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children 
       event.stopPropagation(); setOpen(false); trigger.current?.focus();
     }
   }}>
-    <Button variant="ghost" size="icon-sm" aria-label={t("添加卡片")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></Button>
-    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" ref={trigger} type="button" className="workspace-tool-trigger" aria-label={t("画布工具")}
+    <Button variant="ghost" size="icon-sm" aria-label={t("canvas.tools.addCard")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></Button>
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" ref={trigger} type="button" className="workspace-tool-trigger" aria-label={t("canvas.tools.title")}
       aria-haspopup="menu" aria-expanded={open}
-      title={handActive ? t("手形工具 · 拖动画布") : t("选择工具 · 短按空格切换手形，长按临时拖动")}>
+      title={handActive ? t("canvas.tools.handToolHint") : t("canvas.tools.selectionToolHint")}>
       {handActive ? <Hand size={20} /> : <Cursor size={20} />}<DotsThree size={16} />
     </Button></DropdownMenuTrigger>
-    {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="workspace-tool-menu" role="menu" aria-label={t("画布工具模式")}><DropdownMenuGroup>
-      <DropdownMenuItem ref={firstOption} role="menuitemradio" aria-checked={tool === "select"} onSelect={(event) => { event.preventDefault(); choose("select"); }}><span>{tool === "select" ? <Check size={14} /> : null}</span><Cursor size={18} />{t("选择工具")}<kbd>V</kbd></DropdownMenuItem>
-      <DropdownMenuItem role="menuitemradio" aria-checked={tool === "hand"} onSelect={(event) => { event.preventDefault(); choose("hand"); }}><span>{tool === "hand" ? <Check size={14} /> : null}</span><Hand size={18} />{t("手形工具")}<kbd>Space</kbd></DropdownMenuItem>
+    {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="workspace-tool-menu" role="menu" aria-label={t("canvas.tools.mode")}><DropdownMenuGroup>
+      <DropdownMenuItem ref={firstOption} role="menuitemradio" aria-checked={tool === "select"} onSelect={(event) => { event.preventDefault(); choose("select"); }}><span>{tool === "select" ? <Check size={14} /> : null}</span><Cursor size={18} />{t("canvas.tools.selectionTool")}<kbd>V</kbd></DropdownMenuItem>
+      <DropdownMenuItem role="menuitemradio" aria-checked={tool === "hand"} onSelect={(event) => { event.preventDefault(); choose("hand"); }}><span>{tool === "hand" ? <Check size={14} /> : null}</span><Hand size={18} />{t("canvas.tools.handTool")}<kbd>Space</kbd></DropdownMenuItem>
     </DropdownMenuGroup></DropdownMenuContent> : null}
     {children}
   </div></DropdownMenu>;

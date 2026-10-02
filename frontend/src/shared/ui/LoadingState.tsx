@@ -66,7 +66,7 @@ export function LoadingState({ label, startedAt, compact = false }: LoadingState
     {elapsed !== undefined && <span
       className="canvas-loading-state__elapsed"
       aria-hidden="true"
-      title={t("自任务开始至今的时间，不代表完成进度")}
+      title={t("ui.loadingState.elapsedTimeHint")}
     >{elapsed}</span>}
   </div>;
 }

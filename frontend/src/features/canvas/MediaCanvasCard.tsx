@@ -47,9 +47,9 @@ import { taskErrorMessage } from "./taskErrorMessages";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   // Synchronous providers generate before returning, so SUBMITTING also covers generation time.
-  get PENDING() { return t("等待生成"); }, get READY() { return t("排队中"); }, get RUNNING() { return t("正在生成"); }, get SUBMITTING() { return t("正在生成"); },
-  get WAITING_PROVIDER() { return t("正在生成"); }, get FAILED() { return t("生成失败"); }, get CANCELED() { return t("已取消"); },
-  get UNKNOWN() { return t("结果未知"); }, get BLOCKED() { return t("任务已阻断"); }, get SUCCEEDED() { return t("生成结果已保存至历史"); },
+  get PENDING() { return t("media.card.pending"); }, get READY() { return t("tasks.status.queued"); }, get RUNNING() { return t("media.card.generating"); }, get SUBMITTING() { return t("media.card.generating"); },
+  get WAITING_PROVIDER() { return t("media.card.generating"); }, get FAILED() { return t("media.card.generationFailed"); }, get CANCELED() { return t("common.canceled"); },
+  get UNKNOWN() { return t("tasks.status.unknown"); }, get BLOCKED() { return t("media.card.blocked"); }, get SUCCEEDED() { return t("media.card.resultArchived"); },
 };
 type ImageOperation = RunImageOperationRequest["operation"];
 type ImageTool = ImageOperation | "BRUSH_MARKUP";
@@ -60,30 +60,30 @@ const LOCAL_IMAGE_OPERATIONS: readonly ImageTool[] = [
   "DEPTH_MAP", "UPSCALE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL",
 ];
 const THREE_VIEW_OPTIONS = [
-  { value: "CHARACTER", get label() { return t("角色三视图"); }, get summary() { return t("正面、侧面、背面全身"); }, icon: PersonSimple,
+  { value: "CHARACTER", get label() { return t("media.card.characterViews"); }, get summary() { return t("media.card.characterViewsHint"); }, icon: PersonSimple,
     aspectRatio: "16:9" },
-  { value: "FACE", get label() { return t("脸部三视图"); }, get summary() { return t("正面、四分之三、侧脸"); }, icon: Smiley,
+  { value: "FACE", get label() { return t("media.card.faceViews"); }, get summary() { return t("media.card.faceViewsHint"); }, icon: Smiley,
     aspectRatio: "16:9" },
-  { value: "PROP", get label() { return t("道具三视图"); }, get summary() { return t("正面、侧面、背面正投影"); }, icon: Cube,
+  { value: "PROP", get label() { return t("media.card.objectViews"); }, get summary() { return t("media.card.objectViewsHint"); }, icon: Cube,
     aspectRatio: "16:9" },
-  { value: "SCENE_GRID", get label() { return t("场景宫格图"); }, get summary() { return t("远景、反向、中景、细节"); }, icon: Buildings,
+  { value: "SCENE_GRID", get label() { return t("media.card.sceneGrid"); }, get summary() { return t("media.card.sceneViewsHint"); }, icon: Buildings,
     aspectRatio: "1:1" },
 ] as const satisfies readonly { value: ThreeViewType; label: string; summary: string;
   icon: typeof Cube; aspectRatio: "1:1" | "16:9" }[];
 const EXTENSIONS = [
-  { get label() { return t("三视图"); }, icon: Cube, operation: "THREE_VIEW", submenu: true },
-  { get label() { return t("图层分离"); }, icon: Stack, operation: "LAYER_SPLIT", submenu: false },
-  { get label() { return t("表情调整"); }, icon: Smiley, operation: "EXPRESSION_EDIT", submenu: false },
-  { get label() { return t("重新打光"); }, icon: Sun, operation: "RELIGHT", submenu: false },
-  { get label() { return t("高清放大"); }, icon: ArrowsOutSimple, operation: "UPSCALE", submenu: false },
-  { get label() { return t("裁剪"); }, icon: Crop, operation: "CROP", submenu: false },
-  { get label() { return t("顺时针旋转 90°"); }, icon: ArrowClockwise, operation: "ROTATE", submenu: false },
-  { get label() { return t("水平镜像"); }, icon: ArrowClockwise, operation: "FLIP_HORIZONTAL", submenu: false },
-  { get label() { return t("画笔标注"); }, icon: PaintBrush, operation: "BRUSH_MARKUP", submenu: false },
-  { get label() { return t("移除背景"); }, icon: Scissors, operation: "REMOVE_BACKGROUND", submenu: false },
-  { get label() { return t("AI 扩图"); }, icon: ArrowsOutSimple, operation: "OUTPAINT", submenu: false },
-  { get label() { return t("局部擦除"); }, icon: Eraser, operation: "OBJECT_REMOVE", submenu: false },
-  { get label() { return t("视角调整"); }, icon: Cube, operation: "VIEW_ANGLE", submenu: false },
+  { get label() { return t("media.card.threeView"); }, icon: Cube, operation: "THREE_VIEW", submenu: true },
+  { get label() { return t("media.card.splitLayers"); }, icon: Stack, operation: "LAYER_SPLIT", submenu: false },
+  { get label() { return t("media.card.changeExpression"); }, icon: Smiley, operation: "EXPRESSION_EDIT", submenu: false },
+  { get label() { return t("media.card.relight"); }, icon: Sun, operation: "RELIGHT", submenu: false },
+  { get label() { return t("media.card.upscaleTitle"); }, icon: ArrowsOutSimple, operation: "UPSCALE", submenu: false },
+  { get label() { return t("media.card.crop"); }, icon: Crop, operation: "CROP", submenu: false },
+  { get label() { return t("media.card.rotateClockwise"); }, icon: ArrowClockwise, operation: "ROTATE", submenu: false },
+  { get label() { return t("media.card.flipHorizontal"); }, icon: ArrowClockwise, operation: "FLIP_HORIZONTAL", submenu: false },
+  { get label() { return t("image.markupEditor.title"); }, icon: PaintBrush, operation: "BRUSH_MARKUP", submenu: false },
+  { get label() { return t("media.card.removeBackground"); }, icon: Scissors, operation: "REMOVE_BACKGROUND", submenu: false },
+  { get label() { return t("media.card.outpaint"); }, icon: ArrowsOutSimple, operation: "OUTPAINT", submenu: false },
+  { get label() { return t("media.card.removeObject"); }, icon: Eraser, operation: "OBJECT_REMOVE", submenu: false },
+  { get label() { return t("media.card.changeAngle"); }, icon: Cube, operation: "VIEW_ANGLE", submenu: false },
 ] as const;
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
@@ -171,29 +171,29 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     else setOperationOpen(name);
   }
 
-  return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("图片") : isAudio ? t("音频") : t("视频")}
+  return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("common.image") : isAudio ? t("common.audio") : t("common.video")}
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
     toolbarRaised={menuOpen || operationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
-    toolbarLabel={t("媒体卡片操作")} toolbar={<>
+    toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
         {isImage ? <>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
-            onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("智能编辑")}</Button>
+            onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
-            title={t("使用服务端内置的本地 Depth Anything V2 Small 模型")}
-            onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("深度提取")}</Button>
+            title={t("media.card.depthModelHint")}
+            onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("media.card.extractDepth")}</Button>
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={menuButton}>
-              <MagicWand />{t("扩展")}<CaretDown /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent aria-labelledby={undefined} aria-label={t("图片扩展功能")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
+              <MagicWand />{t("media.card.extensions")}<CaretDown /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent aria-labelledby={undefined} aria-label={t("media.card.imageExtensions")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
               {EXTENSIONS.map((entry) => entry.submenu ? <DropdownMenuSub key={entry.label} open={threeViewMenuOpen} onOpenChange={setThreeViewMenuOpen}>
                 <DropdownMenuSubTrigger className="py-2" disabled={!assetId || Boolean(busy) || operation.isPending}>
                   <entry.icon /><span>{entry.label}</span>
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent aria-labelledby={undefined} aria-label={t("三视图类型")} className="w-max p-2"><DropdownMenuGroup>
+                <DropdownMenuSubContent aria-labelledby={undefined} aria-label={t("media.card.threeViewType")} className="w-max p-2"><DropdownMenuGroup>
                   {THREE_VIEW_OPTIONS.map((option) => <DropdownMenuItem key={option.value} className="py-2"
                     disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseOperation("THREE_VIEW", option.value)}>
                     <option.icon /><span>{option.label}</span><small>AI</small>
@@ -201,7 +201,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 </DropdownMenuGroup></DropdownMenuSubContent>
               </DropdownMenuSub> : <DropdownMenuItem key={entry.label} className="py-2"
                 disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseOperation(entry.operation)}>
-                <entry.icon /><span>{entry.label}</span><small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? t("本地") : "AI"}</small>
+                <entry.icon /><span>{entry.label}</span><small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? t("media.card.local") : "AI"}</small>
               </DropdownMenuItem>)}
             </DropdownMenuGroup></DropdownMenuContent>
           </DropdownMenu>
@@ -239,19 +239,19 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               onSubmit={(operationParameters, instruction, capabilityId) =>
                 runOperation(operationOpen, operationParameters, instruction, capabilityId)} /> : null}
         </> : null}
-        {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("MV 制作")}</Button> : null}
-        <Button variant="ghost" type="button" onClick={onEdit} title={t("编辑工作草稿，运行后为当前节点增加版本")}>
-          <ArrowClockwise size={17} />{item.selectedVersionId ? t("重新生成") : t("编辑草稿")}</Button>
+        {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("media.card.musicVideo")}</Button> : null}
+        <Button variant="ghost" type="button" onClick={onEdit} title={t("media.card.regenerateHint")}>
+          <ArrowClockwise size={17} />{item.selectedVersionId ? t("media.card.regenerate") : t("media.card.editDraft")}</Button>
         <MediaVersionPicker projectId={artifact.projectId} item={item} />
-        {onDuplicate ? <Button variant="ghost" type="button" onClick={onDuplicate} title={t("复制完整工作草稿，不复制任务和连线")}>
-          <CopySimple size={17} />{t("复制")}</Button> : null}
-        <Button variant="ghost" type="button" onClick={onInspect} aria-label={t("卡片详情")}><SlidersHorizontal size={17} /></Button>
+        {onDuplicate ? <Button variant="ghost" type="button" onClick={onDuplicate} title={t("media.card.copyHint")}>
+          <CopySimple size={17} />{t("common.copy")}</Button> : null}
+        <Button variant="ghost" type="button" onClick={onInspect} aria-label={t("common.cardDetails")}><SlidersHorizontal size={17} /></Button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
-          aria-label={isImage ? t("下载图片") : isAudio ? t("下载音频") : t("下载视频")}><DownloadSimple size={19} /></a> : null}
+          aria-label={isImage ? t("media.card.downloadImage") : isAudio ? t("media.card.downloadAudio") : t("media.card.downloadVideo")}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
       {(isImage || isAudio) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
-        aria-label={isAudio ? t("选择要上传的音频") : t("选择要上传的图片")} accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
+        aria-label={isAudio ? t("media.card.chooseAudioUpload") : t("media.card.chooseImageUpload")} accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => {
@@ -263,63 +263,63 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
         title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
           {metadata.data
-            ? isImage ? t("图片尺寸刷新失败，请重试") : t("视频尺寸刷新失败，请重试")
-            : isImage ? t("图片尺寸读取失败，暂按原卡片尺寸显示") : t("视频尺寸读取失败，暂按原卡片尺寸显示")}
+            ? isImage ? t("media.card.imageDimensionsRefreshFailed") : t("media.card.videoDimensionsRefreshFailed")
+            : isImage ? t("media.card.imageDimensionsLoadFailed") : t("media.card.videoDimensionsLoadFailed")}
           <Button variant="ghost" type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
-            {metadata.isFetching ? t("正在重试…") : t("重试尺寸")}</Button></p> : null}</>
+            {metadata.isFetching ? t("common.retrying") : t("media.card.retryDimensions")}</Button></p> : null}</>
         : <div className="media-card-empty">
-          {busy ? <CanvasLoadingState label={status ?? t("正在生成")} /> : <>
+          {busy ? <CanvasLoadingState label={status ?? t("media.card.generating")} /> : <>
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
               : isAudio ? <MusicNotes className="media-empty-icon" size={44} /> : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
               {latest?.errorCode ? <small>{taskErrorMessage(latest.errorCode) || latest.errorCode}</small> : null}
-              {latest?.status === "UNKNOWN" ? <small>{t("可在编辑区重试")}</small> : null}
+              {latest?.status === "UNKNOWN" ? <small>{t("media.card.retryEditorHint")}</small> : null}
             </div> : null}
             {uploadFile ? <MediaCardUpload key={`${uploadFile.name}:${uploadFile.size}:${uploadFile.lastModified}`}
               artifact={artifact} item={item} initialFile={uploadFile} compact
               onDone={() => setUploadFile(null)} />
             : latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
               <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
-                <SlidersHorizontal size={15} />{t("查看任务")}</Button>
+                <SlidersHorizontal size={15} />{t("media.card.viewTask")}</Button>
               : isImage || isAudio ? <Button variant="ghost" className="media-upload-button nodrag" type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => { event.stopPropagation(); uploadInput.current?.click(); }}>
-              <UploadSimple size={15} />{isAudio ? t("上传音频") : t("上传图片")}</Button>
+              <UploadSimple size={15} />{isAudio ? t("media.card.uploadAudio") : t("media.uploadImage")}</Button>
               : <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
-                <Play size={15} />{t("生成视频")}</Button>}
+                <Play size={15} />{t("media.generateVideo")}</Button>}
           </>}
-          {draft.error ? <p className="media-card-error" role="alert">{t("草稿读取失败")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("重试")}</Button></p> : null}
-          {tasks.error ? <p className="media-card-error" role="alert">{t("任务状态暂不可用")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("重试状态")}</Button></p> : null}
+          {draft.error ? <p className="media-card-error" role="alert">{t("media.card.draftLoadFailed")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("common.retry")}</Button></p> : null}
+          {tasks.error ? <p className="media-card-error" role="alert">{t("media.card.statusUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("media.card.retryStatus")}</Button></p> : null}
         </div>}
   </ArtifactCardFrame>;
 }
 
 const OPERATION_TITLES: Record<ImageOperation, string> = {
-  get SMART_EDIT() { return t("智能编辑"); }, get RELIGHT() { return t("打光"); }, get OUTPAINT() { return t("AI 扩图"); },
-  get THREE_VIEW() { return t("三视图"); }, get LAYER_SPLIT() { return t("图层分离"); }, get EXPRESSION_EDIT() { return t("表情调整"); },
-  get REMOVE_BACKGROUND() { return t("移除背景"); },
-  get OBJECT_REMOVE() { return t("局部擦除"); }, get VIEW_ANGLE() { return t("视角调整"); },
-  get DEPTH_MAP() { return t("深度提取"); }, get UPSCALE() { return t("高清放大"); }, get CROP() { return t("裁剪"); },
-  get ROTATE() { return t("旋转"); }, get FLIP_HORIZONTAL() { return t("水平镜像"); }, get FLIP_VERTICAL() { return t("垂直镜像"); },
+  get SMART_EDIT() { return t("media.card.smartEdit"); }, get RELIGHT() { return t("media.card.lighting"); }, get OUTPAINT() { return t("media.card.outpaint"); },
+  get THREE_VIEW() { return t("media.card.threeView"); }, get LAYER_SPLIT() { return t("media.card.splitLayers"); }, get EXPRESSION_EDIT() { return t("media.card.changeExpression"); },
+  get REMOVE_BACKGROUND() { return t("media.card.removeBackground"); },
+  get OBJECT_REMOVE() { return t("media.card.removeObject"); }, get VIEW_ANGLE() { return t("media.card.changeAngle"); },
+  get DEPTH_MAP() { return t("media.card.extractDepth"); }, get UPSCALE() { return t("media.card.upscaleTitle"); }, get CROP() { return t("media.card.crop"); },
+  get ROTATE() { return t("media.card.rotate"); }, get FLIP_HORIZONTAL() { return t("media.card.flipHorizontal"); }, get FLIP_VERTICAL() { return t("media.card.flipVertical"); },
 };
 
 const INSTRUCTION_COPY: Partial<Record<ImageOperation, { label: string; placeholder: string;
   required?: boolean }>> = {
-  SMART_EDIT: { get label() { return t("修改说明"); }, get placeholder() { return t("例如：把服装改为深蓝色，其他内容保持不变"); }, required: true },
-  OUTPAINT: { get label() { return t("补充说明（可选）"); }, get placeholder() { return t("例如：延展室内背景，不新增人物"); } },
-  THREE_VIEW: { get label() { return t("主体说明（可选）"); }, get placeholder() { return t("例如：以画面中央人物为主体，保留完整服装细节"); } },
-  LAYER_SPLIT: { get label() { return t("分层说明（可选）"); }, get placeholder() { return t("例如：主体是画面中央穿红衣的人物"); } },
-  EXPRESSION_EDIT: { get label() { return t("目标表情"); }, get placeholder() { return t("例如：自然微笑，嘴唇闭合，眼神放松"); }, required: true },
-  REMOVE_BACKGROUND: { get label() { return t("主体说明（可选）"); }, get placeholder() { return t("例如：只保留人物及手中的花束"); } },
-  OBJECT_REMOVE: { get label() { return t("擦除目标"); }, get placeholder() { return t("例如：移除右下角的路人并自然补全地面"); }, required: true },
-  VIEW_ANGLE: { get label() { return t("补充说明（可选）"); }, get placeholder() { return t("例如：镜头距离保持不变，完整保留人物服装"); } },
+  SMART_EDIT: { get label() { return t("media.card.editInstruction"); }, get placeholder() { return t("media.card.editInstructionPlaceholder"); }, required: true },
+  OUTPAINT: { get label() { return t("media.card.additionalInstruction"); }, get placeholder() { return t("media.card.outpaintInstructionPlaceholder"); } },
+  THREE_VIEW: { get label() { return t("media.card.subjectInstruction"); }, get placeholder() { return t("media.card.threeViewInstructionPlaceholder"); } },
+  LAYER_SPLIT: { get label() { return t("media.card.layerInstruction"); }, get placeholder() { return t("media.card.layerInstructionPlaceholder"); } },
+  EXPRESSION_EDIT: { get label() { return t("media.card.expression"); }, get placeholder() { return t("media.card.expressionInstructionPlaceholder"); }, required: true },
+  REMOVE_BACKGROUND: { get label() { return t("media.card.subjectInstruction"); }, get placeholder() { return t("media.card.backgroundInstructionPlaceholder"); } },
+  OBJECT_REMOVE: { get label() { return t("media.card.removeInstruction"); }, get placeholder() { return t("media.card.removeInstructionPlaceholder"); }, required: true },
+  VIEW_ANGLE: { get label() { return t("media.card.additionalInstruction"); }, get placeholder() { return t("media.card.angleInstructionPlaceholder"); } },
 };
 
 const VIEW_ANGLE_OPTIONS = [
-  ["FRONT", "正面"], ["LEFT_THREE_QUARTER", "左前 45°"],
-  ["RIGHT_THREE_QUARTER", "右前 45°"], ["LEFT_PROFILE", "左侧面"],
-  ["RIGHT_PROFILE", "右侧面"], ["HIGH_ANGLE", "俯视"],
-  ["LOW_ANGLE", "仰视"], ["BACK", "背面"],
+  ["FRONT", "media.card.front"], ["LEFT_THREE_QUARTER", "media.card.leftThreeQuarter"],
+  ["RIGHT_THREE_QUARTER", "media.card.rightThreeQuarter"], ["LEFT_PROFILE", "media.card.leftProfile"],
+  ["RIGHT_PROFILE", "media.card.rightProfile"], ["HIGH_ANGLE", "media.card.highAngle"],
+  ["LOW_ANGLE", "media.card.lowAngle"], ["BACK", "media.card.back"],
 ] as const;
 
 function ImageOperationPanel({ operation, initialThreeViewType, capabilities, busy, error,
@@ -368,11 +368,11 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
     aria-label={operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}
     onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
     <header><div><strong>{operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}</strong>
-      <span>{cloud ? t("使用 OpenAI / Google 图片能力") : t("在本机处理，不上传图片")}</span></div>
-      <Button variant="ghost" type="button" aria-label={t("关闭图片处理面板")} onClick={onClose}><X size={16} /></Button>
+      <span>{cloud ? t("media.card.cloudProcessingHint") : t("media.card.localProcessingHint")}</span></div>
+      <Button variant="ghost" type="button" aria-label={t("media.card.closeOperation")} onClick={onClose}><X size={16} /></Button>
     </header>
     {operation === "THREE_VIEW" ? <fieldset className="media-three-view-types">
-      <legend>{t("输出类型")}</legend>
+      <legend>{t("media.card.outputType")}</legend>
       {THREE_VIEW_OPTIONS.map((option) => <label key={option.value}
         className={threeViewType === option.value ? "is-selected" : ""}>
         <input type="radio" name="three-view-type" value={option.value}
@@ -382,40 +382,40 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
         <option.icon size={18} /><span><strong>{option.label}</strong><small>{option.summary}</small></span>
       </label>)}
     </fieldset> : null}
-    {operation === "LAYER_SPLIT" ? <label>{t("输出图层")}<Select variant="ghost" density="compact" value={layerTarget}
+    {operation === "LAYER_SPLIT" ? <label>{t("media.card.outputLayer")}<Select variant="ghost" density="compact" value={layerTarget}
       onChange={(event) => setLayerTarget(event.target.value as "FOREGROUND" | "BACKGROUND")}>
-      <option value="FOREGROUND">{t("主体层（透明背景）")}</option>
-      <option value="BACKGROUND">{t("背景层（移除主体后补全）")}</option>
+      <option value="FOREGROUND">{t("media.card.foregroundLayer")}</option>
+      <option value="BACKGROUND">{t("media.card.backgroundLayer")}</option>
     </Select></label> : null}
-    {operation === "VIEW_ANGLE" ? <label>{t("目标视角")}<Select variant="ghost" density="compact" value={viewAngle}
+    {operation === "VIEW_ANGLE" ? <label>{t("media.card.viewAngle")}<Select variant="ghost" density="compact" value={viewAngle}
       onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
       {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
     </Select></label> : null}
-    {cloud ? <label>{t("图片能力")}<Select variant="ghost" density="compact" value={selectedCapabilityId}
+    {cloud ? <label>{t("media.imageCapability")}<Select variant="ghost" density="compact" value={selectedCapabilityId}
       onChange={(event) => setCapabilityId(event.target.value)}>
       {eligibleCapabilities.length ? eligibleCapabilities.map((capability) => <option key={capability.id}
         value={capability.id}>{capability.name}</option>)
         : <option value="">{transparentOutput
-          ? t("请配置支持透明背景的 OpenAI / Google 图片能力")
-          : t("请先在设置中配置 OpenAI 或 Google")}</option>}
+          ? t("media.card.transparentCapabilityHint")
+          : t("media.card.configureProviderHint")}</option>}
     </Select></label> : null}
     {instructionCopy
       ? <label>{instructionCopy.label}
         <Textarea value={instruction} maxLength={4000}
           placeholder={instructionCopy.placeholder}
           onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" ? <label>{t("放大倍数")}<Select variant="ghost" density="compact" value={scale}
+    {operation === "UPSCALE" ? <label>{t("media.card.upscaleFactor")}<Select variant="ghost" density="compact" value={scale}
       onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
-      <option value={2}>{t("2× 本地双三次插值")}</option><option value={4}>{t("4× 本地双三次插值")}</option>
+      <option value={2}>{t("media.card.upscaleDouble")}</option><option value={4}>{t("media.card.upscaleQuadruple")}</option>
     </Select></label> : null}
-    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("目标画幅")}<Select variant="ghost" density="compact" value={ratio}
+    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("media.card.aspectRatio")}<Select variant="ghost" density="compact" value={ratio}
       onChange={(event) => setRatio(event.target.value as AspectRatio)}>
       {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].map((value) =>
         <option key={value} value={value}>{value}</option>)}</Select></label> : null}
-    {error ? <p role="alert">{error instanceof ApiError ? error.message : t("图片处理任务受理失败，请重试。")}</p> : null}
-    <footer><Button variant="ghost" type="button" onClick={onClose}>{t("取消")}</Button>
+    {error ? <p role="alert">{error instanceof ApiError ? error.message : t("media.card.operationFailed")}</p> : null}
+    <footer><Button variant="ghost" type="button" onClick={onClose}>{t("common.cancel")}</Button>
       <Button variant="ghost" type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
-        {busy ? t("正在受理…") : t("开始处理")}</Button></footer>
+        {busy ? t("media.card.accepting") : t("media.card.startOperation")}</Button></footer>
   </div>;
 }
 
@@ -446,34 +446,34 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
   if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title}
     description={audioDescription || title} selected={selected} demo={demo} />;
   return <div className="media-card-preview">
-    {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={t("{0} 的视频", { "0": title })}
+    {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={t("media.card.videoLabel", { "0": title })}
       controls autoPlay playsInline preload="metadata" src={assetContentUrl(artifact.projectId, assetId)}
       onCanPlay={() => setBuffering(false)} onPlaying={() => setBuffering(false)} onWaiting={() => setBuffering(true)}
       onError={() => { setPlaybackFailed(true); setBuffering(false); }} />
-      : !failed ? <img alt={t("{0} 的{1}", { "0": title, "1": video ? t("视频封面") : t("预览") })}
+      : !failed ? <img alt={t("media.card.mediaLabel", { "0": title, "1": video ? t("media.card.videoPoster") : t("media.card.preview") })}
         decoding="async" draggable={false} loading="lazy" onError={() => setFailed(true)}
         src={video ? assetThumbnailUrl(artifact.projectId, assetId)
           : assetContentUrl(artifact.projectId, assetId)} />
-        : <div className="media-card-empty">{video ? <VideoCamera size={36} /> : <ImageIcon size={36} />}<span>{video ? t("视频封面暂不可用") : t("预览暂不可用")}</span>
-          <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("重试预览")}</Button></div>}
+        : <div className="media-card-empty">{video ? <VideoCamera size={36} /> : <ImageIcon size={36} />}<span>{video ? t("media.card.posterUnavailable") : t("media.card.previewUnavailable")}</span>
+          <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("media.card.retryPreview")}</Button></div>}
     {video && playing && buffering ? <div className="media-playback-loading">
-      <CanvasLoadingState compact label={t("正在加载视频")} />
+      <CanvasLoadingState compact label={t("media.card.videoLoading")} />
     </div> : null}
     {video && playbackFailed ? <div className="media-playback-error nodrag nowheel nopan" role="alert">
-      <VideoCamera size={28} /><p>{t("视频播放失败")}</p><span>{t("请重试播放，或打开原视频文件。")}</span>
-      <Button variant="ghost" type="button" className="media-upload-button" onClick={startPlayback}><ArrowClockwise size={15} />{t("重试播放")}</Button>
+      <VideoCamera size={28} /><p>{t("media.card.videoPlaybackFailed")}</p><span>{t("media.card.videoRetryHint")}</span>
+      <Button variant="ghost" type="button" className="media-upload-button" onClick={startPlayback}><ArrowClockwise size={15} />{t("media.retryPlayback")}</Button>
     </div> : null}
-    {video && playing ? <Button variant="ghost" type="button" className="media-stop-preview nodrag" aria-label={t("关闭视频预览")}
-      title={t("关闭视频预览")} onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></Button> : null}
-    {demo ? <span className="media-demo-badge">{video ? t("演示视频") : t("演示素材")}</span> : null}
+    {video && playing ? <Button variant="ghost" type="button" className="media-stop-preview nodrag" aria-label={t("media.card.closeVideo")}
+      title={t("media.card.closeVideo")} onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></Button> : null}
+    {demo ? <span className="media-demo-badge">{video ? t("media.card.mockVideo") : t("media.card.mockAsset")}</span> : null}
     {video ? <a className="media-expand-button nodrag" href={assetContentUrl(artifact.projectId, assetId)}
-      aria-label={t("打开视频文件")} title={t("打开视频文件")}
+      aria-label={t("media.card.openVideo")} title={t("media.card.openVideo")}
       rel="noopener noreferrer" target="_blank"><ArrowsOutSimple size={19} /></a>
-      : <Button variant="ghost" className="media-expand-button nodrag" type="button" aria-label={t("放大图片")} title={t("放大图片")}
+      : <Button variant="ghost" className="media-expand-button nodrag" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
         onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>}
     {!video && expanded ? <ImagePreviewDialog title={title}
       sourceUrl={assetContentUrl(artifact.projectId, assetId)} onClose={() => setExpanded(false)} /> : null}
     {video && !playing ? <Button variant="ghost" className="media-play-button nodrag" type="button"
-      aria-label={t("播放视频")} onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">{t("播放视频")}</span></Button> : null}
+      aria-label={t("media.card.playVideo")} onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">{t("media.card.playVideo")}</span></Button> : null}
   </div>;
 }

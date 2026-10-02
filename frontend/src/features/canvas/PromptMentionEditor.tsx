@@ -174,9 +174,9 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
     <div ref={editorRef} id={id} className="media-draft-prompt" role="textbox"
       aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
       data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
-    {menu ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("图片引用")}
+    {menu ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("media.mentions.imageReferences")}
       style={{ left: menu.left, top: menu.top }}>
-      <CommandList label={t("图片引用")}><CommandGroup heading="Image">
+      <CommandList label={t("media.mentions.imageReferences")}><CommandGroup heading="Image">
       {references.map((reference, index) => <CommandItem key={reference.versionId} value={reference.versionId}
         role="option" aria-selected={index === menu.selected}
         aria-label={`${reference.label} ${reference.versionId}`}

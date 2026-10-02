@@ -43,8 +43,8 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
   });
 
   if (!canSelect) return history.error ? <div className="media-version-picker" role="alert">
-    {t("版本历史读取失败")}<Button variant="ghost" type="button" disabled={history.isFetching}
-      onClick={() => void history.refetch()}>{t("重试读取")}</Button>
+    {t("media.versions.loadFailed")}<Button variant="ghost" type="button" disabled={history.isFetching}
+      onClick={() => void history.refetch()}>{t("common.retryRead")}</Button>
   </div> : null;
 
   return <DropdownMenu open={menuOpen} onOpenChange={setOpen} modal={false}><div className="media-version-picker" ref={anchor}
@@ -53,24 +53,24 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
     }}>
     <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={toggle} aria-expanded={menuOpen} aria-haspopup="menu"
       onPointerDown={() => select.reset()}>
-      <Stack size={17} />{t("版本{0}", { "0": selectedNumber !== undefined ? ` v${selectedNumber}` : "" })}<CaretDown size={12} />
+      <Stack size={17} />{t("artifacts.versions.versionLabel", { "0": selectedNumber !== undefined ? ` v${selectedNumber}` : "" })}<CaretDown size={12} />
     </Button></DropdownMenuTrigger>
-    {menuOpen ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-version-menu" role="menu" aria-label={t("媒体版本")}><DropdownMenuGroup>
-      <p>{history.data ? t("{0} 个版本", { "0": history.data.items.length }) : t("节点版本历史")}</p>
-      {history.isPending ? <p role="status">{t("正在读取版本…")}</p> : null}
-      {history.error ? <div role="alert">{t("版本历史读取失败")}<Button variant="ghost" type="button" onClick={() => void history.refetch()}>{t("重试读取")}</Button></div> : null}
-      {versions.map(({ version, nodeVersionNo }) => <DropdownMenuItem role="menuitem" disabled={select.isPending} aria-label={`v${nodeVersionNo} ${version.id === item.selectedVersionId ? t("当前选用") : t("选用此版本")}`} aria-current={version.id === item.selectedVersionId ? "true" : undefined} key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
+    {menuOpen ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-version-menu" role="menu" aria-label={t("media.versions.title")}><DropdownMenuGroup>
+      <p>{history.data ? t("media.versions.versionCount", { "0": history.data.items.length }) : t("media.versions.history")}</p>
+      {history.isPending ? <p role="status">{t("common.versionLoading")}</p> : null}
+      {history.error ? <div role="alert">{t("media.versions.loadFailed")}<Button variant="ghost" type="button" onClick={() => void history.refetch()}>{t("common.retryRead")}</Button></div> : null}
+      {versions.map(({ version, nodeVersionNo }) => <DropdownMenuItem role="menuitem" disabled={select.isPending} aria-label={`v${nodeVersionNo} ${version.id === item.selectedVersionId ? t("artifacts.versions.selected") : t("artifacts.versions.select")}`} aria-current={version.id === item.selectedVersionId ? "true" : undefined} key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
         <span>v{nodeVersionNo}</span>
-        <small>{version.id === item.selectedVersionId ? t("当前选用") : t("选用此版本")}</small>
+        <small>{version.id === item.selectedVersionId ? t("artifacts.versions.selected") : t("artifacts.versions.select")}</small>
       </DropdownMenuItem>)}
-      {select.isPending ? <p role="status">{t("正在切换版本…")}</p> : null}
+      {select.isPending ? <p role="status">{t("media.versions.selecting")}</p> : null}
       {select.error ? <div role="alert">{select.error instanceof ApiError
-        ? select.error.message : t("版本切换失败，当前结果已保留。")}
+        ? select.error.message : t("media.versions.selectFailed")}
         <Button variant="ghost" type="button" onClick={() => {
           void client.invalidateQueries({ queryKey: ["canvas", projectId] });
           void history.refetch();
-        }}>{t("刷新版本")}</Button></div> : null}
-      <p>{t("切换结果会保留当前草稿和已有引用。")}</p>
+        }}>{t("media.versions.refresh")}</Button></div> : null}
+      <p>{t("media.versions.selectionHint")}</p>
     </DropdownMenuGroup></DropdownMenuContent> : null}
   </div></DropdownMenu>;
 }

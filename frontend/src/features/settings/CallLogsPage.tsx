@@ -21,13 +21,13 @@ const FIRST_PAGE = 0;
 const BAD_REQUEST_STATUS = 400;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const LOCAL_DATE_TIME_LENGTH = 19;
-const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("文本模型"); }, get IMAGE() { return t("图片"); }, get VIDEO() { return t("视频"); }, get AUDIO() { return t("音频"); } };
-const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { return t("调用中"); }, get SUCCEEDED() { return t("成功"); }, get FAILED() { return t("失败"); }, get UNKNOWN() { return t("未知"); } };
-const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("模型对话"); }, get SUBMIT() { return t("提交生成"); }, get POLL() { return t("查询结果"); }, get LEGACY() { return t("历史任务"); } };
+const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("models.text"); }, get IMAGE() { return t("common.image"); }, get VIDEO() { return t("common.video"); }, get AUDIO() { return t("common.audio"); } };
+const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { return t("logs.calls.calling"); }, get SUCCEEDED() { return t("logs.calls.success"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); } };
+const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("logs.calls.modelConversation"); }, get SUBMIT() { return t("logs.calls.submitGeneration"); }, get POLL() { return t("logs.calls.results"); }, get LEGACY() { return t("logs.calls.historicalTask"); } };
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
 const TASK_STATUS_LABELS: Record<Task["status"], string> = {
-  get PENDING() { return t("等待依赖"); }, get READY() { return t("排队中"); }, get SUBMITTING() { return t("提交中"); }, get RUNNING() { return t("运行中"); }, get WAITING_PROVIDER() { return t("等待外部结果"); },
-  get SUCCEEDED() { return t("已完成"); }, get FAILED() { return t("失败"); }, get UNKNOWN() { return t("未知"); }, get BLOCKED() { return t("已阻断"); }, get CANCELED() { return t("已取消"); },
+  get PENDING() { return t("logs.calls.waitingForDependencies"); }, get READY() { return t("tasks.status.queued"); }, get SUBMITTING() { return t("logs.calls.submitting"); }, get RUNNING() { return t("tasks.status.running"); }, get WAITING_PROVIDER() { return t("logs.calls.waitingForExternal"); },
+  get SUCCEEDED() { return t("common.succeeded"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); }, get BLOCKED() { return t("tasks.status.blocked"); }, get CANCELED() { return t("common.canceled"); },
 };
 
 function readFilters(params: URLSearchParams): CallLogFilters {
@@ -68,34 +68,34 @@ export function CallLogsPage() {
     setParams(next);
   };
 
-  return <PageShell title={t("调用日志")} description={t("查看模型与媒体调用的时间、结果和关联记录。本页只读，刷新和查看都不会发起生成或改变任务状态。")} actions={
+  return <PageShell title={t("common.callLogs")} description={t("logs.calls.description")} actions={
     <Button variant="outline"  type="button" disabled={logs.isFetching || !currentUser.isSuccess}
-      onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? t("正在刷新…") : t("刷新日志")}</Button>
+      onClick={() => void logs.refetch()}><ArrowsClockwise size={16} aria-hidden />{logs.isFetching ? t("common.refreshing") : t("logs.refresh")}</Button>
   }><div className="ui-stack">
-    <Panel title={t("筛选记录")} description={t("时间按当前设备时区显示；筛选按调用开始时间匹配。未知包含调用结果未记录与关联任务尚未核实的记录。")}>
+    <Panel title={t("logs.calls.filterRecords")} description={t("logs.calls.filterTimeHint")}>
       <CallLogFilterForm key={params.toString()} filters={filters} onApply={(next) => { setSelectedId(null); setParams(next); }} />
     </Panel>
-    {logs.isPending && currentUser.isSuccess ? <LoadingState label={t("正在读取调用日志")} /> : null}
-    {logs.isError ? <Notice tone="danger" title={forbidden ? t("无权查看调用日志") : invalidFilters ? t("筛选条件无效") : t("读取调用日志失败")}>
-      <p>{forbidden ? t("当前账户没有查看这些记录的权限。") : invalidFilters ? t("请检查项目 ID、完整 Trace ID 和时间范围后重新筛选。") : data ? t("下面保留上次读取的记录，尚未更新。请重试刷新。") : t("服务暂时不可用，请重试。")}</p>
-      <Button variant="outline"  type="button" disabled={logs.isFetching} onClick={() => void logs.refetch()}>{t("重试读取日志")}</Button>
+    {logs.isPending && currentUser.isSuccess ? <LoadingState label={t("logs.calls.loading")} /> : null}
+    {logs.isError ? <Notice tone="danger" title={forbidden ? t("logs.calls.forbidden") : invalidFilters ? t("logs.calls.invalidFilter") : t("logs.calls.loadFailed")}>
+      <p>{forbidden ? t("logs.calls.forbiddenHint") : invalidFilters ? t("logs.calls.invalidFilterHint") : data ? t("logs.calls.staleRecordsHint") : t("logs.calls.serviceUnavailable")}</p>
+      <Button variant="outline"  type="button" disabled={logs.isFetching} onClick={() => void logs.refetch()}>{t("logs.calls.retryLogs")}</Button>
     </Notice> : null}
-    {data ? <Panel title={t("调用记录")} description={t("共 {0} 条记录", { "0": data.totalElements })} className="call-log-results"
-      actions={logs.isFetching ? <LoadingState compact label={t("正在更新调用日志")} /> : undefined}>
-      <p className="ui-muted">{t("耗时按本次调用开始到返回计算；媒体查询可能包含结果读取，不包含任务排队等待。")}</p>
-      {data.items.length === 0 ? <EmptyState icon={<ListMagnifyingGlass size={27} />} title={t("没有匹配的调用记录")}
-        description={t("调整筛选条件，或在完成模型与媒体调用后刷新查看。")} /> :
-        <Table className="call-log-table"><TableCaption className="sr-only">{t("模型与媒体调用审计记录")}</TableCaption><TableHeader><TableRow>
-          <TableHead scope="col" className="call-log-model-column">{t("模型")}</TableHead><TableHead scope="col" className="call-log-type-column">{t("调用类型")}</TableHead><TableHead scope="col">{t("项目")}</TableHead><TableHead scope="col">{t("调用时间")}</TableHead><TableHead scope="col">{t("响应时间")}</TableHead>
-          <TableHead scope="col" className="call-log-duration-column">{t("耗时")}</TableHead><TableHead scope="col" className="call-log-result-column">{t("调用结果")}</TableHead><TableHead scope="col" className="call-log-details-column"><span className="sr-only">{t("详情")}</span></TableHead>
+    {data ? <Panel title={t("logs.calls.records")} description={t("logs.calls.recordCount", { "0": data.totalElements })} className="call-log-results"
+      actions={logs.isFetching ? <LoadingState compact label={t("logs.calls.updating")} /> : undefined}>
+      <p className="ui-muted">{t("logs.calls.durationHint")}</p>
+      {data.items.length === 0 ? <EmptyState icon={<ListMagnifyingGlass size={27} />} title={t("logs.calls.empty")}
+        description={t("logs.calls.emptyHint")} /> :
+        <Table className="call-log-table"><TableCaption className="sr-only">{t("logs.calls.auditTitle")}</TableCaption><TableHeader><TableRow>
+          <TableHead scope="col" className="call-log-model-column">{t("common.model")}</TableHead><TableHead scope="col" className="call-log-type-column">{t("logs.calls.callType")}</TableHead><TableHead scope="col">{t("common.project")}</TableHead><TableHead scope="col">{t("logs.calls.time")}</TableHead><TableHead scope="col">{t("logs.calls.responseTime")}</TableHead>
+          <TableHead scope="col" className="call-log-duration-column">{t("logs.calls.duration")}</TableHead><TableHead scope="col" className="call-log-result-column">{t("logs.calls.result")}</TableHead><TableHead scope="col" className="call-log-details-column"><span className="sr-only">{t("logs.calls.details")}</span></TableHead>
         </TableRow></TableHeader><TableBody>{data.items.map((log) => <CallLogRow key={log.id} log={log}
           onDetails={() => setSelectedId(log.id)} />)}</TableBody></Table>}
-      <nav className="call-log-pagination" aria-label={t("调用日志分页")}>
-        <span className="ui-muted">{t("第 {0} 页 / 共 {1} 页 · 每页 {2} 条", { "0": data.page + 1, "1": Math.max(1, data.totalPages), "2": data.size })}</span>
+      <nav className="call-log-pagination" aria-label={t("logs.calls.paginationLabel")}>
+        <span className="ui-muted">{t("logs.calls.pagination", { "0": data.page + 1, "1": Math.max(1, data.totalPages), "2": data.size })}</span>
         <div className="ui-form-actions"><Button variant="outline"  type="button" disabled={logs.isFetching || data.page === FIRST_PAGE}
-          onClick={() => setPage(data.page - 1)}>{t("上一页")}</Button>
+          onClick={() => setPage(data.page - 1)}>{t("logs.calls.previousPage")}</Button>
           <Button variant="outline"  type="button" disabled={logs.isFetching || data.page + 1 >= data.totalPages}
-            onClick={() => setPage(data.page + 1)}>{t("下一页")}</Button></div>
+            onClick={() => setPage(data.page + 1)}>{t("logs.calls.nextPage")}</Button></div>
       </nav>
     </Panel> : null}
     {selectedLog ? <CallLogDetailDialog log={selectedLog} onClose={() => setSelectedId(null)} /> : null}
@@ -117,56 +117,56 @@ function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onAp
     const from = next.get("from");
     const to = next.get("to");
     if (from && to && from > to) {
-      setError(t("结束时间不能早于开始时间。"));
+      setError(t("logs.calls.invalidTimeRange"));
       return;
     }
     onApply(next);
   }
   return <form className="ui-form" onSubmit={submit}>
     <div className="call-log-filters">
-      <Field><FieldLabel className="ui-field block">{t("项目 ID")}<Input name="projectId" defaultValue={filters.projectId} placeholder={t("全部项目")} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("调用类型")}<Select name="kind" defaultValue={filters.kind ?? ""}><option value="">{t("全部类型")}</option>
+      <Field><FieldLabel className="ui-field block">{t("logs.calls.projectId")}<Input name="projectId" defaultValue={filters.projectId} placeholder={t("logs.calls.allProjects")} /></FieldLabel></Field>
+      <Field><FieldLabel className="ui-field block">{t("logs.calls.callType")}<Select name="kind" defaultValue={filters.kind ?? ""}><option value="">{t("common.allKinds")}</option>
         {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("调用状态")}<Select name="status" defaultValue={filters.status ?? ""}><option value="">{t("全部状态")}</option>
+      <Field><FieldLabel className="ui-field block">{t("logs.calls.status")}<Select name="status" defaultValue={filters.status ?? ""}><option value="">{t("logs.calls.allStatuses")}</option>
         {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">Trace ID<Input name="traceId" defaultValue={filters.traceId} placeholder={t("按完整 Trace ID 查找")} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("开始时间")}<Input type="datetime-local" name="from" step="1" defaultValue={localDateTime(filters.from)} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("结束时间")}<Input type="datetime-local" name="to" step="1" defaultValue={localDateTime(filters.to)} /></FieldLabel></Field>
+      <Field><FieldLabel className="ui-field block">Trace ID<Input name="traceId" defaultValue={filters.traceId} placeholder={t("logs.calls.traceSearchPlaceholder")} /></FieldLabel></Field>
+      <Field><FieldLabel className="ui-field block">{t("logs.calls.startTime")}<Input type="datetime-local" name="from" step="1" defaultValue={localDateTime(filters.from)} /></FieldLabel></Field>
+      <Field><FieldLabel className="ui-field block">{t("logs.calls.endTime")}<Input type="datetime-local" name="to" step="1" defaultValue={localDateTime(filters.to)} /></FieldLabel></Field>
     </div>
     {error ? <p className="ui-error" role="alert">{error}</p> : null}
-    <div className="ui-toolbar"><span className="ui-muted" role="status">{filterCount ? t("已应用 {0} 项筛选", { "0": filterCount }) : t("当前显示全部记录")}</span>
-    <div className="ui-form-actions"><Button variant="default"  type="submit">{t("筛选日志")}</Button>
-      <Button variant="ghost"  type="button" onClick={() => onApply(new URLSearchParams())}>{t("清空筛选")}</Button></div></div>
+    <div className="ui-toolbar"><span className="ui-muted" role="status">{filterCount ? t("logs.calls.filterCount", { "0": filterCount }) : t("logs.calls.allRecords")}</span>
+    <div className="ui-form-actions"><Button variant="default"  type="submit">{t("logs.calls.filter")}</Button>
+      <Button variant="ghost"  type="button" onClick={() => onApply(new URLSearchParams())}>{t("logs.calls.clearFilters")}</Button></div></div>
   </form>;
 }
 
 function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void }) {
   useLocale();
   return <TableRow>
-      <TableCell data-label={t("模型")}><span className="call-log-model" title={log.model ?? t("模型未记录")}>{log.model ?? t("模型未记录")}</span></TableCell>
-      <TableCell data-label={t("调用类型")}><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong>
-        <div className="call-log-badges">{log.mock ? <StatusBadge>{t("Mock 模拟调用")}</StatusBadge> : null}
-          {log.historical ? <StatusBadge>{t("历史记录")}</StatusBadge> : null}</div></TableCell>
-      <TableCell data-label={t("项目")}><Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}>{log.projectTitle}<ArrowSquareOut size={13} aria-hidden /></Link></TableCell>
-      <TableCell data-label={t("调用时间")}><LogTime value={log.startedAt} /></TableCell>
-      <TableCell data-label={t("响应时间")}><LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("等待响应") : t("未记录")} /></TableCell>
-      <TableCell data-label={t("耗时")}>{log.durationMs === null ? t("未记录") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</TableCell>
-      <TableCell data-label={t("调用结果")}><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge></TableCell>
+      <TableCell data-label={t("common.model")}><span className="call-log-model" title={log.model ?? t("logs.calls.modelNotRecorded")}>{log.model ?? t("logs.calls.modelNotRecorded")}</span></TableCell>
+      <TableCell data-label={t("logs.calls.callType")}><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong>
+        <div className="call-log-badges">{log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
+          {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div></TableCell>
+      <TableCell data-label={t("common.project")}><Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}>{log.projectTitle}<ArrowSquareOut size={13} aria-hidden /></Link></TableCell>
+      <TableCell data-label={t("logs.calls.time")}><LogTime value={log.startedAt} /></TableCell>
+      <TableCell data-label={t("logs.calls.responseTime")}><LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} /></TableCell>
+      <TableCell data-label={t("logs.calls.duration")}>{log.durationMs === null ? t("common.notRecorded") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</TableCell>
+      <TableCell data-label={t("logs.calls.result")}><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge></TableCell>
       <TableCell className="call-log-toggle"><Button variant="ghost"  type="button" aria-haspopup="dialog"
-        aria-label={t("查看调用详情 {0}", { "0": log.id })} onClick={onDetails}>{t("详情")}<ArrowSquareOut size={14} aria-hidden /></Button></TableCell>
+        aria-label={t("logs.calls.detailsLabel", { "0": log.id })} onClick={onDetails}>{t("logs.calls.details")}<ArrowSquareOut size={14} aria-hidden /></Button></TableCell>
     </TableRow>;
 }
 
 function CallLogDetailDialog({ log, onClose }: { log: CallLog; onClose: () => void }) {
   useLocale();
-  return <Dialog title={t("调用详情")} description={`${KIND_LABELS[log.kind]} · ${log.model ?? t("模型未记录")}`}
+  return <Dialog title={t("logs.calls.detailsTitle")} description={`${KIND_LABELS[log.kind]} · ${log.model ?? t("logs.calls.modelNotRecorded")}`}
     className="call-log-dialog" onClose={onClose} onSubmit={(event) => event.preventDefault()}
-    footer={<Button variant="outline" type="button"  onClick={onClose}>{t("关闭")}</Button>}>
+    footer={<Button variant="outline" type="button"  onClick={onClose}>{t("common.close")}</Button>}>
     <div className="call-log-overview">
       <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}>{log.projectTitle}<ArrowSquareOut size={14} aria-hidden /></Link>
       <div className="call-log-badges"><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
-        {log.mock ? <StatusBadge>{t("Mock 模拟调用")}</StatusBadge> : null}
-        {log.historical ? <StatusBadge>{t("历史记录")}</StatusBadge> : null}</div>
+        {log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
+        {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div>
     </div>
     <CallLogDetails log={log} />
   </Dialog>;
@@ -175,16 +175,16 @@ function CallLogDetailDialog({ log, onClose }: { log: CallLog; onClose: () => vo
 function CallLogDetails({ log }: { log: CallLog }) {
   useLocale();
   return <>
-    {log.historical ? <p className="ui-muted">{t("历史记录只保留当时已保存的信息；响应时间、耗时或 Trace ID 缺失时显示“未记录”。")}</p> : null}
+    {log.historical ? <p className="ui-muted">{t("logs.calls.historicalFieldsHint")}</p> : null}
     <dl className="call-log-metadata">
-      <Detail label={t("调用时间")} value={<LogTime value={log.startedAt} />} />
-      <Detail label={t("响应时间")} value={<LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("等待响应") : t("未记录")} />} />
-      <Detail label={t("耗时")} value={log.durationMs === null ? null : `${log.durationMs.toLocaleString(getFormatLocale())} ms`} />
-      <Detail label={t("调用操作")} value={OPERATION_LABELS[log.operation]} />
-      <Detail label="Trace ID" value={log.traceId} /><Detail label={t("Provider 请求 ID")} value={log.providerRequestId} />
-      <Detail label="Provider" value={log.provider} /><Detail label={t("模型")} value={log.model} />
-      <Detail label={t("调用记录 ID")} value={log.id} /><Detail label="Run ID" value={log.runId} />
-      <Detail label="Task ID" value={log.taskId} /><Detail label={t("错误码")} value={log.errorCode} />
+      <Detail label={t("logs.calls.time")} value={<LogTime value={log.startedAt} />} />
+      <Detail label={t("logs.calls.responseTime")} value={<LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} />} />
+      <Detail label={t("logs.calls.duration")} value={log.durationMs === null ? null : `${log.durationMs.toLocaleString(getFormatLocale())} ms`} />
+      <Detail label={t("logs.calls.operations")} value={OPERATION_LABELS[log.operation]} />
+      <Detail label="Trace ID" value={log.traceId} /><Detail label={t("logs.calls.providerRequestId")} value={log.providerRequestId} />
+      <Detail label="Provider" value={log.provider} /><Detail label={t("common.model")} value={log.model} />
+      <Detail label={t("logs.calls.recordId")} value={log.id} /><Detail label="Run ID" value={log.runId} />
+      <Detail label="Task ID" value={log.taskId} /><Detail label={t("logs.calls.errorCode")} value={log.errorCode} />
     </dl>
     {!log.historical ? <CallDebugDetails id={log.id} kind={log.kind} /> : null}
     {log.taskId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
@@ -197,26 +197,26 @@ function CallLogTask({ projectId, taskId }: { projectId: string; taskId: string 
   const task = useQuery({ queryKey: ["call-log-task", projectId, taskId], queryFn: () => getTask(projectId, taskId), retry: false });
   const forbidden = task.error instanceof ApiError && task.error.status === HTTP_STATUS.FORBIDDEN;
   if (task.error instanceof ApiError && task.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
-  return <section className="call-log-task" aria-label={t("关联任务")}>
-    <h3>{t("关联任务")}</h3>
-    {task.isPending ? <LoadingState compact label={t("正在读取关联任务")} /> : null}
-    {task.isError ? <Notice tone="danger" title={forbidden ? t("无权查看关联任务") : t("读取关联任务失败")}>
-      <p>{t("无法读取关联任务的当前状态。需要重试时，请在所属 Agent 对话或媒体卡片上处理。")}</p>
-      <Button variant="outline"  type="button" disabled={task.isFetching} onClick={() => void task.refetch()}>{t("重试读取任务")}</Button>
+  return <section className="call-log-task" aria-label={t("logs.calls.relatedTask")}>
+    <h3>{t("logs.calls.relatedTask")}</h3>
+    {task.isPending ? <LoadingState compact label={t("logs.calls.taskLoading")} /> : null}
+    {task.isError ? <Notice tone="danger" title={forbidden ? t("logs.calls.taskForbidden") : t("logs.calls.taskLoadFailed")}>
+      <p>{t("logs.calls.taskStatusUnavailable")}</p>
+      <Button variant="outline"  type="button" disabled={task.isFetching} onClick={() => void task.refetch()}>{t("logs.calls.retryTask")}</Button>
     </Notice> : null}
     {task.data && !task.isError ? <div className="ui-toolbar">
-      <span className="ui-muted">{t("当前状态：{0}", { "0": TASK_STATUS_LABELS[task.data.status] })}</span>
-      <Link className="secondary-button" to={`/projects/${encodeURIComponent(projectId)}`}>{t("前往项目")}<ArrowSquareOut size={14} aria-hidden /></Link>
+      <span className="ui-muted">{t("logs.calls.currentStatus", { "0": TASK_STATUS_LABELS[task.data.status] })}</span>
+      <Link className="secondary-button" to={`/projects/${encodeURIComponent(projectId)}`}>{t("logs.calls.openProject")}<ArrowSquareOut size={14} aria-hidden /></Link>
     </div> : null}
   </section>;
 }
 
 function Detail({ label, value }: { label: string; value: ReactNode }) {
   useLocale();
-  return <div><dt>{label}</dt><dd>{value ?? <span className="ui-muted">{t("未记录")}</span>}</dd></div>;
+  return <div><dt>{label}</dt><dd>{value ?? <span className="ui-muted">{t("common.notRecorded")}</span>}</dd></div>;
 }
 
-function LogTime({ value, missing = t("未记录") }: { value: string | null; missing?: string }) {
+function LogTime({ value, missing = t("common.notRecorded") }: { value: string | null; missing?: string }) {
   useLocale();
   return value ? <time dateTime={value}>{new Date(value).toLocaleString(getFormatLocale())}</time> : <span className="ui-muted">{missing}</span>;
 }

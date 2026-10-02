@@ -10,7 +10,9 @@ export const DEFAULT_LOCALE: Locale = "zh";
 export const LOCALE_STORAGE_KEY = "agenvas.locale.v1";
 export const LOCALE_NAMES: Record<Locale, string> = { en: "English", zh: "中文", ru: "Русский", ja: "日本語" };
 const FORMAT_LOCALES: Record<Locale, string> = { en: "en-US", zh: "zh-CN", ru: "ru-RU", ja: "ja-JP" };
-type Catalog = Readonly<Record<string, string>>;
+/** Stable UI identities are independent of the wording in any locale. */
+export type MessageKey = keyof typeof zh;
+type Catalog = Readonly<Record<MessageKey, string>>;
 const catalogs: Record<Locale, Catalog> = { en, zh, ru, ja };
 const listeners = new Set<() => void>();
 type Parameter = string | number | bigint | boolean | null | undefined;
@@ -69,14 +71,14 @@ export function useLocale(): Locale {
   return useSyncExternalStore(subscribe, getLocale, () => DEFAULT_LOCALE);
 }
 
-/** Source messages are gettext-style IDs. Only registered UI copy belongs here, never user content. */
-export function translate(locale: Locale, message: string, parameters: Readonly<Record<string, Parameter>> = {}): string {
-  const template = catalogs[locale][message] ?? catalogs[DEFAULT_LOCALE][message] ?? message;
+/** Only registered semantic keys belong here; user and provider content stays literal. */
+export function translate(locale: Locale, message: MessageKey, parameters: Readonly<Record<string, Parameter>> = {}): string {
+  const template = catalogs[locale][message] ?? catalogs[DEFAULT_LOCALE][message];
   return template.replace(/\{(\w+)\}/g, (token, name: string) =>
     Object.hasOwn(parameters, name) ? String(parameters[name] ?? "") : token);
 }
 
-export function t(message: string, parameters?: Readonly<Record<string, Parameter>>): string {
+export function t(message: MessageKey, parameters?: Readonly<Record<string, Parameter>>): string {
   return translate(currentLocale, message, parameters);
 }
 

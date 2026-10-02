@@ -28,9 +28,9 @@ export function useLibraryTransfer<T extends object>(submit: (input: T & { comma
 }
 export function TransferState({ transfer, success }: { transfer: { working: boolean; data?: LibraryCommand; error: Error | null; retry: () => void; retrying: boolean; resubmit?: () => void }; success?: string }) {
   useLocale();
-  if (transfer.error) return <div role="alert">{t("{0} 输入已保留。", { "0": transfer.error.message })}{transfer.data ? <Button variant="ghost" type="button" onClick={transfer.retry}>{t("核对转存结果")}</Button> : transfer.resubmit ? <Button variant="ghost" type="button" onClick={transfer.resubmit}>{t("使用原命令重试提交")}</Button> : null}</div>;
+  if (transfer.error) return <div role="alert">{t("common.inputPreserved", { "0": transfer.error.message })}{transfer.data ? <Button variant="ghost" type="button" onClick={transfer.retry}>{t("library.transfer.verifyResult")}</Button> : transfer.resubmit ? <Button variant="ghost" type="button" onClick={transfer.resubmit}>{t("library.transfer.retryCommand")}</Button> : null}</div>;
   if (transfer.data?.status === "FAILED") return <div role="alert">{transfer.data.errorDetail}{["VERSION_CONFLICT", "PROVIDER_UNSUPPORTED_INPUT", "VALIDATION_ERROR", "LIBRARY_REFERENCE_INVALID", "ARTIFACT_ORIGIN_INVALID"].includes(transfer.data.errorCode ?? "")
-    ? <p>{t("请关闭窗口，核对最新内容后重新选择。当前草稿已保留。")}</p> : <Button variant="ghost" type="button" disabled={transfer.retrying} onClick={transfer.retry}>{t("重试本地转存")}</Button>}</div>;
-  if (transfer.data?.status === "SUCCEEDED") return <p role="status">{success ?? t("已完成")}</p>;
-  return transfer.working ? <p role="status">{t("正在转存，请稍候…")}</p> : null;
+    ? <p>{t("library.transfer.staleDraftHint")}</p> : <Button variant="ghost" type="button" disabled={transfer.retrying} onClick={transfer.retry}>{t("library.transfer.retryTransfer")}</Button>}</div>;
+  if (transfer.data?.status === "SUCCEEDED") return <p role="status">{success ?? t("common.succeeded")}</p>;
+  return transfer.working ? <p role="status">{t("library.transfer.transferring")}</p> : null;
 }

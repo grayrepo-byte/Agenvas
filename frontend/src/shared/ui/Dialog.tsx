@@ -27,7 +27,7 @@ export function Dialog({ title, description, children, footer, onClose, onSubmit
       }}>
       <DialogHeader className="ui-dialog-header">
         <div><DialogTitle>{title}</DialogTitle>{description ? <DialogDescription id={descriptionId}>{description}</DialogDescription> : null}</div>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={t("关闭窗口")} disabled={busy} onClick={onClose}><X /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t("ui.dialog.close")} disabled={busy} onClick={onClose}><X /></Button>
       </DialogHeader>
       <form className="ui-dialog-form" onSubmit={onSubmit}>
         <div className="ui-dialog-body">{children}</div>

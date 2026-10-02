@@ -91,7 +91,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
     if (save.isPending) return;
     const title = draft.trim();
     if (!title) {
-      setValidationError(t("标题不能为空"));
+      setValidationError(t("canvas.title.emptyTitle"));
       queueMicrotask(() => input.current?.focus());
       return;
     }
@@ -115,15 +115,15 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
     }
   }
 
-  const error = validationError ?? (save.error ? t("标题保存失败，请重试") : null);
+  const error = validationError ?? (save.error ? t("canvas.title.saveFailed") : null);
   const inputWidth = Math.min(Math.max(draft.length + 2, MIN_INPUT_CHARS), MAX_INPUT_CHARS);
 
   return <span className="artifact-card-title-editor nodrag nowheel nopan">
     {editing ? <>
       <Input ref={input} className={`artifact-card-title-input${error ? " is-error" : ""}`}
-        aria-label={t("{0}标题", { "0": kindLabel })} aria-invalid={Boolean(error)}
+        aria-label={t("canvas.title.titleLabel", { "0": kindLabel })} aria-invalid={Boolean(error)}
         disabled={save.isPending} maxLength={MAX_TITLE_LENGTH} size={inputWidth}
-        title={error ?? t("按 Enter 或移开焦点保存，按 Esc 取消")}
+        title={error ?? t("canvas.title.keyboardHint")}
         value={draft} onBlur={commit} onChange={(event) => {
           setDraft(event.target.value);
           setValidationError(null);
@@ -131,7 +131,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
         }} onKeyDown={handleKeyDown} />
       {error ? <span className="sr-only" role="alert">{error}</span> : null}
     </> : <Button variant="ghost" type="button" className="artifact-card-caption nodrag nowheel nopan"
-      aria-label={t("重命名{0}：{1}", { "0": kindLabel, "1": displayTitle })} title={t("双击编辑标题")}
+      aria-label={t("canvas.title.renameLabel", { "0": kindLabel, "1": displayTitle })} title={t("canvas.title.editHint")}
       onClick={(event) => { if (event.detail === 2) beginEditing(); }}
       onDoubleClick={(event) => { event.stopPropagation(); beginEditing(); }}
       onKeyDown={(event) => {

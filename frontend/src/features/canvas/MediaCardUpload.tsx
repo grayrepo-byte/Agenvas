@@ -17,7 +17,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
 }) {
   useLocale();
   const isAudio = artifact.kind === "AUDIO";
-  const label = isAudio ? t("音频") : t("图片");
+  const label = isAudio ? t("common.audio") : t("common.image");
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(initialFile);
   const [expectedVersion, setExpectedVersion] = useState(item.version);
@@ -71,48 +71,48 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     try {
       const current = (await listCanvasItems(artifact.projectId)).items
         .find((candidate) => candidate.id === item.id);
-      if (!current) throw new Error(t("卡片已被删除"));
+      if (!current) throw new Error(t("media.upload.cardDeleted"));
       setExpectedVersion(current.version);
       upload.reset();
     } catch (failure) {
-      setRefreshError(failure instanceof Error ? failure.message : t("无法读取当前版本"));
+      setRefreshError(failure instanceof Error ? failure.message : t("media.upload.versionLoadFailed"));
     } finally { setRefreshing(false); }
   }
   const conflict = upload.error instanceof ApiError && upload.error.status === HTTP_STATUS.CONFLICT;
   const errorMessage = conflict
-    ? t("卡片已有更新，文件已保留；读取最新版本后可重新上传。")
+    ? t("media.upload.conflict")
     : upload.error?.message;
   if (compact) return <div className="media-card-upload-status nodrag nowheel nopan">
-    {upload.isPending ? <p role="status">{t("正在上传{0}…", { "0": label })}</p> : null}
+    {upload.isPending ? <p role="status">{t("media.upload.uploadingMedia", { "0": label })}</p> : null}
     {upload.error ? <div className="media-card-error" role="alert">
       <span>{errorMessage}</span>
       <Button variant="ghost" type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
-        {refreshing ? t("读取中…") : t("重试上传")}
+        {refreshing ? t("common.loading") : t("media.retryUpload")}
       </Button>
       {conflict ? <Button variant="ghost" type="button"
-        disabled={refreshing} onClick={() => void refreshVersion()}>{t("读取最新版本")}</Button> : null}
+        disabled={refreshing} onClick={() => void refreshVersion()}>{t("media.upload.refreshVersion")}</Button> : null}
     </div> : null}
     {refreshError ? <p className="media-card-error" role="alert">{refreshError}</p> : null}
   </div>;
   return <form className="media-card-upload-form" onSubmit={submit}>
-    <p>{item.selectedVersionId ? t("基于「{0}」上传{1}，并创建一个新节点。", { "0": artifact.title, "1": label })
-      : t("上传{0}到「{1}」。", { "0": label, "1": artifact.title })}</p>
-    <p className="text-xs text-[var(--muted)]">{t("已选择：{0}", { "0": file?.name })}</p>
-    <label>{t("更换{0}", { "0": label })}<Input type="file" accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
+    <p>{item.selectedVersionId ? t("media.upload.derivedUploadHint", { "0": artifact.title, "1": label })
+      : t("media.upload.uploadHint", { "0": label, "1": artifact.title })}</p>
+    <p className="text-xs text-[var(--muted)]">{t("media.upload.selectedFile", { "0": file?.name })}</p>
+    <label>{t("media.upload.replaceTitle", { "0": label })}<Input type="file" accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
       disabled={upload.isPending} onChange={(event) => {
         const selected = event.target.files?.[0] ?? null;
         setFile(selected);
         upload.reset();
         if (selected) upload.mutate(selected);
       }} /></label>
-    <p className="text-xs text-[var(--muted)]">{isAudio ? t("MP3、WAV、OGG · 最大 50 MiB / 10 分钟") : t("PNG、JPEG、WebP · 最大 20 MiB / 40 MP")}</p>
+    <p className="text-xs text-[var(--muted)]">{isAudio ? t("media.upload.audioFormatsHint") : t("media.upload.imageFormatsHint")}</p>
     <Button variant="default"  type="submit" disabled={!file || upload.isPending || refreshing}>
-      {upload.isPending ? t("正在上传…") : upload.error ? t("重试上传") : t("上传并创建节点")}</Button>
+      {upload.isPending ? t("media.upload.uploading") : upload.error ? t("media.retryUpload") : t("media.upload.uploadAndCreate")}</Button>
     {upload.error ? <p role="alert">{errorMessage}</p> : null}
     {conflict ? <Button variant="outline"
       type="button" disabled={refreshing} onClick={() => void refreshVersion()}>
-      {refreshing ? t("读取中…") : t("读取最新版本")}</Button> : null}
-    {expectedVersion !== item.version ? <p role="status">{t("已读取当前节点状态，可再次上传并创建新节点。")}</p> : null}
+      {refreshing ? t("common.loading") : t("media.upload.refreshVersion")}</Button> : null}
+    {expectedVersion !== item.version ? <p role="status">{t("media.upload.versionRefreshedHint")}</p> : null}
     {refreshError ? <p role="alert">{refreshError}</p> : null}
   </form>;
 }

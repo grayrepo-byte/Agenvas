@@ -33,6 +33,6 @@ export async function saveClosedMediaDraft(client: QueryClient, projectId: strin
   } catch (failure) {
     // Retain the complete input for an explicit retry on reopening; never retry a conflict here.
     store.setMediaDraftRecovery(key, { request, saving: false,
-      error: failure instanceof Error ? failure : new Error(t("工作草稿保存失败")) });
+      error: failure instanceof Error ? failure : new Error(t("media.draft.saveFailed")) });
   }
 }

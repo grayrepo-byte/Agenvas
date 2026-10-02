@@ -13,11 +13,11 @@ import "./AgentChatPrimitives.css";
  */
 const CHAT_ICON_SIZE = 14;
 const TASK_ICON_SIZE = 15;
-const MESSAGE_ROLE_LABELS = { get user() { return t("你"); }, assistant: "Agent" } as const;
+const MESSAGE_ROLE_LABELS = { get user() { return t("agent.status.user"); }, assistant: "Agent" } as const;
 type TaskStatus = "running" | "pending" | "completed" | "failed" | "unknown" | "canceled";
 const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  get running() { return t("运行中"); }, get pending() { return t("等待中"); }, get completed() { return t("已完成"); }, get failed() { return t("失败"); },
-  get unknown() { return t("未知"); }, get canceled() { return t("已取消"); },
+  get running() { return t("tasks.status.running"); }, get pending() { return t("agent.status.waiting"); }, get completed() { return t("common.succeeded"); }, get failed() { return t("common.failed"); },
+  get unknown() { return t("common.unknown"); }, get canceled() { return t("common.canceled"); },
 };
 const TASK_STATUS_ICONS: Record<Exclude<TaskStatus, "running">, Icon> = {
   pending: Clock, completed: Check, failed: WarningCircle, unknown: Question, canceled: MinusCircle,

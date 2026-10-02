@@ -95,7 +95,7 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
     const removed = Object.keys(oldValues).filter((key) => !(key in compatible));
     const confirmation = removed.length || retained.length !== fields.mediaInputs.length
       || !beforeDefinition && Object.keys(fields.parameters).length
-      ? t("切换能力将移除不兼容参数{0}与未匹配素材引用。是否继续？", { "0": removed.length ? `（${removed.join("、")}）` : "" }) : null;
+      ? t("media.capabilitySwitch.inputResetConfirmation", { "0": removed.length ? `（${removed.join("、")}）` : "" }) : null;
     return { fields: { capabilityId: resolvedCapabilityId ?? null,
       parameters: nextDefinition ? { dynamicValues: compatible } : {},
       mediaInputs: retained, ...promptForMediaInputs(fields, retained),
@@ -106,7 +106,7 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
     const parameters = normalizedImageParameters(fields.parameters, next);
     const confirmation = Object.keys(fields.parameters).length > 0
       && JSON.stringify(parameters) !== JSON.stringify(normalizedImageParameters(fields.parameters, previous))
-      ? t("切换模型会将不受支持的图片参数调整为该模型的默认值。是否继续？") : null;
+      ? t("media.capabilitySwitch.parameterResetConfirmation") : null;
     return { fields: { capabilityId, parameters }, confirmation };
   }
   if (kind !== "VIDEO") return { fields: { capabilityId }, confirmation: null };
@@ -126,8 +126,8 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
   }
   const confirmation = mediaInputs.length < fields.mediaInputs.length || resolutionIncompatible
     ? resolutionIncompatible
-      ? t("切换模型会重置不支持的分辨率，并移除不兼容的图片/音频参考及其连线、提示词标签。是否继续？")
-      : t("切换模型会移除不兼容的图片/音频参考及其连线、提示词标签。是否继续？") : null;
+      ? t("media.capabilitySwitch.resolutionResetConfirmation")
+      : t("media.capabilitySwitch.referenceRemovalConfirmation") : null;
   return { fields: { capabilityId, parameters, videoInputMode, mediaInputs,
     ...promptForMediaInputs(fields, mediaInputs) }, confirmation };
 }

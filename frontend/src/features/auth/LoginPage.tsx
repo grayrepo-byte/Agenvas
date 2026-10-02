@@ -29,14 +29,14 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title={t("登录 Agenvas")} description={t("回到你的创作空间，继续未完成的灵感。")}>
+    <AuthLayout title={t("auth.login.title")} description={t("auth.login.description")}>
       <form className="ui-form" onSubmit={submit} aria-busy={loginRequest.isPending}>
-        <AuthField label={t("登录名")}><Input autoComplete="username" disabled={loginRequest.isPending} required value={loginName} onChange={(event) => setLoginName(event.target.value)} /></AuthField>
-        <AuthField label={t("密码")}><Input autoComplete="current-password" disabled={loginRequest.isPending} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></AuthField>
+        <AuthField label={t("auth.login.username")}><Input autoComplete="username" disabled={loginRequest.isPending} required value={loginName} onChange={(event) => setLoginName(event.target.value)} /></AuthField>
+        <AuthField label={t("auth.login.password")}><Input autoComplete="current-password" disabled={loginRequest.isPending} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></AuthField>
         {loginRequest.error ? <FormError error={loginRequest.error} /> : null}
-        <Button variant="default"  disabled={loginRequest.isPending} type="submit">{loginRequest.isPending ? t("正在登录…") : t("登录")}</Button>
+        <Button variant="default"  disabled={loginRequest.isPending} type="submit">{loginRequest.isPending ? t("auth.login.submitting") : t("auth.login.submit")}</Button>
       </form>
-      <p className="auth-footer">{t("尚未初始化？ ")}<Link to="/setup">{t("返回初始化")}</Link></p>
+      <p className="auth-footer">{t("auth.login.setupPrompt")}<Link to="/setup">{t("auth.login.setupLink")}</Link></p>
     </AuthLayout>
   );
 }

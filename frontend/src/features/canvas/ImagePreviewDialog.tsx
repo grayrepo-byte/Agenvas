@@ -27,7 +27,7 @@ export function ImagePreviewDialog({ title, sourceUrl, onClose }: {
       event.stopPropagation();
       if (event.target === event.currentTarget) onClose();
     }}>
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t("{0} 的原图预览", { "0": title })}
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t("image.preview.previewLabel", { "0": title })}
       className="image-preview-dialog" onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Escape") onClose();
@@ -43,20 +43,20 @@ export function ImagePreviewDialog({ title, sourceUrl, onClose }: {
         }
       }}>
       <header><strong>{title}</strong>
-        <Button variant="ghost" ref={closeRef} type="button" aria-label={t("关闭图片预览")} onClick={onClose}><X size={22} /></Button>
+        <Button variant="ghost" ref={closeRef} type="button" aria-label={t("image.preview.close")} onClick={onClose}><X size={22} /></Button>
       </header>
       <div className="image-preview-stage">
         {status === "FAILED" ? <div className="image-preview-error" role="alert">
-          <p>{t("图片加载失败，请重试。")}</p>
+          <p>{t("image.preview.loadFailed")}</p>
           <Button variant="ghost" type="button" onClick={() => {
             closeRef.current?.focus();
             setStatus("LOADING");
-          }}>{t("重试加载图片")}</Button>
+          }}>{t("image.preview.retry")}</Button>
         </div> : <>
-          <img src={sourceUrl} alt={t("{0} 的原图", { "0": title })} draggable={false}
+          <img src={sourceUrl} alt={t("image.preview.originalImage", { "0": title })} draggable={false}
             onLoad={() => setStatus("READY")} onError={() => setStatus("FAILED")} />
           {status === "LOADING" ? <div className="image-preview-loading">
-            <LoadingState label={t("正在加载图片")} />
+            <LoadingState label={t("image.preview.loading")} />
           </div> : null}
         </>}
       </div>

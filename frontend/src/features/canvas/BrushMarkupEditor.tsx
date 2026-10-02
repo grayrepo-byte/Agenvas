@@ -27,17 +27,17 @@ const MIN_STROKE_SIZE = 4;
 const MAX_STROKE_SIZE = 40;
 const MAX_TEXT_LENGTH = 200;
 const COLORS = [
-  { get name() { return t("红色"); }, value: "#ff3038" }, { get name() { return t("橙色"); }, value: "#ff8a00" },
-  { get name() { return t("黄色"); }, value: "#ffe51a" }, { get name() { return t("绿色"); }, value: "#05d66d" },
-  { get name() { return t("青色"); }, value: "#00d7ee" }, { get name() { return t("蓝色"); }, value: "#2477ff" },
-  { get name() { return t("紫色"); }, value: "#843dff" }, { get name() { return t("粉色"); }, value: "#ff26bf" },
+  { get name() { return t("image.markupEditor.red"); }, value: "#ff3038" }, { get name() { return t("image.markupEditor.orange"); }, value: "#ff8a00" },
+  { get name() { return t("image.markupEditor.yellow"); }, value: "#ffe51a" }, { get name() { return t("image.markupEditor.green"); }, value: "#05d66d" },
+  { get name() { return t("image.markupEditor.cyan"); }, value: "#00d7ee" }, { get name() { return t("image.markupEditor.blue"); }, value: "#2477ff" },
+  { get name() { return t("image.markupEditor.purple"); }, value: "#843dff" }, { get name() { return t("image.markupEditor.pink"); }, value: "#ff26bf" },
 ] as const;
 const TOOLS = [
-  { tool: "BRUSH", get label() { return t("画笔"); }, icon: PencilSimple },
-  { tool: "ERASER", get label() { return t("橡皮"); }, icon: Eraser },
-  { tool: "RECTANGLE", get label() { return t("矩形"); }, icon: Rectangle },
-  { tool: "ARROW", get label() { return t("箭头"); }, icon: ArrowUpRight },
-  { tool: "TEXT", get label() { return t("文字"); }, icon: TextT },
+  { tool: "BRUSH", get label() { return t("image.markupEditor.brush"); }, icon: PencilSimple },
+  { tool: "ERASER", get label() { return t("image.markupEditor.eraser"); }, icon: Eraser },
+  { tool: "RECTANGLE", get label() { return t("image.markupEditor.rectangle"); }, icon: Rectangle },
+  { tool: "ARROW", get label() { return t("image.markupEditor.arrow"); }, icon: ArrowUpRight },
+  { tool: "TEXT", get label() { return t("common.text"); }, icon: TextT },
 ] as const;
 
 /** Local image editor; saving archives user bytes and a derived node, without a generation task. */
@@ -71,7 +71,7 @@ export function BrushMarkupEditor(props: {
   const save = useMutation({
     mutationFn: async () => {
       const image = imageRef.current;
-      if (!image || !ready) throw new Error(t("请等待原图载入后保存。"));
+      if (!image || !ready) throw new Error(t("image.markupEditor.waitForImage"));
       if (!pending.current) pending.current = { file: await exportMarkup(image, strokes.slice(0, cursor)) };
       const attempt = pending.current;
       if (!attempt.assetId) attempt.assetId = (await uploadImageAsset(projectId, attempt.file)).id;
@@ -147,12 +147,12 @@ export function BrushMarkupEditor(props: {
     changed(); setText(null); setCursor(next);
   }
   const error = localError ?? (save.error instanceof ApiError && save.error.status === HTTP_STATUS.CONFLICT
-    ? t("来源节点已有更新，标注已保留。请关闭后基于当前图片重新标注。")
+    ? t("image.markupEditor.sourceConflict")
     : save.error?.message);
 
   return createPortal(<div className="markup-backdrop nodrag nowheel nopan"
     onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t("画笔标注")}
+    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t("image.markupEditor.title")}
       className="markup-dialog" onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Tab") {
@@ -171,20 +171,20 @@ export function BrushMarkupEditor(props: {
         }
       }}>
       <div className="markup-tools-shell">
-        {paletteOpen ? <div className="markup-palette" aria-label={t("标注颜色")}>
+        {paletteOpen ? <div className="markup-palette" aria-label={t("image.markupEditor.color")}>
           {COLORS.map((entry) => <Button variant="ghost" type="button" key={entry.value} title={entry.name}
             aria-label={entry.name} aria-pressed={color === entry.value} disabled={save.isPending}
             style={{ backgroundColor: entry.value }} onClick={() => setColor(entry.value)} />)}
         </div> : null}
-        <div className="markup-toolbar" role="toolbar" aria-label={t("画笔标注工具")}>
-          <Button variant="ghost" type="button" className="markup-close" aria-label={t("关闭画笔标注")} disabled={save.isPending}
-            onClick={onClose}><X size={17} /><span>{t("画笔标注")}</span></Button>
+        <div className="markup-toolbar" role="toolbar" aria-label={t("image.markupEditor.tools")}>
+          <Button variant="ghost" type="button" className="markup-close" aria-label={t("image.markupEditor.close")} disabled={save.isPending}
+            onClick={onClose}><X size={17} /><span>{t("image.markupEditor.title")}</span></Button>
           <div className="markup-tool-group">
-            <Button variant="ghost" type="button" className="markup-color" aria-label={t("选择标注颜色")}
+            <Button variant="ghost" type="button" className="markup-color" aria-label={t("image.markupEditor.chooseColor")}
               aria-expanded={paletteOpen} onClick={() => setPaletteOpen(!paletteOpen)}>
               <span style={{ backgroundColor: color }} /></Button>
             {TOOLS.map((entry) => <Button variant="ghost" type="button" key={entry.tool}
-              title={entry.tool === "BRUSH" || entry.tool === "ERASER" ? t("{0}（再次点击调整大小）", { "0": entry.label }) : entry.label}
+              title={entry.tool === "BRUSH" || entry.tool === "ERASER" ? t("image.markupEditor.toolSizeHint", { "0": entry.label }) : entry.label}
               aria-label={entry.label} aria-pressed={tool === entry.tool} disabled={save.isPending}
               onClick={() => {
                 finishText();
@@ -194,7 +194,7 @@ export function BrushMarkupEditor(props: {
               <entry.icon size={20} /></Button>)}
           </div>
         </div>
-        {sizeOpen ? <label className="markup-stroke-size">{t("笔刷大小")}<input aria-label={t("笔刷大小")} type="range"
+        {sizeOpen ? <label className="markup-stroke-size">{t("image.brushSize")}<input aria-label={t("image.brushSize")} type="range"
           min={MIN_STROKE_SIZE} max={MAX_STROKE_SIZE} value={strokeSize} disabled={save.isPending}
           onChange={(event) => setStrokeSize(Number(event.target.value))} /></label> : null}
       </div>
@@ -202,8 +202,8 @@ export function BrushMarkupEditor(props: {
         <div className="markup-image-title"><span>{sourceTitle}</span>
           {imageSize ? <small>{imageSize.width} × {imageSize.height}</small> : null}</div>
         <div className={`markup-image-shell${tool === "TEXT" ? " is-text" : ""}`}>
-          <img ref={imageRef} key={reload} src={sourceUrl} alt={t("画笔标注原图")} draggable={false}
-            onError={() => { setReady(false); setLocalError(t("原图载入失败，请重试。")); }}
+          <img ref={imageRef} key={reload} src={sourceUrl} alt={t("image.markupEditor.sourceImage")} draggable={false}
+            onError={() => { setReady(false); setLocalError(t("image.markupEditor.imageLoadFailed")); }}
             onLoad={(event) => {
               const image = event.currentTarget; const canvas = canvasRef.current;
               if (!canvas || !image.naturalWidth || !image.naturalHeight) return;
@@ -214,15 +214,15 @@ export function BrushMarkupEditor(props: {
                 renderMarkup(canvas, strokes.slice(0, cursor));
                 setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
                 setReady(true); setLocalError(null);
-              } catch (failure) { setLocalError(failure instanceof Error ? failure.message : t("图片编辑无法启动。")); }
+              } catch (failure) { setLocalError(failure instanceof Error ? failure.message : t("image.markupEditor.startFailed")); }
             }} />
-          <canvas ref={canvasRef} aria-label={t("图片标注画布")} onPointerDown={pointerDown}
+          <canvas ref={canvasRef} aria-label={t("image.markupEditor.canvasLabel")} onPointerDown={pointerDown}
             onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => {
               activeStroke.current = null;
               if (canvasRef.current) renderMarkup(canvasRef.current, strokes.slice(0, cursor));
             }} />
-          {text ? <Input ref={textRef} className="markup-text-input" aria-label={t("标注文字")}
-            maxLength={MAX_TEXT_LENGTH} placeholder={t("输入文字，回车确认")} value={text.value}
+          {text ? <Input ref={textRef} className="markup-text-input" aria-label={t("image.markupEditor.text")}
+            maxLength={MAX_TEXT_LENGTH} placeholder={t("image.markupEditor.textPlaceholder")} value={text.value}
             style={{ left: `${text.point.x * 100}%`, top: `${text.point.y * 100}%`, color }}
             onChange={(event) => setText({ ...text, value: event.target.value })}
             onBlur={finishText} onKeyDown={(event) => {
@@ -232,18 +232,18 @@ export function BrushMarkupEditor(props: {
             }} /> : null}
         </div>
       </div>
-      {!ready && !error ? <p role="status" className="markup-status">{t("正在载入原图…")}</p> : null}
+      {!ready && !error ? <p role="status" className="markup-status">{t("image.markupEditor.imageLoading")}</p> : null}
       {error ? <p role="alert" className="markup-error">{error}
-        {!ready ? <Button variant="ghost" type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>{t("重试载入")}</Button> : null}
+        {!ready ? <Button variant="ghost" type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>{t("image.markupEditor.retryLoad")}</Button> : null}
       </p> : null}
       <div className="markup-save-toolbar">
-        <Button variant="ghost" type="button" aria-label={t("撤销")} title={t("撤销")} disabled={!cursor || save.isPending}
+        <Button variant="ghost" type="button" aria-label={t("image.markupEditor.undo")} title={t("image.markupEditor.undo")} disabled={!cursor || save.isPending}
           onClick={() => restore(cursor - 1)}><ArrowCounterClockwise size={20} /></Button>
-        <Button variant="ghost" type="button" aria-label={t("重做")} title={t("重做")} disabled={cursor >= strokes.length || save.isPending}
+        <Button variant="ghost" type="button" aria-label={t("image.markupEditor.redo")} title={t("image.markupEditor.redo")} disabled={cursor >= strokes.length || save.isPending}
           onClick={() => restore(cursor + 1)}><ArrowClockwise size={20} /></Button>
         <span className="markup-divider" />
         <Button variant="ghost" type="button" className="markup-save" disabled={!ready || !cursor || save.isPending || Boolean(text)}
-          onClick={() => save.mutate()}>{save.isPending ? t("保存中…") : save.error ? t("重试保存") : t("保存")}</Button>
+          onClick={() => save.mutate()}>{save.isPending ? t("common.saving") : save.error ? t("common.retrySave") : t("image.markupEditor.save")}</Button>
       </div>
     </div>
   </div>, document.body);

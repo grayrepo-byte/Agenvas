@@ -3,10 +3,10 @@ import { act,render,screen,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse,http } from "msw";
 import { MemoryRouter } from "react-router";
-import { describe,expect,it,vi } from "vitest";
+import { describe,expect,expectTypeOf,it,vi } from "vitest";
 import {
 DEFAULT_LOCALE,LOCALE_NAMES,LOCALE_STORAGE_KEY,SUPPORTED_LOCALES,
-detectLocale,formatDate,formatNumber,getLocale,resolveLocale,setLocale,t,translate
+detectLocale,formatDate,formatNumber,getLocale,resolveLocale,setLocale,t,translate,type MessageKey
 } from ".";
 import { LoginPage } from "../../features/auth/LoginPage";
 import { changeControl } from "../../test/controls";
@@ -43,21 +43,29 @@ describe("shared locale configuration", () => {
 
   it("keeps complete catalogs and identical interpolation tokens", () => {
     const keys = Object.keys(zh).sort();
+    for (const key of keys) expect(key).toMatch(/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+$/);
     for (const catalog of [en, ru, ja]) {
       expect(Object.keys(catalog).sort()).toEqual(keys);
-      for (const [key, value] of Object.entries(catalog)) {
+      for (const key of keys as MessageKey[]) {
+        const value = catalog[key];
         expect(value.trim(), key).not.toBe("");
         expect(value.match(/\{\w+\}/g)?.sort() ?? [], key)
-          .toEqual(key.match(/\{\w+\}/g)?.sort() ?? []);
+          .toEqual(zh[key].match(/\{\w+\}/g)?.sort() ?? []);
       }
     }
   });
 
-  it("substitutes values as text and falls back without altering arbitrary content", () => {
-    expect(translate("en", "已选 {0} 个节点", { "0": 3 })).toContain("3");
-    expect(translate("ru", "not-a-catalog-key")).toBe("not-a-catalog-key");
-    expect(translate("ja", "已选 {0} 个节点", { "0": "<script>$&{1}</script>" }))
+  it("accepts only registered keys and substitutes values once as literal content", () => {
+    expectTypeOf(t).parameter(0).toEqualTypeOf<MessageKey>();
+    expectTypeOf(translate).parameter(1).toEqualTypeOf<MessageKey>();
+    expectTypeOf<string>().not.toExtend<MessageKey>();
+    expectTypeOf<"auth.login.titel">().not.toExtend<MessageKey>();
+    expectTypeOf<"登录 Agenvas">().not.toExtend<MessageKey>();
+    expect(translate("en", "canvas.selection.count", { "0": 3 })).toContain("3");
+    expect(translate("zh", "auth.login.title")).toBe("登录 Agenvas");
+    expect(translate("ja", "canvas.selection.count", { "0": "<script>$&{1}</script>" }))
       .toContain("<script>$&{1}</script>");
+    expect(translate("zh", "canvas.selection.count")).toBe("{0} 张卡片已选中");
   });
 
   it("formats dates and numbers using the selected UI language", () => {
@@ -69,14 +77,14 @@ describe("shared locale configuration", () => {
 
   it("switches the actual login page without losing inputs or remounting it", async () => {
     render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><LoginPage /></MemoryRouter></QueryClientProvider>);
-    const username = screen.getByRole("textbox", { name: t("登录名") });
+    const username = screen.getByRole("textbox", { name: t("auth.login.username") });
     await changeControl(username, { target: { value: "my-admin" } });
-    const password = screen.getByLabelText(t("密码"));
+    const password = screen.getByLabelText(t("auth.login.password"));
     await changeControl(password, { target: { value: "draft-password" } });
     for (const locale of SUPPORTED_LOCALES) {
       act(() => { setLocale(locale); });
-      expect(screen.getByRole("heading", { name: translate(locale, "登录 Agenvas") })).toBeInTheDocument();
-      expect(screen.getByRole("textbox", { name: translate(locale, "登录名") })).toBe(username);
+      expect(screen.getByRole("heading", { name: translate(locale, "auth.login.title") })).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: translate(locale, "auth.login.username") })).toBe(username);
       expect(username).toHaveValue("my-admin");
       expect(password).toHaveValue("draft-password");
       expect(document.documentElement.lang).toBe(locale);
@@ -93,7 +101,7 @@ describe("shared locale configuration", () => {
     const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("blocked"); });
     await user.click(list.getByRole("button", { name: "日本語" }));
     expect(getLocale()).toBe("ja");
-    expect(screen.getByRole("alert")).toHaveTextContent(translate("ja", "语言已切换，但浏览器未能保存偏好。"));
+    expect(screen.getByRole("alert")).toHaveTextContent(translate("ja", "locale.storageFailed"));
     expect(list.getByRole("button", { name: "日本語" })).toHaveAttribute("aria-pressed", "true");
     storage.mockRestore();
     await user.click(list.getByRole("button", { name: "日本語" }));

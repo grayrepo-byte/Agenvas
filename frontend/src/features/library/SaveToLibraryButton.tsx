@@ -22,7 +22,7 @@ export function SaveToLibraryButton({ projectId, itemId, disabled = false, befor
   return <><Button variant="ghost" type="button" disabled={disabled || preparing} onClick={() => {
     setPreparing(true);
     void Promise.resolve().then(beforeOpen).then(() => setOpen(true)).catch(() => { /* Editor owns its save error and keeps its input. */ }).finally(() => setPreparing(false));
-  }}><BookmarkSimple size={17} />{preparing ? t("正在保存文字…") : t("保存为资产")}</Button>
+  }}><BookmarkSimple size={17} />{preparing ? t("library.save.savingText") : t("library.save.saveAction")}</Button>
     {open ? <SaveWindow projectId={projectId} itemId={itemId} onClose={() => setOpen(false)} /> : null}</>;
 }
 function SaveWindow({ projectId, itemId, onClose }: { projectId: string; itemId: string; onClose: () => void }) {
@@ -34,22 +34,22 @@ function SaveWindow({ projectId, itemId, onClose }: { projectId: string; itemId:
   const value = name ?? source.data?.title ?? "";
   const done = transfer.data?.status === "SUCCEEDED";
   const locked = transfer.working || transfer.frozen;
-  const success = transfer.data?.result?.trashed ? t("这个结果已在回收站，请到资产页恢复。")
-    : transfer.data?.result?.alreadySaved ? t("这个结果已保存为资产。") : t("已保存到我的资产 · {0}", { "0": CATEGORY_LABELS[category] });
-  return <Dialog title={t("保存为资产")} onClose={onClose} busy={transfer.working} onSubmit={(event) => {
+  const success = transfer.data?.result?.trashed ? t("library.save.inTrash")
+    : transfer.data?.result?.alreadySaved ? t("library.save.alreadySaved") : t("library.page.savedCategory", { "0": CATEGORY_LABELS[category] });
+  return <Dialog title={t("library.save.saveAction")} onClose={onClose} busy={transfer.working} onSubmit={(event) => {
     event.preventDefault(); if (!source.data || done) return;
     transfer.start({ versionId: source.data.versionId, expectedSelectionEpoch: source.data.expectedSelectionEpoch,
       ...(source.data.kind === "TEXT" ? { expectedArtifactVersion: source.data.expectedArtifactVersion } : {}), name: value.trim(), category });
-  }} footer={<><Button variant="outline"  type="button" disabled={transfer.working} onClick={onClose}>{done ? t("完成") : t("取消")}</Button>
-    {done ? <Link className="primary-button" to="/library">{t("查看资产")}</Link> : <Button variant="default"  type="submit" disabled={!source.data || !value.trim() || transfer.working || transfer.data?.status === "FAILED"}>{transfer.working ? t("保存中…") : t("保存资产")}</Button>}</>}>
-    {source.isPending ? <p>{t("正在读取当前结果…")}</p> : null}
-    {source.error ? <p role="alert">{source.error.message}<Button variant="ghost" type="button" onClick={() => void source.refetch()}>{t("刷新预览")}</Button></p> : null}
-    {source.data ? <><p>{t("{0} · 节点 v{1}", { "0": source.data.title, "1": source.data.versionNo })}</p>
+  }} footer={<><Button variant="outline"  type="button" disabled={transfer.working} onClick={onClose}>{done ? t("common.done") : t("common.cancel")}</Button>
+    {done ? <Link className="primary-button" to="/library">{t("library.save.view")}</Link> : <Button variant="default"  type="submit" disabled={!source.data || !value.trim() || transfer.working || transfer.data?.status === "FAILED"}>{transfer.working ? t("common.saving") : t("library.save.title")}</Button>}</>}>
+    {source.isPending ? <p>{t("library.save.resultLoading")}</p> : null}
+    {source.error ? <p role="alert">{source.error.message}<Button variant="ghost" type="button" onClick={() => void source.refetch()}>{t("library.save.refreshPreview")}</Button></p> : null}
+    {source.data ? <><p>{t("library.save.nodeVersionTitle", { "0": source.data.title, "1": source.data.versionNo })}</p>
       {source.data.kind === "TEXT" ? <p className="library-text-preview">{String(source.data.textContent?.text ?? "")}</p>
-        : source.data.kind === "IMAGE" || source.data.kind === "VIDEO" ? <img className="library-save-preview" src={assetThumbnailUrl(projectId, source.data.assetId!)} alt={t("保存内容预览")} /> : <p>{t("音频结果")}</p>}
-      <Field><FieldLabel className="field block">{t("资产名称")}<Input maxLength={MAX_LIBRARY_NAME_LENGTH} value={value} disabled={locked} required onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
-      <Field><FieldLabel className="field block">{t("资产分类")}<Select value={category} disabled={locked} onChange={(event) => setCategory(event.target.value as LibraryCategory)}>{Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></FieldLabel></Field></> : null}
+        : source.data.kind === "IMAGE" || source.data.kind === "VIDEO" ? <img className="library-save-preview" src={assetThumbnailUrl(projectId, source.data.assetId!)} alt={t("library.save.preview")} /> : <p>{t("library.save.audioResult")}</p>}
+      <Field><FieldLabel className="field block">{t("library.page.assetName")}<Input maxLength={MAX_LIBRARY_NAME_LENGTH} value={value} disabled={locked} required onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
+      <Field><FieldLabel className="field block">{t("library.page.category")}<Select value={category} disabled={locked} onChange={(event) => setCategory(event.target.value as LibraryCategory)}>{Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></FieldLabel></Field></> : null}
     <TransferState transfer={transfer} success={success} />
-    {transfer.error && !transfer.frozen ? <Button variant="ghost" type="button" onClick={() => void source.refetch()}>{t("刷新选中结果后重试")}</Button> : null}
+    {transfer.error && !transfer.frozen ? <Button variant="ghost" type="button" onClick={() => void source.refetch()}>{t("library.save.refreshSelection")}</Button> : null}
   </Dialog>;
 }

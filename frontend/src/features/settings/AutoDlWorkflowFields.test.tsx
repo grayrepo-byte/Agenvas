@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { MediaCapability } from "../../shared/api/client";
+import { AUTODL_WORKFLOW_LABEL_KEYS, getAutoDlWorkflow } from "../../shared/autodlWorkflows";
+import { setLocale, SUPPORTED_LOCALES, t, translate } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { selectValue } from "../../test/controls";
 import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
@@ -28,6 +30,20 @@ function mount(initial: Settings = { workflowId: "minimax_h3_z0901", videoResolu
 }
 
 describe("AutoDL workflow discovery", () => {
+  it("localizes preset labels without putting message keys into submitted protocol metadata", async () => {
+    const current = mount();
+    const id = "minimax_h3_z0901";
+    for (const locale of SUPPORTED_LOCALES) {
+      act(() => { setLocale(locale); });
+      expect(screen.getByRole("combobox", { name: t("settings.autoDl.workflow") }))
+        .toHaveTextContent(translate(locale, AUTODL_WORKFLOW_LABEL_KEYS[id]));
+    }
+    await selectValue(screen.getByRole("combobox", { name: t("settings.autoDl.workflow") }), "custom");
+    expect(current().workflowDefinition).toEqual({ ...getAutoDlWorkflow(id), defaultResolution: "480p", schemaVersion: 1 });
+    expect(current().workflowDefinition).not.toHaveProperty("labelKey");
+    expect(current().workflowDefinition?.label).toBe("H3文生视频（高质量创意直出）");
+  });
+
   it("refreshes new candidates and imports all their resolution tiers before publication", async () => {
     server.use(
       http.get("/api/v1/settings/autodl-workflows", () => HttpResponse.json({ items: [{ id: definition.id, label: definition.label }, { id: "wan2.2animate-v4-motion_retargeting", label: "Video reference" }] })),

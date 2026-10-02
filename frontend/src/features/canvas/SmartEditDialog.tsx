@@ -263,7 +263,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
         referenceVersionIds: references.map((reference) => reference.versionId),
         ...(archivedMask ? { maskAssetId: archivedMask.id } : {}) });
     } catch (failure) {
-      setLocalError(failure instanceof ApiError ? failure.message : t("蒙版上传未完成，请重试。"));
+      setLocalError(failure instanceof ApiError ? failure.message : t("image.smartEdit.maskUploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -275,15 +275,15 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     setLocalError(null);
     try {
       const room = Math.max(0, referenceCapacity - references.length);
-      if (files.length > room) throw new Error(t("当前模型还可添加 {0} 张参考图。", { "0": room }));
+      if (files.length > room) throw new Error(t("image.smartEdit.remainingReferences", { "0": room }));
       const uploaded: Reference[] = [];
       for (const file of files) {
         const asset = await uploadImageAsset(projectId, file);
-        const baseName = file.name.replace(/\.[^.]+$/, "").trim() || t("智能编辑参考图");
+        const baseName = file.name.replace(/\.[^.]+$/, "").trim() || t("image.smartEdit.referenceImages");
         const artifact = await createArtifact(projectId, { kind: "IMAGE",
           title: baseName.slice(0, MAX_ARTIFACT_TITLE_LENGTH),
           content: { sourceType: "UPLOAD", assetId: asset.id } }, crypto.randomUUID());
-        if (!artifact.resourceDefaultVersionId) throw new Error(t("上传图片版本尚不可用。"));
+        if (!artifact.resourceDefaultVersionId) throw new Error(t("image.smartEdit.uploadedVersionPending"));
         uploaded.push({ versionId: artifact.resourceDefaultVersionId, label: artifact.title,
           thumbnailUrl: assetContentUrl(projectId, asset.id) });
       }
@@ -294,7 +294,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
       ]);
     } catch (failure) {
       setLocalError(failure instanceof ApiError ? failure.message
-        : failure instanceof Error ? failure.message : t("参考图上传未完成。"));
+        : failure instanceof Error ? failure.message : t("image.smartEdit.referenceUploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -316,38 +316,38 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
         event.preventDefault();
         if (previousFocus.current instanceof HTMLElement && previousFocus.current.isConnected) previousFocus.current.focus();
       }}>
-      <DialogTitle className="sr-only">{t("智能编辑图片")}</DialogTitle>
+      <DialogTitle className="sr-only">{t("image.smartEdit.sourceImage")}</DialogTitle>
       <div className="smart-edit-toolbar">
         <Button variant="ghost" type="button" className="smart-edit-close" disabled={busy || uploading} onClick={requestClose}
-          aria-label={t("退出智能编辑")}><X size={19} />{t("智能编辑")}</Button>
+          aria-label={t("image.smartEdit.exit")}><X size={19} />{t("media.card.smartEdit")}</Button>
         <span className="smart-edit-divider" />
         <Button variant="ghost" type="button" className={tool === "BRUSH" ? "is-active" : ""}
           aria-pressed={tool === "BRUSH"} onClick={() => setTool("BRUSH")}>
-          <PaintBrush size={17} />{t("涂抹")}</Button>
+          <PaintBrush size={17} />{t("image.smartEdit.brushMask")}</Button>
         <Button variant="ghost" type="button" className={tool === "RECTANGLE" ? "is-active" : ""}
           aria-pressed={tool === "RECTANGLE"} onClick={() => setTool("RECTANGLE")}>
-          <BoundingBox size={17} />{t("框选")}</Button>
+          <BoundingBox size={17} />{t("image.smartEdit.rectangleMask")}</Button>
         <span className="smart-edit-divider" />
         <Button variant="ghost" type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
-          aria-label={t("添加蒙版")} aria-pressed={strokeMode === "PAINT"}
+          aria-label={t("image.smartEdit.addMask")} aria-pressed={strokeMode === "PAINT"}
           onClick={() => setStrokeMode("PAINT")}><PaintBrush size={18} /></Button>
         <Button variant="ghost" type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
-          aria-label={t("擦除蒙版")} aria-pressed={strokeMode === "ERASE"}
+          aria-label={t("image.smartEdit.eraseMask")} aria-pressed={strokeMode === "ERASE"}
           onClick={() => setStrokeMode("ERASE")}><Eraser size={18} /></Button>
-        <label className="smart-edit-brush-size"><span className="sr-only">{t("笔刷大小")}</span>
+        <label className="smart-edit-brush-size"><span className="sr-only">{t("image.brushSize")}</span>
           <input type="range" min={8} max={120} value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <Button variant="ghost" type="button" className="is-icon" aria-label={t("撤销蒙版")} disabled={!historyState.canUndo}
+        <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.undoMask")} disabled={!historyState.canUndo}
           onClick={() => restoreHistory(historyIndex.current - 1)}><ArrowCounterClockwise size={18} /></Button>
-        <Button variant="ghost" type="button" className="is-icon" aria-label={t("重做蒙版")} disabled={!historyState.canRedo}
+        <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.redoMask")} disabled={!historyState.canRedo}
           onClick={() => restoreHistory(historyIndex.current + 1)}><ArrowClockwise size={18} /></Button>
       </div>
 
-      <div className="smart-edit-stage" aria-label={t("蒙版编辑区")}>
+      <div className="smart-edit-stage" aria-label={t("image.smartEdit.maskEditor")}>
         <div className="smart-edit-image-wrap">
-          <img src={sourceUrl} alt={t("{0} 的智能编辑预览", { "0": sourceTitle })}
+          <img src={sourceUrl} alt={t("image.smartEdit.previewLabel", { "0": sourceTitle })}
             onLoad={(event) => initializeMask(event.currentTarget)} />
-          <canvas ref={canvasRef} aria-label={t("智能编辑蒙版画布")}
+          <canvas ref={canvasRef} aria-label={t("image.smartEdit.maskCanvas")}
             onPointerDown={pointerDown} onPointerMove={pointerMove}
             onPointerUp={pointerUp} onPointerCancel={pointerUp} />
         </div>
@@ -356,14 +356,14 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
       <div className="smart-edit-composer">
         <div className="smart-edit-reference-actions">
           <Button variant="ghost" type="button" aria-expanded={referencePickerOpen}
-            onClick={() => setReferencePickerOpen((open) => !open)}><Plus size={17} />{t("引用")}</Button>
-          <Button variant="ghost" type="button" onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("上传")}</Button>
+            onClick={() => setReferencePickerOpen((open) => !open)}><Plus size={17} />{t("image.smartEdit.references")}</Button>
+          <Button variant="ghost" type="button" onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("image.smartEdit.upload")}</Button>
           <Input ref={uploadRef} className="sr-only" type="file" accept={MEDIA_FILE_ACCEPT.IMAGE}
-            multiple aria-label={t("上传智能编辑参考图")} onChange={handleUpload} />
+            multiple aria-label={t("image.smartEdit.uploadReference")} onChange={handleUpload} />
           {referencePickerOpen ? <div className="smart-edit-reference-picker" role="dialog"
-            aria-label={t("选择智能编辑参考图")}>
-            <strong>{t("项目图片")}</strong><small>{t("按选择顺序作为 Image 2、Image 3…发送")}</small>
-            <div>{referenceSources.isLoading ? <span>{t("正在读取…")}</span>
+            aria-label={t("image.smartEdit.chooseReference")}>
+            <strong>{t("image.smartEdit.projectImages")}</strong><small>{t("image.smartEdit.referenceOrderHint")}</small>
+            <div>{referenceSources.isLoading ? <span>{t("image.smartEdit.loading")}</span>
               : availableReferences.length ? availableReferences.map((reference) => {
                 const selected = references.some((item) => item.versionId === reference.versionId);
                 return <Button variant="ghost" key={reference.versionId} type="button" className={selected ? "is-selected" : ""}
@@ -373,45 +373,45 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
                     : [...current, reference])}>
                   <img src={reference.thumbnailUrl} alt="" /><span>{reference.label}</span>
                 </Button>;
-              }) : <span>{t("项目资源中暂无可引用图片")}</span>}</div>
+              }) : <span>{t("image.smartEdit.referencesEmpty")}</span>}</div>
           </div> : null}
         </div>
-        {references.length ? <div className="smart-edit-references" aria-label={t("已选参考图")}>
+        {references.length ? <div className="smart-edit-references" aria-label={t("image.smartEdit.selectedReferences")}>
           {references.map((reference, index) => <div key={reference.versionId}>
             <img src={reference.thumbnailUrl} alt="" /><span>{index + 2}</span>
-            <Button variant="ghost" type="button" aria-label={t("移除参考图 {0}", { "0": reference.label })}
+            <Button variant="ghost" type="button" aria-label={t("image.smartEdit.removeReference", { "0": reference.label })}
               onClick={() => setReferences((current) => current.filter(
                 (item) => item.versionId !== reference.versionId))}><X size={12} /></Button>
           </div>)}</div> : null}
         <Textarea value={instruction} maxLength={4000}
-          aria-label={t("智能编辑提示词")}
-          placeholder={t("描述你想要的修改，例如“把背景换成海边”；可引用或上传图片作为视觉参考")}
+          aria-label={t("image.smartEdit.prompt")}
+          placeholder={t("image.smartEdit.promptPlaceholder")}
           onChange={(event) => setInstruction(event.target.value)} />
         <div className="smart-edit-footer">
-          <label><span className="sr-only">{t("图片能力")}</span>
+          <label><span className="sr-only">{t("media.imageCapability")}</span>
             <Select variant="ghost" density="compact" icon={<ImageIcon />} value={selectedCapabilityId} portalContainer={menuContainer}
               optionDetails={Object.fromEntries(eligibleCapabilities.map((capability) => [capability.id, mediaModelDetails(capability)]))}
               onChange={(event) => setCapabilityId(event.target.value)}>
               {eligibleCapabilities.length ? eligibleCapabilities.map((capability) =>
                 <option key={capability.id} value={capability.id}>{capability.name}</option>)
-                : <option value="">{hasMask ? t("请配置支持蒙版的 OpenAI 图片能力") : t("请配置图片能力")}</option>}
+                : <option value="">{hasMask ? t("image.smartEdit.configureMaskCapability") : t("image.smartEdit.configureCapability")}</option>}
             </Select></label>
-          <span>{hasMask ? t("透明区域将被编辑") : t("未绘制蒙版，将编辑整张图片")}</span>
-          <Button variant="ghost" type="button" className="smart-edit-submit" aria-label={t("开始智能编辑")}
+          <span>{hasMask ? t("image.smartEdit.transparencyHint") : t("image.smartEdit.noMaskHint")}</span>
+          <Button variant="ghost" type="button" className="smart-edit-submit" aria-label={t("image.smartEdit.start")}
             disabled={!canSubmit} onClick={() => void submit()}>
             {busy || uploading ? <span className="smart-edit-submit-progress">…</span>
               : <PaperPlaneTilt size={18} weight="fill" />}</Button>
         </div>
-        {references.length > referenceCapacity ? <p role="alert">{t("当前模型最多还能接收 {0} 张额外参考图。", { "0": referenceCapacity })}</p> : null}
+        {references.length > referenceCapacity ? <p role="alert">{t("image.smartEdit.extraReferenceLimit", { "0": referenceCapacity })}</p> : null}
         {localError ? <p role="alert">{localError}</p> : null}
-        {error ? <p role="alert">{error instanceof ApiError ? error.message : t("智能编辑任务受理失败，请重试。")}</p> : null}
+        {error ? <p role="alert">{error instanceof ApiError ? error.message : t("image.smartEdit.submitFailed")}</p> : null}
       </div>
     </DialogContent>
-    {confirmExit ? <Dialog title={t("有未保存的修改")} onClose={() => setConfirmExit(false)}
+    {confirmExit ? <Dialog title={t("common.unsavedChanges")} onClose={() => setConfirmExit(false)}
       onSubmit={(event) => { event.preventDefault(); onClose(); }}
-      footer={<><Button variant="outline" type="button" onClick={() => setConfirmExit(false)}>{t("继续编辑")}</Button>
-        <Button variant="destructive" type="submit">{t("放弃修改")}</Button></>}>
-      <p>{t("未提交的提示词、参考图和蒙版将被丢弃。")}</p>
+      footer={<><Button variant="outline" type="button" onClick={() => setConfirmExit(false)}>{t("common.continueEditing")}</Button>
+        <Button variant="destructive" type="submit">{t("common.discardChanges")}</Button></>}>
+      <p>{t("image.smartEdit.discardHint")}</p>
     </Dialog> : null}
   </DialogRoot>;
 }

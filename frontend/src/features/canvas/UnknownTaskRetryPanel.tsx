@@ -35,14 +35,14 @@ export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCod
   });
 
   return <div className="agent-chat-panel agent-chat-unknown">
-    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("结果未知")}</p>
+    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("tasks.status.unknown")}</p>
     {/* 说明为什么未知：超时、断线、结果下载失败与协议不符的重试预期并不相同。 */}
     {reason ? <p>{reason}</p> : errorCode ? <p>{errorCode}</p> : null}
     <Button variant="ghost" className="agent-chat-panel-secondary" disabled={retry.isPending}
       onClick={() => retry.mutate()} type="button">
-      {retry.isPending ? t("正在重试…") : t("重试")}
+      {retry.isPending ? t("common.retrying") : t("common.retry")}
     </Button>
-    {retry.data ? <p role="status">{t("已创建新任务：{0}。", { "0": retry.data.id })}</p> : null}
-    {retry.error ? <p className="text-red-700" role="alert">{t("重试失败。请刷新任务后重试。")}</p> : null}
+    {retry.data ? <p role="status">{t("tasks.retry.newTask", { "0": retry.data.id })}</p> : null}
+    {retry.error ? <p className="text-red-700" role="alert">{t("tasks.retry.retryFailed")}</p> : null}
   </div>;
 }

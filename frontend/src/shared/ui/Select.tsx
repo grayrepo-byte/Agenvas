@@ -53,7 +53,7 @@ export function Select({ children, className, density = "regular", variant = "de
       copy.querySelectorAll(".ui-select, input, textarea, small").forEach((control) => control.remove());
       return copy.textContent?.trim() ?? "";
     }).join(" ");
-    setLabel(text || t("选项"));
+    setLabel(text || t("ui.select.options"));
   });
   const groupNames = [...new Set(options.map((option) => option.group))];
   return <span className={cn("ui-select", density === "compact" && "ui-select--compact", variant === "ghost" && "ui-select--ghost", className)}>

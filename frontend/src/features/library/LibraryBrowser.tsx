@@ -27,34 +27,34 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
   const toggleFavorite = useMutation({ mutationFn: (entry: LibraryEntry) => updateLibraryEntry(entry.id, { expectedVersion: entry.version, name: entry.name, category: entry.category, favorite: !entry.favorite }),
     onSuccess: () => client.invalidateQueries({ queryKey: ["library"] }) });
   const counts = list.data?.pages[0]?.categoryCounts ?? {};
-  return <section className="library-browser" aria-label={t("资产列表")}>
-    <div className="library-categories" role="group" aria-label={t("按分类筛选")}>
-      <Button variant="ghost" type="button" aria-pressed={!category} onClick={() => setCategory(undefined)}>{t("全部")}</Button>
+  return <section className="library-browser" aria-label={t("library.browser.list")}>
+    <div className="library-categories" role="group" aria-label={t("library.browser.categoryFilter")}>
+      <Button variant="ghost" type="button" aria-pressed={!category} onClick={() => setCategory(undefined)}>{t("common.all")}</Button>
       {Object.entries(CATEGORY_LABELS).map(([key, label]) => <Button variant="ghost" key={key} type="button" aria-pressed={category === key}
         onClick={() => setCategory(key as LibraryCategory)}>{label} ({counts[key] ?? 0})</Button>)}
     </div>
-    <div className="library-filters"><label>{t("搜索资产")}<Input type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("搜索名称")} onChange={(event) => setQuery(event.target.value)} /></label>
-      <label>{t("媒体类型")}<Select value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as Artifact["kind"] : undefined)}>
-        {!kinds ? <option value="">{t("全部类型")}</option> : null}{(kinds ?? Object.keys(KIND_LABELS) as Artifact["kind"][]).map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}</Select></label>
-      <label>{t("排序")}<Select value={sort} onChange={(event) => setSort(event.target.value as LibrarySort)}><option value="SAVED">{t("最近保存")}</option><option value="NAME">{t("名称")}</option><option value="UPDATED">{t("最近修改")}</option></Select></label>
-      <Button variant="ghost" type="button" aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><BookmarkSimple size={16} />{t("只看收藏")}</Button>
+    <div className="library-filters"><label>{t("library.browser.search")}<Input type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("library.browser.nameSearch")} onChange={(event) => setQuery(event.target.value)} /></label>
+      <label>{t("media.kind")}<Select value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as Artifact["kind"] : undefined)}>
+        {!kinds ? <option value="">{t("common.allKinds")}</option> : null}{(kinds ?? Object.keys(KIND_LABELS) as Artifact["kind"][]).map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}</Select></label>
+      <label>{t("library.browser.sort")}<Select value={sort} onChange={(event) => setSort(event.target.value as LibrarySort)}><option value="SAVED">{t("library.browser.recentSaved")}</option><option value="NAME">{t("common.name")}</option><option value="UPDATED">{t("library.browser.recentModified")}</option></Select></label>
+      <Button variant="ghost" type="button" aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><BookmarkSimple size={16} />{t("library.browser.favoritesOnly")}</Button>
     </div>
-    {toggleFavorite.error ? <p role="alert">{t("{0} 请刷新资产后重试。", { "0": toggleFavorite.error.message })}</p> : null}
-    <Button variant="outline" type="button"  disabled={list.isFetching} onClick={() => void list.refetch()}>{t("刷新资产")}</Button>
-    {list.isPending ? <p>{t("正在读取资产…")}</p> : null}
-    {list.error ? <div role="alert">{list.error.message}<Button variant="ghost" type="button" onClick={() => { if (list.isFetchNextPageError) void list.fetchNextPage(); else void list.refetch(); }}>{t("重试读取资产")}</Button></div> : null}
-    {list.data ? <p className="library-result-count">{t("{0} 个匹配资产", { "0": list.data.pages[0]?.total ?? 0 })}</p> : null}
+    {toggleFavorite.error ? <p role="alert">{t("library.browser.staleAssetsHint", { "0": toggleFavorite.error.message })}</p> : null}
+    <Button variant="outline" type="button"  disabled={list.isFetching} onClick={() => void list.refetch()}>{t("library.browser.refresh")}</Button>
+    {list.isPending ? <p>{t("library.browser.loading")}</p> : null}
+    {list.error ? <div role="alert">{list.error.message}<Button variant="ghost" type="button" onClick={() => { if (list.isFetchNextPageError) void list.fetchNextPage(); else void list.refetch(); }}>{t("library.browser.retry")}</Button></div> : null}
+    {list.data ? <p className="library-result-count">{t("library.browser.matchCount", { "0": list.data.pages[0]?.total ?? 0 })}</p> : null}
     <div className="library-grid">{list.data?.pages.flatMap((page) => page.items).map((entry) => <article className="library-card" key={entry.id}>
-      <Button variant="ghost" type="button" aria-label={pickAction === "CANVAS" ? t("放到画布：{0}", { "0": entry.name }) : pickAction === "REFERENCE" ? t("用作参考：{0}", { "0": entry.name }) : t("查看 {0}", { "0": entry.name })} disabled={disabled} onClick={() => onPick(entry)}>
+      <Button variant="ghost" type="button" aria-label={pickAction === "CANVAS" ? t("library.browser.placeNamed", { "0": entry.name }) : pickAction === "REFERENCE" ? t("library.browser.referenceNamed", { "0": entry.name }) : t("library.browser.viewNamed", { "0": entry.name })} disabled={disabled} onClick={() => onPick(entry)}>
         <div className="library-card-preview">{entry.hasThumbnail ? <img loading="lazy" src={libraryThumbnailUrl(entry.id)} alt="" />
           : entry.kind === "TEXT" ? <p>{String(entry.textContent?.text ?? "").slice(0, 180)}</p> : entry.kind === "AUDIO" ? <MusicNotes size={40} /> : <Video size={40} />}</div>
-        <strong>{entry.name}</strong><small>{CATEGORY_LABELS[entry.category]} · {KIND_LABELS[entry.kind]}{entry.durationMs ? t(" · {0} 秒", { "0": (entry.durationMs / 1000).toFixed(1) }) : ""}{entry.favorite ? t(" · 已收藏") : ""}</small>
+        <strong>{entry.name}</strong><small>{CATEGORY_LABELS[entry.category]} · {KIND_LABELS[entry.kind]}{entry.durationMs ? t("library.browser.durationSuffix", { "0": (entry.durationMs / 1000).toFixed(1) }) : ""}{entry.favorite ? t("library.browser.favoriteSuffix") : ""}</small>
         <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleDateString(getFormatLocale())}</time>
       </Button>
-      <Button variant="ghost" type="button" className="library-favorite" aria-label={`${entry.favorite ? t("取消收藏") : t("收藏")} ${entry.name}`} aria-pressed={entry.favorite}
+      <Button variant="ghost" type="button" className="library-favorite" aria-label={`${entry.favorite ? t("library.browser.unfavorite") : t("library.browser.favorite")} ${entry.name}`} aria-pressed={entry.favorite}
         disabled={toggleFavorite.isPending || disabled} onClick={() => toggleFavorite.mutate(entry)}><BookmarkSimple size={17} weight={entry.favorite ? "fill" : "regular"} /></Button>
     </article>)}</div>
-    {list.data?.pages[0]?.total === 0 ? <div className="library-empty"><FileText size={32} /><p>{trash ? t("回收站为空") : query || favorite ? t("没有匹配的资产") : t("还没有{0}资产", { "0": category ? CATEGORY_LABELS[category] : "" })}</p><p>{t("在画布选中已完成的结果，点击“保存为资产”。")}</p></div> : null}
-    {list.hasNextPage ? <Button variant="outline"  type="button" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("读取中…") : t("加载更多资产")}</Button> : null}
+    {list.data?.pages[0]?.total === 0 ? <div className="library-empty"><FileText size={32} /><p>{trash ? t("library.browser.trashEmpty") : query || favorite ? t("library.browser.emptySearch") : t("library.browser.emptyKind", { "0": category ? CATEGORY_LABELS[category] : "" })}</p><p>{t("library.browser.saveHint")}</p></div> : null}
+    {list.hasNextPage ? <Button variant="outline"  type="button" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
   </section>;
 }

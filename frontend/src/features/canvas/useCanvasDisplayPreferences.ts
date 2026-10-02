@@ -1,4 +1,4 @@
-import { t } from "../../shared/i18n";
+import { t, type MessageKey } from "../../shared/i18n";
 import { useEffect, useState } from "react";
 
 export type CanvasDisplayPreferences = {
@@ -12,8 +12,8 @@ export const DEFAULT_CANVAS_DISPLAY_PREFERENCES: Readonly<CanvasDisplayPreferenc
 });
 const STORAGE_PREFIX = "agenvas:canvas-display";
 const STORAGE_VERSION = 1;
-const READ_ERROR = "无法读取画布设置，当前使用默认设置。";
-const SAVE_ERROR = "画布设置未能保存，当前页面仍保留你的选择。";
+const READ_ERROR = "canvas.displayPreferences.readFailed";
+const SAVE_ERROR = "canvas.displayPreferences.saveFailed";
 
 export function canvasDisplayStorageKey(userId: string, projectId: string) {
   return `${STORAGE_PREFIX}:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`;
@@ -22,7 +22,7 @@ export function canvasDisplayStorageKey(userId: string, projectId: string) {
 type PreferenceState = {
   storageKey: string | null;
   preferences: CanvasDisplayPreferences;
-  persistenceError: string | null;
+  persistenceError: MessageKey | null;
 };
 
 function readPreferences(storageKey: string | null): PreferenceState {
@@ -64,7 +64,7 @@ export function useCanvasDisplayPreferences(userId: string | undefined, projectI
 
   function save(preferences: CanvasDisplayPreferences) {
     if (!storageKey) return;
-    let persistenceError: string | null = null;
+    let persistenceError: MessageKey | null = null;
     try {
       localStorage.setItem(storageKey, JSON.stringify({ version: STORAGE_VERSION, ...preferences }));
     } catch {

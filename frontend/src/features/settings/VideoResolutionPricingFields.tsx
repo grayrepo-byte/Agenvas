@@ -22,26 +22,26 @@ export function VideoResolutionPricingFields({ values, onChange }: {
     } });
   }
   return <FieldSet>
-    <FieldLegend>{t("按分辨率估算价格")}</FieldLegend>
+    <FieldLegend>{t("settings.resolutionPricing.title")}</FieldLegend>
     {tiers.map((tier) => <FieldGroup key={tier} className="ui-form-grid">
-      <Field><FieldLabel className="ui-field block">{t("{0} 单位价格", { "0": tier })}
+      <Field><FieldLabel className="ui-field block">{t("settings.resolutionPricing.priceLabel", { "0": tier })}
         <Input type="number" min={0} max="9999999999.999999" step={PRICE_STEP}
-          value={values.pricingByResolution?.[tier]?.amount ?? ""} placeholder={t("留空使用统一价格")}
+          value={values.pricingByResolution?.[tier]?.amount ?? ""} placeholder={t("settings.resolutionPricing.fallbackPlaceholder")}
           onChange={(event) => change(tier, { amount: event.target.value })} />
       </FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("{0} 币种", { "0": tier })}
+      <Field><FieldLabel className="ui-field block">{t("settings.resolutionPricing.currencyLabel", { "0": tier })}
         <Select value={values.pricingByResolution?.[tier]?.currency ?? values.pricing?.currency ?? "CNY"}
           onChange={(event) => change(tier, { currency: event.target.value as Price["currency"] })}>
-          <option value="CNY">{t("CNY · 人民币")}</option><option value="USD">{t("USD · 美元")}</option>
+          <option value="CNY">{t("media.pricing.cny")}</option><option value="USD">{t("media.pricing.usd")}</option>
         </Select>
       </FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("{0} 计价单位", { "0": tier })}
+      <Field><FieldLabel className="ui-field block">{t("settings.resolutionPricing.unitLabel", { "0": tier })}
         <Select value={values.pricingByResolution?.[tier]?.unit ?? values.pricing?.unit ?? "SECOND"}
           onChange={(event) => change(tier, { unit: event.target.value as Price["unit"] })}>
-          <option value="SECOND">{t("每秒视频")}</option><option value="VIDEO">{t("每个视频")}</option>
+          <option value="SECOND">{t("media.pricing.perVideoSecond")}</option><option value="VIDEO">{t("media.pricing.perVideo")}</option>
         </Select>
       </FieldLabel></Field>
     </FieldGroup>)}
-    <p className="ui-muted">{t("分辨率价格优先；留空使用统一价格，两者都未设置时费用未知。")}</p>
+    <p className="ui-muted">{t("settings.resolutionPricing.pricingFallbackHint")}</p>
   </FieldSet>;
 }

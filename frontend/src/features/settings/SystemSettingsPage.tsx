@@ -18,10 +18,10 @@ type SettingsTab = typeof TABS[number];
 const FIRST_TAB = 0;
 function tabLabel(tab: SettingsTab): string {
   switch (tab) {
-    case "general": return t("常规");
-    case "security": return t("账户安全");
-    case "logs": return t("调用日志");
-    case "diagnostics": return t("系统诊断");
+    case "general": return t("settings.general.general");
+    case "security": return t("settings.general.security");
+    case "logs": return t("common.callLogs");
+    case "diagnostics": return t("settings.general.diagnostics");
   }
 }
 
@@ -33,13 +33,13 @@ export function SystemSettingsPage() {
   const selected = TABS.find((tab) => tab === candidate) ?? TABS[FIRST_TAB];
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const choose = (tab: SettingsTab) => { const next = new URLSearchParams(params); next.set("tab", tab); setParams(next); };
-  return <PageShell title={t("系统设置")} description={t("按类别管理界面偏好、账户安全与调用日志，查看本地运行状态。") }>
+  return <PageShell title={t("common.systemSettings")} description={t("settings.general.description") }>
     <Tabs value={selected} onValueChange={(value) => { const tab = TABS.find((item) => item === value); if (tab) choose(tab); }}>
-    <TabsList className="system-settings-tabs w-full" aria-label={t("系统设置分类")}>
+    <TabsList className="system-settings-tabs w-full" aria-label={t("settings.general.categories")}>
       {TABS.map((tab) => <TabsTrigger key={tab} value={tab}>{tabLabel(tab)}</TabsTrigger>)}
     </TabsList>
     {TABS.map((tab) => <TabsContent key={tab} value={tab} forceMount className="system-settings-panel ui-stack" hidden={selected !== tab}>
-      {tab === "general" ? <Panel title={t("语言")} description={t("选择界面和服务端响应的语言。此偏好仅保存在当前浏览器。")}><LanguageSelect /></Panel> : null}
+      {tab === "general" ? <Panel title={t("settings.general.language")} description={t("settings.general.languageHint")}><LanguageSelect /></Panel> : null}
       {tab === "security" ? <PasswordChangeSection /> : null}
       {tab === "logs" ? <><CallLogRetentionSection enabled={currentUser.isSuccess && selected === tab} /><DebugModeSection enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "diagnostics" ? <SystemDiagnosticsSection enabled={currentUser.isSuccess && selected === tab} /> : null}

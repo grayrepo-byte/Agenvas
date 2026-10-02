@@ -69,41 +69,41 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
   return <><form className="text-card-editor nodrag nowheel nopan" onSubmit={submit}>
     <div className="content-card-body text-card-editor-body">
       {status.newerAvailable || status.conflict ? <div className="text-card-notice">
-        <span>{t("当前版本已更新，本地修改仍保留。")}</span>
-        <Button variant="ghost" type="button" onClick={reload}>{t("载入最新版本")}</Button>
+        <span>{t("common.versionConflict")}</span>
+        <Button variant="ghost" type="button" onClick={reload}>{t("common.refreshVersion")}</Button>
       </div> : null}
-      <Textarea ref={editorRef} aria-label={t("内容")} data-content-editor-focus="true" maxLength={MAX_TEXT_LENGTH}
-        disabled={status.busy} placeholder={t("写下想法，让创作开始…")} required value={fields.text}
+      <Textarea ref={editorRef} aria-label={t("text.editor.content")} data-content-editor-focus="true" maxLength={MAX_TEXT_LENGTH}
+        disabled={status.busy} placeholder={t("text.editor.contentPlaceholder")} required value={fields.text}
         onChange={(event) => edit({ text: event.target.value })} />
-      {status.dirty ? <span className="text-card-count" role="status">{t("有未保存的修改")}</span> : null}
+      {status.dirty ? <span className="text-card-count" role="status">{t("common.unsavedChanges")}</span> : null}
       {status.error ? <p className="text-card-error" role="alert">{status.conflict
-        ? t("内容有冲突，修改未保存；请核对当前版本后重试。")
-        : t("{0} 输入已保留。", { "0": status.error instanceof ApiError ? status.error.message : t("修改未完成，请重试。") })}</p> : null}
-      {status.reloadError ? <p className="text-card-error" role="alert">{t("载入失败，当前输入已保留；请重试。")}</p> : null}
-      {status.saved && !status.dirty ? <span className="text-card-saved" role="status">{t("新版本已保存")}</span> : null}
+        ? t("text.editor.conflict")
+        : t("common.inputPreserved", { "0": status.error instanceof ApiError ? status.error.message : t("text.editor.saveFailed") })}</p> : null}
+      {status.reloadError ? <p className="text-card-error" role="alert">{t("text.editor.loadFailed")}</p> : null}
+      {status.saved && !status.dirty ? <span className="text-card-saved" role="status">{t("text.editor.saved")}</span> : null}
     </div>
     <footer className="content-card-sources text-card-editor-footer">
       {canvasItemId ? <SaveToLibraryButton projectId={artifact.projectId} itemId={canvasItemId} disabled={status.busy || !valid}
         beforeOpen={async () => { if (status.dirty) await saveAsync({ expectedVersion: base.version, title: base.title,
           content: { format: fields.format, text: fields.text.trim() } }); }} /> : null}
-      <Select variant="ghost" density="compact" aria-label={t("文字格式")} disabled={status.busy} value={fields.format}
+      <Select variant="ghost" density="compact" aria-label={t("text.editor.format")} disabled={status.busy} value={fields.format}
         onChange={(event) => edit({ format: event.target.value === "MARKDOWN" ? "MARKDOWN" : "PLAIN_TEXT" })}>
-        <option value="PLAIN_TEXT">{t("纯文本")}</option><option value="MARKDOWN">Markdown</option>
+        <option value="PLAIN_TEXT">{t("common.plainText")}</option><option value="MARKDOWN">Markdown</option>
       </Select>
       <span className="text-card-count">{fields.text.length}/{MAX_TEXT_LENGTH}</span>
-      {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("已锁定")} /> : null}
-      <Button variant="ghost" aria-label={t("退出内容编辑")} className="text-card-done" disabled={status.busy}
-        onClick={() => status.dirty ? setConfirmExit(true) : onDone()} title={t("退出内容编辑")} type="button"><X size={14} /></Button>
-      <Button variant="ghost" aria-label={t("保存新版本")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
-        title={status.saving ? t("保存中…") : t("保存新版本")} type="submit"><ArrowUp size={15} weight="bold" /></Button>
+      {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("canvas.card.locked")} /> : null}
+      <Button variant="ghost" aria-label={t("text.editor.exit")} className="text-card-done" disabled={status.busy}
+        onClick={() => status.dirty ? setConfirmExit(true) : onDone()} title={t("text.editor.exit")} type="button"><X size={14} /></Button>
+      <Button variant="ghost" aria-label={t("text.editor.saveVersion")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
+        title={status.saving ? t("common.saving") : t("text.editor.saveVersion")} type="submit"><ArrowUp size={15} weight="bold" /></Button>
     </footer>
   </form>
-    {confirmExit ? <Dialog title={t("有未保存的修改")} onClose={() => setConfirmExit(false)}
+    {confirmExit ? <Dialog title={t("common.unsavedChanges")} onClose={() => setConfirmExit(false)}
       busy={status.busy} onSubmit={(event) => { event.preventDefault(); if (valid) void saveAndExit(); }}
-      footer={<><Button variant="outline" type="button" disabled={status.busy} onClick={() => setConfirmExit(false)}>{t("继续编辑")}</Button>
-        <Button variant="destructive" type="button" disabled={status.busy} onClick={onDone}>{t("放弃修改")}</Button>
-        <Button type="submit" disabled={status.busy || !valid}>{t("保存并退出")}</Button></>}>
-      <p>{t("保存后退出，或继续编辑以保留当前输入。")}</p>
+      footer={<><Button variant="outline" type="button" disabled={status.busy} onClick={() => setConfirmExit(false)}>{t("common.continueEditing")}</Button>
+        <Button variant="destructive" type="button" disabled={status.busy} onClick={onDone}>{t("common.discardChanges")}</Button>
+        <Button type="submit" disabled={status.busy || !valid}>{t("text.editor.saveAndExit")}</Button></>}>
+      <p>{t("text.editor.exitHint")}</p>
     </Dialog> : null}
   </>;
 }

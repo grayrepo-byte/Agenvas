@@ -40,35 +40,35 @@ export function SetupPage() {
   }
 
   return (
-    <AuthLayout title={t("创建管理员")} description={t("完成一次初始化，开启你的 AI 创作画布。")}>
+    <AuthLayout title={t("auth.setup.createAdmin")} description={t("auth.setup.description")}>
       {setupStatus.isPending ? (
-        <LoadingState label={t("正在读取初始化状态…")} compact />
+        <LoadingState label={t("auth.setup.statusLoading")} compact />
       ) : setupStatus.isError ? (
         <div className="ui-stack">
-          <Notice title={t("服务端暂不可用")} tone="danger">{t("无法读取初始化状态，请稍后重试。")}</Notice>
-          <Button variant="outline"  disabled={setupStatus.isFetching} onClick={() => void setupStatus.refetch()} type="button"><ArrowClockwise size={15} aria-hidden="true" />{setupStatus.isFetching ? t("正在重试…") : t("重新连接")}</Button>
+          <Notice title={t("auth.setup.serviceUnavailable")} tone="danger">{t("auth.setup.statusFailed")}</Notice>
+          <Button variant="outline"  disabled={setupStatus.isFetching} onClick={() => void setupStatus.refetch()} type="button"><ArrowClockwise size={15} aria-hidden="true" />{setupStatus.isFetching ? t("common.retrying") : t("auth.setup.reconnect")}</Button>
         </div>
       ) : !setupStatus.data.setupRequired ? (
         <div className="ui-stack">
-          <Notice title={t("系统已初始化")} tone="success">{t("管理员已经存在，请直接登录。")}</Notice>
-          <Link className="primary-button" to="/login">{t("前往登录")}</Link>
+          <Notice title={t("auth.setup.initialized")} tone="success">{t("auth.setup.adminExists")}</Notice>
+          <Link className="primary-button" to="/login">{t("auth.setup.loginLink")}</Link>
         </div>
       ) : (
         <form className="ui-form" onSubmit={submit} aria-busy={setup.isPending}>
-          <AuthField label={t("初始化密钥")} hint={t("填写部署时配置的初始化密钥。")}>
+          <AuthField label={t("auth.setup.secret")} hint={t("auth.setup.secretHint")}>
             <Input autoComplete="off" disabled={setup.isPending} minLength={BOOTSTRAP_SECRET_MIN_LENGTH} required type="password" value={bootstrapSecret} onChange={(event) => setBootstrapSecret(event.target.value)} />
           </AuthField>
-          <AuthField label={t("管理员登录名")}>
+          <AuthField label={t("auth.setup.username")}>
             <Input autoComplete="username" disabled={setup.isPending} maxLength={LOGIN_NAME_MAX_LENGTH} minLength={LOGIN_NAME_MIN_LENGTH} pattern="[A-Za-z0-9._-]+" required value={loginName} onChange={(event) => setLoginName(event.target.value)} />
           </AuthField>
-          <AuthField label={t("管理员密码")} hint={t("至少 12 个字符。")}>
+          <AuthField label={t("auth.setup.password")} hint={t("auth.setup.passwordHint")}>
             <Input autoComplete="new-password" disabled={setup.isPending} maxLength={PASSWORD_MAX_LENGTH} minLength={PASSWORD_MIN_LENGTH} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </AuthField>
           {setup.error ? <FormError error={setup.error} /> : null}
-          <Button variant="default"  disabled={setup.isPending} type="submit">{setup.isPending ? t("正在创建…") : t("创建管理员")}</Button>
+          <Button variant="default"  disabled={setup.isPending} type="submit">{setup.isPending ? t("common.creating") : t("auth.setup.createAdmin")}</Button>
         </form>
       )}
-      {setupStatus.data?.setupRequired ? <p className="auth-footer">{t("已完成初始化？ ")}<Link to="/login">{t("前往登录")}</Link></p> : null}
+      {setupStatus.data?.setupRequired ? <p className="auth-footer">{t("auth.setup.loginPrompt")}<Link to="/login">{t("auth.setup.loginLink")}</Link></p> : null}
     </AuthLayout>
   );
 }

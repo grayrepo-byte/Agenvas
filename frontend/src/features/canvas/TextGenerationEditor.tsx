@@ -42,7 +42,7 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
   const latestTask = latestMediaTask(directTasks.data);
   const run = useMutation({
     mutationFn: () => {
-      if (!hasCurrentVersion(artifact)) throw new Error(t("文字卡片还没有可生成的当前版本"));
+      if (!hasCurrentVersion(artifact)) throw new Error(t("text.generation.versionMissing"));
       intent.current ??= { key: crypto.randomUUID(), prompt: prompt.trim(),
         expectedArtifactVersion: artifact.version,
         expectedCurrentVersionId: artifact.resourceDefaultVersionId };
@@ -75,49 +75,49 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
   const canRun = hasCurrentVersion(artifact) && prompt.trim().length > 0 && modelAvailable
     && settings.isSuccess && diagnostics.isSuccess && directTasks.isSuccess
     && !run.isPending && !occupied;
-  const modelLabel = settings.isPending ? t("加载模型…")
-    : settings.error ? t("模型配置读取失败")
-      : settings.data.configured ? settings.data.modelId ?? t("已配置文字模型")
-        : diagnostics.data?.llmMode === "MOCK" ? t("Mock 文字演示") : t("未配置文字模型");
+  const modelLabel = settings.isPending ? t("models.loading")
+    : settings.error ? t("models.loadFailed")
+      : settings.data.configured ? settings.data.modelId ?? t("text.generation.configuredModel")
+        : diagnostics.data?.llmMode === "MOCK" ? t("text.generation.mock") : t("text.generation.modelMissing");
   const taskMessage = latestTask?.status === "SUCCEEDED"
-    ? latestTask.output?.selected === false ? t("生成完成；卡片内容已变化，结果保存在版本历史中。") : t("生成完成，卡片已切换到新版本。")
+    ? latestTask.output?.selected === false ? t("text.generation.resultArchived") : t("text.generation.resultSelected")
     : latestTask?.status === "FAILED" ? taskErrorDetail(latestTask.errorCode)
-      : latestTask?.status === "CANCELED" ? t("本次文字生成已取消。")
-        : occupied ? t("正在生成文字…") : null;
+      : latestTask?.status === "CANCELED" ? t("text.generation.canceled")
+        : occupied ? t("text.generation.generating") : null;
 
-  return <div className="media-draft-editor text-generation-editor" aria-label={t("文字生成编辑器")}>
+  return <div className="media-draft-editor text-generation-editor" aria-label={t("text.generation.title")}>
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
       <span className="media-draft-tab-unavailable" aria-disabled="true">Agent</span>
-      <span className="media-draft-save-state">{t("生成结果会保存为新版本")}</span>
+      <span className="media-draft-save-state">{t("text.generation.versioningHint")}</span>
     </div>
-    <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("文字生成提示词")}</label>
+    <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("text.generation.prompt")}</label>
     <Textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
-      placeholder={t("描述你希望模型如何改写、补充或创作卡片内容…")} value={prompt}
+      placeholder={t("text.generation.promptPlaceholder")} value={prompt}
       onChange={(event) => {
         intent.current = null;
         run.reset();
         setPrompt(event.target.value);
       }} />
     <div className="media-draft-toolbar">
-      <span className="media-draft-toolbar-button text-generation-model" aria-label={t("当前文字模型")}>
+      <span className="media-draft-toolbar-button text-generation-model" aria-label={t("text.generation.currentModel")}>
         <Cube size={17} /><span>{modelLabel}</span>
       </span>
-      <span className="media-draft-cost" title={t("预计费用未知")}><Coins size={16} />{t("费用未知")}</span>
+      <span className="media-draft-cost" title={t("text.generation.unknownEstimatedCost")}><Coins size={16} />{t("media.pricing.unknown")}</span>
       <Button variant="ghost" className="media-draft-run" type="button" disabled={!canRun}
-        aria-label={run.isPending ? t("正在提交文字生成") : t("生成文字")}
-        title={occupied ? t("此卡片已有文字生成任务") : t("生成文字")}
+        aria-label={run.isPending ? t("text.generation.submitting") : t("text.generate")}
+        title={occupied ? t("text.generation.activeTask") : t("text.generate")}
         onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>
     </div>
     <div className="media-draft-feedback" aria-live="polite">
-      {settings.error ? <p role="alert">{t("无法读取文字模型配置。")}<Button variant="ghost" className="media-draft-text-action" type="button"
-          onClick={() => void settings.refetch()}>{t("重试")}</Button></p> : null}
-      {diagnostics.error ? <p role="alert">{t("无法确认文字模型运行模式。")}<Button variant="ghost" className="media-draft-text-action" type="button"
-          onClick={() => void diagnostics.refetch()}>{t("重试")}</Button></p> : null}
-      {directTasks.error ? <p role="alert">{t("无法读取文字生成任务。")}<Button variant="ghost" className="media-draft-text-action" type="button"
-          onClick={() => void directTasks.refetch()}>{t("重试")}</Button></p> : null}
+      {settings.error ? <p role="alert">{t("text.generation.modelSettingsUnavailable")}<Button variant="ghost" className="media-draft-text-action" type="button"
+          onClick={() => void settings.refetch()}>{t("common.retry")}</Button></p> : null}
+      {diagnostics.error ? <p role="alert">{t("text.generation.modelModeUnavailable")}<Button variant="ghost" className="media-draft-text-action" type="button"
+          onClick={() => void diagnostics.refetch()}>{t("common.retry")}</Button></p> : null}
+      {directTasks.error ? <p role="alert">{t("text.generation.tasksUnavailable")}<Button variant="ghost" className="media-draft-text-action" type="button"
+          onClick={() => void directTasks.refetch()}>{t("common.retry")}</Button></p> : null}
       {run.error ? <p role="alert">{run.error instanceof ApiError
-        ? run.error.message : t("文字生成提交失败；输入已保留，请重试。")}</p> : null}
+        ? run.error.message : t("text.generation.submitFailed")}</p> : null}
       {taskMessage ? <p className="media-draft-task-status">{taskMessage}</p> : null}
     </div>
   </div>;

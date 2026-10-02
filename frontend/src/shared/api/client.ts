@@ -101,7 +101,7 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
-  return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, t("无法读取调用日志"));
+  return readJson<CallLogPage>(`/api/v1/call-logs?${params}`, t("api.errors.callLogsUnavailable"));
 }
 
 export async function cleanupCallLogs(request: CleanupCallLogsRequest): Promise<CallLogCleanupResult> {
@@ -111,7 +111,7 @@ export async function cleanupCallLogs(request: CleanupCallLogsRequest): Promise<
 }
 
 export async function getCallLogRetentionSettings(): Promise<CallLogRetentionSettings> {
-  return readJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", t("无法读取调用日志保留设置"));
+  return readJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", t("api.errors.retentionSettingsUnavailable"));
 }
 export async function updateCallLogRetentionSettings(request: UpdateCallLogRetentionRequest): Promise<CallLogRetentionSettings> {
   return writeJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", {
@@ -120,7 +120,7 @@ export async function updateCallLogRetentionSettings(request: UpdateCallLogReten
 }
 
 export async function getDebugSettings(): Promise<DebugSettings> {
-  return readJson<DebugSettings>("/api/v1/settings/debug", t("无法读取 debug 模式设置"));
+  return readJson<DebugSettings>("/api/v1/settings/debug", t("api.errors.debugSettingsUnavailable"));
 }
 
 export async function updateDebugSettings(request: UpdateDebugSettingsRequest): Promise<DebugSettings> {
@@ -130,7 +130,7 @@ export async function updateDebugSettings(request: UpdateDebugSettingsRequest): 
 }
 
 export async function getCallDebug(id: string): Promise<CallDebug> {
-  return readJson<CallDebug>(`/api/v1/call-logs/${encodeURIComponent(id)}/debug`, t("无法读取调用正文"));
+  return readJson<CallDebug>(`/api/v1/call-logs/${encodeURIComponent(id)}/debug`, t("api.errors.callBodyUnavailable"));
 }
 
 /**
@@ -153,26 +153,26 @@ export function assetContentUrl(projectId: string, assetId: string): string {
 export async function getAssetMetadata(projectId: string, assetId: string): Promise<Asset> {
   return readJson<Asset>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`,
-    t("无法读取素材时长"),
+    t("api.errors.assetDurationUnavailable"),
   );
 }
 
 /** Uploads real image bytes with the session CSRF token; the browser supplies the multipart boundary. */
 export async function uploadImageAsset(projectId: string, file: File): Promise<Asset> {
   return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets`, file,
-    MAX_IMAGE_UPLOAD_BYTES, t("图片不能超过 20 MiB。"), t("图片上传未完成"));
+    MAX_IMAGE_UPLOAD_BYTES, t("api.errors.imageSizeLimit"), t("api.errors.imageUploadFailed"));
 }
 
 /** Uploads audio with the same session protection and backend decoding as images. */
 export async function uploadAudioAsset(projectId: string, file: File): Promise<Asset> {
   return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, file,
-    MAX_AUDIO_UPLOAD_BYTES, t("音频不能超过 50 MiB。"), t("音频上传未完成"));
+    MAX_AUDIO_UPLOAD_BYTES, t("api.errors.audioSizeLimit"), t("api.errors.audioUploadFailed"));
 }
 
 /** MP4 uploads use actual backend decoding and the selected per-asset storage destination. */
 export async function uploadVideoAsset(projectId: string, file: File): Promise<Asset> {
   return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, file,
-    MAX_VIDEO_UPLOAD_BYTES, t("视频不能超过 500 MiB。"), t("视频上传未完成"));
+    MAX_VIDEO_UPLOAD_BYTES, t("api.errors.videoSizeLimit"), t("api.errors.videoUploadFailed"));
 }
 
 async function uploadAsset(path: string, file: File, maxBytes: number,
@@ -203,7 +203,7 @@ export class ApiError extends Error {
 
 /** Reads the public one-time setup state. */
 export async function getSetupStatus(): Promise<SetupStatus> {
-  return readJson<SetupStatus>("/api/v1/auth/setup-status", t("无法读取系统初始化状态"));
+  return readJson<SetupStatus>("/api/v1/auth/setup-status", t("api.errors.setupStatusUnavailable"));
 }
 
 /** Creates the sole administrator. The bootstrap secret is sent once and never persisted. */
@@ -230,17 +230,17 @@ export async function login(input: LoginRequest): Promise<CurrentUser> {
 
 /** Loads the authenticated administrator represented by the session cookie. */
 export async function getCurrentUser(): Promise<CurrentUser> {
-  return readJson<CurrentUser>("/api/v1/auth/me", t("登录状态已失效"));
+  return readJson<CurrentUser>("/api/v1/auth/me", t("api.errors.sessionExpired"));
 }
 
 /** Reads only masked administrator LLM configuration metadata. */
 export async function getLlmSettings(): Promise<LlmSettings> {
-  return readJson<LlmSettings>("/api/v1/settings/llm", t("无法读取模型配置"));
+  return readJson<LlmSettings>("/api/v1/settings/llm", t("api.errors.modelSettingsUnavailable"));
 }
 
 /** Media settings expose only public connection and capability metadata. */
 export async function getAutoDlWorkflowCatalog(): Promise<operations["listAutoDlWorkflows"]["responses"][200]["content"]["application/json"]> {
-  return readJson("/api/v1/settings/autodl-workflows", t("无法读取 AutoDL 工作流目录"));
+  return readJson("/api/v1/settings/autodl-workflows", t("api.errors.workflowCatalogUnavailable"));
 }
 export async function previewAutoDlWorkflow(workflowId: string, source?: object): Promise<components["schemas"]["AutoDlWorkflowDefinition"]> {
   return writeJson("/api/v1/settings/autodl-workflows/preview", {
@@ -249,7 +249,7 @@ export async function previewAutoDlWorkflow(workflowId: string, source?: object)
 }
 
 export async function getMediaSettings(): Promise<MediaSettings> {
-  return readJson<MediaSettings>("/api/v1/settings/media-connections", t("无法读取媒体配置"));
+  return readJson<MediaSettings>("/api/v1/settings/media-connections", t("api.errors.mediaSettingsUnavailable"));
 }
 
 export async function createMediaConnection(input: CreateMediaConnectionRequest,
@@ -294,7 +294,7 @@ export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATI
 
 /** Reads only local, non-billable installation checks and aggregate Task statuses. */
 export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
-  return readJson<SystemDiagnostics>("/api/v1/settings/diagnostics", t("无法读取系统诊断"));
+  return readJson<SystemDiagnostics>("/api/v1/settings/diagnostics", t("api.errors.diagnosticsUnavailable"));
 }
 
 /** Sends a replacement key once over the authenticated, CSRF-protected session. */
@@ -338,7 +338,7 @@ export async function listProjects(options: {
   if (options.cursor) query.set("cursor", options.cursor);
   if (options.limit) query.set("limit", String(options.limit));
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return readJson<ProjectList>(`/api/v1/projects${suffix}`, t("无法读取项目列表"));
+  return readJson<ProjectList>(`/api/v1/projects${suffix}`, t("api.errors.projectsUnavailable"));
 }
 
 /** Creates a project under the current session owner. */
@@ -351,14 +351,14 @@ export async function createProject(input: CreateProjectRequest): Promise<Projec
 
 /** Reads one owner-scoped project. */
 export async function getProject(projectId: string): Promise<Project> {
-  return readJson<Project>(`/api/v1/projects/${projectId}`, t("无法读取项目"));
+  return readJson<Project>(`/api/v1/projects/${projectId}`, t("api.errors.projectUnavailable"));
 }
 
 /** Loads workspace entities and the exclusive event replay cursor from one database snapshot. */
 export async function getProjectSnapshot(projectId: string): Promise<ProjectSnapshot> {
   return readJson<ProjectSnapshot>(
     `/api/v1/projects/${projectId}/snapshot`,
-    t("无法读取项目快照"),
+    t("api.errors.snapshotUnavailable"),
   );
 }
 
@@ -398,20 +398,20 @@ export async function createArtifact(
 export async function getArtifact(projectId: string, artifactId: string): Promise<Artifact> {
   return readJson<Artifact>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}`,
-    t("无法读取产物"),
+    t("api.errors.artifactUnavailable"),
   );
 }
 
 /** Lists project resources independently of which CanvasItems are currently visible. */
 export async function listArtifacts(projectId: string): Promise<ArtifactList> {
-  return readJson<ArtifactList>(`/api/v1/projects/${projectId}/artifacts`, t("无法读取项目资源"));
+  return readJson<ArtifactList>(`/api/v1/projects/${projectId}/artifacts`, t("api.errors.projectResourcesUnavailable"));
 }
 
 /** Loads one media card's editable generation input independently of its selected result. */
 export async function getMediaDraft(projectId: string, canvasItemId: string): Promise<MediaDraft> {
   return readJson<MediaDraft>(
     `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
-    t("无法读取媒体草稿"),
+    t("api.errors.mediaDraftUnavailable"),
   );
 }
 
@@ -438,7 +438,7 @@ export async function removeMediaDraftMediaInput(projectId: string, canvasItemId
 export async function listCanvasConnections(projectId: string): Promise<CanvasConnectionList> {
   return readJson<CanvasConnectionList>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections`,
-    t("无法读取画布连线"),
+    t("api.errors.relationsUnavailable"),
   );
 }
 
@@ -472,7 +472,7 @@ export async function duplicateCanvasItem(projectId: string, sourceItemId: strin
 /** Result history belonging to one media node. */
 export async function listCanvasMediaVersions(projectId: string, itemId: string): Promise<ArtifactVersionList> {
   return readJson<ArtifactVersionList>(
-    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`, t("无法读取媒体版本"));
+    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`, t("api.errors.mediaVersionsUnavailable"));
 }
 
 export async function selectCanvasMediaVersion(projectId: string, itemId: string,
@@ -506,7 +506,7 @@ export async function listDirectMediaTasks(projectId: string, artifactId: string
   canvasItemId: string): Promise<Task[]> {
   const query = new URLSearchParams({ canvasItemId });
   return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run?${query}`,
-    t("无法读取卡片任务"));
+    t("api.errors.cardTasksUnavailable"));
 }
 
 /** Pins the visible text version and sends one prompt to the configured text model. */
@@ -522,7 +522,7 @@ export async function runDirectTextGeneration(projectId: string, artifactId: str
 export async function listDirectTextTasks(projectId: string, artifactId: string): Promise<Task[]> {
   return readJson<Task[]>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}/text-generations`,
-    t("无法读取文字生成任务"),
+    t("api.errors.textTasksUnavailable"),
   );
 }
 
@@ -534,7 +534,7 @@ export async function cancelQueuedDirectMediaTask(projectId: string, taskId: str
 export async function getDirectMediaQueueStatus(projectId: string,
   taskId: string): Promise<DirectMediaQueueStatus> {
   return readJson<DirectMediaQueueStatus>(
-    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`, t("无法读取排队状态"));
+    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`, t("api.errors.queueUnavailable"));
 }
 
 /** Appends and selects a complete content revision with optimistic concurrency. */
@@ -556,7 +556,7 @@ export async function listArtifactVersions(
 ): Promise<ArtifactVersionList> {
   return readJson<ArtifactVersionList>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}/versions`,
-    t("无法读取版本历史"),
+    t("api.errors.versionHistoryUnavailable"),
   );
 }
 
@@ -590,7 +590,7 @@ export async function uploadCanvasItemVersion(
 
 /** Loads the authoritative canvas projection for refresh recovery. */
 export async function listCanvasItems(projectId: string): Promise<Canvas> {
-  return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, t("无法读取画布"));
+  return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, t("api.errors.canvasUnavailable"));
 }
 
 /** Atomically applies one or more presentation-only canvas commands. */
@@ -606,7 +606,7 @@ export async function applyCanvasCommands(
 
 /** Lists persistent Agent card configurations and only their explicitly bound inputs. */
 export async function listAgents(projectId: string): Promise<AgentList> {
-  return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, t("无法读取 Agent 列表"));
+  return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, t("api.errors.agentsUnavailable"));
 }
 
 /** Creates an idle Creator Agent; creation does not start a model run. */
@@ -639,7 +639,7 @@ export async function getRunPreflight(projectId: string, agentId: string,
   if (conversationId) params.set("conversationId", conversationId);
   return readJson<RunPreflight>(
     `/api/v1/projects/${projectId}/runs/preflight?${params}`,
-    t("无法核对运行前配置"),
+    t("api.errors.preflightUnavailable"),
   );
 }
 
@@ -649,7 +649,7 @@ export async function listAgentConversations(projectId: string, agentId: string,
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentConversationList>(
-    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`, t("无法读取会话记录"));
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`, t("api.errors.conversationsUnavailable"));
 }
 
 /** Creates and selects an empty conversation; reuse the same key after an uncertain response. */
@@ -674,7 +674,7 @@ export async function listConversationRuns(projectId: string, agentId: string,
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentRunList>(
     `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/runs?${params}`,
-    t("无法读取会话消息"));
+    t("api.errors.conversationMessagesUnavailable"));
 }
 
 /** Creates or exactly replays one durable Run command under a project activity slot. */
@@ -694,7 +694,7 @@ export async function createRun(
 export async function listRunActions(projectId: string, runId: string): Promise<RunAction[]> {
   return readJson<RunAction[]>(
     `/api/v1/projects/${projectId}/runs/${runId}/actions`,
-    t("无法读取执行动作"),
+    t("api.errors.actionsUnavailable"),
   );
 }
 
@@ -707,7 +707,7 @@ export async function cancelRun(projectId: string, runId: string): Promise<Agent
 
 /** Reads durable Task state; lease ownership remains an internal worker concern. */
 export async function getTask(projectId: string, taskId: string): Promise<Task> {
-  return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, t("无法读取任务状态"));
+  return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, t("api.errors.taskStatusUnavailable"));
 }
 
 /** Starts a separately reserved attempt for a task whose result is unknown. */
@@ -723,7 +723,7 @@ export async function createManualUnknownAttempt(projectId: string, taskId: stri
 /** Loads all task outcomes for one owned Run. */
 export async function listRunTasks(projectId: string, runId: string): Promise<Task[]> {
   return readJson<Task[]>(`/api/v1/projects/${projectId}/runs/${runId}/tasks`,
-    t("无法读取运行任务"));
+    t("api.errors.runTasksUnavailable"));
 }
 
 async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
@@ -738,7 +738,7 @@ async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
 }
 
 async function writeJson<T>(path: string, init: RequestInit,
-  failureMessage = t("请求未完成")): Promise<T> {
+  failureMessage = t("api.errors.requestFailed")): Promise<T> {
   const response = await write(path, init, failureMessage);
   return (await response.json()) as T;
 }
@@ -748,7 +748,7 @@ async function writeEmpty(path: string, init: RequestInit): Promise<void> {
 }
 
 async function write(path: string, init: RequestInit,
-  failureMessage = t("请求未完成")): Promise<Response> {
+  failureMessage = t("api.errors.requestFailed")): Promise<Response> {
   const token = await getCsrfToken();
   const response = await apiFetch(path, {
     ...init,
@@ -771,7 +771,7 @@ async function getCsrfToken(): Promise<CsrfToken> {
   if (csrfToken) {
     return csrfToken;
   }
-  csrfToken = await readJson<CsrfToken>("/api/v1/auth/csrf", t("无法建立安全会话"));
+  csrfToken = await readJson<CsrfToken>("/api/v1/auth/csrf", t("api.errors.sessionUnavailable"));
   return csrfToken;
 }
 
@@ -797,7 +797,7 @@ export async function listSystemLogs(input: { stream?: SystemLogStream; search?:
   const params = new URLSearchParams({ limit: String(input.limit) });
   if (input.stream) params.set("stream", input.stream);
   if (input.search) params.set("search", input.search);
-  return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, t("无法读取系统日志"));
+  return readJson<SystemLogSnapshot>(`/api/v1/settings/system-logs?${params}`, t("api.errors.systemLogsUnavailable"));
 }
 
 export type LibraryEntry = components["schemas"]["LibraryEntry"];
@@ -814,15 +814,15 @@ export type LibraryFilters = NonNullable<paths["/api/v1/library/entries"]["get"]
 export function listLibraryEntries(filters: LibraryFilters): Promise<LibraryPage> {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
-  return readJson(`/api/v1/library/entries?${query}`, t("无法读取我的资产"));
+  return readJson(`/api/v1/library/entries?${query}`, t("api.errors.libraryUnavailable"));
 }
 export function getLibraryEntry(id: string): Promise<LibraryEntry> {
-  return readJson(`/api/v1/library/entries/${id}`, t("无法读取资产"));
+  return readJson(`/api/v1/library/entries/${id}`, t("api.errors.libraryEntryUnavailable"));
 }
 export function libraryContentUrl(id: string) { return `/api/v1/library/entries/${id}/content`; }
 export function libraryThumbnailUrl(id: string) { return `/api/v1/library/entries/${id}/thumbnail`; }
 export function getLibrarySource(project: string, item: string): Promise<LibrarySource> {
-  return readJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, t("无法读取当前结果"));
+  return readJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, t("api.errors.selectedResultUnavailable"));
 }
 export function saveLibraryEntry(project: string, item: string, request: SaveLibraryRequest): Promise<LibraryCommand> {
   return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, { method: "POST", body: JSON.stringify(request) });
@@ -834,7 +834,7 @@ export function referenceLibraryEntry(project: string, item: string, request: Re
   return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-references`, { method: "POST", body: JSON.stringify(request) });
 }
 export function getLibraryCommand(id: string): Promise<LibraryCommand> {
-  return readJson(`/api/v1/library/commands/${id}`, t("暂时无法核对转存结果"));
+  return readJson(`/api/v1/library/commands/${id}`, t("api.errors.transferStatusUnavailable"));
 }
 export function retryLibraryCommand(id: string): Promise<LibraryCommand> {
   return writeJson(`/api/v1/library/commands/${id}/retry`, { method: "POST" });
@@ -850,7 +850,7 @@ export function deleteLibraryEntry(id: string, expectedVersion: number): Promise
 }
 export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | "VIDEO" | "AUDIO"; name: string; category: LibraryCategory; commandKey: string }): Promise<LibraryCommand> {
   const body = new FormData(); Object.entries(request).forEach(([key, value]) => body.append(key, value));
-  return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("资产上传未完成"));
+  return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("api.errors.libraryUploadFailed"));
 }
 
 export type StorageSettings = components["schemas"]["StorageSettings"];
@@ -858,7 +858,7 @@ export type StorageProvider = components["schemas"]["StorageProvider"];
 export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
 export type RotateStorageCredentialsRequest = components["schemas"]["RotateStorageCredentialsRequest"];
 export async function getStorageSettings(): Promise<StorageSettings> {
-  return readJson<StorageSettings>("/api/v1/settings/storage", t("无法读取存储配置"));
+  return readJson<StorageSettings>("/api/v1/settings/storage", t("api.errors.storageSettingsUnavailable"));
 }
 export async function createStorageProfile(input: CreateStorageProfileRequest): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/profiles", {

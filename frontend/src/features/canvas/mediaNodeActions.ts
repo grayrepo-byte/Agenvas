@@ -30,7 +30,7 @@ export async function prepareMediaNode(projectId: string, sourceItemId: string,
         && JSON.stringify(current.mentions) === JSON.stringify(fields.mentions)
         && current.mediaInputs.map((input) => `${input.versionId}:${input.role}`).join()
           === fields.mediaInputs.map((input) => `${input.versionId}:${input.role}`).join();
-      if (!equal) throw new Error(t("新节点的草稿已有修改，请在该节点继续操作。"));
+      if (!equal) throw new Error(t("media.nodes.newNodeConflict"));
       progress.draftVersion = current.version;
     } else progress.draftVersion = (await saveMediaDraft(projectId, progress.itemId,
       { ...fields, expectedVersion: current.version })).version;

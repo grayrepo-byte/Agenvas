@@ -32,7 +32,7 @@ type ContentCanvasCardProps = {
 };
 
 /** 正文卡片只承载文字产物；图片与视频由 MediaCanvasCard 渲染。 */
-const TEXT_PRESENTATION = { get label() { return t("文字"); }, icon: TextT };
+const TEXT_PRESENTATION = { get label() { return t("common.text"); }, icon: TextT };
 
 /** Text edits in place; the persisted content is shown as written. */
 export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, locked, onInspect,
@@ -45,7 +45,7 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   const content = artifact.resourceDefaultVersion?.content;
   const { label, icon: Icon } = TEXT_PRESENTATION;
   const text = readText(content, "text");
-  const header = readText(content, "format") === "MARKDOWN" ? "Markdown" : t("正文");
+  const header = readText(content, "format") === "MARKDOWN" ? "Markdown" : t("text.card.body");
   const references = artifact.resourceDefaultVersion?.inputReferences.length ?? 0;
   const emptyText = !text.trim();
 
@@ -64,12 +64,12 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
           ? <TextVersionPicker artifact={editingText && editingState ? editingState.artifact : artifact}
             disabled={editingText && Boolean(editingState?.dirty || editingState?.busy)} />
           : <span className="text-card-count"><Stack size={12} aria-hidden />
-            {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("暂无版本")}</span>}
+            {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("text.card.noVersion")}</span>}
         <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact)}
           aria-pressed={editingText} className={editingText ? "is-open" : undefined}
           onClick={beginEditing}>
-          <PencilSimple size={17} aria-hidden />{t("编辑内容")}</Button>
-        <Button variant="ghost" type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("卡片详情")}</Button>
+          <PencilSimple size={17} aria-hidden />{t("text.card.edit")}</Button>
+        <Button variant="ghost" type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("common.cardDetails")}</Button>
       </>}>
       {children}
       {hasCurrentVersion(artifact) && editingText
@@ -82,14 +82,14 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
       </div>
       {emptyText ? <div className="content-card-empty nodrag nowheel nopan" onDoubleClick={beginEditing}>
         <TextT size={44} aria-hidden />
-        <span>{t("写下想法，让创作开始")}</span>
+        <span>{t("text.card.emptyHint")}</span>
       </div> : <div className="content-card-body nodrag nowheel nopan" tabIndex={0}
-        role="region" aria-label={t("{0}正文", { "0": label })} onDoubleClick={beginEditing}>
+        role="region" aria-label={t("text.card.bodyLabel", { "0": label })} onDoubleClick={beginEditing}>
         <p className="content-card-text">{text}</p>
       </div>}
       {references > 0 || locked ? <footer className="content-card-sources">
-        {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{t("{0} 个引用", { "0": references })}</span> : null}
-        {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("已锁定")} /> : null}
+        {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{t("text.card.referenceCount", { "0": references })}</span> : null}
+        {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("canvas.card.locked")} /> : null}
       </footer> : null}
       </>}
   </ArtifactCardFrame>;

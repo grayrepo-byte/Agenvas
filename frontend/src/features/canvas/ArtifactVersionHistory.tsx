@@ -37,31 +37,31 @@ function TextArtifactVersionHistory({ artifact }: { artifact: Artifact }) {
 
   return <details className="nodrag nowheel mt-3 border-t border-[var(--line)] pt-2 text-xs"
     onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary className="cursor-pointer font-semibold">{t("版本历史与选用")}</summary>
-    <p className="mt-2 text-[var(--muted)]">{t("选用旧版本会改变资源库默认内容，不修改历史版本。")}</p>
-    {history.isPending ? <p className="mt-2">{t("正在读取版本…")}</p> : null}
+    <summary className="cursor-pointer font-semibold">{t("artifacts.versions.title")}</summary>
+    <p className="mt-2 text-[var(--muted)]">{t("artifacts.versions.selectionHint")}</p>
+    {history.isPending ? <p className="mt-2">{t("common.versionLoading")}</p> : null}
     {history.error ? <p className="mt-2 text-red-700" role="alert">
-      {history.error instanceof ApiError ? history.error.message : t("版本历史读取失败，请重试。")}
+      {history.error instanceof ApiError ? history.error.message : t("artifacts.versions.loadFailed")}
     </p> : null}
     {history.data ? <ol className="mt-2 space-y-2">
       {history.data.items.map((version) => <li className="rounded-lg border border-[var(--line)] p-2"
         key={version.id}>
         <span>v{version.versionNo}{version.baseVersionId
-          ? t(" · 基于 v{0}", { "0": history.data.items.find((candidate) => candidate.id === version.baseVersionId)?.versionNo ?? "?" })
+          ? t("artifacts.versions.parentVersionSuffix", { "0": history.data.items.find((candidate) => candidate.id === version.baseVersionId)?.versionNo ?? "?" })
           : ""} · {version.createdByKind} · {version.createdAt}</span>
         {version.id === artifact.resourceDefaultVersionId
-          ? <span className="ml-2">{t("资源默认")}</span> : null}
+          ? <span className="ml-2">{t("artifacts.versions.resourceDefault")}</span> : null}
         {version.id === selectedVersionId ? null
           : <Button variant="ghost" className="node-action ml-2" disabled={select.isPending}
             onClick={() => select.mutate(version.id)} type="button">
-            {select.isPending && select.variables === version.id ? t("选用中…") : t("选用此版本")}
+            {select.isPending && select.variables === version.id ? t("artifacts.versions.selecting") : t("artifacts.versions.select")}
           </Button>}
       </li>)}
     </ol> : null}
     {select.error ? <p className="mt-2 text-red-700" role="alert">
       {select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
-        ? t("内容有冲突，未切换版本；请核对当前版本后重试。")
-        : select.error instanceof ApiError ? select.error.message : t("版本选用失败，请重试。")}
+        ? t("artifacts.versions.selectionConflict")
+        : select.error instanceof ApiError ? select.error.message : t("artifacts.versions.selectFailed")}
     </p> : null}
   </details>;
 }

@@ -37,7 +37,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label={t("正在加载页面")} /></main>}>
+        <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label={t("app.pageLoading")} /></main>}>
           <Routes>
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />

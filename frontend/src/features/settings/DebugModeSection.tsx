@@ -25,26 +25,26 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
   const conflict = error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT;
   const checked = draft ?? settings.data?.debugMode ?? false;
 
-  return <Panel title={t("Debug 模式")} description={t("默认关闭。仅影响之后开始的调用，设置会保存到系统中。")}
-    actions={<StatusBadge tone={settings.data?.debugMode ? "warning" : "neutral"}>{settings.data ? settings.data.debugMode ? t("已开启") : t("已关闭") : t("未读取")}</StatusBadge>}>
+  return <Panel title={t("settings.debug.title")} description={t("settings.debug.defaultHint")}
+    actions={<StatusBadge tone={settings.data?.debugMode ? "warning" : "neutral"}>{settings.data ? settings.data.debugMode ? t("settings.debug.enabledState") : t("settings.debug.disabledState") : t("settings.debug.unread")}</StatusBadge>}>
     <div className="ui-stack">
-      <Notice tone="warning" title={t("开启风险")}>
-        <p>{t("开启后，调用日志会保存原始请求地址、请求内容和响应内容，可能包含完整提示词、素材、个人信息和业务数据，并显著增加数据库及备份体积。请仅在排查问题时开启，避免分享这些日志。")}</p>
-        <p>{t("所有 header 均不保存；密钥、鉴权字段和模型私有推理始终脱敏。单个正文最多采集 64 MiB，超限或未读完会标注。关闭后停止新增正文记录，已经保存的历史记录按保留设置清理；旧日志不会补录。")}</p>
+      <Notice tone="warning" title={t("settings.debug.riskTitle")}>
+        <p>{t("settings.debug.privacyWarning")}</p>
+        <p>{t("settings.debug.collectionHint")}</p>
       </Notice>
-      {settings.isPending && enabled ? <LoadingState compact label={t("正在读取 debug 模式")} /> : null}
-      {error ? <Notice tone="danger" title={forbidden ? t("无权修改 debug 模式") : conflict ? t("Debug 设置已变化") : save.isError ? t("保存 debug 模式失败") : t("读取 debug 模式失败")}>
-        <p>{conflict ? t("其他操作已修改设置。请重新读取后再保存，你的选择会保留。") : t("请确认当前会话和服务状态后重试，你的选择会保留。")}</p>
+      {settings.isPending && enabled ? <LoadingState compact label={t("settings.debug.loading")} /> : null}
+      {error ? <Notice tone="danger" title={forbidden ? t("settings.debug.forbidden") : conflict ? t("settings.debug.conflictTitle") : save.isError ? t("settings.debug.saveFailed") : t("settings.debug.loadFailed")}>
+        <p>{conflict ? t("settings.shared.conflict") : t("settings.shared.sessionHint")}</p>
         {!forbidden ? <Button variant="outline"  type="button" disabled={settings.isFetching || save.isPending}
-          onClick={() => { save.reset(); void settings.refetch(); }}>{t("重新读取设置")}</Button> : null}
+          onClick={() => { save.reset(); void settings.refetch(); }}>{t("settings.shared.refresh")}</Button> : null}
       </Notice> : null}
       <label className="ui-checkbox"><Checkbox  checked={checked} disabled={!settings.data || settings.isError || forbidden || save.isPending}
-        onCheckedChange={(event) => { setDraft(event === true); save.reset(); }} />{t("开启 debug 模式")}</label>
-      {save.isSuccess && draft === null ? <p role="status">{t("Debug 模式已{0}。", { "0": settings.data?.debugMode ? t("开启") : t("关闭") })}</p> : null}
+        onCheckedChange={(event) => { setDraft(event === true); save.reset(); }} />{t("settings.debug.enable")}</label>
+      {save.isSuccess && draft === null ? <p role="status">{t("settings.debug.saved", { "0": settings.data?.debugMode ? t("common.enabled") : t("common.close") })}</p> : null}
       <div className="ui-form-actions">
-        <Link className="secondary-button" to="/settings/calls">{t("查看调用日志")}</Link>
+        <Link className="secondary-button" to="/settings/calls">{t("settings.debug.viewLogs")}</Link>
         <Button variant="default"  type="button" disabled={!settings.data || settings.isError || forbidden || conflict || save.isPending || checked === settings.data.debugMode}
-          onClick={() => { if (settings.data) save.mutate({ debugMode: checked, expectedVersion: settings.data.version }); }}>{save.isPending ? t("正在保存…") : t("保存 debug 设置")}</Button>
+          onClick={() => { if (settings.data) save.mutate({ debugMode: checked, expectedVersion: settings.data.version }); }}>{save.isPending ? t("common.savingProgress") : t("settings.debug.save")}</Button>
       </div>
     </div>
   </Panel>;

@@ -21,12 +21,12 @@ export function FormattedCallExchange({ exchange, mode, llm }: { exchange: Excha
   const response = useMemo(() => parseDebugBody(exchange.responseBody), [exchange.responseBody]);
   const view = useMemo(() => llm ? llmLogView(request, response) : null, [llm, request, response]);
   return <>
-    <BodyWarning body={exchange.requestBody} title={t("请求正文")} />
-    <BodyWarning body={exchange.responseBody} title={t("响应正文")} />
+    <BodyWarning body={exchange.requestBody} title={t("logs.exchange.requestBody")} />
+    <BodyWarning body={exchange.responseBody} title={t("logs.exchange.responseBody")} />
     {mode === "formatted" && view ? <LlmExchange view={view} requestBody={exchange.requestBody}
       responseBody={exchange.responseBody} request={request} response={response} /> : <>
-      <BodyContent title={t("请求正文")} body={exchange.requestBody} parsed={request} mode={mode} empty={t("无请求正文")} />
-      <BodyContent title={t("响应正文")} body={exchange.responseBody} parsed={response} mode={mode} empty={t("响应正文未采集")} />
+      <BodyContent title={t("logs.exchange.requestBody")} body={exchange.requestBody} parsed={request} mode={mode} empty={t("logs.exchange.requestBodyMissing")} />
+      <BodyContent title={t("logs.exchange.responseBody")} body={exchange.responseBody} parsed={response} mode={mode} empty={t("logs.exchange.responseNotCollected")} />
     </>}
   </>;
 }
@@ -38,28 +38,28 @@ function LlmExchange({ view, requestBody, responseBody, request, response }: {
   const usage = view.usage;
   return <div className="llm-log">
     <dl className="llm-log-facts">
-      <Fact title={t("模型")} value={view.model} /><Fact title={t("生成 ID")} value={view.generationId} />
-      <Fact title={t("结束原因")} value={view.finishReason} />
-      <Fact title={t("流式响应")} value={view.streaming === undefined ? undefined : view.streaming ? t("是") : t("否")} />
+      <Fact title={t("common.model")} value={view.model} /><Fact title={t("logs.exchange.generationId")} value={view.generationId} />
+      <Fact title={t("logs.exchange.finishReason")} value={view.finishReason} />
+      <Fact title={t("logs.exchange.streaming")} value={view.streaming === undefined ? undefined : view.streaming ? t("logs.exchange.yes") : t("logs.exchange.no")} />
     </dl>
-    <details className="llm-log-section" open><summary>{t("用量")}<span>{usage.total === undefined ? t("未记录") : t("{0} tokens", { "0": formatNumber(usage.total) })}</span></summary>
+    <details className="llm-log-section" open><summary>{t("logs.exchange.usage")}<span>{usage.total === undefined ? t("common.notRecorded") : t("logs.exchange.tokenCount", { "0": formatNumber(usage.total) })}</span></summary>
       <dl className="llm-log-usage">
         <Fact title="Prompt" value={usage.prompt === undefined ? undefined : formatNumber(usage.prompt)} />
         <Fact title="Completion" value={usage.completion === undefined ? undefined : formatNumber(usage.completion)} />
-        <Fact title={t("缓存 Token")} value={usage.cached === undefined ? undefined : formatNumber(usage.cached)} />
-        <Fact title={t("费用（Provider 返回）")} value={usage.cost} />
+        <Fact title={t("logs.exchange.cachedTokens")} value={usage.cached === undefined ? undefined : formatNumber(usage.cached)} />
+        <Fact title={t("logs.exchange.providerCost")} value={usage.cost} />
       </dl>
-      <p className="ui-muted">{t("用量与费用只显示响应中实际返回的值，不估算逐条消息 Token 或费用。")}</p>
+      <p className="ui-muted">{t("logs.exchange.usageHint")}</p>
     </details>
     <MessageSection title="Prompt" messages={view.prompt} tokens={usage.prompt} onExpand={() => setExpanded("prompt")} />
     <MessageSection title="Completion" messages={view.completion} tokens={usage.completion} onExpand={() => setExpanded("completion")} />
-    <details className="llm-log-section"><summary>{t("生成数据")}<span>JSON</span></summary>
-      <BodyContent title={t("请求正文")} body={requestBody} parsed={request} mode="formatted" empty={t("无请求正文")} />
-      <BodyContent title={t("响应正文")} body={responseBody} parsed={response} mode="formatted" empty={t("响应正文未采集")} />
+    <details className="llm-log-section"><summary>{t("logs.exchange.generationData")}<span>JSON</span></summary>
+      <BodyContent title={t("logs.exchange.requestBody")} body={requestBody} parsed={request} mode="formatted" empty={t("logs.exchange.requestBodyMissing")} />
+      <BodyContent title={t("logs.exchange.responseBody")} body={responseBody} parsed={response} mode="formatted" empty={t("logs.exchange.responseNotCollected")} />
     </details>
     {expanded ? <Dialog title={expanded === "prompt" ? "Prompt" : "Completion"}
-      description={t("按角色搜索和浏览消息；内容已在服务端脱敏。")}
-      className="llm-log-dialog" footer={<span className="ui-muted">{t("所有内容仅供查看，不会发起模型调用。")}</span>}
+      description={t("logs.exchange.searchHint")}
+      className="llm-log-dialog" footer={<span className="ui-muted">{t("logs.exchange.readOnlyHint")}</span>}
       onClose={() => setExpanded(null)} onSubmit={(event) => event.preventDefault()}>
       <MessageBrowser key={expanded} messages={expanded === "prompt" ? view.prompt : view.completion}
         tokens={expanded === "prompt" ? usage.prompt : usage.completion} />
@@ -67,29 +67,29 @@ function LlmExchange({ view, requestBody, responseBody, request, response }: {
   </div>;
 }
 function Fact({ title, value }: { title: string; value?: string }) {
-  return <div><dt>{title}</dt><dd>{value ?? <span className="ui-muted">{t("未记录")}</span>}</dd></div>;
+  return <div><dt>{title}</dt><dd>{value ?? <span className="ui-muted">{t("common.notRecorded")}</span>}</dd></div>;
 }
 function MessageSection({ title, messages, tokens, onExpand }: { title: string; messages: LogMessage[]; tokens?: number; onExpand: () => void }) {
   return <section className="llm-log-section"><header className="llm-log-section-heading">
-    <div><strong>{title}</strong><span>{t("{0} 条消息", { "0": messages.length })}{tokens !== undefined ? ` · ${formatNumber(tokens)} tokens` : ""}</span></div>
-    <Button variant="ghost" type="button"  disabled={!messages.length} onClick={onExpand} aria-label={t("展开 {0}", { "0": title })}><ArrowsOut size={16} aria-hidden />{t("展开")}</Button>
+    <div><strong>{title}</strong><span>{t("logs.exchange.messageCount", { "0": messages.length })}{tokens !== undefined ? ` · ${formatNumber(tokens)} tokens` : ""}</span></div>
+    <Button variant="ghost" type="button"  disabled={!messages.length} onClick={onExpand} aria-label={t("logs.exchange.expandNamed", { "0": title })}><ArrowsOut size={16} aria-hidden />{t("logs.exchange.expand")}</Button>
   </header>
     {messages.length ? <div className="llm-log-message-preview"><span className={`llm-log-role llm-log-role--${knownRole(messages[0]?.role ?? "")}`}>{roleLabel(messages[0]?.role ?? "unknown")}</span>
-      <p>{preview(messages[0])}</p></div> : <p className="ui-muted">{t("没有已记录的消息；可在生成数据或原始内容中查看其他返回信息。")}</p>}
+      <p>{preview(messages[0])}</p></div> : <p className="ui-muted">{t("logs.exchange.messagesMissing")}</p>}
   </section>;
 }
 function knownRole(role: string): string { return ["system", "developer", "user", "assistant", "tool", "function"].includes(role) ? role : "unknown"; }
 function roleLabel(role: string): string {
   switch (role) {
-    case "system": return t("系统"); case "developer": return t("开发者"); case "user": return t("用户");
-    case "assistant": return t("助手"); case "tool": case "function": return t("工具");
-    default: return role === "unknown" ? t("未知角色") : role;
+    case "system": return t("logs.exchange.system"); case "developer": return t("logs.exchange.developer"); case "user": return t("logs.exchange.user");
+    case "assistant": return t("logs.exchange.assistant"); case "tool": case "function": return t("logs.exchange.tool");
+    default: return role === "unknown" ? t("logs.exchange.unknownRole") : role;
   }
 }
 function preview(message: LogMessage | undefined): string {
   if (!message) return "";
-  const content = message.text.trim() || (message.toolCalls.length ? t("{0} 次工具调用：{1}", { "0": message.toolCalls.length, "1": message.toolCalls.map((call) => call.name).join(", ") })
-    : message.attachments.length ? t("{0} 项多模态内容", { "0": message.attachments.length }) : t("空消息"));
+  const content = message.text.trim() || (message.toolCalls.length ? t("logs.exchange.toolCallSummary", { "0": message.toolCalls.length, "1": message.toolCalls.map((call) => call.name).join(", ") })
+    : message.attachments.length ? t("logs.exchange.multimodalCount", { "0": message.attachments.length }) : t("logs.exchange.emptyMessage"));
   return content.slice(0, MESSAGE_PREVIEW_CHARS);
 }
 function MessageBrowser({ messages, tokens }: { messages: LogMessage[]; tokens?: number }) {
@@ -105,21 +105,21 @@ function MessageBrowser({ messages, tokens }: { messages: LogMessage[]; tokens?:
   const current = visible.find((message) => message.index === selected) ?? visible[FIRST_MESSAGE];
   const position = current ? visible.indexOf(current) : FIRST_MESSAGE;
   return <div className="llm-message-browser">
-    <div className="llm-message-summary"><div><strong>{t("{0} 条消息", { "0": messages.length })}</strong><span>{tokens === undefined ? t("Token 未记录") : `${formatNumber(tokens)} tokens`}</span></div>
+    <div className="llm-message-summary"><div><strong>{t("logs.exchange.messageCount", { "0": messages.length })}</strong><span>{tokens === undefined ? t("logs.exchange.tokensNotRecorded") : `${formatNumber(tokens)} tokens`}</span></div>
       <div className="llm-message-role-counts">{roles.map((name) => <span key={name} className={`llm-log-role llm-log-role--${knownRole(name)}`}>{roleLabel(name)} · {messages.filter((message) => message.role === name).length}</span>)}</div>
     </div>
-    <div className="llm-message-filters"><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("搜索消息")}</span><Input type="search" value={search} placeholder={t("搜索消息、工具名称或参数…")} onChange={(event) => setSearch(event.target.value)} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block"><span className="sr-only">{t("消息角色")}</span><Select value={role} onChange={(event) => setRole(event.target.value)}><option value="">{t("全部角色")}</option>{roles.map((name) => <option key={name} value={name}>{roleLabel(name)}</option>)}</Select></FieldLabel></Field>
+    <div className="llm-message-filters"><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("logs.exchange.search")}</span><Input type="search" value={search} placeholder={t("logs.exchange.searchPlaceholder")} onChange={(event) => setSearch(event.target.value)} /></FieldLabel></Field>
+      <Field><FieldLabel className="ui-field block"><span className="sr-only">{t("logs.exchange.role")}</span><Select value={role} onChange={(event) => setRole(event.target.value)}><option value="">{t("logs.exchange.allRoles")}</option>{roles.map((name) => <option key={name} value={name}>{roleLabel(name)}</option>)}</Select></FieldLabel></Field>
     </div>
-    {!visible.length ? <p className="llm-message-empty" role="status">{t("没有匹配的消息。调整搜索或角色筛选。")}</p> : <div className="llm-message-layout">
-      <div className="llm-message-list" aria-label={t("消息列表")}>{visible.map((message) => <Button variant="ghost" key={message.index} type="button" className="llm-message-row" aria-pressed={current?.index === message.index}
+    {!visible.length ? <p className="llm-message-empty" role="status">{t("logs.exchange.noMatches")}</p> : <div className="llm-message-layout">
+      <div className="llm-message-list" aria-label={t("logs.exchange.messages")}>{visible.map((message) => <Button variant="ghost" key={message.index} type="button" className="llm-message-row" aria-pressed={current?.index === message.index}
         onClick={() => { setSelected(message.index); }}><span>{message.index + 1}</span><span className={`llm-log-role llm-log-role--${knownRole(message.role)}`}>{roleLabel(message.role)}</span><span className="llm-message-row-preview">{preview(message)}</span></Button>)}</div>
       {current ? <article className="llm-message-detail"><div className="llm-message-toolbar">
         <CopyButton key={`${current.index}-${raw}`} content={raw ? prettyJson(current.raw) : messageText(current)} />
-        <Button variant="ghost"  type="button" aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? t("查看正文") : t("查看消息 JSON")}</Button>
-        <nav aria-label={t("消息翻页")}><Button variant="ghost"  type="button" aria-label={t("上一条消息")} disabled={position === FIRST_MESSAGE} onClick={() => { const next = visible[position - 1]; if (next) setSelected(next.index); }}><CaretLeft size={16} /></Button>
-          <span>{t("第 {0} / {1} 条", { "0": position + 1, "1": visible.length })}</span>
-          <Button variant="ghost"  type="button" aria-label={t("下一条消息")} disabled={position + 1 >= visible.length} onClick={() => { const next = visible[position + 1]; if (next) setSelected(next.index); }}><CaretRight size={16} /></Button></nav>
+        <Button variant="ghost"  type="button" aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? t("logs.exchange.viewBody") : t("logs.exchange.viewMessageJson")}</Button>
+        <nav aria-label={t("logs.exchange.pagination")}><Button variant="ghost"  type="button" aria-label={t("logs.exchange.previousMessage")} disabled={position === FIRST_MESSAGE} onClick={() => { const next = visible[position - 1]; if (next) setSelected(next.index); }}><CaretLeft size={16} /></Button>
+          <span>{t("logs.exchange.messagePosition", { "0": position + 1, "1": visible.length })}</span>
+          <Button variant="ghost"  type="button" aria-label={t("logs.exchange.nextMessage")} disabled={position + 1 >= visible.length} onClick={() => { const next = visible[position + 1]; if (next) setSelected(next.index); }}><CaretRight size={16} /></Button></nav>
       </div>
         <div className="llm-message-content" key={`${current.index}-${raw}`}>
           {raw ? <RawContent content={prettyJson(current.raw)} /> : <MessageContent message={current} />}
@@ -133,7 +133,7 @@ function messageText(message: LogMessage): string {
     ...message.attachments.map(prettyJson)].filter(Boolean).join("\n\n");
 }
 function toolArguments(value: unknown): string {
-  return value === undefined ? t("参数未记录") : typeof value === "string" ? value : prettyJson(value);
+  return value === undefined ? t("logs.exchange.argumentsMissing") : typeof value === "string" ? value : prettyJson(value);
 }
 function MessageContent({ message }: { message: LogMessage }) {
   let content = message.text;
@@ -144,27 +144,27 @@ function MessageContent({ message }: { message: LogMessage }) {
   return <>
     <span className={`llm-log-role llm-log-role--${knownRole(message.role)}`}>{roleLabel(message.role)}</span>
     {message.toolCallId ? <p className="ui-muted">tool_call_id: {message.toolCallId}</p> : null}
-    {message.name ? <p className="ui-muted">{t("名称")}：{message.name}</p> : null}
+    {message.name ? <p className="ui-muted">{t("common.name")}：{message.name}</p> : null}
     {message.text ? <RawContent content={content} /> : null}
-    {message.toolCalls.map((call, index) => <section className="llm-tool-call" key={index}><h4>{t("工具调用")} · {call.name}</h4>{call.id ? <p className="ui-muted">ID: {call.id}</p> : null}<RawContent content={toolArguments(call.arguments)} /></section>)}
-    {message.attachments.map((part, index) => <details className="llm-tool-call" key={index}><summary>{t("多模态内容")} · {String(part.type ?? "unknown")}</summary><RawContent content={prettyJson(part)} /><p className="ui-muted">{t("日志中的媒体地址仅作文本展示，不加载远程素材。")}</p></details>)}
-    {!message.text && !message.toolCalls.length && !message.attachments.length ? <p className="ui-muted">{t("空消息")}</p> : null}
+    {message.toolCalls.map((call, index) => <section className="llm-tool-call" key={index}><h4>{t("logs.exchange.toolCalls")} · {call.name}</h4>{call.id ? <p className="ui-muted">ID: {call.id}</p> : null}<RawContent content={toolArguments(call.arguments)} /></section>)}
+    {message.attachments.map((part, index) => <details className="llm-tool-call" key={index}><summary>{t("logs.exchange.multimodalContent")} · {String(part.type ?? "unknown")}</summary><RawContent content={prettyJson(part)} /><p className="ui-muted">{t("logs.exchange.mediaLinksHint")}</p></details>)}
+    {!message.text && !message.toolCalls.length && !message.attachments.length ? <p className="ui-muted">{t("logs.exchange.emptyMessage")}</p> : null}
   </>;
 }
 function BodyWarning({ body, title }: { body: DebugBody | null; title: string }) {
-  return body?.truncated ? <p className="ui-muted">{title} · {t("超限或未读完")} · {t("正文超过采集上限或响应未读完；这里只包含已采集部分。")}</p> : null;
+  return body?.truncated ? <p className="ui-muted">{title} · {t("logs.exchange.truncated")} · {t("logs.exchange.truncationHint")}</p> : null;
 }
 function BodyContent({ title, body, parsed, mode, empty }: { title: string; body: DebugBody | null; parsed: ParsedBody; mode: ViewMode; empty: string }) {
   const content = mode === "formatted" && parsed.status === "json" ? prettyJson(parsed.value) : body?.content ?? empty;
-  return <details className="call-log-body" open><summary>{title}{body ? ` · ${body.encoding}` : ""}{body?.truncated ? t(" · 超限或未读完") : ""}</summary>
-    {mode === "formatted" && body && parsed.status !== "json" ? <p className="ui-muted">{parsed.status === "large" ? t("正文过大，显示原始内容。") : t("此正文无法格式化，显示原始内容。")}</p> : null}
+  return <details className="call-log-body" open><summary>{title}{body ? ` · ${body.encoding}` : ""}{body?.truncated ? t("logs.exchange.truncatedSuffix") : ""}</summary>
+    {mode === "formatted" && body && parsed.status !== "json" ? <p className="ui-muted">{parsed.status === "large" ? t("logs.exchange.bodyTooLarge") : t("logs.exchange.formatUnsupported")}</p> : null}
     <div className="llm-body-actions"><CopyButton key={mode} content={content} /></div>
     <RawContent key={mode} content={content} />
   </details>;
 }
 function RawContent({ content }: { content: string }) {
   const [limit, setLimit] = useState(RAW_PAGE_CHARS);
-  return <><pre>{content.slice(0, limit)}</pre>{content.length > limit ? <Button variant="outline"  type="button" onClick={() => setLimit(limit + RAW_PAGE_CHARS)}>{t("加载更多正文（剩余 {0} 个字符）", { "0": formatNumber(content.length - limit) })}</Button> : null}</>;
+  return <><pre>{content.slice(0, limit)}</pre>{content.length > limit ? <Button variant="outline"  type="button" onClick={() => setLimit(limit + RAW_PAGE_CHARS)}>{t("logs.exchange.loadMoreBody", { "0": formatNumber(content.length - limit) })}</Button> : null}</>;
 }
 function CopyButton({ content }: { content: string }) {
   const [status, setStatus] = useState<"idle" | "done" | "failed">("idle");
@@ -174,5 +174,5 @@ function CopyButton({ content }: { content: string }) {
     try { await navigator.clipboard.writeText(content); setStatus("done"); }
     catch { setStatus("failed"); }
     finally { setPending(false); }
-  }}><Copy size={14} aria-hidden />{t("复制")}</Button>{status !== "idle" ? <span role="status">{status === "done" ? t("已复制") : t("复制失败，请手动选择正文。")}</span> : null}</span>;
+  }}><Copy size={14} aria-hidden />{t("common.copy")}</Button>{status !== "idle" ? <span role="status">{status === "done" ? t("logs.exchange.copied") : t("logs.exchange.copyFailed")}</span> : null}</span>;
 }

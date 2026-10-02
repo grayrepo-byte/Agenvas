@@ -25,9 +25,9 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
   const waveform = useQuery({ queryKey: ["audio-waveform", src], enabled: selected,
     staleTime: Infinity, retry: false, queryFn: async ({ signal }) => {
       const response = await fetch(src, { credentials: "same-origin", signal });
-      if (!response.ok) throw new Error(t("波形读取失败"));
+      if (!response.ok) throw new Error(t("audio.player.waveformFailed"));
       const bytes = await response.arrayBuffer();
-      if (bytes.byteLength > MAX_WAVEFORM_BYTES) throw new Error(t("音频过大，波形暂不可用"));
+      if (bytes.byteLength > MAX_WAVEFORM_BYTES) throw new Error(t("audio.player.waveformSizeLimit"));
       const context = new AudioContext();
       try {
         const buffer = await context.decodeAudioData(bytes);
@@ -52,17 +52,17 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
     if (!element) return;
     if (!element.paused) { element.pause(); return; }
     setError(null);
-    try { await element.play(); } catch { setError(t("音频播放失败，请重试。")); }
+    try { await element.play(); } catch { setError(t("audio.player.playbackFailed")); }
   }
   return <div className="audio-player nodrag nowheel nopan" onPointerDown={(event) => event.stopPropagation()}>
-    <audio ref={audio} src={src} preload="metadata" aria-label={t("{0} 的音频", { "0": title })}
+    <audio ref={audio} src={src} preload="metadata" aria-label={t("audio.player.audioLabel", { "0": title })}
       onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
       onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
-      onError={() => { setError(t("音频读取失败，请重试。")); setPlaying(false); }} />
+      onError={() => { setError(t("audio.player.loadFailed")); setPlaying(false); }} />
     <div className="audio-player-controls">
       <Button variant="ghost" type="button" className="audio-player-play" onClick={() => void toggle()}
-        aria-label={playing ? t("暂停音频") : t("播放音频")}>{playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</Button>
+        aria-label={playing ? t("audio.player.pause") : t("audio.player.play")}>{playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</Button>
       <div className="audio-player-details">
         <p className="audio-player-title" title={description}>{description}</p>
         <span className="audio-player-time">{timeLabel(position)} / {timeLabel(duration)}</span>
@@ -75,14 +75,14 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
           style={{ height: `${Math.max(3, amplitude * 80)}%` }} />)
           : <span className="audio-player-waveform-placeholder" />}
       </div>
-      <input className="audio-player-seek" type="range" aria-label={t("音频播放进度")} min={0}
+      <input className="audio-player-seek" type="range" aria-label={t("audio.player.progressLabel")} min={0}
         max={duration || 1} step={0.01} value={Math.min(position, duration || 1)} disabled={duration <= 0}
         onChange={(event) => { const value = Number(event.target.value); if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
     </div>
-    {waveform.isFetching ? <small role="status">{t("正在读取波形…")}</small> : null}
-    {waveform.error ? <small>{t("波形暂不可用 ")}<Button variant="ghost" type="button" onClick={() => void waveform.refetch()}>{t("重试波形")}</Button></small> : null}
+    {waveform.isFetching ? <small role="status">{t("audio.player.waveformLoading")}</small> : null}
+    {waveform.error ? <small>{t("audio.player.waveformUnavailable")}<Button variant="ghost" type="button" onClick={() => void waveform.refetch()}>{t("audio.player.retryWaveform")}</Button></small> : null}
     {error ? <div className="audio-player-error" role="alert">{error}<Button variant="ghost" type="button"
-      onClick={() => { setError(null); audio.current?.load(); }}><ArrowClockwise size={14} />{t("重试播放")}</Button></div> : null}
-    {demo ? <small className="audio-player-demo">{t("Mock 演示音频（非语音合成）")}</small> : null}
+      onClick={() => { setError(null); audio.current?.load(); }}><ArrowClockwise size={14} />{t("media.retryPlayback")}</Button></div> : null}
+    {demo ? <small className="audio-player-demo">{t("audio.player.mockHint")}</small> : null}
   </div>;
 }

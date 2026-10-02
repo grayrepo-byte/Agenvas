@@ -22,7 +22,7 @@ export function AuthLayout({ title, description, children }: {
         <header className="auth-card-heading"><span className="auth-eyebrow">AGENT CANVAS</span><h1 id="auth-title">{title}</h1><p>{description}</p></header>
         {children}
       </section>
-      <p className="auth-footnote">{t("自托管模式 · Provider 状态登录后可查看")}</p>
+      <p className="auth-footnote">{t("auth.shared.selfHostedHint")}</p>
     </main>
   );
 }
@@ -34,5 +34,5 @@ export function AuthField({ label, hint, children }: { label: string; hint?: str
 
 export function FormError({ error }: { error: Error }) {
   useLocale();
-  return <Notice tone="danger">{error instanceof ApiError ? error.message : t("请求未完成，请稍后重试。")}</Notice>;
+  return <Notice tone="danger">{error instanceof ApiError ? error.message : t("auth.shared.requestFailed")}</Notice>;
 }
