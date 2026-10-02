@@ -77,6 +77,7 @@ import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageN
 import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
+import { KIND_LABELS } from "../library/libraryLabels";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
 import { canvasItemVersion } from "./versionedArtifact";
 
@@ -603,10 +604,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const bindings = selectedArtifactBindings(canvas.data?.items ?? [], selectedIds);
       const agent = await createAgent(projectId, { name, instruction, bindings });
       const index = canvas.data?.items.length ?? 0;
-      return applyCanvasCommands(projectId, [
+      const itemId = crypto.randomUUID();
+      const saved = await applyCanvasCommands(projectId, [
         {
           type: "PLACE_AGENT",
-          itemId: crypto.randomUUID(),
+          itemId,
           agentId: agent.id,
           x: creationPoint?.x ?? 100 + (index % 3) * 360,
           y: creationPoint?.y ?? 100 + Math.floor(index / 3) * 360,
@@ -616,10 +618,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           locked: false,
         },
       ]);
+      return { saved, itemId };
     },
     onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
+    onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
+      setSelectedIds([itemId]);
+      window.setTimeout(() => { void flow.current?.fitView({ nodes: [{ id: itemId }], padding: 0.15, maxZoom: 1 }); }, MEDIA_FOCUS_DELAY_MS);
       setToolsKind(null);
       setSaveState("saved");
     },
@@ -1120,16 +1125,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
   }, [creationMenu]);
 
-  // Esc 由外向内收拢：先关创建菜单，再关底部编辑区。setSelectedIds 对相同值返回原 state，
+  // Esc 先交给当前模态/弹出层，再关创建菜单，最后关底部编辑区。setSelectedIds 对相同值返回原 state，
   // 因此没有选中时按 Esc 不会引起重渲染。
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Radix 的 document 监听器可能晚于画布注册；不能依赖它先 preventDefault。
+      // 即使焦点落到 document，打开的模态仍拥有 Escape，避免取消选中卸载编辑草稿。
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       if (creationMenu) {
         setCreationMenu(null);
         creationMenuReturnFocus.current?.focus();
         return;
       }
+      if (document.querySelector('[role="listbox"], [role="menu"]')) return;
       setSelectedIds([]);
     }
     document.addEventListener("keydown", closeOnEscape);
@@ -1154,7 +1163,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
-  const selectedMedia = draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact && selectedItems[0].artifact.kind !== "TEXT"
+  const selectedMedia = draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact
     ? selectedItems[0] : undefined;
   const mediaFocus = useRef<string | null>(null);
   const selectedMediaId = selectedMedia?.id;
@@ -1199,7 +1208,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const projectResources = [
     ...(resources.data?.items ?? []).map((artifact) => ({
       subjectType: "ARTIFACT" as const, subjectId: artifact.id,
-      label: `${artifact.title} · ${artifact.kind} · ${artifact.resourceDefaultVersionId ? t("有结果") : t("草稿")}`,
+      label: `${artifact.title} · ${KIND_LABELS[artifact.kind]} · ${artifact.resourceDefaultVersionId ? t("已设置默认结果") : t("未设置默认结果")}`,
     })),
     ...(snapshot.data?.agents ?? []).map((agent) => ({
       subjectType: "AGENT" as const, subjectId: agent.id, label: `${agent.name} · Agent`,
@@ -1383,6 +1392,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onInit={(instance) => { flow.current = instance; }}
           onMoveStart={(event) => { if (event) clearSelection(); }}
           selectionOnDrag={selecting}
+          ariaLabelConfig={{
+            "controls.ariaLabel": t("画布视图控制"), "controls.zoomIn.ariaLabel": t("放大画布"),
+            "controls.zoomOut.ariaLabel": t("缩小画布"), "controls.fitView.ariaLabel": t("适应画布"),
+            "controls.interactive.ariaLabel": t("切换画布交互"), "minimap.ariaLabel": t("画布缩略图"),
+          }}
           zoomOnDoubleClick={false}
         >
           {draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
@@ -1419,7 +1433,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {displaySettings.persistenceError}
           <Button variant="ghost" type="button" className="node-action" onClick={displaySettings.retrySave}>{t("重试保存设置")}</Button>
         </div> : null}
-        {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu"
+        {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu h-auto"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
           <CommandList label={t("添加卡片")}><CommandGroup heading={t("添加卡片")}>

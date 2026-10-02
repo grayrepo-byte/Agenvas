@@ -341,6 +341,39 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.queryAllByRole("option")).toHaveLength(0);
   });
 
+  it("keeps the selected image when Escape closes its model menu and protects smart edit input", async () => {
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Smart edit project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [imageCard()] })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [{
+        id: "image-provider", name: "Image provider", platform: "OPENAI", enabled: true, version: 0,
+        capabilities: [{ id: "image-model", name: "Image model", enabled: true, version: 0,
+          capabilityVersion: 1, adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION",
+          minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 4, supportsImageMask: true,
+          supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"],
+          supportedImageQualities: ["high"], settings: {} }],
+      }], defaults: [] })),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("article", { name: "Hero · 图片" }));
+    await user.click(await screen.findByRole("button", { name: "智能编辑" }));
+    await user.type(screen.getByRole("textbox", { name: "智能编辑提示词" }), "保留这段要求");
+    await user.click(screen.getByRole("combobox", { name: "图片能力" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(useCanvasStore.getState().selectedIds).toEqual(["image-card"]);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "智能编辑提示词" })).toHaveValue("保留这段要求");
+    await user.keyboard("{Escape}");
+    const confirmation = await screen.findByRole("dialog", { name: "有未保存的修改" });
+    await user.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("textbox", { name: "智能编辑提示词" })).toHaveValue("保留这段要求");
+    expect(useCanvasStore.getState().selectedIds).toEqual(["image-card"]);
+  });
+
   it("closes the bottom editor from its close button and from Escape", async () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({

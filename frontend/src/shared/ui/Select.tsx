@@ -5,7 +5,13 @@ import { t,useLocale } from "../i18n";
 import "./Dropdown.css";
 import { SelectContent,SelectGroup,SelectItem,SelectLabel,Select as SelectRoot,SelectTrigger,SelectValue } from "./primitives/select";
 
-type SelectProps = Omit<ComponentProps<"select">, "multiple" | "size" | "ref"> & { density?: "regular" | "compact" };
+type SelectProps = Omit<ComponentProps<"select">, "multiple" | "size" | "ref"> & {
+  density?: "regular" | "compact";
+  variant?: "default" | "ghost";
+  icon?: ReactNode;
+  optionDetails?: Readonly<Record<string, { icon?: ReactNode; description?: ReactNode }>>;
+  portalContainer?: HTMLElement | null;
+};
 type Option = { value: string; label: ReactNode; disabled: boolean; group?: string };
 // Prefix every UI value: Radix reserves the empty string, while filters use it as a real option.
 const OPTION_PREFIX = "option:";
@@ -24,7 +30,8 @@ function optionsFrom(children: ReactNode, group?: string, disabled = false): Opt
 
 /** shadcn owns popup positioning, typeahead and focus. A hidden native control
  * preserves browser form validation/submission and the application's change events. */
-export function Select({ children, className, density = "regular", onChange, onBlur, onKeyDown, onMouseDown, ...props }: SelectProps) {
+export function Select({ children, className, density = "regular", variant = "default", icon, optionDetails, portalContainer,
+  onChange, onBlur, onKeyDown, onMouseDown, ...props }: SelectProps) {
   useLocale();
   const generatedId = useId();
   const native = useRef<HTMLSelectElement>(null);
@@ -49,7 +56,7 @@ export function Select({ children, className, density = "regular", onChange, onB
     setLabel(text || t("选项"));
   });
   const groupNames = [...new Set(options.map((option) => option.group))];
-  return <span className={cn("ui-select", density === "compact" && "ui-select--compact", className)}>
+  return <span className={cn("ui-select", density === "compact" && "ui-select--compact", variant === "ghost" && "ui-select--ghost", className)}>
     {container ? createPortal(<select {...props} id={`${generatedId}-native`} ref={native} aria-hidden="true" aria-label={undefined} aria-labelledby={undefined} disabled={props.disabled || inheritedDisabled} tabIndex={-1}
       className="ui-select-native" onChange={(event) => { setUncontrolled(event.target.value); onChange?.(event); }}
       onBlur={onBlur} onKeyDown={onKeyDown} onMouseDown={onMouseDown}
@@ -64,11 +71,13 @@ export function Select({ children, className, density = "regular", onChange, onB
       <SelectTrigger ref={trigger} id={props.id} value={value} aria-label={props["aria-label"] ?? label}
         aria-labelledby={props["aria-labelledby"]} aria-describedby={props["aria-describedby"]}
         aria-invalid={props["aria-invalid"]} aria-required={props.required}
-        size={density === "compact" ? "sm" : "default"} className="w-full" disabled={props.disabled || inheritedDisabled}>
+        size={density === "compact" ? "sm" : "default"} variant={variant} className="w-full" disabled={props.disabled || inheritedDisabled}>
+        {icon}
         <SelectValue />
       </SelectTrigger>
-      <SelectContent position="popper" sideOffset={MENU_GAP} collisionPadding={VIEWPORT_MARGIN}
-        className="nodrag nowheel nopan" aria-label={props["aria-label"] ?? label}
+      <SelectContent position="popper" sideOffset={MENU_GAP} collisionPadding={VIEWPORT_MARGIN} portalContainer={portalContainer}
+        className={cn("nodrag nowheel nopan", optionDetails && "ui-select-model-menu")} variant={variant}
+        presentation={optionDetails ? "rich" : "default"} align={variant === "ghost" ? "start" : "center"} aria-label={props["aria-label"] ?? label}
         onCloseAutoFocus={(event) => {
           // Continue Tab traversal after Radix unmounts its focus scope, avoiding a
           // race with the library restoring focus to the trigger.
@@ -92,6 +101,8 @@ export function Select({ children, className, density = "regular", onChange, onB
         {groupNames.map((group) => <SelectGroup key={group ?? generatedId}>
           {group ? <SelectLabel>{group}</SelectLabel> : null}
           {options.filter((option) => option.group === group).map((option) => <SelectItem key={option.value}
+            icon={optionDetails?.[option.value]?.icon} description={optionDetails?.[option.value]?.description}
+            className={variant === "ghost" && !optionDetails ? "py-2" : undefined}
             value={OPTION_PREFIX + option.value} data-value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
         </SelectGroup>)}
       </SelectContent>

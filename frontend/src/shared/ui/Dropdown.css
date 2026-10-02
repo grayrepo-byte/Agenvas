@@ -1,4 +1,16 @@
 .ui-select { position: relative; display: inline-flex; width: 100%; min-width: 0; vertical-align: middle; }
+.ui-select--ghost { width: auto; max-width: 100%; }
+.ui-option-content { display: flex; flex: 1; align-items: center; gap: var(--ui-space-3); min-width: 0; }
+.ui-option-icon { display: grid; flex: none; place-items: center; width: var(--ui-space-8); height: var(--ui-space-8);
+  border-radius: var(--ui-radius-md); background: var(--ui-selected); color: var(--ui-text-secondary); }
+.ui-option-copy { display: flex; flex: 1; flex-direction: column; gap: var(--ui-space-1); min-width: 0; }
+.ui-option-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-1); }
+.ui-option-title { color: var(--ui-text); font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.ui-option-description { color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; overflow-wrap: anywhere; }
+.ui-option-note { flex: none; padding: 0 var(--ui-space-1); border-radius: var(--ui-radius-sm);
+  background: var(--ui-warning-bg); color: var(--ui-warning); font-size: var(--ui-text-xs); line-height: 1.5; }
+.ui-select-model-menu { width: var(--ui-model-menu-width); max-width: calc(100vw - var(--ui-space-4)); }
+.ui-select-model-menu [data-slot="select-group"] { display: flex; flex-direction: column; gap: var(--ui-space-1); }
 /* Browser submission/validation bridge; the visible control is shadcn SelectTrigger. */
 .ui-select-native { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; clip-path: inset(50%); }
 .ui-field > .ui-select { margin-top: var(--ui-space-2); }

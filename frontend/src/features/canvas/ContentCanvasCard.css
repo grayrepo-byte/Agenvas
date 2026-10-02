@@ -32,10 +32,10 @@
   -webkit-user-select: text;
 }
 
-.content-card-body:focus-visible { outline: 1px solid var(--ui-focus); outline-offset: -3px; border-radius: 6px; }
+.content-card-body:focus-visible { outline: none; }
+.content-canvas-card:not(.is-selected):focus-within { box-shadow: 0 0 0 var(--ui-focus-width) var(--ui-focus); }
 .content-card-text { margin: 0; overflow-wrap: anywhere; color: #dedede; font-size: 13px; font-weight: 400; line-height: 1.75; white-space: pre-wrap; }
 .content-card-sources { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; min-width: 0; overflow: hidden; padding: 8px 12px 11px; }
-.text-card-version-footer { overflow: visible; }
 .content-card-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid #ffffff0d; border-radius: 999px; background: #303030; color: #b7b7b7; font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .content-card-chip svg { color: #8f8f8f; }
 .content-card-locked { flex-shrink: 0; margin-left: auto; color: #a5a5a5; }
@@ -44,7 +44,7 @@
 .content-card-empty > svg { flex-shrink: 0; color: #606060; }
 .content-card-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px; border: 1px solid #454545; border-radius: 999px; background: #333; color: #f3f3f3; font-size: 12px; cursor: pointer; }
 .content-card-empty button:hover { background: #424242; }
-.content-card-empty button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.content-card-empty button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 
 .text-card-editor { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .text-card-editor-body { position: relative; display: flex; flex-direction: column; padding: 8px 12px; }
@@ -54,8 +54,11 @@
   font: inherit; font-size: 13px; line-height: 1.75; outline: none; white-space: pre-wrap;
 }
 .text-card-editor-body textarea::placeholder { color: #777; }
-.text-card-editor-footer { overflow: visible; }
-.text-card-editor-footer .ui-select { width: 100px; }
+/* The card owns the focus boundary; avoid a second frame around its editable body. */
+.text-card-editor-body textarea.ui-focusable { box-shadow: none; }
+.text-card-editor-body textarea.ui-focusable:focus-visible { outline: none; box-shadow: none; }
+.text-card-editor-footer { overflow: visible; flex-wrap: wrap; }
+.text-card-editor-footer .ui-select { width: auto; }
 .text-card-count { color: #888; font-size: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .text-card-editor-footer .content-card-locked { margin-left: 0; }
 .text-card-save {
@@ -70,7 +73,7 @@
 }
 .text-card-done:disabled { cursor: not-allowed; opacity: .45; }
 .text-card-save:focus-visible, .text-card-version-tag:focus-visible,
-.text-card-version-option:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.text-card-version-option:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .text-card-version-picker { position: relative; flex: none; }
 .text-card-version-tag { cursor: pointer; }
 button.text-card-version-tag { font: inherit; }

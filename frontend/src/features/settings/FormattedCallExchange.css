@@ -30,7 +30,8 @@
 .llm-message-filters { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-6); border-bottom: 1px solid var(--ui-border); }
 .llm-message-layout { display: grid; grid-template-columns: minmax(0, 44%) minmax(0, 1fr); min-height: 340px; }
 .llm-message-list { overflow: auto; max-height: min(58dvh, 650px); border-right: 1px solid var(--ui-border); }
-.llm-message-row { width: 100%; display: grid; grid-template-columns: 26px 70px minmax(0, 1fr); align-items: start; gap: var(--ui-space-2); padding: var(--ui-space-3); border: 0; border-bottom: 1px solid var(--ui-border); background: transparent; text-align: left; color: var(--ui-text-muted); }
+/* Message rows must grow with their preview instead of inheriting Button's fixed height and nowrap. */
+.llm-message-row { width: 100%; height: auto; display: grid; grid-template-columns: 26px 70px minmax(0, 1fr); align-items: center; gap: var(--ui-space-2); padding: var(--ui-space-3); border: 0; border-bottom: 1px solid var(--ui-border); border-radius: 0; background: transparent; text-align: left; white-space: normal; color: var(--ui-text-muted); }
 .llm-message-row:hover { background: var(--ui-hover); }
 .llm-message-row[aria-pressed="true"] { background: var(--ui-accent-subtle); box-shadow: inset 3px 0 var(--ui-accent); }
 .llm-message-row-preview { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--ui-text-secondary); line-height: 1.6; overflow-wrap: anywhere; }

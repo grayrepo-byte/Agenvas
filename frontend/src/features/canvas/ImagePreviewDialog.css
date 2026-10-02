@@ -4,7 +4,7 @@
 .image-preview-dialog header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-preview-dialog button { flex-shrink: 0; display: grid; place-items: center; padding: 8px; border: 0; border-radius: 8px; background: #ffffff12; color: inherit; cursor: pointer; }
 .image-preview-dialog button:hover { background: #ffffff26; }
-.image-preview-dialog button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.image-preview-dialog button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .image-preview-stage { position: relative; flex: 1; min-height: 0; padding: 0 16px 16px; }
 .image-preview-stage > img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .image-preview-loading { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }

@@ -25,8 +25,8 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children 
       event.stopPropagation(); setOpen(false); trigger.current?.focus();
     }
   }}>
-    <Button variant="ghost" aria-label={t("添加卡片")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></Button>
-    <DropdownMenuTrigger asChild><Button variant="ghost" ref={trigger} type="button" className="workspace-tool-trigger" aria-label={t("画布工具")}
+    <Button variant="ghost" size="icon-sm" aria-label={t("添加卡片")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></Button>
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" ref={trigger} type="button" className="workspace-tool-trigger" aria-label={t("画布工具")}
       aria-haspopup="menu" aria-expanded={open}
       title={handActive ? t("手形工具 · 拖动画布") : t("选择工具 · 短按空格切换手形，长按临时拖动")}>
       {handActive ? <Hand size={20} /> : <Cursor size={20} />}<DotsThree size={16} />

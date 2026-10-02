@@ -191,18 +191,18 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={menuButton}>
               <MagicWand />{t("扩展")}<CaretDown /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent aria-labelledby={undefined} aria-label={t("图片扩展功能")} className="w-56 nodrag nowheel nopan"><DropdownMenuGroup>
+            <DropdownMenuContent aria-labelledby={undefined} aria-label={t("图片扩展功能")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
               {EXTENSIONS.map((entry) => entry.submenu ? <DropdownMenuSub key={entry.label} open={threeViewMenuOpen} onOpenChange={setThreeViewMenuOpen}>
-                <DropdownMenuSubTrigger disabled={!assetId || Boolean(busy) || operation.isPending}>
+                <DropdownMenuSubTrigger className="py-2" disabled={!assetId || Boolean(busy) || operation.isPending}>
                   <entry.icon /><span>{entry.label}</span>
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent aria-labelledby={undefined} aria-label={t("三视图类型")}><DropdownMenuGroup>
-                  {THREE_VIEW_OPTIONS.map((option) => <DropdownMenuItem key={option.value}
+                <DropdownMenuSubContent aria-labelledby={undefined} aria-label={t("三视图类型")} className="w-max p-2"><DropdownMenuGroup>
+                  {THREE_VIEW_OPTIONS.map((option) => <DropdownMenuItem key={option.value} className="py-2"
                     disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseThreeView(option.value)}>
                     <option.icon /><span>{option.label}</span><small>AI</small>
                   </DropdownMenuItem>)}
                 </DropdownMenuGroup></DropdownMenuSubContent>
-              </DropdownMenuSub> : <DropdownMenuItem key={entry.label}
+              </DropdownMenuSub> : <DropdownMenuItem key={entry.label} className="py-2"
                 disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseOperation(entry.operation)}>
                 <entry.icon /><span>{entry.label}</span><small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? t("本地") : "AI"}</small>
               </DropdownMenuItem>)}
@@ -385,16 +385,16 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
         <option.icon size={18} /><span><strong>{option.label}</strong><small>{option.summary}</small></span>
       </label>)}
     </fieldset> : null}
-    {operation === "LAYER_SPLIT" ? <label>{t("输出图层")}<Select density="compact" value={layerTarget}
+    {operation === "LAYER_SPLIT" ? <label>{t("输出图层")}<Select variant="ghost" density="compact" value={layerTarget}
       onChange={(event) => setLayerTarget(event.target.value as "FOREGROUND" | "BACKGROUND")}>
       <option value="FOREGROUND">{t("主体层（透明背景）")}</option>
       <option value="BACKGROUND">{t("背景层（移除主体后补全）")}</option>
     </Select></label> : null}
-    {operation === "VIEW_ANGLE" ? <label>{t("目标视角")}<Select density="compact" value={viewAngle}
+    {operation === "VIEW_ANGLE" ? <label>{t("目标视角")}<Select variant="ghost" density="compact" value={viewAngle}
       onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
       {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
     </Select></label> : null}
-    {cloud ? <label>{t("图片能力")}<Select density="compact" value={selectedCapabilityId}
+    {cloud ? <label>{t("图片能力")}<Select variant="ghost" density="compact" value={selectedCapabilityId}
       onChange={(event) => setCapabilityId(event.target.value)}>
       {eligibleCapabilities.length ? eligibleCapabilities.map((capability) => <option key={capability.id}
         value={capability.id}>{capability.name}</option>)
@@ -407,11 +407,11 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
         <Textarea value={instruction} maxLength={4000}
           placeholder={instructionCopy.placeholder}
           onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" ? <label>{t("放大倍数")}<Select density="compact" value={scale}
+    {operation === "UPSCALE" ? <label>{t("放大倍数")}<Select variant="ghost" density="compact" value={scale}
       onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
       <option value={2}>{t("2× 本地双三次插值")}</option><option value={4}>{t("4× 本地双三次插值")}</option>
     </Select></label> : null}
-    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("目标画幅")}<Select density="compact" value={ratio}
+    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("目标画幅")}<Select variant="ghost" density="compact" value={ratio}
       onChange={(event) => setRatio(event.target.value as AspectRatio)}>
       {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].map((value) =>
         <option key={value} value={value}>{value}</option>)}</Select></label> : null}

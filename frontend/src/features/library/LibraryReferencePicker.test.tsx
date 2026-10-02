@@ -19,7 +19,7 @@ it("adds a library reference atomically without placing a canvas card", async ()
   render(<QueryClientProvider client={createQueryClient()}><LibraryReferencePicker projectId="p" itemId="i" kinds={["IMAGE"]}
     draft={{ expectedVersion: 5, prompt: "酒店", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [] }}
     plan={() => ({ role: "REFERENCE", color: "#67C7F3", videoInputMode: null })} onApplied={applied} /></QueryClientProvider>);
-  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "查看 旅馆" }));
+  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
   await waitFor(() => expect(applied).toHaveBeenCalledOnce());
   expect(requests).toEqual([expect.objectContaining({ entryId: "entry", expectedVersion: 2, role: "REFERENCE", draft: expect.objectContaining({ expectedVersion: 5, prompt: "酒店" }) })]);
 });
@@ -36,7 +36,7 @@ it("preserves local input when another client changes the draft after reference 
   render(<QueryClientProvider client={createQueryClient()}><LibraryReferencePicker projectId="p" itemId="i" kinds={["IMAGE"]}
     draft={{ expectedVersion: 5, prompt: "本地输入", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [] }}
     plan={() => ({ role: "REFERENCE", color: "#67C7F3", videoInputMode: null })} onApplied={applied} /></QueryClientProvider>);
-  await userEvent.setup().click(await screen.findByRole("button", { name: "查看 旅馆" }));
+  await userEvent.setup().click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("草稿已被其他操作修改");
   expect(applied).not.toHaveBeenCalled();
 });

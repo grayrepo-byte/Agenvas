@@ -118,7 +118,7 @@ describe("MediaDraftEditor", () => {
     await screen.findByRole("textbox", { name: "图片提示词" });
     await user.click(screen.getByRole("button", { name: "添加图片输入" }));
     await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
-    await user.click(await screen.findByRole("button", { name: "查看 旅馆" }));
+    await user.click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
     await screen.findByText("正在转存，请稍候…");
     expect(screen.getByRole("button", { name: "关闭资产选择" })).toBeDisabled();
     await user.keyboard("{Escape}");
@@ -535,7 +535,6 @@ describe("MediaDraftEditor", () => {
       aspectRatio: "9:16", resolution: "2K", quality: "low", transparentBackground: true,
       generationCount: 4,
     }));
-    expect(within(parameters).getByText("空节点首个结果留在当前节点，其余结果创建独立节点")).toBeVisible();
     expect(screen.getByText("9:16 · 2K · 低 · 4 张")).toBeVisible();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

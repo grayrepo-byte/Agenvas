@@ -5,7 +5,7 @@
 .library-filters label:first-child { flex:1; }
 .library-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:18px; }
 .library-card { border:1px solid var(--ui-border); border-radius:14px; overflow:hidden; background:var(--ui-surface); }
-.library-card>button { display:grid; text-align:left; width:100%; border:0; background:transparent; color:var(--ui-text); cursor:pointer; padding:0 0 15px; gap:6px; }
+.library-card>button { height:auto; white-space:normal; min-width:0; grid-template-columns:minmax(0,1fr); display:grid; text-align:left; width:100%; border:0; background:transparent; color:var(--ui-text); cursor:pointer; padding:0 0 15px; gap:6px; }
 .library-card-preview { aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; background:var(--ui-surface-raised); overflow:hidden; margin-bottom:8px; }
 .library-card-preview img { width:100%; height:100%; object-fit:contain; }
 .library-card-preview p { padding:20px; white-space:pre-wrap; overflow:hidden; max-height:100%; }

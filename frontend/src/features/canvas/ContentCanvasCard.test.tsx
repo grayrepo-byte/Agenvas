@@ -39,14 +39,86 @@ function itemFor(value: Artifact): CanvasItem {
 
 function showCard(value: Artifact, selected = true, locked = false) {
   const onInspect = vi.fn();
-  const result = render(<QueryClientProvider client={createQueryClient()}>
-    <ContentCanvasCard artifact={value} item={itemFor(value)} selected={selected} locked={locked}
+  const client = createQueryClient();
+  const card = (next: Artifact) => <QueryClientProvider client={client}>
+    <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}
       onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
-  </QueryClientProvider>);
-  return { ...result, onInspect };
+  </QueryClientProvider>;
+  const result = render(card(value));
+  return { ...result, onInspect, rerenderArtifact: (next: Artifact) => result.rerender(card(next)) };
 }
 
 describe("ContentCanvasCard", () => {
+  it("keeps unsaved text when closing editing and lets the user cancel leaving", async () => {
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    await user.type(screen.getByRole("textbox", { name: "内容" }), "，未保存输入");
+    await user.click(screen.getByRole("button", { name: "退出内容编辑" }));
+    expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("已有正文，未保存输入");
+  });
+  it("retains the text and pinned CAS version when save-and-exit conflicts", async () => {
+    let revision: unknown;
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request }) => {
+        revision = await request.json();
+        return HttpResponse.json({ code: "VERSION_CONFLICT", detail: "版本冲突" }, { status: 409 });
+      }),
+    );
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "原正文" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    await user.type(screen.getByRole("textbox", { name: "内容" }), "，保留草稿");
+    expect(screen.getByRole("status")).toHaveTextContent("有未保存的修改");
+    await user.click(screen.getByRole("button", { name: "退出内容编辑" }));
+    await user.click(screen.getByRole("button", { name: "保存并退出" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("内容有冲突，修改未保存");
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("原正文，保留草稿");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
+      content: { format: "PLAIN_TEXT", text: "原正文，保留草稿" } });
+  });
+
+  it("places the version in the toolbar without a text tag and focuses content on every edit click", async () => {
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
+    const toolbar = screen.getByLabelText("文字卡片操作");
+    expect(within(toolbar).getByRole("button", { name: /v2/ })).toBeInTheDocument();
+    expect(screen.getByRole("article").querySelector(".content-card-chip")).toBeNull();
+    const user = userEvent.setup();
+    await user.click(within(toolbar).getByRole("button", { name: "编辑内容" }));
+    const editor = screen.getByRole("textbox", { name: "内容" });
+    expect(editor).toHaveFocus();
+    await user.type(editor, "，本地输入");
+    await user.click(within(toolbar).getByRole("button", { name: "卡片详情" }));
+    await user.click(within(toolbar).getByRole("button", { name: "编辑内容" }));
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveValue("已有正文，本地输入");
+    expect(within(toolbar).getByRole("button", { name: /v2/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /v2/ })).toHaveLength(1);
+    expect(screen.getByRole("article").querySelector(".content-card-chip")).toBeNull();
+  });
+
+  it("keeps the toolbar version pinned to an unsaved draft until explicit reload", async () => {
+    const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
+    const latest: Artifact = { ...value, version: 4, resourceDefaultVersionId: "version-3",
+      resourceDefaultVersion: { ...value.resourceDefaultVersion!, id: "version-3", versionNo: 3,
+        content: { format: "PLAIN_TEXT", text: "远端第三版" } } };
+    server.use(http.get("/api/v1/projects/:projectId/artifacts/:artifactId", () => HttpResponse.json(latest)));
+    const card = showCard(value);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    await user.type(screen.getByRole("textbox", { name: "内容" }), "，本地修改");
+    card.rerenderArtifact(latest);
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("第二版，本地修改");
+    expect(within(screen.getByLabelText("文字卡片操作")).getByRole("button", { name: /v2/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "载入最新版本" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("远端第三版"));
+    expect(within(screen.getByLabelText("文字卡片操作")).getByRole("button", { name: /v3/ })).toBeInTheDocument();
+  });
+
   it("shows actual text by default and opens direct editing from the toolbar", async () => {
     const text = `第一段\n${"很长的正文。".repeat(120)}\n最后一句也保留。`;
     showCard(artifact("TEXT", { format: "PLAIN_TEXT", text }));
@@ -124,9 +196,10 @@ describe("ContentCanvasCard", () => {
     await waitFor(() => expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
       content: { format: "MARKDOWN", text: "节点内新正文" } }));
     expect(await screen.findByText("新版本已保存")).toBeVisible();
+    expect(within(screen.getByLabelText("文字卡片操作")).getByRole("button", { name: /v3/ })).toBeVisible();
   });
 
-  it("opens version history from the node tag and switches with artifact CAS", async () => {
+  it("opens version history from the toolbar and switches with artifact CAS", async () => {
     let selection: unknown;
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
     server.use(

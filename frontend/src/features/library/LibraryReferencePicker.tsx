@@ -46,6 +46,6 @@ export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, 
     {error ? <p role="alert">{error}</p> : null}
     {confirmation ? <div role="alert">{t("添加此参考会切换视频输入模式，保留当前提示词与输入。")}<Button variant="ghost" type="button" onClick={() => add(confirmation, true)}>{t("确认切换并添加")}</Button><Button variant="ghost" type="button" onClick={() => setConfirmation(null)}>{t("取消切换")}</Button></div> : null}
     <TransferState transfer={transfer} success={t("已添加为参考")} />
-    <LibraryBrowser kinds={kinds} disabled={transfer.working || transfer.frozen} onPick={add} />
+    <LibraryBrowser pickAction="REFERENCE" kinds={kinds} disabled={transfer.working || transfer.frozen} onPick={add} />
   </div>;
 }

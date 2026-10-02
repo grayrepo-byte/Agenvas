@@ -17,7 +17,7 @@ export function CanvasSettingsMenu({ preferences, onPreferenceChange, persistenc
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="workspace-settings" ref={container}>
-    <DropdownMenuTrigger asChild><Button variant="ghost" ref={trigger} type="button" className="workspace-settings-trigger" aria-label={t("画布设置")}
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" ref={trigger} type="button" className="workspace-settings-trigger" aria-label={t("画布设置")}
       title={t("画布设置")} aria-haspopup="menu" aria-expanded={open} disabled={disabled}><GearSix size={20} /></Button></DropdownMenuTrigger>
     {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="workspace-settings-menu" aria-label={t("画布设置")}><DropdownMenuGroup>
       <p>{t("连线显示")}</p>

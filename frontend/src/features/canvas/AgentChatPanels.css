@@ -16,7 +16,7 @@
 .agent-chat-panel [role="alert"], .agent-chat-panel .text-red-700 { color: #f7a4ad; }
 .agent-chat-panel button { cursor: pointer; font-size: 11px; line-height: 1.5; }
 .agent-chat-panel button:disabled { cursor: not-allowed; opacity: 0.45; }
-.agent-chat-panel button:focus-visible, .agent-chat-panel input:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+.agent-chat-panel button:focus-visible, .agent-chat-panel input:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 
 .agent-chat-panel input[type="checkbox"] {
   display: inline-block;

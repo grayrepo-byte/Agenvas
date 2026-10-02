@@ -67,7 +67,7 @@
 .media-draft-editor .media-draft-reference-chip:hover .media-draft-reference-remove:disabled,
 .media-draft-editor .media-draft-reference-chip:focus-within .media-draft-reference-remove:disabled { opacity: 0.46; }
 .media-draft-reference-remove:hover:enabled { background: #d92e48; }
-.media-draft-reference-remove:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 1px; }
+.media-draft-reference-remove:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: 1px; }
 .media-draft-prompt-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .media-draft-prompt-shell { position: relative; min-height: 113px; flex: 1; margin: 9px 0 8px; }
 .media-draft-editor .media-draft-prompt {
@@ -106,7 +106,7 @@
   transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease; }
 .media-draft-run:hover:enabled { transform: translateY(-1px); background: var(--ui-accent-hover); box-shadow: 0 0 18px var(--ui-accent-glow); }
 .media-draft-editor button:focus-visible, .media-draft-editor select:focus-visible,
-.media-draft-editor input:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+.media-draft-editor input:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .media-draft-popover {
   width: 320px; max-width: calc(100vw - 40px);
   max-height: min(420px, 55vh); overflow-y: auto; transform-origin: bottom left;
@@ -114,6 +114,8 @@
 .ui-popover-surface.media-draft-popover { position: absolute; bottom: calc(100% + 10px); left: 0; }
 .media-draft-popover-title { margin: 4px 8px 8px; color: #93939a; font-size: 11px; }
 .media-draft-model-option { justify-content: space-between; }
+.media-draft-models { width: var(--ui-model-menu-width); border-radius: var(--ui-radius-lg); }
+.media-draft-models [data-slot="dropdown-menu-group"] { display: flex; flex-direction: column; gap: var(--ui-space-1); }
 
 .media-draft-model-option > span { min-width: 0; }
 .media-draft-model-option strong { display: block; }

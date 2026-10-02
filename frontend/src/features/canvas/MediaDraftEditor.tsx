@@ -31,12 +31,13 @@ import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveA
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { OptionContent } from "../../shared/ui/OptionContent";
 import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
 import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
-import { adapterModel } from "../settings/mediaAdapterCatalog";
+import { mediaModelDetails } from "./mediaModelPresentation";
 import { AudioPromptTools } from "./AudioPromptTools";
 import "./MediaDraftEditor.css";
 import { RunningHubForm,runningHubErrors,runningHubUsedVersions,type RunningHubValue } from "./RunningHubForm";
@@ -142,11 +143,6 @@ function inputsForVideoMode(inputs: DraftFields["mediaInputs"], mode: VideoInput
       role: index === 0 ? "START_FRAME" as const : "END_FRAME" as const }));
   }
   return [];
-}
-
-function modelName(capability: MediaCapability) {
-  return capability.settings.model || adapterModel(capability.adapterId) || capability.settings.checkpoint
-    || capability.settings.diffusionModel || capability.adapterId;
 }
 
 function imageAssetId(content: unknown) {
@@ -1463,15 +1459,17 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           <Cube size={17} /><span>{settings.isPending ? t("加载模型…") : settings.error ? t("模型配置读取失败") : chosenCapability?.name
             ?? (fields.capabilityId ? t("所选模型不可用") : t("未配置默认模型"))}</span><CaretDown size={12} />
         </Button></DropdownMenuTrigger>
-        {popover === "models" ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-models" ref={focusModelMenu}
+        {popover === "models" ? <DropdownMenuContent aria-labelledby={undefined} side="top" align="start" onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-models p-3" ref={focusModelMenu}
           id={`${id}-models`} role="menu" aria-label={t("生成模型")}><DropdownMenuGroup>
           <p className="media-draft-popover-title">{artifact.kind === "IMAGE" ? t("图片模型") : isAudio ? t("音频模型") : t("视频模型")}</p>
-          <DropdownMenuItem className="media-draft-model-option" role="menuitemradio" aria-checked={!fields.capabilityId} onSelect={(event) => { event.preventDefault(); chooseCapability(null); }}>
-            <span><strong>{t("项目默认能力")}</strong><small>{defaultCapabilityId ? t("跟随当前默认模型") : t("尚未配置默认模型")}</small></span>{!fields.capabilityId ? <Check size={16} /> : null}
+          <DropdownMenuItem variant="rich" className="media-draft-model-option" role="menuitemradio" aria-checked={!fields.capabilityId} onSelect={(event) => { event.preventDefault(); chooseCapability(null); }}>
+            <OptionContent icon={<Cube />} title={t("项目默认能力")}
+              description={defaultCapabilityId ? t("跟随当前默认模型") : t("尚未配置默认模型")} />
+            {!fields.capabilityId ? <Check size={16} /> : null}
           </DropdownMenuItem>
-          {availableCapabilities.map((capability) => <DropdownMenuItem className="media-draft-model-option" role="menuitemradio" aria-checked={fields.capabilityId === capability.id} key={capability.id} onSelect={(event) => { event.preventDefault(); chooseCapability(capability.id); }}>
-            <span><strong>{capability.name}</strong><small>{capability.connectionName} · {modelName(capability)}</small>
-              {capability.mock ? <small className="media-draft-model-mock">{t("Mock 演示")}</small> : null}</span>
+          {availableCapabilities.map((capability) => <DropdownMenuItem variant="rich" className="media-draft-model-option" role="menuitemradio" aria-checked={fields.capabilityId === capability.id} key={capability.id} onSelect={(event) => { event.preventDefault(); chooseCapability(capability.id); }}>
+            <OptionContent {...mediaModelDetails(capability, capability.connectionName)} title={capability.name}
+              note={capability.mock ? t("Mock 演示") : undefined} />
             {fields.capabilityId === capability.id ? <Check size={16} /> : null}
           </DropdownMenuItem>)}
           {settings.isPending ? <p role="status">{t("正在读取可用模型…")}</p> : null}
@@ -1535,7 +1533,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             }}>
               {GENERATION_COUNT_OPTIONS.map((value) => <ToggleGroupItem key={value} value={String(value)}>{value}</ToggleGroupItem>)}
             </ToggleGroup></FieldSet>
-            <p className="media-draft-fixed-parameter">{t("空节点首个结果留在当前节点，其余结果创建独立节点")}</p>
           </div> : <div className="media-draft-video-parameters">
             <FieldSet><FieldLegend>{t("比例")}</FieldLegend><ToggleGroup type="single" value={videoParameters.aspectRatio} className="media-draft-choice-grid media-draft-video-aspect-grid" onValueChange={(selected) => {
               const next = VIDEO_ASPECT_RATIO_OPTIONS.find((option) => String(option) === selected);

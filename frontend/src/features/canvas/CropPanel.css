@@ -107,7 +107,7 @@
   border-radius: 2px;
 }
 
-.crop-handle:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.crop-handle:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 
 .crop-toolbar {
   display: flex;
@@ -138,12 +138,10 @@
 
 .crop-toolbar button { padding: 0 14px; cursor: pointer; }
 .crop-toolbar button:hover:not(:disabled) { background: #343434; }
-.crop-toolbar button:focus-visible,
-.crop-ratio-control:focus-within { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.crop-toolbar button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .crop-toolbar button:disabled { opacity: .56; cursor: progress; }
 .crop-toolbar-divider { width: 1px; height: 22px; background: #4b4b4b; }
 .crop-ratio-control { padding: 0 8px 0 12px; }
-.crop-ratio-control .ui-select { min-width: 110px; }
 
 .crop-toolbar .crop-confirm { min-width: 86px; background: var(--ui-accent); color: var(--ui-accent-foreground); font-weight: 650; }
 .crop-toolbar .crop-confirm:hover:not(:disabled) { background: var(--ui-focus); }

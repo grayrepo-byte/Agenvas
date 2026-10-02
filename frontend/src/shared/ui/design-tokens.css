@@ -1,6 +1,9 @@
 /* Single theme entry point for pages, shared controls and canvas interactions.
    Brand variants derive from the sampled reference blue; never copy them into features. */
 :root {
+  /* Modal surfaces sit above canvas NodeToolbars; portal order handles nested dialogs. */
+  --ui-z-dialog: 2400;
+  --ui-z-popup: 2500;
   --ui-bg: #151516;
   --ui-surface: #1c1c1e;
   --ui-surface-raised: #232325;
@@ -58,9 +61,12 @@
   --ui-radius-lg: 12px;
   --ui-control-height: 40px;
   --ui-control-height-compact: 32px;
+  --ui-model-menu-width: 340px;
   --ui-menu-shadow: 0 12px 32px #0005, inset 0 1px 0 #ffffff04;
   --ui-panel-shadow: 0 3px 12px #00000010;
-  --ui-focus-shadow: 0 0 0 3px var(--ui-accent-ring);
+  --ui-focus-width: 1px;
+  --ui-focus-offset: 2px;
+  --ui-focus-shadow: 0 0 0 var(--ui-focus-width) var(--ui-accent-ring);
   --ui-inset-highlight: inset 0 0 0 1px #ffffff04;
   --ui-duration: 150ms;
   --ui-sidebar-width: 224px;

@@ -388,6 +388,7 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "smart-capability", name: "GPT Image", enabled: true,
+          adapterId: "OPENAI_GPT_IMAGE_2", settings: {},
           kind: "IMAGE_GENERATION", maxReferenceImages: 4,
           supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],

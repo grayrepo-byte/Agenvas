@@ -60,6 +60,17 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   useLocale();
   const queryClient = useQueryClient();
   const agent = data.item.agent;
+  const [configuration, setConfiguration] = useState(() => agent
+    ? { base: agent, name: agent.name, instruction: agent.instruction } : null);
+  const configurationDirty = configuration != null &&
+    (configuration.name !== configuration.base.name || configuration.instruction !== configuration.base.instruction);
+  useEffect(() => {
+    if (agent && (!configuration || agent.id !== configuration.base.id ||
+      (agent.version !== configuration.base.version && (!configurationDirty ||
+        (agent.name === configuration.name && agent.instruction === configuration.instruction))))) {
+      setConfiguration({ base: agent, name: agent.name, instruction: agent.instruction });
+    }
+  }, [agent, configuration, configurationDirty]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const positionedConversation = useRef<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ConversationDraft>>({});
@@ -201,8 +212,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const values = new FormData(event.currentTarget);
-    data.onUpdateAgent(agent as Agent, String(values.get("name")), String(values.get("instruction")));
+    if (configuration) data.onUpdateAgent(configuration.base, configuration.name, configuration.instruction);
   }
   async function submitRun() {
     if (!agent || data.activeRun || start.isPending || sessionBusy || preflight.isFetching
@@ -274,10 +284,14 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       <div className="agent-chat-body nodrag nowheel nopan" ref={bodyRef}>
         {view === "settings" ? <section aria-label={t("Agent 配置")} className="agent-chat-settings">
           <p className="agent-chat-eyebrow">{agent.profileKey} · v{agent.profileVersion}</p>
-          <form key={agent.version} onSubmit={submit}>
-            <label>{t("名称")}<Input defaultValue={agent.name} maxLength={MAX_AGENT_NAME} name="name" required /></label>
-            <label>{t("指令")}<Textarea defaultValue={agent.instruction} maxLength={MAX_INSTRUCTION} name="instruction" required rows={4} /></label>
+          <form onSubmit={submit}>
+            <label>{t("名称")}<Input value={configuration?.name ?? agent.name} onChange={(event) => setConfiguration((current) => current ? { ...current, name: event.target.value } : current)} maxLength={MAX_AGENT_NAME} name="name" required /></label>
+            <label>{t("指令")}<Textarea value={configuration?.instruction ?? agent.instruction} onChange={(event) => setConfiguration((current) => current ? { ...current, instruction: event.target.value } : current)} maxLength={MAX_INSTRUCTION} name="instruction" required rows={4} /></label>
             <Button variant="ghost" className="node-action" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("保存中…") : t("保存配置")}</Button>
+            {configuration && agent.version !== configuration.base.version ? <p role="status">
+              {t("当前版本已更新，本地修改仍保留。")}<Button variant="ghost" type="button"
+                onClick={() => setConfiguration({ base: agent, name: agent.name, instruction: agent.instruction })}>{t("载入最新版本")}</Button>
+            </p> : null}
             {data.updateAgentError ? <ChatError error={data.updateAgentError} /> : null}
           </form>
           <details className="agent-chat-binding-list"><summary>{t("明确输入（{0}）", { "0": agent.bindings.length })}</summary>

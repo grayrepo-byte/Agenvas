@@ -136,7 +136,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
     <footer className="relight-dialog-footer">
       <label className="relight-capability-select">
         <span>{t("AI 图片能力")}</span>
-        <Select density="compact" value={capabilityId} aria-label={t("AI 图片能力")}
+        <Select variant="ghost" density="compact" value={capabilityId} aria-label={t("AI 图片能力")}
           onChange={(event) => setCapabilityId(event.target.value)}>
           {capabilities.length ? capabilities.map((capability) => <option key={capability.id}
             value={capability.id}>{capability.name}</option>)

@@ -76,14 +76,14 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
     const isMedia = ["IMAGE", "AUDIO", "VIDEO"].includes(field.type);
     return <div className="ui-stack" key={field.key}>
       <Field><FieldLabel className="ui-field block">{field.label}{field.required ? " *" : ""}
-        {isMedia ? <Select value={typeof value === "string" ? value : ""} disabled={disabled} onChange={(event) => onChange(field.key, event.target.value || undefined)}>
+        {isMedia ? <Select variant="ghost" value={typeof value === "string" ? value : ""} disabled={disabled} onChange={(event) => onChange(field.key, event.target.value || undefined)}>
           <option value="">{t("选择{0}精确版本", { "0": field.type === "IMAGE" ? t("图片") : field.type === "AUDIO" ? t("音频") : t("视频") })}</option>
           {choices.filter((choice) => choice.kind === field.type).map((choice) => <option key={choice.id} value={choice.id} disabled={!choice.available}>{choice.label}</option>)}
           {value && !choices.some((choice) => choice.id === value) ? <option value={String(value)}>{t("已保存版本（正在核对或不可用）")}</option> : null}
-        </Select> : field.type === "SELECT" ? <Select value={value === undefined ? "" : String(field.options?.findIndex((option) => option.value === value) ?? -1)} disabled={disabled}
+        </Select> : field.type === "SELECT" ? <Select variant="ghost" value={value === undefined ? "" : String(field.options?.findIndex((option) => option.value === value) ?? -1)} disabled={disabled}
           onChange={(event) => onChange(field.key, event.target.value ? field.options?.[Number(event.target.value)]?.value : undefined)}>
           <option value="">{t("请选择")}</option>{field.options?.map((option, index) => <option key={index} value={index}>{option.label}</option>)}
-        </Select> : field.type === "BOOLEAN" ? <Select value={value === undefined ? "" : String(value)} disabled={disabled} onChange={(event) => onChange(field.key, event.target.value ? event.target.value === "true" : undefined)}>
+        </Select> : field.type === "BOOLEAN" ? <Select variant="ghost" value={value === undefined ? "" : String(value)} disabled={disabled} onChange={(event) => onChange(field.key, event.target.value ? event.target.value === "true" : undefined)}>
           <option value="">{t("使用默认值")}</option><option value="true">{t("开启")}</option><option value="false">{t("关闭")}</option>
         </Select> : field.type === "STRING" ? <Textarea rows={3} maxLength={field.maxLength ?? 20000} disabled={disabled} value={value === undefined ? "" : String(value)}
           onChange={(event) => onChange(field.key, event.target.value)} /> : <Input type="number" value={value === undefined ? "" : Number(value)} disabled={disabled}

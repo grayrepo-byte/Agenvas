@@ -86,6 +86,21 @@ async function readyComposer() {
   return input;
 }
 
+it("retains unsaved Agent configuration across chat and settings tabs", async () => {
+  const onUpdateAgent = vi.fn();
+  mountCard(null, { onUpdateAgent });
+  const user = userEvent.setup();
+  await readyComposer();
+  await user.click(screen.getByRole("button", { name: "Agent 设置" }));
+  await user.clear(screen.getByRole("textbox", { name: "名称" }));
+  await user.type(screen.getByRole("textbox", { name: "名称" }), "尚未保存的新名称");
+  await user.click(screen.getByRole("button", { name: "聊天" }));
+  await user.click(screen.getByRole("button", { name: "Agent 设置" }));
+  expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("尚未保存的新名称");
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(onUpdateAgent).toHaveBeenCalledWith(AGENT, "尚未保存的新名称", AGENT.instruction);
+});
+
 beforeEach(() => {
   useCanvasStore.getState().setSelectedIds([]);
   storedConversations = [conversation()]; storedRuns = []; currentConversationId = CONVERSATION_ID;

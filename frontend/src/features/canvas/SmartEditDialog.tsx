@@ -4,20 +4,22 @@ PaintBrush,PaperPlaneTilt,Plus,UploadSimple,X
 } from "@phosphor-icons/react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import {
-useEffect,useMemo,useRef,useState,type FormEvent,
+useMemo,useRef,useState,type FormEvent,
 type PointerEvent as ReactPointerEvent
 } from "react";
-import { createPortal } from "react-dom";
 import {
 ApiError,assetContentUrl,createArtifact,listArtifacts,listCanvasItems,uploadImageAsset,
 type MediaCapability
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
+import { DialogContent, Dialog as DialogRoot, DialogTitle } from "../../shared/ui/primitives/dialog";
+import { Dialog } from "../../shared/ui/Dialog";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Select } from "../../shared/ui/Select";
 import { readContentText } from "./artifactContent";
+import { mediaModelDetails } from "./mediaModelPresentation";
 
 const MASK_LONG_EDGE = 1024;
 const MASK_HISTORY_LIMIT = 20;
@@ -60,6 +62,8 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  // The fullscreen editor owns the popup's stacking context, above its backdrop.
+  const [menuContainer, setMenuContainer] = useState<HTMLElement | null>(null);
   const referenceSources = useQuery({ queryKey: ["smart-edit-references", projectId],
     queryFn: async () => {
       const [artifacts, canvas] = await Promise.all([listArtifacts(projectId), listCanvasItems(projectId)]);
@@ -95,13 +99,13 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
       candidates.findIndex((entry) => entry.versionId === candidate.versionId) === index);
   }, [projectId, referenceSources.data, sourceVersionId]);
 
-  useEffect(() => {
-    function closeWithEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", closeWithEscape);
-    return () => window.removeEventListener("keydown", closeWithEscape);
-  }, [onClose]);
+  const previousFocus = useRef(document.activeElement);
+  const [confirmExit, setConfirmExit] = useState(false);
+  function requestClose() {
+    if (busy || uploading) return;
+    if (instruction.trim() || hasMask || references.length) setConfirmExit(true);
+    else onClose();
+  }
 
   function updateHistoryState() {
     setHistoryState({ canUndo: historyIndex.current > 0,
@@ -301,11 +305,19 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     void uploadReferenceFiles(files);
   }
 
-  return createPortal(<div className="smart-edit-backdrop" role="presentation">
-    <section className="smart-edit-dialog nodrag nowheel nopan" role="dialog"
-      aria-label={t("智能编辑图片")} aria-modal="true">
+  return <DialogRoot open onOpenChange={(open) => { if (!open) requestClose(); }}>
+    <DialogContent ref={setMenuContainer} className="smart-edit-dialog nodrag nowheel nopan" showCloseButton={false}
+      aria-describedby={undefined}
+      onKeyDown={(event) => event.stopPropagation()}
+      onEscapeKeyDown={(event) => { event.stopPropagation(); if (busy || uploading) event.preventDefault(); }}
+      onPointerDownOutside={(event) => event.preventDefault()}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        if (previousFocus.current instanceof HTMLElement && previousFocus.current.isConnected) previousFocus.current.focus();
+      }}>
+      <DialogTitle className="sr-only">{t("智能编辑图片")}</DialogTitle>
       <div className="smart-edit-toolbar">
-        <Button variant="ghost" type="button" className="smart-edit-close" onClick={onClose}
+        <Button variant="ghost" type="button" className="smart-edit-close" disabled={busy || uploading} onClick={requestClose}
           aria-label={t("退出智能编辑")}><X size={19} />{t("智能编辑")}</Button>
         <span className="smart-edit-divider" />
         <Button variant="ghost" type="button" className={tool === "BRUSH" ? "is-active" : ""}
@@ -375,8 +387,10 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           placeholder={t("描述你想要的修改，例如“把背景换成海边”；可引用或上传图片作为视觉参考")}
           onChange={(event) => setInstruction(event.target.value)} />
         <div className="smart-edit-footer">
-          <label><span className="sr-only">{t("图片能力")}</span><ImageIcon size={16} />
-            <Select density="compact" value={selectedCapabilityId} onChange={(event) => setCapabilityId(event.target.value)}>
+          <label><span className="sr-only">{t("图片能力")}</span>
+            <Select variant="ghost" density="compact" icon={<ImageIcon />} value={selectedCapabilityId} portalContainer={menuContainer}
+              optionDetails={Object.fromEntries(eligibleCapabilities.map((capability) => [capability.id, mediaModelDetails(capability)]))}
+              onChange={(event) => setCapabilityId(event.target.value)}>
               {eligibleCapabilities.length ? eligibleCapabilities.map((capability) =>
                 <option key={capability.id} value={capability.id}>{capability.name}</option>)
                 : <option value="">{hasMask ? t("请配置支持蒙版的 OpenAI 图片能力") : t("请配置图片能力")}</option>}
@@ -391,6 +405,12 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
         {localError ? <p role="alert">{localError}</p> : null}
         {error ? <p role="alert">{error instanceof ApiError ? error.message : t("智能编辑任务受理失败，请重试。")}</p> : null}
       </div>
-    </section>
-  </div>, document.body);
+    </DialogContent>
+    {confirmExit ? <Dialog title={t("有未保存的修改")} onClose={() => setConfirmExit(false)}
+      onSubmit={(event) => { event.preventDefault(); onClose(); }}
+      footer={<><Button variant="outline" type="button" onClick={() => setConfirmExit(false)}>{t("继续编辑")}</Button>
+        <Button variant="destructive" type="submit">{t("放弃修改")}</Button></>}>
+      <p>{t("未提交的提示词、参考图和蒙版将被丢弃。")}</p>
+    </Dialog> : null}
+  </DialogRoot>;
 }

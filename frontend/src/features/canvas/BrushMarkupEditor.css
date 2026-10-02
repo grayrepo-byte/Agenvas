@@ -31,7 +31,7 @@
 .markup-divider { width: 1px; height: 20px; background: #3b3b3b; margin: 0 3px; }
 .markup-dialog button:disabled { opacity: .35; cursor: default; }
 .markup-dialog button:hover:not(:disabled) { filter: brightness(1.25); }
-.markup-dialog button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+.markup-dialog button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .markup-error, .markup-status { max-width: 440px; font-size: 13px; margin: 0; }
 .markup-error { color: #ffb5c5; }
 .markup-error button { margin-left: 8px; color: #fff; background: transparent; border: 0; text-decoration: underline; cursor: pointer; }

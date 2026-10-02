@@ -3,7 +3,7 @@ LinkSimple,LockSimple,PencilSimple,
 SlidersHorizontal,Stack,TextT
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect,useRef,useState } from "react";
 import type { Artifact,CanvasItem } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
@@ -11,7 +11,7 @@ import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText as readText } from "./artifactContent";
 import "./ContentCanvasCard.css";
-import { TextCanvasEditor } from "./TextCanvasEditor";
+import { TextCanvasEditor,type TextEditingState } from "./TextCanvasEditor";
 import { TextVersionPicker } from "./TextVersionPicker";
 import { hasCurrentVersion } from "./versionedArtifact";
 
@@ -39,6 +39,9 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   children }: ContentCanvasCardProps) {
   useLocale();
   const [editingText, setEditingText] = useState(false);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const [editingState, setEditingState] = useState<TextEditingState | null>(null);
+  useEffect(() => { if (editingText) editorRef.current?.focus(); }, [editingText]);
   const content = artifact.resourceDefaultVersion?.content;
   const { label, icon: Icon } = TEXT_PRESENTATION;
   const text = readText(content, "text");
@@ -50,15 +53,22 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
     toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
         {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
+        {hasCurrentVersion(artifact)
+          ? <TextVersionPicker artifact={editingText && editingState ? editingState.artifact : artifact}
+            disabled={editingText && Boolean(editingState?.dirty || editingState?.busy)} />
+          : <span className="text-card-count"><Stack size={12} aria-hidden />
+            {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("暂无版本")}</span>}
         <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact)}
-          onClick={() => setEditingText(true)}>
+          aria-pressed={editingText} className={editingText ? "is-open" : undefined}
+          onClick={() => { setEditingText(true); editorRef.current?.focus(); }}>
           <PencilSimple size={17} aria-hidden />{t("编辑内容")}</Button>
         <Button variant="ghost" type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("卡片详情")}</Button>
       </>}>
       {children}
       {hasCurrentVersion(artifact) && editingText
         ? <TextCanvasEditor artifact={artifact} canvasItemId={item.id} locked={locked}
-          onDone={() => setEditingText(false)} /> : <>
+          editorRef={editorRef} onEditingStateChange={setEditingState}
+          onDone={() => { setEditingText(false); setEditingState(null); }} /> : <>
       <div className="content-card-bar">
         <Icon size={17} aria-hidden />
         <h3 title={header}>{header}</h3>
@@ -70,16 +80,10 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
         role="region" aria-label={t("{0}正文", { "0": label })}>
         <p className="content-card-text">{text}</p>
       </div>}
-      <footer className={`content-card-sources${hasCurrentVersion(artifact)
-        ? " text-card-version-footer" : ""}`}>
-        <span className="content-card-chip"><Icon size={12} aria-hidden />{label}</span>
-        {hasCurrentVersion(artifact)
-          ? <TextVersionPicker artifact={artifact} />
-          : <span className="content-card-chip"><Stack size={12} aria-hidden />
-            {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("暂无版本")}</span>}
+      {references > 0 || locked ? <footer className="content-card-sources">
         {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{t("{0} 个引用", { "0": references })}</span> : null}
         {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("已锁定")} /> : null}
-      </footer>
+      </footer> : null}
       </>}
   </ArtifactCardFrame>;
 }

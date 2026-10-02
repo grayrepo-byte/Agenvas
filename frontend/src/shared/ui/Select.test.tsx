@@ -4,18 +4,39 @@ import { useState } from "react";
 import { describe,expect,it,vi } from "vitest";
 import { Select } from "./Select";
 
-function Form() {
+function Form({ variant }: { variant: "default" | "ghost" }) {
   const [value, setValue] = useState("a");
-  return <form aria-label="配置"><label>模型<Select name="model" value={value}
+  return <form aria-label="配置"><label>模型<Select variant={variant} name="model" value={value}
     onChange={(event) => setValue(event.target.value)}>
     <option value="a">Alpha</option><option value="b" disabled>Beta</option>
     <option value="c">Charlie</option><option value="d">Delta</option>
   </Select></label><button type="button">下一项</button></form>;
 }
 
-describe("Select", () => {
+function EditorSelect({ variant }: { variant: "default" | "ghost" }) {
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+  return <section ref={setContainer} role="dialog" aria-label="编辑图片">
+    <Select variant={variant} aria-label="模型" defaultValue="a" portalContainer={container}>
+      <option value="a">Alpha</option><option value="c">Charlie</option>
+    </Select>
+  </section>;
+}
+
+describe.each(["default", "ghost"] as const)("Select (%s)", (variant) => {
+  it("keeps an editor's model popup in its overlay and restores focus after selection", async () => {
+    render(<EditorSelect variant={variant} />);
+    const editor = screen.getByRole("dialog", { name: "编辑图片" });
+    const trigger = screen.getByRole("combobox", { name: "模型" });
+    const user = userEvent.setup();
+    await user.click(trigger);
+    const list = within(editor).getByRole("listbox", { name: "模型" });
+    await user.click(within(list).getByRole("option", { name: "Charlie" }));
+    expect(trigger).toHaveValue("c");
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
   it("selects from the shared panel and keeps native form values and focus", async () => {
-    render(<Form />);
+    render(<Form variant={variant} />);
     const user = userEvent.setup();
     const select = screen.getByRole("combobox", { name: "模型" });
     await user.click(select);
@@ -29,7 +50,7 @@ describe("Select", () => {
   });
 
   it("navigates past disabled options with arrows, Home, End and typeahead", async () => {
-    render(<Form />);
+    render(<Form variant={variant} />);
     const user = userEvent.setup();
     const select = screen.getByRole("combobox");
     select.focus();
@@ -44,7 +65,7 @@ describe("Select", () => {
   });
 
   it("dismisses with Escape and outside pointer and Tab without changing the value", async () => {
-    render(<Form />);
+    render(<Form variant={variant} />);
     const user = userEvent.setup();
     const select = screen.getByRole("combobox");
     await user.click(select);
@@ -62,8 +83,8 @@ describe("Select", () => {
   });
 
   it("honors disabled fieldsets and disabled option groups", async () => {
-    render(<><fieldset disabled><label>停用<Select defaultValue="a"><option value="a">Alpha</option></Select></label></fieldset>
-      <label>分组<Select defaultValue="c"><optgroup label="停用组" disabled><option value="a">Alpha</option></optgroup>
+    render(<><fieldset disabled><label>停用<Select variant={variant} defaultValue="a"><option value="a">Alpha</option></Select></label></fieldset>
+      <label>分组<Select variant={variant} defaultValue="c"><optgroup label="停用组" disabled><option value="a">Alpha</option></optgroup>
         <option value="c">Charlie</option><option value="d">Delta</option></Select></label></>);
     const user = userEvent.setup();
     await user.click(screen.getByRole("combobox", { name: "停用" }));
@@ -76,7 +97,7 @@ describe("Select", () => {
   });
 
   it("delegates available viewport height to Radix positioning", async () => {
-    render(<Form />);
+    render(<Form variant={variant} />);
     const select = screen.getByRole("combobox");
     vi.spyOn(select, "getBoundingClientRect").mockReturnValue({
       x: window.innerWidth - 70, y: window.innerHeight - 45, left: window.innerWidth - 70,
@@ -93,13 +114,30 @@ describe("Select", () => {
 
   it("does not choose an option removed during a background refresh", async () => {
     const change = vi.fn();
-    const view = render(<Select aria-label="模型" defaultValue="a" onChange={change}>
+    const view = render(<Select variant={variant} aria-label="模型" defaultValue="a" onChange={change}>
       <option value="a">Alpha</option><option value="c">Charlie</option></Select>);
     const user = userEvent.setup();
     await user.click(screen.getByRole("combobox"));
-    view.rerender(<Select aria-label="模型" defaultValue="a" onChange={change}><option value="a">Alpha</option></Select>);
+    view.rerender(<Select variant={variant} aria-label="模型" defaultValue="a" onChange={change}><option value="a">Alpha</option></Select>);
     await waitFor(() => expect(within(screen.getByRole("listbox")).queryByRole("option", { name: "Charlie" })).not.toBeInTheDocument());
     expect(change).not.toHaveBeenCalled();
     expect(screen.getByRole("combobox", { name: "模型", hidden: true })).toHaveValue("a");
+  });
+
+  it("selects a descriptive model row while keeping only its name in the trigger and form", async () => {
+    render(<form aria-label="模型配置"><Select variant={variant} aria-label="模型" name="model" defaultValue="a"
+      optionDetails={{ a: { icon: <svg aria-hidden="true" />, description: "Source A · model-a" },
+        c: { icon: <svg aria-hidden="true" />, description: "Source C · model-c" } }}>
+      <option value="a">Alpha</option><option value="c">Charlie</option>
+    </Select></form>);
+    const user = userEvent.setup();
+    const trigger = screen.getByRole("combobox", { name: "模型" });
+    await user.click(trigger);
+    expect(screen.getByText("Source C · model-c")).toBeVisible();
+    await user.click(screen.getByRole("option", { name: /Charlie/ }));
+    expect(trigger).toHaveTextContent(/^Charlie$/);
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(new FormData(screen.getByRole("form") as HTMLFormElement).get("model")).toBe("c");
   });
 });

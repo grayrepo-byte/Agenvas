@@ -14,9 +14,9 @@
   min-height: var(--ui-control-height); outline: none; transition: border-color 150ms, box-shadow 150ms;
 }
 :is(.app-page, .auth-page) :is(input, textarea)::placeholder { color: var(--ui-text-subtle); }
-:is(.app-page, .auth-page) :is(input, textarea):focus-visible { border-color: var(--ui-focus); box-shadow: var(--ui-focus-shadow); }
+:is(.app-page, .auth-page) :is(input, textarea):not([data-slot]):focus-visible { border-color: var(--ui-focus); box-shadow: var(--ui-focus-shadow); }
 :is(.app-page, .auth-page) :is(input[type="checkbox"], input[type="radio"]) { display: inline-block; flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-:is(.app-page, .auth-page) :is(button, a, summary):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+:is(.app-page, .auth-page) :is(button, a, summary):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 :is(.app-page, .auth-page) :is(button, a) { -webkit-tap-highlight-color: transparent; }
 :is(.app-page, .auth-page) button { cursor: pointer; }
 :is(.app-page, .auth-page) :is(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .5; }

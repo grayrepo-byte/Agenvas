@@ -10,8 +10,8 @@ import "./Library.css";
 import { CATEGORY_LABELS,KIND_LABELS,MAX_LIBRARY_NAME_LENGTH } from "./libraryLabels";
 
 /** One server-filtered browser is shared by the page, canvas drawer and reference picker. */
-export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false }: {
-  trash?: boolean; kinds?: Artifact["kind"][]; onPick: (entry: LibraryEntry) => void; disabled?: boolean;
+export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false, pickAction = "VIEW" }: {
+  trash?: boolean; kinds?: Artifact["kind"][]; onPick: (entry: LibraryEntry) => void; disabled?: boolean; pickAction?: "VIEW" | "CANVAS" | "REFERENCE";
 }) {
   useLocale();
   const [category, setCategory] = useState<LibraryCategory | undefined>();
@@ -45,7 +45,7 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false 
     {list.error ? <div role="alert">{list.error.message}<Button variant="ghost" type="button" onClick={() => { if (list.isFetchNextPageError) void list.fetchNextPage(); else void list.refetch(); }}>{t("重试读取资产")}</Button></div> : null}
     {list.data ? <p className="library-result-count">{t("{0} 个匹配资产", { "0": list.data.pages[0]?.total ?? 0 })}</p> : null}
     <div className="library-grid">{list.data?.pages.flatMap((page) => page.items).map((entry) => <article className="library-card" key={entry.id}>
-      <Button variant="ghost" type="button" aria-label={t("查看 {0}", { "0": entry.name })} disabled={disabled} onClick={() => onPick(entry)}>
+      <Button variant="ghost" type="button" aria-label={pickAction === "CANVAS" ? t("放到画布：{0}", { "0": entry.name }) : pickAction === "REFERENCE" ? t("用作参考：{0}", { "0": entry.name }) : t("查看 {0}", { "0": entry.name })} disabled={disabled} onClick={() => onPick(entry)}>
         <div className="library-card-preview">{entry.hasThumbnail ? <img loading="lazy" src={libraryThumbnailUrl(entry.id)} alt="" />
           : entry.kind === "TEXT" ? <p>{String(entry.textContent?.text ?? "").slice(0, 180)}</p> : entry.kind === "AUDIO" ? <MusicNotes size={40} /> : <Video size={40} />}</div>
         <strong>{entry.name}</strong><small>{CATEGORY_LABELS[entry.category]} · {KIND_LABELS[entry.kind]}{entry.durationMs ? t(" · {0} 秒", { "0": (entry.durationMs / 1000).toFixed(1) }) : ""}{entry.favorite ? t(" · 已收藏") : ""}</small>

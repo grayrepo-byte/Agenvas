@@ -63,7 +63,6 @@ describe("Artifact version editing", () => {
     field.focus();
     expect(field).toHaveFocus();
     expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /v2/ })).toBeInTheDocument();
   });
 
   it("revises manual text content without overwriting its previous version", async () => {
@@ -87,7 +86,6 @@ describe("Artifact version editing", () => {
     await waitFor(() => expect(revisions).toBe(1));
     // 保存产生新版本：编辑器切到 v3，旧内容没有被原地覆盖。
     expect(await screen.findByText("新版本已保存")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /v3/ })).toBeInTheDocument();
   });
 
   it("retains text edits after a 409 conflict instead of claiming they were saved", async () => {
@@ -121,7 +119,6 @@ describe("Artifact version editing", () => {
     await user.type(screen.getByLabelText("内容"), "Local draft");
     editor.rerender(textEditor(latest));
     expect(screen.getByLabelText("内容")).toHaveValue("Local draft");
-    expect(screen.getByRole("button", { name: /v2/ })).toBeInTheDocument();
     expect(screen.getByText(/当前版本已更新，本地修改仍保留/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
     await screen.findByRole("alert");
@@ -130,7 +127,6 @@ describe("Artifact version editing", () => {
     expect(screen.getByLabelText("内容")).toHaveValue("Local draft");
     await user.click(screen.getByRole("button", { name: "载入最新版本" }));
     await waitFor(() => expect(screen.getByLabelText("内容")).toHaveValue("Remote revision"));
-    expect(screen.getByRole("button", { name: /v3/ })).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
   });

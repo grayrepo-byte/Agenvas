@@ -250,7 +250,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
           <X size={18} weight="bold" />{t("取消")}</Button>
         <span className="crop-toolbar-divider" aria-hidden="true" />
         <label className="crop-ratio-control"><Crop size={19} />
-          <Select density="compact" aria-label={t("裁剪比例")} value={ratio}
+          <Select variant="ghost" density="compact" aria-label={t("裁剪比例")} value={ratio}
             onChange={(event) => selectRatio(event.target.value as CropRatio)}>
             {RATIO_OPTIONS.map((option) => <option key={option.value}
               value={option.value}>{option.label}</option>)}

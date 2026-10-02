@@ -30,6 +30,12 @@
   * { border-color: var(--ui-border); }
 }
 
+/* A single keyboard focus outline replaces stacked rings and legacy outlines. */
+.ui-focusable:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
+}
+
 :root {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -207,9 +213,11 @@ button:disabled {
 .workspace-tool-trigger {
   display: flex;
   flex-direction: column;
+  gap: 0;
   align-items: center;
   justify-content: center;
   width: 2rem;
+  height: auto;
   padding: 0.4rem 0 0.15rem;
   border-radius: 1rem;
   background: #2b2b2e;
@@ -564,8 +572,7 @@ button:disabled {
 .artifact-card-toolbar .media-operation-panel footer button { height: 34px; border-radius: 9px; background: #333; }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary { background: var(--ui-accent); color: var(--ui-accent-foreground); }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
-.smart-edit-backdrop { position: fixed; z-index: 2400; inset: 0; background: #090909e8; }
-.smart-edit-dialog { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; padding: 14px 24px 20px; color: #f4f4f4; }
+.smart-edit-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; transform: none; translate: none; border: 0; border-radius: 0; background: var(--ui-bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; padding: 14px 24px 20px; color: #f4f4f4; }
 .smart-edit-toolbar { justify-self: center; display: flex; align-items: center; gap: 5px; min-height: 50px; padding: 7px 10px; border: 1px solid #3d3d3d; border-radius: 25px; background: #262626; box-shadow: 0 14px 34px #0009; }
 .smart-edit-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: transparent; color: #cfcfcf; font-size: 12px; cursor: pointer; }
 .smart-edit-toolbar button:hover:not(:disabled) { background: #363636; color: #fff; }
@@ -647,7 +654,7 @@ button:disabled {
 }
 .relight-dialog button:disabled { opacity: .48; cursor: not-allowed; }
 .relight-dialog button:focus-visible,
-.relight-dialog :is(textarea, input):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.relight-dialog :is(textarea, input):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .relight-dialog-header { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
 .relight-dialog-header strong { font-size: 15px; font-weight: 650; }
 .relight-dialog-header button {
@@ -817,7 +824,7 @@ button:disabled {
 .media-inspector { z-index: 21; bottom: auto; max-height: calc(100vh - 110px); }
 .media-card-upload-form { display: flex; flex-direction: column; gap: 20px; padding-top: 20px; font-size: 13px; }
 .media-card-upload-form [role="alert"] { color: #fda4af; line-height: 1.6; }
-.workspace-shell button:focus-visible, .workspace-shell a:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+.workspace-shell button:focus-visible, .workspace-shell a:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 
 @media (prefers-reduced-motion: reduce) {
   .media-upload-button { transition: none; }

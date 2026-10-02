@@ -31,7 +31,7 @@ describe("SystemSettingsPage", () => {
     await userEvent.setup().type(currentPassword, "temporary-input");
     await userEvent.setup().click(screen.getByRole("tab", { name: "系统诊断" }));
     finishRead?.();
-    await screen.findByText("路径检查正常（未试写）");
+    await screen.findByText("路径检查正常");
     await userEvent.setup().click(await screen.findByRole("tab", { name: "账户安全" }));
     expect(screen.getByLabelText("当前密码")).toBe(currentPassword);
     expect(currentPassword).toHaveValue("temporary-input");
@@ -83,12 +83,12 @@ describe("SystemSettingsPage", () => {
       })),
     );
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/settings/general?tab=diagnostics"]}><SystemSettingsPage /></MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByText("路径检查正常（未试写）")).toBeInTheDocument();
+    expect(await screen.findByText("路径检查正常")).toBeInTheDocument();
     expect(screen.getByText("暂无异常任务记录。")).toBeInTheDocument();
     fail = true;
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新状态" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("保留上一次读取的状态");
-    expect(screen.getByText("路径检查正常（未试写）")).toBeInTheDocument();
+    expect(screen.getByText("路径检查正常")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeEnabled());
   });
 

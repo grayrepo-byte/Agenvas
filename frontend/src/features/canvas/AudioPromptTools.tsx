@@ -98,7 +98,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
       <Button variant="default" type="submit"  disabled={hasMentions || prompt !== basis || !applyText?.trim() || applyText.length > MAX_AUDIO_PROMPT_LENGTH}>{t("应用提示词")}</Button></>}>
     {mode === "templates" ? <div className="audio-prompt-templates">{TEMPLATES.map((template) => <Button variant="outline" type="button"
       key={template.title} onClick={() => setText(template.text)}>{template.title}</Button>)}</div> : null}
-    {mode === "translate" ? <label>{t("目标语言")}<Select value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="英文">{t("英文")}</option><option value="中文">{t("中文")}</option></Select></label> : null}
+    {mode === "translate" ? <label>{t("目标语言")}<Select variant="ghost" value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="英文">{t("英文")}</option><option value="中文">{t("中文")}</option></Select></label> : null}
     <label>{t("提示词")}<Textarea className="audio-prompt-expanded" aria-label={t("完整音频提示词")} maxLength={MAX_AUDIO_PROMPT_LENGTH}
       value={text} disabled={Boolean(target) || run.isPending || hasMentions} onChange={(event) => { if (!run.isPending) { progress.current = null; run.reset(); setText(event.target.value); } }} /></label>
     {prompt !== basis ? <p role="alert">{t("当前音频草稿已变化，请关闭窗口后重新编辑。")}</p> : null}

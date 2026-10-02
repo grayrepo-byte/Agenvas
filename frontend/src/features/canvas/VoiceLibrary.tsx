@@ -97,9 +97,9 @@ export function VoiceLibrary({ selected, onSelect, onClose, projectId, canvasIte
   }}>
     <div className="voice-library-heading"><strong>{t("音色库")}</strong><Button variant="ghost" type="button" aria-label={t("关闭音色库")} onClick={onClose}><X size={17} /></Button></div>
     <Input autoFocus type="search" aria-label={t("搜索音色")} placeholder={t("搜索音色名称")} value={search} onChange={(event) => setSearch(event.target.value)} />
-    <div className="voice-library-filters"><Select aria-label={t("音色语言")} value={language} onChange={(event) => setLanguage(event.target.value)}>
+    <div className="voice-library-filters"><Select variant="ghost" aria-label={t("音色语言")} value={language} onChange={(event) => setLanguage(event.target.value)}>
       <option value="">{t("全部语言")}</option>{Array.from(new Set(VOICES.map((voice) => voice.language))).map((value) => <option key={value} value={value}>{t(value)}</option>)}</Select>
-      <Select aria-label={t("音色场景")} value={scene} onChange={(event) => setScene(event.target.value)}><option value="">{t("全部场景")}</option>
+      <Select variant="ghost" aria-label={t("音色场景")} value={scene} onChange={(event) => setScene(event.target.value)}><option value="">{t("全部场景")}</option>
         {Array.from(new Set(VOICES.map((voice) => voice.scene))).map((value) => <option key={value} value={value}>{t(value)}</option>)}</Select></div>
     <div className="voice-library-tabs" role="group" aria-label={t("音色范围")}>
       {([{ key: "all", label: t("全部") }, { key: "recent", label: t("最近使用") }, { key: "favorites", label: t("我的收藏") }] as const).map((item) =>

@@ -72,3 +72,65 @@ shadcn/Radix Dialog 隔离背景，打开时锁定背景滚动，Tab/Shift+Tab �
 配置为 Radix、Vite、Tailwind 4、Phosphor 图标，`@/` 同时由 TypeScript 和 Vite 解析。新增组件前在 `frontend` 执行 `pnpm dlx shadcn@latest info` 和 `docs <component>`，沿用当前组件目录与公共语义变量。新增第三方依赖须同步依赖基线。专用媒体播放器、画笔、卡片手势和资源编辑器继续由领域组件维护。
 
 实际命令、回归覆盖与 Mock 截图见 [shadcn 迁移验证](evidence/shadcn-migration.md)。
+
+## 焦点效果（2026-10-02）
+
+公共控件使用单层 1px 焦点轮廓、2px 偏移，由 `--ui-focus-width` 和 `--ui-focus-offset` 集中维护。shadcn primitives 通过 `ui-focusable` 在 `:focus-visible` 时显示轮廓，不再叠加 3px ring、焦点边框和旧页面外圈。原生控件与链接沿用同一宽度；键盘定位与关闭后的焦点恢复逻辑不变。
+
+14 项相关测试、lint 与生产构建通过；侧栏 Mock 浏览器证据及范围见 [焦点样式验证](evidence/focus-style.md)。
+
+## 图片扩展菜单间距（2026-10-02）
+
+图片扩展及三视图子菜单采用内容宽度（`w-max`），面板四周与菜单项上下内边距均为 8px（`p-2` / `py-2`）。中文 Mock 浏览器实测主菜单宽约 186px、单项高 36px，替代原有 224px 固定宽度和 32px 行高；沿用 Radix 的视口高度限制与纵向滚动。
+
+`MediaCanvasCard.test.tsx` 与 `DropdownMenu.test.tsx` 共 58 项测试通过；lint、生产构建及 `git diff --check` 通过，构建仍提示现有分块超过 500kB。布局截图使用真实媒体卡片组件和 Mock 查询数据，未提供媒体字节，仅用于菜单验证：[扩展菜单截图](evidence/images/extension-menu/expanded.jpg)。
+
+## 画布功能选择器（2026-10-02）
+
+画布内的选择入口使用公共 `Select variant="ghost"`：透明背景、无边框与投影，宽度按当前内容收缩，悬停与展开时显示轻背景，键盘定位显示统一焦点轮廓。智能编辑将图标、模型名称和箭头放进同一个入口；裁剪、打光、图片扩展参数、文字格式、音色筛选、音频提示工具及 RunningHub 参数选择沿用同一变体。生成面板的模型与参数入口继续使用无边框 `Button variant="ghost"`。设置页表单仍使用默认 Select 变体。
+
+功能 Select 展开面板与选项的内边距采用 8px，选项高度 36px，并保留类型搜索、禁用选项、表单值同步与关闭后的焦点恢复。裁剪移除包裹标签的额外焦点轮廓，文字格式移除固定宽度。
+
+验证使用真实智能编辑组件和 Mock 能力及图像，实测触发器边框为 0px、底色透明，切换模型后关闭菜单并恢复焦点；[智能编辑截图](evidence/images/ghost-select/smart-edit.jpg)。本次仅验证界面与现有交互，未运行真实生成。
+
+Select 的两种变体、MediaCanvasCard、MediaDraftEditor、CropPanel、RunningHubForm、AudioPromptTools 与 ContentCanvasCard 共 7 个测试文件、119 项测试通过；最后的裁剪与文字样式调整后重跑对应 10 项测试通过。lint、生产构建及 `git diff --check` 通过，构建仍保留现有分块超过 500kB 的提示。
+
+## 模型菜单条目（2026-10-02）
+
+生成面板与智能编辑复用 `OptionContent` 的图标、名称、下方描述布局。图标按图片、视频或音频能力类型显示，描述来自已配置的连接与精确模型身份；Mock 演示作为名称旁的标签保留。没有新增 API、能力说明字段或模型评分。模型菜单宽度使用 `--ui-model-menu-width`（340px），面板内边距 12px、条目圆角 12px，悬停及已选背景仅覆盖条目；浏览器实测背景距左右边框均为 13px（含边框）。生成面板菜单向上展开并与入口左边对齐。
+
+智能编辑通过 `portalContainer` 将 Select 菜单挂在全屏编辑层内，避免 body Portal 被该层遮住。Select 的标题与描述分开渲染，收起后只显示模型名称；原有表单值、类型搜索、选择、保存与焦点恢复继续保留。
+
+布局使用真实组件与 Mock 查询数据验证：[生成模型菜单](evidence/images/model-menu/generation-models.jpg)、[智能编辑菜单](evidence/images/model-menu/smart-edit-models.jpg)。未进行真实生成。
+
+MediaDraftEditor、MediaCanvasCard、Select 与 DropdownMenu 共 108 项定向测试通过，包含描述不进入收起标签、表单值同步和编辑层内 Portal 的选择及焦点恢复。lint、生产构建及 `git diff --check` 通过；构建仍提示现有分块超过 500kB。
+
+## 右上角工具栏图标（2026-10-02）
+
+添加、工具切换和设置按钮使用 `Button size="icon-sm"`，避免普通文字按钮的内边距挤偏图标。工具切换的两个图标纵向排列，间距为零，高度按内容计算。Mock 浏览器测量所有图标水平居中且完整落在按钮内：[对齐截图](evidence/images/tool-rail/aligned.jpg)。CanvasSelectionClearing 与 CanvasDisplaySettings 共 28 项测试、lint、生产构建及 `git diff --check` 通过；构建仍提示现有分块超过 500kB。
+
+## 日志消息列表对齐（2026-10-02）
+
+Prompt / Completion 明细列表的按钮行使用内容高度和正常换行，取消普通按钮的固定高度及不换行限制。序号、角色与摘要垂直居中；长摘要保留最多两行，并随内容撑开行高。浏览器使用真实组件与 Mock 日志验证单行和双行摘要，三列中心偏差小于 0.01px，均未越过行边界：[对齐截图](evidence/images/log-message-row/aligned.jpg)。
+
+FormattedCallExchange 与 CallLogsPage 共 19 项测试、主题颜色检查及 `git diff --check` 通过。本次仅调整 CSS，未运行全量测试、生产构建或真实 Provider 调用。
+
+## 系统走查交互修复（2026-10-02）
+
+全屏智能编辑复用公共 Radix Dialog 的焦点隔离、初始焦点与关闭恢复；公共弹窗层级由 `--ui-z-dialog` 集中维护，高于画布浮动工具栏；公共 Select/DropdownMenu 使用更高的 `--ui-z-popup`，确保根部 Portal 不被弹窗遮挡。全屏样式同时重置 `transform` 与 `translate`。模型菜单先处理 Esc，画布的全局 Esc 在存在模态或弹出层时不取消选中；未提交提示词、参考图或蒙版退出提供继续编辑/放弃修改。
+
+文字节点的显式退出提供继续编辑/放弃修改/保存并退出，保存失败和冲突保持草稿与 CAS 基准，并显示未保存状态。文字编辑工具条允许换行，生成面板在选中聚焦时预留自己的高度；1280×800 浏览器复测面板底部为 709.5px。新建 Agent 自动选中并适屏，配置输入在同一卡片的聊天/设置标签之间保留。
+
+资产网格的主按钮按内容自适应高度，缩略图和信息完整展示。资产动作名称按查看详情、放到画布、用作参考区分；项目资源使用本地化类型及默认结果状态，不用“草稿”代替未设置资源默认版本。
+
+问题步骤、页面覆盖、修复矩阵、专项测试与真实运行限制见 [系统走查记录](evidence/system-walkthrough-2026-10-02.md)。
+
+## 文字卡片工具栏与焦点（2026-10-02）
+
+文字版本选择移到上方浮动工具栏，正文底部移除文字类型标签与重复版本入口。进入编辑时聚焦正文；再次点击“编辑内容”恢复正文焦点，保留已输入内容。工具栏版本绑定编辑草稿的 CAS 基准，未保存或请求中仍禁止切换；远端更新不替换草稿，保存或显式载入后同步版本号。
+
+正文文本域不显示额外边框、投影与焦点轮廓，卡片外层保留选中/键盘焦点提示。1280×800 实际应用复测确认文本域 border=0、outline=none、box-shadow=none，选中卡片只有外层 2px 轮廓；重复编辑点击聚焦且保留输入，未保存版本切换保护有效。[修复截图](evidence/images/system-walkthrough-2026-10-02/37-text-card-toolbar-fixed.png)。专项检查见 [走查后续记录](evidence/system-walkthrough-2026-10-02.md)。
+
+## 添加卡片菜单高度（2026-10-02）
+
+双击画布与右上角添加入口复用的 Command 显式使用 `h-auto`，覆盖公共组件的 `h-full`，按标题与五个选项收缩高度。浏览器实测菜单从画布全高 1112px 恢复为 196px，宽度仍为 208px；靠近底部时边界约束、方向键选择与 Esc 关闭正常。[修复截图](evidence/images/system-walkthrough-2026-10-02/38-add-card-menu-fixed.png)。
