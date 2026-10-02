@@ -454,7 +454,7 @@ class AgentMediaApprovalPostgresIT {
         var output = draftChanged.approval().outputs().getFirst();
         var draft = drafts.get(owner.userId(), draftChanged.project().id(), output.canvasItemId());
         drafts.save(owner.userId(), draftChanged.project().id(), output.canvasItemId(), draft.version(),
-                "Human changed the prompt", draft.parameters(), null, draft.capabilityId(), null, List.of(), List.of());
+                "Human changed the prompt", draft.parameters(), null, draft.capabilityId(), null, List.of(), List.of(), null);
         mvc.perform(post(decisionPath(draftChanged)).with(auth).with(csrf())
                         .header("Idempotency-Key", "draft-drift").contentType("application/json")
                         .content(decision("APPROVE"))).andExpect(status().isConflict());

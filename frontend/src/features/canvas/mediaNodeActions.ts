@@ -25,6 +25,7 @@ export async function prepareMediaNode(projectId: string, sourceItemId: string,
     // An action's blank target is created with the same ID even if the response was lost.
     if (current.version > 0) {
       const equal = current.prompt === fields.prompt && current.capabilityId === fields.capabilityId
+        && (current.styleId ?? null) === (fields.styleId ?? null)
         && JSON.stringify(current.parameters) === JSON.stringify(fields.parameters)
         && current.durationSeconds === fields.durationSeconds && current.videoInputMode === fields.videoInputMode
         && JSON.stringify(current.mentions) === JSON.stringify(fields.mentions)

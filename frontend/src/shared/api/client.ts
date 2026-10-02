@@ -84,6 +84,10 @@ export type MediaSettings = components["schemas"]["MediaSettings"];
 export type MediaConnection = components["schemas"]["MediaConnection"];
 export type MediaCapability = components["schemas"]["MediaCapability"];
 export type ImageGenerationParameters = components["schemas"]["ImageGenerationParameters"];
+export type MediaStyleSummary = components["schemas"]["MediaStyleSummary"];
+export type MediaStyle = components["schemas"]["MediaStyle"];
+export type CreateMediaStyleRequest = components["schemas"]["CreateMediaStyleRequest"];
+export type UpdateMediaStyleRequest = components["schemas"]["UpdateMediaStyleRequest"];
 export type CreateMediaConnectionRequest = components["schemas"]["CreateMediaConnectionRequest"];
 export type UpdateMediaConnectionRequest = components["schemas"]["UpdateMediaConnectionRequest"];
 export type CreateMediaCapabilityRequest = components["schemas"]["CreateMediaCapabilityRequest"];
@@ -98,6 +102,36 @@ const MEBIBYTE = 1024 * 1024;
 const MAX_IMAGE_UPLOAD_BYTES = 20 * MEBIBYTE;
 const MAX_AUDIO_UPLOAD_BYTES = 50 * MEBIBYTE;
 const MAX_VIDEO_UPLOAD_BYTES = 500 * MEBIBYTE;
+const MAX_MEDIA_STYLE_UPLOAD_BYTES = 5 * MEBIBYTE;
+
+/** Catalog responses contain display metadata only; prompt injection remains server-side. */
+export async function listMediaStyles(): Promise<MediaStyleSummary[]> {
+  return readJson<MediaStyleSummary[]>("/api/v1/media-styles", t("styles.loadFailed"));
+}
+
+export async function getMediaStyleSettings(): Promise<MediaStyle[]> {
+  return readJson<MediaStyle[]>("/api/v1/settings/media-styles", t("styles.loadFailed"));
+}
+
+export async function createMediaStyle(request: CreateMediaStyleRequest): Promise<MediaStyle> {
+  return writeJson<MediaStyle>("/api/v1/settings/media-styles", { method: "POST", body: JSON.stringify(request) });
+}
+
+export async function updateMediaStyle(id: string, request: UpdateMediaStyleRequest): Promise<MediaStyle> {
+  return writeJson<MediaStyle>(`/api/v1/settings/media-styles/${encodeURIComponent(id)}`, {
+    method: "PUT", body: JSON.stringify(request),
+  });
+}
+
+export async function uploadMediaStyleThumbnail(id: string, file: File, expectedVersion: number): Promise<MediaStyle> {
+  if (file.size > MAX_MEDIA_STYLE_UPLOAD_BYTES) throw new ApiError(413, "STYLE_THUMBNAIL_TOO_LARGE", t("styles.previewSizeLimit"), false);
+  const form = new FormData();
+  form.append("file", file);
+  form.append("expectedVersion", String(expectedVersion));
+  return writeJson<MediaStyle>(`/api/v1/settings/media-styles/${encodeURIComponent(id)}/thumbnail`, {
+    method: "POST", body: form,
+  }, t("styles.uploadFailed"));
+}
 
 /** Reads a server-filtered audit page; this never contacts a model or media Provider. */
 export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage> {

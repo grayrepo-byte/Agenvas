@@ -55,6 +55,7 @@ public class SecurityConfiguration {
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/autodl-workflows", "/api/v1/settings/autodl-workflows/**",
                                 "/api/v1/settings/media-defaults/**", "/api/v1/call-logs",
+                                "/api/v1/settings/media-styles", "/api/v1/settings/media-styles/**",
                                 "/api/v1/settings/system-logs", "/api/v1/settings/storage/**",
                                 "/api/v1/call-logs/**", "/api/v1/settings/debug", "/api/v1/settings/call-log-retention", "/api/v1/settings/call-log-retention/**")
                         .hasRole("ADMIN")

@@ -21,7 +21,7 @@ const artifact: Artifact = {
 };
 const initialDraft: MediaDraft = {
   projectId: PROJECT_ID, canvasItemId: CANVAS_ITEM_ID, prompt: "A lighthouse at dawn",
-  parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: null,
+  parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: null, styleId: null,
   mediaInputs: [], mentions: [],
   displayMode: "DRAFT", version: 0, createdAt: NOW, updatedAt: NOW,
 };
@@ -117,6 +117,50 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it.each(["IMAGE", "VIDEO"] as const)("persists an illustrated style for %s without changing the prompt", async (kind) => {
+    const user = userEvent.setup();
+    const { saves } = setup({ kind, ...(kind === "VIDEO" ? {
+      draft: { ...initialDraft, durationSeconds: 5, videoInputMode: "TEXT" },
+      settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability] }],
+        defaults: [{ kind: "VIDEO_GENERATION", capabilityId: versatileVideoCapability.id, version: 0 }] },
+    } : {}), handlers: [http.get("/api/v1/media-styles", () => HttpResponse.json([
+      { id: "style-watercolor", name: "水彩", category: "绘画", enabled: true, version: 1,
+        thumbnailUrl: "/api/v1/media-styles/style-watercolor/thumbnail", builtIn: true },
+      { id: "style-photo", name: "写实摄影", category: "摄影", enabled: true, version: 1,
+        thumbnailUrl: "/api/v1/media-styles/style-photo/thumbnail", builtIn: true },
+    ]))] });
+    await user.click(await screen.findByRole("button", { name: "选择风格" }));
+    const modal = screen.getByRole("dialog", { name: "选择风格" });
+    expect(await within(modal).findByRole("img", { name: "水彩效果预览" })).toHaveAttribute("src", "/api/v1/media-styles/style-watercolor/thumbnail");
+    await user.type(within(modal).getByRole("searchbox"), "水彩");
+    expect(within(modal).queryByRole("button", { name: "写实摄影" })).not.toBeInTheDocument();
+    await user.click(within(modal).getByRole("button", { name: "水彩" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ styleId: "style-watercolor", prompt: initialDraft.prompt }));
+    expect(screen.getByRole("textbox", { name: kind === "IMAGE" ? "图片提示词" : "视频提示词" })).toHaveTextContent(initialDraft.prompt);
+    expect(screen.getByRole("button", { name: "选择风格" })).toHaveTextContent("水彩");
+    await user.click(screen.getByRole("button", { name: "清除风格" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ styleId: null, prompt: initialDraft.prompt }));
+  });
+
+  it("retains a disabled style, blocks generation and supports clearing it", async () => {
+    const user = userEvent.setup();
+    const { saves } = setup({ draft: { ...initialDraft, styleId: "style-retired" }, handlers: [
+      http.get("/api/v1/media-styles", () => HttpResponse.json([{ id: "style-retired", name: "旧风格", category: "绘画",
+        enabled: false, version: 2, thumbnailUrl: null, builtIn: false }])),
+    ] });
+    expect(await screen.findByText("所选风格已停用或不可用，请清除或重新选择后运行。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择风格" })).toHaveTextContent("旧风格");
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "清除风格" }));
+    await waitFor(() => expect(saves.at(-1)?.styleId).toBeNull());
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("does not offer styles for audio generation", async () => {
+    setup({ kind: "AUDIO", settings: audioSettings });
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    expect(screen.queryByRole("button", { name: "选择风格" })).not.toBeInTheDocument();
+  });
   it("keeps the library picker open on Escape or outside clicks while a reference is archiving", async () => {
     const { saves } = setup({ handlers: [
       http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "library-image", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 0, source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
@@ -197,6 +241,7 @@ describe("MediaDraftEditor", () => {
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByRole("textbox", { name: "视频提示词" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "选择视频输入模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "选择风格" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     await changeControl(slot, { target: { value: "video-v1" } });
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ clip: "video-v1" }));
@@ -833,7 +878,7 @@ describe("MediaDraftEditor", () => {
       expect(within(menu).queryByText("隐藏模型")).not.toBeInTheDocument();
       await user.keyboard("{ArrowDown}{Enter}");
       await waitFor(() => expect(saves).toHaveLength(1));
-      expect(saves[0]).toEqual({ expectedVersion: 0, prompt: initialDraft.prompt,
+      expect(saves[0]).toEqual({ expectedVersion: 0, prompt: initialDraft.prompt, styleId: null,
         parameters: { aspectRatio: "AUTO", resolution: "1K", quality: "high",
           transparentBackground: false, generationCount: 1 },
         videoInputMode: null, mediaInputs: [], mentions: [],

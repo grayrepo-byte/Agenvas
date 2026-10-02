@@ -10,6 +10,126 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/media-styles:
+    get:
+      operationId: listMediaStyles
+      summary: 图片与视频的全局风格目录，不返回后台注入提示词
+      tags: [Settings]
+      responses:
+        "200":
+          description: 包含停用条目以保留既有选择；Cache-Control no-store
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/MediaStyleSummary"}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /api/v1/media-styles/{styleId}/thumbnail:
+    parameters:
+      - name: styleId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getMediaStyleThumbnail
+      summary: 已登录用户读取风格效果预览
+      tags: [Settings]
+      responses:
+        "200":
+          description: 预置 WebP 或实际解码后重新编码的 PNG；Cache-Control no-store
+          content:
+            image/webp: {schema: {type: string, format: binary}}
+            image/png: {schema: {type: string, format: binary}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/settings/media-styles:
+    get:
+      operationId: listMediaStyleSettings
+      summary: 管理员读取风格名称、分类、提示词和配图状态
+      tags: [Settings]
+      responses:
+        "200":
+          description: 全局风格设置；Cache-Control no-store
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/MediaStyle"}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      operationId: createMediaStyle
+      summary: 管理员手动新增风格；配图随后通过上传接口设置
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMediaStyleRequest"}
+      responses:
+        "201":
+          description: 风格已创建；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaStyle"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/settings/media-styles/{styleId}:
+    parameters:
+      - name: styleId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: updateMediaStyle
+      summary: 管理员以 CAS 修改或停用风格，已受理任务保持原快照
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateMediaStyleRequest"}
+      responses:
+        "200":
+          description: 风格已保存；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaStyle"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/settings/media-styles/{styleId}/thumbnail:
+    parameters:
+      - name: styleId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: uploadMediaStyleThumbnail
+      summary: 管理员上传风格配图；禁止外部 URL
+      description: 实际 PNG/JPEG/WebP 解码；至多 5 MiB 与 2000 万像素，最长边缩小至 640 像素，去除元数据后重新编码 PNG，保存上限 1 MiB。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, expectedVersion]
+              properties:
+                file: {type: string, format: binary}
+                expectedVersion: {type: integer, format: int64, minimum: 0}
+      responses:
+        "200":
+          description: 配图已替换，风格版本递增；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaStyle"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/settings/system-logs:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -2687,6 +2807,59 @@ paths:
                   maxLength: 200
 components:
   schemas:
+    MediaStyleSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, category, enabled, version, thumbnailUrl, builtIn]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 80}
+        category: {type: string, minLength: 1, maxLength: 40}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        thumbnailUrl: {type: [string, "null"], description: Authenticated application URL; null until a custom preview is uploaded.}
+        builtIn: {type: boolean}
+    MediaStyle:
+      type: object
+      additionalProperties: false
+      required: [id, name, category, enabled, version, thumbnailUrl, builtIn, promptSuffix]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 80}
+        category: {type: string, minLength: 1, maxLength: 40}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        thumbnailUrl: {type: [string, "null"]}
+        builtIn: {type: boolean}
+        promptSuffix: {type: string, minLength: 1, maxLength: 4000}
+    CreateMediaStyleRequest:
+      type: object
+      additionalProperties: false
+      required: [name, category, promptSuffix, enabled]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 80}
+        category: {type: string, minLength: 1, maxLength: 40}
+        promptSuffix: {type: string, minLength: 1, maxLength: 4000}
+        enabled: {type: boolean}
+    UpdateMediaStyleRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, category, promptSuffix, enabled]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 80}
+        category: {type: string, minLength: 1, maxLength: 40}
+        promptSuffix: {type: string, minLength: 1, maxLength: 4000}
+        enabled: {type: boolean}
+    MediaStyleSnapshot:
+      type: object
+      additionalProperties: false
+      required: [id, version, name, promptSuffix]
+      properties:
+        id: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+        name: {type: string}
+        promptSuffix: {type: string}
     LibraryCategory:
       type: "string"
       enum: ["CHARACTER", "SCENE", "PROP", "OTHER"]
@@ -3521,7 +3694,7 @@ components:
       required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
         canvasItems, connections]
       properties:
-        schemaVersion: {type: integer, const: 4}
+        schemaVersion: {type: integer, const: 5}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -3649,13 +3822,18 @@ components:
     ManifestMediaDraft:
       type: object
       additionalProperties: false
-      required: [prompt, parameters, durationSeconds, capabilityId, videoInputMode,
+      required: [prompt, parameters, durationSeconds, capabilityId, styleId, style, videoInputMode,
         mediaInputs, mentions, displayMode, version]
       properties:
         prompt: {type: string}
         parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
         durationSeconds: {type: [integer, "null"]}
         capabilityId: {type: [string, "null"], format: uuid}
+        styleId: {type: [string, "null"], format: uuid, description: Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.}
+        style:
+          oneOf:
+            - {$ref: "#/components/schemas/MediaStyleSnapshot"}
+            - {type: "null"}
         videoInputMode:
           oneOf:
             - {$ref: "#/components/schemas/VideoInputMode"}
@@ -3826,6 +4004,7 @@ components:
         parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60, description: "RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。"}
         capabilityId: {type: [string, "null"], format: uuid}
+        styleId: {type: [string, "null"], format: uuid, description: Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.}
         videoInputMode:
           oneOf:
             - {$ref: "#/components/schemas/VideoInputMode"}
@@ -3923,7 +4102,7 @@ components:
     MediaDraft:
       type: object
       additionalProperties: false
-      required: [projectId, canvasItemId, prompt, parameters, durationSeconds, capabilityId,
+      required: [projectId, canvasItemId, prompt, parameters, durationSeconds, capabilityId, styleId,
         videoInputMode, mediaInputs, mentions, displayMode, version, createdAt, updatedAt]
       properties:
         projectId: {type: string, format: uuid}
@@ -3932,6 +4111,7 @@ components:
         parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
         durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60, description: "RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。"}
         capabilityId: {type: [string, "null"], format: uuid}
+        styleId: {type: [string, "null"], format: uuid, description: Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.}
         videoInputMode:
           oneOf:
             - {$ref: "#/components/schemas/VideoInputMode"}

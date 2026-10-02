@@ -141,7 +141,7 @@ class AutoDlVideoPostgresIT {
         var changed = fixture(owner, capability.id()); Task changedTask = run(owner, changed);
         var before = drafts.get(owner, changed.project(), changed.card());
         drafts.save(owner, changed.project(), changed.card(), before.version(), "User changed while queued", before.parameters(),
-                before.durationSeconds(), before.capabilityId(), before.videoInputMode(), changed.inputs(), List.of());
+                before.durationSeconds(), before.capabilityId(), before.videoInputMode(), changed.inputs(), List.of(), null);
         worker.submitOnce("autodl-pinned-submit");
         assertThat(receivedBody.path("prompt").asText()).isEqualTo("Pinned input");
         poll(changedTask);
@@ -176,7 +176,7 @@ class AutoDlVideoPostgresIT {
         var imageOnly = incomplete.inputs().stream().filter(input -> input.role() != MediaDraft.InputRole.AUDIO_REFERENCE).toList();
         var savedIncomplete = drafts.save(owner, incomplete.project(), incomplete.card(), incompleteDraft.version(),
                 incompleteDraft.prompt(), incompleteDraft.parameters(), 1, capability.id(),
-                MediaDraft.VideoInputMode.GENERAL_REFERENCE, imageOnly, List.of());
+                MediaDraft.VideoInputMode.GENERAL_REFERENCE, imageOnly, List.of(), null);
         assertThatThrownBy(() -> direct.run(owner, incomplete.project(), incomplete.artifact(), incomplete.card(),
                 savedIncomplete.version(), "missing-required-audio")).hasMessageContaining("条音频");
         assertThat(jdbc.sql("select count(*) from task where project_id=:id").param("id", incomplete.project())
@@ -192,7 +192,7 @@ class AutoDlVideoPostgresIT {
         var frameInputs = List.of(new MediaDraftService.SaveMediaInput(first, MediaDraft.InputRole.START_FRAME, "#67C7F3"),
                 new MediaDraftService.SaveMediaInput(last.resourceDefaultVersion().id(), MediaDraft.InputRole.END_FRAME, "#F15CAF"));
         var frameDraft = drafts.save(owner, frames.project(), frames.card(), frames.draftVersion(), "Frames", mapper.createObjectNode(), 1,
-                framesCapability.id(), MediaDraft.VideoInputMode.START_END, frameInputs, List.of());
+                framesCapability.id(), MediaDraft.VideoInputMode.START_END, frameInputs, List.of(), null);
         Task frameTask = direct.run(owner, frames.project(), frames.artifact(), frames.card(), frameDraft.version(), "frames-run");
         worker.submitOnce("autodl-frame-submit");
         assertThat(receivedBody.path("first_frame").asText()).startsWith("data:image/png;base64,");
@@ -222,7 +222,7 @@ class AutoDlVideoPostgresIT {
         UUID customArtifact = artifacts.create(owner, customProject, Artifact.Kind.VIDEO, "New target", null).artifact().id();
         UUID customCard = CanvasMediaFixture.place(canvas, owner, customProject, customArtifact);
         var customDraft = drafts.save(owner, customProject, customCard, 0, "Future video", mapper.createObjectNode().put("videoResolution", "720p"),
-                18, custom.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of());
+                18, custom.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
         Task customTask = direct.run(owner, customProject, customArtifact, customCard, customDraft.version(), "new-target-run");
         worker.submitOnce("autodl-custom-submit");
         assertThat(submittedPath).endsWith("/comfyui_workflow/new_video_v1");
@@ -262,7 +262,7 @@ class AutoDlVideoPostgresIT {
         var inputs = List.of(new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(), MediaDraft.InputRole.AUDIO_REFERENCE, "#67C7F3"),
                 new MediaDraftService.SaveMediaInput(image.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#F15CAF"));
         var draft = drafts.save(owner, project, card, 0, "Pinned input", mapper.createObjectNode(), 1,
-                capability, MediaDraft.VideoInputMode.GENERAL_REFERENCE, inputs, List.of());
+                capability, MediaDraft.VideoInputMode.GENERAL_REFERENCE, inputs, List.of(), null);
         return new Fixture(project, video.id(), card, draft.version(), inputs, Files.readAllBytes(assets.get(owner, project, imageAsset).path()), audioBytes);
     }
     private Task run(UUID owner, Fixture fixture) { return direct.run(owner, fixture.project(), fixture.artifact(), fixture.card(), fixture.draftVersion(), "autodl-run-"+fixture.card()); }

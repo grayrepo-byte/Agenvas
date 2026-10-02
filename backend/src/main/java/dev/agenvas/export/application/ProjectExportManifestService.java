@@ -13,6 +13,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.settings.application.MediaStyleService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -29,7 +30,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
-    private static final int MANIFEST_SCHEMA_VERSION = 4;
+    private static final int MANIFEST_SCHEMA_VERSION = 5;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
@@ -47,11 +48,12 @@ public class ProjectExportManifestService {
     private final ObjectMapper mapper;
     /** 标记清单生成时间。 */
     private final Clock clock;
+    private final MediaStyleService styles;
 
     /** 组装项目清单所需的权限、产物、资产和时间服务。 */
     public ProjectExportManifestService(ProjectService projects, ArtifactService artifacts,
             AssetService assets, CanvasService canvas, MediaDraftService mediaDrafts,
-            CanvasConnectionService connections, ObjectMapper mapper, Clock clock) {
+            CanvasConnectionService connections, ObjectMapper mapper, Clock clock, MediaStyleService styles) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.assets = assets;
@@ -60,6 +62,7 @@ public class ProjectExportManifestService {
         this.connections = connections;
         this.mapper = mapper;
         this.clock = clock;
+        this.styles = styles;
     }
 
     /** 在一个可重复读快照中生成清单，保留资产 ID 但不包含 URL 或存储密钥。 */
@@ -130,7 +133,7 @@ public class ProjectExportManifestService {
 
     private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
         return new MediaDraftEntry(draft.prompt(), copy(draft.parameters()),
-                draft.durationSeconds(), draft.capabilityId(), draft.videoInputMode(),
+                draft.durationSeconds(), draft.capabilityId(), draft.styleId(), styles.snapshotForExport(draft.styleId()), draft.videoInputMode(),
                 draft.mediaInputs(), draft.mentions(), draft.displayMode(), draft.version());
     }
 
@@ -211,7 +214,7 @@ public class ProjectExportManifestService {
 
     /** Complete safe generation state for one image or video card. */
     public record MediaDraftEntry(String prompt, JsonNode parameters, Integer durationSeconds,
-            UUID capabilityId, MediaDraft.VideoInputMode videoInputMode,
+            UUID capabilityId, UUID styleId, MediaStyleService.Snapshot style, MediaDraft.VideoInputMode videoInputMode,
             List<MediaDraft.MediaInput> mediaInputs, List<MediaDraft.PromptMention> mentions,
             MediaDraft.DisplayMode displayMode, long version) {}
 

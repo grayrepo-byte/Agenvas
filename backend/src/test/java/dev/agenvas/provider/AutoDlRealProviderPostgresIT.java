@@ -106,7 +106,7 @@ class AutoDlRealProviderPostgresIT {
         var draft = drafts.save(owner, project, card, 0, "A calm blue abstract scene moving gently, with a soft musical tone.",
                 mapper.createObjectNode(), 1, capability.id(), MediaDraft.VideoInputMode.GENERAL_REFERENCE,
                 List.of(new MediaDraftService.SaveMediaInput(image.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#F15CAF"),
-                        new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(), MediaDraft.InputRole.AUDIO_REFERENCE, "#67C7F3")), List.of());
+                        new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(), MediaDraft.InputRole.AUDIO_REFERENCE, "#67C7F3")), List.of(), null);
         Task task = direct.run(owner, project, target.id(), card, draft.version(), "autodl-real-once");
         assertThat(worker.submitOnce("autodl-real-submit")).isEqualTo(1);
         Task accepted = tasks.get(owner, project, task.id());

@@ -99,7 +99,7 @@ class AutoDlResolutionPricingPostgresIT {
         UUID artifact = artifacts.create(owner, project, Artifact.Kind.VIDEO, "Default tier", null).artifact().id();
         UUID card = CanvasMediaFixture.place(canvas, owner, project, artifact);
         var draft = drafts.save(owner, project, card, 0, "Landscape", mapper.createObjectNode(), null,
-                capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of());
+                capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
         Task defaultTask = direct.run(owner, project, artifact, card, draft.version(), "default-tier");
         assertThat(defaultTask.input().at("/mediaInput/parameters/videoResolution").asText()).isEqualTo("480p");
         assertThat(defaultTask.input().at("/mediaInput/providerParameters/resolution").asText()).isEqualTo("480p横(864*480)");
@@ -107,7 +107,7 @@ class AutoDlResolutionPricingPostgresIT {
         direct.cancelQueued(owner, project, defaultTask.id());
         draft = drafts.get(owner, project, card);
         draft = drafts.save(owner, project, card, draft.version(), "Landscape", mapper.createObjectNode().put("videoResolution", "768p"),
-                8, capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of());
+                8, capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
         Task selectedTask = direct.run(owner, project, artifact, card, draft.version(), "selected-tier");
         assertThat(selectedTask.input().at("/mediaInput/providerParameters/resolution").asText()).isEqualTo("768p横(1344*768)");
         assertThat(selectedTask.input().at("/mediaPricing/amount").asText()).isEqualTo("0.123456");

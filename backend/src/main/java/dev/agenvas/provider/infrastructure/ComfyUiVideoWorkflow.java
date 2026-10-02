@@ -99,8 +99,8 @@ public class ComfyUiVideoWorkflow {
     /** 深拷贝固定工作流，并将已上传的固定输入图片写入图生视频的两个图像输入。 */
     public ObjectNode render(String prompt, String negativePrompt, long seed,
             String uploadedImageName, Project.AspectRatio ratio, int durationMs) {
-        if (prompt == null || prompt.isBlank() || prompt.length() > 8_000
-                || negativePrompt != null && negativePrompt.length() > 8_000
+        if (prompt == null || prompt.isBlank() || prompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
+                || negativePrompt != null && negativePrompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
                 || seed < 0 || ratio == null || !supportsDuration(durationMs)
                 || uploadedImageName == null
                 || !uploadedImageName.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")

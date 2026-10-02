@@ -105,7 +105,7 @@ class CanvasMediaVersionsPostgresIT {
         var draft = drafts.get(owner.userId(), project.id(), card);
         return drafts.save(owner.userId(), project.id(), card, draft.version(), prompt,
                 mapper.createObjectNode(), video ? 1 : null, null,
-                video ? MediaDraft.VideoInputMode.TEXT : null, List.of(), List.of());
+                video ? MediaDraft.VideoInputMode.TEXT : null, List.of(), List.of(), null);
     }
 
     private CanvasService.CanvasEntry card(UUID id) {

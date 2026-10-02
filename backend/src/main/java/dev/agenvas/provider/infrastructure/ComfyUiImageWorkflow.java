@@ -72,8 +72,8 @@ public class ComfyUiImageWorkflow {
     /** 创建本次任务的工作流图；调用方不能选择节点、模型文件、输出路径或端点。 */
     public ObjectNode render(String prompt, String negativePrompt, long seed,
             String uploadedImageName, boolean hasReference) {
-        if (prompt == null || prompt.isBlank() || prompt.length() > 8_000
-                || negativePrompt != null && negativePrompt.length() > 8_000
+        if (prompt == null || prompt.isBlank() || prompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
+                || negativePrompt != null && negativePrompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
                 || uploadedImageName == null
                 || !uploadedImageName.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
                 || uploadedImageName.contains("..") || seed < 0) {

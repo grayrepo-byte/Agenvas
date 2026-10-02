@@ -24,6 +24,24 @@ class RunningHubDefinitionTest {
         var input = mapper.readTree("{\"dynamicValues\":{\"person\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
         assertThat(definition.values(mapper, input, "", null, true).path("strength").asDouble()).isEqualTo(0.5);
     }
+    @Test void serverPromptCompositionKeepsTheDefaultAndRechecksFinalLengths() {
+        ObjectNode schema = schema();
+        var fields = schema.putArray("fields");
+        for (int index = 1; index <= 1; index++) {
+            fields.addObject().put("key", "prompt" + index).put("label", "Prompt " + index)
+                    .put("nodeId", Integer.toString(index)).put("fieldName", "text")
+                    .put("type", "STRING").put("source", "PROMPT").put("required", true)
+                    .put("defaultValue", "scene " + index).put("maxLength", 40);
+        }
+        var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+        var defaults = definition.values(mapper, mapper.createObjectNode(), "", null, true);
+        var styled = definition.transformPromptValues(mapper, defaults, prompt -> prompt + "\n\nVisual style: ink");
+        assertThat(styled.path("prompt1").asText()).isEqualTo("scene 1\n\nVisual style: ink");
+        assertThat(defaults.path("prompt1").asText()).isEqualTo("scene 1");
+        assertThatThrownBy(() -> definition.transformPromptValues(mapper, defaults, prompt -> prompt + "x".repeat(40)))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
+
     @Test void numericBoundsUnknownKeysAndMediaUrlsAreRejected() {
         var definition = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
         for (String json : new String[]{"{\"dynamicValues\":{\"strength\":2}}", "{\"dynamicValues\":{\"unknown\":1}}", "{\"dynamicValues\":{\"person\":\"https://example.com/a.png\"}}", "{\"generationCount\":2}"})

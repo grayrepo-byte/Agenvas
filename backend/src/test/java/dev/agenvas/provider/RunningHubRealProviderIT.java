@@ -175,7 +175,7 @@ class RunningHubRealProviderIT {
         var draft = drafts.save(owner, project.id(), card, 0,
                 "A red geometric sphere slowly rotates above a blue pedestal in a clean studio. Static camera, subtle motion, no people, no text.",
                 parameters, VIDEO_SECONDS, capability.id(), null,
-                List.of(new MediaDraftService.SaveMediaInput(referenceArtifact.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of());
+                List.of(new MediaDraftService.SaveMediaInput(referenceArtifact.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of(), null);
         var task = direct.run(owner, project.id(), artifact.id(), card, draft.version(), UUID.randomUUID().toString());
         attempts.add(new Attempt(name, project.id(), task.id()));
         writeReceipts();

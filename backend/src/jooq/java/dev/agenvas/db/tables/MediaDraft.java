@@ -9,6 +9,7 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.CanvasItemMediaInput.CanvasItemMediaInputPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
+import dev.agenvas.db.tables.MediaStyle.MediaStylePath;
 import dev.agenvas.db.tables.records.MediaDraftRecord;
 
 import java.time.OffsetDateTime;
@@ -124,6 +125,13 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
      */
     public final TableField<MediaDraftRecord, JSONB> MENTIONS_JSON = createField(DSL.name("mentions_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
 
+    /**
+     * The column <code>public.media_draft.style_id</code>. Optional image/video
+     * visual style; user prompt remains unchanged. Disabled choices remain
+     * explicit.
+     */
+    public final TableField<MediaDraftRecord, UUID> STYLE_ID = createField(DSL.name("style_id"), SQLDataType.UUID, this, "Optional image/video visual style; user prompt remains unchanged. Disabled choices remain explicit.");
+
     private MediaDraft(Name alias, Table<MediaDraftRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -198,7 +206,7 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
 
     @Override
     public List<ForeignKey<MediaDraftRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY);
+        return Arrays.asList(Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CANVAS_ITEM, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_STYLE);
     }
 
     private transient CanvasItemPath _canvasItem;
@@ -224,6 +232,18 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
             _mediaCapability = new MediaCapabilityPath(this, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_CAPABILITY, null);
 
         return _mediaCapability;
+    }
+
+    private transient MediaStylePath _mediaStyle;
+
+    /**
+     * Get the implicit join path to the <code>public.media_style</code> table.
+     */
+    public MediaStylePath mediaStyle() {
+        if (_mediaStyle == null)
+            _mediaStyle = new MediaStylePath(this, Keys.MEDIA_DRAFT__FK_MEDIA_DRAFT_STYLE, null);
+
+        return _mediaStyle;
     }
 
     private transient CanvasItemMediaInputPath _canvasItemMediaInput;

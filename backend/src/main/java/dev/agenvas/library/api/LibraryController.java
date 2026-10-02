@@ -137,14 +137,14 @@ public class LibraryController {
         var draft = request.draft();
         return response(library.reference(principal.userId(), projectId, itemId, request.entryId(), request.expectedVersion(),
                 new LibraryService.ReferenceDraft(draft.expectedVersion(), draft.prompt(), draft.parameters(), draft.durationSeconds(),
-                        draft.capabilityId(), draft.videoInputMode(), draft.mediaInputs(), draft.mentions()),
+                        draft.capabilityId(), draft.videoInputMode(), draft.mediaInputs(), draft.mentions(), draft.styleId()),
                 request.role(), request.color(), request.commandKey()), httpRequest);
     }
     public record ReferenceDraftRequest(@PositiveOrZero long expectedVersion,
             @NotNull @Size(max = LibraryService.MAX_DRAFT_PROMPT_LENGTH) String prompt, JsonNode parameters, Integer durationSeconds, UUID capabilityId,
             dev.agenvas.artifact.domain.MediaDraft.VideoInputMode videoInputMode,
             java.util.List<dev.agenvas.artifact.application.MediaDraftService.SaveMediaInput> mediaInputs,
-            java.util.List<dev.agenvas.artifact.domain.MediaDraft.PromptMention> mentions) {}
+            java.util.List<dev.agenvas.artifact.domain.MediaDraft.PromptMention> mentions, UUID styleId) {}
 
     public record ReferenceRequest(@NotNull UUID entryId, @PositiveOrZero long expectedVersion,
             @NotNull @Valid ReferenceDraftRequest draft,

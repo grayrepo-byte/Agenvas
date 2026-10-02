@@ -99,7 +99,7 @@ class ImageOperationDerivationPostgresIT {
                 List.of(new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE, "#7C3AED")),
                 List.of(new MediaDraft.PromptMention(reference.resourceDefaultVersion().id(),
-                        MediaDraft.InputRole.REFERENCE)));
+                        MediaDraft.InputRole.REFERENCE)), UUID.fromString("00000000-0000-4000-8000-000000000301"));
 
         ObjectNode crop = mapper.createObjectNode();
         crop.put("x", 0);
@@ -186,6 +186,7 @@ class ImageOperationDerivationPostgresIT {
         assertThat(draft.prompt()).isEmpty();
         assertThat(draft.parameters().isEmpty()).isTrue();
         assertThat(draft.capabilityId()).isNull();
+        assertThat(draft.styleId()).isNull();
         assertThat(draft.durationSeconds()).isNull();
         assertThat(draft.videoInputMode()).isNull();
         assertThat(draft.mediaInputs()).isEmpty();

@@ -105,7 +105,7 @@ class AgentMediaApprovalServiceTest {
         when(saved.version()).thenReturn(1L);
         when(drafts.get(ownerId, projectId, canvasItemId)).thenReturn(initial);
         when(drafts.save(eq(ownerId), eq(projectId), eq(canvasItemId), eq(0L), eq("Draw a tree"),
-                any(), eq(null), eq(binding.capabilityId()), eq(null), anyList(), anyList()))
+                any(), eq(null), eq(binding.capabilityId()), eq(null), anyList(), anyList(), eq(null)))
                 .thenReturn(saved);
         when(mediaTasks.preflight(ownerId, projectId, artifactId, canvasItemId, 1))
                 .thenReturn(preflight("frozen-hash"));
@@ -149,7 +149,7 @@ class AgentMediaApprovalServiceTest {
         when(drafts.get(ownerId, projectId, canvasItemId)).thenReturn(initial);
         when(drafts.save(eq(ownerId), eq(projectId), eq(canvasItemId), eq(0L), eq("Animate"),
                 any(), eq(5), eq(binding.capabilityId()), eq(MediaDraft.VideoInputMode.START_END),
-                anyList(), anyList())).thenReturn(saved);
+                anyList(), anyList(), eq(null))).thenReturn(saved);
         when(mediaTasks.preflight(ownerId, projectId, artifactId, canvasItemId, 1))
                 .thenReturn(new DirectMediaTaskService.MediaPreflight(Task.Kind.VIDEO_GENERATION,
                         binding, "video-frozen-hash", 1, mapper.createObjectNode()));
@@ -169,7 +169,7 @@ class AgentMediaApprovalServiceTest {
                 List.of(new MediaDraftService.SaveMediaInput(startFrame, MediaDraft.InputRole.START_FRAME,
                                 "#7C3AED"),
                         new MediaDraftService.SaveMediaInput(endFrame, MediaDraft.InputRole.END_FRAME,
-                                "#7C3AED")), List.of());
+                                "#7C3AED")), List.of(), null);
         ArgumentCaptor<AgentMediaApproval> captured = ArgumentCaptor.forClass(AgentMediaApproval.class);
         verify(approvals).insert(captured.capture());
         assertThat(captured.getValue().request().path("outputs").get(0)

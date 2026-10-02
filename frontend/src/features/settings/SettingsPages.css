@@ -31,6 +31,9 @@
 
 .system-settings-tabs { margin-bottom: var(--ui-space-5); max-width: 640px; }
 .system-settings-panel[hidden] { display: none; }
-@media (max-width: 560px) { .system-settings-tabs { flex-wrap: wrap; } .system-settings-tabs > button { flex-basis: 40%; } }
+@media (max-width: 560px) {
+  .system-settings-tabs { flex-wrap: wrap; height: auto; }
+  .system-settings-tabs > button { flex-basis: 40%; height: auto; min-height: var(--ui-control-height-compact); }
+}
 
 .call-log-retention-field { max-width: var(--ui-settings-aside-width); }

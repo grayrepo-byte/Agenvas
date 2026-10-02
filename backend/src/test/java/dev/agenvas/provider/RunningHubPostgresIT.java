@@ -108,7 +108,7 @@ class RunningHubPostgresIT {
             assertThat(jdbc.sql("select provider_result_manifest is not null from task where id=:id").param("id", task.id()).query(Boolean.class).single()).isTrue();
             var draft = drafts.get(owner, fixture.project.id(), fixture.card);
             drafts.save(owner, fixture.project.id(), fixture.card, draft.version(), "new local draft", draft.parameters(), null,
-                    fixture.capability, null, List.of(), List.of());
+                    fixture.capability, null, List.of(), List.of(), null);
             // A fresh worker has no in-memory result state, and must not re-query/re-submit or re-download the ready first asset.
             var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs);
             due(task.id()); restarted.pollOnce("rh-restarted");
@@ -245,7 +245,7 @@ class RunningHubPostgresIT {
                 UUID version = reference.resourceDefaultVersion().id();
                 var parameters = mapper.createObjectNode(); parameters.putObject("dynamicValues").put("clip", version.toString());
                 var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, "", parameters, null, fixture.capability,
-                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of());
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null);
                 var task = direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(), UUID.randomUUID().toString());
                 assertThat(task.input().path("mediaInput").path("videos").get(0).path("versionId").asText()).isEqualTo(version.toString());
                 assertThat(task.input().has("durationSeconds")).isFalse();
@@ -259,7 +259,7 @@ class RunningHubPostgresIT {
                 // A resource can disappear after acceptance. Preflight must block before another upload/run.
                 UUID missingCard = place(fixture.project, fixture.artifact);
                 var missingDraft = drafts.save(owner, fixture.project.id(), missingCard, 0, "", parameters, null, fixture.capability,
-                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of());
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null);
                 var missing = direct.run(owner, fixture.project.id(), fixture.artifact.id(), missingCard, missingDraft.version(), UUID.randomUUID().toString());
                 var archivedPath = assets.get(owner, fixture.project.id(), asset.id()).path();
                 Files.delete(archivedPath);
@@ -276,7 +276,7 @@ class RunningHubPostgresIT {
                 var otherArtifact = artifacts.create(owner, other.id(), Artifact.Kind.VIDEO, "Other card", null).artifact();
                 UUID otherCard = place(other, otherArtifact);
                 assertThatThrownBy(() -> drafts.save(owner, other.id(), otherCard, 0, "", parameters, null, fixture.capability,
-                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of())).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
                 // Isolate later tests from this accepted video fixture without pretending it completed.
                 jdbc.sql("update task set next_action_at=now() + interval '1 day' where id=:id").param("id", task.id()).update();
             } finally { Files.deleteIfExists(file); }
@@ -307,7 +307,7 @@ class RunningHubPostgresIT {
     }
     private Task accept(Fixture fixture, String prompt) {
         var parameters = mapper.createObjectNode(); parameters.putObject("dynamicValues");
-        var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, prompt, parameters, null, fixture.capability, null, List.of(), List.of());
+        var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, prompt, parameters, null, fixture.capability, null, List.of(), List.of(), null);
         return direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(), UUID.randomUUID().toString());
     }
     private void due(UUID taskId) { jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id").param("id", taskId).update(); }

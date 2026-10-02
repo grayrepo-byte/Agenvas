@@ -34,6 +34,7 @@ public final class MediaAdapterRegistry {
     /** Product bounds verified against each fixed third-party request protocol. */
     public static final int OPENAI_MAX_REFERENCE_IMAGES = 4;
     public static final int GOOGLE_MAX_REFERENCE_IMAGES = 14;
+    public static final int COMFY_MAX_PROMPT_LENGTH = 8_000;
 
     public record Declaration(MediaPlatform platform, Task.Kind kind, int minimumSeconds,
             int maximumSeconds, boolean originRequired, int maxReferenceImages,

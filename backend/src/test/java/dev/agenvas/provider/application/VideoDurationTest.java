@@ -38,4 +38,21 @@ class VideoDurationTest {
                     .isInstanceOf(IllegalArgumentException.class);
         }
     }
+
+    @Test
+    void readsWholeSecondsFromStyledSchemaFourWithoutUsingLegacyMilliseconds() {
+        assertThat(VideoDuration.fromFrozenTask(mapper.readTree("""
+                {"schemaVersion":4,"durationSeconds":5,
+                 "mediaInput":{"style":{"id":"00000000-0000-0000-0000-000000000308"}}}
+                """))).isEqualTo(Duration.ofSeconds(5));
+        for (String invalid : new String[] {
+                "{\"schemaVersion\":4,\"durationSeconds\":1.25}",
+                "{\"schemaVersion\":4,\"durationSeconds\":0}",
+                "{\"schemaVersion\":4,\"durationSeconds\":31}",
+                "{\"schemaVersion\":4,\"durationMs\":5000}",
+                "{\"schemaVersion\":5,\"durationSeconds\":5}"}) {
+            assertThatThrownBy(() -> VideoDuration.fromFrozenTask(mapper.readTree(invalid)))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
 }

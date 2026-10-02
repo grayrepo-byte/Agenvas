@@ -211,7 +211,7 @@ class OpenAiImage2PostgresIT {
                 .toList();
         long draftVersion = drafts.save(ownerId, project.id(), canvasItemId, 0,
                 "A detailed cinematic studio scene", mapper.createObjectNode(), null, null,
-                null, inputs, List.of()).version();
+                null, inputs, List.of(), null).version();
         Task task = directMedia.run(ownerId, project.id(), card.artifact().id(), canvasItemId,
                 draftVersion,
                 "openai-" + UUID.randomUUID());

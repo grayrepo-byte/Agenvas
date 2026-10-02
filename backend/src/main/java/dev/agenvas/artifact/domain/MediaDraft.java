@@ -13,6 +13,7 @@ public record MediaDraft(
         JsonNode parameters,
         Integer durationSeconds,
         UUID capabilityId,
+        UUID styleId,
         VideoInputMode videoInputMode,
         List<MediaInput> mediaInputs,
         List<PromptMention> mentions,

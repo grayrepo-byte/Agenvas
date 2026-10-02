@@ -92,7 +92,7 @@ class AudioMediaPostgresIT {
         var audio = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, "Audio", null).artifact();
         UUID audioCard = CanvasMediaFixture.place(canvas, ownerId, projectId, audio.id());
         var firstDraft = drafts.save(ownerId, projectId, audioCard, 0, "Hello", mapper.createObjectNode(),
-                null, null, null, List.of(), List.of());
+                null, null, null, List.of(), List.of(), null);
         var firstTask = direct.run(ownerId, projectId, audio.id(), audioCard, firstDraft.version(), "audio-first");
         assertThat(firstTask.kind().name()).isEqualTo("AUDIO_GENERATION");
         assertThat(worker.submitOnce("audio-test")).isEqualTo(1);
@@ -104,10 +104,10 @@ class AudioMediaPostgresIT {
         assertThat(canvas.list(ownerId, projectId).getFirst().item().selectedVersionId()).isEqualTo(firstVersionId);
         var saved = drafts.get(ownerId, projectId, audioCard);
         saved = drafts.save(ownerId, projectId, audioCard, saved.version(), "Second", mapper.createObjectNode(),
-                null, null, null, List.of(), List.of());
+                null, null, null, List.of(), List.of(), null);
         direct.run(ownerId, projectId, audio.id(), audioCard, saved.version(), "audio-second");
         drafts.save(ownerId, projectId, audioCard, drafts.get(ownerId, projectId, audioCard).version(), "User edited while queued", mapper.createObjectNode(),
-                null, null, null, List.of(), List.of());
+                null, null, null, List.of(), List.of(), null);
         assertThat(worker.submitOnce("audio-test")).isEqualTo(1);
         assertThat(canvas.listMediaVersions(ownerId, projectId, audioCard)).hasSize(2);
         assertThat(canvas.list(ownerId, projectId).getFirst().item().selectedVersionId()).isEqualTo(firstVersionId);
@@ -150,7 +150,7 @@ class AudioMediaPostgresIT {
         var videoDraft = drafts.save(ownerId, projectId, videoCard, 0, "\uFFFC and \uFFFC", mapper.createObjectNode(),
                 2, null, MediaDraft.VideoInputMode.GENERAL_REFERENCE, references,
                 List.of(new MediaDraft.PromptMention(firstVersionId, MediaDraft.InputRole.AUDIO_REFERENCE),
-                        new MediaDraft.PromptMention(imageVersion, MediaDraft.InputRole.REFERENCE)));
+                        new MediaDraft.PromptMention(imageVersion, MediaDraft.InputRole.REFERENCE)), null);
         var videoTask = direct.run(ownerId, projectId, video.id(), videoCard, videoDraft.version(), "mixed-reference-video");
         assertThat(videoTask.input().path("prompt").asText()).isEqualTo("@Audio 1 and @Image 1");
         assertThat(videoTask.input().at("/mediaInput/images/0/order").asInt()).isZero();
@@ -183,12 +183,12 @@ class AudioMediaPostgresIT {
 
         var currentAudio = drafts.get(ownerId, projectId, audioCard);
         drafts.save(ownerId, projectId, audioCard, currentAudio.version(), "Mixed invalid", mapper.createObjectNode().put("speaker", "zh_female_vv_uranus_bigtts"),
-                null, null, null, List.of(references.get(1)), List.of());
+                null, null, null, List.of(references.get(1)), List.of(), null);
         assertThatThrownBy(() -> direct.run(ownerId, projectId, audio.id(), audioCard,
                 drafts.get(ownerId, projectId, audioCard).version(), "invalid-mix"))
                 .isInstanceOf(ApiProblemException.class);
         var unknownDraft = drafts.save(ownerId, projectId, audioCard, drafts.get(ownerId, projectId, audioCard).version(),
-                "Unknown demo", mapper.createObjectNode(), null, null, null, List.of(), List.of());
+                "Unknown demo", mapper.createObjectNode(), null, null, null, List.of(), List.of(), null);
         var uncertain = direct.run(ownerId, projectId, audio.id(), audioCard, unknownDraft.version(), "uncertain-audio");
         var lease = taskService.claimBoundMedia("audio-unknown-test", 1).getFirst();
         assertThat(lease.id()).isEqualTo(uncertain.id());
@@ -206,7 +206,7 @@ class AudioMediaPostgresIT {
         assertThat(taskService.get(ownerId, projectId, unknown.id()).status()).isEqualTo(dev.agenvas.task.domain.Task.Status.UNKNOWN);
         assertThat(canvas.listMediaVersions(ownerId, projectId, audioCard)).hasSize(3);
         var cancelDraft = drafts.save(ownerId, projectId, audioCard, drafts.get(ownerId, projectId, audioCard).version(),
-                "Cancel demo", mapper.createObjectNode(), null, null, null, List.of(), List.of());
+                "Cancel demo", mapper.createObjectNode(), null, null, null, List.of(), List.of(), null);
         var queued = direct.run(ownerId, projectId, audio.id(), audioCard, cancelDraft.version(), "cancel-audio");
         assertThat(direct.cancelQueued(ownerId, projectId, queued.id()).status()).isEqualTo(dev.agenvas.task.domain.Task.Status.CANCELED);
         assertThat(worker.submitOnce("canceled-audio")).isZero();
@@ -222,7 +222,7 @@ class AudioMediaPostgresIT {
                 .put("speechRate", -20).put("loudnessRate", 15).put("pitchRate", 3);
         var seedDraft = drafts.save(ownerId, projectId, seedCard, 0, "参考 \uFFFC 说你好", seedParameters,
                 null, seedCapability.id(), null, List.of(references.getFirst()),
-                List.of(new MediaDraft.PromptMention(firstVersionId, MediaDraft.InputRole.AUDIO_REFERENCE)));
+                List.of(new MediaDraft.PromptMention(firstVersionId, MediaDraft.InputRole.AUDIO_REFERENCE)), null);
         org.mockito.Mockito.doReturn(wav).when(seedClient).synthesize(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList());

@@ -55,6 +55,8 @@ import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, Q
   type MediaDraftFields as DraftFields } from "./mediaDraftCapability";
 import { PromptMentionEditor, type PromptReference } from "./PromptMentionEditor";
 import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
+import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
+import { MediaStylePicker } from "./MediaStylePicker";
 
 const AUTOSAVE_DELAY_MS = 650;
 const REFERENCE_SOURCE_CLOSE_DELAY_MS = 120;
@@ -103,7 +105,7 @@ function uploadArtifactTitle(file: File) {
 
 function fieldsFromDraft(draft: MediaDraft): DraftFields {
   return {
-    prompt: draft.prompt, parameters: draft.parameters ?? {},
+    prompt: draft.prompt, parameters: draft.parameters ?? {}, styleId: draft.styleId ?? null,
     durationSeconds: draft.durationSeconds, capabilityId: draft.capabilityId,
     videoInputMode: draft.videoInputMode,
     mediaInputs: (draft.mediaInputs ?? []).map(({ versionId, role, color }) => ({
@@ -192,6 +194,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     enabled: latestTask?.status === "READY", refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
   });
   const [fields, setFields] = useState<DraftFields | null>(null);
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const styles = useQuery({ ...mediaStylesQueryOptions(), enabled: !isAudio && (stylePickerOpen || Boolean(fields?.styleId)) });
   const fieldsRef = useRef<DraftFields | null>(null);
   const ratioDraftKey = `${artifact.projectId}:${canvasItemId}`;
   const recovery = useCanvasStore((state) => state.mediaDraftRecoveries[ratioDraftKey]);
@@ -662,10 +666,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     && (chosenCapability?.supportedVideoInputModes.includes(effectiveMode) ?? false);
   const dynamicErrors = runningHub ? runningHubErrors(runningHub, fields.parameters.dynamicValues ?? {}, fields.prompt, duration, imageChoices) : [];
   const dynamicUsedVersions = runningHub ? runningHubUsedVersions(runningHub, fields.parameters.dynamicValues ?? {}, fields.prompt, duration) : new Set<string>();
+  const supportsStyle = !isAudio && (!runningHub || runningHub.fields.some((field) => field.source === "PROMPT"));
+  const selectedStyle = styles.data?.find((style) => style.id === fields.styleId);
+  const styleAvailable = !fields.styleId || supportsStyle && styles.isSuccess && Boolean(selectedStyle?.enabled);
   const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
     && !error && !run.isPending
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
-    && !occupied && (runningHub ? dynamicErrors.length === 0 && fields.mediaInputs.length <= INPUT_COLORS.length && fields.mediaInputs.every((input) => dynamicUsedVersions.has(input.versionId)) && allInputsAvailable
+    && !occupied && styleAvailable && (runningHub ? dynamicErrors.length === 0 && fields.mediaInputs.length <= INPUT_COLORS.length && fields.mediaInputs.every((input) => dynamicUsedVersions.has(input.versionId)) && allInputsAvailable
       : fields.prompt.trim().length > 0 && semanticInputsValid && autodlInputsValid && autodlRatioValid && autodlTierValid && allInputsAvailable && imageParametersSupported && videoModeSupported
         && (artifact.kind !== "VIDEO" || validDuration));
   const dimensionLabel = artifact.kind === "IMAGE"
@@ -893,6 +900,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   return <div className="media-draft-editor" aria-label={t("media.editor.title")}>
+    {stylePickerOpen ? <MediaStylePicker selected={fields.styleId ?? null} onClose={() => setStylePickerOpen(false)}
+      onSelect={(styleId) => edit({ styleId })} /> : null}
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
       {isAudio && onOpenAgentConversation ? <Button variant="ghost" className="media-draft-tab"
@@ -1145,6 +1154,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           {settings.isSuccess && !availableCapabilities.length ? <p>{t("media.editor.noModelsHint")}</p> : null}
         </DropdownMenuGroup></DropdownMenuContent> : null}
       </div></DropdownMenu>
+      {supportsStyle || fields.styleId ? <Button variant="ghost" className="media-draft-toolbar-button" type="button" aria-label={t("styles.choose")}
+        disabled={!supportsStyle}
+        aria-haspopup="dialog" onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setStylePickerOpen(true); }}>
+        <PaintBrush data-icon="inline-start" /><span>{fields.styleId ? selectedStyle?.name ?? t("styles.unavailable") : t("styles.title")}</span>
+      </Button> : null}
+      {fields.styleId ? <Button variant="ghost" className="media-draft-toolbar-button" size="icon-sm" type="button"
+        aria-label={t("styles.clear")} onClick={() => edit({ styleId: null })}><X /></Button> : null}
       {!runningHub ? <div className="media-draft-popover-anchor media-draft-parameters-anchor">
         <Button variant="ghost" className="media-draft-toolbar-button" type="button" aria-label={isAudio ? t("media.editor.audioParameters") : t("media.editor.sizeQuality")}
           aria-expanded={popover === "parameters"} aria-controls={`${id}-parameters`}
@@ -1243,6 +1259,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>
     </div>
     <div className="media-draft-feedback">
+      {fields.styleId && !supportsStyle ? <p role="alert">{t("styles.promptRequired")}</p> : null}
+      {fields.styleId && supportsStyle && styles.isPending ? <p role="status">{t("styles.loading")}</p> : null}
+      {fields.styleId && styles.error ? <div role="alert">{t("styles.loadFailed")}<Button variant="ghost" type="button"
+        onClick={() => void styles.refetch()}>{t("common.retry")}</Button></div> : null}
+      {fields.styleId && styles.isSuccess && !selectedStyle?.enabled ? <p role="alert">{t("styles.unavailableHint")}</p> : null}
       {runningHub ? <>
         {dynamicErrors.map((message) => <p role="status" key={message}>{message}</p>)}
         {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("media.editor.unassignedSlots")}<Button variant="ghost" type="button" disabled={dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("media.editor.removeUnusedReferences")}</Button></p>)}

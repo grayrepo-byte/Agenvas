@@ -11,7 +11,7 @@ final class MediaResult {
 
     static ObjectNode content(ObjectMapper mapper, Task task, UUID assetId, String prompt) {
         ObjectNode content = mapper.createObjectNode().put("assetId", assetId.toString())
-                .put("prompt", prompt);
+                .put("prompt", task.input().path("mediaInput").path("userRenderedPrompt").asText(prompt));
         if (task.input().has("negativePrompt")) {
             content.put("negativePrompt", task.input().path("negativePrompt").asText());
         }

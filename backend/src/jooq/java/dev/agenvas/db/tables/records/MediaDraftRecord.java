@@ -191,6 +191,24 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
         return (JSONB) get(11);
     }
 
+    /**
+     * Setter for <code>public.media_draft.style_id</code>. Optional image/video
+     * visual style; user prompt remains unchanged. Disabled choices remain
+     * explicit.
+     */
+    public void setStyleId(UUID value) {
+        set(12, value);
+    }
+
+    /**
+     * Getter for <code>public.media_draft.style_id</code>. Optional image/video
+     * visual style; user prompt remains unchanged. Disabled choices remain
+     * explicit.
+     */
+    public UUID getStyleId() {
+        return (UUID) get(12);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -214,7 +232,7 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     /**
      * Create a detached, initialised MediaDraftRecord
      */
-    public MediaDraftRecord(UUID projectId, UUID canvasItemId, String prompt, Integer durationSeconds, UUID capabilityId, String displayMode, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, JSONB parametersJson, String videoInputMode, JSONB mentionsJson) {
+    public MediaDraftRecord(UUID projectId, UUID canvasItemId, String prompt, Integer durationSeconds, UUID capabilityId, String displayMode, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, JSONB parametersJson, String videoInputMode, JSONB mentionsJson, UUID styleId) {
         super(MediaDraft.MEDIA_DRAFT);
 
         setProjectId(projectId);
@@ -229,6 +247,7 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
         setParametersJson(parametersJson);
         setVideoInputMode(videoInputMode);
         setMentionsJson(mentionsJson);
+        setStyleId(styleId);
         resetChangedOnNotNull();
     }
 }

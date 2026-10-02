@@ -180,7 +180,7 @@ public class LibraryService {
 
     public record ReferenceDraft(long expectedVersion, String prompt, JsonNode parameters, Integer durationSeconds,
             UUID capabilityId, MediaDraft.VideoInputMode videoInputMode, List<MediaDraftService.SaveMediaInput> mediaInputs,
-            List<MediaDraft.PromptMention> mentions) {}
+            List<MediaDraft.PromptMention> mentions, UUID styleId) {}
     public LibraryCommand reference(UUID owner, UUID project, UUID item, UUID entryId, long expected,
             ReferenceDraft draft, MediaDraft.InputRole role, String color, String key) {
         key = key(key);
@@ -429,7 +429,7 @@ public class LibraryService {
                     MediaDraft.InputRole.valueOf(input.path("role").asText()), input.path("color").asText()));
             Artifact.Kind kind = artifacts.get(command.ownerId(), project, items.requireArtifactItem(command.ownerId(), project, item).subjectId()).artifact().kind();
             var saved = drafts.save(command.ownerId(), project, item, draft.expectedVersion(), draft.prompt(), draft.parameters(),
-                    draft.durationSeconds(), draft.capabilityId(), draft.videoInputMode(), inputs, draft.mentions());
+                    draft.durationSeconds(), draft.capabilityId(), draft.videoInputMode(), inputs, draft.mentions(), draft.styleId());
             mediaTasks.validateLibraryReference(command.ownerId(), project, kind, saved);
             result.put("draftVersion", saved.version()).put("canvasItemId", item.toString());
         } else {

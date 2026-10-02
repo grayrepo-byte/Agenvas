@@ -197,6 +197,21 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         return effective;
     }
 
+    /** Applies server-side prompt composition after field-specific defaults, then rechecks limits.
+     * Inactive fields remain absent; the PROMPT binding retains its default scene.
+     */
+    public ObjectNode transformPromptValues(ObjectMapper mapper, ObjectNode values,
+            java.util.function.UnaryOperator<String> transform) {
+        ObjectNode result = values.deepCopy();
+        for (Field field : fields) {
+            if (field.effectiveSource() != Source.PROMPT || !result.hasNonNull(field.key())) continue;
+            JsonNode prompt = mapper.valueToTree(transform.apply(result.path(field.key()).asText()));
+            validateValue(field, prompt);
+            result.set(field.key(), prompt);
+        }
+        return result;
+    }
+
     /** JSON numbers have value semantics: browsers serialize 1.0 as 1, without changing an enum or condition. */
     public static boolean scalarEquals(JsonNode left, JsonNode right) {
         return left != null && right != null && left.isNumber() && right.isNumber()

@@ -46,6 +46,7 @@ import dev.agenvas.db.tables.MediaLegacyImportMarker;
 import dev.agenvas.db.tables.MediaLegacyOriginMap;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
+import dev.agenvas.db.tables.MediaStyle;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -297,6 +298,11 @@ public class Tables {
      * The table <code>public.media_provider_connection_version</code>.
      */
     public static final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
+
+    /**
+     * The table <code>public.media_style</code>.
+     */
+    public static final MediaStyle MEDIA_STYLE = MediaStyle.MEDIA_STYLE;
 
     /**
      * Permission and configuration boundary for one creative workspace.

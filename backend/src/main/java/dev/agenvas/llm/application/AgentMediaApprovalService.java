@@ -136,7 +136,7 @@ public class AgentMediaApprovalService {
                     MediaDraft saved = drafts.save(context.ownerId(), context.projectId(), item.id(),
                             initial.version(), request.prompt(), request.parameters(),
                             request.durationSeconds(), capabilityId, request.videoInputMode(),
-                            request.mediaInputs(), List.of());
+                            request.mediaInputs(), List.of(), null);
                     var preflight = mediaTasks.preflight(context.ownerId(), context.projectId(),
                             artifactId, item.id(), saved.version());
                     if (preflight.outputCount() != OUTPUTS_PER_REQUEST) throw invalid("single-output");
@@ -230,6 +230,7 @@ public class AgentMediaApprovalService {
                 for (JsonNode target : approval.targets().path("outputs")) {
                     MediaCapabilityBinding frozenBinding = mapper.treeToValue(target.path("binding"),
                             MediaCapabilityBinding.class);
+                    mediaTasks.lockApprovalStyle(ownerId, projectId, uuid(target.path("canvasItemId")));
                     if (!mediaTasks.lockApprovalBinding(frozenBinding)) {
                         throw conflict("AGENT_MEDIA_APPROVAL_STALE", "stale");
                     }

@@ -81,7 +81,7 @@ class MediaCapabilityConfigurationPostgresIT {
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(card, video.id(),
                 BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
         var draft = drafts.save(owner.userId(), project.id(), card, 0, "A moving landscape",
-                mapper.createObjectNode(), null, capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of());
+                mapper.createObjectNode(), null, capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
         Task task = direct.run(owner.userId(), project.id(), video.id(), card, draft.version(), "priced-video-run");
         assertThat(task.input().path("durationSeconds").asInt()).isEqualTo(8);
         assertThat(task.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo("9:16");

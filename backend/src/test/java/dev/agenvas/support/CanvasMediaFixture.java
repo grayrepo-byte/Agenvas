@@ -33,6 +33,6 @@ public final class CanvasMediaFixture {
                         "#7C3AED"));
         return drafts.save(ownerId, projectId, canvasItemId, expectedVersion, prompt,
                 JsonNodeFactory.instance.objectNode(), durationSeconds, capabilityId,
-                video ? MediaDraft.VideoInputMode.START_END : null, inputs, List.of());
+                video ? MediaDraft.VideoInputMode.START_END : null, inputs, List.of(), null);
     }
 }

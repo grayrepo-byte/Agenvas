@@ -66,6 +66,7 @@ class ApprovedMediaAcceptanceTest {
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final UsageService usage = mock(UsageService.class);
     private final AgentRunService runs = mock(AgentRunService.class);
+    private final dev.agenvas.settings.application.MediaStyleService styles = mock(dev.agenvas.settings.application.MediaStyleService.class);
     private final MediaCapabilityBinding binding = new MediaCapabilityBinding(UUID.randomUUID(), 2,
             UUID.randomUUID(), 4, "MOCK_IMAGE", "a".repeat(64));
     private DirectMediaTaskService service;
@@ -74,7 +75,7 @@ class ApprovedMediaAcceptanceTest {
     void setUp() {
         service = new DirectMediaTaskService(repository, drafts, artifacts, mock(AssetService.class),
                 cards, canvas, capabilities, new ProviderProperties("mock", 1), events, usage,
-                mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs);
+                mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles);
         Artifact artifact = new Artifact(ARTIFACT, PROJECT, Artifact.Kind.IMAGE, "Proposal", null,
                 null, 0, NOW, NOW);
         when(artifacts.get(OWNER, PROJECT, ARTIFACT)).thenReturn(new ArtifactService.ArtifactView(artifact, null));
@@ -179,7 +180,7 @@ class ApprovedMediaAcceptanceTest {
         when(artifacts.get(OWNER, PROJECT, ARTIFACT)).thenReturn(new ArtifactService.ArtifactView(
                 new Artifact(ARTIFACT, PROJECT, kind, "Proposal", null, null, 0, NOW, NOW), null));
         when(drafts.get(OWNER, PROJECT, CARD)).thenReturn(new MediaDraft(PROJECT, CARD, "Synthetic media",
-                mapper.createObjectNode(), kind == Artifact.Kind.VIDEO ? 5 : null, typedBinding.capabilityId(),
+                mapper.createObjectNode(), kind == Artifact.Kind.VIDEO ? 5 : null, typedBinding.capabilityId(), null,
                 kind == Artifact.Kind.VIDEO ? MediaDraft.VideoInputMode.TEXT : null, List.of(), List.of(),
                 MediaDraft.DisplayMode.DRAFT, DRAFT_VERSION, NOW, NOW));
         when(capabilities.forDraft(typedBinding.capabilityId(), taskKind)).thenReturn(typedBinding);
@@ -198,9 +199,32 @@ class ApprovedMediaAcceptanceTest {
         verify(repository).bindMediaTask(task.id(), typedBinding);
     }
 
+    @Test
+    void composedStyleCannotExceedComfyPromptLimitDuringPreflight() {
+        UUID styleId = UUID.randomUUID();
+        MediaCapabilityBinding comfy = new MediaCapabilityBinding(binding.connectionId(), binding.connectionVersion(),
+                binding.capabilityId(), binding.capabilityVersion(), "COMFY_IMAGE_V1", binding.mappingSha256());
+        String userPrompt = "x".repeat(MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH - 10);
+        var draft = new MediaDraft(PROJECT, CARD, userPrompt, mapper.createObjectNode(), null, binding.capabilityId(), styleId,
+                null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, DRAFT_VERSION, NOW, NOW);
+        when(drafts.get(OWNER, PROJECT, CARD)).thenReturn(draft);
+        when(styles.forGeneration(styleId, Artifact.Kind.IMAGE)).thenReturn(new dev.agenvas.settings.application.MediaStyleService.Snapshot(
+                styleId, 0, "Synthetic", "cinematic light"));
+        when(capabilities.forDraft(binding.capabilityId(), Task.Kind.IMAGE_GENERATION)).thenReturn(comfy);
+        when(capabilities.resolve(binding.capabilityId(), Task.Kind.IMAGE_GENERATION, 0)).thenReturn(comfy);
+        when(capabilities.runningHubDefinition(comfy)).thenReturn(null);
+        when(capabilities.settings(comfy)).thenReturn(mapper.createObjectNode());
+        when(capabilities.parameters(eq(comfy), any())).thenAnswer(call -> call.getArgument(1));
+        when(capabilities.inputPolicy(comfy)).thenReturn(new MediaAdapterRegistry(List.of()).declaration("COMFY_IMAGE_V1"));
+        assertThatThrownBy(() -> service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class)
+                .satisfies(error -> assertThat(((dev.agenvas.shared.error.ApiProblemException) error).code()).isEqualTo("MEDIA_STYLE_PROMPT_TOO_LONG"));
+        verify(repository, never()).create(any(), anyList());
+    }
+
     private MediaDraft draft(String prompt, int count) {
         return new MediaDraft(PROJECT, CARD, prompt, mapper.createObjectNode().put("generationCount", count),
-                null, binding.capabilityId(), null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT,
+                null, binding.capabilityId(), null, null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT,
                 DRAFT_VERSION, NOW, NOW);
     }
 }

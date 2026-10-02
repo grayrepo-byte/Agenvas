@@ -49,7 +49,7 @@ public class MediaDraftController {
         return drafts.save(principal.userId(), projectId, canvasItemId,
                 request.expectedVersion(), request.prompt(), request.parameters(),
                 request.durationSeconds(), request.capabilityId(), request.videoInputMode(),
-                request.mediaInputs(), request.mentions());
+                request.mediaInputs(), request.mentions(), request.styleId());
     }
 
     /** Deliberately restores all editable generation input without recreating old canvas lines. */
@@ -76,7 +76,7 @@ public class MediaDraftController {
             Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode videoInputMode,
             List<MediaDraftService.SaveMediaInput> mediaInputs,
-            List<MediaDraft.PromptMention> mentions) {}
+            List<MediaDraft.PromptMention> mentions, UUID styleId) {}
 
     public record RestoreVersionInputsRequest(@NotNull UUID versionId,
             @PositiveOrZero long expectedVersion) {}

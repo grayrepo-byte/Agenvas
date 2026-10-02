@@ -6,11 +6,16 @@ import tools.jackson.databind.JsonNode;
 /** Reads the duration frozen at approval without changing units of historical tasks. */
 final class VideoDuration {
 
+    private static final int LEGACY_MILLISECONDS_SCHEMA_VERSION = 1;
+    private static final int FIRST_WHOLE_SECONDS_SCHEMA_VERSION = 2;
+    private static final int STYLED_INPUT_SCHEMA_VERSION = 4;
+
     private VideoDuration() {}
 
     static Duration fromFrozenTask(JsonNode input) {
-        int schemaVersion = input.path("schemaVersion").asInt(1);
-        if (schemaVersion == 1) {
+        int schemaVersion = input.path("schemaVersion")
+                .asInt(LEGACY_MILLISECONDS_SCHEMA_VERSION);
+        if (schemaVersion == LEGACY_MILLISECONDS_SCHEMA_VERSION) {
             JsonNode milliseconds = input.path("durationMs");
             if (!milliseconds.isIntegralNumber() || milliseconds.longValue() < 100
                     || milliseconds.longValue() > 30_000) {
@@ -18,7 +23,9 @@ final class VideoDuration {
             }
             return Duration.ofMillis(milliseconds.longValue());
         }
-        if (schemaVersion == 2 || schemaVersion == 3) {
+        // Schema 4 adds the style snapshot; the frozen video duration remains whole seconds.
+        if (schemaVersion >= FIRST_WHOLE_SECONDS_SCHEMA_VERSION
+                && schemaVersion <= STYLED_INPUT_SCHEMA_VERSION) {
             JsonNode seconds = input.path("durationSeconds");
             if (!seconds.isIntegralNumber() || seconds.longValue() < 1
                     || seconds.longValue() > 30) {

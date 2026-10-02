@@ -13,6 +13,7 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.settings.application.MediaStyleService;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
@@ -53,11 +54,12 @@ public class MediaDraftService {
     private final ObjectMapper mapper;
     private final Clock clock;
     private final MediaCapabilityService capabilities;
+    private final MediaStyleService styles;
 
     public MediaDraftService(ProjectService projects, ArtifactService artifactService,
             ArtifactRepository artifacts, CanvasItemQueryService canvasItems,
             ProjectEventService events, ObjectMapper mapper, Clock clock,
-            @Lazy MediaCapabilityService capabilities) {
+            @Lazy MediaCapabilityService capabilities, MediaStyleService styles) {
         this.projects = projects;
         this.artifactService = artifactService;
         this.artifacts = artifacts;
@@ -66,6 +68,7 @@ public class MediaDraftService {
         this.mapper = mapper;
         this.clock = clock;
         this.capabilities = capabilities;
+        this.styles = styles;
     }
 
     @Transactional(readOnly = true)
@@ -81,7 +84,7 @@ public class MediaDraftService {
             long expectedVersion, String prompt, JsonNode parameters,
             Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode requestedMode, List<SaveMediaInput> requestedInputs,
-            List<MediaDraft.PromptMention> requestedMentions) {
+            List<MediaDraft.PromptMention> requestedMentions, UUID styleId) {
         projects.requireActiveProject(ownerId, projectId);
         Artifact.Kind kind = requireMediaCanvas(ownerId, projectId, canvasItemId).kind();
         if (expectedVersion < 0 || prompt == null || prompt.length() > MAX_PROMPT_LENGTH) {
@@ -109,6 +112,7 @@ public class MediaDraftService {
         }
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
+        styles.validateSelection(styleId, kind);
         if (inputCommands.size() > MAX_MEDIA_INPUTS) {
             throw invalid(ApiMessage.of("api.media-draft-service.a-single-card-can-save-up-to-14-media-inputs"));
         }
@@ -169,7 +173,7 @@ public class MediaDraftService {
             List<MediaDraft.MediaInput> effectiveInputs = mergeInputs(
                     before.mediaInputs(), inputs);
             MediaDraft update = new MediaDraft(projectId, canvasItemId, prompt,
-                    normalizedParameters.deepCopy(), durationSeconds, capabilityId,
+                    normalizedParameters.deepCopy(), durationSeconds, capabilityId, styleId,
                     mode, effectiveInputs, mentions,
                     before.displayMode(),
                     expectedVersion + 1, before.createdAt(), clock.instant());
@@ -248,7 +252,12 @@ public class MediaDraftService {
                 ? frozen.path("durationSeconds").intValue() : null;
         return save(ownerId, projectId, canvasItemId, expectedDraftVersion,
                 frozen.path("prompt").asText(""), frozen.path("parameters").deepCopy(),
-                durationSeconds, capabilityId, mode, inputs, mentions);
+                durationSeconds, capabilityId, mode, inputs, mentions, frozenStyleId(frozen));
+    }
+
+    private UUID frozenStyleId(JsonNode frozen) {
+        JsonNode style = frozen.path("style");
+        return style.hasNonNull("id") ? UUID.fromString(style.path("id").asText()) : null;
     }
 
     private MediaDraft.VideoInputMode parseMode(String value) {
@@ -291,7 +300,7 @@ public class MediaDraftService {
                 .toList();
         MediaDraft duplicate = new MediaDraft(projectId, targetCanvasItemId,
                 source.prompt(), source.parameters().deepCopy(), source.durationSeconds(),
-                source.capabilityId(), source.videoInputMode(), inputs,
+                source.capabilityId(), source.styleId(), source.videoInputMode(), inputs,
                 List.copyOf(source.mentions()), source.displayMode(), 1, now, now);
         if (!artifacts.updateMediaDraft(duplicate, 0)) {
             throw new IllegalStateException("New duplicate media draft update failed");
@@ -315,7 +324,7 @@ public class MediaDraftService {
         for (JsonNode mention : frozen.path("mentions")) mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()), MediaDraft.InputRole.valueOf(mention.path("role").asText())));
         MediaDraft draft = new MediaDraft(projectId, canvasItemId, frozen.path("prompt").asText(""),
                 frozen.path("parameters").deepCopy(), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
-                UUID.fromString(frozen.path("capabilityId").asText()), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
+                UUID.fromString(frozen.path("capabilityId").asText()), frozenStyleId(frozen), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
                 List.copyOf(inputs), List.copyOf(mentions), MediaDraft.DisplayMode.DRAFT, 1, now, now);
         if (!artifacts.updateMediaDraft(draft, 0)) throw new IllegalStateException("New batch draft update failed");
         artifacts.replaceMediaInputs(projectId, canvasItemId, inputs, now);
@@ -432,7 +441,7 @@ public class MediaDraftService {
         }
         MediaDraft update = new MediaDraft(before.projectId(), before.canvasItemId(),
                 prompt, before.parameters(), before.durationSeconds(),
-                before.capabilityId(), mode, List.copyOf(inputs),
+                before.capabilityId(), before.styleId(), mode, List.copyOf(inputs),
                 List.copyOf(mentions), before.displayMode(), before.version() + 1,
                 before.createdAt(), now);
         if (!artifacts.updateMediaDraft(update, before.version())) {

@@ -147,6 +147,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                         JSONB.valueOf(draft.parameters().toString()))
                 .set(MEDIA_DRAFT.DURATION_SECONDS, draft.durationSeconds())
                 .set(MEDIA_DRAFT.CAPABILITY_ID, draft.capabilityId())
+                .set(MEDIA_DRAFT.STYLE_ID, draft.styleId())
                 .set(MEDIA_DRAFT.VIDEO_INPUT_MODE, draft.videoInputMode() == null
                         ? null : draft.videoInputMode().name())
                 .set(MEDIA_DRAFT.MENTIONS_JSON,
@@ -552,6 +553,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 objectMapper.readTree(row.getParametersJson().data()),
                 row.getDurationSeconds(),
                 row.getCapabilityId(),
+                row.getStyleId(),
                 row.getVideoInputMode() == null ? null
                         : MediaDraft.VideoInputMode.valueOf(row.getVideoInputMode()),
                 inputs,

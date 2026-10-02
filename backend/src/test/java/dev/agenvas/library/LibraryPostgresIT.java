@@ -129,7 +129,8 @@ class LibraryPostgresIT {
                 + targetItem.path("id").asText() + "/library-references";
         Map<String, Object> reference = Map.of("entryId", entryId, "expectedVersion", 0, "commandKey", "hotel-reference",
                 "role", "REFERENCE", "color", "#3B82F6", "draft", Map.of("expectedVersion", draft.path("version").asLong(),
-                        "prompt", "海边酒店", "parameters", Map.of(), "mediaInputs", List.of(), "mentions", List.of()));
+                        "prompt", "海边酒店", "parameters", Map.of(), "mediaInputs", List.of(), "mentions", List.of(),
+                        "styleId", "00000000-0000-4000-8000-000000000301"));
         JsonNode referenceCommand = mapper.readTree(mvc.perform(post(referencePath).with(auth).with(csrf())
                 .contentType("application/json").content(mapper.writeValueAsString(reference)))
                 .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
@@ -139,6 +140,7 @@ class LibraryPostgresIT {
                 .andReturn().getResponse().getContentAsString());
         assertThat(withReference.path("mediaInputs").size()).isEqualTo(1);
         assertThat(withReference.path("prompt").asText()).isEqualTo("海边酒店");
+        assertThat(withReference.path("styleId").asText()).isEqualTo("00000000-0000-4000-8000-000000000301");
         JsonNode afterReferenceCanvas = mapper.readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(afterReferenceCanvas.path("items").size()).isEqualTo(1);

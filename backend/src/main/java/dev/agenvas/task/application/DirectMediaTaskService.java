@@ -27,6 +27,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.settings.application.MediaStyleService;
 import dev.agenvas.task.domain.ImageOperation;
 import dev.agenvas.task.domain.ImageOperationSpec;
 import dev.agenvas.usage.application.UsageService;
@@ -54,7 +55,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
-    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 3;
+    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 4;
     private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 6;
     private static final int TASK_EVENT_SCHEMA_VERSION = 1;
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
@@ -79,13 +80,14 @@ public class DirectMediaTaskService {
     private final Clock clock;
     private final ProjectService projects;
     private final AgentRunService runs;
+    private final MediaStyleService styles;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
             CanvasService canvas,
             MediaCapabilityService capabilities,
             ProviderProperties provider, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs) {
+            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -100,6 +102,7 @@ public class DirectMediaTaskService {
         this.clock = clock;
         this.projects = projects;
         this.runs = runs;
+        this.styles = styles;
     }
 
     @Transactional
@@ -156,7 +159,7 @@ public class DirectMediaTaskService {
                 if (runId != null) throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
                 return ProjectEventService.Change.unchanged(occupying);
             }
-            PreparedMedia prepared = prepare(ownerId, projectId, authorizedTarget, authorizedCard, expectedDraftVersion);
+            PreparedMedia prepared = prepare(ownerId, projectId, authorizedTarget, authorizedCard, expectedDraftVersion, true);
             Artifact target = prepared.target();
             CanvasItem canvasItem = prepared.canvasItem();
             MediaDraft draft = prepared.draft();
@@ -220,7 +223,10 @@ public class DirectMediaTaskService {
                         : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
                 if (dynamic) frozen.set("runningHubContract", mapper.valueToTree(definition));
                 frozen.put("prompt", draft.prompt());
+                frozen.put("userRenderedPrompt", renderPrompt(draft));
                 frozen.put("renderedPrompt", renderedPrompt);
+                if (prepared.style() == null) frozen.putNull("style");
+                else frozen.set("style", mapper.valueToTree(prepared.style()));
                 frozen.set("parameters", dynamicParameters != null ? dynamicParameters : imageParameters != null
                         ? imageParameters.toJson(mapper) : videoParameters != null ? videoParameters.toJson(mapper)
                         : dev.agenvas.artifact.domain.AudioGenerationParameters.parse(
@@ -282,11 +288,11 @@ public class DirectMediaTaskService {
             UUID canvasItemId, long expectedDraftVersion) {
         Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
         CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
-        return prepare(ownerId, projectId, target, canvasItem, expectedDraftVersion);
+        return prepare(ownerId, projectId, target, canvasItem, expectedDraftVersion, false);
     }
 
     private PreparedMedia prepare(UUID ownerId, UUID projectId, Artifact target,
-            CanvasItem canvasItem, long expectedDraftVersion) {
+            CanvasItem canvasItem, long expectedDraftVersion, boolean lockStyle) {
         requireTargetCard(target, canvasItem);
         if (target.archivedAt() != null) throw conflict(ApiMessage.of("api.direct-media-task-service.archived-cards-cannot-be-run"));
         Task.Kind kind = switch (target.kind()) {
@@ -297,9 +303,17 @@ public class DirectMediaTaskService {
         };
         MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
         if (draft.version() != expectedDraftVersion) throw conflict(ApiMessage.of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
+        if (lockStyle) styles.lockForGeneration(draft.styleId());
+        MediaStyleService.Snapshot style = styles.forGeneration(draft.styleId(), target.kind());
+        String renderedPrompt = MediaStyleService.compose(renderPrompt(draft), style);
         MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
         var definition = capabilities.runningHubDefinition(selected);
         boolean dynamic = definition != null;
+        if (style != null && dynamic && definition.fields().stream().noneMatch(field ->
+                field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT)) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_UNSUPPORTED",
+                    ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-unsupported"), false);
+        }
         if (!dynamic && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
         if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
                 && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
@@ -335,10 +349,27 @@ public class DirectMediaTaskService {
         ObjectNode dynamicParameters = null;
         if (dynamic) {
             dynamicParameters = mapper.createObjectNode();
-            dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
-                    definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true));
+            ObjectNode dynamicValues = definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true);
+            if (style != null) {
+                dynamicValues = definition.transformPromptValues(mapper, dynamicValues,
+                        prompt -> MediaStyleService.compose(prompt, style));
+                for (var field : definition.fields()) {
+                    if (field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT
+                            && dynamicValues.hasNonNull(field.key())) {
+                        renderedPrompt = dynamicValues.path(field.key()).asText();
+                        break;
+                    }
+                }
+            }
+            dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, dynamicValues);
             dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
         } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+        if (capabilities.inputPolicy(binding).platform() == dev.agenvas.provider.domain.MediaPlatform.COMFYUI
+                && renderedPrompt.length() > MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_TOO_LONG",
+                    ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-too-long",
+                            MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH), false);
+        }
         validateReferenceAssets(ownerId, projectId, draft, binding);
         ImageGenerationParameters imageParameters = !dynamic && kind == Task.Kind.IMAGE_GENERATION
                 ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
@@ -350,7 +381,6 @@ public class DirectMediaTaskService {
                     policy.supportedImageResolutions(), policy.supportedImageQualities(),
                     policy.supportsTransparentBackground());
         }
-        String renderedPrompt = renderPrompt(draft);
         String autodlResolution = null;
         String resolutionTier = null;
         if (videoParameters != null && videoParameters.videoResolution() != null
@@ -379,7 +409,7 @@ public class DirectMediaTaskService {
                 .connectionVersion().originSha256();
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, autodlResolution, resolutionTier, originHash);
+                renderedPrompt, autodlResolution, resolutionTier, originHash, style);
     }
 
     private record PreparedMedia(Artifact target, CanvasItem canvasItem, MediaDraft draft,
@@ -387,7 +417,8 @@ public class DirectMediaTaskService {
             dev.agenvas.provider.domain.RunningHubDefinition definition,
             ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
-            String renderedPrompt, String autodlResolution, String resolutionTier, String originHash) {}
+            String renderedPrompt, String autodlResolution, String resolutionTier, String originHash,
+            MediaStyleService.Snapshot style) {}
 
     /** Validates the exact proposal without creating cards, tasks, reservations or provider requests. */
     @Transactional(readOnly = true)
@@ -419,6 +450,7 @@ public class DirectMediaTaskService {
         snapshot.put("draftVersion", expectedDraftVersion);
         snapshot.put("prompt", prepared.renderedPrompt());
         snapshot.put("structuralPrompt", prepared.draft().prompt());
+        snapshot.set("style", mapper.valueToTree(prepared.style()));
         snapshot.set("parameters", effectiveParameters);
         snapshot.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
         snapshot.set("mentions", mapper.valueToTree(prepared.draft().mentions()));
@@ -432,7 +464,12 @@ public class DirectMediaTaskService {
         if (pricing != null) snapshot.set("mediaPricing", pricing);
         ObjectNode summary = mapper.createObjectNode();
         summary.put("kind", prepared.kind().name());
-        summary.put("prompt", prepared.renderedPrompt());
+        summary.put("prompt", renderPrompt(prepared.draft()));
+        if (prepared.style() != null) {
+            summary.put("styleId", prepared.style().id().toString());
+            summary.put("styleName", prepared.style().name());
+            summary.put("styleVersion", prepared.style().version());
+        }
         summary.set("parameters", effectiveParameters.deepCopy());
         summary.put("capabilityId", prepared.binding().capabilityId().toString());
         summary.put("adapterId", prepared.binding().adapterId());
@@ -456,6 +493,12 @@ public class DirectMediaTaskService {
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean lockApprovalBinding(MediaCapabilityBinding binding) {
         return binding != null && tasks.lockCurrentMediaBinding(binding);
+    }
+
+    /** Approval locks the selected visual preset before hashing and accepting its fixed output. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockApprovalStyle(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        styles.lockForGeneration(drafts.get(ownerId, projectId, canvasItemId).styleId());
     }
 
     /** Accepts one image post-processing command while pinning the exact visible source version. */

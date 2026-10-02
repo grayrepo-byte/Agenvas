@@ -4,6 +4,101 @@
  */
 
 export interface paths {
+    "/api/v1/media-styles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 图片与视频的全局风格目录，不返回后台注入提示词 */
+        get: operations["listMediaStyles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media-styles/{styleId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                styleId: string;
+            };
+            cookie?: never;
+        };
+        /** 已登录用户读取风格效果预览 */
+        get: operations["getMediaStyleThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-styles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 管理员读取风格名称、分类、提示词和配图状态 */
+        get: operations["listMediaStyleSettings"];
+        put?: never;
+        /** 管理员手动新增风格；配图随后通过上传接口设置 */
+        post: operations["createMediaStyle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-styles/{styleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                styleId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 管理员以 CAS 修改或停用风格，已受理任务保持原快照 */
+        put: operations["updateMediaStyle"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-styles/{styleId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                styleId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 管理员上传风格配图；禁止外部 URL
+         * @description 实际 PNG/JPEG/WebP 解码；至多 5 MiB 与 2000 万像素，最长边缩小至 640 像素，去除元数据后重新编码 PNG，保存上限 1 MiB。
+         */
+        post: operations["uploadMediaStyleThumbnail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/system-logs": {
         parameters: {
             query?: never;
@@ -2266,6 +2361,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MediaStyleSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            category: string;
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            /** @description Authenticated application URL; null until a custom preview is uploaded. */
+            thumbnailUrl: string | null;
+            builtIn: boolean;
+        };
+        MediaStyle: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            category: string;
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            thumbnailUrl: string | null;
+            builtIn: boolean;
+            promptSuffix: string;
+        };
+        CreateMediaStyleRequest: {
+            name: string;
+            category: string;
+            promptSuffix: string;
+            enabled: boolean;
+        };
+        UpdateMediaStyleRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            category: string;
+            promptSuffix: string;
+            enabled: boolean;
+        };
+        MediaStyleSnapshot: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            version: number;
+            name: string;
+            promptSuffix: string;
+        };
         /** @enum {string} */
         LibraryCategory: "CHARACTER" | "SCENE" | "PROP" | "OTHER";
         /** @enum {string} */
@@ -2871,7 +3012,7 @@ export interface components {
         };
         ProjectExportManifest: {
             /** @constant */
-            schemaVersion: 4;
+            schemaVersion: 5;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -2992,6 +3133,12 @@ export interface components {
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
+            /**
+             * Format: uuid
+             * @description Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.
+             */
+            styleId: string | null;
+            style: components["schemas"]["MediaStyleSnapshot"] | null;
             videoInputMode: components["schemas"]["VideoInputMode"] | null;
             mediaInputs: components["schemas"]["MediaInput"][];
             mentions: components["schemas"]["PromptMediaMention"][];
@@ -3115,6 +3262,11 @@ export interface components {
             durationSeconds?: number | null;
             /** Format: uuid */
             capabilityId?: string | null;
+            /**
+             * Format: uuid
+             * @description Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.
+             */
+            styleId?: string | null;
             videoInputMode: components["schemas"]["VideoInputMode"] | null;
             mediaInputs: components["schemas"]["SaveMediaInput"][];
             mentions: components["schemas"]["PromptMediaMention"][];
@@ -3200,6 +3352,11 @@ export interface components {
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
+            /**
+             * Format: uuid
+             * @description Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.
+             */
+            styleId: string | null;
             videoInputMode: components["schemas"]["VideoInputMode"] | null;
             mediaInputs: components["schemas"]["MediaInput"][];
             mentions: components["schemas"]["PromptMediaMention"][];
@@ -4204,6 +4361,169 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listMediaStyles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 包含停用条目以保留既有选择；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStyleSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getMediaStyleThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                styleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 预置 WebP 或实际解码后重新编码的 PNG；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": string;
+                    "image/png": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMediaStyleSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 全局风格设置；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStyle"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMediaStyle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMediaStyleRequest"];
+            };
+        };
+        responses: {
+            /** @description 风格已创建；Cache-Control no-store */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStyle"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    updateMediaStyle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                styleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaStyleRequest"];
+            };
+        };
+        responses: {
+            /** @description 风格已保存；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStyle"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    uploadMediaStyleThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                styleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** Format: int64 */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 配图已替换，风格版本递增；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStyle"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
     listSystemLogs: {
         parameters: {
             query?: {

@@ -46,6 +46,7 @@ import dev.agenvas.db.tables.MediaLegacyImportMarker;
 import dev.agenvas.db.tables.MediaLegacyOriginMap;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
+import dev.agenvas.db.tables.MediaStyle;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -313,6 +314,11 @@ public class Public extends SchemaImpl {
     public final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
 
     /**
+     * The table <code>public.media_style</code>.
+     */
+    public final MediaStyle MEDIA_STYLE = MediaStyle.MEDIA_STYLE;
+
+    /**
      * Permission and configuration boundary for one creative workspace.
      */
     public final Project PROJECT = Project.PROJECT;
@@ -454,6 +460,7 @@ public class Public extends SchemaImpl {
             MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP,
             MediaProviderConnection.MEDIA_PROVIDER_CONNECTION,
             MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION,
+            MediaStyle.MEDIA_STYLE,
             Project.PROJECT,
             ProjectEvent.PROJECT_EVENT,
             ProviderAttempt.PROVIDER_ATTEMPT,
