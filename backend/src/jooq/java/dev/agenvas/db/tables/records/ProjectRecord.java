@@ -92,16 +92,16 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
     }
 
     /**
-     * Setter for <code>public.project.active_run_id</code>. Reserved active
-     * Agent Run slot; foreign key is added with the run migration.
+     * Setter for <code>public.project.active_run_id</code>. 当前活动 Run
+     * 指针；应用在项目锁内创建 Run 并占用或释放槽位，不设循环外键
      */
     public void setActiveRunId(UUID value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.project.active_run_id</code>. Reserved active
-     * Agent Run slot; foreign key is added with the run migration.
+     * Getter for <code>public.project.active_run_id</code>. 当前活动 Run
+     * 指针；应用在项目锁内创建 Run 并占用或释放槽位，不设循环外键
      */
     public UUID getActiveRunId() {
         return (UUID) get(5);

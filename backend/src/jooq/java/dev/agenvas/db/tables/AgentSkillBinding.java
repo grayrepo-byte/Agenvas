@@ -7,7 +7,6 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
-import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.SkillVersion.SkillVersionPath;
 import dev.agenvas.db.tables.records.AgentSkillBindingRecord;
 
@@ -166,19 +165,7 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
 
     @Override
     public List<ForeignKey<AgentSkillBindingRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_FKEY, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_SKILL_ID_SKILL_VERSION_ID_FKEY, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_PROJECT_ID_AGENT_ID_FKEY);
-    }
-
-    private transient AppUserPath _appUser;
-
-    /**
-     * Get the implicit join path to the <code>public.app_user</code> table.
-     */
-    public AppUserPath appUser() {
-        if (_appUser == null)
-            _appUser = new AppUserPath(this, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_FKEY, null);
-
-        return _appUser;
+        return Arrays.asList(Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_SKILL_ID_SKILL_VERSION_ID_FKEY, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_PROJECT_ID_AGENT_ID_FKEY);
     }
 
     private transient SkillVersionPath _skillVersion;

@@ -224,6 +224,42 @@ class AgentMediaApprovalPostgresIT {
     }
 
     @Test
+    void approvedGeneratedMediaCanBeReadByTheResumedAgent() throws Exception {
+        Scenario scenario = propose(outputs("IMAGE"));
+        Plan plan = gateway.plan(scenario.run().id());
+        plan.readGeneratedOutput = true;
+        decide(scenario, "APPROVE", "read-generated-approve");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.SUCCEEDED);
+        Task generated = mediaTasks(scenario).getFirst();
+        assertThat(generated.status()).isEqualTo(Task.Status.SUCCEEDED);
+        String versionId = generated.output().path("artifactVersionId").asText();
+        assertThat(versionId).isNotBlank();
+        assertThat(jdbc.sql("select resource_default_version_id is null from artifact where id=:id")
+                .param("id", UUID.fromString(generated.output().path("artifactId").asText()))
+                .query(Boolean.class).single()).isTrue();
+
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(scenario).status())
+                .as("Reading the successful approved media must continue the original Run")
+                .isEqualTo(AgentRun.Status.RUNNING);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run "
+                        + "and tool_name='read_artifacts' and status='COMPLETED'")
+                .param("run", scenario.run().id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(mediaTasks(scenario)).singleElement().satisfies(task -> {
+            assertThat(task.id()).isEqualTo(generated.id());
+            assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(task.output().path("artifactVersionId").asText()).isEqualTo(versionId);
+        });
+
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(plan.calls).hasValue(3);
+        assertThat(plan.artifactReply.at("/data/0/versionId").asText()).isEqualTo(versionId);
+        assertThat(plan.artifactReply.at("/data/0/kind").asText()).isEqualTo("IMAGE");
+    }
+
+    @Test
     void staleCasAndConcurrentApprovalNeverDuplicateMediaTasksOrCostReservations() throws Exception {
         Scenario scenario = propose(outputs("IMAGE"));
         mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf())
@@ -574,6 +610,8 @@ class AgentMediaApprovalPostgresIT {
         private final String toolCallId;
         private final AtomicInteger calls = new AtomicInteger();
         private volatile JsonNode reply;
+        private volatile boolean readGeneratedOutput;
+        private volatile JsonNode artifactReply;
         private Plan(UUID runId, String arguments) { this.arguments = arguments; this.toolCallId = "media-call-" + runId; }
     }
 
@@ -590,7 +628,8 @@ class AgentMediaApprovalPostgresIT {
             Plan plan = plans.get(UUID.fromString((String) context.get("runId")));
             assertThat(plan).isNotNull();
             assertThat(tools).anySatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("propose_media_generation"));
-            if (plan.calls.incrementAndGet() == 1) {
+            int callIndex = plan.calls.incrementAndGet();
+            if (callIndex == 1) {
                 AssistantMessage proposal = AssistantMessage.builder().content("")
                         .toolCalls(List.of(new AssistantMessage.ToolCall(plan.toolCallId, "function",
                                 "propose_media_generation", plan.arguments))).build();
@@ -598,11 +637,29 @@ class AgentMediaApprovalPostgresIT {
             }
             assertThat(messages.getLast()).isInstanceOf(ToolResponseMessage.class);
             ToolResponseMessage response = (ToolResponseMessage) messages.getLast();
+            if (plan.readGeneratedOutput && callIndex == 3) {
+                assertThat(response.getResponses()).singleElement().satisfies(tool -> {
+                    assertThat(tool.id()).isEqualTo("read-generated-" + context.get("runId"));
+                    assertThat(tool.name()).isEqualTo("read_artifacts");
+                    plan.artifactReply = mapper.readTree(tool.responseData());
+                    assertThat(plan.artifactReply.path("status").asText()).isEqualTo("SUCCEEDED");
+                });
+                return new Exchange(1, new ChatResponse(List.of(new Generation(
+                        new AssistantMessage("The generated media version is readable.")))));
+            }
             assertThat(response.getResponses()).singleElement().satisfies(tool -> {
                 assertThat(tool.id()).isEqualTo(plan.toolCallId);
                 assertThat(tool.name()).isEqualTo("propose_media_generation");
                 plan.reply = mapper.readTree(tool.responseData());
             });
+            if (plan.readGeneratedOutput) {
+                ObjectNode arguments = mapper.createObjectNode();
+                arguments.putArray("versionIds").add(plan.reply.at("/mediaApproval/tasks/0/artifactVersionId").asText());
+                AssistantMessage read = AssistantMessage.builder().content("Verify the archived media version.")
+                        .toolCalls(List.of(new AssistantMessage.ToolCall("read-generated-" + context.get("runId"),
+                                "function", "read_artifacts", arguments.toString()))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(read))));
+            }
             return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("The media batch result is recorded.")))));
         }
     }

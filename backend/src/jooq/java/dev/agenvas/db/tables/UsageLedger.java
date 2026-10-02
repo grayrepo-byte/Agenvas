@@ -7,9 +7,6 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.AgentRun.AgentRunPath;
-import dev.agenvas.db.tables.Project.ProjectPath;
-import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.UsageLedgerRecord;
 
 import java.math.BigDecimal;
@@ -22,15 +19,11 @@ import java.util.UUID;
 import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
-import org.jooq.ForeignKey;
 import org.jooq.Index;
-import org.jooq.InverseForeignKey;
 import org.jooq.JSONB;
 import org.jooq.Name;
-import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
-import org.jooq.Record;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -72,19 +65,21 @@ public class UsageLedger extends TableImpl<UsageLedgerRecord> {
     public final TableField<UsageLedgerRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.usage_ledger.project_id</code>. 所属项目及授权作用域
+     * The column <code>public.usage_ledger.project_id</code>.
+     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
      */
-    public final TableField<UsageLedgerRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
+    public final TableField<UsageLedgerRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "原所属项目的历史标识；不设外键，查询仍须校验项目权限");
 
     /**
-     * The column <code>public.usage_ledger.run_id</code>. 所属 Agent Run；用户直连任务为空
+     * The column <code>public.usage_ledger.run_id</code>. 原 Agent Run
+     * 的历史标识；允许执行对象清理后保留，直连任务为空
      */
-    public final TableField<UsageLedgerRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "所属 Agent Run；用户直连任务为空");
+    public final TableField<UsageLedgerRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "原 Agent Run 的历史标识；允许执行对象清理后保留，直连任务为空");
 
     /**
-     * The column <code>public.usage_ledger.task_id</code>. 持久任务身份
+     * The column <code>public.usage_ledger.task_id</code>. 原持久任务的历史标识；允许任务清理后保留
      */
-    public final TableField<UsageLedgerRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "持久任务身份");
+    public final TableField<UsageLedgerRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "原持久任务的历史标识；允许任务清理后保留");
 
     /**
      * The column <code>public.usage_ledger.operation_key</code>. 使用量账本的业务操作去重键
@@ -178,39 +173,6 @@ public class UsageLedger extends TableImpl<UsageLedgerRecord> {
         this(DSL.name("usage_ledger"), null);
     }
 
-    public <O extends Record> UsageLedger(Table<O> path, ForeignKey<O, UsageLedgerRecord> childPath, InverseForeignKey<O, UsageLedgerRecord> parentPath) {
-        super(path, childPath, parentPath, USAGE_LEDGER);
-    }
-
-    /**
-     * A subtype implementing {@link Path} for simplified path-based joins.
-     */
-    public static class UsageLedgerPath extends UsageLedger implements Path<UsageLedgerRecord> {
-
-        private static final long serialVersionUID = 1L;
-        public <O extends Record> UsageLedgerPath(Table<O> path, ForeignKey<O, UsageLedgerRecord> childPath, InverseForeignKey<O, UsageLedgerRecord> parentPath) {
-            super(path, childPath, parentPath);
-        }
-        private UsageLedgerPath(Name alias, Table<UsageLedgerRecord> aliased) {
-            super(alias, aliased);
-        }
-
-        @Override
-        public UsageLedgerPath as(String alias) {
-            return new UsageLedgerPath(DSL.name(alias), this);
-        }
-
-        @Override
-        public UsageLedgerPath as(Name alias) {
-            return new UsageLedgerPath(alias, this);
-        }
-
-        @Override
-        public UsageLedgerPath as(Table<?> alias) {
-            return new UsageLedgerPath(alias.getQualifiedName(), this);
-        }
-    }
-
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
@@ -229,47 +191,6 @@ public class UsageLedger extends TableImpl<UsageLedgerRecord> {
     @Override
     public List<UniqueKey<UsageLedgerRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.USAGE_LEDGER_OPERATION_KEY_KEY);
-    }
-
-    @Override
-    public List<ForeignKey<UsageLedgerRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.USAGE_LEDGER__FK_USAGE_RUN_PROJECT, Keys.USAGE_LEDGER__FK_USAGE_TASK_PROJECT, Keys.USAGE_LEDGER__USAGE_LEDGER_PROJECT_ID_FKEY);
-    }
-
-    private transient AgentRunPath _agentRun;
-
-    /**
-     * Get the implicit join path to the <code>public.agent_run</code> table.
-     */
-    public AgentRunPath agentRun() {
-        if (_agentRun == null)
-            _agentRun = new AgentRunPath(this, Keys.USAGE_LEDGER__FK_USAGE_RUN_PROJECT, null);
-
-        return _agentRun;
-    }
-
-    private transient TaskPath _task;
-
-    /**
-     * Get the implicit join path to the <code>public.task</code> table.
-     */
-    public TaskPath task() {
-        if (_task == null)
-            _task = new TaskPath(this, Keys.USAGE_LEDGER__FK_USAGE_TASK_PROJECT, null);
-
-        return _task;
-    }
-
-    private transient ProjectPath _project;
-
-    /**
-     * Get the implicit join path to the <code>public.project</code> table.
-     */
-    public ProjectPath project() {
-        if (_project == null)
-            _project = new ProjectPath(this, Keys.USAGE_LEDGER__USAGE_LEDGER_PROJECT_ID_FKEY, null);
-
-        return _project;
     }
 
     @Override

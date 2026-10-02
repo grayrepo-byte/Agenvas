@@ -36,42 +36,46 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
     }
 
     /**
-     * Setter for <code>public.call_log.project_id</code>. 所属项目及授权作用域
+     * Setter for <code>public.call_log.project_id</code>.
+     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.call_log.project_id</code>. 所属项目及授权作用域
+     * Getter for <code>public.call_log.project_id</code>.
+     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.call_log.task_id</code>. 持久任务身份
+     * Setter for <code>public.call_log.task_id</code>. 原持久任务的历史标识；允许任务清理后保留
      */
     public void setTaskId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.call_log.task_id</code>. 持久任务身份
+     * Getter for <code>public.call_log.task_id</code>. 原持久任务的历史标识；允许任务清理后保留
      */
     public UUID getTaskId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.call_log.run_id</code>. 所属 Agent Run；用户直连任务为空
+     * Setter for <code>public.call_log.run_id</code>. 原 Agent Run
+     * 的历史标识；允许执行对象清理后保留，直连任务为空
      */
     public void setRunId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.call_log.run_id</code>. 所属 Agent Run；用户直连任务为空
+     * Getter for <code>public.call_log.run_id</code>. 原 Agent Run
+     * 的历史标识；允许执行对象清理后保留，直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(3);

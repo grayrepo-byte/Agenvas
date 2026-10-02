@@ -11,12 +11,10 @@ import dev.agenvas.db.tables.AgentConversation.AgentConversationPath;
 import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
 import dev.agenvas.db.tables.AgentMediaApproval.AgentMediaApprovalPath;
 import dev.agenvas.db.tables.AppUser.AppUserPath;
-import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.LlmTurn.LlmTurnPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.ToolExecution.ToolExecutionPath;
-import dev.agenvas.db.tables.UsageLedger.UsageLedgerPath;
 import dev.agenvas.db.tables.records.AgentRunRecord;
 
 import java.time.OffsetDateTime;
@@ -291,19 +289,6 @@ public class AgentRun extends TableImpl<AgentRunRecord> {
         return _agentConversation;
     }
 
-    private transient CallLogPath _callLog;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.call_log</code>
-     * table
-     */
-    public CallLogPath callLog() {
-        if (_callLog == null)
-            _callLog = new CallLogPath(this, null, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_RUN_ID_FKEY.getInverseKey());
-
-        return _callLog;
-    }
-
     private transient AgentMediaApprovalPath _agentMediaApproval;
 
     /**
@@ -353,19 +338,6 @@ public class AgentRun extends TableImpl<AgentRunRecord> {
             _toolExecution = new ToolExecutionPath(this, null, Keys.TOOL_EXECUTION__FK_TOOL_EXECUTION_RUN.getInverseKey());
 
         return _toolExecution;
-    }
-
-    private transient UsageLedgerPath _usageLedger;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.usage_ledger</code> table
-     */
-    public UsageLedgerPath usageLedger() {
-        if (_usageLedger == null)
-            _usageLedger = new UsageLedgerPath(this, null, Keys.USAGE_LEDGER__FK_USAGE_RUN_PROJECT.getInverseKey());
-
-        return _usageLedger;
     }
 
     @Override

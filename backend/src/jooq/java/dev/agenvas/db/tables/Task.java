@@ -8,7 +8,6 @@ import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
-import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
 import dev.agenvas.db.tables.MediaCapabilityVersion.MediaCapabilityVersionPath;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion.MediaProviderConnectionVersionPath;
@@ -18,7 +17,6 @@ import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.TaskLateResult.TaskLateResultPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.TaskProviderPollRetry.TaskProviderPollRetryPath;
-import dev.agenvas.db.tables.UsageLedger.UsageLedgerPath;
 import dev.agenvas.db.tables.records.TaskRecord;
 
 import java.time.OffsetDateTime;
@@ -359,19 +357,6 @@ public class Task extends TableImpl<TaskRecord> {
         return _agentRun;
     }
 
-    private transient CallLogPath _callLog;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.call_log</code>
-     * table
-     */
-    public CallLogPath callLog() {
-        if (_callLog == null)
-            _callLog = new CallLogPath(this, null, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_TASK_ID_FKEY.getInverseKey());
-
-        return _callLog;
-    }
-
     private transient TaskManualReplacementPath _fkManualReplacementNew;
 
     /**
@@ -437,19 +422,6 @@ public class Task extends TableImpl<TaskRecord> {
             _taskLateResult = new TaskLateResultPath(this, null, Keys.TASK_LATE_RESULT__FK_TASK_LATE_RESULT_TASK.getInverseKey());
 
         return _taskLateResult;
-    }
-
-    private transient UsageLedgerPath _usageLedger;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.usage_ledger</code> table
-     */
-    public UsageLedgerPath usageLedger() {
-        if (_usageLedger == null)
-            _usageLedger = new UsageLedgerPath(this, null, Keys.USAGE_LEDGER__FK_USAGE_TASK_PROJECT.getInverseKey());
-
-        return _usageLedger;
     }
 
     private transient TaskProviderPollRetryPath _taskProviderPollRetry;

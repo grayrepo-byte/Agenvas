@@ -129,10 +129,9 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
 
     /**
      * The column <code>public.artifact_version.base_version_id</code>.
-     * Displayed parent version from the originating CanvasItem when this
-     * immutable version was created.
+     * 创作所基于的父版本标识；应用校验所属产物后冻结，不设自引用外键
      */
-    public final TableField<ArtifactVersionRecord, UUID> BASE_VERSION_ID = createField(DSL.name("base_version_id"), SQLDataType.UUID, this, "Displayed parent version from the originating CanvasItem when this immutable version was created.");
+    public final TableField<ArtifactVersionRecord, UUID> BASE_VERSION_ID = createField(DSL.name("base_version_id"), SQLDataType.UUID, this, "创作所基于的父版本标识；应用校验所属产物后冻结，不设自引用外键");
 
     /**
      * The column <code>public.artifact_version.frozen_input_json</code>.
@@ -225,7 +224,7 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
 
     @Override
     public List<ForeignKey<ArtifactVersionRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_BASE);
+        return Arrays.asList(Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT);
     }
 
     private transient ArtifactPath _artifact;
@@ -238,19 +237,6 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _artifact = new ArtifactPath(this, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT, null);
 
         return _artifact;
-    }
-
-    private transient ArtifactVersionPath _artifactVersion;
-
-    /**
-     * Get the implicit join path to the <code>public.artifact_version</code>
-     * table.
-     */
-    public ArtifactVersionPath artifactVersion() {
-        if (_artifactVersion == null)
-            _artifactVersion = new ArtifactVersionPath(this, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_BASE, null);
-
-        return _artifactVersion;
     }
 
     private transient CanvasItemMediaVersionPath _canvasItemMediaVersion;

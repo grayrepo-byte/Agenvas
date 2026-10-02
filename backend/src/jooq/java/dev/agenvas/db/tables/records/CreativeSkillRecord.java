@@ -79,7 +79,7 @@ public class CreativeSkillRecord extends UpdatableRecordImpl<CreativeSkillRecord
 
     /**
      * Setter for <code>public.creative_skill.current_version_id</code>.
-     * 当前发布的不可变版本
+     * 当前发布版本指针；应用在同一事务插入所属版本并执行目录 CAS，不设循环外键
      */
     public void setCurrentVersionId(UUID value) {
         set(4, value);
@@ -87,7 +87,7 @@ public class CreativeSkillRecord extends UpdatableRecordImpl<CreativeSkillRecord
 
     /**
      * Getter for <code>public.creative_skill.current_version_id</code>.
-     * 当前发布的不可变版本
+     * 当前发布版本指针；应用在同一事务插入所属版本并执行目录 CAS，不设循环外键
      */
     public UUID getCurrentVersionId() {
         return (UUID) get(4);

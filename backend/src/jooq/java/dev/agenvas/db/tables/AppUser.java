@@ -9,7 +9,6 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentMediaApproval.AgentMediaApprovalPath;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
-import dev.agenvas.db.tables.AgentSkillBinding.AgentSkillBindingPath;
 import dev.agenvas.db.tables.CreativeSkill.CreativeSkillPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
 import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
@@ -196,19 +195,6 @@ public class AppUser extends TableImpl<AppUserRecord> {
     @Override
     public List<UniqueKey<AppUserRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.UQ_APP_USER_LOGIN_NAME);
-    }
-
-    private transient AgentSkillBindingPath _agentSkillBinding;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.agent_skill_binding</code> table
-     */
-    public AgentSkillBindingPath agentSkillBinding() {
-        if (_agentSkillBinding == null)
-            _agentSkillBinding = new AgentSkillBindingPath(this, null, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_FKEY.getInverseKey());
-
-        return _agentSkillBinding;
     }
 
     private transient CreativeSkillPath _creativeSkill;

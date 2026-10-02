@@ -88,10 +88,9 @@ public class Artifact extends TableImpl<ArtifactRecord> {
 
     /**
      * The column <code>public.artifact.resource_default_version_id</code>.
-     * Explicit library default used for new CanvasItems; card version selection
-     * never updates it.
+     * 资源默认版本指针；应用校验所属产物并执行 CAS，不设循环外键
      */
-    public final TableField<ArtifactRecord, UUID> RESOURCE_DEFAULT_VERSION_ID = createField(DSL.name("resource_default_version_id"), SQLDataType.UUID, this, "Explicit library default used for new CanvasItems; card version selection never updates it.");
+    public final TableField<ArtifactRecord, UUID> RESOURCE_DEFAULT_VERSION_ID = createField(DSL.name("resource_default_version_id"), SQLDataType.UUID, this, "资源默认版本指针；应用校验所属产物并执行 CAS，不设循环外键");
 
     /**
      * The column <code>public.artifact.archived_at</code>. 归档时间；未归档时为空
@@ -197,7 +196,7 @@ public class Artifact extends TableImpl<ArtifactRecord> {
 
     @Override
     public List<ForeignKey<ArtifactRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.ARTIFACT__FK_ARTIFACT_PROJECT, Keys.ARTIFACT__FK_ARTIFACT_RESOURCE_DEFAULT_VERSION);
+        return Arrays.asList(Keys.ARTIFACT__FK_ARTIFACT_PROJECT);
     }
 
     private transient ProjectPath _project;
@@ -212,19 +211,6 @@ public class Artifact extends TableImpl<ArtifactRecord> {
         return _project;
     }
 
-    private transient ArtifactVersionPath _artifactVersion;
-
-    /**
-     * Get the implicit join path to the <code>public.artifact_version</code>
-     * table.
-     */
-    public ArtifactVersionPath artifactVersion() {
-        if (_artifactVersion == null)
-            _artifactVersion = new ArtifactVersionPath(this, Keys.ARTIFACT__FK_ARTIFACT_RESOURCE_DEFAULT_VERSION, null);
-
-        return _artifactVersion;
-    }
-
     private transient AgentBindingPath _agentBinding;
 
     /**
@@ -236,6 +222,19 @@ public class Artifact extends TableImpl<ArtifactRecord> {
             _agentBinding = new AgentBindingPath(this, null, Keys.AGENT_BINDING__FK_AGENT_BINDING_ARTIFACT.getInverseKey());
 
         return _agentBinding;
+    }
+
+    private transient ArtifactVersionPath _artifactVersion;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.artifact_version</code> table
+     */
+    public ArtifactVersionPath artifactVersion() {
+        if (_artifactVersion == null)
+            _artifactVersion = new ArtifactVersionPath(this, null, Keys.ARTIFACT_VERSION__FK_ARTIFACT_VERSION_ARTIFACT.getInverseKey());
+
+        return _artifactVersion;
     }
 
     private transient CanvasItemPath _canvasItem;

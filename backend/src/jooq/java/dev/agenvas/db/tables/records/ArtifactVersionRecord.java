@@ -174,8 +174,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Setter for <code>public.artifact_version.base_version_id</code>.
-     * Displayed parent version from the originating CanvasItem when this
-     * immutable version was created.
+     * 创作所基于的父版本标识；应用校验所属产物后冻结，不设自引用外键
      */
     public void setBaseVersionId(UUID value) {
         set(10, value);
@@ -183,8 +182,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Getter for <code>public.artifact_version.base_version_id</code>.
-     * Displayed parent version from the originating CanvasItem when this
-     * immutable version was created.
+     * 创作所基于的父版本标识；应用校验所属产物后冻结，不设自引用外键
      */
     public UUID getBaseVersionId() {
         return (UUID) get(10);

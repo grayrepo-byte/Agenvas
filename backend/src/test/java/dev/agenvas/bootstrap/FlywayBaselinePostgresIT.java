@@ -4,19 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.testing.MigrationVersions;
+import dev.agenvas.artifact.infrastructure.JooqArtifactRepository;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.ObjectMapper;
 
 /** Fresh-install evidence for the consolidated schema, installation seeds and database boundaries. */
 @Testcontainers
@@ -218,6 +223,13 @@ class FlywayBaselinePostgresIT {
             }
             assertRejected(connection, CHECK_VIOLATION, "update task set kind='MEDIA_EXPORT' where id=?", task);
             assertRejected(connection, CHECK_VIOLATION, "update task set kind='AGENT_TURN' where id=?", task);
+            // TEXT has no file_id: its owner must still exist even though the file relation is nullable.
+            assertRejected(connection, FOREIGN_KEY_VIOLATION, """
+                    insert into library_entry(id,owner_id,name,category,kind,text_content,
+                      source_json,created_at,updated_at)
+                    values (?,?,'Synthetic text','OTHER','TEXT','{"format":"PLAIN_TEXT","text":"Synthetic"}',
+                      '{"schemaVersion":1}',now(),now())
+                    """, UUID.randomUUID(), UUID.randomUUID());
 
             execute(connection, "delete from canvas_item where id=?", card);
             assertThat(count(connection, "select count(*) from canvas_item_media_version where canvas_item_id=?", card))
@@ -227,7 +239,7 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
-    void conversationPointersStayWithinTheirProjectAndAgent() throws Exception {
+    void conversationAndRunOwnershipStayWithinTheirProjectAndAgent() throws Exception {
         flyway.migrate();
         UUID owner = UUID.randomUUID();
         UUID project = UUID.randomUUID();
@@ -260,13 +272,125 @@ class FlywayBaselinePostgresIT {
             for (UUID invalidConversation : List.of(otherConversation, foreignConversation)) {
                 assertRejected(connection, FOREIGN_KEY_VIOLATION,
                         "update agent_run set conversation_id=? where id=?", invalidConversation, run);
-                assertRejected(connection, FOREIGN_KEY_VIOLATION,
-                        "update agent_instance set current_conversation_id=? where id=?", invalidConversation, agent);
             }
             assertRejected(connection, FOREIGN_KEY_VIOLATION, """
                     insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at)
                     values (?,?,?,'Wrong project',now(),now())
                     """, UUID.randomUUID(), foreignProject, agent);
+        }
+    }
+
+    @Test
+    void auditAndUsageHistoryKeepOriginalIdentifiersAfterExecutionCleanup() throws Exception {
+        flyway.migrate();
+        UUID owner = UUID.randomUUID();
+        UUID project = UUID.randomUUID();
+        UUID task = UUID.randomUUID();
+        UUID agent = UUID.randomUUID();
+        UUID conversation = UUID.randomUUID();
+        UUID run = UUID.randomUUID();
+        UUID log = UUID.randomUUID();
+        UUID entry = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
+            insertAgent(connection, project, agent);
+            insertConversation(connection, project, agent, conversation);
+            execute(connection, """
+                    insert into agent_run(id,project_id,agent_instance_id,user_id,status,instruction,
+                      context_snapshot_json,policy_snapshot_json,profile_version,created_at,updated_at,
+                      conversation_id,conversation_turn,completed_at)
+                    values (?,?,?,?,'SUCCEEDED','Synthetic history','{}','{}',1,now(),now(),?,1,now())
+                    """, run, project, agent, owner, conversation);
+            execute(connection, """
+                    insert into task(id,project_id,run_id,step_key,kind,status,input_json,input_hash,
+                      attempt_no,next_action_at,created_at,updated_at,completed_at)
+                    values (?,?,?,'synthetic-history-task','IMAGE_GENERATION','SUCCEEDED','{}',repeat('0',64),
+                      1,now(),now(),now(),now())
+                    """, task, project, run);
+            execute(connection, """
+                    insert into call_log(id,project_id,task_id,run_id,kind,operation,status,trace_id,
+                      provider_request_id,started_at,responded_at,duration_ms,mock)
+                    values (?,?,?,?,'IMAGE','SUBMIT','SUCCEEDED',repeat('0',32),
+                      'synthetic-external-request',now(),now(),0,true)
+                    """, log, project, task, run);
+            execute(connection, """
+                    insert into usage_ledger(id,project_id,task_id,run_id,operation_key,entry_type,
+                      quantity_json,cost_status,cost_source,created_at)
+                    values (?,?,?,?,'synthetic-history-settlement','SETTLEMENT','{}','UNKNOWN','SYNTHETIC',now())
+                    """, entry, project, task, run);
+
+            execute(connection, "delete from task where id=?", task);
+            execute(connection, "delete from agent_run where id=?", run);
+            execute(connection, "delete from agent_conversation where id=?", conversation);
+            execute(connection, "delete from agent_instance where id=?", agent);
+            execute(connection, "delete from project where id=?", project);
+
+            assertThat(text(connection, "select project_id::text from call_log where id=?", log))
+                    .isEqualTo(project.toString());
+            assertThat(text(connection, "select task_id::text from call_log where id=?", log))
+                    .isEqualTo(task.toString());
+            assertThat(text(connection, "select provider_request_id from call_log where id=?", log))
+                    .isEqualTo("synthetic-external-request");
+            assertThat(text(connection, "select run_id::text from call_log where id=?", log))
+                    .isEqualTo(run.toString());
+            assertThat(text(connection, "select project_id::text from usage_ledger where id=?", entry))
+                    .isEqualTo(project.toString());
+            assertThat(text(connection, "select task_id::text from usage_ledger where id=?", entry))
+                    .isEqualTo(task.toString());
+            assertThat(text(connection, "select run_id::text from usage_ledger where id=?", entry))
+                    .isEqualTo(run.toString());
+        }
+    }
+
+    @Test
+    void applicationVersionSelectionRejectsMissingAndUnrelatedInitialVersions() throws Exception {
+        flyway.migrate();
+        UUID owner = UUID.randomUUID();
+        UUID project = UUID.randomUUID();
+        UUID artifact = UUID.randomUUID();
+        UUID otherArtifact = UUID.randomUUID();
+        UUID version = UUID.randomUUID();
+        UUID otherVersion = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
+            insertArtifact(connection, project, artifact, "TEXT");
+            insertArtifact(connection, project, otherArtifact, "TEXT");
+            insertVersion(connection, project, artifact, version);
+            insertVersion(connection, project, otherArtifact, otherVersion);
+            var repository = new JooqArtifactRepository(DSL.using(connection, SQLDialect.POSTGRES), new ObjectMapper());
+            for (UUID invalidVersion : List.of(otherVersion, UUID.randomUUID())) {
+                assertThatThrownBy(() -> repository.setInitialResourceDefaultVersion(artifact, invalidVersion, Instant.now()))
+                        .isInstanceOf(IllegalStateException.class);
+                assertThat(text(connection, "select resource_default_version_id::text from artifact where id=?", artifact))
+                        .isNull();
+            }
+            repository.setInitialResourceDefaultVersion(artifact, version, Instant.now());
+            assertThat(text(connection, "select resource_default_version_id::text from artifact where id=?", artifact))
+                    .isEqualTo(version.toString());
+            assertThat(repository.setResourceDefaultVersion(owner, project, artifact, 0, otherVersion,
+                    "Synthetic title", Instant.now())).isFalse();
+            assertThat(text(connection, "select resource_default_version_id::text from artifact where id=?", artifact))
+                    .isEqualTo(version.toString());
+        }
+    }
+
+    @Test
+    void foreignKeyDependenciesHaveNoCyclesOrSelfReferences() throws Exception {
+        flyway.migrate();
+        try (Connection connection = connection()) {
+            assertThat(strings(connection, """
+                    with recursive edges(source,target) as (
+                      select conrelid,confrelid from pg_constraint
+                      where contype='f' and connamespace='public'::regnamespace
+                    ), reach(source,target) as (
+                      select source,target from edges
+                      union
+                      select r.source,e.target from reach r join edges e on e.source=r.target
+                    )
+                    select distinct source::regclass::text from reach where source=target
+                    """)).as("cyclic foreign-key dependencies").isEmpty();
         }
     }
 

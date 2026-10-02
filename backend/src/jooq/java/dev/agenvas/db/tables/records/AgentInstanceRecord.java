@@ -173,8 +173,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
 
     /**
      * Setter for <code>public.agent_instance.current_conversation_id</code>.
-     * Selected conversation only; switching it never cancels or reassigns an
-     * active Run.
+     * 当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键
      */
     public void setCurrentConversationId(UUID value) {
         set(10, value);
@@ -182,8 +181,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
 
     /**
      * Getter for <code>public.agent_instance.current_conversation_id</code>.
-     * Selected conversation only; switching it never cancels or reassigns an
-     * active Run.
+     * 当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键
      */
     public UUID getCurrentConversationId() {
         return (UUID) get(10);

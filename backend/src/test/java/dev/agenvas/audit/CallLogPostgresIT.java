@@ -625,7 +625,10 @@ class CallLogPostgresIT {
         Project project = newProject("Expired run " + state);
         UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
         terminalHistory(project, taskForCall(call), old);
-        jdbc.sql("update agent_run set status=:status where id=:id").param("status", state.name()).param("id", fixtureRun(project).id()).update();
+        // An expired nonterminal fixture has no completion time, so retention uses its old creation time.
+        jdbc.sql("update agent_run set status=:status,completed_at=null,created_at=:time where id=:id")
+                .param("status", state.name()).param("time", Timestamp.from(old))
+                .param("id", fixtureRun(project).id()).update();
         retention.update(30, retention.settings().version());
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.CANCELED);

@@ -7,10 +7,7 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.AgentRun.AgentRunPath;
 import dev.agenvas.db.tables.CallLogDebug.CallLogDebugPath;
-import dev.agenvas.db.tables.Project.ProjectPath;
-import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.records.CallLogRecord;
 
 import java.time.OffsetDateTime;
@@ -71,19 +68,21 @@ public class CallLog extends TableImpl<CallLogRecord> {
     public final TableField<CallLogRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.call_log.project_id</code>. 所属项目及授权作用域
+     * The column <code>public.call_log.project_id</code>.
+     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
      */
-    public final TableField<CallLogRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
+    public final TableField<CallLogRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "原所属项目的历史标识；不设外键，查询仍须校验项目权限");
 
     /**
-     * The column <code>public.call_log.task_id</code>. 持久任务身份
+     * The column <code>public.call_log.task_id</code>. 原持久任务的历史标识；允许任务清理后保留
      */
-    public final TableField<CallLogRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "持久任务身份");
+    public final TableField<CallLogRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "原持久任务的历史标识；允许任务清理后保留");
 
     /**
-     * The column <code>public.call_log.run_id</code>. 所属 Agent Run；用户直连任务为空
+     * The column <code>public.call_log.run_id</code>. 原 Agent Run
+     * 的历史标识；允许执行对象清理后保留，直连任务为空
      */
-    public final TableField<CallLogRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "所属 Agent Run；用户直连任务为空");
+    public final TableField<CallLogRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "原 Agent Run 的历史标识；允许执行对象清理后保留，直连任务为空");
 
     /**
      * The column <code>public.call_log.step_index</code>. Run 内模型回合序号
@@ -231,47 +230,6 @@ public class CallLog extends TableImpl<CallLogRecord> {
     @Override
     public List<UniqueKey<CallLogRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.CALL_LOG_TRACE_ID_KEY);
-    }
-
-    @Override
-    public List<ForeignKey<CallLogRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CALL_LOG__CALL_LOG_PROJECT_ID_FKEY, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_RUN_ID_FKEY, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_TASK_ID_FKEY);
-    }
-
-    private transient ProjectPath _project;
-
-    /**
-     * Get the implicit join path to the <code>public.project</code> table.
-     */
-    public ProjectPath project() {
-        if (_project == null)
-            _project = new ProjectPath(this, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_FKEY, null);
-
-        return _project;
-    }
-
-    private transient AgentRunPath _agentRun;
-
-    /**
-     * Get the implicit join path to the <code>public.agent_run</code> table.
-     */
-    public AgentRunPath agentRun() {
-        if (_agentRun == null)
-            _agentRun = new AgentRunPath(this, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_RUN_ID_FKEY, null);
-
-        return _agentRun;
-    }
-
-    private transient TaskPath _task;
-
-    /**
-     * Get the implicit join path to the <code>public.task</code> table.
-     */
-    public TaskPath task() {
-        if (_task == null)
-            _task = new TaskPath(this, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_TASK_ID_FKEY, null);
-
-        return _task;
     }
 
     private transient CallLogDebugPath _callLogDebug;

@@ -125,10 +125,9 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
 
     /**
      * The column <code>public.agent_instance.current_conversation_id</code>.
-     * Selected conversation only; switching it never cancels or reassigns an
-     * active Run.
+     * 当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键
      */
-    public final TableField<AgentInstanceRecord, UUID> CURRENT_CONVERSATION_ID = createField(DSL.name("current_conversation_id"), SQLDataType.UUID, this, "Selected conversation only; switching it never cancels or reassigns an active Run.");
+    public final TableField<AgentInstanceRecord, UUID> CURRENT_CONVERSATION_ID = createField(DSL.name("current_conversation_id"), SQLDataType.UUID, this, "当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键");
 
     private AgentInstance(Name alias, Table<AgentInstanceRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -214,20 +213,7 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
 
     @Override
     public List<ForeignKey<AgentInstanceRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.AGENT_INSTANCE__FK_AGENT_CURRENT_CONVERSATION, Keys.AGENT_INSTANCE__FK_AGENT_INSTANCE_PROJECT);
-    }
-
-    private transient AgentConversationPath _agentConversation;
-
-    /**
-     * Get the implicit join path to the <code>public.agent_conversation</code>
-     * table.
-     */
-    public AgentConversationPath agentConversation() {
-        if (_agentConversation == null)
-            _agentConversation = new AgentConversationPath(this, Keys.AGENT_INSTANCE__FK_AGENT_CURRENT_CONVERSATION, null);
-
-        return _agentConversation;
+        return Arrays.asList(Keys.AGENT_INSTANCE__FK_AGENT_INSTANCE_PROJECT);
     }
 
     private transient ProjectPath _project;
@@ -292,6 +278,19 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
             _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT.getInverseKey());
 
         return _canvasItem;
+    }
+
+    private transient AgentConversationPath _agentConversation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.agent_conversation</code> table
+     */
+    public AgentConversationPath agentConversation() {
+        if (_agentConversation == null)
+            _agentConversation = new AgentConversationPath(this, null, Keys.AGENT_CONVERSATION__FK_CONVERSATION_AGENT.getInverseKey());
+
+        return _agentConversation;
     }
 
     private transient SkillBindingCommandPath _skillBindingCommand;

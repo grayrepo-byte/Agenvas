@@ -79,8 +79,7 @@ public class ArtifactRecord extends UpdatableRecordImpl<ArtifactRecord> {
 
     /**
      * Setter for <code>public.artifact.resource_default_version_id</code>.
-     * Explicit library default used for new CanvasItems; card version selection
-     * never updates it.
+     * 资源默认版本指针；应用校验所属产物并执行 CAS，不设循环外键
      */
     public void setResourceDefaultVersionId(UUID value) {
         set(4, value);
@@ -88,8 +87,7 @@ public class ArtifactRecord extends UpdatableRecordImpl<ArtifactRecord> {
 
     /**
      * Getter for <code>public.artifact.resource_default_version_id</code>.
-     * Explicit library default used for new CanvasItems; card version selection
-     * never updates it.
+     * 资源默认版本指针；应用校验所属产物并执行 CAS，不设循环外键
      */
     public UUID getResourceDefaultVersionId() {
         return (UUID) get(4);

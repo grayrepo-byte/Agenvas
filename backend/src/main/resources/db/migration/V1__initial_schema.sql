@@ -1,4 +1,4 @@
--- 当前 PostgreSQL 数据库导出的最终应用结构，按依赖顺序及表归组。
+-- 基于 PostgreSQL 结构导出整理并精简的应用基线，按依赖顺序及表归组。
 -- 仅用于空库；字段定义包含最终约束，不重放开发阶段的 ALTER/回填历史。
 -- 所有约束在所属表内定义；当前状态指针由应用事务与归属校验维护。
 -- 调用日志及用量账本的历史标识不设外键，保留原始关联身份。
@@ -966,9 +966,11 @@ CREATE TABLE public.library_entry (
     CONSTRAINT library_entry_pkey PRIMARY KEY (id),
     CONSTRAINT library_entry_owner_id_id_key UNIQUE (owner_id, id),
     CONSTRAINT library_entry_owner_id_source_version_id_key UNIQUE (owner_id, source_version_id),
-    CONSTRAINT library_entry_owner_id_file_id_kind_fkey FOREIGN KEY (owner_id, file_id, kind) REFERENCES public.library_file(owner_id, id, kind)
+    CONSTRAINT library_entry_owner_id_file_id_kind_fkey FOREIGN KEY (owner_id, file_id, kind) REFERENCES public.library_file(owner_id, id, kind),
+    CONSTRAINT library_entry_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.app_user(id)
 );
 
+COMMENT ON CONSTRAINT library_entry_owner_id_fkey ON public.library_entry IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id) REFERENCES public.app_user(id)';
 COMMENT ON TABLE public.library_entry IS '个人素材库条目、固定内容与精确导入来源';
 COMMENT ON COLUMN public.library_entry.id IS '记录身份';
 COMMENT ON COLUMN public.library_entry.owner_id IS '所属用户及授权作用域';

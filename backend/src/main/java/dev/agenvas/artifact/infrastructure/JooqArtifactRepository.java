@@ -277,7 +277,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
         }
     }
 
-    /** 只在空指针且初始版本号为零时关联首个版本，避免覆盖已有选择。 */
+    /** 校验首个版本属于该产物，并只在空指针及初始版本号为零时关联，避免覆盖已有选择。 */
     @Override
     public void setInitialResourceDefaultVersion(UUID artifactId, UUID versionId, Instant updatedAt) {
         int changed = dsl.update(ARTIFACT)
@@ -286,6 +286,11 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .where(ARTIFACT.ID.eq(artifactId))
                 .and(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID.isNull())
                 .and(ARTIFACT.VERSION.eq(0L))
+                .and(DSL.exists(dsl.selectOne()
+                        .from(ARTIFACT_VERSION)
+                        .where(ARTIFACT_VERSION.ID.eq(versionId))
+                        .and(ARTIFACT_VERSION.ARTIFACT_ID.eq(ARTIFACT.ID))
+                        .and(ARTIFACT_VERSION.PROJECT_ID.eq(ARTIFACT.PROJECT_ID))))
                 .execute();
         if (changed != 1) {
             throw new IllegalStateException("Failed to attach initial ArtifactVersion");

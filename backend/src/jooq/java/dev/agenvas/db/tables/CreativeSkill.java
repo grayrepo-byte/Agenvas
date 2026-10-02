@@ -87,9 +87,9 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
 
     /**
      * The column <code>public.creative_skill.current_version_id</code>.
-     * 当前发布的不可变版本
+     * 当前发布版本指针；应用在同一事务插入所属版本并执行目录 CAS，不设循环外键
      */
-    public final TableField<CreativeSkillRecord, UUID> CURRENT_VERSION_ID = createField(DSL.name("current_version_id"), SQLDataType.UUID, this, "当前发布的不可变版本");
+    public final TableField<CreativeSkillRecord, UUID> CURRENT_VERSION_ID = createField(DSL.name("current_version_id"), SQLDataType.UUID, this, "当前发布版本指针；应用在同一事务插入所属版本并执行目录 CAS，不设循环外键");
 
     /**
      * The column <code>public.creative_skill.trashed_at</code>. 移入回收站的时间；未删除时为空
@@ -197,7 +197,7 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
 
     @Override
     public List<ForeignKey<CreativeSkillRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CREATIVE_SKILL__CREATIVE_SKILL_OWNER_ID_FKEY, Keys.CREATIVE_SKILL__FK_CREATIVE_SKILL_CURRENT_VERSION);
+        return Arrays.asList(Keys.CREATIVE_SKILL__CREATIVE_SKILL_OWNER_ID_FKEY);
     }
 
     private transient AppUserPath _appUser;
@@ -210,19 +210,6 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
             _appUser = new AppUserPath(this, Keys.CREATIVE_SKILL__CREATIVE_SKILL_OWNER_ID_FKEY, null);
 
         return _appUser;
-    }
-
-    private transient SkillVersionPath _skillVersion;
-
-    /**
-     * Get the implicit join path to the <code>public.skill_version</code>
-     * table.
-     */
-    public SkillVersionPath skillVersion() {
-        if (_skillVersion == null)
-            _skillVersion = new SkillVersionPath(this, Keys.CREATIVE_SKILL__FK_CREATIVE_SKILL_CURRENT_VERSION, null);
-
-        return _skillVersion;
     }
 
     private transient SkillDraftPath _skillDraft;
@@ -249,6 +236,19 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
             _skillPublishOperation = new SkillPublishOperationPath(this, null, Keys.SKILL_PUBLISH_OPERATION__SKILL_PUBLISH_OPERATION_OWNER_ID_SKILL_ID_FKEY.getInverseKey());
 
         return _skillPublishOperation;
+    }
+
+    private transient SkillVersionPath _skillVersion;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_version</code> table
+     */
+    public SkillVersionPath skillVersion() {
+        if (_skillVersion == null)
+            _skillVersion = new SkillVersionPath(this, null, Keys.SKILL_VERSION__SKILL_VERSION_OWNER_ID_SKILL_ID_FKEY.getInverseKey());
+
+        return _skillVersion;
     }
 
     @Override

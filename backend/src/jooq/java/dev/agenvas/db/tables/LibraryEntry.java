@@ -226,33 +226,19 @@ public class LibraryEntry extends TableImpl<LibraryEntryRecord> {
 
     @Override
     public List<ForeignKey<LibraryEntryRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_FKEY, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_KIND_FKEY, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FKEY);
+        return Arrays.asList(Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_KIND_FKEY, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FKEY);
     }
 
-    private transient LibraryFilePath _libraryEntryOwnerIdFileIdFkey;
+    private transient LibraryFilePath _libraryFile;
 
     /**
-     * Get the implicit join path to the <code>public.library_file</code> table,
-     * via the <code>library_entry_owner_id_file_id_fkey</code> key.
+     * Get the implicit join path to the <code>public.library_file</code> table.
      */
-    public LibraryFilePath libraryEntryOwnerIdFileIdFkey() {
-        if (_libraryEntryOwnerIdFileIdFkey == null)
-            _libraryEntryOwnerIdFileIdFkey = new LibraryFilePath(this, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_FKEY, null);
+    public LibraryFilePath libraryFile() {
+        if (_libraryFile == null)
+            _libraryFile = new LibraryFilePath(this, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_KIND_FKEY, null);
 
-        return _libraryEntryOwnerIdFileIdFkey;
-    }
-
-    private transient LibraryFilePath _libraryEntryOwnerIdFileIdKindFkey;
-
-    /**
-     * Get the implicit join path to the <code>public.library_file</code> table,
-     * via the <code>library_entry_owner_id_file_id_kind_fkey</code> key.
-     */
-    public LibraryFilePath libraryEntryOwnerIdFileIdKindFkey() {
-        if (_libraryEntryOwnerIdFileIdKindFkey == null)
-            _libraryEntryOwnerIdFileIdKindFkey = new LibraryFilePath(this, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_KIND_FKEY, null);
-
-        return _libraryEntryOwnerIdFileIdKindFkey;
+        return _libraryFile;
     }
 
     private transient AppUserPath _appUser;

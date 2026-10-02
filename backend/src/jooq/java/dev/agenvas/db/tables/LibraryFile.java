@@ -182,32 +182,17 @@ public class LibraryFile extends TableImpl<LibraryFileRecord> {
         return _appUser;
     }
 
-    private transient LibraryEntryPath _libraryEntryOwnerIdFileIdFkey;
+    private transient LibraryEntryPath _libraryEntry;
 
     /**
      * Get the implicit to-many join path to the
-     * <code>public.library_entry</code> table, via the
-     * <code>library_entry_owner_id_file_id_fkey</code> key
+     * <code>public.library_entry</code> table
      */
-    public LibraryEntryPath libraryEntryOwnerIdFileIdFkey() {
-        if (_libraryEntryOwnerIdFileIdFkey == null)
-            _libraryEntryOwnerIdFileIdFkey = new LibraryEntryPath(this, null, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_FKEY.getInverseKey());
+    public LibraryEntryPath libraryEntry() {
+        if (_libraryEntry == null)
+            _libraryEntry = new LibraryEntryPath(this, null, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_KIND_FKEY.getInverseKey());
 
-        return _libraryEntryOwnerIdFileIdFkey;
-    }
-
-    private transient LibraryEntryPath _libraryEntryOwnerIdFileIdKindFkey;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.library_entry</code> table, via the
-     * <code>library_entry_owner_id_file_id_kind_fkey</code> key
-     */
-    public LibraryEntryPath libraryEntryOwnerIdFileIdKindFkey() {
-        if (_libraryEntryOwnerIdFileIdKindFkey == null)
-            _libraryEntryOwnerIdFileIdKindFkey = new LibraryEntryPath(this, null, Keys.LIBRARY_ENTRY__LIBRARY_ENTRY_OWNER_ID_FILE_ID_KIND_FKEY.getInverseKey());
-
-        return _libraryEntryOwnerIdFileIdKindFkey;
+        return _libraryEntry;
     }
 
     @Override

@@ -13,7 +13,6 @@ import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
-import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
@@ -21,7 +20,6 @@ import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
 import dev.agenvas.db.tables.Task.TaskPath;
-import dev.agenvas.db.tables.UsageLedger.UsageLedgerPath;
 import dev.agenvas.db.tables.records.ProjectRecord;
 
 import java.time.OffsetDateTime;
@@ -102,10 +100,10 @@ public class Project extends TableImpl<ProjectRecord> {
     public final TableField<ProjectRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(32).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.project.active_run_id</code>. Reserved active
-     * Agent Run slot; foreign key is added with the run migration.
+     * The column <code>public.project.active_run_id</code>. 当前活动 Run
+     * 指针；应用在项目锁内创建 Run 并占用或释放槽位，不设循环外键
      */
-    public final TableField<ProjectRecord, UUID> ACTIVE_RUN_ID = createField(DSL.name("active_run_id"), SQLDataType.UUID, this, "Reserved active Agent Run slot; foreign key is added with the run migration.");
+    public final TableField<ProjectRecord, UUID> ACTIVE_RUN_ID = createField(DSL.name("active_run_id"), SQLDataType.UUID, this, "当前活动 Run 指针；应用在项目锁内创建 Run 并占用或释放槽位，不设循环外键");
 
     /**
      * The column <code>public.project.event_seq</code>. 项目内事务分配的已提交事件序号
@@ -211,19 +209,7 @@ public class Project extends TableImpl<ProjectRecord> {
 
     @Override
     public List<ForeignKey<ProjectRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.PROJECT__FK_PROJECT_ACTIVE_RUN, Keys.PROJECT__PROJECT_OWNER_ID_FKEY);
-    }
-
-    private transient AgentRunPath _agentRun;
-
-    /**
-     * Get the implicit join path to the <code>public.agent_run</code> table.
-     */
-    public AgentRunPath agentRun() {
-        if (_agentRun == null)
-            _agentRun = new AgentRunPath(this, Keys.PROJECT__FK_PROJECT_ACTIVE_RUN, null);
-
-        return _agentRun;
+        return Arrays.asList(Keys.PROJECT__PROJECT_OWNER_ID_FKEY);
     }
 
     private transient AppUserPath _appUser;
@@ -251,19 +237,6 @@ public class Project extends TableImpl<ProjectRecord> {
         return _assetStorageRoute;
     }
 
-    private transient CallLogPath _callLog;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.call_log</code>
-     * table
-     */
-    public CallLogPath callLog() {
-        if (_callLog == null)
-            _callLog = new CallLogPath(this, null, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_FKEY.getInverseKey());
-
-        return _callLog;
-    }
-
     private transient AgentInstancePath _agentInstance;
 
     /**
@@ -275,6 +248,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _agentInstance = new AgentInstancePath(this, null, Keys.AGENT_INSTANCE__FK_AGENT_INSTANCE_PROJECT.getInverseKey());
 
         return _agentInstance;
+    }
+
+    private transient AgentRunPath _agentRun;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.agent_run</code>
+     * table
+     */
+    public AgentRunPath agentRun() {
+        if (_agentRun == null)
+            _agentRun = new AgentRunPath(this, null, Keys.AGENT_RUN__FK_AGENT_RUN_PROJECT.getInverseKey());
+
+        return _agentRun;
     }
 
     private transient ArtifactPath _artifact;
@@ -390,19 +376,6 @@ public class Project extends TableImpl<ProjectRecord> {
             _skillInstallOperation = new SkillInstallOperationPath(this, null, Keys.SKILL_INSTALL_OPERATION__SKILL_INSTALL_OPERATION_PROJECT_ID_FKEY.getInverseKey());
 
         return _skillInstallOperation;
-    }
-
-    private transient UsageLedgerPath _usageLedger;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.usage_ledger</code> table
-     */
-    public UsageLedgerPath usageLedger() {
-        if (_usageLedger == null)
-            _usageLedger = new UsageLedgerPath(this, null, Keys.USAGE_LEDGER__USAGE_LEDGER_PROJECT_ID_FKEY.getInverseKey());
-
-        return _usageLedger;
     }
 
     @Override
