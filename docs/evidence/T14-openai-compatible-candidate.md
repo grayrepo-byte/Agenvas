@@ -1,9 +1,0 @@
-# T14 Spring AI 真实聊天适配器：候选进展
-
-2026-09-23。依赖基线中加入与现有 Spring AI BOM 同为 2.0.1 的 `spring-ai-starter-model-openai`。默认 `AGENVAS_LLM_MODE=mock` 且 `spring.ai.model.chat=none`，嵌入、图像、音频和审核模型自动配置也关闭；Mock 启动仍不要求外部 Key。显式设置 `AGENVAS_LLM_MODE=configured`、`AGENVAS_LLM_CHAT_ADAPTER=openai`、`AGENVAS_LLM_MODEL`、`AGENVAS_LLM_API_KEY` 后，Spring AI 创建 OpenAI 兼容 `ChatModel`，现有业务 Runtime 的受控 `ChatClient` 调用它。`AGENVAS_LLM_BASE_URL` 默认为官方 HTTPS 端点，可由部署者为受信任兼容服务覆盖；`AGENVAS_LLM_CONFIG_VERSION` 需在变更端点、模型或凭证时递增。configured 模式的 `toolCalling` 能力默认 false，只有该具体端点完成真实工具往返后由管理员设置 `AGENVAS_LLM_TOOL_CALLING_VERIFIED=true` 才声明支持并允许运行。以上配置在服务端环境中，不进入浏览器。
-
-`OpenAiCompatibleGatewayPostgresIT` 用真实 PostgreSQL、真实 Spring AI/OpenAI adapter 和本地假 Chat Completions HTTP 端点验证两回合协议：模型先返回带 ID 的工具请求，Gateway 不自动执行工具；应用持久化编解码器保留工具 ID、响应 ID 与供应商报告的 Token 用量；应用回填同 ID 的工具结果后，第二个 HTTP 请求携带原 assistant tool call 与对应 tool reply，模型返回最终文本。`MockStoryboardPostgresIT` 另断言默认 Mock 上下文没有外部 `ChatModel` Bean。测试没有真实供应商、付费调用或模型能力鉴定，因此清单 T14 的真实工具往返验收仍未勾选。
-
-这只证明 Chat Completions 形状的候选接入，不证明任何具体模型的 Tool Calling、视觉或结构化输出能力。OpenAI 官方[函数调用文档](https://developers.openai.com/api/docs/guides/function-calling)明确区分模型返回工具调用、应用执行及回填结果；Spring AI 2.0.1 [OpenAI Chat 文档](https://docs.spring.io/spring-ai/reference/api/chat/openai-chat.html)提供该 starter 与配置属性。当前未实现管理员设置页、加密 Key 存储、端点出站安全白名单、真实模型冒烟及模型/端点配置漂移的自动指纹检查；不能将此候选写为 M3 门禁已通过。
-
-2026-09-23 补充：上述“当前未实现”描述已被后续 T21 配置工作部分取代，具体状态以 `docs/evidence/T21-encrypted-llm-settings-partial.md` 为准。`ConfiguredStoryboardPostgresIT` 进一步使用配置模式、真实 Spring AI/OpenAI 适配器、本地假 HTTP 模型与 PostgreSQL 完成五次持久模型回合：创建说明/场景/三镜头，提出并由用户批准图片计划，人工选择三张关键帧，再提出并批准视频计划，生成三段 Mock 视频，最终创建无声导出。假模型的第 2、3 回合只从上次已提交工具响应中取真实版本 ID；视频计划只从服务端提供的人工选择文本中取版本 ID。完整 `./mvnw -q verify` 通过，当时报告合计 106 项、0 失败/错误；随后新增的无音轨断言由 `./mvnw -q -Dtest=ConfiguredStoryboardPostgresIT test` 单独复验通过，未在该断言后重跑全量。仍未对真实供应商模型做工具能力或生成质量鉴定，M3 真实模型门禁未通过。

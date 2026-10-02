@@ -39,7 +39,7 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 ## 前端直接依赖
 
-2026-10-02 shadcn 迁移新增精确版本：`radix-ui` 1.6.7、`class-variance-authority` 0.7.1、`cmdk` 1.1.1、`cn` 0.4.0。组件源码位于 `frontend/src/shared/ui/primitives`；CLI 为开发时工具，不加入生产 Node 服务。`components.json` 保持 Radix 与 Phosphor，未升级已有依赖的大版本。验证范围为相关前端组件/页面测试、TypeScript、lint、Vite 构建与隔离 Mock 浏览器；详见 [迁移验证](evidence/shadcn-migration.md)。
+2026-10-02 shadcn 迁移新增精确版本：`radix-ui` 1.6.7、`class-variance-authority` 0.7.1、`cmdk` 1.1.1、`cn` 0.4.0。组件源码位于 `frontend/src/shared/ui/primitives`；CLI 为开发时工具，不加入生产 Node 服务。`components.json` 保持 Radix 与 Phosphor，未升级已有依赖的大版本。验证范围为相关前端组件/页面测试、TypeScript、lint、Vite 构建与隔离 Mock 浏览器；详见 迁移验证（开发记录不随源码公开）。
 
 运行依赖：React/React DOM 19.3.0、React Router 7.18.4、TanStack Query 5.103.2、Zustand 5.0.15、React Flow 12.11.6、React Hook Form 7.88.0、Zod 4.6.5、Phosphor React 2.1.10（画布线性图标，MIT）。
 
@@ -65,7 +65,7 @@ Web 与数据库运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade 
 
 ## 初始基线验证（历史记录）
 
-以下命令结果记录的是建立 M0 基线时的执行快照，不代表当前 V35 全量测试计数或最新部署验收；后续行为与回归结果以 `docs/evidence/` 和开发清单为准。
+以下命令结果记录的是建立 M0 基线时的执行快照，不代表当前 V35 全量测试计数或最新部署验收；后续行为与回归结果以 开发记录（不随源码公开） 和开发清单为准。
 
 ```text
 frontend: ./node_modules/.bin/openapi-typescript ../contracts/openapi.yaml -o src/shared/api/schema.ts
@@ -88,7 +88,7 @@ Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前
 
 ## 尚未验证或不在本基线范围
 
-- 上述初始 Compose 验证发生于 V15；当前 V35 已在隔离空卷 Compose 中构建、初始化、登录及停机重启，见 `docs/evidence/T29-fresh-compose-smoke.md`。从 V15 旧部署原位升级到 V35 仍未演练。
+- 上述初始 Compose 验证发生于 V15；当前 V35 已在隔离空卷 Compose 中构建、初始化、登录及停机重启，见 开发记录（不随源码公开）。从 V15 旧部署原位升级到 V35 仍未演练。
 - T04 已加入 fork PR 可运行且不注入 Provider/部署密钥的 Trivy 源码密钥与依赖扫描、三个运行镜像的 HIGH/CRITICAL 漏洞门禁，以及每镜像的 CycloneDX SBOM/许可证清单工件。2026-09-24 本机用 Trivy 0.74.0 验证：源码密钥与依赖扫描均为 0；后端运行镜像的许可证 JSON 和 CycloneDX 输出成功；Web 原镜像有 37 项 HIGH/CRITICAL，Alpine 安全更新后为 0；后端原镜像的 Tomcat 11.0.24 命中 CVE-2026-68525，固定到 11.0.25 后的运行镜像 OS 和 JAR 均为 0；PostgreSQL 派生镜像精确排除已被 `su-exec` 替换的底层旧 `gosu` 文件后为 0。后端 `./mvnw verify` 实际通过（Surefire 50、Failsafe 41），Docker 内构建通过（Surefire 50）；三张运行镜像均成功构建，PostgreSQL 派生镜像初始化并通过 `pg_isready`，Nginx 配置测试通过。工作流 YAML 已解析且无 `secrets.*` 引用，Compose 配置检查通过；GitHub Actions 托管运行尚未在本工作区验证。源码离线扫描无法完整解析 Maven 父 BOM 的传递依赖，后端镜像扫描补足了运行 JAR 覆盖。
 - Spring AI 2.0.1 的受控 ChatClient 工具往返经假模型测试；OpenAI 兼容 starter 的实际 `ChatModel` 又经假 HTTP Chat Completions 端点与真实 PostgreSQL 上下文验证工具 ID、下一回合 tool reply 和 Token 元数据。完整响应 checkpoint、持久工具结果的下一回合消息重建与剩余工具（读取上下文、创建与修改文字、摆放卡片）的业务执行经真实 PostgreSQL + 假 ChatGateway 或保存的假模型响应测试。尚未验证特定真实 Provider 对恢复后元数据的要求；没有真实 LLM 或视觉调用。
 - ComfyUI `image-v1` 候选模板已接入图片提交、原 prompt_id 状态跟踪与 Asset 归档；V56 移除 V23 的全局单槽，假 HTTP 服务与 PostgreSQL 集成测试验证活动请求可重叠提交。尚未以真实 ComfyUI/模型验证图片。默认仍是 Mock。PNG/JPEG/WebP 上传已由 PostgreSQL＋HTTP 验证；真实 Provider 的归档失败恢复、并发资源表现和固定视频模板现场兼容性尚未完成。
@@ -108,4 +108,4 @@ server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当�
 
 RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务内核与媒体归档，没有引入 Go SDK、脚本运行时或新依赖。第三方 Go SDK 仅作只读参考，不代表 Provider 协议保证。jOOQ 初始由隔离 PostgreSQL 17.11 执行 V65 后重新生成；合并 main 后保留 AutoDL V65，RunningHub 改为 V66 并重新生成，普通构建继续不连接生成数据库；OpenAPI 生成 TypeScript。动态表单复用现有 React 控件与类型，没有增加前端服务端。
 
-固定 HTTP 协议、输入契约、归档恢复与动态表单经定向测试；准确命令、计数与未验证事项见 [RunningHub 证据](evidence/runninghub-api-integration-2026-10-01.md)。没有真实 RunningHub Key 或付费调用，也没有运行全量测试或浏览器端到端。
+固定 HTTP 协议、输入契约、归档恢复与动态表单经定向测试；准确命令、计数与未验证事项见 RunningHub 证据（开发记录不随源码公开）。没有真实 RunningHub Key 或付费调用，也没有运行全量测试或浏览器端到端。

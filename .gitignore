@@ -31,7 +31,6 @@ replay_pid*
 # User-specific stuff
 .idea/
 backend/data/assets
-.env
 
 # Gradle and Maven with auto-import
 # When using Gradle or Maven with auto-import, you should exclude module files,
@@ -165,12 +164,59 @@ web_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variable files
+# Local environment files; keep the sanitized example under version control.
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
+!.env.example
+
+# Private keys, credential stores and local authentication files.
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+.ssh/
+.aws/
+.netrc
+.pgpass
+credentials.json
+credentials.*.json
+service-account*.json
+secrets/
+.secrets/
+credentials/
+
+# Local backups and database files. Keep Flyway *.sql migrations visible.
+backup/
+backups/
+.backups/
+*.dump
+*.backup
+*.sql.gz
+*.sql.xz
+*.sql.zst
+backup.sql
+dump.sql
+database.sql
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# HTTP captures can contain cookies, Authorization headers and private payloads.
+*.har
+
+# Ignore every docs subdirectory, including future ones; keep root documents visible.
+# Already tracked documents remain tracked until explicitly removed from the index.
+/docs/*/
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
