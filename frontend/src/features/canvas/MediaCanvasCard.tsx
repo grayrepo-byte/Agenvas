@@ -31,6 +31,7 @@ import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Select } from "../../shared/ui/Select";
 import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
+import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { CropPanel } from "./CropPanel";
@@ -177,6 +178,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   }
 
   return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("图片") : isAudio ? t("音频") : t("视频")}
+    titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
+    className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
     toolbarRaised={menuOpen || operationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
@@ -263,7 +266,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           if (selectedFile) setUploadFile(selectedFile);
         }} /> : null}
       {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
-        title={item.title} demo={demo} selected={selected} />
+        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
           {metadata.data
             ? isImage ? t("图片尺寸刷新失败，请重试") : t("视频尺寸刷新失败，请重试")
@@ -435,8 +438,8 @@ function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
  * preview is kept for later list-style surfaces and is not used here. Videos keep loading only
  * the cover frame until the user explicitly plays the original.
  */
-function MediaPreview({ artifact, assetId, title, demo, selected }: {
-  artifact: Artifact; assetId: string; title: string; demo: boolean; selected: boolean;
+function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected }: {
+  artifact: Artifact; assetId: string; title: string; audioDescription: string; demo: boolean; selected: boolean;
 }) {
   useLocale();
   const [failed, setFailed] = useState(false);
@@ -454,7 +457,8 @@ function MediaPreview({ artifact, assetId, title, demo, selected }: {
     setPlaying(true);
   }
 
-  if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title} selected={selected} demo={demo} />;
+  if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title}
+    description={audioDescription || title} selected={selected} demo={demo} />;
   return <div className="media-card-preview">
     {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={t("{0} 的视频", { "0": title })}
       controls autoPlay playsInline preload="metadata" src={assetContentUrl(artifact.projectId, assetId)}

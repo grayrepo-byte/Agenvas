@@ -49,15 +49,15 @@ describe("ArtifactCardFrame toolbar", () => {
   it("stays above its node as the node moves and the viewport pans and zooms", async () => {
     showCanvas();
     await waitFor(() => expect(toolbar()).toHaveStyle({
-      transform: "translate(220px, 168px) translate(-50%, -100%)",
+      transform: "translate(220px, 156px) translate(-50%, -100%)",
     }));
     await clickControl(screen.getByRole("button", { name: "移动节点" }));
     await waitFor(() => expect(toolbar()).toHaveStyle({
-      transform: "translate(520px, 318px) translate(-50%, -100%)",
+      transform: "translate(520px, 306px) translate(-50%, -100%)",
     }));
     await clickControl(screen.getByRole("button", { name: "平移并缩放" }));
     await waitFor(() => expect(toolbar()).toHaveStyle({
-      transform: "translate(860px, 533px) translate(-50%, -100%)",
+      transform: "translate(860px, 521px) translate(-50%, -100%)",
     }));
   });
 
@@ -67,7 +67,7 @@ describe("ArtifactCardFrame toolbar", () => {
     expect(toolbar()).toHaveAttribute("data-id", "first");
     await clickControl(screen.getByRole("button", { name: "选择第二张" }));
     await waitFor(() => expect(toolbar()).toHaveAttribute("data-id", "second"));
-    expect(toolbar()).toHaveStyle({ transform: "translate(820px, 68px) translate(-50%, -100%)" });
+    expect(toolbar()).toHaveStyle({ transform: "translate(820px, 56px) translate(-50%, -100%)" });
     await clickControl(screen.getByRole("button", { name: "多选" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "编辑图片" })).not.toBeInTheDocument());
     await clickControl(screen.getByRole("button", { name: "取消选择" }));
