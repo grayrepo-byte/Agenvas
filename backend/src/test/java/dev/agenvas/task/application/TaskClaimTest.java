@@ -52,7 +52,7 @@ class TaskClaimTest {
 
     @ParameterizedTest
     @EnumSource(value = Route.class, names = {"BOUND_MEDIA", "BOUND_POLLS"}, mode = EnumSource.Mode.EXCLUDE)
-    void legacyAndTextRoutesSkipValidationWhenShutdownHasAlreadyStarted(Route route) {
+    void genericAndTextRoutesSkipValidationWhenShutdownHasAlreadyStarted(Route route) {
         gate.onContextClosed(null);
         assertThat(claim(route, null, -1)).isEmpty();
         verifyNoInteractions(repository);
@@ -113,11 +113,7 @@ class TaskClaimTest {
             case DUE -> service.claimDue(worker, limit);
             case BOUND_MEDIA -> service.claimBoundMedia(worker, limit);
             case BOUND_POLLS -> service.claimBoundMediaPolls(worker, limit);
-            case IMAGE -> service.claimImagesDue(worker, limit);
-            case VIDEO -> service.claimVideosDue(worker, limit);
             case PROVIDER_POLLS -> service.claimProviderPolls(worker, limit);
-            case COMFY_IMAGE_POLLS -> service.claimComfyImagePolls(worker, limit);
-            case COMFY_VIDEO_POLLS -> service.claimComfyVideoPolls(worker, limit);
             case AGENT -> service.claimAgentTurns(worker, limit);
             case TEXT -> service.claimTextGenerations(worker, limit);
         };
@@ -125,8 +121,7 @@ class TaskClaimTest {
 
     private enum Route {
         DUE("claimDue"), BOUND_MEDIA("claimDueBoundMedia"), BOUND_POLLS("claimDueBoundMediaPolls"),
-        IMAGE("claimDueImages"), VIDEO("claimDueVideos"), PROVIDER_POLLS("claimDueProviderPolls"),
-        COMFY_IMAGE_POLLS("claimDueComfyImagePolls"), COMFY_VIDEO_POLLS("claimDueComfyVideoPolls"),
+        PROVIDER_POLLS("claimDueProviderPolls"),
         AGENT("claimDueAgentTurns"), TEXT("claimDueTextGenerations");
 
         private final String repositoryMethod;

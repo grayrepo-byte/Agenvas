@@ -15,7 +15,6 @@ import dev.agenvas.db.tables.MediaProviderConnectionVersion.MediaProviderConnect
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
-import dev.agenvas.db.tables.TaskDependency.TaskDependencyPath;
 import dev.agenvas.db.tables.TaskLateResult.TaskLateResultPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
 import dev.agenvas.db.tables.TaskProviderPollRetry.TaskProviderPollRetryPath;
@@ -55,8 +54,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Persistent recoverable work; leases fence workers and never cover provider
- * waiting time.
+ * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Task extends TableImpl<TaskRecord> {
@@ -77,79 +75,75 @@ public class Task extends TableImpl<TaskRecord> {
     }
 
     /**
-     * The column <code>public.task.id</code>.
+     * The column <code>public.task.id</code>. 记录身份
      */
-    public final TableField<TaskRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.task.project_id</code>.
+     * The column <code>public.task.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<TaskRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.task.run_id</code>.
+     * The column <code>public.task.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
-    public final TableField<TaskRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.task.step_key</code>.
+     * The column <code>public.task.step_key</code>. 项目与 Run 作用域内的执行步骤去重键
      */
-    public final TableField<TaskRecord, String> STEP_KEY = createField(DSL.name("step_key"), SQLDataType.VARCHAR(160).nullable(false), this, "");
+    public final TableField<TaskRecord, String> STEP_KEY = createField(DSL.name("step_key"), SQLDataType.VARCHAR(160).nullable(false), this, "项目与 Run 作用域内的执行步骤去重键");
 
     /**
-     * The column <code>public.task.kind</code>.
+     * The column <code>public.task.kind</code>. 业务类型，允许值由 CHECK 约束限定
      */
-    public final TableField<TaskRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(40).nullable(false), this, "");
+    public final TableField<TaskRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(40).nullable(false), this, "业务类型，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.task.status</code>.
+     * The column <code>public.task.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
-    public final TableField<TaskRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(40).nullable(false), this, "");
+    public final TableField<TaskRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(40).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.task.input_json</code>.
+     * The column <code>public.task.input_json</code>. 受理时固定的命令输入
      */
-    public final TableField<TaskRecord, JSONB> INPUT_JSON = createField(DSL.name("input_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<TaskRecord, JSONB> INPUT_JSON = createField(DSL.name("input_json"), SQLDataType.JSONB.nullable(false), this, "受理时固定的命令输入");
 
     /**
-     * The column <code>public.task.input_hash</code>.
+     * The column <code>public.task.input_hash</code>. 规范化任务固定输入 SHA-256 摘要
      */
-    public final TableField<TaskRecord, String> INPUT_HASH = createField(DSL.name("input_hash"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<TaskRecord, String> INPUT_HASH = createField(DSL.name("input_hash"), SQLDataType.CHAR(64).nullable(false), this, "规范化任务固定输入 SHA-256 摘要");
 
     /**
-     * The column <code>public.task.output_json</code>.
+     * The column <code>public.task.output_json</code>. 任务已提交结果或公开回答流进度
      */
-    public final TableField<TaskRecord, JSONB> OUTPUT_JSON = createField(DSL.name("output_json"), SQLDataType.JSONB, this, "");
-
-    /**
-     * The column <code>public.task.provider_id</code>.
-     */
-    public final TableField<TaskRecord, UUID> PROVIDER_ID = createField(DSL.name("provider_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskRecord, JSONB> OUTPUT_JSON = createField(DSL.name("output_json"), SQLDataType.JSONB, this, "任务已提交结果或公开回答流进度");
 
     /**
      * The column <code>public.task.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
-    public final TableField<TaskRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "");
+    public final TableField<TaskRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "外部已受理请求标识，供状态查询与结果归档");
 
     /**
-     * The column <code>public.task.attempt_no</code>.
+     * The column <code>public.task.attempt_no</code>. 用户批准的独立执行尝试序号
      */
-    public final TableField<TaskRecord, Integer> ATTEMPT_NO = createField(DSL.name("attempt_no"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<TaskRecord, Integer> ATTEMPT_NO = createField(DSL.name("attempt_no"), SQLDataType.INTEGER.nullable(false), this, "用户批准的独立执行尝试序号");
 
     /**
-     * The column <code>public.task.next_action_at</code>.
+     * The column <code>public.task.next_action_at</code>. 调度器下一次允许认领时间
      */
-    public final TableField<TaskRecord, OffsetDateTime> NEXT_ACTION_AT = createField(DSL.name("next_action_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<TaskRecord, OffsetDateTime> NEXT_ACTION_AT = createField(DSL.name("next_action_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "调度器下一次允许认领时间");
 
     /**
-     * The column <code>public.task.lease_owner</code>.
+     * The column <code>public.task.lease_owner</code>. 当前认领 Worker 标识
      */
-    public final TableField<TaskRecord, String> LEASE_OWNER = createField(DSL.name("lease_owner"), SQLDataType.VARCHAR(160), this, "");
+    public final TableField<TaskRecord, String> LEASE_OWNER = createField(DSL.name("lease_owner"), SQLDataType.VARCHAR(160), this, "当前认领 Worker 标识");
 
     /**
-     * The column <code>public.task.lease_until</code>.
+     * The column <code>public.task.lease_until</code>. 当前认领租约过期时间
      */
-    public final TableField<TaskRecord, OffsetDateTime> LEASE_UNTIL = createField(DSL.name("lease_until"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<TaskRecord, OffsetDateTime> LEASE_UNTIL = createField(DSL.name("lease_until"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "当前认领租约过期时间");
 
     /**
      * The column <code>public.task.lease_epoch</code>. Monotonic fencing token
@@ -158,59 +152,55 @@ public class Task extends TableImpl<TaskRecord> {
     public final TableField<TaskRecord, Long> LEASE_EPOCH = createField(DSL.name("lease_epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "Monotonic fencing token incremented on every claim or reclaim.");
 
     /**
-     * The column <code>public.task.version</code>.
+     * The column <code>public.task.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<TaskRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<TaskRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.task.error_code</code>.
+     * The column <code>public.task.error_code</code>. 稳定错误代码，不含堆栈或凭据
      */
-    public final TableField<TaskRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(120), this, "");
+    public final TableField<TaskRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(120), this, "稳定错误代码，不含堆栈或凭据");
 
     /**
-     * The column <code>public.task.created_at</code>.
+     * The column <code>public.task.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<TaskRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<TaskRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.task.updated_at</code>.
+     * The column <code>public.task.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
-    public final TableField<TaskRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<TaskRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
-     * The column <code>public.task.completed_at</code>.
+     * The column <code>public.task.completed_at</code>. 终态完成时间；未完成时为空
      */
-    public final TableField<TaskRecord, OffsetDateTime> COMPLETED_AT = createField(DSL.name("completed_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<TaskRecord, OffsetDateTime> COMPLETED_AT = createField(DSL.name("completed_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "终态完成时间；未完成时为空");
 
     /**
      * The column <code>public.task.cancel_requested</code>.
+     * 用户要求停止本系统后续编排；不承诺外部停止或退款
      */
-    public final TableField<TaskRecord, Boolean> CANCEL_REQUESTED = createField(DSL.name("cancel_requested"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<TaskRecord, Boolean> CANCEL_REQUESTED = createField(DSL.name("cancel_requested"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "用户要求停止本系统后续编排；不承诺外部停止或退款");
 
     /**
-     * The column <code>public.task.capability_id</code>.
+     * The column <code>public.task.capability_id</code>. 固定媒体能力身份
      */
-    public final TableField<TaskRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "固定媒体能力身份");
 
     /**
-     * The column <code>public.task.capability_version</code>.
+     * The column <code>public.task.capability_version</code>. 固定的不可变媒体能力版本
      */
-    public final TableField<TaskRecord, Integer> CAPABILITY_VERSION = createField(DSL.name("capability_version"), SQLDataType.INTEGER, this, "");
+    public final TableField<TaskRecord, Integer> CAPABILITY_VERSION = createField(DSL.name("capability_version"), SQLDataType.INTEGER, this, "固定的不可变媒体能力版本");
 
     /**
-     * The column <code>public.task.connection_id</code>.
+     * The column <code>public.task.connection_id</code>. 不可变媒体连接所属身份或输入来源连线身份
      */
-    public final TableField<TaskRecord, UUID> CONNECTION_ID = createField(DSL.name("connection_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskRecord, UUID> CONNECTION_ID = createField(DSL.name("connection_id"), SQLDataType.UUID, this, "不可变媒体连接所属身份或输入来源连线身份");
 
     /**
-     * The column <code>public.task.connection_version</code>.
+     * The column <code>public.task.connection_version</code>. 任务固定使用的不可变媒体连接版本
      */
-    public final TableField<TaskRecord, Integer> CONNECTION_VERSION = createField(DSL.name("connection_version"), SQLDataType.INTEGER, this, "");
-
-    /**
-     * The column <code>public.task.origin</code>.
-     */
-    public final TableField<TaskRecord, String> ORIGIN = createField(DSL.name("origin"), SQLDataType.VARCHAR(24).nullable(false).defaultValue(DSL.field(DSL.raw("'AGENT'::character varying"), SQLDataType.VARCHAR)), this, "");
+    public final TableField<TaskRecord, Integer> CONNECTION_VERSION = createField(DSL.name("connection_version"), SQLDataType.INTEGER, this, "任务固定使用的不可变媒体连接版本");
 
     /**
      * The column <code>public.task.provider_result_manifest</code>. Private
@@ -224,7 +214,7 @@ public class Task extends TableImpl<TaskRecord> {
     }
 
     private Task(Name alias, Table<TaskRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Persistent recoverable work; leases fence workers and never cover provider waiting time."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入"), TableOptions.table(), where);
     }
 
     /**
@@ -436,34 +426,6 @@ public class Task extends TableImpl<TaskRecord> {
         return _taskArtifactTarget;
     }
 
-    private transient TaskDependencyPath _fkTaskDependencyPredecessor;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.task_dependency</code> table, via the
-     * <code>fk_task_dependency_predecessor</code> key
-     */
-    public TaskDependencyPath fkTaskDependencyPredecessor() {
-        if (_fkTaskDependencyPredecessor == null)
-            _fkTaskDependencyPredecessor = new TaskDependencyPath(this, null, Keys.TASK_DEPENDENCY__FK_TASK_DEPENDENCY_PREDECESSOR.getInverseKey());
-
-        return _fkTaskDependencyPredecessor;
-    }
-
-    private transient TaskDependencyPath _fkTaskDependencyTask;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.task_dependency</code> table, via the
-     * <code>fk_task_dependency_task</code> key
-     */
-    public TaskDependencyPath fkTaskDependencyTask() {
-        if (_fkTaskDependencyTask == null)
-            _fkTaskDependencyTask = new TaskDependencyPath(this, null, Keys.TASK_DEPENDENCY__FK_TASK_DEPENDENCY_TASK.getInverseKey());
-
-        return _fkTaskDependencyTask;
-    }
-
     private transient TaskLateResultPath _taskLateResult;
 
     /**
@@ -509,13 +471,13 @@ public class Task extends TableImpl<TaskRecord> {
             Internal.createCheck(this, DSL.name("ck_task_attempt_positive"), "((attempt_no > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_completion"), "(((((status)::text = ANY ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])) AND (completed_at IS NOT NULL)) OR (((status)::text <> ALL ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])) AND (completed_at IS NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_input_hash"), "((input_hash ~ '^[0-9a-f]{64}$'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_task_kind"), "(((kind)::text = ANY ((ARRAY['AGENT_TURN'::character varying, 'TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying, 'ASSET_INGEST'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_task_kind"), "(((kind)::text = ANY ((ARRAY['AGENT_TURN'::character varying, 'TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_epoch_non_negative"), "((lease_epoch >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_pair"), "((((lease_owner IS NULL) AND (lease_until IS NULL)) OR ((lease_owner IS NOT NULL) AND (lease_until IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_media_binding"), "((((capability_id IS NULL) AND (capability_version IS NULL) AND (connection_id IS NULL) AND (connection_version IS NULL)) OR ((capability_id IS NOT NULL) AND (capability_version IS NOT NULL) AND (connection_id IS NOT NULL) AND (connection_version IS NOT NULL))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_origin_scope"), "(((((origin)::text = 'AGENT'::text) AND (run_id IS NOT NULL)) OR (((origin)::text = 'USER_DIRECT'::text) AND (run_id IS NULL) AND ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[])))))", true),
             Internal.createCheck(this, DSL.name("ck_task_provider_result_manifest"), "(((provider_result_manifest IS NULL) OR COALESCE(((jsonb_typeof(provider_result_manifest) = 'object'::text) AND ((provider_result_manifest ->> 'schemaVersion'::text) = '1'::text) AND (jsonb_typeof((provider_result_manifest -> 'results'::text)) = 'array'::text) AND ((jsonb_array_length((provider_result_manifest -> 'results'::text)) >= 1) AND (jsonb_array_length((provider_result_manifest -> 'results'::text)) <= 16))), false)))", true),
-            Internal.createCheck(this, DSL.name("ck_task_status"), "(((status)::text = ANY ((ARRAY['PENDING'::character varying, 'READY'::character varying, 'RUNNING'::character varying, 'SUBMITTING'::character varying, 'WAITING_PROVIDER'::character varying, 'UNKNOWN'::character varying, 'BLOCKED'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_task_run_scope"), "(((run_id IS NOT NULL) OR ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[]))))", true),
+            Internal.createCheck(this, DSL.name("ck_task_status"), "(((status)::text = ANY ((ARRAY['READY'::character varying, 'RUNNING'::character varying, 'SUBMITTING'::character varying, 'WAITING_PROVIDER'::character varying, 'UNKNOWN'::character varying, 'BLOCKED'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_step_key_not_blank"), "((length(btrim((step_key)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_version_non_negative"), "((version >= 0))", true)
         );

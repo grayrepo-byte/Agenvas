@@ -6,16 +6,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Map;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** 使用随应用打包的核心节点图生图模板；任务只能修改明确列出的安全输入。 */
-@Component
-@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiImageWorkflow {
 
     /** 固定模板中保存生成图像的节点编号，历史任务查询使用此编号。 */
@@ -62,11 +58,6 @@ public class ComfyUiImageWorkflow {
     /** 返回模板和检查点组合版本，用于固定任务的执行配置。 */
     public String version() {
         return version;
-    }
-
-    /** 判断历史 v1 结果是否仍可由固定输出节点查询，不要求当前检查点相同。 */
-    public static boolean supportsHistoricalVersion(String version) {
-        return version != null && version.matches("image-v1-[0-9a-f]{32}");
     }
 
     /** 创建本次任务的工作流图；调用方不能选择节点、模型文件、输出路径或端点。 */

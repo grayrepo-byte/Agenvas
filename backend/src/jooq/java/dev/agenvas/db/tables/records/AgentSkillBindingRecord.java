@@ -14,7 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Agent-only fixed version selection; no media node execution binding
+ * Agent 选定的 Skill 不可变版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindingRecord> {
@@ -22,56 +22,56 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.agent_skill_binding.agent_id</code>.
+     * Setter for <code>public.agent_skill_binding.agent_id</code>. Agent 卡片身份
      */
     public void setAgentId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.agent_skill_binding.agent_id</code>.
+     * Getter for <code>public.agent_skill_binding.agent_id</code>. Agent 卡片身份
      */
     public UUID getAgentId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.agent_skill_binding.project_id</code>.
+     * Setter for <code>public.agent_skill_binding.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.agent_skill_binding.project_id</code>.
+     * Getter for <code>public.agent_skill_binding.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.agent_skill_binding.owner_id</code>.
+     * Setter for <code>public.agent_skill_binding.owner_id</code>. 所属用户及授权作用域
      */
     public void setOwnerId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.agent_skill_binding.owner_id</code>.
+     * Getter for <code>public.agent_skill_binding.owner_id</code>. 所属用户及授权作用域
      */
     public UUID getOwnerId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.agent_skill_binding.skill_id</code>.
+     * Setter for <code>public.agent_skill_binding.skill_id</code>. Skill 业务身份
      */
     public void setSkillId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.agent_skill_binding.skill_id</code>.
+     * Getter for <code>public.agent_skill_binding.skill_id</code>. Skill 业务身份
      */
     public UUID getSkillId() {
         return (UUID) get(3);
@@ -79,6 +79,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
 
     /**
      * Setter for <code>public.agent_skill_binding.skill_version_id</code>.
+     * 固定的不可变 Skill 发布版本
      */
     public void setSkillVersionId(UUID value) {
         set(4, value);
@@ -86,6 +87,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
 
     /**
      * Getter for <code>public.agent_skill_binding.skill_version_id</code>.
+     * 固定的不可变 Skill 发布版本
      */
     public UUID getSkillVersionId() {
         return (UUID) get(4);
@@ -93,6 +95,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
 
     /**
      * Setter for <code>public.agent_skill_binding.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(5, value);
@@ -100,6 +103,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
 
     /**
      * Getter for <code>public.agent_skill_binding.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(5);

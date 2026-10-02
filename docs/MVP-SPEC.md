@@ -12,6 +12,8 @@
 
 配套文件：`AGENTS.md` 是 AI 编码约束；`DEVELOPMENT-CHECKLIST.md` 是开发顺序与验收清单。它们不能替代本规格中的产品语义。
 
+本文各功能条目中的 V1–V77 迁移编号是合并前的开发实施历史，不表示当前迁移目录或可直接升级路径。2026-10-02 未发布基线重建及旧库边界见第 21 节与 [ADR 0012 补充](adr/0012-jooq-persistence.md#2026-10-02-未发布基线重建)；历史验收证据保留原范围。
+
 **已经确认的用户要求**：从零开发，不 fork 现有业务项目；开源产品；画布中嵌入可工作的 Agent；Agent 可以生成、执行并修改创作流程；后端使用 Spring AI；首版重视稳定性。
 
 **本稿采用的产品假设**：桌面 Web 优先；自托管个人创作者优先；首版单管理员、不开公共注册；完成用户直连生成，以及 Agent 文字/画布操作和经用户批准的媒体生成；同一项目同一时间只允许一个活动 Agent Run。多用户协作、收费 SaaS 和任意插件运行不属于本版。
@@ -578,16 +580,15 @@ V76/V77 增加 Skill、草稿、版本、绑定、发布/安装及幂等操作�
 | `canvas_connection` | id、project_id、source_canvas_item_id、target_canvas_item_id、relation_type、captured_source_version_id、version、created_at；端点与固定版本均持久化 |
 | `agent_instance` | id、project_id、profile_key、profile_version、name、instruction、output_group_id、current_conversation_id、version |
 | `agent_conversation` | id、project_id、agent_instance_id、title、version、turn_count、timestamps |
-| `agent_binding` | id、project_id、agent_instance_id、target_canvas_item_id、artifact_version_id、binding_type、version；图片版本去重，来源别名由对应 CanvasItem 连线投影 |
+| `agent_binding` | id、project_id、agent_instance_id、artifact_id、selected_version_id、created_at；显式固定输入版本，按 Agent + 产物去重 |
 | `agent_run` | id、project_id、agent_instance_id、conversation_id、conversation_turn、user_id、status、instruction、context_snapshot_json、policy_snapshot_json、profile_version、next_step_index、version、timestamps |
 | `agent_message` | id、run_id、seq、role、content_json、provider_metadata_json、created_at；保留协议所需工具关联信息 |
 | `agent_step` | id、run_id、step_index、status、request_hash、response_json、model_id、token_usage_json、lease_epoch、timestamps |
 | `tool_execution` | id、run_id、step_index、tool_call_id、tool_name、argument_hash、status、result_json、command_id、timestamps |
 | `agent_media_approval` | id、owner_id、project_id、run_id、step_index、tool_call_id、operation_id、request_json、targets_json、task_ids_json、result_json、status、notification_pending、version、created_at、expires_at、execution_deadline、decision_key、decision_hash；保存固定批次、决策与续接结果 |
-| `task` | id、project_id、run_id、step_key、kind、status、input_json、input_hash、provider_id、provider_request_id、attempt_no、next_action_at、lease_owner、lease_until、lease_epoch、version、error_code、timestamps |
-| `task_dependency` | task_id、depends_on_task_id、required_output_key；同项目约束 |
-| `provider_attempt` | id、task_id、attempt_no、request_key、request_hash、provider_request_id、submission_status、response_summary_json、timestamps |
-| `asset` | id、project_id、storage_backend、storage_key、sha256、mime_type、size_bytes、width、height、duration_ms、status、metadata_json、created_at |
+| `task` | id、project_id、run_id、step_key、kind、status、input_json、input_hash、provider_request_id、attempt_no、next_action_at、lease_owner、lease_until、lease_epoch、version、error_code、timestamps |
+| `provider_attempt` | id、project_id、task_id、lease_epoch、status、request_key、provider_request_id、固定连接/能力版本、timestamps |
+| `asset` | id、project_id、media_kind、object_key、content_type、byte_size、sha256、width、height、duration_ms、缩略图元数据、created_at；行存在表示字节已校验归档，存储路由独立保存 |
 | `provider_config` | id、owner_id、kind、adapter_key、current_config_version、enabled；稳定配置身份 |
 | `provider_config_version` | provider_id、config_version、endpoint、credential_ciphertext、key_version、capabilities_json、created_at；不可变连接/凭证版本 |
 | `usage_ledger` | id、project_id、run_id、task_id、operation_key、entry_type、quantity_json、estimated_cost、actual_cost、currency、cost_status、created_at |
@@ -660,7 +661,7 @@ TEXT：`format`、`text`。
 
 归档项目后禁止新 Run；已经提交的外部任务仍需核对并记录晚到结果。物理清理是延迟维护任务，必须再次检查引用、活动任务与备份策略。
 
-ADR 0014 的本地开发升级不迁移旧工作模型：迁移时清空项目、Artifact、ArtifactVersion、Asset、CanvasItem、媒体草稿、连线、Task、AgentRun、事件和相关用量等全部项目创作数据；管理员账号、加密密钥、Provider 连接、媒体能力和模型设置保留。该规则只用于尚未发布的本地开发数据，不能被解释为未来生产升级可无提示删除用户项目。
+ADR 0014 曾在本地开发升级时清空旧工作模型的项目创作数据，保留管理员账号、密钥与 Provider/模型设置；这是已退役的开发历史，不是当前新安装或后续升级行为。合并后的 V1 将开发重置标记初始化为已完成，避免启动时删除素材目录；旧库按第 21 节保留并使用旧版本恢复，不适用此清空规则。
 
 ---
 
@@ -853,11 +854,13 @@ P0 提供“停止当前 Run”“修改内容”“基于当前版本发起新 
 
 ### 12.2 任务类型与状态
 
-类型：`AGENT_TURN`、`TEXT_GENERATION`、`IMAGE_GENERATION`、`VIDEO_GENERATION`、`ASSET_INGEST`。
+类型：`AGENT_TURN`、`TEXT_GENERATION`、`IMAGE_GENERATION`、`VIDEO_GENERATION`、`AUDIO_GENERATION`。
 
-状态：`PENDING`（依赖未满足）、`READY`、`RUNNING`、`SUBMITTING`、`WAITING_PROVIDER`、`UNKNOWN`、`BLOCKED`、`SUCCEEDED`、`FAILED`、`CANCELED`。
+状态：`READY`、`RUNNING`、`SUBMITTING`、`WAITING_PROVIDER`、`UNKNOWN`、`BLOCKED`、`SUCCEEDED`、`FAILED`、`CANCELED`。
 
 媒体卡片将 `RUNNING`、`SUBMITTING` 和 `WAITING_PROVIDER` 统一展示为“正在生成”。同步 Provider 的 `SUBMITTING` 包含等待生成结果的时间，不代表仅在发送请求；数据库及调用日志仍保留具体状态以支持审计与恢复。前端向本系统发起运行请求期间可短暂展示“正在提交任务”。
+
+Agent 续回合在同一事务完成旧任务并创建 READY 后继；不保留任务依赖表或依赖等待状态。媒体审批 PENDING 属于审批生命周期。
 
 lease 是独立的认领属性，不是把等待 Provider 的整个生命周期都锁在事务或线程里。
 
@@ -1281,7 +1284,7 @@ P0 不提供任意 URL 导入。访问云元数据地址、环回/内网绕过�
 
 P0 没有钱包、充值、支付回调、套餐和积分商城，但必须有用量日志、额度校验与付费风险提示。
 
-记录：LLM 输入/输出 Token（有供应商返回时）、模型请求次数、图片数量、视频数量/秒数、预计与实际成本、成本来源与配置版本。用量数量 JSON 仍保留恒为 0 的 `exportCount` 字段，它是审计账本的既有形状与合约，本次不改。
+记录：LLM 输入/输出 Token（有供应商返回时）、模型请求次数、图片数量、视频数量/秒数、预计与实际成本、成本来源与配置版本。用量数量 JSON 不再包含已退役媒体导出的 exportCount；媒体账本记录固定连接版本，LLM 账本记录固定模型配置版本。媒体内容不重复保存旧全局 Provider 配置版本。
 
 成本字段必须区分 KNOWN、ESTIMATED、UNKNOWN。供应商没返回成本不能记成 0；本地推理不收 API 费也不意味着没有硬件成本。
 
@@ -1431,7 +1434,11 @@ Agent Model 调用默认使用受控回合模式，禁用自动工具执行。�
 
 ## 21. 数据库、迁移和查询规范
 
-Flyway 文件只增不改；已经发布的迁移不得重写 checksum。表、索引、约束都有用途注释；测试必须覆盖空库创建与上一版升级。
+Flyway 文件只增不改；已经提交的基线与已经发布的迁移不得重写 checksum。表、索引、约束都有用途注释；测试必须覆盖空库创建，后续增量迁移还须覆盖上一基线/版本升级。
+
+2026-10-02 按用户明确要求对尚未发布应用重建基线，作为上述规则的唯一例外：旧 V1–V77 的 76 个迁移（无 V61）重建为 `V1__initial_schema.sql`。新基线清理五张旧表及冗余字段，包含 67 张业务/会话表、567 列、28 行必需种子和 1,242 条数据库对象注释；不含用户数据或真实配置。所有表、列、约束、索引、函数与触发器注释由 PostgreSQL catalog 测试校验。详细清理、破坏性 API 调整及验收边界见 [ADR 0012 补充](adr/0012-jooq-persistence.md#2026-10-02-未发布基线重建)。定稿后从 V2 追加，不再重写 V1。
+
+用户授权先备份再重置开发库与素材卷；旧数据不会自动导入新库。旧 Flyway history 不能直接升级到新 V1，不使用 repair、删除历史行或自动 baseline 绕过检查。旧备份须由匹配旧版本恢复并先核对原请求；项目导出清单不能代替数据库及素材恢复。见[备份与恢复说明](operations/backup-restore.md)。
 
 关键外键、非空、唯一性在数据库落实。JSONB 保留 schemaVersion，并有内容迁移策略。禁止依赖 ORM 自动建表作为生产迁移。
 
@@ -1591,6 +1598,8 @@ FFmpeg 子进程仅在指定工作目录运行。P0 的可信自托管边界必�
 升级顺序：运行数据备份 → 暂停新任务 → 等待或安全记录正在提交的任务 → 应用迁移 → 启动新版本 → 运行 smoke test → 恢复受理。
 
 数据库采用向前兼容的增量迁移；破坏性变更延后。回滚应用前检查旧版本是否兼容新 Schema，不能把“回滚镜像”当成必然可回滚整个系统。
+
+未发布 V1–V77 与合并后 V1 的边界是第 21 节记录的一次性例外，不能套用上述直接增量升级顺序；新版本在独立空库安装，旧环境保留并按对应旧版本恢复。
 
 ### 25.5 备份范围
 

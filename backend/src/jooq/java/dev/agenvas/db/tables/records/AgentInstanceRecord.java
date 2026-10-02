@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Persistent card configuration only; no thread, request principal, or mutable
- * run context.
+ * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord> {
@@ -23,98 +22,104 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.agent_instance.id</code>.
+     * Setter for <code>public.agent_instance.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.id</code>.
+     * Getter for <code>public.agent_instance.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.agent_instance.project_id</code>.
+     * Setter for <code>public.agent_instance.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.project_id</code>.
+     * Getter for <code>public.agent_instance.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.agent_instance.profile_key</code>.
+     * Setter for <code>public.agent_instance.profile_key</code>. 内置 Agent 配置标识
      */
     public void setProfileKey(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.profile_key</code>.
+     * Getter for <code>public.agent_instance.profile_key</code>. 内置 Agent 配置标识
      */
     public String getProfileKey() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.agent_instance.profile_version</code>.
+     * Setter for <code>public.agent_instance.profile_version</code>. Agent
+     * 配置格式版本
      */
     public void setProfileVersion(Integer value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.profile_version</code>.
+     * Getter for <code>public.agent_instance.profile_version</code>. Agent
+     * 配置格式版本
      */
     public Integer getProfileVersion() {
         return (Integer) get(3);
     }
 
     /**
-     * Setter for <code>public.agent_instance.name</code>.
+     * Setter for <code>public.agent_instance.name</code>. 显示名称
      */
     public void setName(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.name</code>.
+     * Getter for <code>public.agent_instance.name</code>. 显示名称
      */
     public String getName() {
         return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.agent_instance.instruction</code>.
+     * Setter for <code>public.agent_instance.instruction</code>. 用户指令或 Agent
+     * 系统指令
      */
     public void setInstruction(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.instruction</code>.
+     * Getter for <code>public.agent_instance.instruction</code>. 用户指令或 Agent
+     * 系统指令
      */
     public String getInstruction() {
         return (String) get(5);
     }
 
     /**
-     * Setter for <code>public.agent_instance.output_group_id</code>.
+     * Setter for <code>public.agent_instance.output_group_id</code>. Agent
+     * 输出卡片的画布分组
      */
     public void setOutputGroupId(UUID value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.output_group_id</code>.
+     * Getter for <code>public.agent_instance.output_group_id</code>. Agent
+     * 输出卡片的画布分组
      */
     public UUID getOutputGroupId() {
         return (UUID) get(6);
@@ -122,6 +127,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
 
     /**
      * Setter for <code>public.agent_instance.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(7, value);
@@ -129,20 +135,21 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
 
     /**
      * Getter for <code>public.agent_instance.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(7);
     }
 
     /**
-     * Setter for <code>public.agent_instance.created_at</code>.
+     * Setter for <code>public.agent_instance.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.agent_instance.created_at</code>.
+     * Getter for <code>public.agent_instance.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(8);
@@ -150,6 +157,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
 
     /**
      * Setter for <code>public.agent_instance.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(9, value);
@@ -157,6 +165,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
 
     /**
      * Getter for <code>public.agent_instance.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(9);

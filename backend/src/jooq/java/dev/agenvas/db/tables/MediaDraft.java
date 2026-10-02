@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Editable generation input owned by one IMAGE/VIDEO CanvasItem and protected
- * by independent CAS.
+ * 媒体卡片独立草稿、参数、能力、风格和引用提及
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class MediaDraft extends TableImpl<MediaDraftRecord> {
@@ -66,64 +65,64 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
     }
 
     /**
-     * The column <code>public.media_draft.project_id</code>.
+     * The column <code>public.media_draft.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<MediaDraftRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<MediaDraftRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.media_draft.canvas_item_id</code>.
+     * The column <code>public.media_draft.canvas_item_id</code>. 固定的目标或上下文画布卡片
      */
-    public final TableField<MediaDraftRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<MediaDraftRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "固定的目标或上下文画布卡片");
 
     /**
-     * The column <code>public.media_draft.prompt</code>.
+     * The column <code>public.media_draft.prompt</code>. 用户媒体生成提示词
      */
-    public final TableField<MediaDraftRecord, String> PROMPT = createField(DSL.name("prompt"), SQLDataType.CLOB.nullable(false).defaultValue(DSL.field(DSL.raw("''::text"), SQLDataType.CLOB)), this, "");
+    public final TableField<MediaDraftRecord, String> PROMPT = createField(DSL.name("prompt"), SQLDataType.CLOB.nullable(false).defaultValue(DSL.field(DSL.raw("''::text"), SQLDataType.CLOB)), this, "用户媒体生成提示词");
 
     /**
-     * The column <code>public.media_draft.duration_seconds</code>.
+     * The column <code>public.media_draft.duration_seconds</code>. 媒体草稿时长，单位秒
      */
-    public final TableField<MediaDraftRecord, Integer> DURATION_SECONDS = createField(DSL.name("duration_seconds"), SQLDataType.INTEGER, this, "");
+    public final TableField<MediaDraftRecord, Integer> DURATION_SECONDS = createField(DSL.name("duration_seconds"), SQLDataType.INTEGER, this, "媒体草稿时长，单位秒");
 
     /**
-     * The column <code>public.media_draft.capability_id</code>.
+     * The column <code>public.media_draft.capability_id</code>. 固定媒体能力身份
      */
-    public final TableField<MediaDraftRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "");
+    public final TableField<MediaDraftRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "固定媒体能力身份");
 
     /**
-     * The column <code>public.media_draft.display_mode</code>.
+     * The column <code>public.media_draft.display_mode</code>. 媒体卡片预览显示方式
      */
-    public final TableField<MediaDraftRecord, String> DISPLAY_MODE = createField(DSL.name("display_mode"), SQLDataType.VARCHAR(12).nullable(false).defaultValue(DSL.field(DSL.raw("'DRAFT'::character varying"), SQLDataType.VARCHAR)), this, "");
+    public final TableField<MediaDraftRecord, String> DISPLAY_MODE = createField(DSL.name("display_mode"), SQLDataType.VARCHAR(12).nullable(false).defaultValue(DSL.field(DSL.raw("'DRAFT'::character varying"), SQLDataType.VARCHAR)), this, "媒体卡片预览显示方式");
 
     /**
-     * The column <code>public.media_draft.version</code>.
+     * The column <code>public.media_draft.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<MediaDraftRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<MediaDraftRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.media_draft.created_at</code>.
+     * The column <code>public.media_draft.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<MediaDraftRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<MediaDraftRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.media_draft.updated_at</code>.
+     * The column <code>public.media_draft.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
-    public final TableField<MediaDraftRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<MediaDraftRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
-     * The column <code>public.media_draft.parameters_json</code>.
+     * The column <code>public.media_draft.parameters_json</code>. 媒体草稿的结构化参数
      */
-    public final TableField<MediaDraftRecord, JSONB> PARAMETERS_JSON = createField(DSL.name("parameters_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
+    public final TableField<MediaDraftRecord, JSONB> PARAMETERS_JSON = createField(DSL.name("parameters_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "媒体草稿的结构化参数");
 
     /**
-     * The column <code>public.media_draft.video_input_mode</code>.
+     * The column <code>public.media_draft.video_input_mode</code>. 视频输入参考模式
      */
-    public final TableField<MediaDraftRecord, String> VIDEO_INPUT_MODE = createField(DSL.name("video_input_mode"), SQLDataType.VARCHAR(24), this, "");
+    public final TableField<MediaDraftRecord, String> VIDEO_INPUT_MODE = createField(DSL.name("video_input_mode"), SQLDataType.VARCHAR(24), this, "视频输入参考模式");
 
     /**
-     * The column <code>public.media_draft.mentions_json</code>.
+     * The column <code>public.media_draft.mentions_json</code>. 草稿内的明确输入引用提及
      */
-    public final TableField<MediaDraftRecord, JSONB> MENTIONS_JSON = createField(DSL.name("mentions_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
+    public final TableField<MediaDraftRecord, JSONB> MENTIONS_JSON = createField(DSL.name("mentions_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "草稿内的明确输入引用提及");
 
     /**
      * The column <code>public.media_draft.style_id</code>. Optional image/video
@@ -137,7 +136,7 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
     }
 
     private MediaDraft(Name alias, Table<MediaDraftRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Editable generation input owned by one IMAGE/VIDEO CanvasItem and protected by independent CAS."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("媒体卡片独立草稿、参数、能力、风格和引用提及"), TableOptions.table(), where);
     }
 
     /**

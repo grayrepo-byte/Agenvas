@@ -38,19 +38,11 @@ public record AgentInstance(
      * @param id 绑定关系 ID
      * @param artifactId 被引用的产物 ID
      * @param selectedVersionId 被选中的不可变版本 ID
-     * @param bindingType 当前档案支持的绑定角色
      * @param createdAt 绑定创建时间
      */
     public record Binding(
             UUID id,
             UUID artifactId,
             UUID selectedVersionId,
-            BindingType bindingType,
             Instant createdAt) {}
-
-    /** MVP Creator 档案允许的绑定角色。 */
-    public enum BindingType {
-        /** 作为模型上下文输入的产物版本。 */
-        INPUT
-    }
 }

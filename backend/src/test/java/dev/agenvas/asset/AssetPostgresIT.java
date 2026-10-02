@@ -194,8 +194,6 @@ class AssetPostgresIT {
             assertThatThrownBy(() -> storage.withTaskImageLock(symlinkProjectId,
                     UUID.randomUUID(), () -> null))
                     .isInstanceOf(IllegalStateException.class);
-            assertThatThrownBy(() -> storage.createExportWorkDirectory(symlinkProjectId))
-                    .isInstanceOf(IllegalStateException.class);
             try (var outsideFiles = Files.list(outside)) {
                 assertThat(outsideFiles.toList()).isEmpty();
             }

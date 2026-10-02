@@ -69,7 +69,6 @@ class ArtifactContentValidatorTest {
                 {
                   "assetId":"%s",
                   "prompt":"Direct clip",
-                  "providerConfigVersion":1,
                   "workflowVersion":"mock-v1",
                   "parameters":{},
                   "sourceTaskId":"%s",
@@ -90,7 +89,6 @@ class ArtifactContentValidatorTest {
                 {
                   "assetId":"%s",
                   "prompt":"Coffee commercial",
-                  "providerConfigVersion":1,
                   "workflowVersion":"mock-v1",
                   "parameters":{},
                   "sourceTaskId":"%s"

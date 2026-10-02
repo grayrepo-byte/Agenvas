@@ -4,16 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.bootstrap.AgenvasApplication;
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
-import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskRecoveryScheduler;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -22,7 +23,6 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -42,7 +42,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /** Kills a real submitter after fake ComfyUI accepts a prompt but before its response is saved. */
 @Testcontainers
@@ -50,10 +49,8 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=comfy-crash-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.export.scheduler-enabled=false",
-        "agenvas.provider.mode=comfyui",
-        "agenvas.provider.comfyui.scheduler-enabled=false",
-        "agenvas.provider.comfyui.image.checkpoint=test-model.safetensors"})
+        "agenvas.provider.mode=configured",
+        "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiAcceptedCrashPostgresIT {
 
     @Container
@@ -69,8 +66,6 @@ class ComfyUiAcceptedCrashPostgresIT {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
-        properties.add("agenvas.provider.comfyui.endpoint",
-                () -> "http://127.0.0.1:" + SERVER.getAddress().getPort());
     }
 
     @AfterAll
@@ -81,11 +76,12 @@ class ComfyUiAcceptedCrashPostgresIT {
 
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
     @Autowired private TaskService tasks;
-    @Autowired private ProviderProperties provider;
-    @Autowired private ComfyUiImageWorkflow workflow;
+    @Autowired private ArtifactService artifacts;
+    @Autowired private MediaDraftService drafts;
+    @Autowired private CanvasService canvas;
+    @Autowired private MediaCapabilityService catalog;
+    @Autowired private DirectMediaTaskService directMedia;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
 
@@ -98,23 +94,20 @@ class ComfyUiAcceptedCrashPostgresIT {
                 "crash-admin", "crash-password-123");
         Project project = projects.create(owner.userId(), "Accepted crash",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
-        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
-                "Generate image", "accepted-crash-run").run();
-        run = runs.transition(owner.userId(), project.id(), run.id(), run.version(),
-                AgentRun.Status.RUNNING);
-        runs.transition(owner.userId(), project.id(), run.id(), run.version(),
-                AgentRun.Status.WAITING_TASKS);
-        ObjectNode input = mapper.createObjectNode();
-        input.put("providerConfigVersion", provider.configVersion());
-        input.put("workflowVersion", workflow.version());
-        input.put("prompt", "A coffee pour in a studio");
-        // Even an empty reference set is an explicit frozen input in the current contract.
-        ObjectNode mediaInput = input.putObject("mediaInput");
-        mediaInput.putArray("images");
-        mediaInput.putArray("audios");
-        Task submitted = tasks.create(owner.userId(), project.id(), run.id(),
-                "image-crash", Task.Kind.IMAGE_GENERATION, input, null, 1, List.of());
+        UUID connection = catalog.createConnection("Accepted crash fake ComfyUI",
+                "http://127.0.0.1:" + SERVER.getAddress().getPort()).id();
+        UUID capability = catalog.publishCapability(connection, "Fixed image", "COMFY_IMAGE_V1",
+                mapper.readTree("{\"checkpoint\":\"test-model.safetensors\"}")).id();
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION,
+                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability);
+        var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Crash image", null);
+        UUID itemId = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(),
+                project.id(), card.artifact().id());
+        var draft = dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(),
+                project.id(), itemId, 0, "A coffee pour in a studio", null, null, null);
+        Task submitted = directMedia.run(owner.userId(), project.id(), card.artifact().id(),
+                itemId, draft.version(), "image-crash");
 
         Path childLog = Files.createTempFile("agenvas-comfy-accepted-crash-", ".log");
         Process first = null;
@@ -128,7 +121,7 @@ class ComfyUiAcceptedCrashPostgresIT {
             assertThat(SUBMISSIONS).hasValue(1);
             assertThat(tasks.get(owner.userId(), project.id(), submitted.id()).status())
                     .isEqualTo(Task.Status.SUBMITTING);
-            assertThat(jdbc.sql("select candidate_request_id from provider_attempt "
+            assertThat(jdbc.sql("select request_key from provider_attempt "
                             + "where task_id = :id")
                     .param("id", submitted.id()).query(UUID.class).single())
                     .isEqualTo(acceptedId);
@@ -178,14 +171,10 @@ class ComfyUiAcceptedCrashPostgresIT {
         assertThat(Files.isRegularFile(jar)).isTrue();
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         ProcessBuilder builder = new ProcessBuilder(java.toString(), "-Xmx512m", "-jar",
-                jar.toString(), "--server.port=0", "--agenvas.provider.mode=comfyui",
-                "--agenvas.provider.comfyui.endpoint=http://127.0.0.1:"
-                        + SERVER.getAddress().getPort(),
-                "--agenvas.provider.comfyui.image.checkpoint=test-model.safetensors",
-                "--agenvas.provider.comfyui.scheduler-enabled=true",
-                "--agenvas.provider.comfyui.video.scheduler-enabled=false",
+                jar.toString(), "--server.port=0", "--agenvas.provider.mode=configured",
+                "--agenvas.provider.media.scheduler-enabled=true",
                 "--agenvas.llm.scheduler-enabled=false",
-                "--agenvas.export.scheduler-enabled=false")
+                "--agenvas.llm.mode=mock")
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
         builder.environment().put("AGENVAS_DB_URL", POSTGRES.getJdbcUrl());

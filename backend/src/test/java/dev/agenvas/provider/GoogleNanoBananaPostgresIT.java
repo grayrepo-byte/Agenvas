@@ -174,7 +174,6 @@ class GoogleNanoBananaPostgresIT {
             image.put("assetId", assetId.toString());
             image.put("sourceTaskId", UUID.randomUUID().toString());
             image.put("prompt", "Reference");
-            image.put("providerConfigVersion", 1);
             image.put("workflowVersion", "fixture");
             image.putObject("parameters");
             referenceImages.add(artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,

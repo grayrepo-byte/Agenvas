@@ -41,8 +41,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Normalized semantic version references used to enforce same-project
- * referential integrity.
+ * 不可变版本之间的精确输入引用及顺序
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ArtifactVersionReference extends TableImpl<ArtifactVersionReferenceRecord> {
@@ -65,37 +64,42 @@ public class ArtifactVersionReference extends TableImpl<ArtifactVersionReference
     /**
      * The column
      * <code>public.artifact_version_reference.source_version_id</code>.
+     * 引用来源或导入生成的不可变版本
      */
-    public final TableField<ArtifactVersionReferenceRecord, UUID> SOURCE_VERSION_ID = createField(DSL.name("source_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ArtifactVersionReferenceRecord, UUID> SOURCE_VERSION_ID = createField(DSL.name("source_version_id"), SQLDataType.UUID.nullable(false), this, "引用来源或导入生成的不可变版本");
 
     /**
      * The column <code>public.artifact_version_reference.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<ArtifactVersionReferenceRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ArtifactVersionReferenceRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column
      * <code>public.artifact_version_reference.target_version_id</code>.
+     * 引用指向的不可变目标版本
      */
-    public final TableField<ArtifactVersionReferenceRecord, UUID> TARGET_VERSION_ID = createField(DSL.name("target_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ArtifactVersionReferenceRecord, UUID> TARGET_VERSION_ID = createField(DSL.name("target_version_id"), SQLDataType.UUID.nullable(false), this, "引用指向的不可变目标版本");
 
     /**
      * The column <code>public.artifact_version_reference.reference_role</code>.
+     * 精确版本引用承担的输入角色
      */
-    public final TableField<ArtifactVersionReferenceRecord, String> REFERENCE_ROLE = createField(DSL.name("reference_role"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+    public final TableField<ArtifactVersionReferenceRecord, String> REFERENCE_ROLE = createField(DSL.name("reference_role"), SQLDataType.VARCHAR(64).nullable(false), this, "精确版本引用承担的输入角色");
 
     /**
      * The column
      * <code>public.artifact_version_reference.reference_order</code>.
+     * 同角色引用的稳定顺序
      */
-    public final TableField<ArtifactVersionReferenceRecord, Integer> REFERENCE_ORDER = createField(DSL.name("reference_order"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<ArtifactVersionReferenceRecord, Integer> REFERENCE_ORDER = createField(DSL.name("reference_order"), SQLDataType.INTEGER.nullable(false), this, "同角色引用的稳定顺序");
 
     private ArtifactVersionReference(Name alias, Table<ArtifactVersionReferenceRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private ArtifactVersionReference(Name alias, Table<ArtifactVersionReferenceRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Normalized semantic version references used to enforce same-project referential integrity."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("不可变版本之间的精确输入引用及顺序"), TableOptions.table(), where);
     }
 
     /**

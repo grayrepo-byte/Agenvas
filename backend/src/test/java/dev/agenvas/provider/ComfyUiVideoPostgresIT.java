@@ -15,19 +15,10 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.provider.application.ComfyUiImageWorker;
-import dev.agenvas.provider.application.ComfyUiVideoWorker;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
-import dev.agenvas.provider.application.ComfyUiVideoPoller;
-import dev.agenvas.provider.infrastructure.ComfyUiClient;
-import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
-import dev.agenvas.provider.infrastructure.ComfyUiProperties;
-import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
-import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -44,7 +35,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +48,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /** Fake ComfyUI plus real PostgreSQL proves the approved I2V protocol, not GPU output. */
 @Testcontainers
@@ -66,16 +55,8 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=comfy-video-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mode=comfyui",
-        "agenvas.provider.comfyui.scheduler-enabled=false",
-        "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.provider.comfyui.image.checkpoint=test-image.safetensors",
-        "agenvas.provider.comfyui.video.enabled=true",
-        "agenvas.provider.comfyui.video.scheduler-enabled=false",
-        "agenvas.provider.comfyui.video.diffusion-model=test-wan.safetensors",
-        "agenvas.provider.comfyui.video.text-encoder=test-text.safetensors",
-        "agenvas.provider.comfyui.video.vae=test-vae.safetensors",
-        "agenvas.provider.comfyui.video.clip-vision=test-vision.safetensors"})
+        "agenvas.provider.mode=configured",
+        "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiVideoPostgresIT {
 
     @Container
@@ -98,8 +79,6 @@ class ComfyUiVideoPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
-        registry.add("agenvas.provider.comfyui.endpoint",
-                () -> "http://127.0.0.1:" + SERVER.getAddress().getPort());
     }
 
     @AfterAll
@@ -119,14 +98,9 @@ class ComfyUiVideoPostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private AssetService assets;
     @Autowired private MediaToolRunner mediaTools;
-    @Autowired private ComfyUiImageWorker images;
-    @Autowired private ComfyUiVideoWorker videos;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker mediaWorker;
-    @Autowired private ComfyUiVideoWorkflow workflow;
-    @Autowired private ComfyUiClient client;
     @Autowired private JdbcClient jdbc;
-    @Autowired private DSLContext dsl;
     @Autowired private ObjectMapper mapper;
 
     @Test
@@ -181,13 +155,12 @@ class ComfyUiVideoPostgresIT {
         Task videoTask = directMedia.run(owner.userId(), project.id(),
                 videoCard.artifact().id(), videoItemId,
                 videoDraft.version(), "comfy-video-run");
-        assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(3);
+        assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(4);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
         assertThat(videoTask.input().path("mediaInput").path("images").get(0)
                 .path("versionId").asText())
                 .isEqualTo(imageVersion.toString());
-        assertThat(videoTask.input().path("providerOriginSha256").asText())
-                .isEqualTo(client.originSha256());
+        assertThat(tasks.mediaBinding(videoTask).orElseThrow().connectionVersion()).isEqualTo(1);
         assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
                         + "where task_id = :taskId and entry_type = 'RESERVATION'")
                 .param("taskId", videoTask.id()).query(String.class).single()).isEqualTo("5");
@@ -211,32 +184,10 @@ class ComfyUiVideoPostgresIT {
         assertThat(jdbc.sql("select request_key from provider_attempt where task_id = :id")
                 .param("id", videoTask.id()).query(UUID.class).single())
                 .isEqualTo(VIDEO_PROMPT.get());
-        assertThat(jdbc.sql("select candidate_request_id from provider_attempt where task_id = :id")
-                .param("id", videoTask.id()).query(UUID.class).single())
-                .isEqualTo(VIDEO_PROMPT.get());
-        assertThat(jdbc.sql("select candidate_origin_sha256 from provider_attempt where task_id = :id")
-                .param("id", videoTask.id()).query(String.class).single())
-                .hasSize(64);
         assertThat(mediaWorker.submitOnce("another-submitter")).isZero();
         var oldConnection = catalog.getConnection(connection);
         catalog.updateConnection(connection, oldConnection.version(), oldConnection.name(), true,
                 "http://127.0.0.1:65534", null);
-        ComfyUiClient rotatedClient = new ComfyUiClient(
-                new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
-        ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(dsl, mapper,
-                new ProviderProperties("comfyui", 2),
-                new ComfyUiProperties("http://127.0.0.1:65534"), rotatedClient, false);
-        rotatedRegistry.registerActive();
-        ComfyUiVideoWorkflow rotatedWorkflow = new ComfyUiVideoWorkflow(
-                new ComfyUiVideoProperties(true, "rotated-wan.safetensors",
-                        "test-text.safetensors", "test-vae.safetensors",
-                        "test-vision.safetensors"), mapper);
-        assertThat(rotatedWorkflow.version()).isNotEqualTo(workflow.version());
-        ComfyUiVideoPoller rotatedPoller = new ComfyUiVideoPoller(tasks, assets,
-                rotatedRegistry, mapper, callLogs);
-        ComfyUiVideoWorker rotatedVideo = new ComfyUiVideoWorker(tasks, artifacts, assets,
-                projects, rotatedClient, rotatedPoller, rotatedWorkflow,
-                new ProviderProperties("comfyui", 2), callLogs);
         due(videoTask.id());
         assertThat(mediaWorker.pollOnce("video-poller")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status())
@@ -245,8 +196,6 @@ class ComfyUiVideoPostgresIT {
         assertThat(mediaWorker.pollOnce("video-poller")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), project.id(), videoTask.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(ComfyUiVideoWorkflow.supportsHistoricalVersion(workflow.version())).isTrue();
-        assertThat(ComfyUiVideoWorkflow.supportsHistoricalVersion("image-to-video-v1-bad")).isFalse();
         assertThat(completed.output().path("selected").booleanValue()).isTrue();
         assertThat(VIDEO_SUBMISSIONS).hasValue(1);
         assertThat(VIDEO_POLLS).hasValue(2);
@@ -262,7 +211,7 @@ class ComfyUiVideoPostgresIT {
                 .isEqualTo(completedVersionId);
         assertThat(version.frozenInput().path("images").get(0).path("versionId").asText())
                 .isEqualTo(imageVersion.toString());
-        assertThat(version.content().path("providerConfigVersion").asInt()).isEqualTo(1);
+        assertThat(version.content().has("providerConfigVersion")).isFalse();
         UUID assetId = UUID.fromString(version.content().path("assetId").asText());
         assertThat(assetId).isEqualTo(AssetService.taskVideoAssetId(videoTask.id()));
         assertThat(assets.get(owner.userId(), project.id(), assetId).asset().mediaKind())

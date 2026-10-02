@@ -153,9 +153,9 @@ public class ProjectExportManifestService {
         return switch (kind) {
             case TEXT -> new String[] {"format", "text"};
             case IMAGE -> new String[] {"assetId", "prompt", "negativePrompt",
-                    "providerConfigVersion", "workflowVersion"};
+                    "workflowVersion"};
             case VIDEO, AUDIO -> new String[] {"assetId", "prompt", "negativePrompt",
-                    "providerConfigVersion", "workflowVersion"};
+                    "workflowVersion"};
         };
     }
 

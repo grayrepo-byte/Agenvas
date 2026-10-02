@@ -195,7 +195,7 @@ class AgentRevisionPostgresIT {
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", assetId.toString());
         content.put("prompt", prompt);
-        content.put("providerConfigVersion", 1);
+
         content.put("workflowVersion", "test-image-v1");
         content.putObject("parameters");
         content.put("sourceTaskId", UUID.randomUUID().toString());

@@ -6,7 +6,6 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -17,8 +16,6 @@ class MediaExecutionSchedulerTest {
     void dispatchesThreeSubmissionsConcurrentlyWithoutBuildingAnUnboundedBacklog()
             throws Exception {
         MediaExecutionWorker worker = mock(MediaExecutionWorker.class);
-        LegacyMediaImportService importer = mock(LegacyMediaImportService.class);
-        when(importer.ready()).thenReturn(true);
         CountDownLatch entered = new CountDownLatch(3);
         CountDownLatch release = new CountDownLatch(1);
         doAnswer(call -> {
@@ -26,7 +23,7 @@ class MediaExecutionSchedulerTest {
             release.await(5, TimeUnit.SECONDS);
             return 1;
         }).when(worker).submitOnce(anyString());
-        MediaExecutionScheduler scheduler = new MediaExecutionScheduler(worker, importer);
+        MediaExecutionScheduler scheduler = new MediaExecutionScheduler(worker);
         try {
             scheduler.tick();
             assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();

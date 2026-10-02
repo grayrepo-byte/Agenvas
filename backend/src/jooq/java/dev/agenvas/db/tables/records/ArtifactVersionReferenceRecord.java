@@ -13,8 +13,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Normalized semantic version references used to enforce same-project
- * referential integrity.
+ * 不可变版本之间的精确输入引用及顺序
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<ArtifactVersionReferenceRecord> {
@@ -24,6 +23,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
     /**
      * Setter for
      * <code>public.artifact_version_reference.source_version_id</code>.
+     * 引用来源或导入生成的不可变版本
      */
     public void setSourceVersionId(UUID value) {
         set(0, value);
@@ -32,6 +32,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
     /**
      * Getter for
      * <code>public.artifact_version_reference.source_version_id</code>.
+     * 引用来源或导入生成的不可变版本
      */
     public UUID getSourceVersionId() {
         return (UUID) get(0);
@@ -39,6 +40,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
 
     /**
      * Setter for <code>public.artifact_version_reference.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
@@ -46,6 +48,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
 
     /**
      * Getter for <code>public.artifact_version_reference.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
@@ -54,6 +57,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
     /**
      * Setter for
      * <code>public.artifact_version_reference.target_version_id</code>.
+     * 引用指向的不可变目标版本
      */
     public void setTargetVersionId(UUID value) {
         set(2, value);
@@ -62,6 +66,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
     /**
      * Getter for
      * <code>public.artifact_version_reference.target_version_id</code>.
+     * 引用指向的不可变目标版本
      */
     public UUID getTargetVersionId() {
         return (UUID) get(2);
@@ -69,6 +74,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
 
     /**
      * Setter for <code>public.artifact_version_reference.reference_role</code>.
+     * 精确版本引用承担的输入角色
      */
     public void setReferenceRole(String value) {
         set(3, value);
@@ -76,6 +82,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
 
     /**
      * Getter for <code>public.artifact_version_reference.reference_role</code>.
+     * 精确版本引用承担的输入角色
      */
     public String getReferenceRole() {
         return (String) get(3);
@@ -84,6 +91,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
     /**
      * Setter for
      * <code>public.artifact_version_reference.reference_order</code>.
+     * 同角色引用的稳定顺序
      */
     public void setReferenceOrder(Integer value) {
         set(4, value);
@@ -92,6 +100,7 @@ public class ArtifactVersionReferenceRecord extends UpdatableRecordImpl<Artifact
     /**
      * Getter for
      * <code>public.artifact_version_reference.reference_order</code>.
+     * 同角色引用的稳定顺序
      */
     public Integer getReferenceOrder() {
         return (Integer) get(4);

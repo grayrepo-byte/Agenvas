@@ -47,7 +47,6 @@
       "required": [
         "assetId",
         "prompt",
-        "providerConfigVersion",
         "workflowVersion",
         "parameters",
         "sourceTaskId"
@@ -65,10 +64,6 @@
         "negativePrompt": {
           "type": "string",
           "maxLength": 8000
-        },
-        "providerConfigVersion": {
-          "type": "integer",
-          "minimum": 1
         },
         "workflowVersion": {
           "type": "string",

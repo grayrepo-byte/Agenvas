@@ -15,7 +15,6 @@ final class MediaResult {
         if (task.input().has("negativePrompt")) {
             content.put("negativePrompt", task.input().path("negativePrompt").asText());
         }
-        content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
         content.put("workflowVersion", task.input().path("workflowVersion").asText());
         content.put("sourceTaskId", task.id().toString());
         content.putObject("parameters");

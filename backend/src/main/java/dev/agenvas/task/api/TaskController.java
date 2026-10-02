@@ -76,7 +76,6 @@ public class TaskController {
      * @param cancelRequested 是否已记录取消意图
      * @param input 创建时固定的任务输入快照
      * @param output 成功后归档的结果摘要；未成功时为空
-     * @param providerId Provider 配置身份；未提交时为空
      * @param providerRequestId Provider 已确认受理的请求 ID
      * @param attemptNo 当前生成尝试序号
      * @param nextActionAt 下次允许 Worker 执行的时间
@@ -96,7 +95,6 @@ public class TaskController {
             boolean cancelRequested,
             JsonNode input,
             JsonNode output,
-            UUID providerId,
             String providerRequestId,
             int attemptNo,
             Instant nextActionAt,
@@ -132,7 +130,6 @@ public class TaskController {
                     task.cancelRequested(),
                     input,
                     output,
-                    task.providerId(),
                     task.providerRequestId(),
                     task.attemptNo(),
                     task.nextActionAt(),

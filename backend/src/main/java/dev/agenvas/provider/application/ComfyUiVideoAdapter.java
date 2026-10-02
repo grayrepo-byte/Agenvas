@@ -55,10 +55,6 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
                 && input.durationSeconds() >= 1 && input.durationSeconds() <= 5;
     }
 
-    @Override public String candidateOriginSha256(AttemptContext context) {
-        return snapshot(context).connectionVersion().originSha256();
-    }
-
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         ComfyUiClient client = client(snapshot);
@@ -139,7 +135,7 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
 
     private ComfyUiVideoWorkflow workflow(Snapshot snapshot) {
         JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
-        return new ComfyUiVideoWorkflow(new ComfyUiVideoProperties(true,
+        return new ComfyUiVideoWorkflow(new ComfyUiVideoProperties(
                 settings.path("diffusionModel").asText(),
                 settings.path("textEncoder").asText(),
                 settings.path("vae").asText(),

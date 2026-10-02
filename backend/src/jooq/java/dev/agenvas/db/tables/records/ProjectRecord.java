@@ -14,7 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Permission and configuration boundary for one creative workspace.
+ * 项目权限边界、当前活动 Run、事件序号与并发控制版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
@@ -22,70 +22,70 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.project.id</code>.
+     * Setter for <code>public.project.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.project.id</code>.
+     * Getter for <code>public.project.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.project.owner_id</code>.
+     * Setter for <code>public.project.owner_id</code>. 所属用户及授权作用域
      */
     public void setOwnerId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.project.owner_id</code>.
+     * Getter for <code>public.project.owner_id</code>. 所属用户及授权作用域
      */
     public UUID getOwnerId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.project.name</code>.
+     * Setter for <code>public.project.name</code>. 显示名称
      */
     public void setName(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.project.name</code>.
+     * Getter for <code>public.project.name</code>. 显示名称
      */
     public String getName() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.project.aspect_ratio</code>.
+     * Setter for <code>public.project.aspect_ratio</code>. 项目默认画幅比例
      */
     public void setAspectRatio(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.project.aspect_ratio</code>.
+     * Getter for <code>public.project.aspect_ratio</code>. 项目默认画幅比例
      */
     public String getAspectRatio() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.project.status</code>.
+     * Setter for <code>public.project.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public void setStatus(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.project.status</code>.
+     * Getter for <code>public.project.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public String getStatus() {
         return (String) get(4);
@@ -108,70 +108,70 @@ public class ProjectRecord extends UpdatableRecordImpl<ProjectRecord> {
     }
 
     /**
-     * Setter for <code>public.project.event_seq</code>.
+     * Setter for <code>public.project.event_seq</code>. 项目内事务分配的已提交事件序号
      */
     public void setEventSeq(Long value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.project.event_seq</code>.
+     * Getter for <code>public.project.event_seq</code>. 项目内事务分配的已提交事件序号
      */
     public Long getEventSeq() {
         return (Long) get(6);
     }
 
     /**
-     * Setter for <code>public.project.version</code>.
+     * Setter for <code>public.project.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.project.version</code>.
+     * Getter for <code>public.project.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(7);
     }
 
     /**
-     * Setter for <code>public.project.created_at</code>.
+     * Setter for <code>public.project.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.project.created_at</code>.
+     * Getter for <code>public.project.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(8);
     }
 
     /**
-     * Setter for <code>public.project.updated_at</code>.
+     * Setter for <code>public.project.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.project.updated_at</code>.
+     * Getter for <code>public.project.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(9);
     }
 
     /**
-     * Setter for <code>public.project.archived_at</code>.
+     * Setter for <code>public.project.archived_at</code>. 归档时间；未归档时为空
      */
     public void setArchivedAt(OffsetDateTime value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.project.archived_at</code>.
+     * Getter for <code>public.project.archived_at</code>. 归档时间；未归档时为空
      */
     public OffsetDateTime getArchivedAt() {
         return (OffsetDateTime) get(10);

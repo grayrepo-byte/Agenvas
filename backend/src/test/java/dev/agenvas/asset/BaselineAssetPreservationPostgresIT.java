@@ -8,9 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -18,12 +16,12 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Startup completes V52's destructive development reset in the local asset volume. */
+/** A clean-baseline startup preserves any pre-existing private archive directories. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class,
         properties = "agenvas.identity.bootstrap-secret=creative-reset-secret-2026")
-class CreativeDataResetPostgresIT {
+class BaselineAssetPreservationPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     static final Path ROOT = prepareRoot();
@@ -49,15 +47,10 @@ class CreativeDataResetPostgresIT {
         registry.add("agenvas.storage.root", ROOT::toString);
     }
 
-    @Autowired private JdbcClient jdbc;
-
     @Test
-    void removesOnlyUuidProjectDirectoriesAndCompletesTheResetMarker() {
-        assertThat(PROJECT_DIRECTORY).doesNotExist();
+    void baselineStartupPreservesExistingProjectFiles() {
+        assertThat(PROJECT_DIRECTORY.resolve("archived.png")).hasContent("old media");
         assertThat(UNRELATED_DIRECTORY.resolve("keep.txt")).hasContent("keep");
-        assertThat(jdbc.sql("select completed_at is not null from creative_data_reset_marker "
-                        + "where id=1")
-                .query(Boolean.class).single()).isTrue();
     }
 
     private static Path prepareRoot() {

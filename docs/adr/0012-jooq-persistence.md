@@ -67,3 +67,23 @@ profile 默认连 `localhost:55432`，可用 `-Djooq.codegen.jdbcUrl=...` 覆盖
 - **生成代码与迁移会漂移**。普通构建与部署镜像都不会重新生成（构建期不连数据库），`./mvnw verify` 也不做。兜底有两条：CI 的 backend job 对一次性 PostgreSQL 重跑 `jooq-codegen` profile，并要求 `git status --porcelain -- src/jooq/java` 为空（用 porcelain 是因为新增表会产生未跟踪文件，`git diff` 看不到）；集成测试跑真实 PostgreSQL，能发现映射与 schema 不符。漂移到测试覆盖不到的表时，仍只能靠人重新生成。
 - `src/jooq/java` 有 101 个文件入库。它们不参与代码评审的逐行阅读，但会出现在 diff 里；改动数据库 schema 后重新生成会产生大量噪声 diff。
 - 依赖基线减少一项（MyBatis-Plus），增加一项（jOOQ，Boot 4.0.8 管理的 3.19.37）。
+
+## 2026-10-02 未发布基线重建
+
+状态：接受；用户明确要求在应用尚未发布时重建数据库，清理开发遗留字段和表，并补齐 DDL 注释；同时授权先备份再重置现有开发环境。这是“Flyway 文件只增不改”的一次性例外，不改变后续迁移规则。
+
+旧目录包含 V1–V77 共 76 个迁移文件（没有 V61）。先在隔离 PostgreSQL 17.11 执行旧链以核对最终模型，再依据当前生产消费者清理结构，形成单个 `V1__initial_schema.sql`。新基线为 67 张业务/会话表、567 列，保留必要的外键、唯一与检查约束、索引、不可变版本触发器及任务租约/CAS 边界；Flyway 自己创建历史表。所有表、列、约束、索引、函数和触发器通过 `COMMENT ON` 持久化用途注释，基线测试从 PostgreSQL catalog 校验覆盖。
+
+删除 `creative_data_reset_marker`、`comfyui_config_version`、`media_legacy_import_marker`、`media_legacy_origin_map` 及对应重置/环境导入/未绑定媒体 Worker 链。所有媒体任务通过连接与能力目录固定版本，由统一内核执行。删除 `task_dependency` 与任务 `PENDING`：Agent 续回合在同一事务中先完成旧任务、再创建 READY 后继，任一步失败全部回滚；没有媒体执行 DAG。审批自己的 `PENDING` 保留。
+
+任务来源由 run_id 是否为空直接确定，删除重复的 task.origin 字段；直接任务允许类型的 CHECK 与部分索引保留等价语义。删除仅写空值或常量的 `task.provider_id`、`agent_binding.binding_type`、`asset.status`、`installation_lock.purpose`，移除旧规划输出槽 `task_artifact_target.output_slot_key` 并要求目标产物非空；删除把空节点选择与共享产物版本绑定的旧 mode CHECK，允许资源默认版本变化后空节点继续生成。删除旧候选请求定位字段 `provider_attempt.candidate_request_id/candidate_origin_sha256`；当前尝试保留已提交 request_key、外部请求 ID 与固定连接/能力版本。Skill 安装的命令键与摘要只保留在 `skill_install_command`，不在 operation 重复存储。UNKNOWN 不自动重提，旧 Worker fencing、用户版本选择、取消晚到归档及 SSE 同事务约束保持。
+
+初始化数据为 28 行：安装/设置单例、Mock 图片/视频/音频连接与能力、默认能力、LOCAL 图片处理能力、8 个内置风格及存储默认值。时间使用 `now()`；不包含用户、项目、任务、素材、真实连接或凭据，也不再种入任何开发重置或旧环境导入标记。
+
+这是未发布的破坏性基线切换：Task API 去掉 providerId、ASSET_INGEST/PENDING，Agent 输入去掉 bindingType，使用量去掉 exportCount，媒体内容去掉旧全局 providerConfigVersion，诊断媒体模式只保留 MOCK/CONFIGURED。媒体使用量记录实际连接版本；LLM 使用量仍记录实际模型配置版本。OpenAPI 与生成 TS 同步，jOOQ 从新空库重新生成；不保留旧客户端或旧媒体 JSON 兼容层。
+
+新 V1 定稿后不再重写，后续 Schema 或初始化数据变化从 V2 开始追加。本次验收依据是空库初始化、全部注释覆盖、退役结构缺失、当前行为及恢复安全回归；清理后的 Schema 有意与旧最终库不同，不能再以 dump 完全等价作为验收。实际命令和结果见开发清单及依赖基线，旧迁移验收仍保持历史范围。
+
+2026-10-03 基线审阅补充：从已重建的当前数据库导出仅含结构的 SQL，排除 Flyway 历史表，再按表与依赖顺序整理 V1。567 个字段在定义旁直接显示说明；主键、唯一、检查与非循环外键写入 `CREATE TABLE`，数据库注释、索引及触发器紧随所属表。仅四个当前版本/活动对象指针的循环外键在双方表创建后补充，不再保留字段增删改或开发期回填。公开内置种子沿用审阅后的初始化数据，不导出用户或真实配置。此处比对的是本轮重建后的当前库，整理前后结构完全一致，区别于上文旧 V77 结构的清理。
+
+旧 V1–V77 history 不能直接启动新基线；不得通过 repair、删除历史行或自动 baseline 掩盖边界。重置前保存 PostgreSQL、素材、密钥、配置和匹配旧镜像的一致性私有备份，并在隔离库验证可恢复。新版本从空数据库和空素材卷初始化，不自动导入旧数据；恢复旧备份须使用对应旧版本并先进入恢复模式。项目导出清单不能代替数据库和素材备份，操作步骤见[备份与恢复说明](../operations/backup-restore.md)。

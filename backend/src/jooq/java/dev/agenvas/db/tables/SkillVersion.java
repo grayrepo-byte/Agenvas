@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable Skill body, bounded text resources and independently archived image
- * bindings
+ * 不可变 Skill 发布版本、内容包及完整性摘要
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class SkillVersion extends TableImpl<SkillVersionRecord> {
@@ -66,46 +65,49 @@ public class SkillVersion extends TableImpl<SkillVersionRecord> {
     }
 
     /**
-     * The column <code>public.skill_version.id</code>.
+     * The column <code>public.skill_version.id</code>. 记录身份
      */
-    public final TableField<SkillVersionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<SkillVersionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.skill_version.owner_id</code>.
+     * The column <code>public.skill_version.owner_id</code>. 所属用户及授权作用域
      */
-    public final TableField<SkillVersionRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<SkillVersionRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
-     * The column <code>public.skill_version.skill_id</code>.
+     * The column <code>public.skill_version.skill_id</code>. Skill 业务身份
      */
-    public final TableField<SkillVersionRecord, UUID> SKILL_ID = createField(DSL.name("skill_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<SkillVersionRecord, UUID> SKILL_ID = createField(DSL.name("skill_id"), SQLDataType.UUID.nullable(false), this, "Skill 业务身份");
 
     /**
-     * The column <code>public.skill_version.version_number</code>.
+     * The column <code>public.skill_version.version_number</code>. Skill
+     * 内部发布版本序号
      */
-    public final TableField<SkillVersionRecord, Long> VERSION_NUMBER = createField(DSL.name("version_number"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<SkillVersionRecord, Long> VERSION_NUMBER = createField(DSL.name("version_number"), SQLDataType.BIGINT.nullable(false), this, "Skill 内部发布版本序号");
 
     /**
-     * The column <code>public.skill_version.bundle_hash</code>.
+     * The column <code>public.skill_version.bundle_hash</code>. 不可变 Skill 内容包
+     * SHA-256 摘要
      */
-    public final TableField<SkillVersionRecord, String> BUNDLE_HASH = createField(DSL.name("bundle_hash"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<SkillVersionRecord, String> BUNDLE_HASH = createField(DSL.name("bundle_hash"), SQLDataType.CHAR(64).nullable(false), this, "不可变 Skill 内容包 SHA-256 摘要");
 
     /**
-     * The column <code>public.skill_version.bundle_json</code>.
+     * The column <code>public.skill_version.bundle_json</code>. 不可变 Skill
+     * 内容包，包含版本与固定素材引用
      */
-    public final TableField<SkillVersionRecord, JSONB> BUNDLE_JSON = createField(DSL.name("bundle_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<SkillVersionRecord, JSONB> BUNDLE_JSON = createField(DSL.name("bundle_json"), SQLDataType.JSONB.nullable(false), this, "不可变 Skill 内容包，包含版本与固定素材引用");
 
     /**
-     * The column <code>public.skill_version.created_at</code>.
+     * The column <code>public.skill_version.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<SkillVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<SkillVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private SkillVersion(Name alias, Table<SkillVersionRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private SkillVersion(Name alias, Table<SkillVersionRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable Skill body, bounded text resources and independently archived image bindings"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("不可变 Skill 发布版本、内容包及完整性摘要"), TableOptions.table(), where);
     }
 
     /**

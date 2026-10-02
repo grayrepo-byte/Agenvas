@@ -103,7 +103,7 @@ class MediaCapabilityModeTest {
         when(repository.connections()).thenReturn(List.of(snapshot.connection()));
         when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name()))
                 .thenReturn(snapshot.capability().id());
-        for (var mode : List.of(ProviderModeProperties.Mode.MOCK, ProviderModeProperties.Mode.COMFYUI)) {
+        for (var mode : List.of(ProviderModeProperties.Mode.MOCK)) {
             var catalog = service(mode);
             assertThat(catalog.connections()).containsExactly(snapshot.connection());
             assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isEqualTo(snapshot.capability().id());

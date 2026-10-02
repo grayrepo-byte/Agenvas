@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Persistent CanvasItem-to-CanvasItem topology with the exact source version
- * captured at creation.
+ * 画布卡片关系；输入来源和派生线不代表执行依赖
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnectionRecord> {
@@ -23,28 +22,28 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.canvas_connection.id</code>.
+     * Setter for <code>public.canvas_connection.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.canvas_connection.id</code>.
+     * Getter for <code>public.canvas_connection.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.canvas_connection.project_id</code>.
+     * Setter for <code>public.canvas_connection.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.canvas_connection.project_id</code>.
+     * Getter for <code>public.canvas_connection.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
@@ -52,6 +51,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Setter for <code>public.canvas_connection.source_canvas_item_id</code>.
+     * 连线起始卡片
      */
     public void setSourceCanvasItemId(UUID value) {
         set(2, value);
@@ -59,6 +59,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Getter for <code>public.canvas_connection.source_canvas_item_id</code>.
+     * 连线起始卡片
      */
     public UUID getSourceCanvasItemId() {
         return (UUID) get(2);
@@ -66,6 +67,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Setter for <code>public.canvas_connection.target_canvas_item_id</code>.
+     * 连线目标卡片
      */
     public void setTargetCanvasItemId(UUID value) {
         set(3, value);
@@ -73,6 +75,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Getter for <code>public.canvas_connection.target_canvas_item_id</code>.
+     * 连线目标卡片
      */
     public UUID getTargetCanvasItemId() {
         return (UUID) get(3);
@@ -99,6 +102,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
     /**
      * Setter for
      * <code>public.canvas_connection.source_artifact_version_id</code>.
+     * 连线固定的来源版本
      */
     public void setSourceArtifactVersionId(UUID value) {
         set(5, value);
@@ -107,6 +111,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
     /**
      * Getter for
      * <code>public.canvas_connection.source_artifact_version_id</code>.
+     * 连线固定的来源版本
      */
     public UUID getSourceArtifactVersionId() {
         return (UUID) get(5);
@@ -114,6 +119,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Setter for <code>public.canvas_connection.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(6, value);
@@ -121,20 +127,21 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Getter for <code>public.canvas_connection.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(6);
     }
 
     /**
-     * Setter for <code>public.canvas_connection.created_at</code>.
+     * Setter for <code>public.canvas_connection.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.canvas_connection.created_at</code>.
+     * Getter for <code>public.canvas_connection.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(7);
@@ -142,6 +149,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Setter for <code>public.canvas_connection.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(8, value);
@@ -149,6 +157,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Getter for <code>public.canvas_connection.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(8);

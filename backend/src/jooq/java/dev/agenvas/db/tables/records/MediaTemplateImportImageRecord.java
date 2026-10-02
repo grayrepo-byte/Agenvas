@@ -13,8 +13,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Template provenance with no LibraryEntry dependency; template deletion never
- * deletes project versions
+ * 模板图片导入到项目的不可变版本及模板来源审计
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTemplateImportImageRecord> {
@@ -23,6 +22,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Setter for <code>public.media_template_import_image.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
@@ -30,6 +30,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Getter for <code>public.media_template_import_image.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
@@ -37,6 +38,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Setter for <code>public.media_template_import_image.version_id</code>.
+     * 导入生成的不可变产物版本
      */
     public void setVersionId(UUID value) {
         set(1, value);
@@ -44,6 +46,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Getter for <code>public.media_template_import_image.version_id</code>.
+     * 导入生成的不可变产物版本
      */
     public UUID getVersionId() {
         return (UUID) get(1);
@@ -51,6 +54,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Setter for <code>public.media_template_import_image.template_id</code>.
+     * 媒体模板身份
      */
     public void setTemplateId(UUID value) {
         set(2, value);
@@ -58,6 +62,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Getter for <code>public.media_template_import_image.template_id</code>.
+     * 媒体模板身份
      */
     public UUID getTemplateId() {
         return (UUID) get(2);
@@ -66,6 +71,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
     /**
      * Setter for
      * <code>public.media_template_import_image.template_version</code>.
+     * 导入时固定的模板版本
      */
     public void setTemplateVersion(Long value) {
         set(3, value);
@@ -74,6 +80,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
     /**
      * Getter for
      * <code>public.media_template_import_image.template_version</code>.
+     * 导入时固定的模板版本
      */
     public Long getTemplateVersion() {
         return (Long) get(3);
@@ -81,6 +88,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Setter for <code>public.media_template_import_image.template_name</code>.
+     * 导入时固定的模板名称
      */
     public void setTemplateName(String value) {
         set(4, value);
@@ -88,6 +96,7 @@ public class MediaTemplateImportImageRecord extends UpdatableRecordImpl<MediaTem
 
     /**
      * Getter for <code>public.media_template_import_image.template_name</code>.
+     * 导入时固定的模板名称
      */
     public String getTemplateName() {
         return (String) get(4);

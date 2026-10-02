@@ -10,22 +10,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.DirectoryStream;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.StandardOpenOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.Optional;
@@ -36,8 +30,6 @@ import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -45,12 +37,6 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage {
 
-    /** 文件清理只能写入日志，不能掩盖最初的归档错误。 */
-    private static final Logger LOGGER = LoggerFactory.getLogger(LocalAssetStorage.class);
-    /** 导出临时目录中用于跨进程保护活动编码器的锁文件名。 */
-    private static final String EXPORT_LOCK_NAME = ".active.lock";
-    /** 清理器唯一允许删除的导出结果文件名。 */
-    private static final String EXPORT_OUTPUT_NAME = "silent-export.mp4";
     /** 先在进程内串行化，再用文件锁保护共享卷上的任务归档。 */
     private static final Object[] TASK_LOCK_STRIPES = new Object[64];
     static {
@@ -127,57 +113,6 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     /** 视频使用同一跨进程归档机制，但独立的锁命名空间。 */
     public <T> T withTaskVideoLock(UUID projectId, UUID assetId, Supplier<T> action) {
         return withTaskArchiveLock(projectId, assetId, "video", action);
-    }
-
-    /**
-     * Completes the pre-release creative-data reset by removing archived project directories.
-     * Only direct UUID-named child directories of the configured private root are eligible;
-     * unknown operator entries and top-level links are preserved, and nested links are not followed.
-     */
-    public int deleteCreativeProjectDirectories() {
-        int deleted = 0;
-        try {
-            Files.createDirectories(root);
-            try (DirectoryStream<Path> entries = Files.newDirectoryStream(root)) {
-                for (Path entry : entries) {
-                    if (!isProjectDirectory(entry)) continue;
-                    deleteDirectoryTree(entry);
-                    deleted++;
-                }
-            }
-            return deleted;
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot complete creative asset reset", failure);
-        }
-    }
-
-    private boolean isProjectDirectory(Path path) {
-        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) return false;
-        try {
-            UUID.fromString(path.getFileName().toString());
-            return true;
-        } catch (IllegalArgumentException invalidName) {
-            return false;
-        }
-    }
-
-    private void deleteDirectoryTree(Path directory) throws IOException {
-        Files.walkFileTree(directory, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
-                    throws IOException {
-                Files.delete(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path visited, IOException failure)
-                    throws IOException {
-                if (failure != null) throw failure;
-                Files.delete(visited);
-                return FileVisitResult.CONTINUE;
-            }
-        });
     }
 
     /** 以条带监视器避免同 JVM 重叠锁异常，再持有项目卷上的 OS 文件锁执行操作。 */
@@ -283,142 +218,6 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
      * @param durationMs 视频时长，已验证为 1 到 60,000 毫秒
      */
     private record VideoDetails(int width, int height, int durationMs) {}
-
-    /** 在素材卷项目目录下创建仅本次导出使用的私有临时目录，并持有 OS 锁。 */
-    public ExportWorkspace createExportWorkDirectory(UUID projectId) {
-        Path directory = null;
-        FileChannel channel = null;
-        try {
-            Path projectDirectory = prepareProjectDirectory(projectId);
-            directory = Files.createTempDirectory(projectDirectory, ".export-");
-            channel = FileChannel.open(directory.resolve(EXPORT_LOCK_NAME),
-                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
-                    LinkOption.NOFOLLOW_LINKS);
-            return new ExportWorkspace(directory, channel, channel.lock());
-        } catch (IOException | RuntimeException exception) {
-            if (channel != null) {
-                try { channel.close(); } catch (IOException ignored) { /* Preserve the first failure. */ }
-            }
-            if (directory != null) {
-                cleanup(directory.resolve(EXPORT_LOCK_NAME));
-                cleanup(directory);
-            }
-            throw new IllegalStateException("Cannot create private export work directory", exception);
-        }
-    }
-
-    /** OS 文件锁在 Worker 租约丢失后仍可保护活动编码进程，防止清理器删文件。 */
-    public static final class ExportWorkspace implements AutoCloseable {
-        /** 本次导出专属目录，目录名由系统随机生成。 */
-        private final Path directory;
-        /** 保持锁文件描述符存活，以维持跨进程文件锁。 */
-        private final FileChannel channel;
-        /** 防止另一个进程误清理仍在编码的工作目录。 */
-        private final FileLock lock;
-
-        /** 仅由本地存储创建，调用方不得替换锁、通道或工作目录。
-         * @param directory 本次导出的临时工作目录
-         * @param channel 持有锁文件的打开通道
-         * @param lock 已获得的跨进程目录锁
-         */
-        private ExportWorkspace(Path directory, FileChannel channel, FileLock lock) {
-            this.directory = directory;
-            this.channel = channel;
-            this.lock = lock;
-        }
-
-        /** 返回本次编码专用的临时目录，调用方只能写入约定输出文件。 */
-        public Path directory() {
-            return directory;
-        }
-
-        /** 释放文件锁并尝试清理临时目录；清理失败由定时清理器后续处理。 */
-        @Override
-        public void close() {
-            try {
-                lock.release();
-            } catch (IOException failure) {
-                LOGGER.warn("Export scratch cleanup deferred: {}", failure.getClass().getSimpleName());
-            }
-            try {
-                channel.close();
-                Files.deleteIfExists(directory.resolve(EXPORT_LOCK_NAME));
-                Files.deleteIfExists(directory);
-            } catch (IOException failure) {
-                LOGGER.warn("Export scratch cleanup deferred: {}", failure.getClass().getSimpleName());
-            }
-        }
-    }
-
-    /** 最多清理 limit 个过期、未锁定且只含应用约定文件的导出目录。 */
-    public int cleanupStaleExportWorkDirectories(Instant cutoff, int limit) {
-        if (cutoff == null || limit < 1 || limit > 100) {
-            throw new IllegalArgumentException("Invalid export scratch cleanup bounds");
-        }
-        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) return 0;
-        int removed = 0;
-        try (var projects = Files.newDirectoryStream(root)) {
-            for (Path project : projects) {
-                if (!Files.isDirectory(project, LinkOption.NOFOLLOW_LINKS)
-                        || !uuidDirectory(project.getFileName().toString())) continue;
-                try (var candidates = Files.newDirectoryStream(project, ".export-*")) {
-                    for (Path candidate : candidates) {
-                        if (removed >= limit) return removed;
-                        if (cleanupStaleExportDirectory(candidate, cutoff)) removed++;
-                    }
-                }
-            }
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot inspect export scratch directories", failure);
-        }
-        return removed;
-    }
-
-    /** 尝试获取目录锁后检查内容白名单，再删除输出、锁和目录。 */
-    private boolean cleanupStaleExportDirectory(Path directory, Instant cutoff) {
-        Path lockPath = directory.resolve(EXPORT_LOCK_NAME);
-        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
-                || !Files.isRegularFile(lockPath, LinkOption.NOFOLLOW_LINKS)) return false;
-        try {
-            if (Files.getLastModifiedTime(directory, LinkOption.NOFOLLOW_LINKS)
-                    .toInstant().isAfter(cutoff)) return false;
-            try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.WRITE,
-                    LinkOption.NOFOLLOW_LINKS)) {
-                FileLock lock;
-                try {
-                    lock = channel.tryLock();
-                } catch (OverlappingFileLockException occupied) {
-                    return false;
-                }
-                if (lock == null) return false;
-                try (lock) {
-                    try (var children = Files.newDirectoryStream(directory)) {
-                        for (Path child : children) {
-                            String name = child.getFileName().toString();
-                            if (!name.equals(EXPORT_LOCK_NAME)
-                                    && !name.equals(EXPORT_OUTPUT_NAME)) return false;
-                        }
-                    }
-                    Files.deleteIfExists(directory.resolve(EXPORT_OUTPUT_NAME));
-                }
-            }
-            Files.deleteIfExists(lockPath);
-            Files.deleteIfExists(directory);
-            return true;
-        } catch (IOException failure) {
-            LOGGER.warn("Export scratch cleanup deferred: {}", failure.getClass().getSimpleName());
-            return false;
-        }
-    }
-
-    /** 仅接受规范格式的 UUID 项目目录名。 */
-    private boolean uuidDirectory(String name) {
-        try {
-            return UUID.fromString(name).toString().equals(name);
-        } catch (IllegalArgumentException invalid) {
-            return false;
-        }
-    }
 
     /** 限流保存视频字节，实测容器与视频流后解码首帧并原子安装 MP4 和海报。 */
     public static final long MAX_AUDIO_BYTES = 50L * 1024 * 1024;

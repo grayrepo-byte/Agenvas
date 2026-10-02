@@ -55,7 +55,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         "agenvas.identity.bootstrap-secret=manual-retry-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=mock",
-        "agenvas.provider.mock.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ManualUnknownRetryPostgresIT {
     @Container

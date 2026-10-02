@@ -154,13 +154,13 @@ describe("AgentRunConversation", () => {
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_RESULT");
   });
 
-  it("keeps failed, canceled, and unknown task outcomes distinct and labels ingest tasks", async () => {
+  it("keeps failed, canceled, unknown and queued task outcomes distinct", async () => {
     mockConversation([
       task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_TURN_LIMIT_REACHED" }),
       task({ id: "failed-image", kind: "IMAGE_GENERATION", stepKey: "shot-failed", status: "FAILED", errorCode: "PROVIDER_TIMEOUT" }),
       task({ id: "canceled-video", kind: "VIDEO_GENERATION", stepKey: "shot-canceled", status: "CANCELED", cancelRequested: true }),
       task({ id: "unknown-image", kind: "IMAGE_GENERATION", stepKey: "shot-unknown", status: "UNKNOWN" }),
-      task({ id: "ingest-task", kind: "ASSET_INGEST", stepKey: "ingest", status: "READY" }),
+      task({ id: "queued-text", kind: "TEXT_GENERATION", stepKey: "text", status: "READY" }),
     ]);
     mountConversation("CANCELED");
 
@@ -172,7 +172,7 @@ describe("AgentRunConversation", () => {
     expect(taskSummary("生成图片", 1).getByText("未知")).toBeInTheDocument();
     expect(taskSummary("生成图片", 1).queryByText("失败")).not.toBeInTheDocument();
     expect(taskSummary("生成图片", 1).queryByText("已完成")).not.toBeInTheDocument();
-    expect(taskSummary("归档素材").getByText("等待中")).toBeInTheDocument();
+    expect(taskSummary("生成文字").getByText("等待中")).toBeInTheDocument();
     const conversation = screen.getByRole("region", { name: "任务对话" });
     for (const internalKey of ["planning-failed", "shot-failed", "shot-canceled", "shot-unknown", " · ingest"]) {
       expect(conversation).not.toHaveTextContent(internalKey);

@@ -56,7 +56,7 @@ describe("LlmSettingsPage", () => {
       http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
         checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
         llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "COMFYUI", imageConfigured: true, videoConfigured: false,
+        mediaMode: "CONFIGURED", imageConfigured: true, videoConfigured: false,
         recentErrors: [],
       })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
@@ -82,7 +82,7 @@ describe("LlmSettingsPage", () => {
     expect(screen.getByText(/密钥 ••••7890/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("secret-7890");
     expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: "secret-7890" }]);
-    expect(screen.getByText(/ComfyUI 模式 · 图片已配置 · 视频未配置/)).toBeInTheDocument();
+    expect(screen.getByText(/已配置模型模式 · 图片已配置 · 视频未配置/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看系统诊断" })).toHaveAttribute("href", "/settings/general?tab=diagnostics");
   });
 

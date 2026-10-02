@@ -8,7 +8,7 @@ import tools.jackson.databind.JsonNode;
 /** 不可变的用量账目；费用字段为空表示未知，不等同于零费用。
  * @param id 账目 ID
  * @param projectId 归属项目 ID
- * @param runId 关联 Agent Run；项目级导出时为空
+ * @param runId 关联 Agent Run；用户直连请求时为空
  * @param taskId 关联持久任务；模型回合账目时为空
  * @param operationKey 幂等键，同一逻辑账目不可重复写入
  * @param entryType 预留、结算或释放动作
@@ -18,7 +18,7 @@ import tools.jackson.databind.JsonNode;
  * @param currency 费用币种；费用未知时为空
  * @param costStatus 费用信息可信度状态
  * @param costSource 用量来源或价格来源标记
- * @param providerConfigVersion 生成时使用的 Provider 配置版本；本地导出时为空
+ * @param providerConfigVersion 模型请求使用的配置版本，或媒体任务固定的连接版本
  * @param workflowVersion 生成时使用的固定工作流版本；不适用时为空
  * @param modelId 已报告的模型 ID；Provider 未报告时为空
  * @param createdAt 账目写入时间
@@ -33,7 +33,7 @@ public record UsageEntry(UUID id, UUID projectId, UUID runId, UUID taskId,
     public enum EntryType {
         /** 预留后续任务或请求的计划用量。 */
         RESERVATION,
-        /** Provider 请求完成或导出成功后结算用量。 */
+        /** 持久模型响应或媒体结果确认后结算用量。 */
         SETTLEMENT,
         /** 已确认未提交或未产出时释放先前预留。 */
         RELEASE

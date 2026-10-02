@@ -3283,7 +3283,7 @@ export interface components {
              */
             status: "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
             /** @enum {string|null} */
-            taskStatus: "PENDING" | "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED" | null;
+            taskStatus: "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED" | null;
             provider: string | null;
             model: string | null;
             traceId: string | null;
@@ -3585,7 +3585,7 @@ export interface components {
              * @description CONFIGURED uses the administrator media catalog and excludes Mock capabilities from new generation.
              * @enum {string}
              */
-            mediaMode: "MOCK" | "COMFYUI" | "CONFIGURED";
+            mediaMode: "MOCK" | "CONFIGURED";
             imageConfigured: boolean;
             videoConfigured: boolean;
             recentErrors: components["schemas"]["RecentTaskError"][];
@@ -3686,7 +3686,6 @@ export interface components {
                 imageCount: number;
                 videoCount: number;
                 videoSeconds: string;
-                exportCount: number;
                 llmRequestCount: number;
                 inputTokens: number | null;
                 outputTokens: number | null;
@@ -3758,31 +3757,10 @@ export interface components {
         ManifestVersionContent: {
             format?: string;
             text?: string;
-            name?: string;
-            description?: string;
-            appearance?: string;
-            referenceVersionIds?: string[];
-            location?: string;
-            timeOfDay?: string;
-            lighting?: string;
-            style?: string;
-            order?: number;
-            durationMs?: number;
-            durationSeconds?: number;
-            camera?: string;
-            action?: string;
-            characterVersionIds?: string[];
-            /** Format: uuid */
-            sceneVersionId?: string;
-            /** Format: uuid */
-            selectedImageVersionId?: string | null;
-            /** Format: uuid */
-            selectedVideoVersionId?: string | null;
             /** Format: uuid */
             assetId?: string;
             prompt?: string;
             negativePrompt?: string;
-            providerConfigVersion?: number;
             workflowVersion?: string;
         };
         ManifestAsset: {
@@ -4302,8 +4280,6 @@ export interface components {
             artifactId: string;
             /** Format: uuid */
             selectedVersionId: string;
-            /** @constant */
-            bindingType: "INPUT";
         };
         Agent: {
             /** Format: uuid */
@@ -4492,8 +4468,6 @@ export interface components {
             artifactId: string;
             /** Format: uuid */
             selectedVersionId: string;
-            /** @constant */
-            bindingType: "INPUT";
             kind?: components["schemas"]["ArtifactKind"];
             title?: string;
             /** Format: int64 */
@@ -4635,9 +4609,9 @@ export interface components {
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
         /** @enum {string} */
-        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION" | "ASSET_INGEST";
+        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
         /** @enum {string} */
-        TaskStatus: "PENDING" | "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED";
+        TaskStatus: "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED";
         ManualUnknownAttemptRequest: {
             /** Format: int64 */
             expectedTaskVersion: number;
@@ -4665,8 +4639,6 @@ export interface components {
             output?: {
                 [key: string]: unknown;
             } | null;
-            /** Format: uuid */
-            providerId?: string | null;
             providerRequestId?: string | null;
             attemptNo: number;
             /** Format: date-time */
@@ -5119,7 +5091,6 @@ export interface components {
             assetId: string;
             prompt: string;
             negativePrompt?: string;
-            providerConfigVersion: number;
             workflowVersion: string;
             parameters: {
                 [key: string]: unknown;

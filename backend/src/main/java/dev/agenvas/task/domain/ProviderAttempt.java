@@ -10,14 +10,12 @@ import java.util.UUID;
  * @param taskId 所属任务 ID
  * @param status 本次尝试的提交状态，不等同于生成任务的最终状态
  * @param requestKey 网络调用前保存的稳定请求键
- * @param candidateRequestId 适配器可提供的候选外部请求 ID，用于提交结果丢失时核对
- * @param candidateOriginSha256 候选请求 ID 所属 Provider origin 的摘要，防止跨端点误核对
  * @param providerRequestId Provider 已确认返回的原请求 ID
  * @param createdAt 提交尝试检查点的创建时间
  * @param updatedAt 最近一次核对或状态变化时间
  */
 public record ProviderAttempt(UUID id, UUID taskId, Status status, UUID requestKey,
-        UUID candidateRequestId, String candidateOriginSha256, String providerRequestId,
+        String providerRequestId,
         Instant createdAt, Instant updatedAt) {
 
     /** 提交尝试状态；未知表示提交结果不明，重试须由用户显式发起。 */

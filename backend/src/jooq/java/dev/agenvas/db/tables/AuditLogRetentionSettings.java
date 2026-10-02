@@ -33,9 +33,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * System-wide retention for terminal execution history: calls, debug bodies,
- * model rounds, tools and provider attempts. Null keeps forever; business
- * identities/results remain.
+ * 全局调用日志保留期限及配置版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AuditLogRetentionSettings extends TableImpl<AuditLogRetentionSettingsRecord> {
@@ -57,27 +55,29 @@ public class AuditLogRetentionSettings extends TableImpl<AuditLogRetentionSettin
     }
 
     /**
-     * The column <code>public.audit_log_retention_settings.id</code>.
+     * The column <code>public.audit_log_retention_settings.id</code>. 记录身份
      */
-    public final TableField<AuditLogRetentionSettingsRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "");
+    public final TableField<AuditLogRetentionSettingsRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "记录身份");
 
     /**
      * The column
      * <code>public.audit_log_retention_settings.retention_days</code>.
+     * 调用日志保留天数；为空表示永久，清理须管理员显式执行
      */
-    public final TableField<AuditLogRetentionSettingsRecord, Integer> RETENTION_DAYS = createField(DSL.name("retention_days"), SQLDataType.INTEGER, this, "");
+    public final TableField<AuditLogRetentionSettingsRecord, Integer> RETENTION_DAYS = createField(DSL.name("retention_days"), SQLDataType.INTEGER, this, "调用日志保留天数；为空表示永久，清理须管理员显式执行");
 
     /**
      * The column <code>public.audit_log_retention_settings.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<AuditLogRetentionSettingsRecord, Integer> VERSION = createField(DSL.name("version"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1"), SQLDataType.INTEGER)), this, "");
+    public final TableField<AuditLogRetentionSettingsRecord, Integer> VERSION = createField(DSL.name("version"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1"), SQLDataType.INTEGER)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     private AuditLogRetentionSettings(Name alias, Table<AuditLogRetentionSettingsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AuditLogRetentionSettings(Name alias, Table<AuditLogRetentionSettingsRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("System-wide retention for terminal execution history: calls, debug bodies, model rounds, tools and provider attempts. Null keeps forever; business identities/results remain."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("全局调用日志保留期限及配置版本"), TableOptions.table(), where);
     }
 
     /**

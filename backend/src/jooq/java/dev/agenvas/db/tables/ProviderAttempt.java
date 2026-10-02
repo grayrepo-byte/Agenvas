@@ -45,8 +45,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Submission ledger written before any external request; ambiguous outcomes
- * remain UNKNOWN.
+ * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ProviderAttempt extends TableImpl<ProviderAttemptRecord> {
@@ -67,24 +66,25 @@ public class ProviderAttempt extends TableImpl<ProviderAttemptRecord> {
     }
 
     /**
-     * The column <code>public.provider_attempt.id</code>.
+     * The column <code>public.provider_attempt.id</code>. 记录身份
      */
-    public final TableField<ProviderAttemptRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.provider_attempt.project_id</code>.
+     * The column <code>public.provider_attempt.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<ProviderAttemptRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.provider_attempt.task_id</code>.
+     * The column <code>public.provider_attempt.task_id</code>. 持久任务身份
      */
-    public final TableField<ProviderAttemptRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "持久任务身份");
 
     /**
-     * The column <code>public.provider_attempt.lease_epoch</code>.
+     * The column <code>public.provider_attempt.lease_epoch</code>. 任务租约 fencing
+     * epoch，旧 Worker 不得回写结果
      */
-    public final TableField<ProviderAttemptRecord, Long> LEASE_EPOCH = createField(DSL.name("lease_epoch"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, Long> LEASE_EPOCH = createField(DSL.name("lease_epoch"), SQLDataType.BIGINT.nullable(false), this, "任务租约 fencing epoch，旧 Worker 不得回写结果");
 
     /**
      * The column <code>public.provider_attempt.status</code>. REJECTED is an
@@ -94,64 +94,56 @@ public class ProviderAttempt extends TableImpl<ProviderAttemptRecord> {
 
     /**
      * The column <code>public.provider_attempt.request_key</code>.
+     * 在外部调用前已提交的稳定请求去重键
      */
-    public final TableField<ProviderAttemptRecord, UUID> REQUEST_KEY = createField(DSL.name("request_key"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, UUID> REQUEST_KEY = createField(DSL.name("request_key"), SQLDataType.UUID.nullable(false), this, "在外部调用前已提交的稳定请求去重键");
 
     /**
      * The column <code>public.provider_attempt.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
-    public final TableField<ProviderAttemptRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "");
+    public final TableField<ProviderAttemptRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "外部已受理请求标识，供状态查询与结果归档");
 
     /**
-     * The column <code>public.provider_attempt.created_at</code>.
+     * The column <code>public.provider_attempt.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<ProviderAttemptRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.provider_attempt.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<ProviderAttemptRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ProviderAttemptRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
-     * The column <code>public.provider_attempt.candidate_request_id</code>.
-     * Only set when the committed request key was sent as the provider-assigned
-     * lookup ID; legacy attempts remain NULL.
+     * The column <code>public.provider_attempt.capability_id</code>. 固定媒体能力身份
      */
-    public final TableField<ProviderAttemptRecord, UUID> CANDIDATE_REQUEST_ID = createField(DSL.name("candidate_request_id"), SQLDataType.UUID, this, "Only set when the committed request key was sent as the provider-assigned lookup ID; legacy attempts remain NULL.");
-
-    /**
-     * The column <code>public.provider_attempt.candidate_origin_sha256</code>.
-     * Hash of the exact ComfyUI origin used for a client-supplied prompt ID;
-     * NULL legacy attempts cannot be automatically reconciled.
-     */
-    public final TableField<ProviderAttemptRecord, String> CANDIDATE_ORIGIN_SHA256 = createField(DSL.name("candidate_origin_sha256"), SQLDataType.VARCHAR(64), this, "Hash of the exact ComfyUI origin used for a client-supplied prompt ID; NULL legacy attempts cannot be automatically reconciled.");
-
-    /**
-     * The column <code>public.provider_attempt.capability_id</code>.
-     */
-    public final TableField<ProviderAttemptRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "");
+    public final TableField<ProviderAttemptRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "固定媒体能力身份");
 
     /**
      * The column <code>public.provider_attempt.capability_version</code>.
+     * 固定的不可变媒体能力版本
      */
-    public final TableField<ProviderAttemptRecord, Integer> CAPABILITY_VERSION = createField(DSL.name("capability_version"), SQLDataType.INTEGER, this, "");
+    public final TableField<ProviderAttemptRecord, Integer> CAPABILITY_VERSION = createField(DSL.name("capability_version"), SQLDataType.INTEGER, this, "固定的不可变媒体能力版本");
 
     /**
      * The column <code>public.provider_attempt.connection_id</code>.
+     * 不可变媒体连接所属身份或输入来源连线身份
      */
-    public final TableField<ProviderAttemptRecord, UUID> CONNECTION_ID = createField(DSL.name("connection_id"), SQLDataType.UUID, this, "");
+    public final TableField<ProviderAttemptRecord, UUID> CONNECTION_ID = createField(DSL.name("connection_id"), SQLDataType.UUID, this, "不可变媒体连接所属身份或输入来源连线身份");
 
     /**
      * The column <code>public.provider_attempt.connection_version</code>.
+     * 任务固定使用的不可变媒体连接版本
      */
-    public final TableField<ProviderAttemptRecord, Integer> CONNECTION_VERSION = createField(DSL.name("connection_version"), SQLDataType.INTEGER, this, "");
+    public final TableField<ProviderAttemptRecord, Integer> CONNECTION_VERSION = createField(DSL.name("connection_version"), SQLDataType.INTEGER, this, "任务固定使用的不可变媒体连接版本");
 
     private ProviderAttempt(Name alias, Table<ProviderAttemptRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private ProviderAttempt(Name alias, Table<ProviderAttemptRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Submission ledger written before any external request; ambiguous outcomes remain UNKNOWN."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提"), TableOptions.table(), where);
     }
 
     /**
@@ -287,9 +279,7 @@ public class ProviderAttempt extends TableImpl<ProviderAttemptRecord> {
     @Override
     public List<Check<ProviderAttemptRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_provider_attempt_candidate_request_id"), "(((candidate_request_id IS NULL) OR (candidate_request_id = request_key)))", true),
             Internal.createCheck(this, DSL.name("ck_provider_attempt_media_binding"), "((((capability_id IS NULL) AND (capability_version IS NULL) AND (connection_id IS NULL) AND (connection_version IS NULL)) OR ((capability_id IS NOT NULL) AND (capability_version IS NOT NULL) AND (connection_id IS NOT NULL) AND (connection_version IS NOT NULL))))", true),
-            Internal.createCheck(this, DSL.name("ck_provider_attempt_origin_sha256"), "(((candidate_origin_sha256 IS NULL) OR ((candidate_origin_sha256)::text ~ '^[0-9a-f]{64}$'::text)))", true),
             Internal.createCheck(this, DSL.name("ck_provider_attempt_status"), "(((status)::text = ANY ((ARRAY['SUBMITTING'::character varying, 'ACCEPTED'::character varying, 'UNKNOWN'::character varying, 'REJECTED'::character varying])::text[])))", true)
         );
     }

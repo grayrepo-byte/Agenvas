@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Principal-scoped HTTP command replay record; same key with a different hash
- * conflicts.
+ * 按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyRecordRecord> {
@@ -24,28 +23,28 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.idempotency_record.principal_id</code>.
+     * Setter for <code>public.idempotency_record.principal_id</code>. 服务端可信请求身份
      */
     public void setPrincipalId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.idempotency_record.principal_id</code>.
+     * Getter for <code>public.idempotency_record.principal_id</code>. 服务端可信请求身份
      */
     public UUID getPrincipalId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.idempotency_record.scope</code>.
+     * Setter for <code>public.idempotency_record.scope</code>. 命令或共享范围
      */
     public void setScope(String value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.idempotency_record.scope</code>.
+     * Getter for <code>public.idempotency_record.scope</code>. 命令或共享范围
      */
     public String getScope() {
         return (String) get(1);
@@ -53,6 +52,7 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Setter for <code>public.idempotency_record.idempotency_key</code>.
+     * 作用域内的幂等命令键
      */
     public void setIdempotencyKey(String value) {
         set(2, value);
@@ -60,34 +60,37 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Getter for <code>public.idempotency_record.idempotency_key</code>.
+     * 作用域内的幂等命令键
      */
     public String getIdempotencyKey() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.idempotency_record.request_hash</code>.
+     * Setter for <code>public.idempotency_record.request_hash</code>. 规范化请求载荷
+     * SHA-256 摘要
      */
     public void setRequestHash(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.idempotency_record.request_hash</code>.
+     * Getter for <code>public.idempotency_record.request_hash</code>. 规范化请求载荷
+     * SHA-256 摘要
      */
     public String getRequestHash() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.idempotency_record.state</code>.
+     * Setter for <code>public.idempotency_record.state</code>. 幂等请求处理状态
      */
     public void setState(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.idempotency_record.state</code>.
+     * Getter for <code>public.idempotency_record.state</code>. 幂等请求处理状态
      */
     public String getState() {
         return (String) get(4);
@@ -95,6 +98,7 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Setter for <code>public.idempotency_record.resource_id</code>.
+     * 幂等命令创建或修改的资源身份
      */
     public void setResourceId(UUID value) {
         set(5, value);
@@ -102,6 +106,7 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Getter for <code>public.idempotency_record.resource_id</code>.
+     * 幂等命令创建或修改的资源身份
      */
     public UUID getResourceId() {
         return (UUID) get(5);
@@ -109,6 +114,7 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Setter for <code>public.idempotency_record.response_json</code>.
+     * 已提交的命令响应或完整模型响应
      */
     public void setResponseJson(JSONB value) {
         set(6, value);
@@ -116,34 +122,35 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Getter for <code>public.idempotency_record.response_json</code>.
+     * 已提交的命令响应或完整模型响应
      */
     public JSONB getResponseJson() {
         return (JSONB) get(6);
     }
 
     /**
-     * Setter for <code>public.idempotency_record.expires_at</code>.
+     * Setter for <code>public.idempotency_record.expires_at</code>. 记录或审批过期时间
      */
     public void setExpiresAt(OffsetDateTime value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.idempotency_record.expires_at</code>.
+     * Getter for <code>public.idempotency_record.expires_at</code>. 记录或审批过期时间
      */
     public OffsetDateTime getExpiresAt() {
         return (OffsetDateTime) get(7);
     }
 
     /**
-     * Setter for <code>public.idempotency_record.created_at</code>.
+     * Setter for <code>public.idempotency_record.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.idempotency_record.created_at</code>.
+     * Getter for <code>public.idempotency_record.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(8);
@@ -151,6 +158,7 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Setter for <code>public.idempotency_record.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(9, value);
@@ -158,6 +166,7 @@ public class IdempotencyRecordRecord extends UpdatableRecordImpl<IdempotencyReco
 
     /**
      * Getter for <code>public.idempotency_record.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(9);

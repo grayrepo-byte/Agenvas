@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Per-project transactional event log and replay outbox ordered by the project
- * counter.
+ * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ProjectEventRecord extends UpdatableRecordImpl<ProjectEventRecord> {
@@ -24,14 +23,14 @@ public class ProjectEventRecord extends UpdatableRecordImpl<ProjectEventRecord> 
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.project_event.project_id</code>.
+     * Setter for <code>public.project_event.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.project_event.project_id</code>.
+     * Getter for <code>public.project_event.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
@@ -54,70 +53,72 @@ public class ProjectEventRecord extends UpdatableRecordImpl<ProjectEventRecord> 
     }
 
     /**
-     * Setter for <code>public.project_event.event_id</code>.
+     * Setter for <code>public.project_event.event_id</code>. 事件全局去重身份
      */
     public void setEventId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.project_event.event_id</code>.
+     * Getter for <code>public.project_event.event_id</code>. 事件全局去重身份
      */
     public UUID getEventId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.project_event.type</code>.
+     * Setter for <code>public.project_event.type</code>. 项目事件类型
      */
     public void setType(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.project_event.type</code>.
+     * Getter for <code>public.project_event.type</code>. 项目事件类型
      */
     public String getType() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.project_event.schema_version</code>.
+     * Setter for <code>public.project_event.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
     public void setSchemaVersion(Integer value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.project_event.schema_version</code>.
+     * Getter for <code>public.project_event.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
     public Integer getSchemaVersion() {
         return (Integer) get(4);
     }
 
     /**
-     * Setter for <code>public.project_event.aggregate_id</code>.
+     * Setter for <code>public.project_event.aggregate_id</code>. 变化的业务对象身份
      */
     public void setAggregateId(UUID value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.project_event.aggregate_id</code>.
+     * Getter for <code>public.project_event.aggregate_id</code>. 变化的业务对象身份
      */
     public UUID getAggregateId() {
         return (UUID) get(5);
     }
 
     /**
-     * Setter for <code>public.project_event.aggregate_version</code>.
+     * Setter for <code>public.project_event.aggregate_version</code>. 变化对象的并发版本
      */
     public void setAggregateVersion(Long value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.project_event.aggregate_version</code>.
+     * Getter for <code>public.project_event.aggregate_version</code>. 变化对象的并发版本
      */
     public Long getAggregateVersion() {
         return (Long) get(6);
@@ -125,6 +126,7 @@ public class ProjectEventRecord extends UpdatableRecordImpl<ProjectEventRecord> 
 
     /**
      * Setter for <code>public.project_event.payload_json</code>.
+     * 与业务变更同事务提交的公开事件载荷
      */
     public void setPayloadJson(JSONB value) {
         set(7, value);
@@ -132,20 +134,21 @@ public class ProjectEventRecord extends UpdatableRecordImpl<ProjectEventRecord> 
 
     /**
      * Getter for <code>public.project_event.payload_json</code>.
+     * 与业务变更同事务提交的公开事件载荷
      */
     public JSONB getPayloadJson() {
         return (JSONB) get(7);
     }
 
     /**
-     * Setter for <code>public.project_event.occurred_at</code>.
+     * Setter for <code>public.project_event.occurred_at</code>. 业务事件发生时间
      */
     public void setOccurredAt(OffsetDateTime value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.project_event.occurred_at</code>.
+     * Getter for <code>public.project_event.occurred_at</code>. 业务事件发生时间
      */
     public OffsetDateTime getOccurredAt() {
         return (OffsetDateTime) get(8);

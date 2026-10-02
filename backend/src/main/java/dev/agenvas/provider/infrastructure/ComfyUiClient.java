@@ -19,15 +19,11 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** 访问管理员固定的单个 ComfyUI IPv4 origin；所有请求、文件下载和错误响应均受边界约束。 */
-@Component
-@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiClient {
 
     /** ComfyUI JSON 请求与响应的最大字节数。 */

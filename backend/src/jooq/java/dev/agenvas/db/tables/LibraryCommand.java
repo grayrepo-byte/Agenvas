@@ -43,7 +43,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Durable local transfers; no provider submission or generation retry
+ * 素材库命令的持久执行、租约、结果与错误
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LibraryCommand extends TableImpl<LibraryCommandRecord> {
@@ -64,81 +64,86 @@ public class LibraryCommand extends TableImpl<LibraryCommandRecord> {
     }
 
     /**
-     * The column <code>public.library_command.id</code>.
+     * The column <code>public.library_command.id</code>. 记录身份
      */
-    public final TableField<LibraryCommandRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.library_command.owner_id</code>.
+     * The column <code>public.library_command.owner_id</code>. 所属用户及授权作用域
      */
-    public final TableField<LibraryCommandRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
-     * The column <code>public.library_command.command_key</code>.
+     * The column <code>public.library_command.command_key</code>. 用户命令幂等键
      */
-    public final TableField<LibraryCommandRecord, String> COMMAND_KEY = createField(DSL.name("command_key"), SQLDataType.VARCHAR(200).nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, String> COMMAND_KEY = createField(DSL.name("command_key"), SQLDataType.VARCHAR(200).nullable(false), this, "用户命令幂等键");
 
     /**
-     * The column <code>public.library_command.payload_hash</code>.
+     * The column <code>public.library_command.payload_hash</code>. 规范化命令载荷
+     * SHA-256 摘要
      */
-    public final TableField<LibraryCommandRecord, String> PAYLOAD_HASH = createField(DSL.name("payload_hash"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, String> PAYLOAD_HASH = createField(DSL.name("payload_hash"), SQLDataType.CHAR(64).nullable(false), this, "规范化命令载荷 SHA-256 摘要");
 
     /**
-     * The column <code>public.library_command.kind</code>.
+     * The column <code>public.library_command.kind</code>. 业务类型，允许值由 CHECK 约束限定
      */
-    public final TableField<LibraryCommandRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(16).nullable(false), this, "业务类型，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.library_command.input_json</code>.
+     * The column <code>public.library_command.input_json</code>. 受理时固定的命令输入
      */
-    public final TableField<LibraryCommandRecord, JSONB> INPUT_JSON = createField(DSL.name("input_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, JSONB> INPUT_JSON = createField(DSL.name("input_json"), SQLDataType.JSONB.nullable(false), this, "受理时固定的命令输入");
 
     /**
-     * The column <code>public.library_command.status</code>.
+     * The column <code>public.library_command.status</code>. 持久状态，允许值由 CHECK
+     * 约束限定
      */
-    public final TableField<LibraryCommandRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.library_command.epoch</code>.
+     * The column <code>public.library_command.epoch</code>. 操作租约的 fencing
+     * epoch，旧执行者不得回写
      */
-    public final TableField<LibraryCommandRecord, Long> EPOCH = createField(DSL.name("epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<LibraryCommandRecord, Long> EPOCH = createField(DSL.name("epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "操作租约的 fencing epoch，旧执行者不得回写");
 
     /**
-     * The column <code>public.library_command.lease_until</code>.
+     * The column <code>public.library_command.lease_until</code>. 当前认领租约过期时间
      */
-    public final TableField<LibraryCommandRecord, OffsetDateTime> LEASE_UNTIL = createField(DSL.name("lease_until"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<LibraryCommandRecord, OffsetDateTime> LEASE_UNTIL = createField(DSL.name("lease_until"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "当前认领租约过期时间");
 
     /**
      * The column <code>public.library_command.result_json</code>.
+     * 已提交的结构化执行或审批结果
      */
-    public final TableField<LibraryCommandRecord, JSONB> RESULT_JSON = createField(DSL.name("result_json"), SQLDataType.JSONB, this, "");
+    public final TableField<LibraryCommandRecord, JSONB> RESULT_JSON = createField(DSL.name("result_json"), SQLDataType.JSONB, this, "已提交的结构化执行或审批结果");
 
     /**
-     * The column <code>public.library_command.error_code</code>.
+     * The column <code>public.library_command.error_code</code>. 稳定错误代码，不含堆栈或凭据
      */
-    public final TableField<LibraryCommandRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(80), this, "");
+    public final TableField<LibraryCommandRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(80), this, "稳定错误代码，不含堆栈或凭据");
 
     /**
-     * The column <code>public.library_command.error_detail</code>.
+     * The column <code>public.library_command.error_detail</code>. 已脱敏的公开错误说明
      */
-    public final TableField<LibraryCommandRecord, String> ERROR_DETAIL = createField(DSL.name("error_detail"), SQLDataType.VARCHAR(500), this, "");
+    public final TableField<LibraryCommandRecord, String> ERROR_DETAIL = createField(DSL.name("error_detail"), SQLDataType.VARCHAR(500), this, "已脱敏的公开错误说明");
 
     /**
-     * The column <code>public.library_command.created_at</code>.
+     * The column <code>public.library_command.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<LibraryCommandRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.library_command.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<LibraryCommandRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<LibraryCommandRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private LibraryCommand(Name alias, Table<LibraryCommandRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private LibraryCommand(Name alias, Table<LibraryCommandRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Durable local transfers; no provider submission or generation retry"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("素材库命令的持久执行、租约、结果与错误"), TableOptions.table(), where);
     }
 
     /**

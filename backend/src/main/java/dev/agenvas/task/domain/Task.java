@@ -17,7 +17,6 @@ import tools.jackson.databind.JsonNode;
  * @param input 创建时固定的 JSON 输入，Worker 不读取之后的用户草稿
  * @param inputHash 固定输入的摘要，用于识别同键异参
  * @param output 已确认的执行结果；未完成时为空
- * @param providerId 创建任务时选定的 Provider 配置 ID；本地任务可为空
  * @param providerRequestId Provider 已确认受理的原请求 ID，轮询只能使用该值
  * @param attemptNo 同一业务步骤的尝试序号
  * @param nextActionAt 下次允许认领或查询原请求的时间
@@ -41,7 +40,6 @@ public record Task(
         JsonNode input,
         String inputHash,
         JsonNode output,
-        UUID providerId,
         String providerRequestId,
         int attemptNo,
         Instant nextActionAt,
@@ -77,16 +75,12 @@ public record Task(
         /** 根据输入图片生成并归档视频。 */
         VIDEO_GENERATION,
         /** Direct speech synthesis with immutable archived audio. */
-        AUDIO_GENERATION,
-        /** 对本地媒体执行受控归档。 */
-        ASSET_INGEST
+        AUDIO_GENERATION
     }
 
     /** 数据库任务状态，区分本地执行与外部副作用的核对边界。 */
     public enum Status {
-        /** 等待前置任务完成。 */
-        PENDING,
-        /** 满足依赖，等待 Worker 认领。 */
+        /** 等待 Worker 认领。 */
         READY,
         /** Worker 持有短期租约并执行本地阶段。 */
         RUNNING,

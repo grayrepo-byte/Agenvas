@@ -14,19 +14,10 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
-import dev.agenvas.provider.application.ComfyUiImageWorker;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
-import dev.agenvas.provider.infrastructure.ComfyUiClient;
-import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
-import dev.agenvas.provider.infrastructure.ComfyUiProperties;
-import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
-import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
-import dev.agenvas.run.domain.AgentRun;
-import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -36,13 +27,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.imageio.ImageIO;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,15 +55,14 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=comfy-image-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mode=comfyui",
-        "agenvas.provider.comfyui.scheduler-enabled=false",
-        "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.provider.comfyui.image.checkpoint=test-model.safetensors"})
+        "agenvas.provider.mode=configured",
+        "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiImagePostgresIT {
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final HttpServer SERVER = startServer();
+    private static final Path STORAGE_ROOT = temporaryRoot();
     private static final AtomicReference<UUID> FIRST_PROMPT_ID = new AtomicReference<>();
     private static final AtomicReference<UUID> SECOND_PROMPT_ID = new AtomicReference<>();
     private static final AtomicReference<UUID> LAST_PROMPT_ID = new AtomicReference<>();
@@ -87,8 +77,7 @@ class ComfyUiImagePostgresIT {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
-        properties.add("agenvas.provider.comfyui.endpoint",
-                () -> "http://127.0.0.1:" + SERVER.getAddress().getPort());
+        properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
     @AfterAll
@@ -107,14 +96,9 @@ class ComfyUiImagePostgresIT {
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private AssetService assets;
     @Autowired private TaskService tasks;
-    @Autowired private ComfyUiImageWorker worker;
     @Autowired private MediaCapabilityService catalog;
     @Autowired private MediaExecutionWorker mediaWorker;
-    @Autowired private ComfyUiImageWorkflow workflow;
-    @Autowired private ComfyUiClient client;
-    @Autowired private ComfyUiClientRegistry clientRegistry;
     @Autowired private JdbcClient jdbc;
-    @Autowired private DSLContext dsl;
     @Autowired private ObjectMapper mapper;
 
     @Test
@@ -133,7 +117,6 @@ class ComfyUiImagePostgresIT {
         ObjectNode imageContent = mapper.createObjectNode();
         imageContent.put("assetId", referenceAsset.toString());
         imageContent.put("prompt", "Reference");
-        imageContent.put("providerConfigVersion", 1);
         imageContent.put("workflowVersion", "fixture");
         imageContent.putObject("parameters");
         imageContent.put("sourceTaskId", UUID.randomUUID().toString());
@@ -155,8 +138,7 @@ class ComfyUiImagePostgresIT {
         assertThat(pinnedImage.input().path("mediaInput").path("images").get(0)
                 .path("versionId").asText())
                 .isEqualTo(reference.resourceDefaultVersion().id().toString());
-        assertThat(pinnedImage.input().path("providerOriginSha256").asText())
-                .isEqualTo(client.originSha256());
+        assertThat(tasks.mediaBinding(pinnedImage).orElseThrow().connectionVersion()).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(0);
 
         var secondCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
@@ -184,13 +166,6 @@ class ComfyUiImagePostgresIT {
         assertThat(jdbc.sql("select request_key from provider_attempt where task_id = :id")
                 .param("id", approved.id()).query(UUID.class).single())
                 .isEqualTo(FIRST_PROMPT_ID.get());
-        assertThat(jdbc.sql("select candidate_request_id from provider_attempt where task_id = :id")
-                .param("id", approved.id()).query(UUID.class).single())
-                .isEqualTo(FIRST_PROMPT_ID.get());
-        assertThat(jdbc.sql("select candidate_origin_sha256 from provider_attempt where task_id = :id")
-                .param("id", approved.id()).query(String.class).single())
-                .isEqualTo(client.originSha256());
-        assertThat(clientRegistry.forOriginal(1, client.originSha256())).contains(client);
         // The first ComfyUI request is still active, but it is not a global product slot.
         assertThat(mediaWorker.submitOnce("other-app-instance")).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(2);
@@ -229,29 +204,12 @@ class ComfyUiImagePostgresIT {
                 .param("id", approved.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(2);
         due(queuedSecond.id());
-        ComfyUiClient differentOrigin = new ComfyUiClient(
-                new ComfyUiProperties("http://127.0.0.1:65534"), mapper);
-        assertThatThrownBy(() -> new ComfyUiClientRegistry(dsl, mapper,
-                new ProviderProperties("comfyui", 1),
-                new ComfyUiProperties("http://127.0.0.1:65534"), differentOrigin, false)
-                .registerActive()).isInstanceOf(IllegalStateException.class);
-        ComfyUiClientRegistry rotatedRegistry = new ComfyUiClientRegistry(dsl, mapper,
-                new ProviderProperties("comfyui", 2),
-                new ComfyUiProperties("http://127.0.0.1:65534"), differentOrigin, false);
-        rotatedRegistry.registerActive();
-        assertThatThrownBy(clientRegistry::registerActive)
-                .isInstanceOf(IllegalStateException.class);
-        ComfyUiImageWorkflow rotatedWorkflow = new ComfyUiImageWorkflow(
-                new ComfyUiImageProperties("rotated-model.safetensors"), mapper);
-        assertThat(rotatedWorkflow.version()).isNotEqualTo(workflow.version());
-        ComfyUiImageWorker rotated = new ComfyUiImageWorker(tasks, artifacts, assets,
-                projects, differentOrigin, rotatedRegistry, rotatedWorkflow,
-                new ProviderProperties("comfyui", 2), mapper, callLogs);
+        var currentConnection = catalog.getConnection(connection);
+        catalog.updateConnection(connection, currentConnection.version(), currentConnection.name(), true,
+                "http://127.0.0.1:65534", null);
         assertThat(mediaWorker.pollOnce("rotated-origin-poller")).isEqualTo(1);
         Task completedOld = tasks.get(owner.userId(), project.id(), queuedSecond.id());
         assertThat(completedOld.status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(ComfyUiImageWorkflow.supportsHistoricalVersion(workflow.version())).isTrue();
-        assertThat(ComfyUiImageWorkflow.supportsHistoricalVersion("image-v1-not-a-hash")).isFalse();
         assertThat(completedOld.output().path("artifactId").asText()).isNotBlank();
         assertThat(completedOld.providerRequestId()).isEqualTo(SECOND_PROMPT_ID.get().toString());
         assertThat(QUERIES).hasValue(4);
@@ -266,8 +224,11 @@ class ComfyUiImagePostgresIT {
                         + "and entry_type = 'RELEASE'")
                 .param("id", queuedSecond.id()).query(Integer.class).single()).isZero();
 
+        var rotatedConnection = catalog.getConnection(connection);
+        catalog.updateConnection(connection, rotatedConnection.version(), rotatedConnection.name(), true,
+                "http://127.0.0.1:" + SERVER.getAddress().getPort(), null);
         // The provider accepted a prompt, but the response was lost before its id was saved.
-        // Expiry must preserve the committed candidate and must never submit a second prompt.
+        // Expiry preserves the committed request key and never submits a second prompt.
         var uncertainCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Uncertain frame", null);
         UUID uncertainItemId = dev.agenvas.support.CanvasMediaFixture.place(
@@ -287,7 +248,7 @@ class ComfyUiImagePostgresIT {
                 .isEqualTo(Task.Status.SUBMITTING);
         assertThat(tasks.listProviderAttempts(owner.userId(), project.id(), uncertainTask.id()))
                 .singleElement().satisfies(attempt -> {
-                    assertThat(attempt.candidateRequestId()).isEqualTo(LAST_PROMPT_ID.get());
+                    assertThat(attempt.requestKey()).isEqualTo(LAST_PROMPT_ID.get());
                     assertThat(attempt.providerRequestId()).isNull();
                 });
         jdbc.sql("update task set lease_until = now() - interval '1 second' where id = :id")
@@ -309,6 +270,14 @@ class ComfyUiImagePostgresIT {
     private void due(UUID taskId) {
         jdbc.sql("update task set next_action_at = now() - interval '1 second' where id = :id")
                 .param("id", taskId).update();
+    }
+
+    private static Path temporaryRoot() {
+        try {
+            return Files.createTempDirectory("agenvas-comfy-image-it-");
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
     }
 
     private static HttpServer startServer() {

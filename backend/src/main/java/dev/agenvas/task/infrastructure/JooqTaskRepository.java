@@ -8,7 +8,6 @@ import static dev.agenvas.db.Tables.PROJECT;
 import static dev.agenvas.db.Tables.PROVIDER_ATTEMPT;
 import static dev.agenvas.db.Tables.TASK;
 import static dev.agenvas.db.Tables.TASK_ARTIFACT_TARGET;
-import static dev.agenvas.db.Tables.TASK_DEPENDENCY;
 import static dev.agenvas.db.Tables.TASK_LATE_RESULT;
 import static dev.agenvas.db.Tables.TASK_MANUAL_REPLACEMENT;
 import static dev.agenvas.db.Tables.TASK_PROVIDER_POLL_RETRY;
@@ -25,7 +24,6 @@ import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.task.domain.Task;
-import dev.agenvas.task.domain.TaskOrigin;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -103,7 +101,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(TASK.CAPABILITY_ID.isNull())
-                .and(TASK.STATUS.in(Task.Status.PENDING.name(), Task.Status.READY.name()))
+                .and(TASK.STATUS.eq(Task.Status.READY.name()))
                 .execute();
         if (changed != 1) {
             throw new IllegalStateException("New media Task binding was not saved once");
@@ -158,8 +156,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     @Override
     public List<ProviderAttempt> listProviderAttempts(UUID ownerId, UUID projectId, UUID taskId) {
         return dsl.select(PROVIDER_ATTEMPT.ID, PROVIDER_ATTEMPT.TASK_ID, PROVIDER_ATTEMPT.STATUS,
-                        PROVIDER_ATTEMPT.REQUEST_KEY, PROVIDER_ATTEMPT.CANDIDATE_REQUEST_ID,
-                        PROVIDER_ATTEMPT.CANDIDATE_ORIGIN_SHA256,
+                        PROVIDER_ATTEMPT.REQUEST_KEY,
                         PROVIDER_ATTEMPT.PROVIDER_REQUEST_ID, PROVIDER_ATTEMPT.CREATED_AT,
                         PROVIDER_ATTEMPT.UPDATED_AT)
                 .from(PROVIDER_ATTEMPT)
@@ -176,8 +173,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         record.get(PROVIDER_ATTEMPT.TASK_ID),
                         ProviderAttempt.Status.valueOf(record.get(PROVIDER_ATTEMPT.STATUS)),
                         record.get(PROVIDER_ATTEMPT.REQUEST_KEY),
-                        record.get(PROVIDER_ATTEMPT.CANDIDATE_REQUEST_ID),
-                        record.get(PROVIDER_ATTEMPT.CANDIDATE_ORIGIN_SHA256),
                         record.get(PROVIDER_ATTEMPT.PROVIDER_REQUEST_ID),
                         record.get(PROVIDER_ATTEMPT.CREATED_AT).toInstant(),
                         record.get(PROVIDER_ATTEMPT.UPDATED_AT).toInstant()));
@@ -231,61 +226,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         if (changed != 1) throw new IllegalStateException("Manual replacement was not inserted");
     }
 
-    /** 按稳定 UUID 顺序返回任务的全部前置依赖。 */
-    @Override
-    public List<UUID> dependencyIds(UUID projectId, UUID taskId) {
-        return dsl.select(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID)
-                .from(TASK_DEPENDENCY)
-                .where(TASK_DEPENDENCY.PROJECT_ID.eq(projectId))
-                .and(TASK_DEPENDENCY.TASK_ID.eq(taskId))
-                .orderBy(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID)
-                .fetch(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID);
-    }
-
-    /** 查询依赖指定任务的所有消费者，供人工替代前确认其均未启动。 */
-    @Override
-    public List<Task> dependentTasks(UUID projectId, UUID taskId) {
-        return dsl.select(TASK.fields()).from(TASK)
-                .join(TASK_DEPENDENCY).on(TASK_DEPENDENCY.PROJECT_ID.eq(TASK.PROJECT_ID)
-                        .and(TASK_DEPENDENCY.TASK_ID.eq(TASK.ID)))
-                .where(TASK_DEPENDENCY.PROJECT_ID.eq(projectId))
-                .and(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID.eq(taskId))
-                .orderBy(TASK.CREATED_AT, TASK.ID)
-                .fetch(row -> mapTask(row.into(TASK)));
-    }
-
-    /** 只把仍为 PENDING 的消费者改为依赖替代任务，并递增受影响版本。 */
-    @Override
-    public List<Task> rewirePendingDependents(UUID projectId, UUID originalTaskId,
-            UUID replacementTaskId, Instant now) {
-        int changed = dsl.update(TASK_DEPENDENCY)
-                .set(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID, replacementTaskId)
-                .where(TASK_DEPENDENCY.PROJECT_ID.eq(projectId))
-                .and(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID.eq(originalTaskId))
-                .and(DSL.exists(DSL.selectOne()
-                        .from(TASK)
-                        .where(TASK.ID.eq(TASK_DEPENDENCY.TASK_ID))
-                        .and(TASK.PROJECT_ID.eq(TASK_DEPENDENCY.PROJECT_ID))
-                        .and(TASK.STATUS.eq(Task.Status.PENDING.name()))))
-                .execute();
-        if (changed == 0) return List.of();
-        int versioned = dsl.update(TASK)
-                .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .set(TASK.UPDATED_AT, utc(now))
-                .where(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.STATUS.eq(Task.Status.PENDING.name()))
-                .and(DSL.exists(DSL.selectOne()
-                        .from(TASK_DEPENDENCY)
-                        .where(TASK_DEPENDENCY.PROJECT_ID.eq(TASK.PROJECT_ID))
-                        .and(TASK_DEPENDENCY.TASK_ID.eq(TASK.ID))
-                        .and(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID.eq(replacementTaskId))))
-                .execute();
-        if (versioned != changed) {
-            throw new IllegalStateException("Dependent version count changed during retry rewiring");
-        }
-        return dependentTasks(projectId, replacementTaskId);
-    }
-
     /** 在创建 Run 的同一事务中插入首个 READY 模型回合任务。 */
     @Override
     public UUID createInitialTurn(UUID projectId, UUID runId, Instant now) {
@@ -295,14 +235,14 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         UUID taskId = UUID.randomUUID();
         create(new Task(taskId, projectId, runId, "agent-turn-0",
                 Task.Kind.AGENT_TURN, Task.Status.READY, false, input, inputHash,
-                null, null, null, 1, now, null, null, 0, 0,
-                null, now, now, null), List.of());
+                null, null, 1, now, null, null, 0, 0,
+                null, now, now, null));
         return taskId;
     }
 
-    /** 插入任务及依赖边；调用方负责先校验项目、Run 和依赖均在同一作用域。 */
+    /** 插入固定输入的任务；调用方负责先校验项目和 Run 作用域。 */
     @Override
-    public void create(Task task, List<UUID> dependencyIds) {
+    public void create(Task task) {
         dsl.insertInto(TASK)
                 .set(TASK.ID, task.id())
                 .set(TASK.PROJECT_ID, task.projectId())
@@ -313,7 +253,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.INPUT_JSON, JSONB.valueOf(task.input().toString()))
                 .set(TASK.INPUT_HASH, task.inputHash())
                 .set(TASK.OUTPUT_JSON, (JSONB) null)
-                .set(TASK.PROVIDER_ID, task.providerId())
                 .set(TASK.PROVIDER_REQUEST_ID, (String) null)
                 .set(TASK.ATTEMPT_NO, task.attemptNo())
                 .set(TASK.NEXT_ACTION_AT, utc(task.nextActionAt()))
@@ -325,21 +264,10 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.CREATED_AT, utc(task.createdAt()))
                 .set(TASK.UPDATED_AT, utc(task.updatedAt()))
                 .set(TASK.COMPLETED_AT, (OffsetDateTime) null)
-                .set(TASK.ORIGIN, task.runId() == null
-                        ? TaskOrigin.USER_DIRECT.name()
-                        : TaskOrigin.AGENT.name())
                 .execute();
-        for (UUID dependencyId : dependencyIds) {
-            dsl.insertInto(TASK_DEPENDENCY)
-                    .set(TASK_DEPENDENCY.PROJECT_ID, task.projectId())
-                    .set(TASK_DEPENDENCY.TASK_ID, task.id())
-                    .set(TASK_DEPENDENCY.DEPENDS_ON_TASK_ID, dependencyId)
-                    .set(TASK_DEPENDENCY.REQUIRED_OUTPUT_KEY, (String) null)
-                    .execute();
-        }
     }
 
-    /** 固定任务创建时的既有产物目标或新输出槽位，结果归档时使用该快照做 CAS。 */
+    /** 固定任务创建时的既有产物目标，结果归档时使用该快照做 CAS。 */
     @Override
     public void createArtifactTarget(ArtifactTarget target) {
         int changed = dsl.insertInto(TASK_ARTIFACT_TARGET)
@@ -350,7 +278,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         target.expectedCurrentVersionId())
                 .set(TASK_ARTIFACT_TARGET.EXPECTED_ARTIFACT_VERSION,
                         target.expectedArtifactVersion())
-                .set(TASK_ARTIFACT_TARGET.OUTPUT_SLOT_KEY, target.outputSlotKey())
                 .set(TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID, target.canvasItemId())
                 .execute();
         if (changed != 1) {
@@ -358,7 +285,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         }
     }
 
-    /** 读取任务输出目标的固定产物版本或输出槽位。 */
+    /** 读取任务输出目标的固定产物版本。 */
     @Override
     public Optional<ArtifactTarget> findArtifactTarget(UUID taskId) {
         return dsl.selectFrom(TASK_ARTIFACT_TARGET)
@@ -369,7 +296,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         row.getArtifactId(),
                         row.getExpectedCurrentVersionId(),
                         row.getExpectedArtifactVersion(),
-                        row.getOutputSlotKey(),
                         row.getCanvasItemId()));
     }
 
@@ -390,7 +316,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
                 .where(TASK.PROJECT_ID.eq(projectId))
                 .and(targetField.eq(targetId))
-                .and(TASK.STATUS.in(Task.Status.PENDING.name(), Task.Status.READY.name(),
+                .and(TASK.STATUS.in(Task.Status.READY.name(),
                                 Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
                                 Task.Status.WAITING_PROVIDER.name(), Task.Status.UNKNOWN.name())
                         .or(TASK.STATUS.eq(Task.Status.BLOCKED.name())
@@ -411,7 +337,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .where(PROJECT.OWNER_ID.eq(ownerId))
                 .and(TASK.PROJECT_ID.eq(projectId))
                 .and(TASK.STEP_KEY.eq(stepKey))
-                .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
+                .and(TASK.RUN_ID.isNull())
                 .fetchOptional(row -> mapTask(row.into(TASK)));
     }
 
@@ -423,14 +349,13 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .and(TASK.PROJECT_ID.eq(projectId))
                 .and(TASK.RUN_ID.eq(runId))
                 .and(TASK.STEP_KEY.eq(stepKey))
-                .and(TASK.ORIGIN.eq(TaskOrigin.AGENT.name()))
+                .and(TASK.RUN_ID.isNotNull())
                 .fetchOptional(row -> mapTask(row.into(TASK)));
     }
 
     @Override
     public boolean cancelApprovedMedia(Task current, Instant now) {
-        boolean unsubmitted = current.status() == Task.Status.PENDING
-                || current.status() == Task.Status.READY
+        boolean unsubmitted = current.status() == Task.Status.READY
                 || current.status() == Task.Status.RUNNING && current.providerRequestId() == null
                 || current.status() == Task.Status.BLOCKED && current.providerRequestId() == null;
         var update = dsl.update(TASK)
@@ -472,7 +397,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
                 .where(PROJECT.OWNER_ID.eq(ownerId))
                 .and(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
+                .and(TASK.RUN_ID.isNull())
                 .and(targetField.eq(targetId))
                 // 卡片只呈现仍有效的任务：已被「重试」取代的原任务不再决定
                 // 卡片是否可再次运行。
@@ -490,8 +415,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
                 .where(PROJECT.OWNER_ID.eq(ownerId))
                 .and(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
-                .and(TASK.STATUS.in(Task.Status.PENDING.name(), Task.Status.READY.name(),
+                .and(TASK.RUN_ID.isNull())
+                .and(TASK.STATUS.in(Task.Status.READY.name(),
                         Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
                         Task.Status.WAITING_PROVIDER.name(), Task.Status.UNKNOWN.name(),
                         Task.Status.BLOCKED.name()))
@@ -529,7 +454,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(taskId))
                 .and(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
+                .and(TASK.RUN_ID.isNull())
                 .and(TASK.STATUS.eq(Task.Status.READY.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.isNull())
                 .execute() == 1;
@@ -623,60 +548,11 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 TASK.CAPABILITY_ID.isNotNull());
     }
 
-    /** 仅认领 Mock 图片适配器可处理的到期图片任务。 */
-    @Override
-    public List<Task> claimDueImages(
-            String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimDueKind(workerId, limit, now, leaseUntil,
-                Task.Kind.IMAGE_GENERATION, TASK.CAPABILITY_ID.isNull());
-    }
-
-    /** 认领一个旧版 ComfyUI 图片任务；不同 Worker 之间不设全局容量门禁。 */
-    @Override
-    public List<Task> claimDueComfyImage(String workerId, Instant now, Instant leaseUntil) {
-        return claimDueComfy(workerId, now, leaseUntil, Task.Kind.IMAGE_GENERATION);
-    }
-
-    /** 认领一个旧版 ComfyUI 视频任务；不同 Worker 之间不共享提交槽。 */
-    @Override
-    public List<Task> claimDueComfyVideo(String workerId, Instant now, Instant leaseUntil) {
-        return claimDueComfy(workerId, now, leaseUntil, Task.Kind.VIDEO_GENERATION);
-    }
-
-    private List<Task> claimDueComfy(String workerId, Instant now, Instant leaseUntil,
-            Task.Kind kind) {
-        return claimDueKind(workerId, 1, now, leaseUntil, kind, TASK.CAPABILITY_ID.isNull());
-    }
-
-    /** 只认领到期视频任务，避免 Mock 图片路径误消费视频。 */
-    @Override
-    public List<Task> claimDueVideos(
-            String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimDueKind(workerId, limit, now, leaseUntil,
-                Task.Kind.VIDEO_GENERATION, TASK.CAPABILITY_ID.isNull());
-    }
-
     /** 认领持有已确认 provider_request_id 的图片或视频查询任务，不会选新提交。 */
     @Override
     public List<Task> claimDueProviderPolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimProviderPolls(workerId, limit, now, leaseUntil, null);
-    }
-
-    /** 限定 ComfyUI 图片轮询器只接管图片任务。 */
-    @Override
-    public List<Task> claimDueComfyImagePolls(
-            String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimProviderPolls(workerId, limit, now, leaseUntil,
-                Task.Kind.IMAGE_GENERATION, TASK.CAPABILITY_ID.isNull());
-    }
-
-    /** 限定 ComfyUI 视频轮询器只接管视频任务。 */
-    @Override
-    public List<Task> claimDueComfyVideoPolls(
-            String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimProviderPolls(workerId, limit, now, leaseUntil,
-                Task.Kind.VIDEO_GENERATION, TASK.CAPABILITY_ID.isNull());
     }
 
     /** 只按既有请求 ID 选取等待或租约过期的任务，并递增 fencing epoch。 */
@@ -787,7 +663,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         .from(AGENT_RUN)
                         .where(AGENT_RUN.ID.eq(TASK.RUN_ID))
                         .and(runCondition))
-                : TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name())
+                : TASK.RUN_ID.isNull()
                         .or(DSL.exists(DSL.selectOne()
                                 .from(AGENT_RUN)
                                 .where(AGENT_RUN.ID.eq(TASK.RUN_ID))
@@ -895,48 +771,16 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute() == 1;
     }
 
-    /** 仅所有前置成功时，将 PENDING 任务推进 READY。 */
-    @Override
-    public int promoteReady(UUID projectId, UUID runId, Instant now) {
-        // 恢复判定依赖 input_json ->> 取值、is distinct from 以及多别名关联子查询，
-        // 这些 PG 专有表达式保留 SQL 文本；绑定值仍由 jOOQ 参数化。
-        return dsl.execute("""
-                        update task candidate
-                        set status = 'READY', next_action_at = ?,
-                            updated_at = ?, version = candidate.version + 1
-                        where candidate.project_id = ?
-                          and candidate.run_id = ?
-                          and candidate.status = 'PENDING'
-                          and candidate.cancel_requested = false
-                          and exists (select 1 from agent_run r
-                              where r.id = candidate.run_id
-                                and r.status not in ('CANCEL_REQUESTED', 'CANCELED'))
-                          and not exists (
-                              select 1
-                              from task_dependency dependency
-                              join task predecessor
-                                on predecessor.project_id = dependency.project_id
-                               and predecessor.id = dependency.depends_on_task_id
-                              where dependency.project_id = candidate.project_id
-                                and dependency.task_id = candidate.id
-                                and (predecessor.status <> 'SUCCEEDED'
-                                  or predecessor.output_json ->> 'selected' = 'false')
-                          )
-                        """, utc(now), utc(now), projectId, runId);
-    }
-
-    /** 取消 Run 的未终态任务；PENDING/READY 立即结束，其他任务只打取消标记。 */
+    /** 取消 Run 的未终态任务；READY 立即结束，其他任务只打取消标记。 */
     @Override
     public List<Task> requestCancellation(UUID projectId, UUID runId, Instant now) {
         List<UUID> canceledBeforeSubmission = dsl.update(TASK)
                 .set(TASK.CANCEL_REQUESTED, true)
                 .set(TASK.OUTPUT_JSON, interruptedAgentOutput())
-                .set(TASK.STATUS, DSL.when(TASK.STATUS.in(Task.Status.PENDING.name(),
-                                        Task.Status.READY.name()),
+                .set(TASK.STATUS, DSL.when(TASK.STATUS.eq(Task.Status.READY.name()),
                                 Task.Status.CANCELED.name())
                         .otherwise(TASK.STATUS))
-                .set(TASK.COMPLETED_AT, DSL.when(TASK.STATUS.in(Task.Status.PENDING.name(),
-                                        Task.Status.READY.name()),
+                .set(TASK.COMPLETED_AT, DSL.when(TASK.STATUS.eq(Task.Status.READY.name()),
                                 DSL.val(utc(now), TASK.COMPLETED_AT))
                         .otherwise(TASK.COMPLETED_AT))
                 .set(TASK.UPDATED_AT, utc(now))
@@ -960,7 +804,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     /** 在网络调用前原子写入 SUBMITTING 和 Provider 尝试记录，作为崩溃核对依据。 */
     @Override
     public boolean beginSubmission(UUID taskId, String workerId, long leaseEpoch,
-            UUID attemptId, UUID requestKey, String candidateOriginSha256, Instant now) {
+            UUID attemptId, UUID requestKey, Instant now) {
         int changed = dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.SUBMITTING.name())
                 .set(TASK.UPDATED_AT, utc(now))
@@ -968,7 +812,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
-                .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name())
+                .and(TASK.RUN_ID.isNull()
                         .or(DSL.exists(DSL.selectOne()
                                 .from(AGENT_RUN)
                                 .where(AGENT_RUN.ID.eq(TASK.RUN_ID))
@@ -983,8 +827,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         PROVIDER_ATTEMPT.ID, PROVIDER_ATTEMPT.PROJECT_ID,
                         PROVIDER_ATTEMPT.TASK_ID, PROVIDER_ATTEMPT.LEASE_EPOCH,
                         PROVIDER_ATTEMPT.STATUS, PROVIDER_ATTEMPT.REQUEST_KEY,
-                        PROVIDER_ATTEMPT.CANDIDATE_REQUEST_ID,
-                        PROVIDER_ATTEMPT.CANDIDATE_ORIGIN_SHA256,
                         PROVIDER_ATTEMPT.CONNECTION_ID, PROVIDER_ATTEMPT.CONNECTION_VERSION,
                         PROVIDER_ATTEMPT.CAPABILITY_ID, PROVIDER_ATTEMPT.CAPABILITY_VERSION,
                         PROVIDER_ATTEMPT.CREATED_AT, PROVIDER_ATTEMPT.UPDATED_AT)
@@ -994,9 +836,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                                 DSL.val(leaseEpoch),
                                 DSL.val(ProviderAttempt.Status.SUBMITTING.name()),
                                 DSL.val(requestKey),
-                                DSL.val(candidateOriginSha256 == null ? null : requestKey,
-                                        UUID.class),
-                                DSL.val(candidateOriginSha256, String.class),
                                 TASK.CONNECTION_ID,
                                 TASK.CONNECTION_VERSION,
                                 TASK.CAPABILITY_ID,
@@ -1394,7 +1233,6 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 row.getOutputJson() == null
                         ? null
                         : objectMapper.readTree(row.getOutputJson().data()),
-                row.getProviderId(),
                 row.getProviderRequestId(),
                 row.getAttemptNo(),
                 row.getNextActionAt().toInstant(),

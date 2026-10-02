@@ -2,7 +2,7 @@ import type { Task } from "../../shared/api/client";
 
 export const MEDIA_TASK_REFRESH_INTERVAL_MS = 3_000;
 const RUNNING_STATUSES: ReadonlySet<Task["status"]> = new Set([
-  "PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER",
+  "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER",
 ]);
 
 export function isMediaTaskRunning(task: Task): boolean {

@@ -53,8 +53,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=runninghub-real-isolated-test", "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.comfyui.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+        "agenvas.identity.bootstrap-secret=runninghub-real-isolated-test", "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubRealProviderIT {
     private static final String ORIGIN = "https://www.runninghub.ai";
     private enum RealTarget {

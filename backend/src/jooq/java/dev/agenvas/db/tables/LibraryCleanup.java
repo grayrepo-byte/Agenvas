@@ -43,7 +43,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Durable idempotent file removal after catalogue deletion or duplicate save
+ * 个人素材库待清理的字节引用及下次清理时间
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LibraryCleanup extends TableImpl<LibraryCleanupRecord> {
@@ -64,36 +64,38 @@ public class LibraryCleanup extends TableImpl<LibraryCleanupRecord> {
     }
 
     /**
-     * The column <code>public.library_cleanup.id</code>.
+     * The column <code>public.library_cleanup.id</code>. 记录身份
      */
-    public final TableField<LibraryCleanupRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryCleanupRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.library_cleanup.owner_id</code>.
+     * The column <code>public.library_cleanup.owner_id</code>. 所属用户及授权作用域
      */
-    public final TableField<LibraryCleanupRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryCleanupRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
      * The column <code>public.library_cleanup.metadata_json</code>.
+     * 存储对象元数据，包含定位和完整性验证所需信息
      */
-    public final TableField<LibraryCleanupRecord, JSONB> METADATA_JSON = createField(DSL.name("metadata_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<LibraryCleanupRecord, JSONB> METADATA_JSON = createField(DSL.name("metadata_json"), SQLDataType.JSONB.nullable(false), this, "存储对象元数据，包含定位和完整性验证所需信息");
 
     /**
-     * The column <code>public.library_cleanup.created_at</code>.
+     * The column <code>public.library_cleanup.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<LibraryCleanupRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<LibraryCleanupRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.library_cleanup.next_attempt_at</code>.
+     * 字节清理下次允许尝试的时间
      */
-    public final TableField<LibraryCleanupRecord, OffsetDateTime> NEXT_ATTEMPT_AT = createField(DSL.name("next_attempt_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
+    public final TableField<LibraryCleanupRecord, OffsetDateTime> NEXT_ATTEMPT_AT = createField(DSL.name("next_attempt_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "字节清理下次允许尝试的时间");
 
     private LibraryCleanup(Name alias, Table<LibraryCleanupRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private LibraryCleanup(Name alias, Table<LibraryCleanupRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Durable idempotent file removal after catalogue deletion or duplicate save"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("个人素材库待清理的字节引用及下次清理时间"), TableOptions.table(), where);
     }
 
     /**

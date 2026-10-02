@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * One caller-driven tool invocation. Reservation, business mutation and result
- * commit together.
+ * 按 Run、回合及 tool_call_id 去重的工具执行账本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ToolExecution extends TableImpl<ToolExecutionRecord> {
@@ -66,66 +65,70 @@ public class ToolExecution extends TableImpl<ToolExecutionRecord> {
     }
 
     /**
-     * The column <code>public.tool_execution.id</code>.
+     * The column <code>public.tool_execution.id</code>. 记录身份
      */
-    public final TableField<ToolExecutionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.tool_execution.project_id</code>.
+     * The column <code>public.tool_execution.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<ToolExecutionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.tool_execution.run_id</code>.
+     * The column <code>public.tool_execution.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
-    public final TableField<ToolExecutionRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID.nullable(false), this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.tool_execution.step_index</code>.
+     * The column <code>public.tool_execution.step_index</code>. Run 内模型回合序号
      */
-    public final TableField<ToolExecutionRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER.nullable(false), this, "Run 内模型回合序号");
 
     /**
      * The column <code>public.tool_execution.tool_call_id</code>.
+     * 模型完整响应中的工具调用标识
      */
-    public final TableField<ToolExecutionRecord, String> TOOL_CALL_ID = createField(DSL.name("tool_call_id"), SQLDataType.VARCHAR(200).nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, String> TOOL_CALL_ID = createField(DSL.name("tool_call_id"), SQLDataType.VARCHAR(200).nullable(false), this, "模型完整响应中的工具调用标识");
 
     /**
-     * The column <code>public.tool_execution.tool_name</code>.
+     * The column <code>public.tool_execution.tool_name</code>. 受控工具名称
      */
-    public final TableField<ToolExecutionRecord, String> TOOL_NAME = createField(DSL.name("tool_name"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, String> TOOL_NAME = createField(DSL.name("tool_name"), SQLDataType.VARCHAR(120).nullable(false), this, "受控工具名称");
 
     /**
-     * The column <code>public.tool_execution.argument_hash</code>.
+     * The column <code>public.tool_execution.argument_hash</code>. 规范化工具参数
+     * SHA-256 摘要
      */
-    public final TableField<ToolExecutionRecord, String> ARGUMENT_HASH = createField(DSL.name("argument_hash"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, String> ARGUMENT_HASH = createField(DSL.name("argument_hash"), SQLDataType.CHAR(64).nullable(false), this, "规范化工具参数 SHA-256 摘要");
 
     /**
-     * The column <code>public.tool_execution.status</code>.
+     * The column <code>public.tool_execution.status</code>. 持久状态，允许值由 CHECK
+     * 约束限定
      */
-    public final TableField<ToolExecutionRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(20).nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(20).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.tool_execution.result_json</code>.
+     * The column <code>public.tool_execution.result_json</code>. 已提交的结构化执行或审批结果
      */
-    public final TableField<ToolExecutionRecord, JSONB> RESULT_JSON = createField(DSL.name("result_json"), SQLDataType.JSONB, this, "");
+    public final TableField<ToolExecutionRecord, JSONB> RESULT_JSON = createField(DSL.name("result_json"), SQLDataType.JSONB, this, "已提交的结构化执行或审批结果");
 
     /**
-     * The column <code>public.tool_execution.created_at</code>.
+     * The column <code>public.tool_execution.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<ToolExecutionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ToolExecutionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.tool_execution.completed_at</code>.
+     * The column <code>public.tool_execution.completed_at</code>. 终态完成时间；未完成时为空
      */
-    public final TableField<ToolExecutionRecord, OffsetDateTime> COMPLETED_AT = createField(DSL.name("completed_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<ToolExecutionRecord, OffsetDateTime> COMPLETED_AT = createField(DSL.name("completed_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "终态完成时间；未完成时为空");
 
     private ToolExecution(Name alias, Table<ToolExecutionRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private ToolExecution(Name alias, Table<ToolExecutionRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("One caller-driven tool invocation. Reservation, business mutation and result commit together."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("按 Run、回合及 tool_call_id 去重的工具执行账本"), TableOptions.table(), where);
     }
 
     /**

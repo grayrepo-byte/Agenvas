@@ -72,6 +72,8 @@ class AssetDiskFullPostgresIT {
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
+    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
@@ -99,11 +101,9 @@ class AssetDiskFullPostgresIT {
                 "Create image", "disk-full-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
-        Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(), "image",
-                Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1, List.of(),
-                artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+        Task task = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                         "Disk image", null).artifact().id());
-        Task lease = tasks.claimImagesDue("disk-submitter", 1).getFirst();
+        Task lease = tasks.claimDue("disk-submitter", 1).getFirst();
         tasks.beginSubmission(lease, "disk-submitter");
         String requestId = UUID.randomUUID().toString();
         tasks.waitForProvider(lease, "disk-submitter", requestId,
@@ -208,7 +208,7 @@ class AssetDiskFullPostgresIT {
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", assetId.toString());
         content.put("prompt", "Existing accepted request");
-        content.put("providerConfigVersion", 1);
+
         content.put("workflowVersion", "test-image-v1");
         content.putObject("parameters");
         content.put("sourceTaskId", task.id().toString());

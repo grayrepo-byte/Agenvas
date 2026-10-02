@@ -18,7 +18,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
@@ -38,13 +37,12 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
-import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
 
 /**
- * Explicit Agent input fixed to an exact immutable ArtifactVersion.
+ * Agent 显式输入：固定引用不可变产物版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentBinding extends TableImpl<AgentBindingRecord> {
@@ -65,46 +63,43 @@ public class AgentBinding extends TableImpl<AgentBindingRecord> {
     }
 
     /**
-     * The column <code>public.agent_binding.id</code>.
+     * The column <code>public.agent_binding.id</code>. 记录身份
      */
-    public final TableField<AgentBindingRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentBindingRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.agent_binding.project_id</code>.
+     * The column <code>public.agent_binding.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<AgentBindingRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentBindingRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.agent_binding.agent_instance_id</code>.
+     * The column <code>public.agent_binding.agent_instance_id</code>. Agent
+     * 卡片配置身份
      */
-    public final TableField<AgentBindingRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentBindingRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID.nullable(false), this, "Agent 卡片配置身份");
 
     /**
-     * The column <code>public.agent_binding.artifact_id</code>.
+     * The column <code>public.agent_binding.artifact_id</code>. 业务产物身份
      */
-    public final TableField<AgentBindingRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentBindingRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "业务产物身份");
 
     /**
      * The column <code>public.agent_binding.selected_version_id</code>.
+     * 显式选择的不可变产物版本
      */
-    public final TableField<AgentBindingRecord, UUID> SELECTED_VERSION_ID = createField(DSL.name("selected_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentBindingRecord, UUID> SELECTED_VERSION_ID = createField(DSL.name("selected_version_id"), SQLDataType.UUID.nullable(false), this, "显式选择的不可变产物版本");
 
     /**
-     * The column <code>public.agent_binding.binding_type</code>.
+     * The column <code>public.agent_binding.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<AgentBindingRecord, String> BINDING_TYPE = createField(DSL.name("binding_type"), SQLDataType.VARCHAR(32).nullable(false), this, "");
-
-    /**
-     * The column <code>public.agent_binding.created_at</code>.
-     */
-    public final TableField<AgentBindingRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentBindingRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private AgentBinding(Name alias, Table<AgentBindingRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AgentBinding(Name alias, Table<AgentBindingRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Explicit Agent input fixed to an exact immutable ArtifactVersion."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Agent 显式输入：固定引用不可变产物版本"), TableOptions.table(), where);
     }
 
     /**
@@ -222,13 +217,6 @@ public class AgentBinding extends TableImpl<AgentBindingRecord> {
             _artifactVersion = new ArtifactVersionPath(this, Keys.AGENT_BINDING__FK_AGENT_BINDING_VERSION, null);
 
         return _artifactVersion;
-    }
-
-    @Override
-    public List<Check<AgentBindingRecord>> getChecks() {
-        return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_agent_binding_type"), "(((binding_type)::text = 'INPUT'::text))", true)
-        );
     }
 
     @Override

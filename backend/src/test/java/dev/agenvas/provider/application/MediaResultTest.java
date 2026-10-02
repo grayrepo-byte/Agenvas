@@ -18,9 +18,9 @@ class MediaResultTest {
     private final UUID assetId = UUID.randomUUID();
 
     @Test
-    void capturesTaskProvenanceWithoutAddingFrozenParametersToLegacyResults() {
+    void capturesFixedWorkflowAndSourceTaskProvenance() {
         Task task = task(mapper.readTree("""
-                {"prompt":"A landscape","negativePrompt":"blur","providerConfigVersion":7,
+                {"prompt":"A landscape","negativePrompt":"blur",
                  "workflowVersion":"fixed-v2","mediaInput":{"parameters":{"resolution":"2K"}}}
                 """));
 
@@ -30,7 +30,7 @@ class MediaResultTest {
         assertThat(content.path("assetId").asText()).isEqualTo(assetId.toString());
         assertThat(content.path("prompt").asText()).isEqualTo("A landscape");
         assertThat(content.path("negativePrompt").asText()).isEqualTo("blur");
-        assertThat(content.path("providerConfigVersion").asInt()).isEqualTo(7);
+        assertThat(content.has("providerConfigVersion")).isFalse();
         assertThat(content.path("workflowVersion").asText()).isEqualTo("fixed-v2");
         assertThat(content.path("sourceTaskId").asText()).isEqualTo(task.id().toString());
         assertThat(content.path("parameters").isEmpty()).isTrue();
@@ -69,7 +69,7 @@ class MediaResultTest {
     }
 
     @Test
-    void historicalTasksWithoutAMediaInputKeepEmptyResultParameters() {
+    void missingParameterObjectKeepsEmptyResultParameters() {
         Task task = task(mapper.createObjectNode());
         ObjectNode content = MediaResult.content(mapper, task, assetId, "");
 

@@ -42,7 +42,6 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=image-derivation-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.comfyui.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ImageOperationDerivationPostgresIT {
 

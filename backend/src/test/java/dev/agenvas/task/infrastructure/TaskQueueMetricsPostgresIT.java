@@ -31,8 +31,6 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=task-queue-age-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mock.scheduler-enabled=false",
-        "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class TaskQueueMetricsPostgresIT {
 
@@ -66,11 +64,9 @@ class TaskQueueMetricsPostgresIT {
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a plan", "queue-age-run").run();
         Task due = tasks.create(owner.userId(), project.id(), run.id(),
-                "queue-due", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
-                null, 1, List.of());
+                "queue-due", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), 1);
         Task future = tasks.create(owner.userId(), project.id(), run.id(),
-                "queue-future", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
-                null, 1, List.of());
+                "queue-future", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), 1);
         jdbc.sql("update task set updated_at = now() - interval '120 seconds' where id = :id")
                 .param("id", due.id()).update();
         jdbc.sql("update task set updated_at = now() - interval '600 seconds', "

@@ -15,7 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Persistent execution lifecycle with immutable input and policy snapshots.
+ * 单次 Agent 指令的持久执行状态及不可变上下文、策略快照
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentRunRecord extends UpdatableRecordImpl<AgentRunRecord> {
@@ -23,84 +23,84 @@ public class AgentRunRecord extends UpdatableRecordImpl<AgentRunRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.agent_run.id</code>.
+     * Setter for <code>public.agent_run.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.id</code>.
+     * Getter for <code>public.agent_run.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.agent_run.project_id</code>.
+     * Setter for <code>public.agent_run.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.project_id</code>.
+     * Getter for <code>public.agent_run.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.agent_run.agent_instance_id</code>.
+     * Setter for <code>public.agent_run.agent_instance_id</code>. Agent 卡片配置身份
      */
     public void setAgentInstanceId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.agent_instance_id</code>.
+     * Getter for <code>public.agent_run.agent_instance_id</code>. Agent 卡片配置身份
      */
     public UUID getAgentInstanceId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.agent_run.user_id</code>.
+     * Setter for <code>public.agent_run.user_id</code>. 发起执行的可信用户身份
      */
     public void setUserId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.user_id</code>.
+     * Getter for <code>public.agent_run.user_id</code>. 发起执行的可信用户身份
      */
     public UUID getUserId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.agent_run.status</code>.
+     * Setter for <code>public.agent_run.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public void setStatus(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.status</code>.
+     * Getter for <code>public.agent_run.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public String getStatus() {
         return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.agent_run.instruction</code>.
+     * Setter for <code>public.agent_run.instruction</code>. 用户指令或 Agent 系统指令
      */
     public void setInstruction(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.instruction</code>.
+     * Getter for <code>public.agent_run.instruction</code>. 用户指令或 Agent 系统指令
      */
     public String getInstruction() {
         return (String) get(5);
@@ -108,6 +108,7 @@ public class AgentRunRecord extends UpdatableRecordImpl<AgentRunRecord> {
 
     /**
      * Setter for <code>public.agent_run.context_snapshot_json</code>.
+     * 受理时固定的授权上下文快照
      */
     public void setContextSnapshotJson(JSONB value) {
         set(6, value);
@@ -115,6 +116,7 @@ public class AgentRunRecord extends UpdatableRecordImpl<AgentRunRecord> {
 
     /**
      * Getter for <code>public.agent_run.context_snapshot_json</code>.
+     * 受理时固定的授权上下文快照
      */
     public JSONB getContextSnapshotJson() {
         return (JSONB) get(6);
@@ -122,6 +124,7 @@ public class AgentRunRecord extends UpdatableRecordImpl<AgentRunRecord> {
 
     /**
      * Setter for <code>public.agent_run.policy_snapshot_json</code>.
+     * 受理时固定的工具、额度和执行策略快照
      */
     public void setPolicySnapshotJson(JSONB value) {
         set(7, value);
@@ -129,118 +132,119 @@ public class AgentRunRecord extends UpdatableRecordImpl<AgentRunRecord> {
 
     /**
      * Getter for <code>public.agent_run.policy_snapshot_json</code>.
+     * 受理时固定的工具、额度和执行策略快照
      */
     public JSONB getPolicySnapshotJson() {
         return (JSONB) get(7);
     }
 
     /**
-     * Setter for <code>public.agent_run.profile_version</code>.
+     * Setter for <code>public.agent_run.profile_version</code>. Agent 配置格式版本
      */
     public void setProfileVersion(Integer value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.profile_version</code>.
+     * Getter for <code>public.agent_run.profile_version</code>. Agent 配置格式版本
      */
     public Integer getProfileVersion() {
         return (Integer) get(8);
     }
 
     /**
-     * Setter for <code>public.agent_run.next_step_index</code>.
+     * Setter for <code>public.agent_run.next_step_index</code>. 下一次模型回合序号
      */
     public void setNextStepIndex(Integer value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.next_step_index</code>.
+     * Getter for <code>public.agent_run.next_step_index</code>. 下一次模型回合序号
      */
     public Integer getNextStepIndex() {
         return (Integer) get(9);
     }
 
     /**
-     * Setter for <code>public.agent_run.version</code>.
+     * Setter for <code>public.agent_run.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.version</code>.
+     * Getter for <code>public.agent_run.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(10);
     }
 
     /**
-     * Setter for <code>public.agent_run.created_at</code>.
+     * Setter for <code>public.agent_run.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(11, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.created_at</code>.
+     * Getter for <code>public.agent_run.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(11);
     }
 
     /**
-     * Setter for <code>public.agent_run.updated_at</code>.
+     * Setter for <code>public.agent_run.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(12, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.updated_at</code>.
+     * Getter for <code>public.agent_run.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(12);
     }
 
     /**
-     * Setter for <code>public.agent_run.completed_at</code>.
+     * Setter for <code>public.agent_run.completed_at</code>. 终态完成时间；未完成时为空
      */
     public void setCompletedAt(OffsetDateTime value) {
         set(13, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.completed_at</code>.
+     * Getter for <code>public.agent_run.completed_at</code>. 终态完成时间；未完成时为空
      */
     public OffsetDateTime getCompletedAt() {
         return (OffsetDateTime) get(13);
     }
 
     /**
-     * Setter for <code>public.agent_run.conversation_id</code>.
+     * Setter for <code>public.agent_run.conversation_id</code>. 所属持久对话
      */
     public void setConversationId(UUID value) {
         set(14, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.conversation_id</code>.
+     * Getter for <code>public.agent_run.conversation_id</code>. 所属持久对话
      */
     public UUID getConversationId() {
         return (UUID) get(14);
     }
 
     /**
-     * Setter for <code>public.agent_run.conversation_turn</code>.
+     * Setter for <code>public.agent_run.conversation_turn</code>. 对话内单调递增的用户轮次
      */
     public void setConversationTurn(Long value) {
         set(15, value);
     }
 
     /**
-     * Getter for <code>public.agent_run.conversation_turn</code>.
+     * Getter for <code>public.agent_run.conversation_turn</code>. 对话内单调递增的用户轮次
      */
     public Long getConversationTurn() {
         return (Long) get(15);

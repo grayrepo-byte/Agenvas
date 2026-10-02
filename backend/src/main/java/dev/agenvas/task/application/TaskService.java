@@ -38,7 +38,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 创建带固定输入和依赖关系的任务，并通过租约 epoch 约束 Worker 的每次状态写入。 */
+/** 创建带固定输入的任务，并通过租约 epoch 约束 Worker 的每次状态写入。 */
 @Service
 public class TaskService {
 
@@ -48,7 +48,6 @@ public class TaskService {
 
     public enum AgentStreamStatus { STREAMING, COMPLETED, INTERRUPTED }
 
-    private static final int MAX_DEPENDENCIES = 100;
     private static final int MAX_TASK_KEY_LENGTH = 160;
     private static final int MAX_ERROR_CODE_LENGTH = 120;
 
@@ -60,7 +59,7 @@ public class TaskService {
     private final ArtifactService artifacts;
     private final MediaDraftService mediaDrafts;
     private final CanvasService canvas;
-    /** 执行任务、依赖、租约与外部提交账本的条件读写。 */
+    /** 执行任务、租约与外部提交账本的条件读写。 */
     private final TaskRepository tasks;
     /** 限定租约时长和单次认领、恢复扫描的批量大小。 */
     private final TaskProperties properties;
@@ -115,7 +114,7 @@ public class TaskService {
     }
 
     /**
-     * 创建带不可变输入快照的任务。依赖最多 100 个，必须互不重复且属于同一 Run；无依赖时直接进入 READY。
+     * 创建带不可变输入快照的 READY 任务。下一模型回合只在前一回合成功的同一事务中创建。
      * 事务内再次检查 Run 状态，避免校验之后的取消与任务创建竞态。
      *
      * @param ownerId 经认证的项目所有者 ID
@@ -124,9 +123,7 @@ public class TaskService {
      * @param requestedStepKey 同 Run 内稳定步骤键，长度为 1 至 160 字符
      * @param kind 决定 Worker 认领路径的任务类别
      * @param input 创建时复制并固定的任务 JSON 输入
-     * @param providerId 已选 Provider 配置 ID；本地任务可为空
      * @param attemptNo 同一步骤的正整数尝试序号
-     * @param dependencyIds 必须先完成的同 Run 任务 ID，最多 100 个
      * @return 已落库的任务及其初始状态
      */
     @Transactional
@@ -137,9 +134,7 @@ public class TaskService {
             String requestedStepKey,
             Task.Kind kind,
             JsonNode input,
-            UUID providerId,
-            int attemptNo,
-            List<UUID> dependencyIds) {
+            int attemptNo) {
         AgentRun run = runs.get(ownerId, projectId, runId);
         if (run.status().terminal() || run.status() == AgentRun.Status.CANCEL_REQUESTED) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
@@ -152,16 +147,6 @@ public class TaskService {
         if (kind == null || input == null || attemptNo < 1) {
             throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
         }
-        List<UUID> dependencies = dependencyIds == null ? List.of() : List.copyOf(dependencyIds);
-        if (dependencies.size() > MAX_DEPENDENCIES || dependencies.stream().distinct().count() != dependencies.size()) {
-            throw validation(ApiMessage.of("api.task-service.task-dependencies-can-have-up-to-100-and-cannot-be"));
-        }
-        for (UUID dependencyId : dependencies) {
-            Task dependency = get(ownerId, projectId, dependencyId);
-            if (!dependency.runId().equals(runId)) {
-                throw validation(ApiMessage.of("api.task-service.task-dependencies-must-belong-to-the-same-run"));
-            }
-        }
         Instant now = clock.instant();
         Task task = new Task(
                 UUID.randomUUID(),
@@ -169,12 +154,11 @@ public class TaskService {
                 runId,
                 stepKey,
                 kind,
-                dependencies.isEmpty() ? Task.Status.READY : Task.Status.PENDING,
+                Task.Status.READY,
                 false,
                 input.deepCopy(),
                 Sha256.hex(input.toString()),
                 null,
-                providerId,
                 null,
                 attemptNo,
                 now,
@@ -193,35 +177,9 @@ public class TaskService {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
                         ApiMessage.of("api.task-service.run-has-stopped"), ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
             }
-            tasks.create(task, dependencies);
+            tasks.create(task);
             return ProjectEventService.Change.changed(task, taskEvent(task, false));
         }).value();
-    }
-
-    /** 创建写入既有产物的媒体任务，并固定创建时的产物版本；完成时不得覆盖之后的用户编辑。 */
-    @Transactional
-    public Task createMediaTask(UUID ownerId, UUID projectId, UUID runId,
-            String stepKey, Task.Kind kind, JsonNode input, UUID providerId, int attemptNo,
-            List<UUID> dependencyIds, UUID targetArtifactId) {
-        Artifact.Kind expectedKind = switch (kind) {
-            case IMAGE_GENERATION -> Artifact.Kind.IMAGE;
-            case VIDEO_GENERATION -> Artifact.Kind.VIDEO;
-            default -> throw validation(ApiMessage.of("api.task-service.only-image-and-video-generation-tasks-can-be-bound-to"));
-        };
-        Artifact target = artifacts.get(ownerId, projectId, targetArtifactId).artifact();
-        if (target.kind() != expectedKind || target.archivedAt() != null) {
-            throw validation(ApiMessage.of("api.task-service.the-media-task-target-must-be-an-artifact-from-the"));
-        }
-        Task task = create(ownerId, projectId, runId, stepKey, kind, input,
-                providerId, attemptNo, dependencyIds);
-        Task occupying = tasks.findOccupyingMediaTask(projectId, target.id()).orElse(null);
-        if (occupying != null) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CARD_BUSY",
-                    ApiMessage.of("api.task-service.card-task-occupation"), ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), true);
-        }
-        tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                target.id(), target.resourceDefaultVersionId(), target.version(), null, null));
-        return task;
     }
 
     /** Stops only approved Agent work; provider requests remain reconcilable and are never resubmitted. */
@@ -239,7 +197,7 @@ public class TaskService {
                 return ProjectEventService.Change.unchanged(current);
             }
             boolean unsubmitted = current.providerRequestId() == null
-                    && (current.status() == Task.Status.PENDING || current.status() == Task.Status.READY
+                    && (current.status() == Task.Status.READY
                             || current.status() == Task.Status.RUNNING || current.status() == Task.Status.BLOCKED);
             if (current.status() == Task.Status.SUCCEEDED || current.status() == Task.Status.FAILED
                     || current.cancelRequested() && !unsubmitted) return ProjectEventService.Change.unchanged(current);
@@ -279,20 +237,6 @@ public class TaskService {
         return tasks.listProviderAttempts(ownerId, projectId, taskId);
     }
 
-    /** 仅当唯一已受理尝试同时匹配任务的原请求 ID 时，返回该尝试保存的 Provider origin 摘要。 */
-    @Transactional(readOnly = true)
-    public Optional<String> acceptedProviderOrigin(Task task) {
-        if (task.providerRequestId() == null) return Optional.empty();
-        UUID ownerId = ownerForWorker(task);
-        List<String> matching = tasks.listProviderAttempts(ownerId, task.projectId(), task.id())
-                .stream()
-                .filter(attempt -> attempt.status() == ProviderAttempt.Status.ACCEPTED
-                        && task.providerRequestId().equals(attempt.providerRequestId())
-                        && attempt.candidateOriginSha256() != null)
-                .map(ProviderAttempt::candidateOriginSha256).toList();
-        return matching.size() == 1 ? Optional.of(matching.getFirst()) : Optional.empty();
-    }
-
     /** 查询人工重试创建的替代任务；原 UNKNOWN 任务仍保留在历史中。 */
     @Transactional(readOnly = true)
     public UUID replacementTaskId(UUID ownerId, UUID projectId, UUID taskId) {
@@ -330,59 +274,11 @@ public class TaskService {
         return tasks.mediaBinding(task.id());
     }
 
-    /** 只认领图片任务，避免图片 Worker 消费视频或模型回合。 */
-    @Transactional
-    public List<Task> claimImagesDue(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
-        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueImages);
-    }
-
-    /** 认领至多一个旧版 ComfyUI 图片任务；跨实例仅靠行租约防止重复领取。 */
-    @Transactional
-    public List<Task> claimComfyImage(String requestedWorkerId) {
-        if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyImage(workerId, now,
-                now.plus(properties.leaseDuration())), List.of());
-    }
-
-    /** 认领至多一个旧版 ComfyUI 视频任务；不再检查共享提交槽。 */
-    @Transactional
-    public List<Task> claimComfyVideo(String requestedWorkerId) {
-        if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyVideo(workerId, now,
-                now.plus(properties.leaseDuration())), List.of());
-    }
-
-    /** 视频任务使用独立认领条件，不会被图片或模型回合 Worker 取走。 */
-    @Transactional
-    public List<Task> claimVideosDue(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
-        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueVideos);
-    }
-
     /** 只认领已保存原外部请求 ID 的轮询任务；取消后的请求仍可查询并归档晚到结果。 */
     @Transactional
     public List<Task> claimProviderPolls(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueProviderPolls);
-    }
-
-    /** ComfyUI 图片轮询只取图片任务，不会接管已受理的视频请求。 */
-    @Transactional
-    public List<Task> claimComfyImagePolls(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
-        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueComfyImagePolls);
-    }
-
-    /** ComfyUI 视频轮询只取视频任务，不会接管已受理的图片请求。 */
-    @Transactional
-    public List<Task> claimComfyVideoPolls(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
-        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueComfyVideoPolls);
     }
 
     /** 从已认领任务的数据库记录反查所有者；不接受模型或任务输入中的身份字段。 */
@@ -647,7 +543,7 @@ public class TaskService {
         }
     }
 
-    /** 仅当前租约 epoch 可提交成功结果；确认不是取消后晚到结果时才推进依赖任务。 */
+    /** 仅当前租约 epoch 可提交成功结果；取消后的晚到结果只保留历史。 */
     @Transactional
     public void succeed(Task lease, String workerId, JsonNode output) {
         Instant now = clock.instant();
@@ -665,9 +561,6 @@ public class TaskService {
                 preserveCanceledResult(lease, workerId, finalOutput, now);
             } else if (tasks.finish(lease.id(), validateWorkerId(workerId),
                     lease.leaseEpoch(), Task.Status.SUCCEEDED, finalOutput, null, now)) {
-                if (lease.runId() != null) {
-                    tasks.promoteReady(lease.projectId(), lease.runId(), now);
-                }
             } else if (tasks.findById(lease.id()).filter(Task::cancelRequested).isPresent()) {
                 preserveCanceledResult(lease, workerId, finalOutput, now);
             } else {
@@ -706,7 +599,7 @@ public class TaskService {
 
     /**
      * 将同步媒体结果归档为不可变产物版本。只有 Run 仍活动且目标产物未被用户改动时才自动选用新版本。
-     * 取消后晚到或固定输入已过期的结果保留在历史中，不推进下游依赖。
+     * 取消后晚到或固定输入已过期的结果保留在历史中。
      */
     @Transactional
     public ArtifactService.TaskVersionResult succeedWithArtifact(
@@ -815,9 +708,7 @@ public class TaskService {
                     ? tasks.finishProviderResult(lease, validateWorkerId(workerId), output, now)
                     : tasks.finishSubmitting(lease, validateWorkerId(workerId), output, now))) {
                 throw leaseLost();
-            } else if (selectResult && run != null) {
-                tasks.promoteReady(lease.projectId(), lease.runId(), now);
-            } else if (run != null && !lease.approvedMedia()) {
+            } else if (!selectResult && run != null && !lease.approvedMedia()) {
                 AgentRun latest = runs.get(ownerId, lease.projectId(), lease.runId());
                 if (latest.status() == AgentRun.Status.WAITING_TASKS) {
                     runs.transition(ownerId, lease.projectId(), lease.runId(),
@@ -1068,20 +959,9 @@ public class TaskService {
         return beginSubmission(lease, workerId, null);
     }
 
-    /** 仅当适配器确实把固定 requestKey 作为外部请求 ID 发送时，记录已校验的 Provider origin 摘要。 */
-    @Transactional
-    public UUID beginSubmission(Task lease, String workerId, String candidateOriginSha256) {
-        return beginSubmission(lease, workerId, candidateOriginSha256, null);
-    }
-
     /** Version-pinned tasks recheck and lock both catalog rows in the checkpoint transaction. */
     @Transactional
-    public UUID beginSubmission(Task lease, String workerId, String candidateOriginSha256,
-            MediaCapabilityBinding binding) {
-        if (candidateOriginSha256 != null
-                && !candidateOriginSha256.matches("[0-9a-f]{64}")) {
-            throw validation(ApiMessage.of("api.task-service.provider-origin-fingerprint-is-invalid"));
-        }
+    public UUID beginSubmission(Task lease, String workerId, MediaCapabilityBinding binding) {
         Instant now = clock.instant();
         UUID requestKey = UUID.randomUUID();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
@@ -1101,7 +981,7 @@ public class TaskService {
                         ApiMessage.of("api.task-service.task-input-has-expired"), ApiMessage.of("api.task-service.the-input-image-or-draft-has-been-modified-and-the"), false);
             }
             if (!tasks.beginSubmission(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
-                    UUID.randomUUID(), requestKey, candidateOriginSha256, now)) {
+                    UUID.randomUUID(), requestKey, now)) {
                 throw leaseLost();
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);

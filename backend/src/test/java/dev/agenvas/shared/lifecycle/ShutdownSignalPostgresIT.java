@@ -34,8 +34,6 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=shutdown-signal-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mock.scheduler-enabled=false",
-        "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class ShutdownSignalPostgresIT {
 
@@ -68,7 +66,7 @@ class ShutdownSignalPostgresIT {
                 "Create storyboard", "signal-smoke-run").run();
         Task queued = tasks.create(owner.userId(), project.id(), run.id(),
                 "image-awaiting-worker", Task.Kind.IMAGE_GENERATION,
-                mapper.createObjectNode(), null, 1, List.of());
+                mapper.createObjectNode(), 1);
         Path childLog = Files.createTempFile("agenvas-shutdown-signal-", ".log");
         Process child = null;
         try {
@@ -111,8 +109,6 @@ class ShutdownSignalPostgresIT {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         ProcessBuilder builder = new ProcessBuilder(java.toString(), "-Xmx512m", "-jar",
                 jar.toString(), "--server.port=0", "--agenvas.llm.scheduler-enabled=false",
-                "--agenvas.provider.mock.scheduler-enabled=false",
-                "--agenvas.provider.mock.video-scheduler-enabled=false",
                 "--agenvas.export.scheduler-enabled=false")
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));

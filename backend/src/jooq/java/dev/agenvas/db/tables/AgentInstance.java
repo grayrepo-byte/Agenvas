@@ -48,8 +48,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Persistent card configuration only; no thread, request principal, or mutable
- * run context.
+ * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentInstance extends TableImpl<AgentInstanceRecord> {
@@ -70,54 +69,59 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
     }
 
     /**
-     * The column <code>public.agent_instance.id</code>.
+     * The column <code>public.agent_instance.id</code>. 记录身份
      */
-    public final TableField<AgentInstanceRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.agent_instance.project_id</code>.
+     * The column <code>public.agent_instance.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<AgentInstanceRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.agent_instance.profile_key</code>.
+     * The column <code>public.agent_instance.profile_key</code>. 内置 Agent 配置标识
      */
-    public final TableField<AgentInstanceRecord, String> PROFILE_KEY = createField(DSL.name("profile_key"), SQLDataType.VARCHAR(80).nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, String> PROFILE_KEY = createField(DSL.name("profile_key"), SQLDataType.VARCHAR(80).nullable(false), this, "内置 Agent 配置标识");
 
     /**
-     * The column <code>public.agent_instance.profile_version</code>.
+     * The column <code>public.agent_instance.profile_version</code>. Agent
+     * 配置格式版本
      */
-    public final TableField<AgentInstanceRecord, Integer> PROFILE_VERSION = createField(DSL.name("profile_version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, Integer> PROFILE_VERSION = createField(DSL.name("profile_version"), SQLDataType.INTEGER.nullable(false), this, "Agent 配置格式版本");
 
     /**
-     * The column <code>public.agent_instance.name</code>.
+     * The column <code>public.agent_instance.name</code>. 显示名称
      */
-    public final TableField<AgentInstanceRecord, String> NAME = createField(DSL.name("name"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, String> NAME = createField(DSL.name("name"), SQLDataType.VARCHAR(120).nullable(false), this, "显示名称");
 
     /**
-     * The column <code>public.agent_instance.instruction</code>.
+     * The column <code>public.agent_instance.instruction</code>. 用户指令或 Agent
+     * 系统指令
      */
-    public final TableField<AgentInstanceRecord, String> INSTRUCTION = createField(DSL.name("instruction"), SQLDataType.VARCHAR(8000).nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, String> INSTRUCTION = createField(DSL.name("instruction"), SQLDataType.VARCHAR(8000).nullable(false), this, "用户指令或 Agent 系统指令");
 
     /**
-     * The column <code>public.agent_instance.output_group_id</code>.
+     * The column <code>public.agent_instance.output_group_id</code>. Agent
+     * 输出卡片的画布分组
      */
-    public final TableField<AgentInstanceRecord, UUID> OUTPUT_GROUP_ID = createField(DSL.name("output_group_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, UUID> OUTPUT_GROUP_ID = createField(DSL.name("output_group_id"), SQLDataType.UUID.nullable(false), this, "Agent 输出卡片的画布分组");
 
     /**
      * The column <code>public.agent_instance.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<AgentInstanceRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<AgentInstanceRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.agent_instance.created_at</code>.
+     * The column <code>public.agent_instance.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<AgentInstanceRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.agent_instance.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<AgentInstanceRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentInstanceRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
      * The column <code>public.agent_instance.current_conversation_id</code>.
@@ -131,7 +135,7 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
     }
 
     private AgentInstance(Name alias, Table<AgentInstanceRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Persistent card configuration only; no thread, request principal, or mutable run context."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Agent 卡片配置；请求身份和运行上下文保存在 Run 中"), TableOptions.table(), where);
     }
 
     /**

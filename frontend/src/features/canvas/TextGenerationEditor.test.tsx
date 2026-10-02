@@ -22,7 +22,7 @@ function task(status: Task["status"]): Task {
     stepKey: "direct-text:key", kind: "TEXT_GENERATION", status, cancelRequested: false,
     input: { prompt: "补成三段" }, output: status === "SUCCEEDED"
       ? { artifactId: "artifact-1", artifactVersionId: "version-3", selected: true } : null,
-    providerId: null, providerRequestId: null, attemptNo: 1, nextActionAt: CREATED_AT,
+    providerRequestId: null, attemptNo: 1, nextActionAt: CREATED_AT,
     version: 1, errorCode: null, createdAt: CREATED_AT, updatedAt: CREATED_AT,
     completedAt: status === "SUCCEEDED" ? CREATED_AT : null };
 }

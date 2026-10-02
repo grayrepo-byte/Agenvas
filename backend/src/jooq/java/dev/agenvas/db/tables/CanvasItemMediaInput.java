@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Deduplicated exact media versions; dynamicValues maps named capability slots
- * to these version identities.
+ * 媒体卡片显式选取的精确输入版本、角色、顺序和显示颜色
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaInput extends TableImpl<CanvasItemMediaInputRecord> {
@@ -67,51 +66,58 @@ public class CanvasItemMediaInput extends TableImpl<CanvasItemMediaInputRecord> 
 
     /**
      * The column <code>public.canvas_item_media_input.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<CanvasItemMediaInputRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column <code>public.canvas_item_media_input.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
-    public final TableField<CanvasItemMediaInputRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "固定的目标或上下文画布卡片");
 
     /**
      * The column
      * <code>public.canvas_item_media_input.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
-    public final TableField<CanvasItemMediaInputRecord, UUID> ARTIFACT_VERSION_ID = createField(DSL.name("artifact_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, UUID> ARTIFACT_VERSION_ID = createField(DSL.name("artifact_version_id"), SQLDataType.UUID.nullable(false), this, "固定的不可变产物版本");
 
     /**
-     * The column <code>public.canvas_item_media_input.input_role</code>.
+     * The column <code>public.canvas_item_media_input.input_role</code>. 媒体输入角色
      */
-    public final TableField<CanvasItemMediaInputRecord, String> INPUT_ROLE = createField(DSL.name("input_role"), SQLDataType.VARCHAR(24).nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, String> INPUT_ROLE = createField(DSL.name("input_role"), SQLDataType.VARCHAR(24).nullable(false), this, "媒体输入角色");
 
     /**
      * The column <code>public.canvas_item_media_input.input_order</code>.
+     * 同角色媒体输入顺序
      */
-    public final TableField<CanvasItemMediaInputRecord, Integer> INPUT_ORDER = createField(DSL.name("input_order"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, Integer> INPUT_ORDER = createField(DSL.name("input_order"), SQLDataType.INTEGER.nullable(false), this, "同角色媒体输入顺序");
 
     /**
      * The column <code>public.canvas_item_media_input.color</code>.
+     * 媒体输入来源连线的显示颜色
      */
-    public final TableField<CanvasItemMediaInputRecord, String> COLOR = createField(DSL.name("color"), SQLDataType.VARCHAR(7).nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, String> COLOR = createField(DSL.name("color"), SQLDataType.VARCHAR(7).nullable(false), this, "媒体输入来源连线的显示颜色");
 
     /**
      * The column <code>public.canvas_item_media_input.created_at</code>.
+     * 创建时间（UTC）
      */
-    public final TableField<CanvasItemMediaInputRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.canvas_item_media_input.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<CanvasItemMediaInputRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private CanvasItemMediaInput(Name alias, Table<CanvasItemMediaInputRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CanvasItemMediaInput(Name alias, Table<CanvasItemMediaInputRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Deduplicated exact media versions; dynamicValues maps named capability slots to these version identities."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("媒体卡片显式选取的精确输入版本、角色、顺序和显示颜色"), TableOptions.table(), where);
     }
 
     /**

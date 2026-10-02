@@ -17,9 +17,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JooqAssetRepository implements AssetRepository {
 
-    /** asset.status 列只接受归档完成且媒体校验通过的单一取值。 */
-    private static final String READY_STATUS = "READY";
-
     /** 执行 jOOQ 查询并将结果映射为领域素材记录。 */
     private final DSLContext dsl;
 
@@ -30,7 +27,7 @@ public class JooqAssetRepository implements AssetRepository {
         this.dsl = dsl;
     }
 
-    /** 插入已完成文件归档与媒体校验的 READY 记录。
+    /** 插入已完成文件归档与媒体校验的素材记录；记录存在即表示归档完成。
      * @param asset 素材元数据及不可变对象键
      */
     @Override
@@ -39,7 +36,6 @@ public class JooqAssetRepository implements AssetRepository {
                 .set(ASSET.ID, asset.id())
                 .set(ASSET.PROJECT_ID, asset.projectId())
                 .set(ASSET.MEDIA_KIND, asset.mediaKind().name())
-                .set(ASSET.STATUS, READY_STATUS)
                 .set(ASSET.OBJECT_KEY, asset.objectKey())
                 .set(ASSET.CONTENT_TYPE, asset.contentType())
                 .set(ASSET.BYTE_SIZE, asset.byteSize())

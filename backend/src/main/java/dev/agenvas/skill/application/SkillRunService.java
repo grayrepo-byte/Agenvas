@@ -112,7 +112,7 @@ public class SkillRunService {
             if(operation==null) {
                 ObjectNode input=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
                 input.put("bundleHash",bundle.bundleHash());
-                operation=new Operation(UUID.randomUUID(),owner,project,skill,version,key,hash,input,null,mapper.createArrayNode(),InstallStatus.ACCEPTED.name(),0,null,null,null);
+                operation=new Operation(UUID.randomUUID(),owner,project,skill,version,input,null,mapper.createArrayNode(),InstallStatus.ACCEPTED.name(),0,null,null,null);
                 operations.create(operation,clock.instant());
             } else if(InstallStatus.FAILED.name().equals(operation.status())) {
                 if(!operations.retry(operation,clock.instant())) throw problem("SKILL_INSTALL_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-conflict"));
@@ -253,7 +253,7 @@ public class SkillRunService {
                     .put("contentHash",source.contentHash()).put("usage",source.usage().name()).put("required",source.required())
                     .put("purpose",source.purpose()).put("artifactId",artifactId.toString()).put("artifactVersionId",versionId.toString());
             bindings.addObject().put("artifactId",artifactId.toString()).put("selectedVersionId",versionId.toString())
-                    .put("bindingType",AgentInstance.BindingType.INPUT.name()).put("kind",source.kind().name()).put("title",source.title());
+                    .put("kind",source.kind().name()).put("title",source.title());
         }
         if(bindings.size()>MAX_BINDINGS) throw problem("SKILL_CONTEXT_LIMIT",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-context-limit"));
         context.set("creativeSkill",snapshot);

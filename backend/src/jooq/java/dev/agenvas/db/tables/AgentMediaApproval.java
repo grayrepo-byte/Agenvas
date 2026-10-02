@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable Agent media batch and explicit user decision; approval never
- * performs network I/O.
+ * Agent 固定媒体批次、用户审批决定及原 Run 的结果通知状态
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentMediaApproval extends TableImpl<AgentMediaApprovalRecord> {
@@ -66,106 +65,121 @@ public class AgentMediaApproval extends TableImpl<AgentMediaApprovalRecord> {
     }
 
     /**
-     * The column <code>public.agent_media_approval.id</code>.
+     * The column <code>public.agent_media_approval.id</code>. 记录身份
      */
-    public final TableField<AgentMediaApprovalRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.agent_media_approval.owner_id</code>.
+     * The column <code>public.agent_media_approval.owner_id</code>. 所属用户及授权作用域
      */
-    public final TableField<AgentMediaApprovalRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
      * The column <code>public.agent_media_approval.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<AgentMediaApprovalRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.agent_media_approval.run_id</code>.
+     * The column <code>public.agent_media_approval.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
-    public final TableField<AgentMediaApprovalRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID.nullable(false), this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.agent_media_approval.step_index</code>.
+     * The column <code>public.agent_media_approval.step_index</code>. Run
+     * 内模型回合序号
      */
-    public final TableField<AgentMediaApprovalRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER.nullable(false), this, "Run 内模型回合序号");
 
     /**
      * The column <code>public.agent_media_approval.tool_call_id</code>.
+     * 模型完整响应中的工具调用标识
      */
-    public final TableField<AgentMediaApprovalRecord, String> TOOL_CALL_ID = createField(DSL.name("tool_call_id"), SQLDataType.VARCHAR(200).nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, String> TOOL_CALL_ID = createField(DSL.name("tool_call_id"), SQLDataType.VARCHAR(200).nullable(false), this, "模型完整响应中的工具调用标识");
 
     /**
      * The column <code>public.agent_media_approval.operation_id</code>.
+     * 审批批次或安装操作的稳定身份
      */
-    public final TableField<AgentMediaApprovalRecord, UUID> OPERATION_ID = createField(DSL.name("operation_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, UUID> OPERATION_ID = createField(DSL.name("operation_id"), SQLDataType.UUID.nullable(false), this, "审批批次或安装操作的稳定身份");
 
     /**
      * The column <code>public.agent_media_approval.request_json</code>.
+     * 固定的模型请求或媒体审批批次
      */
-    public final TableField<AgentMediaApprovalRecord, JSONB> REQUEST_JSON = createField(DSL.name("request_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, JSONB> REQUEST_JSON = createField(DSL.name("request_json"), SQLDataType.JSONB.nullable(false), this, "固定的模型请求或媒体审批批次");
 
     /**
      * The column <code>public.agent_media_approval.target_json</code>.
+     * 批次受理时固定的目标卡片与版本选择
      */
-    public final TableField<AgentMediaApprovalRecord, JSONB> TARGET_JSON = createField(DSL.name("target_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, JSONB> TARGET_JSON = createField(DSL.name("target_json"), SQLDataType.JSONB.nullable(false), this, "批次受理时固定的目标卡片与版本选择");
 
     /**
      * The column <code>public.agent_media_approval.task_ids_json</code>.
+     * 审批批准后创建的固定任务身份数组
      */
-    public final TableField<AgentMediaApprovalRecord, JSONB> TASK_IDS_JSON = createField(DSL.name("task_ids_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
+    public final TableField<AgentMediaApprovalRecord, JSONB> TASK_IDS_JSON = createField(DSL.name("task_ids_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "审批批准后创建的固定任务身份数组");
 
     /**
      * The column <code>public.agent_media_approval.result_json</code>.
+     * 已提交的结构化执行或审批结果
      */
-    public final TableField<AgentMediaApprovalRecord, JSONB> RESULT_JSON = createField(DSL.name("result_json"), SQLDataType.JSONB, this, "");
+    public final TableField<AgentMediaApprovalRecord, JSONB> RESULT_JSON = createField(DSL.name("result_json"), SQLDataType.JSONB, this, "已提交的结构化执行或审批结果");
 
     /**
-     * The column <code>public.agent_media_approval.status</code>.
+     * The column <code>public.agent_media_approval.status</code>. 持久状态，允许值由
+     * CHECK 约束限定
      */
-    public final TableField<AgentMediaApprovalRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(24).nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(24).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
      * The column <code>public.agent_media_approval.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<AgentMediaApprovalRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<AgentMediaApprovalRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.agent_media_approval.created_at</code>.
+     * The column <code>public.agent_media_approval.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<AgentMediaApprovalRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.agent_media_approval.expires_at</code>.
+     * The column <code>public.agent_media_approval.expires_at</code>. 记录或审批过期时间
      */
-    public final TableField<AgentMediaApprovalRecord, OffsetDateTime> EXPIRES_AT = createField(DSL.name("expires_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentMediaApprovalRecord, OffsetDateTime> EXPIRES_AT = createField(DSL.name("expires_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "记录或审批过期时间");
 
     /**
      * The column <code>public.agent_media_approval.execution_deadline</code>.
+     * 已批准媒体批次等待结果的截止时间
      */
-    public final TableField<AgentMediaApprovalRecord, OffsetDateTime> EXECUTION_DEADLINE = createField(DSL.name("execution_deadline"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<AgentMediaApprovalRecord, OffsetDateTime> EXECUTION_DEADLINE = createField(DSL.name("execution_deadline"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "已批准媒体批次等待结果的截止时间");
 
     /**
      * The column <code>public.agent_media_approval.decision_key</code>.
+     * 用户审批决定幂等键
      */
-    public final TableField<AgentMediaApprovalRecord, String> DECISION_KEY = createField(DSL.name("decision_key"), SQLDataType.VARCHAR(200), this, "");
+    public final TableField<AgentMediaApprovalRecord, String> DECISION_KEY = createField(DSL.name("decision_key"), SQLDataType.VARCHAR(200), this, "用户审批决定幂等键");
 
     /**
      * The column <code>public.agent_media_approval.decision_hash</code>.
+     * 规范化审批决定 SHA-256 摘要
      */
-    public final TableField<AgentMediaApprovalRecord, String> DECISION_HASH = createField(DSL.name("decision_hash"), SQLDataType.CHAR(64), this, "");
+    public final TableField<AgentMediaApprovalRecord, String> DECISION_HASH = createField(DSL.name("decision_hash"), SQLDataType.CHAR(64), this, "规范化审批决定 SHA-256 摘要");
 
     /**
      * The column <code>public.agent_media_approval.notification_pending</code>.
+     * 该审批结果仍待通知原 Run
      */
-    public final TableField<AgentMediaApprovalRecord, Boolean> NOTIFICATION_PENDING = createField(DSL.name("notification_pending"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<AgentMediaApprovalRecord, Boolean> NOTIFICATION_PENDING = createField(DSL.name("notification_pending"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "该审批结果仍待通知原 Run");
 
     private AgentMediaApproval(Name alias, Table<AgentMediaApprovalRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AgentMediaApproval(Name alias, Table<AgentMediaApprovalRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable Agent media batch and explicit user decision; approval never performs network I/O."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Agent 固定媒体批次、用户审批决定及原 Run 的结果通知状态"), TableOptions.table(), where);
     }
 
     /**

@@ -12,16 +12,6 @@ class VideoDurationTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    void interpretsFrozenLegacyMillisecondsWithoutRounding() {
-        assertThat(VideoDuration.fromFrozenTask(mapper.readTree("""
-                {"schemaVersion":1,"durationMs":1250}
-                """))).isEqualTo(Duration.ofMillis(1250));
-        assertThat(VideoDuration.fromFrozenTask(mapper.readTree("""
-                {"durationMs":5000}
-                """))).isEqualTo(Duration.ofSeconds(5));
-    }
-
-    @Test
     void requiresWholeSecondsInNewFrozenTasks() {
         assertThat(VideoDuration.fromFrozenTask(mapper.readTree("""
                 {"schemaVersion":2,"durationSeconds":5}
@@ -30,6 +20,8 @@ class VideoDurationTest {
                 {"schemaVersion":3,"durationSeconds":5}
                 """))).isEqualTo(Duration.ofSeconds(5));
         for (String invalid : new String[] {
+                "{\"schemaVersion\":1,\"durationMs\":1250}",
+                "{\"durationMs\":5000}",
                 "{\"schemaVersion\":2,\"durationSeconds\":1.25}",
                 "{\"schemaVersion\":2,\"durationSeconds\":0}",
                 "{\"schemaVersion\":2,\"durationSeconds\":31}",

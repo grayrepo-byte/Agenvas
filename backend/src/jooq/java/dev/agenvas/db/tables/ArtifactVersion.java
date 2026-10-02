@@ -52,8 +52,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable content revisions. Resource-default and CanvasItem selections only
- * move pointers.
+ * 不可变产物内容、固定输入及生成来源；触发器禁止更新和删除
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
@@ -74,54 +73,59 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
     }
 
     /**
-     * The column <code>public.artifact_version.id</code>.
+     * The column <code>public.artifact_version.id</code>. 记录身份
      */
-    public final TableField<ArtifactVersionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.artifact_version.project_id</code>.
+     * The column <code>public.artifact_version.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<ArtifactVersionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.artifact_version.artifact_id</code>.
+     * The column <code>public.artifact_version.artifact_id</code>. 业务产物身份
      */
-    public final TableField<ArtifactVersionRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "业务产物身份");
 
     /**
      * The column <code>public.artifact_version.version_no</code>.
+     * 产物内部单调递增的不可变内容版本序号
      */
-    public final TableField<ArtifactVersionRecord, Integer> VERSION_NO = createField(DSL.name("version_no"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, Integer> VERSION_NO = createField(DSL.name("version_no"), SQLDataType.INTEGER.nullable(false), this, "产物内部单调递增的不可变内容版本序号");
 
     /**
-     * The column <code>public.artifact_version.schema_version</code>.
+     * The column <code>public.artifact_version.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
-    public final TableField<ArtifactVersionRecord, Integer> SCHEMA_VERSION = createField(DSL.name("schema_version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, Integer> SCHEMA_VERSION = createField(DSL.name("schema_version"), SQLDataType.INTEGER.nullable(false), this, "持久 JSON 内容格式版本");
 
     /**
      * The column <code>public.artifact_version.content_json</code>.
+     * 结构化不可变内容，格式由 schemaVersion 和领域校验限定
      */
-    public final TableField<ArtifactVersionRecord, JSONB> CONTENT_JSON = createField(DSL.name("content_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, JSONB> CONTENT_JSON = createField(DSL.name("content_json"), SQLDataType.JSONB.nullable(false), this, "结构化不可变内容，格式由 schemaVersion 和领域校验限定");
 
     /**
      * The column <code>public.artifact_version.input_refs_json</code>.
+     * 生成时固定的精确输入版本引用
      */
-    public final TableField<ArtifactVersionRecord, JSONB> INPUT_REFS_JSON = createField(DSL.name("input_refs_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, JSONB> INPUT_REFS_JSON = createField(DSL.name("input_refs_json"), SQLDataType.JSONB.nullable(false), this, "生成时固定的精确输入版本引用");
 
     /**
-     * The column <code>public.artifact_version.created_by_kind</code>.
+     * The column <code>public.artifact_version.created_by_kind</code>. 内容创建来源类型
      */
-    public final TableField<ArtifactVersionRecord, String> CREATED_BY_KIND = createField(DSL.name("created_by_kind"), SQLDataType.VARCHAR(32).nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, String> CREATED_BY_KIND = createField(DSL.name("created_by_kind"), SQLDataType.VARCHAR(32).nullable(false), this, "内容创建来源类型");
 
     /**
-     * The column <code>public.artifact_version.run_id</code>.
+     * The column <code>public.artifact_version.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
-    public final TableField<ArtifactVersionRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "");
+    public final TableField<ArtifactVersionRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.artifact_version.created_at</code>.
+     * The column <code>public.artifact_version.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<ArtifactVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ArtifactVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.artifact_version.base_version_id</code>.
@@ -142,7 +146,7 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
     }
 
     private ArtifactVersion(Name alias, Table<ArtifactVersionRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable content revisions. Resource-default and CanvasItem selections only move pointers."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("不可变产物内容、固定输入及生成来源；触发器禁止更新和删除"), TableOptions.table(), where);
     }
 
     /**

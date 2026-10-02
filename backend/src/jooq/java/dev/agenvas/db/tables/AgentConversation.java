@@ -43,8 +43,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Persistent user conversation. Each accepted message starts a separately
- * budgeted AgentRun.
+ * Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentConversation extends TableImpl<AgentConversationRecord> {
@@ -65,51 +64,54 @@ public class AgentConversation extends TableImpl<AgentConversationRecord> {
     }
 
     /**
-     * The column <code>public.agent_conversation.id</code>.
+     * The column <code>public.agent_conversation.id</code>. 记录身份
      */
-    public final TableField<AgentConversationRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentConversationRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.agent_conversation.project_id</code>.
+     * The column <code>public.agent_conversation.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<AgentConversationRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentConversationRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column <code>public.agent_conversation.agent_instance_id</code>.
+     * Agent 卡片配置身份
      */
-    public final TableField<AgentConversationRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentConversationRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID.nullable(false), this, "Agent 卡片配置身份");
 
     /**
-     * The column <code>public.agent_conversation.title</code>.
+     * The column <code>public.agent_conversation.title</code>. 显示标题
      */
-    public final TableField<AgentConversationRecord, String> TITLE = createField(DSL.name("title"), SQLDataType.VARCHAR(160).nullable(false), this, "");
+    public final TableField<AgentConversationRecord, String> TITLE = createField(DSL.name("title"), SQLDataType.VARCHAR(160).nullable(false), this, "显示标题");
 
     /**
-     * The column <code>public.agent_conversation.turn_count</code>.
+     * The column <code>public.agent_conversation.turn_count</code>. 已接受的用户消息轮次数
      */
-    public final TableField<AgentConversationRecord, Long> TURN_COUNT = createField(DSL.name("turn_count"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<AgentConversationRecord, Long> TURN_COUNT = createField(DSL.name("turn_count"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "已接受的用户消息轮次数");
 
     /**
      * The column <code>public.agent_conversation.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<AgentConversationRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<AgentConversationRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.agent_conversation.created_at</code>.
+     * The column <code>public.agent_conversation.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<AgentConversationRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentConversationRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.agent_conversation.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<AgentConversationRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentConversationRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private AgentConversation(Name alias, Table<AgentConversationRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AgentConversation(Name alias, Table<AgentConversationRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Persistent user conversation. Each accepted message starts a separately budgeted AgentRun."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run"), TableOptions.table(), where);
     }
 
     /**

@@ -26,7 +26,7 @@ public class ManualUnknownRetryService {
 
     /** 读取原任务，并通过统一任务规则创建替代媒体任务。 */
     private final TaskService tasks;
-    /** 检查原请求、替代关系和未执行下游依赖。 */
+    /** 检查原请求与替代关系。 */
     private final TaskRepository repository;
     private final MediaCapabilityService mediaCapabilities;
     /** 确认项目仍可执行新尝试。 */
@@ -35,16 +35,16 @@ public class ManualUnknownRetryService {
     private final ArtifactService artifacts;
     /** 新尝试独立预留媒体用量，原 UNKNOWN 费用记录不消失。 */
     private final UsageService usage;
-    /** 与替代关系、依赖重连同事务写入项目事件。 */
+    /** 与替代关系同事务写入项目事件。 */
     private final ProjectEventService events;
     /** 构造不包含任务输入的状态事件负载。 */
     private final ObjectMapper mapper;
     /** 给不可变替代关系记录创建时间。 */
     private final Clock clock;
 
-    /** 组装 UNKNOWN 替代任务创建所需的风险确认、额度与依赖更新能力。
+    /** 组装 UNKNOWN 替代任务创建所需的风险确认与独立用量预留能力。
      * @param tasks 读取和条件推进持久化任务
-     * @param repository 读取原提交尝试与下游依赖
+     * @param repository 读取原提交尝试与替代关系
      * @param mediaCapabilities 确认原媒体能力仍可用
      * @param projects 校验项目仍处于活动状态
      * @param artifacts 确认结果归档目标未被用户更新
@@ -140,14 +140,14 @@ public class ManualUnknownRetryService {
         Task replacement = new Task(UUID.randomUUID(), projectId, null,
                 "retry." + original.id() + "." + (original.attemptNo() + 1),
                 original.kind(), Task.Status.READY, false, original.input().deepCopy(),
-                original.inputHash(), null, original.providerId(), null,
+                original.inputHash(), null, null,
                 original.attemptNo() + 1, now, null, null, 0, 0, null, now, now, null);
-        repository.create(replacement, List.of());
+        repository.create(replacement);
         repository.bindMediaTask(replacement.id(), binding);
         repository.createArtifactTarget(new TaskRepository.ArtifactTarget(replacement.id(),
                 projectId, target.artifactId(), target.expectedCurrentVersionId(),
-                target.expectedArtifactVersion(), null, target.canvasItemId()));
-        usage.reserveMediaTask(ownerId, replacement, "PROVIDER_UNPRICED");
+                target.expectedArtifactVersion(), target.canvasItemId()));
+        usage.reserveMediaTask(ownerId, replacement, "PROVIDER_UNPRICED", binding.connectionVersion());
         repository.createManualReplacement(new TaskRepository.ManualReplacement(projectId,
                 original.id(), replacement.id(), ownerId, expectedTaskVersion,
                 idempotencyKey, now));
@@ -156,7 +156,7 @@ public class ManualUnknownRetryService {
         return replacement;
     }
 
-    /** 对原任务与替代任务沿用状态事件，促使客户端刷新两者及依赖关系。 */
+    /** 对原任务与替代任务沿用状态事件，促使客户端刷新两者。 */
     private ProjectEventService.EventDraft statusEvent(Task task, UUID replacementId) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("taskId", task.id().toString());

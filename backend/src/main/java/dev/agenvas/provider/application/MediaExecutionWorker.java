@@ -20,7 +20,6 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -71,10 +70,9 @@ public class MediaExecutionWorker {
                 tasks.blockPreSubmission(task, workerId, preflightFailure);
                 continue;
             }
-            String origin = adapter.candidateOriginSha256(preflight);
             UUID requestKey;
             try {
-                requestKey = tasks.beginSubmission(task, workerId, origin, binding);
+                requestKey = tasks.beginSubmission(task, workerId, binding);
             } catch (dev.agenvas.shared.error.ApiProblemException problem) {
                 if ("TASK_INPUT_STALE".equals(problem.code())
                         || "TASK_PROJECT_ARCHIVED".equals(problem.code())

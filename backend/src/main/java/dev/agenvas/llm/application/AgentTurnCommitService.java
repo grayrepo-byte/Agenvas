@@ -137,15 +137,16 @@ public class AgentTurnCommitService {
                             run.version(), AgentRun.Status.BLOCKED);
                     return ProjectEventService.Change.unchanged(Decision.LIMIT_REACHED);
                 }
+                // Completing the leased turn and publishing the next READY task share this
+                // transaction and project lock, so no dependency table or pending task is needed.
+                tasks.succeed(lease, workerId, output);
                 if (decision == Decision.CONTINUE) {
                     ObjectNode input = mapper.createObjectNode();
                     input.put("schemaVersion", 1);
                     input.put("stepIndex", stepIndex + 1);
                     tasks.create(ownerId, lease.projectId(), lease.runId(),
-                            "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input,
-                            null, 1, List.of(lease.id()));
+                            "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input, 1);
                 }
-                tasks.succeed(lease, workerId, output);
                 AgentRun advanced = runs.advanceStep(ownerId, lease.projectId(), lease.runId(),
                         run.version(), stepIndex);
                 if (decision == Decision.WAIT) {
@@ -208,13 +209,12 @@ public class AgentTurnCommitService {
             input.put("repairErrorCode", errorCode);
             input.put("repairErrorDetail", errorDetail.substring(0,
                     Math.min(errorDetail.length(), 300)));
-            tasks.create(ownerId, lease.projectId(), lease.runId(),
-                    "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input,
-                    null, 1, List.of(lease.id()));
             ObjectNode output = mapper.createObjectNode();
             output.put("decision", "REPAIR");
             output.put("stepIndex", stepIndex);
             tasks.succeed(lease, workerId, output);
+            tasks.create(ownerId, lease.projectId(), lease.runId(),
+                    "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input, 1);
             runs.advanceStep(ownerId, lease.projectId(), lease.runId(),
                     run.version(), stepIndex);
             return ProjectEventService.Change.unchanged(true);

@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Persistent user conversation. Each accepted message starts a separately
- * budgeted AgentRun.
+ * Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversationRecord> {
@@ -23,28 +22,28 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.agent_conversation.id</code>.
+     * Setter for <code>public.agent_conversation.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.agent_conversation.id</code>.
+     * Getter for <code>public.agent_conversation.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.agent_conversation.project_id</code>.
+     * Setter for <code>public.agent_conversation.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.agent_conversation.project_id</code>.
+     * Getter for <code>public.agent_conversation.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
@@ -52,6 +51,7 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
 
     /**
      * Setter for <code>public.agent_conversation.agent_instance_id</code>.
+     * Agent 卡片配置身份
      */
     public void setAgentInstanceId(UUID value) {
         set(2, value);
@@ -59,34 +59,35 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
 
     /**
      * Getter for <code>public.agent_conversation.agent_instance_id</code>.
+     * Agent 卡片配置身份
      */
     public UUID getAgentInstanceId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.agent_conversation.title</code>.
+     * Setter for <code>public.agent_conversation.title</code>. 显示标题
      */
     public void setTitle(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.agent_conversation.title</code>.
+     * Getter for <code>public.agent_conversation.title</code>. 显示标题
      */
     public String getTitle() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.agent_conversation.turn_count</code>.
+     * Setter for <code>public.agent_conversation.turn_count</code>. 已接受的用户消息轮次数
      */
     public void setTurnCount(Long value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.agent_conversation.turn_count</code>.
+     * Getter for <code>public.agent_conversation.turn_count</code>. 已接受的用户消息轮次数
      */
     public Long getTurnCount() {
         return (Long) get(4);
@@ -94,6 +95,7 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
 
     /**
      * Setter for <code>public.agent_conversation.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(5, value);
@@ -101,20 +103,21 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
 
     /**
      * Getter for <code>public.agent_conversation.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(5);
     }
 
     /**
-     * Setter for <code>public.agent_conversation.created_at</code>.
+     * Setter for <code>public.agent_conversation.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.agent_conversation.created_at</code>.
+     * Getter for <code>public.agent_conversation.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(6);
@@ -122,6 +125,7 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
 
     /**
      * Setter for <code>public.agent_conversation.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(7, value);
@@ -129,6 +133,7 @@ public class AgentConversationRecord extends UpdatableRecordImpl<AgentConversati
 
     /**
      * Getter for <code>public.agent_conversation.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(7);

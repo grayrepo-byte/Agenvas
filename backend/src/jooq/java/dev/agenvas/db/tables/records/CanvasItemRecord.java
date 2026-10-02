@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Spatial card plus card-local work context; Artifact content remains immutable
- * and shared.
+ * 画布空间卡片及卡片独立的标题、版本选择与内容选择 epoch
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
@@ -24,224 +23,228 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.canvas_item.id</code>.
+     * Setter for <code>public.canvas_item.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.id</code>.
+     * Getter for <code>public.canvas_item.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.canvas_item.project_id</code>.
+     * Setter for <code>public.canvas_item.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.project_id</code>.
+     * Getter for <code>public.canvas_item.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.canvas_item.subject_type</code>.
+     * Setter for <code>public.canvas_item.subject_type</code>. 卡片承载 Agent 或
+     * Artifact
      */
     public void setSubjectType(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.subject_type</code>.
+     * Getter for <code>public.canvas_item.subject_type</code>. 卡片承载 Agent 或
+     * Artifact
      */
     public String getSubjectType() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.canvas_item.subject_id</code>.
+     * Setter for <code>public.canvas_item.subject_id</code>. 卡片业务对象身份
      */
     public void setSubjectId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.subject_id</code>.
+     * Getter for <code>public.canvas_item.subject_id</code>. 卡片业务对象身份
      */
     public UUID getSubjectId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.canvas_item.artifact_id</code>.
+     * Setter for <code>public.canvas_item.artifact_id</code>. 业务产物身份
      */
     public void setArtifactId(UUID value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.artifact_id</code>.
+     * Getter for <code>public.canvas_item.artifact_id</code>. 业务产物身份
      */
     public UUID getArtifactId() {
         return (UUID) get(4);
     }
 
     /**
-     * Setter for <code>public.canvas_item.x</code>.
+     * Setter for <code>public.canvas_item.x</code>. 画布水平坐标
      */
     public void setX(BigDecimal value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.x</code>.
+     * Getter for <code>public.canvas_item.x</code>. 画布水平坐标
      */
     public BigDecimal getX() {
         return (BigDecimal) get(5);
     }
 
     /**
-     * Setter for <code>public.canvas_item.y</code>.
+     * Setter for <code>public.canvas_item.y</code>. 画布垂直坐标
      */
     public void setY(BigDecimal value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.y</code>.
+     * Getter for <code>public.canvas_item.y</code>. 画布垂直坐标
      */
     public BigDecimal getY() {
         return (BigDecimal) get(6);
     }
 
     /**
-     * Setter for <code>public.canvas_item.width</code>.
+     * Setter for <code>public.canvas_item.width</code>. 媒体像素宽度或画布卡片宽度
      */
     public void setWidth(BigDecimal value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.width</code>.
+     * Getter for <code>public.canvas_item.width</code>. 媒体像素宽度或画布卡片宽度
      */
     public BigDecimal getWidth() {
         return (BigDecimal) get(7);
     }
 
     /**
-     * Setter for <code>public.canvas_item.height</code>.
+     * Setter for <code>public.canvas_item.height</code>. 媒体像素高度或画布卡片高度
      */
     public void setHeight(BigDecimal value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.height</code>.
+     * Getter for <code>public.canvas_item.height</code>. 媒体像素高度或画布卡片高度
      */
     public BigDecimal getHeight() {
         return (BigDecimal) get(8);
     }
 
     /**
-     * Setter for <code>public.canvas_item.z_index</code>.
+     * Setter for <code>public.canvas_item.z_index</code>. 画布层叠顺序
      */
     public void setZIndex(Integer value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.z_index</code>.
+     * Getter for <code>public.canvas_item.z_index</code>. 画布层叠顺序
      */
     public Integer getZIndex() {
         return (Integer) get(9);
     }
 
     /**
-     * Setter for <code>public.canvas_item.group_id</code>.
+     * Setter for <code>public.canvas_item.group_id</code>. 卡片所属画布分组
      */
     public void setGroupId(UUID value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.group_id</code>.
+     * Getter for <code>public.canvas_item.group_id</code>. 卡片所属画布分组
      */
     public UUID getGroupId() {
         return (UUID) get(10);
     }
 
     /**
-     * Setter for <code>public.canvas_item.locked</code>.
+     * Setter for <code>public.canvas_item.locked</code>. 是否禁止交互修改卡片布局
      */
     public void setLocked(Boolean value) {
         set(11, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.locked</code>.
+     * Getter for <code>public.canvas_item.locked</code>. 是否禁止交互修改卡片布局
      */
     public Boolean getLocked() {
         return (Boolean) get(11);
     }
 
     /**
-     * Setter for <code>public.canvas_item.version</code>.
+     * Setter for <code>public.canvas_item.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(12, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.version</code>.
+     * Getter for <code>public.canvas_item.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(12);
     }
 
     /**
-     * Setter for <code>public.canvas_item.created_at</code>.
+     * Setter for <code>public.canvas_item.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(13, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.created_at</code>.
+     * Getter for <code>public.canvas_item.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(13);
     }
 
     /**
-     * Setter for <code>public.canvas_item.updated_at</code>.
+     * Setter for <code>public.canvas_item.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(14, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.updated_at</code>.
+     * Getter for <code>public.canvas_item.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(14);
     }
 
     /**
-     * Setter for <code>public.canvas_item.agent_instance_id</code>.
+     * Setter for <code>public.canvas_item.agent_instance_id</code>. Agent
+     * 卡片配置身份
      */
     public void setAgentInstanceId(UUID value) {
         set(15, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.agent_instance_id</code>.
+     * Getter for <code>public.canvas_item.agent_instance_id</code>. Agent
+     * 卡片配置身份
      */
     public UUID getAgentInstanceId() {
         return (UUID) get(15);

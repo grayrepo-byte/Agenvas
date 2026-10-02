@@ -11,9 +11,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * System-wide retention for terminal execution history: calls, debug bodies,
- * model rounds, tools and provider attempts. Null keeps forever; business
- * identities/results remain.
+ * 全局调用日志保留期限及配置版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AuditLogRetentionSettingsRecord extends UpdatableRecordImpl<AuditLogRetentionSettingsRecord> {
@@ -21,14 +19,14 @@ public class AuditLogRetentionSettingsRecord extends UpdatableRecordImpl<AuditLo
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.audit_log_retention_settings.id</code>.
+     * Setter for <code>public.audit_log_retention_settings.id</code>. 记录身份
      */
     public void setId(Short value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.audit_log_retention_settings.id</code>.
+     * Getter for <code>public.audit_log_retention_settings.id</code>. 记录身份
      */
     public Short getId() {
         return (Short) get(0);
@@ -37,6 +35,7 @@ public class AuditLogRetentionSettingsRecord extends UpdatableRecordImpl<AuditLo
     /**
      * Setter for
      * <code>public.audit_log_retention_settings.retention_days</code>.
+     * 调用日志保留天数；为空表示永久，清理须管理员显式执行
      */
     public void setRetentionDays(Integer value) {
         set(1, value);
@@ -45,6 +44,7 @@ public class AuditLogRetentionSettingsRecord extends UpdatableRecordImpl<AuditLo
     /**
      * Getter for
      * <code>public.audit_log_retention_settings.retention_days</code>.
+     * 调用日志保留天数；为空表示永久，清理须管理员显式执行
      */
     public Integer getRetentionDays() {
         return (Integer) get(1);
@@ -52,6 +52,7 @@ public class AuditLogRetentionSettingsRecord extends UpdatableRecordImpl<AuditLo
 
     /**
      * Setter for <code>public.audit_log_retention_settings.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Integer value) {
         set(2, value);
@@ -59,6 +60,7 @@ public class AuditLogRetentionSettingsRecord extends UpdatableRecordImpl<AuditLo
 
     /**
      * Getter for <code>public.audit_log_retention_settings.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public Integer getVersion() {
         return (Integer) get(2);

@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Opt-in HTTP bodies and URLs, with credentials and private reasoning removed;
- * never part of project export.
+ * 仅在明确启用调试时保存的已脱敏请求与响应正文
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CallLogDebugRecord extends UpdatableRecordImpl<CallLogDebugRecord> {
@@ -23,42 +22,44 @@ public class CallLogDebugRecord extends UpdatableRecordImpl<CallLogDebugRecord> 
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.call_log_debug.call_id</code>.
+     * Setter for <code>public.call_log_debug.call_id</code>. 对应的公开调用审计记录
      */
     public void setCallId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.call_log_debug.call_id</code>.
+     * Getter for <code>public.call_log_debug.call_id</code>. 对应的公开调用审计记录
      */
     public UUID getCallId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.call_log_debug.schema_version</code>.
+     * Setter for <code>public.call_log_debug.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
     public void setSchemaVersion(Integer value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.call_log_debug.schema_version</code>.
+     * Getter for <code>public.call_log_debug.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
     public Integer getSchemaVersion() {
         return (Integer) get(1);
     }
 
     /**
-     * Setter for <code>public.call_log_debug.exchanges_json</code>.
+     * Setter for <code>public.call_log_debug.exchanges_json</code>. 已脱敏调用交换正文数组
      */
     public void setExchangesJson(JSONB value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.call_log_debug.exchanges_json</code>.
+     * Getter for <code>public.call_log_debug.exchanges_json</code>. 已脱敏调用交换正文数组
      */
     public JSONB getExchangesJson() {
         return (JSONB) get(2);

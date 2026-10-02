@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Persistent CanvasItem-to-CanvasItem topology with the exact source version
- * captured at creation.
+ * 画布卡片关系；输入来源和派生线不代表执行依赖
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
@@ -66,24 +65,26 @@ public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
     }
 
     /**
-     * The column <code>public.canvas_connection.id</code>.
+     * The column <code>public.canvas_connection.id</code>. 记录身份
      */
-    public final TableField<CanvasConnectionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.canvas_connection.project_id</code>.
+     * The column <code>public.canvas_connection.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<CanvasConnectionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column <code>public.canvas_connection.source_canvas_item_id</code>.
+     * 连线起始卡片
      */
-    public final TableField<CanvasConnectionRecord, UUID> SOURCE_CANVAS_ITEM_ID = createField(DSL.name("source_canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, UUID> SOURCE_CANVAS_ITEM_ID = createField(DSL.name("source_canvas_item_id"), SQLDataType.UUID.nullable(false), this, "连线起始卡片");
 
     /**
      * The column <code>public.canvas_connection.target_canvas_item_id</code>.
+     * 连线目标卡片
      */
-    public final TableField<CanvasConnectionRecord, UUID> TARGET_CANVAS_ITEM_ID = createField(DSL.name("target_canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, UUID> TARGET_CANVAS_ITEM_ID = createField(DSL.name("target_canvas_item_id"), SQLDataType.UUID.nullable(false), this, "连线目标卡片");
 
     /**
      * The column <code>public.canvas_connection.relation_type</code>.
@@ -95,30 +96,33 @@ public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
     /**
      * The column
      * <code>public.canvas_connection.source_artifact_version_id</code>.
+     * 连线固定的来源版本
      */
-    public final TableField<CanvasConnectionRecord, UUID> SOURCE_ARTIFACT_VERSION_ID = createField(DSL.name("source_artifact_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, UUID> SOURCE_ARTIFACT_VERSION_ID = createField(DSL.name("source_artifact_version_id"), SQLDataType.UUID.nullable(false), this, "连线固定的来源版本");
 
     /**
      * The column <code>public.canvas_connection.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<CanvasConnectionRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<CanvasConnectionRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.canvas_connection.created_at</code>.
+     * The column <code>public.canvas_connection.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<CanvasConnectionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.canvas_connection.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<CanvasConnectionRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasConnectionRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private CanvasConnection(Name alias, Table<CanvasConnectionRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CanvasConnection(Name alias, Table<CanvasConnectionRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Persistent CanvasItem-to-CanvasItem topology with the exact source version captured at creation."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("画布卡片关系；输入来源和派生线不代表执行依赖"), TableOptions.table(), where);
     }
 
     /**

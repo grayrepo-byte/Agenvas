@@ -40,8 +40,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Consecutive query/download/archive failures for one accepted provider
- * request; never a submission retry.
+ * 外部状态查询的重试计数；查询重试不代表重新提交生成
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskProviderPollRetry extends TableImpl<TaskProviderPollRetryRecord> {
@@ -62,31 +61,34 @@ public class TaskProviderPollRetry extends TableImpl<TaskProviderPollRetryRecord
     }
 
     /**
-     * The column <code>public.task_provider_poll_retry.task_id</code>.
+     * The column <code>public.task_provider_poll_retry.task_id</code>. 持久任务身份
      */
-    public final TableField<TaskProviderPollRetryRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskProviderPollRetryRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "持久任务身份");
 
     /**
      * The column <code>public.task_provider_poll_retry.failure_count</code>.
+     * 连续外部查询失败次数
      */
-    public final TableField<TaskProviderPollRetryRecord, Integer> FAILURE_COUNT = createField(DSL.name("failure_count"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<TaskProviderPollRetryRecord, Integer> FAILURE_COUNT = createField(DSL.name("failure_count"), SQLDataType.INTEGER.nullable(false), this, "连续外部查询失败次数");
 
     /**
      * The column <code>public.task_provider_poll_retry.last_error_code</code>.
+     * 最近外部查询失败的公开错误代码
      */
-    public final TableField<TaskProviderPollRetryRecord, String> LAST_ERROR_CODE = createField(DSL.name("last_error_code"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<TaskProviderPollRetryRecord, String> LAST_ERROR_CODE = createField(DSL.name("last_error_code"), SQLDataType.VARCHAR(120).nullable(false), this, "最近外部查询失败的公开错误代码");
 
     /**
      * The column <code>public.task_provider_poll_retry.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<TaskProviderPollRetryRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<TaskProviderPollRetryRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private TaskProviderPollRetry(Name alias, Table<TaskProviderPollRetryRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private TaskProviderPollRetry(Name alias, Table<TaskProviderPollRetryRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Consecutive query/download/archive failures for one accepted provider request; never a submission retry."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("外部状态查询的重试计数；查询重试不代表重新提交生成"), TableOptions.table(), where);
     }
 
     /**

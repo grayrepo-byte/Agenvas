@@ -136,7 +136,7 @@ describe("ProjectWorkspacePage", () => {
         const now = "2026-09-30T00:00:00Z";
         const agent: Agent = { ...input, id: "audio-agent", projectId: "project-1", profileKey: "creator", profileVersion: 1,
           outputGroupId: "audio-output", version: 0, createdAt: now, updatedAt: now,
-          bindings: input.bindings.map((binding) => ({ ...binding, id: "audio-binding", bindingType: "INPUT" })) };
+          bindings: input.bindings.map((binding) => ({ ...binding, id: "audio-binding" })) };
         agents = [agent];
         return HttpResponse.json(agent, { status: 201 });
       }),
@@ -1247,7 +1247,6 @@ describe("ProjectWorkspacePage", () => {
             id: bindingId,
             artifactId,
             selectedVersionId: versionId,
-            bindingType: "INPUT",
           },
         ],
       };
@@ -1321,7 +1320,7 @@ describe("ProjectWorkspacePage", () => {
     const versionId = crypto.randomUUID();
     const selectedVersion = {
       id: versionId, versionNo: 1, schemaVersion: 1,
-      content: { assetId, prompt: "Ridge sunrise", providerConfigVersion: 1,
+      content: { assetId, prompt: "Ridge sunrise",
         workflowVersion: "mock-image-v1", sourceTaskId: crypto.randomUUID(),
         parameters: { mock: true, displayLabel: "演示素材" } },
       inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
@@ -1373,7 +1372,7 @@ describe("ProjectWorkspacePage", () => {
     const versionId = crypto.randomUUID();
     const selectedVersion = {
       id: versionId, versionNo: 1, schemaVersion: 1,
-      content: { assetId, prompt: "Coffee", providerConfigVersion: 1,
+      content: { assetId, prompt: "Coffee",
         workflowVersion: "mock-video-v1", sourceTaskId: crypto.randomUUID(),
         parameters: { mock: true } },
       inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),

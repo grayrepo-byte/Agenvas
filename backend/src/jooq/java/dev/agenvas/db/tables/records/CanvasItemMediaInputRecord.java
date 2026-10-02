@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Deduplicated exact media versions; dynamicValues maps named capability slots
- * to these version identities.
+ * 媒体卡片显式选取的精确输入版本、角色、顺序和显示颜色
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMediaInputRecord> {
@@ -24,6 +23,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Setter for <code>public.canvas_item_media_input.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
@@ -31,6 +31,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Getter for <code>public.canvas_item_media_input.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
@@ -38,6 +39,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Setter for <code>public.canvas_item_media_input.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
     public void setCanvasItemId(UUID value) {
         set(1, value);
@@ -45,6 +47,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Getter for <code>public.canvas_item_media_input.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
     public UUID getCanvasItemId() {
         return (UUID) get(1);
@@ -53,6 +56,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
     /**
      * Setter for
      * <code>public.canvas_item_media_input.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
     public void setArtifactVersionId(UUID value) {
         set(2, value);
@@ -61,20 +65,21 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
     /**
      * Getter for
      * <code>public.canvas_item_media_input.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
     public UUID getArtifactVersionId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.canvas_item_media_input.input_role</code>.
+     * Setter for <code>public.canvas_item_media_input.input_role</code>. 媒体输入角色
      */
     public void setInputRole(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item_media_input.input_role</code>.
+     * Getter for <code>public.canvas_item_media_input.input_role</code>. 媒体输入角色
      */
     public String getInputRole() {
         return (String) get(3);
@@ -82,6 +87,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Setter for <code>public.canvas_item_media_input.input_order</code>.
+     * 同角色媒体输入顺序
      */
     public void setInputOrder(Integer value) {
         set(4, value);
@@ -89,6 +95,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Getter for <code>public.canvas_item_media_input.input_order</code>.
+     * 同角色媒体输入顺序
      */
     public Integer getInputOrder() {
         return (Integer) get(4);
@@ -96,6 +103,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Setter for <code>public.canvas_item_media_input.color</code>.
+     * 媒体输入来源连线的显示颜色
      */
     public void setColor(String value) {
         set(5, value);
@@ -103,6 +111,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Getter for <code>public.canvas_item_media_input.color</code>.
+     * 媒体输入来源连线的显示颜色
      */
     public String getColor() {
         return (String) get(5);
@@ -110,6 +119,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Setter for <code>public.canvas_item_media_input.created_at</code>.
+     * 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(6, value);
@@ -117,6 +127,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Getter for <code>public.canvas_item_media_input.created_at</code>.
+     * 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(6);
@@ -124,6 +135,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Setter for <code>public.canvas_item_media_input.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(7, value);
@@ -131,6 +143,7 @@ public class CanvasItemMediaInputRecord extends UpdatableRecordImpl<CanvasItemMe
 
     /**
      * Getter for <code>public.canvas_item_media_input.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(7);

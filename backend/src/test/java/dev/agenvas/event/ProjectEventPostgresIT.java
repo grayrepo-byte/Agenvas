@@ -144,9 +144,7 @@ class ProjectEventPostgresIT {
                 "snapshot-task",
                 Task.Kind.AGENT_TURN,
                 objectMapper.readTree("{\"step\":\"snapshot\"}"),
-                null,
-                1,
-                List.of());
+                1);
         ProjectSnapshotService.ProjectSnapshot snapshot =
                 snapshotService.snapshot(owner.userId(), project.id());
         assertThat(snapshot.snapshotSeq()).isEqualTo(CONCURRENT_EVENTS + 5L);

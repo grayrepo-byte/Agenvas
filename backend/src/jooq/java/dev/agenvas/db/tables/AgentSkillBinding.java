@@ -40,7 +40,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Agent-only fixed version selection; no media node execution binding
+ * Agent 选定的 Skill 不可变版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
@@ -61,41 +61,43 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
     }
 
     /**
-     * The column <code>public.agent_skill_binding.agent_id</code>.
+     * The column <code>public.agent_skill_binding.agent_id</code>. Agent 卡片身份
      */
-    public final TableField<AgentSkillBindingRecord, UUID> AGENT_ID = createField(DSL.name("agent_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentSkillBindingRecord, UUID> AGENT_ID = createField(DSL.name("agent_id"), SQLDataType.UUID.nullable(false), this, "Agent 卡片身份");
 
     /**
-     * The column <code>public.agent_skill_binding.project_id</code>.
+     * The column <code>public.agent_skill_binding.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<AgentSkillBindingRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentSkillBindingRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.agent_skill_binding.owner_id</code>.
+     * The column <code>public.agent_skill_binding.owner_id</code>. 所属用户及授权作用域
      */
-    public final TableField<AgentSkillBindingRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentSkillBindingRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
-     * The column <code>public.agent_skill_binding.skill_id</code>.
+     * The column <code>public.agent_skill_binding.skill_id</code>. Skill 业务身份
      */
-    public final TableField<AgentSkillBindingRecord, UUID> SKILL_ID = createField(DSL.name("skill_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentSkillBindingRecord, UUID> SKILL_ID = createField(DSL.name("skill_id"), SQLDataType.UUID.nullable(false), this, "Skill 业务身份");
 
     /**
      * The column <code>public.agent_skill_binding.skill_version_id</code>.
+     * 固定的不可变 Skill 发布版本
      */
-    public final TableField<AgentSkillBindingRecord, UUID> SKILL_VERSION_ID = createField(DSL.name("skill_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentSkillBindingRecord, UUID> SKILL_VERSION_ID = createField(DSL.name("skill_version_id"), SQLDataType.UUID.nullable(false), this, "固定的不可变 Skill 发布版本");
 
     /**
      * The column <code>public.agent_skill_binding.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<AgentSkillBindingRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentSkillBindingRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private AgentSkillBinding(Name alias, Table<AgentSkillBindingRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AgentSkillBinding(Name alias, Table<AgentSkillBindingRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Agent-only fixed version selection; no media node execution binding"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Agent 选定的 Skill 不可变版本"), TableOptions.table(), where);
     }
 
     /**

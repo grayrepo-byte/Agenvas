@@ -46,8 +46,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable, idempotent usage entries; unknown external cost is NULL, never a
- * fabricated zero.
+ * 使用量预留、结算与释放账本，记录估算或实际费用来源
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class UsageLedger extends TableImpl<UsageLedgerRecord> {
@@ -68,91 +67,94 @@ public class UsageLedger extends TableImpl<UsageLedgerRecord> {
     }
 
     /**
-     * The column <code>public.usage_ledger.id</code>.
+     * The column <code>public.usage_ledger.id</code>. 记录身份
      */
-    public final TableField<UsageLedgerRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.usage_ledger.project_id</code>.
+     * The column <code>public.usage_ledger.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<UsageLedgerRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.usage_ledger.run_id</code>.
+     * The column <code>public.usage_ledger.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
-    public final TableField<UsageLedgerRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "");
+    public final TableField<UsageLedgerRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.usage_ledger.task_id</code>.
+     * The column <code>public.usage_ledger.task_id</code>. 持久任务身份
      */
-    public final TableField<UsageLedgerRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "");
+    public final TableField<UsageLedgerRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "持久任务身份");
 
     /**
-     * The column <code>public.usage_ledger.operation_key</code>.
+     * The column <code>public.usage_ledger.operation_key</code>. 使用量账本的业务操作去重键
      */
-    public final TableField<UsageLedgerRecord, String> OPERATION_KEY = createField(DSL.name("operation_key"), SQLDataType.VARCHAR(180).nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, String> OPERATION_KEY = createField(DSL.name("operation_key"), SQLDataType.VARCHAR(180).nullable(false), this, "使用量账本的业务操作去重键");
 
     /**
-     * The column <code>public.usage_ledger.entry_type</code>.
+     * The column <code>public.usage_ledger.entry_type</code>. 使用量预留、结算或释放类型
      */
-    public final TableField<UsageLedgerRecord, String> ENTRY_TYPE = createField(DSL.name("entry_type"), SQLDataType.VARCHAR(24).nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, String> ENTRY_TYPE = createField(DSL.name("entry_type"), SQLDataType.VARCHAR(24).nullable(false), this, "使用量预留、结算或释放类型");
 
     /**
-     * The column <code>public.usage_ledger.quantity_json</code>.
+     * The column <code>public.usage_ledger.quantity_json</code>. 图片、视频、音频与 LLM
+     * 使用量明细
      */
-    public final TableField<UsageLedgerRecord, JSONB> QUANTITY_JSON = createField(DSL.name("quantity_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, JSONB> QUANTITY_JSON = createField(DSL.name("quantity_json"), SQLDataType.JSONB.nullable(false), this, "图片、视频、音频与 LLM 使用量明细");
 
     /**
-     * The column <code>public.usage_ledger.estimated_cost</code>.
+     * The column <code>public.usage_ledger.estimated_cost</code>. 受理时估算费用；未知时为空
      */
-    public final TableField<UsageLedgerRecord, BigDecimal> ESTIMATED_COST = createField(DSL.name("estimated_cost"), SQLDataType.NUMERIC(18, 6), this, "");
+    public final TableField<UsageLedgerRecord, BigDecimal> ESTIMATED_COST = createField(DSL.name("estimated_cost"), SQLDataType.NUMERIC(18, 6), this, "受理时估算费用；未知时为空");
 
     /**
-     * The column <code>public.usage_ledger.actual_cost</code>.
+     * The column <code>public.usage_ledger.actual_cost</code>. 实际确认费用；未知时为空
      */
-    public final TableField<UsageLedgerRecord, BigDecimal> ACTUAL_COST = createField(DSL.name("actual_cost"), SQLDataType.NUMERIC(18, 6), this, "");
+    public final TableField<UsageLedgerRecord, BigDecimal> ACTUAL_COST = createField(DSL.name("actual_cost"), SQLDataType.NUMERIC(18, 6), this, "实际确认费用；未知时为空");
 
     /**
-     * The column <code>public.usage_ledger.currency</code>.
+     * The column <code>public.usage_ledger.currency</code>. 费用币种代码
      */
-    public final TableField<UsageLedgerRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CHAR(3), this, "");
+    public final TableField<UsageLedgerRecord, String> CURRENCY = createField(DSL.name("currency"), SQLDataType.CHAR(3), this, "费用币种代码");
 
     /**
-     * The column <code>public.usage_ledger.cost_status</code>.
+     * The column <code>public.usage_ledger.cost_status</code>. 费用已知、估算或未知状态
      */
-    public final TableField<UsageLedgerRecord, String> COST_STATUS = createField(DSL.name("cost_status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, String> COST_STATUS = createField(DSL.name("cost_status"), SQLDataType.VARCHAR(16).nullable(false), this, "费用已知、估算或未知状态");
 
     /**
-     * The column <code>public.usage_ledger.cost_source</code>.
+     * The column <code>public.usage_ledger.cost_source</code>. 计费数据来源
      */
-    public final TableField<UsageLedgerRecord, String> COST_SOURCE = createField(DSL.name("cost_source"), SQLDataType.VARCHAR(80).nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, String> COST_SOURCE = createField(DSL.name("cost_source"), SQLDataType.VARCHAR(80).nullable(false), this, "计费数据来源");
 
     /**
-     * The column <code>public.usage_ledger.provider_config_version</code>.
+     * The column <code>public.usage_ledger.provider_config_version</code>. 实际
+     * LLM 或媒体连接配置版本审计
      */
-    public final TableField<UsageLedgerRecord, Integer> PROVIDER_CONFIG_VERSION = createField(DSL.name("provider_config_version"), SQLDataType.INTEGER, this, "");
+    public final TableField<UsageLedgerRecord, Integer> PROVIDER_CONFIG_VERSION = createField(DSL.name("provider_config_version"), SQLDataType.INTEGER, this, "实际 LLM 或媒体连接配置版本审计");
 
     /**
      * The column <code>public.usage_ledger.workflow_version</code>.
+     * 固定工作流或适配器映射版本
      */
-    public final TableField<UsageLedgerRecord, String> WORKFLOW_VERSION = createField(DSL.name("workflow_version"), SQLDataType.VARCHAR(120), this, "");
+    public final TableField<UsageLedgerRecord, String> WORKFLOW_VERSION = createField(DSL.name("workflow_version"), SQLDataType.VARCHAR(120), this, "固定工作流或适配器映射版本");
 
     /**
-     * The column <code>public.usage_ledger.model_id</code>.
+     * The column <code>public.usage_ledger.model_id</code>. 实际使用的模型标识
      */
-    public final TableField<UsageLedgerRecord, String> MODEL_ID = createField(DSL.name("model_id"), SQLDataType.VARCHAR(160), this, "");
+    public final TableField<UsageLedgerRecord, String> MODEL_ID = createField(DSL.name("model_id"), SQLDataType.VARCHAR(160), this, "实际使用的模型标识");
 
     /**
-     * The column <code>public.usage_ledger.created_at</code>.
+     * The column <code>public.usage_ledger.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<UsageLedgerRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<UsageLedgerRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private UsageLedger(Name alias, Table<UsageLedgerRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private UsageLedger(Name alias, Table<UsageLedgerRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable, idempotent usage entries; unknown external cost is NULL, never a fabricated zero."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("使用量预留、结算与释放账本，记录估算或实际费用来源"), TableOptions.table(), where);
     }
 
     /**

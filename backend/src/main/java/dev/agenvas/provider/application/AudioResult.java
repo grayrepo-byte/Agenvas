@@ -10,7 +10,6 @@ final class AudioResult {
     static ObjectNode content(ObjectMapper mapper, Task task, String assetId, boolean mock) {
         ObjectNode content = mapper.createObjectNode().put("assetId", assetId)
                 .put("prompt", task.input().path("prompt").asText())
-                .put("providerConfigVersion", task.input().path("providerConfigVersion").asInt())
                 .put("workflowVersion", task.input().path("workflowVersion").asText())
                 .put("sourceTaskId", task.id().toString());
         ObjectNode parameters = (ObjectNode) task.input().path("mediaInput").path("parameters").deepCopy();

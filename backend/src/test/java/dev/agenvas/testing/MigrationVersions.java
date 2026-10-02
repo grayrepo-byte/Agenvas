@@ -17,7 +17,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
  */
 public final class MigrationVersions {
 
-    /** {@code V44__media_card_display.sql} captures {@code 44}. */
+    /** {@code V1__initial_schema.sql} captures {@code 1}. */
     private static final Pattern FILENAME = Pattern.compile("V(\\d+(?:\\.\\d+)*)__.*\\.sql");
 
     private MigrationVersions() {}

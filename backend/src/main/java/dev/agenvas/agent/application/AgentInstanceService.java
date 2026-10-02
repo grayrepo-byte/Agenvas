@@ -260,7 +260,7 @@ public class AgentInstanceService {
         }
         List<AgentInstance.Binding> bindings = new java.util.ArrayList<>(current.bindings());
         bindings.add(new AgentInstance.Binding(UUID.randomUUID(), artifactId, versionId,
-                AgentInstance.BindingType.INPUT, clock.instant()));
+                clock.instant()));
         return replaceBindingsWithinChange(ownerId, current, bindings);
     }
 
@@ -332,7 +332,6 @@ public class AgentInstanceService {
                             UUID.randomUUID(),
                             input.artifactId(),
                             input.selectedVersionId(),
-                            AgentInstance.BindingType.INPUT,
                             now);
                 })
                 .toList();

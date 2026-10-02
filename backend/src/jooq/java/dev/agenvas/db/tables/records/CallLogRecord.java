@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Safe metadata for individual adapter invocations; no bodies, endpoints or
- * credentials.
+ * Provider 调用公开审计元数据，不包含凭据或模型私有推理
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
@@ -23,154 +22,154 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.call_log.id</code>.
+     * Setter for <code>public.call_log.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.call_log.id</code>.
+     * Getter for <code>public.call_log.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.call_log.project_id</code>.
+     * Setter for <code>public.call_log.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.call_log.project_id</code>.
+     * Getter for <code>public.call_log.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.call_log.task_id</code>.
+     * Setter for <code>public.call_log.task_id</code>. 持久任务身份
      */
     public void setTaskId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.call_log.task_id</code>.
+     * Getter for <code>public.call_log.task_id</code>. 持久任务身份
      */
     public UUID getTaskId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.call_log.run_id</code>.
+     * Setter for <code>public.call_log.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
     public void setRunId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.call_log.run_id</code>.
+     * Getter for <code>public.call_log.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.call_log.step_index</code>.
+     * Setter for <code>public.call_log.step_index</code>. Run 内模型回合序号
      */
     public void setStepIndex(Integer value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.call_log.step_index</code>.
+     * Getter for <code>public.call_log.step_index</code>. Run 内模型回合序号
      */
     public Integer getStepIndex() {
         return (Integer) get(4);
     }
 
     /**
-     * Setter for <code>public.call_log.kind</code>.
+     * Setter for <code>public.call_log.kind</code>. 业务类型，允许值由 CHECK 约束限定
      */
     public void setKind(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.call_log.kind</code>.
+     * Getter for <code>public.call_log.kind</code>. 业务类型，允许值由 CHECK 约束限定
      */
     public String getKind() {
         return (String) get(5);
     }
 
     /**
-     * Setter for <code>public.call_log.operation</code>.
+     * Setter for <code>public.call_log.operation</code>. 本次调用执行的操作名称
      */
     public void setOperation(String value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.call_log.operation</code>.
+     * Getter for <code>public.call_log.operation</code>. 本次调用执行的操作名称
      */
     public String getOperation() {
         return (String) get(6);
     }
 
     /**
-     * Setter for <code>public.call_log.status</code>.
+     * Setter for <code>public.call_log.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public void setStatus(String value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.call_log.status</code>.
+     * Getter for <code>public.call_log.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public String getStatus() {
         return (String) get(7);
     }
 
     /**
-     * Setter for <code>public.call_log.provider</code>.
+     * Setter for <code>public.call_log.provider</code>. Provider 或存储实现类型
      */
     public void setProvider(String value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.call_log.provider</code>.
+     * Getter for <code>public.call_log.provider</code>. Provider 或存储实现类型
      */
     public String getProvider() {
         return (String) get(8);
     }
 
     /**
-     * Setter for <code>public.call_log.model</code>.
+     * Setter for <code>public.call_log.model</code>. 本次调用的模型标识
      */
     public void setModel(String value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.call_log.model</code>.
+     * Getter for <code>public.call_log.model</code>. 本次调用的模型标识
      */
     public String getModel() {
         return (String) get(9);
     }
 
     /**
-     * Setter for <code>public.call_log.trace_id</code>.
+     * Setter for <code>public.call_log.trace_id</code>. 调用链关联标识
      */
     public void setTraceId(String value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.call_log.trace_id</code>.
+     * Getter for <code>public.call_log.trace_id</code>. 调用链关联标识
      */
     public String getTraceId() {
         return (String) get(10);
@@ -178,6 +177,7 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
 
     /**
      * Setter for <code>public.call_log.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
     public void setProviderRequestId(String value) {
         set(11, value);
@@ -185,76 +185,77 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
 
     /**
      * Getter for <code>public.call_log.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
     public String getProviderRequestId() {
         return (String) get(11);
     }
 
     /**
-     * Setter for <code>public.call_log.error_code</code>.
+     * Setter for <code>public.call_log.error_code</code>. 稳定错误代码，不含堆栈或凭据
      */
     public void setErrorCode(String value) {
         set(12, value);
     }
 
     /**
-     * Getter for <code>public.call_log.error_code</code>.
+     * Getter for <code>public.call_log.error_code</code>. 稳定错误代码，不含堆栈或凭据
      */
     public String getErrorCode() {
         return (String) get(12);
     }
 
     /**
-     * Setter for <code>public.call_log.started_at</code>.
+     * Setter for <code>public.call_log.started_at</code>. 调用开始时间
      */
     public void setStartedAt(OffsetDateTime value) {
         set(13, value);
     }
 
     /**
-     * Getter for <code>public.call_log.started_at</code>.
+     * Getter for <code>public.call_log.started_at</code>. 调用开始时间
      */
     public OffsetDateTime getStartedAt() {
         return (OffsetDateTime) get(13);
     }
 
     /**
-     * Setter for <code>public.call_log.responded_at</code>.
+     * Setter for <code>public.call_log.responded_at</code>. 完整响应持久化时间
      */
     public void setRespondedAt(OffsetDateTime value) {
         set(14, value);
     }
 
     /**
-     * Getter for <code>public.call_log.responded_at</code>.
+     * Getter for <code>public.call_log.responded_at</code>. 完整响应持久化时间
      */
     public OffsetDateTime getRespondedAt() {
         return (OffsetDateTime) get(14);
     }
 
     /**
-     * Setter for <code>public.call_log.duration_ms</code>.
+     * Setter for <code>public.call_log.duration_ms</code>. 媒体或调用持续时间，单位毫秒
      */
     public void setDurationMs(Long value) {
         set(15, value);
     }
 
     /**
-     * Getter for <code>public.call_log.duration_ms</code>.
+     * Getter for <code>public.call_log.duration_ms</code>. 媒体或调用持续时间，单位毫秒
      */
     public Long getDurationMs() {
         return (Long) get(15);
     }
 
     /**
-     * Setter for <code>public.call_log.mock</code>.
+     * Setter for <code>public.call_log.mock</code>. 明确标记演示调用，不证明真实 Provider 已接通
      */
     public void setMock(Boolean value) {
         set(16, value);
     }
 
     /**
-     * Getter for <code>public.call_log.mock</code>.
+     * Getter for <code>public.call_log.mock</code>. 明确标记演示调用，不证明真实 Provider 已接通
      */
     public Boolean getMock() {
         return (Boolean) get(16);

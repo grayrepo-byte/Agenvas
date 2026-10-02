@@ -70,8 +70,6 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=call-log-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mock.scheduler-enabled=false",
-        "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class CallLogPostgresIT {
@@ -220,7 +218,7 @@ class CallLogPostgresIT {
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 PRIVATE_MARKER, "legacy-audit-run").run();
         Task task = tasks.create(owner.userId(), project.id(), run.id(),
-                "legacy-media", Task.Kind.IMAGE_GENERATION, privatePayload(), null, 1, List.of());
+                "legacy-media", Task.Kind.IMAGE_GENERATION, privatePayload(), 1);
         jdbc.sql("update task set status='UNKNOWN', error_code='PROVIDER_SUBMISSION_UNKNOWN' where id=:id")
                 .param("id", task.id()).update();
         UUID attemptId = UUID.randomUUID();
@@ -527,7 +525,7 @@ class CallLogPostgresIT {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class,
-            names = {"PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
+            names = {"READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
     void stopsAndPurgesEveryExpiredNonterminalRunTaskWithWorkerFencing(Task.Status state) throws Exception {
         Instant now = Instant.parse("2026-10-01T00:00:00Z");
         Instant old = now.minus(Duration.ofDays(31));
@@ -571,7 +569,7 @@ class CallLogPostgresIT {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class,
-            names = {"PENDING", "READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
+            names = {"READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
     void alsoStopsExpiredStandaloneTasksInEveryNonterminalState(Task.Status state) {
         Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
         Project project = newProject("Expired direct " + state);
@@ -579,7 +577,7 @@ class CallLogPostgresIT {
         UUID task = taskForCall(call);
         terminalHistory(project, task, old);
         makeUnfinished(project, state, old, now);
-        jdbc.sql("update task set run_id=null,origin='USER_DIRECT' where id=:id").param("id", task).update();
+        jdbc.sql("update task set run_id=null where id=:id").param("id", task).update();
         jdbc.sql("update call_log set run_id=null,status='RUNNING',responded_at=null,duration_ms=null where id=:id").param("id", call).update();
         // The parent run remains recent; only its detached direct task is eligible.
         jdbc.sql("update agent_run set updated_at=:time where id=:id").param("time", Timestamp.from(now))
@@ -627,7 +625,6 @@ class CallLogPostgresIT {
         Project project = newProject("Expired run " + state);
         UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
         terminalHistory(project, taskForCall(call), old);
-        makeUnfinished(project, Task.Status.PENDING, old, now);
         jdbc.sql("update agent_run set status=:status where id=:id").param("status", state.name()).param("id", fixtureRun(project).id()).update();
         retention.update(30, retention.settings().version());
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
@@ -702,7 +699,7 @@ class CallLogPostgresIT {
         UUID directCall = insertCall(direct, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, old, null);
         UUID directTask = taskForCall(directCall);
         jdbc.sql("update call_log set run_id=null where id=:id").param("id", directCall).update();
-        jdbc.sql("update task set run_id=null,origin='USER_DIRECT',status='SUCCEEDED',completed_at=:time,updated_at=:time where id=:id")
+        jdbc.sql("update task set run_id=null,status='SUCCEEDED',completed_at=:time,updated_at=:time where id=:id")
                 .param("time", Timestamp.from(old)).param("id", directTask).update();
         retention.update(30, retention.settings().version());
         assertThat(auditRepository.purgeExpired(now, 2, retention.settings().version())).isEqualTo(2);
@@ -861,7 +858,7 @@ class CallLogPostgresIT {
     private Task newTask(Project project, CallLog.Kind kind) {
         Task.Kind taskKind = kind == CallLog.Kind.IMAGE ? Task.Kind.IMAGE_GENERATION : Task.Kind.VIDEO_GENERATION;
         return tasks.create(project.ownerId(), project.id(), fixtureRun(project).id(),
-                "audit-" + UUID.randomUUID(), taskKind, privatePayload(), null, 1, List.of());
+                "audit-" + UUID.randomUUID(), taskKind, privatePayload(), 1);
     }
 
     private JsonNode privatePayload() {

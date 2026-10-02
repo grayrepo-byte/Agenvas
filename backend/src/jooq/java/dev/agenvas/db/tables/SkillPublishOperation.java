@@ -45,7 +45,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Durable fenced local archival; no model or Provider execution
+ * Skill 发布操作、素材归档进度、租约及临时引用清理
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class SkillPublishOperation extends TableImpl<SkillPublishOperationRecord> {
@@ -66,91 +66,106 @@ public class SkillPublishOperation extends TableImpl<SkillPublishOperationRecord
     }
 
     /**
-     * The column <code>public.skill_publish_operation.id</code>.
+     * The column <code>public.skill_publish_operation.id</code>. 记录身份
      */
-    public final TableField<SkillPublishOperationRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
      * The column <code>public.skill_publish_operation.owner_id</code>.
+     * 所属用户及授权作用域
      */
-    public final TableField<SkillPublishOperationRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
-     * The column <code>public.skill_publish_operation.skill_id</code>.
+     * The column <code>public.skill_publish_operation.skill_id</code>. Skill
+     * 业务身份
      */
-    public final TableField<SkillPublishOperationRecord, UUID> SKILL_ID = createField(DSL.name("skill_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, UUID> SKILL_ID = createField(DSL.name("skill_id"), SQLDataType.UUID.nullable(false), this, "Skill 业务身份");
 
     /**
      * The column <code>public.skill_publish_operation.command_key</code>.
+     * 用户命令幂等键
      */
-    public final TableField<SkillPublishOperationRecord, String> COMMAND_KEY = createField(DSL.name("command_key"), SQLDataType.VARCHAR(200).nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, String> COMMAND_KEY = createField(DSL.name("command_key"), SQLDataType.VARCHAR(200).nullable(false), this, "用户命令幂等键");
 
     /**
      * The column <code>public.skill_publish_operation.payload_hash</code>.
+     * 规范化命令载荷 SHA-256 摘要
      */
-    public final TableField<SkillPublishOperationRecord, String> PAYLOAD_HASH = createField(DSL.name("payload_hash"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, String> PAYLOAD_HASH = createField(DSL.name("payload_hash"), SQLDataType.CHAR(64).nullable(false), this, "规范化命令载荷 SHA-256 摘要");
 
     /**
      * The column <code>public.skill_publish_operation.input_json</code>.
+     * 受理时固定的命令输入
      */
-    public final TableField<SkillPublishOperationRecord, JSONB> INPUT_JSON = createField(DSL.name("input_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, JSONB> INPUT_JSON = createField(DSL.name("input_json"), SQLDataType.JSONB.nullable(false), this, "受理时固定的命令输入");
 
     /**
      * The column <code>public.skill_publish_operation.progress_json</code>.
+     * 发布素材归档的持久进度
      */
-    public final TableField<SkillPublishOperationRecord, JSONB> PROGRESS_JSON = createField(DSL.name("progress_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
+    public final TableField<SkillPublishOperationRecord, JSONB> PROGRESS_JSON = createField(DSL.name("progress_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "发布素材归档的持久进度");
 
     /**
-     * The column <code>public.skill_publish_operation.status</code>.
+     * The column <code>public.skill_publish_operation.status</code>. 持久状态，允许值由
+     * CHECK 约束限定
      */
-    public final TableField<SkillPublishOperationRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.skill_publish_operation.epoch</code>.
+     * The column <code>public.skill_publish_operation.epoch</code>. 操作租约的
+     * fencing epoch，旧执行者不得回写
      */
-    public final TableField<SkillPublishOperationRecord, Long> EPOCH = createField(DSL.name("epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<SkillPublishOperationRecord, Long> EPOCH = createField(DSL.name("epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "操作租约的 fencing epoch，旧执行者不得回写");
 
     /**
      * The column <code>public.skill_publish_operation.lease_until</code>.
+     * 当前认领租约过期时间
      */
-    public final TableField<SkillPublishOperationRecord, OffsetDateTime> LEASE_UNTIL = createField(DSL.name("lease_until"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<SkillPublishOperationRecord, OffsetDateTime> LEASE_UNTIL = createField(DSL.name("lease_until"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "当前认领租约过期时间");
 
     /**
      * The column <code>public.skill_publish_operation.result_version_id</code>.
+     * 发布完成的不可变 Skill 版本
      */
-    public final TableField<SkillPublishOperationRecord, UUID> RESULT_VERSION_ID = createField(DSL.name("result_version_id"), SQLDataType.UUID, this, "");
+    public final TableField<SkillPublishOperationRecord, UUID> RESULT_VERSION_ID = createField(DSL.name("result_version_id"), SQLDataType.UUID, this, "发布完成的不可变 Skill 版本");
 
     /**
      * The column <code>public.skill_publish_operation.error_code</code>.
+     * 稳定错误代码，不含堆栈或凭据
      */
-    public final TableField<SkillPublishOperationRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(80), this, "");
+    public final TableField<SkillPublishOperationRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(80), this, "稳定错误代码，不含堆栈或凭据");
 
     /**
      * The column <code>public.skill_publish_operation.error_detail</code>.
+     * 已脱敏的公开错误说明
      */
-    public final TableField<SkillPublishOperationRecord, String> ERROR_DETAIL = createField(DSL.name("error_detail"), SQLDataType.VARCHAR(500), this, "");
+    public final TableField<SkillPublishOperationRecord, String> ERROR_DETAIL = createField(DSL.name("error_detail"), SQLDataType.VARCHAR(500), this, "已脱敏的公开错误说明");
 
     /**
      * The column <code>public.skill_publish_operation.pins_cleaned</code>.
+     * 发布操作临时素材引用已清理
      */
-    public final TableField<SkillPublishOperationRecord, Boolean> PINS_CLEANED = createField(DSL.name("pins_cleaned"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<SkillPublishOperationRecord, Boolean> PINS_CLEANED = createField(DSL.name("pins_cleaned"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "发布操作临时素材引用已清理");
 
     /**
      * The column <code>public.skill_publish_operation.created_at</code>.
+     * 创建时间（UTC）
      */
-    public final TableField<SkillPublishOperationRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.skill_publish_operation.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<SkillPublishOperationRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<SkillPublishOperationRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private SkillPublishOperation(Name alias, Table<SkillPublishOperationRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private SkillPublishOperation(Name alias, Table<SkillPublishOperationRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Durable fenced local archival; no model or Provider execution"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Skill 发布操作、素材归档进度、租约及临时引用清理"), TableOptions.table(), where);
     }
 
     /**

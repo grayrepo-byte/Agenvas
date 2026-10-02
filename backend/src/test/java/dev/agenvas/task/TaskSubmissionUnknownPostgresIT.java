@@ -57,6 +57,8 @@ class TaskSubmissionUnknownPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
@@ -83,9 +85,7 @@ class TaskSubmissionUnknownPostgresIT {
                 AgentRun.Status.RUNNING);
         ObjectNode input = mapper.createObjectNode();
         input.put("prompt", "Cinematic coffee pour");
-        input.put("providerConfigVersion", 1);
-        Task media = tasks.createMediaTask(owner.userId(), project.id(), run.id(), "frame-1",
-                Task.Kind.IMAGE_GENERATION, input, null, 1, List.of(), card.artifact().id());
+        Task media = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "frame-1", Task.Kind.IMAGE_GENERATION, input, card.artifact().id());
         // Run 自带的 AGENT_TURN 之外，这次提交的媒体任务就是 Run 里唯一的图片生成任务。
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .filteredOn(task -> task.kind() == Task.Kind.IMAGE_GENERATION)
@@ -157,6 +157,6 @@ class TaskSubmissionUnknownPostgresIT {
     private Task create(UUID ownerId, UUID projectId, UUID runId, String stepKey) {
         return tasks.create(ownerId, projectId, runId, stepKey,
                 Task.Kind.IMAGE_GENERATION,
-                mapper.readTree("{\"step\":\"" + stepKey + "\"}"), null, 1, List.of());
+                mapper.readTree("{\"step\":\"" + stepKey + "\"}"), 1);
     }
 }

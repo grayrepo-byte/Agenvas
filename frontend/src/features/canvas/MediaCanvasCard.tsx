@@ -47,7 +47,7 @@ import { taskErrorMessage } from "./taskErrorMessages";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   // Synchronous providers generate before returning, so SUBMITTING also covers generation time.
-  get PENDING() { return t("media.card.pending"); }, get READY() { return t("tasks.status.queued"); }, get RUNNING() { return t("media.card.generating"); }, get SUBMITTING() { return t("media.card.generating"); },
+  get READY() { return t("tasks.status.queued"); }, get RUNNING() { return t("media.card.generating"); }, get SUBMITTING() { return t("media.card.generating"); },
   get WAITING_PROVIDER() { return t("media.card.generating"); }, get FAILED() { return t("media.card.generationFailed"); }, get CANCELED() { return t("common.canceled"); },
   get UNKNOWN() { return t("tasks.status.unknown"); }, get BLOCKED() { return t("media.card.blocked"); }, get SUCCEEDED() { return t("media.card.resultArchived"); },
 };

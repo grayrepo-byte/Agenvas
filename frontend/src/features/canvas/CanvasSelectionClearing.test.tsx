@@ -74,7 +74,7 @@ const items: CanvasItem[] = [
       name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
       createdAt: now, updatedAt: now,
       bindings: [{ id: "binding-id", artifactId: "image-id",
-        selectedVersionId: imageVersionId, bindingType: "INPUT" }] } },
+        selectedVersionId: imageVersionId }] } },
   { id: "text-card", subjectType: "ARTIFACT", subjectId: "text-id", x: 800, y: 0,
     title: "正文",
     width: 260, height: 150, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5, agent: null,

@@ -26,7 +26,7 @@ const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { retur
 const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("logs.calls.modelConversation"); }, get SUBMIT() { return t("logs.calls.submitGeneration"); }, get POLL() { return t("logs.calls.results"); }, get LEGACY() { return t("logs.calls.historicalTask"); } };
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
 const TASK_STATUS_LABELS: Record<Task["status"], string> = {
-  get PENDING() { return t("logs.calls.waitingForDependencies"); }, get READY() { return t("tasks.status.queued"); }, get SUBMITTING() { return t("logs.calls.submitting"); }, get RUNNING() { return t("tasks.status.running"); }, get WAITING_PROVIDER() { return t("logs.calls.waitingForExternal"); },
+  get READY() { return t("tasks.status.queued"); }, get SUBMITTING() { return t("logs.calls.submitting"); }, get RUNNING() { return t("tasks.status.running"); }, get WAITING_PROVIDER() { return t("logs.calls.waitingForExternal"); },
   get SUCCEEDED() { return t("common.succeeded"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); }, get BLOCKED() { return t("tasks.status.blocked"); }, get CANCELED() { return t("common.canceled"); },
 };
 

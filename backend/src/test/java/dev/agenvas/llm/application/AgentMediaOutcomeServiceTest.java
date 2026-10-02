@@ -80,7 +80,7 @@ class AgentMediaOutcomeServiceTest {
                 ? AgentMediaApproval.Status.SUCCEEDED : AgentMediaApproval.Status.FAILED);
         assertThat(saved.getValue().result().toString()).doesNotContain("PRIVATE_RECEIPT", "PRIVATE_BILLING");
         verify(tasks).create(eq(owner), eq(project), eq(runId), eq("agent-turn-1"),
-                eq(Task.Kind.AGENT_TURN), any(), eq(null), eq(1), eq(List.of()));
+                eq(Task.Kind.AGENT_TURN), any(), eq(1));
         verify(runs).transition(owner, project, runId, 3L, AgentRun.Status.RUNNING);
         verify(approvals).markNotified(project, runId, 0);
     }
@@ -133,7 +133,7 @@ class AgentMediaOutcomeServiceTest {
         assertThat(saved.getValue().result().path("errorCode").asText()).isEqualTo("MEDIA_EXECUTION_EXPIRED");
         verify(tasks).cancelApprovedMedia(owner, project, taskId);
         verify(tasks).create(eq(owner), eq(project), eq(runId), eq("agent-turn-1"),
-                eq(Task.Kind.AGENT_TURN), any(), eq(null), eq(1), eq(List.of()));
+                eq(Task.Kind.AGENT_TURN), any(), eq(1));
     }
 
     @ParameterizedTest
@@ -163,7 +163,7 @@ class AgentMediaOutcomeServiceTest {
         var saved = org.mockito.ArgumentCaptor.forClass(AgentMediaApproval.class);
         verify(approvals).update(saved.capture(), eq(0L));
         assertThat(saved.getValue().status()).isEqualTo(AgentMediaApproval.Status.CANCELED);
-        verify(tasks, never()).create(any(), any(), any(), any(), any(), any(), any(), any(int.class), any());
+        verify(tasks, never()).create(any(), any(), any(), any(), any(), any(), any(int.class));
     }
 
     private AgentMediaApproval approval(AgentMediaApproval.Status status, Instant deadline) {

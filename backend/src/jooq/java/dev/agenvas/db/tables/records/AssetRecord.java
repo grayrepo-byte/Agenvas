@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Private archived bytes. READY is inserted only after validation and atomic
- * file move.
+ * 已校验、归档并发布的媒体字节及完整性元数据
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
@@ -23,157 +22,143 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.asset.id</code>.
+     * Setter for <code>public.asset.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.asset.id</code>.
+     * Getter for <code>public.asset.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.asset.project_id</code>.
+     * Setter for <code>public.asset.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.asset.project_id</code>.
+     * Getter for <code>public.asset.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.asset.media_kind</code>.
+     * Setter for <code>public.asset.media_kind</code>. 媒体字节类型
      */
     public void setMediaKind(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.asset.media_kind</code>.
+     * Getter for <code>public.asset.media_kind</code>. 媒体字节类型
      */
     public String getMediaKind() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.asset.status</code>.
+     * Setter for <code>public.asset.object_key</code>. 存储配置内的相对对象键，不是任意文件路径
      */
-    public void setStatus(String value) {
+    public void setObjectKey(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.asset.status</code>.
+     * Getter for <code>public.asset.object_key</code>. 存储配置内的相对对象键，不是任意文件路径
      */
-    public String getStatus() {
+    public String getObjectKey() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.asset.object_key</code>.
+     * Setter for <code>public.asset.content_type</code>. 实际校验的媒体 MIME 类型
      */
-    public void setObjectKey(String value) {
+    public void setContentType(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.asset.object_key</code>.
+     * Getter for <code>public.asset.content_type</code>. 实际校验的媒体 MIME 类型
      */
-    public String getObjectKey() {
+    public String getContentType() {
         return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.asset.content_type</code>.
+     * Setter for <code>public.asset.byte_size</code>. 归档字节数
      */
-    public void setContentType(String value) {
+    public void setByteSize(Long value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.asset.content_type</code>.
+     * Getter for <code>public.asset.byte_size</code>. 归档字节数
      */
-    public String getContentType() {
-        return (String) get(5);
+    public Long getByteSize() {
+        return (Long) get(5);
     }
 
     /**
-     * Setter for <code>public.asset.byte_size</code>.
+     * Setter for <code>public.asset.sha256</code>. 归档字节的 SHA-256 完整性摘要
      */
-    public void setByteSize(Long value) {
+    public void setSha256(String value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.asset.byte_size</code>.
+     * Getter for <code>public.asset.sha256</code>. 归档字节的 SHA-256 完整性摘要
      */
-    public Long getByteSize() {
-        return (Long) get(6);
+    public String getSha256() {
+        return (String) get(6);
     }
 
     /**
-     * Setter for <code>public.asset.sha256</code>.
+     * Setter for <code>public.asset.width</code>. 媒体像素宽度或画布卡片宽度
      */
-    public void setSha256(String value) {
+    public void setWidth(Integer value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.asset.sha256</code>.
+     * Getter for <code>public.asset.width</code>. 媒体像素宽度或画布卡片宽度
      */
-    public String getSha256() {
-        return (String) get(7);
+    public Integer getWidth() {
+        return (Integer) get(7);
     }
 
     /**
-     * Setter for <code>public.asset.width</code>.
+     * Setter for <code>public.asset.height</code>. 媒体像素高度或画布卡片高度
      */
-    public void setWidth(Integer value) {
+    public void setHeight(Integer value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.asset.width</code>.
+     * Getter for <code>public.asset.height</code>. 媒体像素高度或画布卡片高度
      */
-    public Integer getWidth() {
+    public Integer getHeight() {
         return (Integer) get(8);
     }
 
     /**
-     * Setter for <code>public.asset.height</code>.
+     * Setter for <code>public.asset.created_at</code>. 创建时间（UTC）
      */
-    public void setHeight(Integer value) {
+    public void setCreatedAt(OffsetDateTime value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.asset.height</code>.
-     */
-    public Integer getHeight() {
-        return (Integer) get(9);
-    }
-
-    /**
-     * Setter for <code>public.asset.created_at</code>.
-     */
-    public void setCreatedAt(OffsetDateTime value) {
-        set(10, value);
-    }
-
-    /**
-     * Getter for <code>public.asset.created_at</code>.
+     * Getter for <code>public.asset.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(10);
+        return (OffsetDateTime) get(9);
     }
 
     /**
@@ -182,7 +167,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * the extracted cover frame.
      */
     public void setThumbnailKey(String value) {
-        set(11, value);
+        set(10, value);
     }
 
     /**
@@ -191,7 +176,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * the extracted cover frame.
      */
     public String getThumbnailKey() {
-        return (String) get(11);
+        return (String) get(10);
     }
 
     /**
@@ -199,7 +184,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * cover frame byte size; NULL only for media archived before V21.
      */
     public void setThumbnailByteSize(Long value) {
-        set(12, value);
+        set(11, value);
     }
 
     /**
@@ -207,7 +192,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * cover frame byte size; NULL only for media archived before V21.
      */
     public Long getThumbnailByteSize() {
-        return (Long) get(12);
+        return (Long) get(11);
     }
 
     /**
@@ -215,7 +200,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * frame SHA-256 digest.
      */
     public void setThumbnailSha256(String value) {
-        set(13, value);
+        set(12, value);
     }
 
     /**
@@ -223,7 +208,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * frame SHA-256 digest.
      */
     public String getThumbnailSha256() {
-        return (String) get(13);
+        return (String) get(12);
     }
 
     /**
@@ -231,7 +216,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * at archive time; null only for images or pre-V35 video assets.
      */
     public void setDurationMs(Integer value) {
-        set(14, value);
+        set(13, value);
     }
 
     /**
@@ -239,7 +224,7 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
      * at archive time; null only for images or pre-V35 video assets.
      */
     public Integer getDurationMs() {
-        return (Integer) get(14);
+        return (Integer) get(13);
     }
 
     // -------------------------------------------------------------------------
@@ -265,13 +250,12 @@ public class AssetRecord extends UpdatableRecordImpl<AssetRecord> {
     /**
      * Create a detached, initialised AssetRecord
      */
-    public AssetRecord(UUID id, UUID projectId, String mediaKind, String status, String objectKey, String contentType, Long byteSize, String sha256, Integer width, Integer height, OffsetDateTime createdAt, String thumbnailKey, Long thumbnailByteSize, String thumbnailSha256, Integer durationMs) {
+    public AssetRecord(UUID id, UUID projectId, String mediaKind, String objectKey, String contentType, Long byteSize, String sha256, Integer width, Integer height, OffsetDateTime createdAt, String thumbnailKey, Long thumbnailByteSize, String thumbnailSha256, Integer durationMs) {
         super(Asset.ASSET);
 
         setId(id);
         setProjectId(projectId);
         setMediaKind(mediaKind);
-        setStatus(status);
         setObjectKey(objectKey);
         setContentType(contentType);
         setByteSize(byteSize);

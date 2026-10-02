@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable content selection precondition captured when a generation Task is
- * created.
+ * 任务固定目标与受理时的版本选择；结果不能覆盖并发用户选择
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskArtifactTarget extends TableImpl<TaskArtifactTargetRecord> {
@@ -66,50 +65,47 @@ public class TaskArtifactTarget extends TableImpl<TaskArtifactTargetRecord> {
     }
 
     /**
-     * The column <code>public.task_artifact_target.task_id</code>.
+     * The column <code>public.task_artifact_target.task_id</code>. 持久任务身份
      */
-    public final TableField<TaskArtifactTargetRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskArtifactTargetRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "持久任务身份");
 
     /**
      * The column <code>public.task_artifact_target.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<TaskArtifactTargetRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskArtifactTargetRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.task_artifact_target.artifact_id</code>.
+     * The column <code>public.task_artifact_target.artifact_id</code>. 业务产物身份
      */
-    public final TableField<TaskArtifactTargetRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskArtifactTargetRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "业务产物身份");
 
     /**
      * The column
      * <code>public.task_artifact_target.expected_current_version_id</code>.
+     * 受理时的产物当前版本，结果提交时进行 CAS 校验
      */
-    public final TableField<TaskArtifactTargetRecord, UUID> EXPECTED_CURRENT_VERSION_ID = createField(DSL.name("expected_current_version_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskArtifactTargetRecord, UUID> EXPECTED_CURRENT_VERSION_ID = createField(DSL.name("expected_current_version_id"), SQLDataType.UUID, this, "受理时的产物当前版本，结果提交时进行 CAS 校验");
 
     /**
      * The column
      * <code>public.task_artifact_target.expected_artifact_version</code>.
+     * 受理时的产物并发控制版本
      */
-    public final TableField<TaskArtifactTargetRecord, Long> EXPECTED_ARTIFACT_VERSION = createField(DSL.name("expected_artifact_version"), SQLDataType.BIGINT.nullable(false), this, "");
-
-    /**
-     * The column <code>public.task_artifact_target.output_slot_key</code>. A
-     * named output in an approved plan; no Artifact identity exists until the
-     * result arrives.
-     */
-    public final TableField<TaskArtifactTargetRecord, String> OUTPUT_SLOT_KEY = createField(DSL.name("output_slot_key"), SQLDataType.VARCHAR(160), this, "A named output in an approved plan; no Artifact identity exists until the result arrives.");
+    public final TableField<TaskArtifactTargetRecord, Long> EXPECTED_ARTIFACT_VERSION = createField(DSL.name("expected_artifact_version"), SQLDataType.BIGINT.nullable(false), this, "受理时的产物并发控制版本");
 
     /**
      * The column <code>public.task_artifact_target.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
-    public final TableField<TaskArtifactTargetRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID, this, "");
+    public final TableField<TaskArtifactTargetRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID, this, "固定的目标或上下文画布卡片");
 
     private TaskArtifactTarget(Name alias, Table<TaskArtifactTargetRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private TaskArtifactTarget(Name alias, Table<TaskArtifactTargetRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable content selection precondition captured when a generation Task is created."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("任务固定目标与受理时的版本选择；结果不能覆盖并发用户选择"), TableOptions.table(), where);
     }
 
     /**
@@ -240,8 +236,7 @@ public class TaskArtifactTarget extends TableImpl<TaskArtifactTargetRecord> {
     @Override
     public List<Check<TaskArtifactTargetRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_task_artifact_expected_version"), "((expected_artifact_version >= 0))", true),
-            Internal.createCheck(this, DSL.name("ck_task_artifact_target_mode"), "((((artifact_id IS NOT NULL) AND (output_slot_key IS NULL) AND ((expected_current_version_id IS NOT NULL) OR (expected_artifact_version = 0))) OR ((artifact_id IS NULL) AND (expected_current_version_id IS NULL) AND (output_slot_key IS NOT NULL) AND (length(btrim((output_slot_key)::text)) > 0) AND (expected_artifact_version = 0))))", true)
+            Internal.createCheck(this, DSL.name("ck_task_artifact_expected_version"), "((expected_artifact_version >= 0))", true)
         );
     }
 

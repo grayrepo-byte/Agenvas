@@ -18,10 +18,12 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 记录模型、媒体任务和导出的预留与结算；缺少真实价格时保持 UNKNOWN，不伪造金额。 */
+/** 记录模型和媒体任务的预留与结算；缺少真实价格时保持 UNKNOWN，不伪造金额。 */
 @Service
 public class UsageService {
     private static final int MONEY_SCALE = 6;
+    private static final int MIN_VIDEO_SECONDS = 1;
+    private static final int MAX_STANDARD_VIDEO_SECONDS = 30;
 
     /** 以 operationKey 唯一约束保证每笔用量账目最多写入一次。 */
     private final UsageRepository ledger;
@@ -82,8 +84,7 @@ public class UsageService {
         ObjectNode quantity = mapper.createObjectNode();
         quantity.put("imageCount", 0);
         quantity.put("videoCount", 0);
-        quantity.put("videoSeconds", "0.000");
-        quantity.put("exportCount", 0);
+        quantity.put("videoSeconds", "0");
         quantity.put("llmRequestCount", 1);
         putNullableToken(quantity, "inputTokens", inputTokens);
         putNullableToken(quantity, "outputTokens", outputTokens);
@@ -144,7 +145,6 @@ public class UsageService {
         quantity.put("imageCount", 0);
         quantity.put("videoCount", 0);
         quantity.put("videoSeconds", "0");
-        quantity.put("exportCount", 0);
         quantity.put("llmRequestCount", 1);
         putNullableToken(quantity, "inputTokens", inputTokens);
         putNullableToken(quantity, "outputTokens", outputTokens);
@@ -177,7 +177,7 @@ public class UsageService {
 
     /** 在已鉴权的项目事务中，每创建一个直接媒体任务后写入对应预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void reserveMediaTask(UUID ownerId, Task task, String costSource) {
+    public void reserveMediaTask(UUID ownerId, Task task, String costSource, int connectionVersion) {
         boolean directMedia = (task.runId() == null || task.approvedMedia())
                 && (task.kind() == Task.Kind.AUDIO_GENERATION || task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION);
@@ -185,7 +185,7 @@ public class UsageService {
             throw new IllegalArgumentException("Media reservation requires direct or approved media work");
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RESERVATION,
-                costSource, "media:" + task.id() + ":reserve"));
+                costSource, "media:" + task.id() + ":reserve", connectionVersion));
     }
 
     /** 仅在带 fencing 校验的媒体结果同事务提交后结算。 */
@@ -197,7 +197,7 @@ public class UsageService {
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
                 new IllegalStateException("Direct media Task has no media usage reservation"));
         persist(ownerId, entry(task, UsageEntry.EntryType.SETTLEMENT,
-                reservation.costSource(), "media:" + task.id() + ":settle"));
+                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion()));
     }
 
     /** 调用方确认任务未到达提交检查点后，释放媒体任务的预留。 */
@@ -230,7 +230,7 @@ public class UsageService {
             throw new IllegalStateException("A settled media Task cannot release its reservation");
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RELEASE,
-                reservation.costSource(), prefix + ":release"));
+                reservation.costSource(), prefix + ":release", reservation.providerConfigVersion()));
     }
 
     /** 查询用户有权访问的项目账本；金额为空表示未知，不序列化为零。 */
@@ -242,55 +242,47 @@ public class UsageService {
 
     /** 从已批准任务的固定输入生成数量账目，并核验 Provider 与工作流快照。 */
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
-            String operationKey) {
+            String operationKey, int connectionVersion) {
         ObjectNode quantity = mapper.createObjectNode();
         boolean runningHub = "RUNNINGHUB_V2".equals(task.input().path("providerProtocol").asText());
-        boolean secondsV2 = task.input().path("schemaVersion").asInt(1) >= 2;
         switch (task.kind()) {
             case AUDIO_GENERATION -> {
                 quantity.put("audioCount", 1);
                 if (runningHub) quantity.putNull("audioSeconds");
                 else quantity.put("audioSeconds", dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
                 quantity.put("imageCount", 0); quantity.put("videoCount", 0);
-                quantity.put("videoSeconds", "0"); quantity.put("exportCount", 0);
+                quantity.put("videoSeconds", "0");
             }
             case IMAGE_GENERATION -> {
                 quantity.put("imageCount", 1);
                 quantity.put("videoCount", 0);
-                quantity.put("videoSeconds", secondsV2 ? "0" : "0.000");
-                quantity.put("exportCount", 0);
+                quantity.put("videoSeconds", "0");
             }
             case VIDEO_GENERATION -> {
                 String durationText;
-                if (secondsV2) {
-                    JsonNode seconds = task.input().path("durationSeconds");
-                    if (runningHub && seconds.isMissingNode()) durationText = null;
-                    else {
-                        if (!seconds.isInt() || seconds.intValue() < 1 || seconds.intValue() > (runningHub ? dev.agenvas.provider.domain.MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS : 30)) {
-                            throw new IllegalStateException("Approved video Task lacks pinned duration");
-                        }
-                        durationText = Integer.toString(seconds.intValue());
-                    }
-                } else {
-                    int durationMs = task.input().path("durationMs").asInt(-1);
-                    if (durationMs < 100 || durationMs > 30_000) {
+                JsonNode seconds = task.input().path("durationSeconds");
+                if (runningHub && seconds.isMissingNode()) durationText = null;
+                else {
+                    int maxSeconds = runningHub
+                            ? dev.agenvas.provider.domain.MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS
+                            : MAX_STANDARD_VIDEO_SECONDS;
+                    if (!seconds.isInt() || seconds.intValue() < MIN_VIDEO_SECONDS
+                            || seconds.intValue() > maxSeconds) {
                         throw new IllegalStateException("Approved video Task lacks pinned duration");
                     }
-                    durationText = BigDecimal.valueOf(durationMs, 3).toPlainString();
+                    durationText = Integer.toString(seconds.intValue());
                 }
                 quantity.put("imageCount", 0);
                 quantity.put("videoCount", 1);
                 quantity.put("videoSeconds", durationText);
-                quantity.put("exportCount", 0);
             }
             default -> throw new IllegalArgumentException("Usage requires a direct media Task");
         }
         quantity.put("llmRequestCount", 0);
         quantity.putNull("inputTokens");
         quantity.putNull("outputTokens");
-        int configVersion = task.input().path("providerConfigVersion").asInt(-1);
         String workflowVersion = task.input().path("workflowVersion").asText("");
-        if (configVersion < 1 || workflowVersion.isBlank()
+        if (connectionVersion < 1 || workflowVersion.isBlank()
                 || !("MOCK_UNPRICED".equals(source) || "PROVIDER_UNPRICED".equals(source)
                         || "LOCAL_NO_COST".equals(source) || "ADMIN_CONFIGURED".equals(source))) {
             throw new IllegalStateException("Media usage configuration snapshot is invalid");
@@ -313,7 +305,7 @@ public class UsageService {
                 operationKey, type, quantity, estimate, knownZero, currency,
                 localNoCost ? UsageEntry.CostStatus.KNOWN
                         : estimate != null ? UsageEntry.CostStatus.ESTIMATED : UsageEntry.CostStatus.UNKNOWN,
-                estimate != null && !localNoCost ? "ADMIN_CONFIGURED" : source, configVersion,
+                estimate != null && !localNoCost ? "ADMIN_CONFIGURED" : source, connectionVersion,
                 workflowVersion, null, clock.instant());
     }
 

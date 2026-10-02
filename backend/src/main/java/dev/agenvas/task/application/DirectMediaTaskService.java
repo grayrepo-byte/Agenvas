@@ -16,7 +16,6 @@ import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
-import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
@@ -73,7 +72,6 @@ public class DirectMediaTaskService {
     private final CanvasItemQueryService canvasItems;
     private final CanvasService canvas;
     private final MediaCapabilityService capabilities;
-    private final ProviderProperties provider;
     private final ProjectEventService events;
     private final UsageService usage;
     private final ObjectMapper mapper;
@@ -86,7 +84,7 @@ public class DirectMediaTaskService {
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
             CanvasService canvas,
             MediaCapabilityService capabilities,
-            ProviderProperties provider, ProjectEventService events, UsageService usage,
+            ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles) {
         this.tasks = tasks;
         this.drafts = drafts;
@@ -95,7 +93,6 @@ public class DirectMediaTaskService {
         this.canvasItems = canvasItems;
         this.canvas = canvas;
         this.capabilities = capabilities;
-        this.provider = provider;
         this.events = events;
         this.usage = usage;
         this.mapper = mapper;
@@ -183,7 +180,6 @@ public class DirectMediaTaskService {
             String renderedPrompt = prepared.renderedPrompt();
             String autodlResolution = prepared.autodlResolution();
             String resolutionTier = prepared.resolutionTier();
-            String originHash = prepared.originHash();
             Instant now = clock.instant();
             int outputCount = imageParameters == null ? 1 : imageParameters.generationCount();
             Task primary = null;
@@ -212,9 +208,7 @@ public class DirectMediaTaskService {
                 input.put("prompt", renderedPrompt);
                 JsonNode selectedPrice = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(configuredSettings, resolutionTier);
                 if (selectedPrice != null) input.set("mediaPricing", selectedPrice);
-                input.put("providerConfigVersion", provider.configVersion());
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
-                if (originHash != null) input.put("providerOriginSha256", originHash);
                 if (kind == Task.Kind.VIDEO_GENERATION && duration != null) input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
                 if (autodlResolution != null) {
@@ -261,16 +255,16 @@ public class DirectMediaTaskService {
                 String stepKey = outputIndex == 0 ? commandKey
                         : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
                 Task task = new Task(UUID.randomUUID(), projectId, runId, stepKey, kind,
-                        Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null, null,
+                        Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null,
                         1, now, null, null, 0, 0, null, now, now, null);
-                tasks.create(task, List.of());
+                tasks.create(task);
                 tasks.bindMediaTask(task.id(), binding);
                 tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                        artifactId, outputCard.selectedVersionId(), target.version(), null,
+                        artifactId, outputCard.selectedVersionId(), target.version(),
                         outputCard.id()));
                 drafts.setDisplayModeWithinChange(projectId, outputCard.id(),
                         MediaDraft.DisplayMode.DRAFT);
-                usage.reserveMediaTask(ownerId, task, COST_SOURCE);
+                usage.reserveMediaTask(ownerId, task, COST_SOURCE, binding.connectionVersion());
                 ObjectNode payload = mapper.createObjectNode();
                 payload.put("taskId", task.id().toString());
                 payload.put("artifactId", artifactId.toString());
@@ -413,11 +407,9 @@ public class DirectMediaTaskService {
             resolutionTier = AutoDlWorkflows.selectedResolution(configuredSettings, videoParameters.videoResolution());
             autodlResolution = workflow.resolution(resolutionTier, ratio);
         }
-        String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
-                .connectionVersion().originSha256();
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, autodlResolution, resolutionTier, originHash, style);
+                renderedPrompt, autodlResolution, resolutionTier, style);
     }
 
     private record PreparedMedia(Artifact target, CanvasItem canvasItem, MediaDraft draft,
@@ -425,7 +417,7 @@ public class DirectMediaTaskService {
             dev.agenvas.provider.domain.RunningHubDefinition definition,
             ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
-            String renderedPrompt, String autodlResolution, String resolutionTier, String originHash,
+            String renderedPrompt, String autodlResolution, String resolutionTier,
             MediaStyleService.Snapshot style) {}
 
     /** Only trusted Agent approval sources can add provenance to a preflight hash. */
@@ -495,7 +487,6 @@ public class DirectMediaTaskService {
                 : prepared.kind() == Task.Kind.AUDIO_GENERATION ? "TEXT" : prepared.draft().videoInputMode().name());
         if (prepared.duration() != null) snapshot.put("durationSeconds", prepared.duration());
         if (prepared.autodlResolution() != null) snapshot.put("providerResolution", prepared.autodlResolution());
-        snapshot.put("providerConfigVersion", provider.configVersion());
         if (pricing != null) snapshot.set("mediaPricing", pricing);
         ObjectNode summary = mapper.createObjectNode();
         summary.put("kind", prepared.kind().name());
@@ -677,11 +668,7 @@ public class DirectMediaTaskService {
                     && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
                 input.set("mediaPricing", operationSettings.get("pricing"));
             }
-            input.put("providerConfigVersion", provider.configVersion());
             input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
-            String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
-                    .connectionVersion().originSha256();
-            if (originHash != null) input.put("providerOriginSha256", originHash);
             ObjectNode frozenOperation = input.putObject("imageOperation");
             frozenOperation.put("name", operation.name());
             frozenOperation.put("sourceVersionId", sourceVersionId.toString());
@@ -725,14 +712,14 @@ public class DirectMediaTaskService {
             frozen.putArray("mentions");
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.IMAGE_GENERATION, Task.Status.READY, false, input,
-                    Sha256.hex(input.toString()), null, null, null, 1, now, null, null, 0, 0,
+                    Sha256.hex(input.toString()), null, null, 1, now, null, null, 0, 0,
                     null, now, now, null);
-            tasks.create(task, List.of());
+            tasks.create(task);
             tasks.bindMediaTask(task.id(), binding);
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                    artifactId, sourceVersionId, target.version(), null, outputCard.id()));
+                    artifactId, sourceVersionId, target.version(), outputCard.id()));
             usage.reserveMediaTask(ownerId, task,
-                    operation.cloud() ? COST_SOURCE : LOCAL_COST_SOURCE);
+                    operation.cloud() ? COST_SOURCE : LOCAL_COST_SOURCE, binding.connectionVersion());
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());
             payload.put("artifactId", artifactId.toString());

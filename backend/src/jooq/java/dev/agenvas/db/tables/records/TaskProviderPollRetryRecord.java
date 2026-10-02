@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Consecutive query/download/archive failures for one accepted provider
- * request; never a submission retry.
+ * 外部状态查询的重试计数；查询重试不代表重新提交生成
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProviderPollRetryRecord> {
@@ -23,14 +22,14 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.task_provider_poll_retry.task_id</code>.
+     * Setter for <code>public.task_provider_poll_retry.task_id</code>. 持久任务身份
      */
     public void setTaskId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.task_provider_poll_retry.task_id</code>.
+     * Getter for <code>public.task_provider_poll_retry.task_id</code>. 持久任务身份
      */
     public UUID getTaskId() {
         return (UUID) get(0);
@@ -38,6 +37,7 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
 
     /**
      * Setter for <code>public.task_provider_poll_retry.failure_count</code>.
+     * 连续外部查询失败次数
      */
     public void setFailureCount(Integer value) {
         set(1, value);
@@ -45,6 +45,7 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
 
     /**
      * Getter for <code>public.task_provider_poll_retry.failure_count</code>.
+     * 连续外部查询失败次数
      */
     public Integer getFailureCount() {
         return (Integer) get(1);
@@ -52,6 +53,7 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
 
     /**
      * Setter for <code>public.task_provider_poll_retry.last_error_code</code>.
+     * 最近外部查询失败的公开错误代码
      */
     public void setLastErrorCode(String value) {
         set(2, value);
@@ -59,6 +61,7 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
 
     /**
      * Getter for <code>public.task_provider_poll_retry.last_error_code</code>.
+     * 最近外部查询失败的公开错误代码
      */
     public String getLastErrorCode() {
         return (String) get(2);
@@ -66,6 +69,7 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
 
     /**
      * Setter for <code>public.task_provider_poll_retry.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(3, value);
@@ -73,6 +77,7 @@ public class TaskProviderPollRetryRecord extends UpdatableRecordImpl<TaskProvide
 
     /**
      * Getter for <code>public.task_provider_poll_retry.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(3);

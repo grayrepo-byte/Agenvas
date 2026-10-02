@@ -24,7 +24,7 @@ const RESULT_LABELS: Record<string, () => string> = {
   UNKNOWN: () => t("tasks.status.unknown"), CANCELED: () => t("common.canceled"),
   BLOCKED: () => t("tasks.status.blocked"), READY: () => t("agent.status.waiting"),
   RUNNING: () => t("tasks.status.running"), SUBMITTING: () => t("tasks.status.running"),
-  WAITING_PROVIDER: () => t("tasks.status.running"), PENDING: () => t("agent.status.waiting"),
+  WAITING_PROVIDER: () => t("tasks.status.running"),
 };
 const STATUS_ICON_SIZE = 15;
 

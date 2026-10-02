@@ -47,7 +47,7 @@ function StatusCard({ title, value, icon, description, tone, badge }: {
 }
 
 function modeLabel(mode: string): string {
-  return mode === "MOCK" ? t("models.mockMode") : mode === "COMFYUI" ? t("settings.diagnostics.comfyConfiguration") : t("settings.diagnostics.modelConfigured");
+  return mode === "MOCK" ? t("models.mockMode") : t("settings.diagnostics.modelConfigured");
 }
 
 function errorLabel(status: string): string {

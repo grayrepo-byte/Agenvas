@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Card-local immutable result history; switching a card never updates pinned
- * inputs or library defaults.
+ * 媒体卡片独占的结果版本历史
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItemMediaVersionRecord> {
@@ -24,6 +23,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
 
     /**
      * Setter for <code>public.canvas_item_media_version.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
@@ -31,6 +31,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
 
     /**
      * Getter for <code>public.canvas_item_media_version.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
@@ -38,6 +39,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
 
     /**
      * Setter for <code>public.canvas_item_media_version.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
     public void setCanvasItemId(UUID value) {
         set(1, value);
@@ -45,6 +47,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
 
     /**
      * Getter for <code>public.canvas_item_media_version.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
     public UUID getCanvasItemId() {
         return (UUID) get(1);
@@ -53,6 +56,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
     /**
      * Setter for
      * <code>public.canvas_item_media_version.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
     public void setArtifactVersionId(UUID value) {
         set(2, value);
@@ -61,6 +65,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
     /**
      * Getter for
      * <code>public.canvas_item_media_version.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
     public UUID getArtifactVersionId() {
         return (UUID) get(2);
@@ -68,6 +73,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
 
     /**
      * Setter for <code>public.canvas_item_media_version.created_at</code>.
+     * 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(3, value);
@@ -75,6 +81,7 @@ public class CanvasItemMediaVersionRecord extends UpdatableRecordImpl<CanvasItem
 
     /**
      * Getter for <code>public.canvas_item_media_version.created_at</code>.
+     * 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(3);

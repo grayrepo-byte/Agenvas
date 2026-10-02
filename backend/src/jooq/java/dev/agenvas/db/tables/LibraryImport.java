@@ -40,7 +40,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable provenance; library deletion never cascades to project content
+ * 素材库导入到项目的版本及原条目来源审计
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LibraryImport extends TableImpl<LibraryImportRecord> {
@@ -61,31 +61,31 @@ public class LibraryImport extends TableImpl<LibraryImportRecord> {
     }
 
     /**
-     * The column <code>public.library_import.project_id</code>.
+     * The column <code>public.library_import.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<LibraryImportRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryImportRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.library_import.version_id</code>.
+     * The column <code>public.library_import.version_id</code>. 导入生成的不可变产物版本
      */
-    public final TableField<LibraryImportRecord, UUID> VERSION_ID = createField(DSL.name("version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryImportRecord, UUID> VERSION_ID = createField(DSL.name("version_id"), SQLDataType.UUID.nullable(false), this, "导入生成的不可变产物版本");
 
     /**
-     * The column <code>public.library_import.entry_id</code>.
+     * The column <code>public.library_import.entry_id</code>. 个人素材库来源条目
      */
-    public final TableField<LibraryImportRecord, UUID> ENTRY_ID = createField(DSL.name("entry_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LibraryImportRecord, UUID> ENTRY_ID = createField(DSL.name("entry_id"), SQLDataType.UUID.nullable(false), this, "个人素材库来源条目");
 
     /**
-     * The column <code>public.library_import.source_json</code>.
+     * The column <code>public.library_import.source_json</code>. 固定导入来源审计信息
      */
-    public final TableField<LibraryImportRecord, JSONB> SOURCE_JSON = createField(DSL.name("source_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<LibraryImportRecord, JSONB> SOURCE_JSON = createField(DSL.name("source_json"), SQLDataType.JSONB.nullable(false), this, "固定导入来源审计信息");
 
     private LibraryImport(Name alias, Table<LibraryImportRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private LibraryImport(Name alias, Table<LibraryImportRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable provenance; library deletion never cascades to project content"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("素材库导入到项目的版本及原条目来源审计"), TableOptions.table(), where);
     }
 
     /**

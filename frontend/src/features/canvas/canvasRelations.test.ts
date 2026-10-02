@@ -70,7 +70,7 @@ function agentCard(bindingVersion = "version-a"): CanvasItem {
       outputGroupId: "output-group-1", version: 3, createdAt,
       updatedAt: createdAt,
       bindings: [{ id: "binding-a", artifactId: "artifact-a",
-        selectedVersionId: bindingVersion, bindingType: "INPUT" }],
+        selectedVersionId: bindingVersion }],
     },
   };
 }

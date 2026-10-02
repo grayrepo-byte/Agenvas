@@ -41,7 +41,7 @@ import tools.jackson.databind.JsonNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=media-settings-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.comfyui.scheduler-enabled=false"})
+        "agenvas.provider.media.scheduler-enabled=false"})
 class MediaCapabilitySettingsPostgresIT {
 
     @Container

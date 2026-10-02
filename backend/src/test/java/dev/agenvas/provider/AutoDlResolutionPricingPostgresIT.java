@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=resolution-pricing-integration-test-secret",
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.comfyui.scheduler-enabled=false",
+        "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class AutoDlResolutionPricingPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");

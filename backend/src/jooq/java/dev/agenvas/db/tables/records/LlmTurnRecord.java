@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Durable model-round checkpoint; a complete response is committed before any
- * tool side effect.
+ * 固定模型配置版本的持久模型回合，保存完整响应后才执行工具
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LlmTurnRecord extends UpdatableRecordImpl<LlmTurnRecord> {
@@ -24,126 +23,128 @@ public class LlmTurnRecord extends UpdatableRecordImpl<LlmTurnRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.llm_turn.project_id</code>.
+     * Setter for <code>public.llm_turn.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.project_id</code>.
+     * Getter for <code>public.llm_turn.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.llm_turn.run_id</code>.
+     * Setter for <code>public.llm_turn.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
     public void setRunId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.run_id</code>.
+     * Getter for <code>public.llm_turn.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.llm_turn.step_index</code>.
+     * Setter for <code>public.llm_turn.step_index</code>. Run 内模型回合序号
      */
     public void setStepIndex(Integer value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.step_index</code>.
+     * Getter for <code>public.llm_turn.step_index</code>. Run 内模型回合序号
      */
     public Integer getStepIndex() {
         return (Integer) get(2);
     }
 
     /**
-     * Setter for <code>public.llm_turn.status</code>.
+     * Setter for <code>public.llm_turn.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public void setStatus(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.status</code>.
+     * Getter for <code>public.llm_turn.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
     public String getStatus() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.llm_turn.model_config_version</code>.
+     * Setter for <code>public.llm_turn.model_config_version</code>. 本模型回合固定使用的
+     * LLM 配置版本
      */
     public void setModelConfigVersion(Integer value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.model_config_version</code>.
+     * Getter for <code>public.llm_turn.model_config_version</code>. 本模型回合固定使用的
+     * LLM 配置版本
      */
     public Integer getModelConfigVersion() {
         return (Integer) get(4);
     }
 
     /**
-     * Setter for <code>public.llm_turn.request_json</code>.
+     * Setter for <code>public.llm_turn.request_json</code>. 固定的模型请求或媒体审批批次
      */
     public void setRequestJson(JSONB value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.request_json</code>.
+     * Getter for <code>public.llm_turn.request_json</code>. 固定的模型请求或媒体审批批次
      */
     public JSONB getRequestJson() {
         return (JSONB) get(5);
     }
 
     /**
-     * Setter for <code>public.llm_turn.response_json</code>.
+     * Setter for <code>public.llm_turn.response_json</code>. 已提交的命令响应或完整模型响应
      */
     public void setResponseJson(JSONB value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.response_json</code>.
+     * Getter for <code>public.llm_turn.response_json</code>. 已提交的命令响应或完整模型响应
      */
     public JSONB getResponseJson() {
         return (JSONB) get(6);
     }
 
     /**
-     * Setter for <code>public.llm_turn.created_at</code>.
+     * Setter for <code>public.llm_turn.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.created_at</code>.
+     * Getter for <code>public.llm_turn.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(7);
     }
 
     /**
-     * Setter for <code>public.llm_turn.responded_at</code>.
+     * Setter for <code>public.llm_turn.responded_at</code>. 完整响应持久化时间
      */
     public void setRespondedAt(OffsetDateTime value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.llm_turn.responded_at</code>.
+     * Getter for <code>public.llm_turn.responded_at</code>. 完整响应持久化时间
      */
     public OffsetDateTime getRespondedAt() {
         return (OffsetDateTime) get(8);

@@ -11,7 +11,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Singleton row used to serialize installation-wide bootstrap decisions.
+ * 管理员初始化的单例事务锁行
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class InstallationLockRecord extends UpdatableRecordImpl<InstallationLockRecord> {
@@ -19,31 +19,17 @@ public class InstallationLockRecord extends UpdatableRecordImpl<InstallationLock
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.installation_lock.id</code>.
+     * Setter for <code>public.installation_lock.id</code>. 记录身份
      */
     public void setId(Short value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.installation_lock.id</code>.
+     * Getter for <code>public.installation_lock.id</code>. 记录身份
      */
     public Short getId() {
         return (Short) get(0);
-    }
-
-    /**
-     * Setter for <code>public.installation_lock.purpose</code>.
-     */
-    public void setPurpose(String value) {
-        set(1, value);
-    }
-
-    /**
-     * Getter for <code>public.installation_lock.purpose</code>.
-     */
-    public String getPurpose() {
-        return (String) get(1);
     }
 
     // -------------------------------------------------------------------------
@@ -69,11 +55,10 @@ public class InstallationLockRecord extends UpdatableRecordImpl<InstallationLock
     /**
      * Create a detached, initialised InstallationLockRecord
      */
-    public InstallationLockRecord(Short id, String purpose) {
+    public InstallationLockRecord(Short id) {
         super(InstallationLock.INSTALLATION_LOCK);
 
         setId(id);
-        setPurpose(purpose);
         resetChangedOnNotNull();
     }
 }

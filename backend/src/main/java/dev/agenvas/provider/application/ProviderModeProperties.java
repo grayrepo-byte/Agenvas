@@ -2,7 +2,7 @@ package dev.agenvas.provider.application;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** 选择管理员目录、无需外部账户的模拟 Provider 或旧环境 ComfyUI 适配器。
+/** 选择管理员目录、无需外部账户的模拟 Provider 。
  * @param mode 启用的媒体生成模式；未配置时使用 MOCK
  */
 @ConfigurationProperties(prefix = "agenvas.provider")
@@ -17,8 +17,6 @@ public record ProviderModeProperties(Mode mode) {
     public enum Mode {
         /** 生成明确标记为模拟的本地 fixture。 */
         MOCK,
-        /** 调用配置好的 ComfyUI 固定工作流。 */
-        COMFYUI,
         /** 仅使用管理员发布的真实媒体能力，禁止新请求使用 Mock。 */
         CONFIGURED
     }

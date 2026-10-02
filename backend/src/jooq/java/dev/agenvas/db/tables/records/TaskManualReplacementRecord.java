@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * One explicit-risk new Task for an unresolved original; original Task and
- * attempt remain UNKNOWN.
+ * 用户显式批准的 UNKNOWN 重试对应关系和确认记录
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualReplacementRecord> {
@@ -24,6 +23,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Setter for <code>public.task_manual_replacement.original_task_id</code>.
+     * 结果未知的原任务
      */
     public void setOriginalTaskId(UUID value) {
         set(0, value);
@@ -31,6 +31,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Getter for <code>public.task_manual_replacement.original_task_id</code>.
+     * 结果未知的原任务
      */
     public UUID getOriginalTaskId() {
         return (UUID) get(0);
@@ -38,6 +39,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Setter for <code>public.task_manual_replacement.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
@@ -45,6 +47,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Getter for <code>public.task_manual_replacement.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
@@ -53,6 +56,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
     /**
      * Setter for
      * <code>public.task_manual_replacement.replacement_task_id</code>.
+     * 用户显式创建的独立新尝试
      */
     public void setReplacementTaskId(UUID value) {
         set(2, value);
@@ -61,6 +65,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
     /**
      * Getter for
      * <code>public.task_manual_replacement.replacement_task_id</code>.
+     * 用户显式创建的独立新尝试
      */
     public UUID getReplacementTaskId() {
         return (UUID) get(2);
@@ -69,6 +74,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
     /**
      * Setter for
      * <code>public.task_manual_replacement.approved_by_user_id</code>.
+     * 确认重复费用风险的可信用户身份
      */
     public void setApprovedByUserId(UUID value) {
         set(3, value);
@@ -77,6 +83,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
     /**
      * Getter for
      * <code>public.task_manual_replacement.approved_by_user_id</code>.
+     * 确认重复费用风险的可信用户身份
      */
     public UUID getApprovedByUserId() {
         return (UUID) get(3);
@@ -85,6 +92,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
     /**
      * Setter for
      * <code>public.task_manual_replacement.original_task_version</code>.
+     * 用户批准重试时核对的原任务版本
      */
     public void setOriginalTaskVersion(Long value) {
         set(4, value);
@@ -93,6 +101,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
     /**
      * Getter for
      * <code>public.task_manual_replacement.original_task_version</code>.
+     * 用户批准重试时核对的原任务版本
      */
     public Long getOriginalTaskVersion() {
         return (Long) get(4);
@@ -100,6 +109,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Setter for <code>public.task_manual_replacement.idempotency_key</code>.
+     * 作用域内的幂等命令键
      */
     public void setIdempotencyKey(String value) {
         set(5, value);
@@ -107,6 +117,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Getter for <code>public.task_manual_replacement.idempotency_key</code>.
+     * 作用域内的幂等命令键
      */
     public String getIdempotencyKey() {
         return (String) get(5);
@@ -114,6 +125,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Setter for <code>public.task_manual_replacement.confirmation_code</code>.
+     * 明确重复成本确认的稳定代码
      */
     public void setConfirmationCode(String value) {
         set(6, value);
@@ -121,6 +133,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Getter for <code>public.task_manual_replacement.confirmation_code</code>.
+     * 明确重复成本确认的稳定代码
      */
     public String getConfirmationCode() {
         return (String) get(6);
@@ -128,6 +141,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Setter for <code>public.task_manual_replacement.created_at</code>.
+     * 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(7, value);
@@ -135,6 +149,7 @@ public class TaskManualReplacementRecord extends UpdatableRecordImpl<TaskManualR
 
     /**
      * Getter for <code>public.task_manual_replacement.created_at</code>.
+     * 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(7);

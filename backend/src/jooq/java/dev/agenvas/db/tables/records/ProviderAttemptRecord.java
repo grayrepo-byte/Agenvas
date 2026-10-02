@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Submission ledger written before any external request; ambiguous outcomes
- * remain UNKNOWN.
+ * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRecord> {
@@ -23,56 +22,58 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.provider_attempt.id</code>.
+     * Setter for <code>public.provider_attempt.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.id</code>.
+     * Getter for <code>public.provider_attempt.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.provider_attempt.project_id</code>.
+     * Setter for <code>public.provider_attempt.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.project_id</code>.
+     * Getter for <code>public.provider_attempt.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.provider_attempt.task_id</code>.
+     * Setter for <code>public.provider_attempt.task_id</code>. 持久任务身份
      */
     public void setTaskId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.task_id</code>.
+     * Getter for <code>public.provider_attempt.task_id</code>. 持久任务身份
      */
     public UUID getTaskId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.provider_attempt.lease_epoch</code>.
+     * Setter for <code>public.provider_attempt.lease_epoch</code>. 任务租约 fencing
+     * epoch，旧 Worker 不得回写结果
      */
     public void setLeaseEpoch(Long value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.lease_epoch</code>.
+     * Getter for <code>public.provider_attempt.lease_epoch</code>. 任务租约 fencing
+     * epoch，旧 Worker 不得回写结果
      */
     public Long getLeaseEpoch() {
         return (Long) get(3);
@@ -96,6 +97,7 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
 
     /**
      * Setter for <code>public.provider_attempt.request_key</code>.
+     * 在外部调用前已提交的稳定请求去重键
      */
     public void setRequestKey(UUID value) {
         set(5, value);
@@ -103,6 +105,7 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
 
     /**
      * Getter for <code>public.provider_attempt.request_key</code>.
+     * 在外部调用前已提交的稳定请求去重键
      */
     public UUID getRequestKey() {
         return (UUID) get(5);
@@ -110,6 +113,7 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
 
     /**
      * Setter for <code>public.provider_attempt.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
     public void setProviderRequestId(String value) {
         set(6, value);
@@ -117,20 +121,21 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
 
     /**
      * Getter for <code>public.provider_attempt.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
     public String getProviderRequestId() {
         return (String) get(6);
     }
 
     /**
-     * Setter for <code>public.provider_attempt.created_at</code>.
+     * Setter for <code>public.provider_attempt.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.created_at</code>.
+     * Getter for <code>public.provider_attempt.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(7);
@@ -138,6 +143,7 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
 
     /**
      * Setter for <code>public.provider_attempt.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(8, value);
@@ -145,101 +151,72 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
 
     /**
      * Getter for <code>public.provider_attempt.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(8);
     }
 
     /**
-     * Setter for <code>public.provider_attempt.candidate_request_id</code>.
-     * Only set when the committed request key was sent as the provider-assigned
-     * lookup ID; legacy attempts remain NULL.
+     * Setter for <code>public.provider_attempt.capability_id</code>. 固定媒体能力身份
      */
-    public void setCandidateRequestId(UUID value) {
+    public void setCapabilityId(UUID value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.candidate_request_id</code>.
-     * Only set when the committed request key was sent as the provider-assigned
-     * lookup ID; legacy attempts remain NULL.
+     * Getter for <code>public.provider_attempt.capability_id</code>. 固定媒体能力身份
      */
-    public UUID getCandidateRequestId() {
+    public UUID getCapabilityId() {
         return (UUID) get(9);
     }
 
     /**
-     * Setter for <code>public.provider_attempt.candidate_origin_sha256</code>.
-     * Hash of the exact ComfyUI origin used for a client-supplied prompt ID;
-     * NULL legacy attempts cannot be automatically reconciled.
+     * Setter for <code>public.provider_attempt.capability_version</code>.
+     * 固定的不可变媒体能力版本
      */
-    public void setCandidateOriginSha256(String value) {
+    public void setCapabilityVersion(Integer value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.provider_attempt.candidate_origin_sha256</code>.
-     * Hash of the exact ComfyUI origin used for a client-supplied prompt ID;
-     * NULL legacy attempts cannot be automatically reconciled.
-     */
-    public String getCandidateOriginSha256() {
-        return (String) get(10);
-    }
-
-    /**
-     * Setter for <code>public.provider_attempt.capability_id</code>.
-     */
-    public void setCapabilityId(UUID value) {
-        set(11, value);
-    }
-
-    /**
-     * Getter for <code>public.provider_attempt.capability_id</code>.
-     */
-    public UUID getCapabilityId() {
-        return (UUID) get(11);
-    }
-
-    /**
-     * Setter for <code>public.provider_attempt.capability_version</code>.
-     */
-    public void setCapabilityVersion(Integer value) {
-        set(12, value);
-    }
-
-    /**
      * Getter for <code>public.provider_attempt.capability_version</code>.
+     * 固定的不可变媒体能力版本
      */
     public Integer getCapabilityVersion() {
-        return (Integer) get(12);
+        return (Integer) get(10);
     }
 
     /**
      * Setter for <code>public.provider_attempt.connection_id</code>.
+     * 不可变媒体连接所属身份或输入来源连线身份
      */
     public void setConnectionId(UUID value) {
-        set(13, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.provider_attempt.connection_id</code>.
+     * 不可变媒体连接所属身份或输入来源连线身份
      */
     public UUID getConnectionId() {
-        return (UUID) get(13);
+        return (UUID) get(11);
     }
 
     /**
      * Setter for <code>public.provider_attempt.connection_version</code>.
+     * 任务固定使用的不可变媒体连接版本
      */
     public void setConnectionVersion(Integer value) {
-        set(14, value);
+        set(12, value);
     }
 
     /**
      * Getter for <code>public.provider_attempt.connection_version</code>.
+     * 任务固定使用的不可变媒体连接版本
      */
     public Integer getConnectionVersion() {
-        return (Integer) get(14);
+        return (Integer) get(12);
     }
 
     // -------------------------------------------------------------------------
@@ -265,7 +242,7 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
     /**
      * Create a detached, initialised ProviderAttemptRecord
      */
-    public ProviderAttemptRecord(UUID id, UUID projectId, UUID taskId, Long leaseEpoch, String status, UUID requestKey, String providerRequestId, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID candidateRequestId, String candidateOriginSha256, UUID capabilityId, Integer capabilityVersion, UUID connectionId, Integer connectionVersion) {
+    public ProviderAttemptRecord(UUID id, UUID projectId, UUID taskId, Long leaseEpoch, String status, UUID requestKey, String providerRequestId, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID capabilityId, Integer capabilityVersion, UUID connectionId, Integer connectionVersion) {
         super(ProviderAttempt.PROVIDER_ATTEMPT);
 
         setId(id);
@@ -277,8 +254,6 @@ public class ProviderAttemptRecord extends UpdatableRecordImpl<ProviderAttemptRe
         setProviderRequestId(providerRequestId);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
-        setCandidateRequestId(candidateRequestId);
-        setCandidateOriginSha256(candidateOriginSha256);
         setCapabilityId(capabilityId);
         setCapabilityVersion(capabilityVersion);
         setConnectionId(connectionId);

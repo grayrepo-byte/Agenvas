@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JooqSkillInstallRepository {
     public record Operation(UUID id, UUID ownerId, UUID projectId, UUID skillId, UUID skillVersionId,
-            String commandKey, String payloadHash, JsonNode input, JsonNode result, JsonNode cleanup, String status,
+            JsonNode input, JsonNode result, JsonNode cleanup, String status,
             long epoch, Instant leaseUntil, String errorCode, String errorDetail) {
         /** Committed project mappings stay usable while unrelated temporary files are cleaned. */
         public boolean registered() { return result != null && result.path("assets").isArray(); }
@@ -66,8 +66,8 @@ public class JooqSkillInstallRepository {
     public void create(Operation op, Instant now) {
         var t = SKILL_INSTALL_OPERATION;
         dsl.insertInto(t).set(t.ID,op.id()).set(t.OWNER_ID,op.ownerId()).set(t.PROJECT_ID,op.projectId())
-                .set(t.SKILL_ID,op.skillId()).set(t.SKILL_VERSION_ID,op.skillVersionId()).set(t.COMMAND_KEY,op.commandKey())
-                .set(t.PAYLOAD_HASH,op.payloadHash()).set(t.INPUT_JSON,json(op.input())).set(t.STATUS,op.status())
+                .set(t.SKILL_ID,op.skillId()).set(t.SKILL_VERSION_ID,op.skillVersionId())
+                .set(t.INPUT_JSON,json(op.input())).set(t.STATUS,op.status())
                 .set(t.EPOCH,0L).set(t.CREATED_AT,time(now)).set(t.UPDATED_AT,time(now)).execute();
     }
     public boolean retry(Operation op, Instant now) {
@@ -149,7 +149,7 @@ public class JooqSkillInstallRepository {
         var t=SKILL_INSTALL_OPERATION;
         OffsetDateTime lease=r.get(t.LEASE_UNTIL);
         return new Operation(r.get(t.ID),r.get(t.OWNER_ID),r.get(t.PROJECT_ID),r.get(t.SKILL_ID),r.get(t.SKILL_VERSION_ID),
-                r.get(t.COMMAND_KEY),r.get(t.PAYLOAD_HASH).trim(),read(r.get(t.INPUT_JSON)),read(r.get(t.RESULT_JSON)),read(r.get(t.CLEANUP_JSON)),r.get(t.STATUS),r.get(t.EPOCH),
+                read(r.get(t.INPUT_JSON)),read(r.get(t.RESULT_JSON)),read(r.get(t.CLEANUP_JSON)),r.get(t.STATUS),r.get(t.EPOCH),
                 lease==null?null:lease.toInstant(),r.get(t.ERROR_CODE),r.get(t.ERROR_DETAIL));
     }
     private OffsetDateTime time(Instant value){ return value.atOffset(ZoneOffset.UTC); }

@@ -32,8 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=runninghub-result-isolated-test", "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.comfyui.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+        "agenvas.identity.bootstrap-secret=runninghub-result-isolated-test", "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubRealResultArchiveIT {
     private static final int EXPECTED_WIDTH = 608;
     private static final int EXPECTED_HEIGHT = 352;

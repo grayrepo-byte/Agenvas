@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
-/** 任务持久化边界；依赖关系、租约和外部提交检查点均在数据库中约束。 */
+/** 任务持久化边界；租约和外部提交检查点均在数据库中约束。 */
 public interface TaskRepository {
     /** Stop administrator-selected expired units before deleting their recovery ledgers.
      * Caller holds project and task locks; advancing epochs fences every previous worker.
@@ -20,13 +20,13 @@ public interface TaskRepository {
     boolean checkpointProviderResults(Task lease, String workerId,
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now);
 
-    /** 原子写入任务及已由应用层校验的同项目依赖。 */
-    void create(Task task, List<UUID> dependencyIds);
+    /** 写入应用层已校验的 READY 任务。 */
+    void create(Task task);
 
     /** Pin a newly created media Task to the exact approved connection and capability versions. */
     void bindMediaTask(UUID taskId, MediaCapabilityBinding binding);
 
-    /** Read the exact approved identity; null indicates a pre-migration legacy task. */
+    /** Read the exact approved media identity; non-media tasks have no media binding. */
     Optional<MediaCapabilityBinding> mediaBinding(UUID taskId);
 
     /** Serialize the final pre-submission check with admin updates of both catalog rows. */
@@ -84,16 +84,6 @@ public interface TaskRepository {
     /** 在新任务插入的同一事务中记录原 UNKNOWN 任务与替代任务的不可变关联。 */
     void createManualReplacement(ManualReplacement replacement);
 
-    /** 读取原任务固定的执行依赖，供替代任务沿用。 */
-    List<UUID> dependencyIds(UUID projectId, UUID taskId);
-
-    /** 查找尚未执行、需要改为依赖替代任务的下游任务。 */
-    List<Task> dependentTasks(UUID projectId, UUID taskId);
-
-    /** 仅重连 PENDING 下游任务，并增加版本以支持事件重放。 */
-    List<Task> rewirePendingDependents(UUID projectId, UUID originalTaskId,
-            UUID replacementTaskId, Instant now);
-
     /** 供带租约条件的内部状态转换读取任务，不作为对外鉴权入口。 */
     Optional<Task> findById(UUID taskId);
 
@@ -118,28 +108,8 @@ public interface TaskRepository {
     /** Poll only accepted requests from bound media tasks. */
     List<Task> claimDueBoundMediaPolls(String workerId, int limit, Instant now, Instant leaseUntil);
 
-    /** 仅认领 Mock 图片适配器能处理的到期图片任务。 */
-    List<Task> claimDueImages(String workerId, int limit, Instant now, Instant leaseUntil);
-
-    /** 认领一个旧版 ComfyUI 图片任务，不附加跨任务容量门禁。 */
-    List<Task> claimDueComfyImage(String workerId, Instant now, Instant leaseUntil);
-
-    /** 认领一个旧版 ComfyUI 视频任务，不与图片任务共享容量槽。 */
-    List<Task> claimDueComfyVideo(String workerId, Instant now, Instant leaseUntil);
-
-    /** 只认领已批准且当前视频适配器可处理的任务。 */
-    List<Task> claimDueVideos(String workerId, int limit, Instant now, Instant leaseUntil);
-
     /** 只认领已保存外部请求 ID 的轮询任务，不认领新提交。 */
     List<Task> claimDueProviderPolls(String workerId, int limit, Instant now, Instant leaseUntil);
-
-    /** 将 ComfyUI 图片轮询限制为图片任务，不消费视频或其他 Provider 请求。 */
-    List<Task> claimDueComfyImagePolls(String workerId, int limit, Instant now,
-            Instant leaseUntil);
-
-    /** 只为视频适配器认领已受理的 ComfyUI 视频请求。 */
-    List<Task> claimDueComfyVideoPolls(String workerId, int limit, Instant now,
-            Instant leaseUntil);
 
     /** 独立认领持久化模型回合，避免媒体 Worker 消费 LLM 工作。 */
     List<Task> claimDueAgentTurns(String workerId, int limit, Instant now, Instant leaseUntil);
@@ -182,12 +152,9 @@ public interface TaskRepository {
     boolean blockStaleInput(UUID taskId, String workerId, long leaseEpoch,
             String errorCode, Instant now);
 
-    /** 仅所有前置任务都成功时将 PENDING 下游任务推进 READY。 */
-    int promoteReady(UUID projectId, UUID runId, Instant now);
-
     /** 仅当前未取消租约可在网络调用前保存 SUBMITTING 和请求键。 */
     boolean beginSubmission(UUID taskId, String workerId, long leaseEpoch, UUID attemptId,
-            UUID requestKey, String candidateOriginSha256, Instant now);
+            UUID requestKey, Instant now);
 
     /** 保存 Provider 已受理的原请求 ID，并将任务转为等待轮询；不再次提交。 */
     boolean acknowledgeSubmission(UUID taskId, String workerId, long leaseEpoch,
@@ -254,12 +221,11 @@ public interface TaskRepository {
      * @param artifactId 任务被批准修改的产物
      * @param expectedCurrentVersionId 创建任务时选中的当前版本；为空表示当时尚无版本
      * @param expectedArtifactVersion 创建任务时产物的版本号，用于归档 CAS
-     * @param outputSlotKey 产物内部输出槽位，区分同一产物的可并行内容位置
      * @param canvasItemId 直连媒体任务所属卡片；文字及旧 Run 任务为空
      */
     record ArtifactTarget(UUID taskId, UUID projectId, UUID artifactId,
             UUID expectedCurrentVersionId, long expectedArtifactVersion,
-            String outputSlotKey, UUID canvasItemId) {}
+            UUID canvasItemId) {}
 
     /** Queue position is advisory; a different capability or cancellation can change it. */
     record QueueStatus(long waitingAhead, String reason) {}

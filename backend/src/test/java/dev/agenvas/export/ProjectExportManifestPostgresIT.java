@@ -201,8 +201,7 @@ class ProjectExportManifestPostgresIT {
                 .isEqualTo("Initial frame");
         assertThat(versionHistory.get(1).path("content").path("workflowVersion").asText())
                 .isEqualTo("image-v1-test");
-        assertThat(versionHistory.get(1).path("content").path("providerConfigVersion").asInt())
-                .isEqualTo(3);
+        assertThat(versionHistory.get(1).path("content").has("providerConfigVersion")).isFalse();
         assertThat(versionHistory.get(1).path("baseVersionId").asText())
                 .isEqualTo(versionHistory.get(0).path("id").asText());
         assertThat(manifest.path("canvasItems").size()).isEqualTo(2);
@@ -281,7 +280,6 @@ class ProjectExportManifestPostgresIT {
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", assetId.toString());
         content.put("prompt", prompt);
-        content.put("providerConfigVersion", 3);
         content.put("workflowVersion", "image-v1-test");
         content.put("sourceTaskId", UUID.randomUUID().toString());
         ObjectNode parameters = content.putObject("parameters");

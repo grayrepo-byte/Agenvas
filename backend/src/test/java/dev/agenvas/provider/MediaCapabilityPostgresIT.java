@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=media-catalog-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.comfyui.scheduler-enabled=false"})
+        "agenvas.provider.media.scheduler-enabled=false"})
 class MediaCapabilityPostgresIT {
 
     @Container

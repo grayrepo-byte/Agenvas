@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable content revisions. Resource-default and CanvasItem selections only
- * move pointers.
+ * 不可变产物内容、固定输入及生成来源；触发器禁止更新和删除
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRecord> {
@@ -24,42 +23,42 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.artifact_version.id</code>.
+     * Setter for <code>public.artifact_version.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.id</code>.
+     * Getter for <code>public.artifact_version.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.artifact_version.project_id</code>.
+     * Setter for <code>public.artifact_version.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.project_id</code>.
+     * Getter for <code>public.artifact_version.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.artifact_version.artifact_id</code>.
+     * Setter for <code>public.artifact_version.artifact_id</code>. 业务产物身份
      */
     public void setArtifactId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.artifact_id</code>.
+     * Getter for <code>public.artifact_version.artifact_id</code>. 业务产物身份
      */
     public UUID getArtifactId() {
         return (UUID) get(2);
@@ -67,6 +66,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Setter for <code>public.artifact_version.version_no</code>.
+     * 产物内部单调递增的不可变内容版本序号
      */
     public void setVersionNo(Integer value) {
         set(3, value);
@@ -74,20 +74,23 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Getter for <code>public.artifact_version.version_no</code>.
+     * 产物内部单调递增的不可变内容版本序号
      */
     public Integer getVersionNo() {
         return (Integer) get(3);
     }
 
     /**
-     * Setter for <code>public.artifact_version.schema_version</code>.
+     * Setter for <code>public.artifact_version.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
     public void setSchemaVersion(Integer value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.schema_version</code>.
+     * Getter for <code>public.artifact_version.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
     public Integer getSchemaVersion() {
         return (Integer) get(4);
@@ -95,6 +98,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Setter for <code>public.artifact_version.content_json</code>.
+     * 结构化不可变内容，格式由 schemaVersion 和领域校验限定
      */
     public void setContentJson(JSONB value) {
         set(5, value);
@@ -102,6 +106,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Getter for <code>public.artifact_version.content_json</code>.
+     * 结构化不可变内容，格式由 schemaVersion 和领域校验限定
      */
     public JSONB getContentJson() {
         return (JSONB) get(5);
@@ -109,6 +114,7 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Setter for <code>public.artifact_version.input_refs_json</code>.
+     * 生成时固定的精确输入版本引用
      */
     public void setInputRefsJson(JSONB value) {
         set(6, value);
@@ -116,48 +122,51 @@ public class ArtifactVersionRecord extends UpdatableRecordImpl<ArtifactVersionRe
 
     /**
      * Getter for <code>public.artifact_version.input_refs_json</code>.
+     * 生成时固定的精确输入版本引用
      */
     public JSONB getInputRefsJson() {
         return (JSONB) get(6);
     }
 
     /**
-     * Setter for <code>public.artifact_version.created_by_kind</code>.
+     * Setter for <code>public.artifact_version.created_by_kind</code>. 内容创建来源类型
      */
     public void setCreatedByKind(String value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.created_by_kind</code>.
+     * Getter for <code>public.artifact_version.created_by_kind</code>. 内容创建来源类型
      */
     public String getCreatedByKind() {
         return (String) get(7);
     }
 
     /**
-     * Setter for <code>public.artifact_version.run_id</code>.
+     * Setter for <code>public.artifact_version.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
     public void setRunId(UUID value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.run_id</code>.
+     * Getter for <code>public.artifact_version.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(8);
     }
 
     /**
-     * Setter for <code>public.artifact_version.created_at</code>.
+     * Setter for <code>public.artifact_version.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.artifact_version.created_at</code>.
+     * Getter for <code>public.artifact_version.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(9);

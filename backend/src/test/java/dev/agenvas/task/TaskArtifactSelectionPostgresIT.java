@@ -53,6 +53,8 @@ class TaskArtifactSelectionPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
@@ -89,11 +91,11 @@ class TaskArtifactSelectionPostgresIT {
                 Artifact.Kind.IMAGE, "Foreign image", media(UUID.randomUUID(), "foreign",
                         ImageAssetFixture.archive(assets, owner.userId(), foreign.id())));
         assertThatThrownBy(() -> createMedia(owner.userId(), project.id(), run.id(),
-                foreignImage.artifact().id(), "cross-project", List.of()))
+                foreignImage.artifact().id(), "cross-project"))
                 .isInstanceOf(ApiProblemException.class);
 
         Task first = createMedia(owner.userId(), project.id(), run.id(), image.artifact().id(),
-                "first", List.of());
+                "first");
         new TaskWorker(tasks, callLogs).runOnce("worker-first", 1,
                 claimed -> new TaskWorker.GeneratedArtifact(media(claimed.id(), "first result")));
         ArtifactService.ArtifactView selected = artifacts.get(owner.userId(), project.id(),
@@ -104,7 +106,7 @@ class TaskArtifactSelectionPostgresIT {
                 .isEqualTo(Task.Status.SUCCEEDED);
 
         Task stale = createMedia(owner.userId(), project.id(), run.id(), image.artifact().id(),
-                "stale", List.of());
+                "stale");
         ArtifactService.ArtifactView edited = artifacts.revise(owner.userId(), project.id(),
                 image.artifact().id(), selected.artifact().version(), null,
                 media(UUID.randomUUID(), "user edit"));
@@ -126,10 +128,7 @@ class TaskArtifactSelectionPostgresIT {
                 .extracting(ArtifactVersion::id).contains(staleResult.versionId());
 
         Task late = createMedia(owner.userId(), project.id(), run.id(), image.artifact().id(),
-                "late", List.of());
-        Task dependent = tasks.create(owner.userId(), project.id(), run.id(),
-                "downstream", Task.Kind.VIDEO_GENERATION, mapper.createObjectNode(),
-                null, 1, List.of(late.id()));
+                "late");
         Task lateLease = tasks.claimDue("worker-late", 1).getFirst();
         tasks.beginSubmission(lateLease, "worker-late");
         jdbc.sql("update task set lease_until = now() - interval '1 second' where id = :id")
@@ -147,18 +146,14 @@ class TaskArtifactSelectionPostgresIT {
                 .extracting(ArtifactVersion::id).contains(lateResult.versionId());
         assertThat(tasks.get(owner.userId(), project.id(), late.id()).status())
                 .isEqualTo(Task.Status.CANCELED);
-        assertThat(tasks.get(owner.userId(), project.id(), dependent.id()).status())
-                .isEqualTo(Task.Status.CANCELED);
         assertThat(jdbc.sql("select count(*) from task_late_result where task_id = :id")
                 .param("id", late.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(tasks.claimDue("worker-after-cancel", 16)).isEmpty();
     }
 
     private Task createMedia(UUID ownerId, UUID projectId, UUID runId, UUID artifactId,
-            String stepKey, List<UUID> dependencies) {
-        return tasks.createMediaTask(ownerId, projectId, runId, stepKey,
-                Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1,
-                dependencies, artifactId);
+            String stepKey) {
+        return dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, ownerId, projectId, runId, stepKey, Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), artifactId);
     }
 
     private ObjectNode media(UUID taskId, String prompt) {
@@ -170,7 +165,7 @@ class TaskArtifactSelectionPostgresIT {
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", assetId.toString());
         content.put("prompt", prompt);
-        content.put("providerConfigVersion", 1);
+
         content.put("workflowVersion", "mock-v1");
         content.putObject("parameters");
         content.put("sourceTaskId", taskId.toString());

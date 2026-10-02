@@ -15,14 +15,11 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.AgentTurnScheduler;
 import dev.agenvas.llm.application.DirectTextGenerationScheduler;
-import dev.agenvas.provider.application.ComfyUiImageScheduler;
-import dev.agenvas.provider.application.ComfyUiVideoScheduler;
 import dev.agenvas.provider.application.MediaExecutionScheduler;
-import dev.agenvas.provider.application.MockImageScheduler;
-import dev.agenvas.provider.application.MockVideoScheduler;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.task.application.TaskRecoveryScheduler;
+import dev.agenvas.testing.MigrationVersions;
 import org.flywaydb.core.Flyway;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -62,7 +59,6 @@ class RecoveryModePostgresIT {
                     .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                             POSTGRES.getPassword())
                     .locations("classpath:db/migration")
-                    .target("27")
                     .load()
                     .migrate();
             backedUpSchemaPrepared = true;
@@ -90,13 +86,9 @@ class RecoveryModePostgresIT {
     @Test
     void recoveryModeKeepsReadsAndLoginSurfaceWhileFreezingAllProjectWrites()
             throws Exception {
-        assertThat(schemaVersion()).isEqualTo("27");
+        assertThat(schemaVersion()).isEqualTo(MigrationVersions.latest());
         assertThat(context.getBeansOfType(AgentTurnScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(TaskRecoveryScheduler.class)).isEmpty();
-        assertThat(context.getBeansOfType(MockImageScheduler.class)).isEmpty();
-        assertThat(context.getBeansOfType(MockVideoScheduler.class)).isEmpty();
-        assertThat(context.getBeansOfType(ComfyUiImageScheduler.class)).isEmpty();
-        assertThat(context.getBeansOfType(ComfyUiVideoScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(DirectTextGenerationScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(MediaExecutionScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(dev.agenvas.skill.application.SkillWorker.class)).isEmpty();
@@ -151,7 +143,7 @@ class RecoveryModePostgresIT {
                 .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
         assertThat(projects.list(owner.userId(), false, null, 20).items())
                 .extracting(Project::name).containsExactly("Restored project");
-        assertThat(schemaVersion()).isEqualTo("27");
+        assertThat(schemaVersion()).isEqualTo(MigrationVersions.latest());
     }
 
     private String schemaVersion() {

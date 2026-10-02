@@ -106,6 +106,33 @@ class AgentTurnWorkerPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), project.id(), unavailable.id()))
                 .singleElement().satisfies(task ->
                         assertThat(task.status()).isEqualTo(Task.Status.FAILED));
+
+        gateway.toolCalling = true;
+        gateway.calls.set(0);
+        Project failedContinuation = projects.create(owner.userId(), "Continuation transaction",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        AgentInstance rollbackAgent = agents.create(owner.userId(), failedContinuation.id(),
+                "Creator", "Create one text first", List.of());
+        AgentRun rollbackRun = runs.create(owner.userId(), failedContinuation.id(), rollbackAgent.id(),
+                "Create one text", "continuation-rollback").run();
+        // PostgreSQL rejects the next Task after the current turn was completed. The whole
+        // commit must roll back before the worker records its separate failure transaction.
+        jdbc.sql("alter table task add constraint test_reject_continuation "
+                + "check (step_key <> 'agent-turn-1') not valid").update();
+        try {
+            assertThat(worker.runOnce("worker-rollback")).isEqualTo(1);
+        } finally {
+            jdbc.sql("alter table task drop constraint test_reject_continuation").update();
+        }
+        assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).status())
+                .isEqualTo(AgentRun.Status.BLOCKED);
+        assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).nextStepIndex())
+                .isZero();
+        assertThat(tasks.listByRun(owner.userId(), failedContinuation.id(), rollbackRun.id()))
+                .singleElement().satisfies(task -> assertThat(task.status()).isEqualTo(Task.Status.FAILED));
+        assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
+                        + "and type = 'task.status.changed' and payload_json->>'status' = 'SUCCEEDED'")
+                .param("projectId", failedContinuation.id()).query(Long.class).single()).isZero();
     }
 
     @TestConfiguration

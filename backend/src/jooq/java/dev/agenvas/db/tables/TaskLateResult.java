@@ -39,8 +39,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Results arriving after Run cancellation; never selected or used to promote
- * dependents.
+ * 失效租约或取消后的晚到结果审计，不自动选用或启动后续任务
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskLateResult extends TableImpl<TaskLateResultRecord> {
@@ -61,41 +60,43 @@ public class TaskLateResult extends TableImpl<TaskLateResultRecord> {
     }
 
     /**
-     * The column <code>public.task_late_result.id</code>.
+     * The column <code>public.task_late_result.id</code>. 记录身份
      */
-    public final TableField<TaskLateResultRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskLateResultRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.task_late_result.project_id</code>.
+     * The column <code>public.task_late_result.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<TaskLateResultRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskLateResultRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.task_late_result.task_id</code>.
+     * The column <code>public.task_late_result.task_id</code>. 持久任务身份
      */
-    public final TableField<TaskLateResultRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskLateResultRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID.nullable(false), this, "持久任务身份");
 
     /**
-     * The column <code>public.task_late_result.lease_epoch</code>.
+     * The column <code>public.task_late_result.lease_epoch</code>. 任务租约 fencing
+     * epoch，旧 Worker 不得回写结果
      */
-    public final TableField<TaskLateResultRecord, Long> LEASE_EPOCH = createField(DSL.name("lease_epoch"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<TaskLateResultRecord, Long> LEASE_EPOCH = createField(DSL.name("lease_epoch"), SQLDataType.BIGINT.nullable(false), this, "任务租约 fencing epoch，旧 Worker 不得回写结果");
 
     /**
      * The column <code>public.task_late_result.output_json</code>.
+     * 任务已提交结果或公开回答流进度
      */
-    public final TableField<TaskLateResultRecord, JSONB> OUTPUT_JSON = createField(DSL.name("output_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<TaskLateResultRecord, JSONB> OUTPUT_JSON = createField(DSL.name("output_json"), SQLDataType.JSONB.nullable(false), this, "任务已提交结果或公开回答流进度");
 
     /**
-     * The column <code>public.task_late_result.created_at</code>.
+     * The column <code>public.task_late_result.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<TaskLateResultRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<TaskLateResultRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private TaskLateResult(Name alias, Table<TaskLateResultRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private TaskLateResult(Name alias, Table<TaskLateResultRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Results arriving after Run cancellation; never selected or used to promote dependents."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("失效租约或取消后的晚到结果审计，不自动选用或启动后续任务"), TableOptions.table(), where);
     }
 
     /**

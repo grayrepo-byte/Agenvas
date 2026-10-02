@@ -15,7 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Durable fenced local archival; no model or Provider execution
+ * Skill 发布操作、素材归档进度、租约及临时引用清理
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublishOperationRecord> {
@@ -23,14 +23,14 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.skill_publish_operation.id</code>.
+     * Setter for <code>public.skill_publish_operation.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.skill_publish_operation.id</code>.
+     * Getter for <code>public.skill_publish_operation.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
@@ -38,6 +38,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.owner_id</code>.
+     * 所属用户及授权作用域
      */
     public void setOwnerId(UUID value) {
         set(1, value);
@@ -45,20 +46,23 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.owner_id</code>.
+     * 所属用户及授权作用域
      */
     public UUID getOwnerId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.skill_publish_operation.skill_id</code>.
+     * Setter for <code>public.skill_publish_operation.skill_id</code>. Skill
+     * 业务身份
      */
     public void setSkillId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.skill_publish_operation.skill_id</code>.
+     * Getter for <code>public.skill_publish_operation.skill_id</code>. Skill
+     * 业务身份
      */
     public UUID getSkillId() {
         return (UUID) get(2);
@@ -66,6 +70,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.command_key</code>.
+     * 用户命令幂等键
      */
     public void setCommandKey(String value) {
         set(3, value);
@@ -73,6 +78,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.command_key</code>.
+     * 用户命令幂等键
      */
     public String getCommandKey() {
         return (String) get(3);
@@ -80,6 +86,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.payload_hash</code>.
+     * 规范化命令载荷 SHA-256 摘要
      */
     public void setPayloadHash(String value) {
         set(4, value);
@@ -87,6 +94,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.payload_hash</code>.
+     * 规范化命令载荷 SHA-256 摘要
      */
     public String getPayloadHash() {
         return (String) get(4);
@@ -94,6 +102,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.input_json</code>.
+     * 受理时固定的命令输入
      */
     public void setInputJson(JSONB value) {
         set(5, value);
@@ -101,6 +110,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.input_json</code>.
+     * 受理时固定的命令输入
      */
     public JSONB getInputJson() {
         return (JSONB) get(5);
@@ -108,6 +118,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.progress_json</code>.
+     * 发布素材归档的持久进度
      */
     public void setProgressJson(JSONB value) {
         set(6, value);
@@ -115,34 +126,39 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.progress_json</code>.
+     * 发布素材归档的持久进度
      */
     public JSONB getProgressJson() {
         return (JSONB) get(6);
     }
 
     /**
-     * Setter for <code>public.skill_publish_operation.status</code>.
+     * Setter for <code>public.skill_publish_operation.status</code>. 持久状态，允许值由
+     * CHECK 约束限定
      */
     public void setStatus(String value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.skill_publish_operation.status</code>.
+     * Getter for <code>public.skill_publish_operation.status</code>. 持久状态，允许值由
+     * CHECK 约束限定
      */
     public String getStatus() {
         return (String) get(7);
     }
 
     /**
-     * Setter for <code>public.skill_publish_operation.epoch</code>.
+     * Setter for <code>public.skill_publish_operation.epoch</code>. 操作租约的
+     * fencing epoch，旧执行者不得回写
      */
     public void setEpoch(Long value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.skill_publish_operation.epoch</code>.
+     * Getter for <code>public.skill_publish_operation.epoch</code>. 操作租约的
+     * fencing epoch，旧执行者不得回写
      */
     public Long getEpoch() {
         return (Long) get(8);
@@ -150,6 +166,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.lease_until</code>.
+     * 当前认领租约过期时间
      */
     public void setLeaseUntil(OffsetDateTime value) {
         set(9, value);
@@ -157,6 +174,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.lease_until</code>.
+     * 当前认领租约过期时间
      */
     public OffsetDateTime getLeaseUntil() {
         return (OffsetDateTime) get(9);
@@ -164,6 +182,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.result_version_id</code>.
+     * 发布完成的不可变 Skill 版本
      */
     public void setResultVersionId(UUID value) {
         set(10, value);
@@ -171,6 +190,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.result_version_id</code>.
+     * 发布完成的不可变 Skill 版本
      */
     public UUID getResultVersionId() {
         return (UUID) get(10);
@@ -178,6 +198,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.error_code</code>.
+     * 稳定错误代码，不含堆栈或凭据
      */
     public void setErrorCode(String value) {
         set(11, value);
@@ -185,6 +206,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.error_code</code>.
+     * 稳定错误代码，不含堆栈或凭据
      */
     public String getErrorCode() {
         return (String) get(11);
@@ -192,6 +214,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.error_detail</code>.
+     * 已脱敏的公开错误说明
      */
     public void setErrorDetail(String value) {
         set(12, value);
@@ -199,6 +222,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.error_detail</code>.
+     * 已脱敏的公开错误说明
      */
     public String getErrorDetail() {
         return (String) get(12);
@@ -206,6 +230,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.pins_cleaned</code>.
+     * 发布操作临时素材引用已清理
      */
     public void setPinsCleaned(Boolean value) {
         set(13, value);
@@ -213,6 +238,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.pins_cleaned</code>.
+     * 发布操作临时素材引用已清理
      */
     public Boolean getPinsCleaned() {
         return (Boolean) get(13);
@@ -220,6 +246,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.created_at</code>.
+     * 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(14, value);
@@ -227,6 +254,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.created_at</code>.
+     * 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(14);
@@ -234,6 +262,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Setter for <code>public.skill_publish_operation.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(15, value);
@@ -241,6 +270,7 @@ public class SkillPublishOperationRecord extends UpdatableRecordImpl<SkillPublis
 
     /**
      * Getter for <code>public.skill_publish_operation.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(15);

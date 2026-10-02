@@ -25,8 +25,6 @@ import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
-import dev.agenvas.db.tables.ComfyuiConfigVersion;
-import dev.agenvas.db.tables.CreativeDataResetMarker;
 import dev.agenvas.db.tables.CreativeSkill;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
@@ -44,8 +42,6 @@ import dev.agenvas.db.tables.MediaCapabilityVersion;
 import dev.agenvas.db.tables.MediaConnectionCreateKey;
 import dev.agenvas.db.tables.MediaDefault;
 import dev.agenvas.db.tables.MediaDraft;
-import dev.agenvas.db.tables.MediaLegacyImportMarker;
-import dev.agenvas.db.tables.MediaLegacyOriginMap;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
 import dev.agenvas.db.tables.MediaStyle;
@@ -70,7 +66,6 @@ import dev.agenvas.db.tables.StorageProfile;
 import dev.agenvas.db.tables.StorageSettings;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
-import dev.agenvas.db.tables.TaskDependency;
 import dev.agenvas.db.tables.TaskLateResult;
 import dev.agenvas.db.tables.TaskManualReplacement;
 import dev.agenvas.db.tables.TaskProviderPollRetry;
@@ -85,392 +80,337 @@ import dev.agenvas.db.tables.UsageLedger;
 public class Tables {
 
     /**
-     * Explicit Agent input fixed to an exact immutable ArtifactVersion.
+     * Agent 显式输入：固定引用不可变产物版本
      */
     public static final AgentBinding AGENT_BINDING = AgentBinding.AGENT_BINDING;
 
     /**
-     * Persistent user conversation. Each accepted message starts a separately
-     * budgeted AgentRun.
+     * Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run
      */
     public static final AgentConversation AGENT_CONVERSATION = AgentConversation.AGENT_CONVERSATION;
 
     /**
-     * Persistent card configuration only; no thread, request principal, or
-     * mutable run context.
+     * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
      */
     public static final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
 
     /**
-     * Immutable Agent media batch and explicit user decision; approval never
-     * performs network I/O.
+     * Agent 固定媒体批次、用户审批决定及原 Run 的结果通知状态
      */
     public static final AgentMediaApproval AGENT_MEDIA_APPROVAL = AgentMediaApproval.AGENT_MEDIA_APPROVAL;
 
     /**
-     * Persistent execution lifecycle with immutable input and policy snapshots.
+     * 单次 Agent 指令的持久执行状态及不可变上下文、策略快照
      */
     public static final AgentRun AGENT_RUN = AgentRun.AGENT_RUN;
 
     /**
-     * Agent-only fixed version selection; no media node execution binding
+     * Agent 选定的 Skill 不可变版本
      */
     public static final AgentSkillBinding AGENT_SKILL_BINDING = AgentSkillBinding.AGENT_SKILL_BINDING;
 
     /**
-     * The table <code>public.app_user</code>.
+     * 本地用户、密码摘要及账户状态
      */
     public static final AppUser APP_USER = AppUser.APP_USER;
 
     /**
-     * The table <code>public.artifact</code>.
+     * 业务产物身份及资源库默认版本；内容保存于不可变版本
      */
     public static final Artifact ARTIFACT = Artifact.ARTIFACT;
 
     /**
-     * Immutable content revisions. Resource-default and CanvasItem selections
-     * only move pointers.
+     * 不可变产物内容、固定输入及生成来源；触发器禁止更新和删除
      */
     public static final ArtifactVersion ARTIFACT_VERSION = ArtifactVersion.ARTIFACT_VERSION;
 
     /**
-     * Normalized semantic version references used to enforce same-project
-     * referential integrity.
+     * 不可变版本之间的精确输入引用及顺序
      */
     public static final ArtifactVersionReference ARTIFACT_VERSION_REFERENCE = ArtifactVersionReference.ARTIFACT_VERSION_REFERENCE;
 
     /**
-     * Private archived bytes. READY is inserted only after validation and
-     * atomic file move.
+     * 已校验、归档并发布的媒体字节及完整性元数据
      */
     public static final Asset ASSET = Asset.ASSET;
 
     /**
-     * The table <code>public.asset_storage_route</code>.
+     * 媒体字节所在存储配置及可读取路由；独立于业务产物版本
      */
     public static final AssetStorageRoute ASSET_STORAGE_ROUTE = AssetStorageRoute.ASSET_STORAGE_ROUTE;
 
     /**
-     * The table <code>public.audit_debug_settings</code>.
+     * 全局调用调试开关，默认不保存调用正文
      */
     public static final AuditDebugSettings AUDIT_DEBUG_SETTINGS = AuditDebugSettings.AUDIT_DEBUG_SETTINGS;
 
     /**
-     * System-wide retention for terminal execution history: calls, debug
-     * bodies, model rounds, tools and provider attempts. Null keeps forever;
-     * business identities/results remain.
+     * 全局调用日志保留期限及配置版本
      */
     public static final AuditLogRetentionSettings AUDIT_LOG_RETENTION_SETTINGS = AuditLogRetentionSettings.AUDIT_LOG_RETENTION_SETTINGS;
 
     /**
-     * Safe metadata for individual adapter invocations; no bodies, endpoints or
-     * credentials.
+     * Provider 调用公开审计元数据，不包含凭据或模型私有推理
      */
     public static final CallLog CALL_LOG = CallLog.CALL_LOG;
 
     /**
-     * Opt-in HTTP bodies and URLs, with credentials and private reasoning
-     * removed; never part of project export.
+     * 仅在明确启用调试时保存的已脱敏请求与响应正文
      */
     public static final CallLogDebug CALL_LOG_DEBUG = CallLogDebug.CALL_LOG_DEBUG;
 
     /**
-     * Persistent CanvasItem-to-CanvasItem topology with the exact source
-     * version captured at creation.
+     * 画布卡片关系；输入来源和派生线不代表执行依赖
      */
     public static final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
 
     /**
-     * Spatial card plus card-local work context; Artifact content remains
-     * immutable and shared.
+     * 画布空间卡片及卡片独立的标题、版本选择与内容选择 epoch
      */
     public static final CanvasItem CANVAS_ITEM = CanvasItem.CANVAS_ITEM;
 
     /**
-     * Deduplicated exact media versions; dynamicValues maps named capability
-     * slots to these version identities.
+     * 媒体卡片显式选取的精确输入版本、角色、顺序和显示颜色
      */
     public static final CanvasItemMediaInput CANVAS_ITEM_MEDIA_INPUT = CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT;
 
     /**
-     * Manual and connection reasons that keep a deduplicated media input alive.
+     * 媒体输入的手工或连线来源，允许同一输入保留多个来源
      */
     public static final CanvasItemMediaInputSource CANVAS_ITEM_MEDIA_INPUT_SOURCE = CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE;
 
     /**
-     * Card-local immutable result history; switching a card never updates
-     * pinned inputs or library defaults.
+     * 媒体卡片独占的结果版本历史
      */
     public static final CanvasItemMediaVersion CANVAS_ITEM_MEDIA_VERSION = CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION;
 
     /**
-     * The table <code>public.comfyui_config_version</code>.
-     */
-    public static final ComfyuiConfigVersion COMFYUI_CONFIG_VERSION = ComfyuiConfigVersion.COMFYUI_CONFIG_VERSION;
-
-    /**
-     * The table <code>public.creative_data_reset_marker</code>.
-     */
-    public static final CreativeDataResetMarker CREATIVE_DATA_RESET_MARKER = CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER;
-
-    /**
-     * The table <code>public.creative_skill</code>.
+     * 用户创作 Skill 身份、当前发布版本和回收站状态
      */
     public static final CreativeSkill CREATIVE_SKILL = CreativeSkill.CREATIVE_SKILL;
 
     /**
-     * Principal-scoped HTTP command replay record; same key with a different
-     * hash conflicts.
+     * 按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷
      */
     public static final IdempotencyRecord IDEMPOTENCY_RECORD = IdempotencyRecord.IDEMPOTENCY_RECORD;
 
     /**
-     * Singleton row used to serialize installation-wide bootstrap decisions.
+     * 管理员初始化的单例事务锁行
      */
     public static final InstallationLock INSTALLATION_LOCK = InstallationLock.INSTALLATION_LOCK;
 
     /**
-     * Durable idempotent file removal after catalogue deletion or duplicate
-     * save
+     * 个人素材库待清理的字节引用及下次清理时间
      */
     public static final LibraryCleanup LIBRARY_CLEANUP = LibraryCleanup.LIBRARY_CLEANUP;
 
     /**
-     * Durable local transfers; no provider submission or generation retry
+     * 素材库命令的持久执行、租约、结果与错误
      */
     public static final LibraryCommand LIBRARY_COMMAND = LibraryCommand.LIBRARY_COMMAND;
 
     /**
-     * The table <code>public.library_entry</code>.
+     * 个人素材库条目、固定内容与精确导入来源
      */
     public static final LibraryEntry LIBRARY_ENTRY = LibraryEntry.LIBRARY_ENTRY;
 
     /**
-     * The table <code>public.library_file</code>.
+     * 个人素材库文件的存储元数据
      */
     public static final LibraryFile LIBRARY_FILE = LibraryFile.LIBRARY_FILE;
 
     /**
-     * Immutable provenance; library deletion never cascades to project content
+     * 素材库导入到项目的版本及原条目来源审计
      */
     public static final LibraryImport LIBRARY_IMPORT = LibraryImport.LIBRARY_IMPORT;
 
     /**
-     * Immutable versioned LLM endpoint and AES-GCM encrypted credential; old
-     * versions remain for recovery.
+     * 不可变 LLM 连接版本与加密凭据；激活标记选择当前配置
      */
     public static final LlmProviderConfig LLM_PROVIDER_CONFIG = LlmProviderConfig.LLM_PROVIDER_CONFIG;
 
     /**
-     * The table <code>public.llm_provider_config_counter</code>.
+     * 串行分配 LLM 连接配置版本的单例计数器
      */
     public static final LlmProviderConfigCounter LLM_PROVIDER_CONFIG_COUNTER = LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER;
 
     /**
-     * Durable model-round checkpoint; a complete response is committed before
-     * any tool side effect.
+     * 固定模型配置版本的持久模型回合，保存完整响应后才执行工具
      */
     public static final LlmTurn LLM_TURN = LlmTurn.LLM_TURN;
 
     /**
-     * The table <code>public.media_capability</code>.
+     * 管理员媒体能力身份、可用状态和当前不可变版本
      */
     public static final MediaCapability MEDIA_CAPABILITY = MediaCapability.MEDIA_CAPABILITY;
 
     /**
-     * The table <code>public.media_capability_create_key</code>.
+     * 媒体能力创建命令的幂等键与载荷摘要
      */
     public static final MediaCapabilityCreateKey MEDIA_CAPABILITY_CREATE_KEY = MediaCapabilityCreateKey.MEDIA_CAPABILITY_CREATE_KEY;
 
     /**
-     * The table <code>public.media_capability_version</code>.
+     * 不可变媒体适配器输入契约、映射摘要与能力规格
      */
     public static final MediaCapabilityVersion MEDIA_CAPABILITY_VERSION = MediaCapabilityVersion.MEDIA_CAPABILITY_VERSION;
 
     /**
-     * The table <code>public.media_connection_create_key</code>.
+     * 媒体连接创建命令的幂等键与载荷摘要
      */
     public static final MediaConnectionCreateKey MEDIA_CONNECTION_CREATE_KEY = MediaConnectionCreateKey.MEDIA_CONNECTION_CREATE_KEY;
 
     /**
-     * The table <code>public.media_default</code>.
+     * 每类媒体操作的默认能力选择及并发控制版本
      */
     public static final MediaDefault MEDIA_DEFAULT = MediaDefault.MEDIA_DEFAULT;
 
     /**
-     * Editable generation input owned by one IMAGE/VIDEO CanvasItem and
-     * protected by independent CAS.
+     * 媒体卡片独立草稿、参数、能力、风格和引用提及
      */
     public static final MediaDraft MEDIA_DRAFT = MediaDraft.MEDIA_DRAFT;
 
     /**
-     * The table <code>public.media_legacy_import_marker</code>.
-     */
-    public static final MediaLegacyImportMarker MEDIA_LEGACY_IMPORT_MARKER = MediaLegacyImportMarker.MEDIA_LEGACY_IMPORT_MARKER;
-
-    /**
-     * The table <code>public.media_legacy_origin_map</code>.
-     */
-    public static final MediaLegacyOriginMap MEDIA_LEGACY_ORIGIN_MAP = MediaLegacyOriginMap.MEDIA_LEGACY_ORIGIN_MAP;
-
-    /**
-     * The table <code>public.media_provider_connection</code>.
+     * 管理员媒体连接身份、平台和当前不可变连接版本
      */
     public static final MediaProviderConnection MEDIA_PROVIDER_CONNECTION = MediaProviderConnection.MEDIA_PROVIDER_CONNECTION;
 
     /**
-     * The table <code>public.media_provider_connection_version</code>.
+     * 不可变媒体连接地址、精确来源摘要与加密凭据
      */
     public static final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
 
     /**
-     * The table <code>public.media_style</code>.
+     * 媒体生成风格目录及内置风格缩略图
      */
     public static final MediaStyle MEDIA_STYLE = MediaStyle.MEDIA_STYLE;
 
     /**
-     * The table <code>public.media_template</code>.
+     * 用户或系统媒体模板及提示词
      */
     public static final MediaTemplate MEDIA_TEMPLATE = MediaTemplate.MEDIA_TEMPLATE;
 
     /**
-     * The table <code>public.media_template_attachment</code>.
+     * 媒体模板引用图片及稳定显示顺序
      */
     public static final MediaTemplateAttachment MEDIA_TEMPLATE_ATTACHMENT = MediaTemplateAttachment.MEDIA_TEMPLATE_ATTACHMENT;
 
     /**
-     * The table <code>public.media_template_image</code>.
+     * 模板参考图片的归档存储元数据
      */
     public static final MediaTemplateImage MEDIA_TEMPLATE_IMAGE = MediaTemplateImage.MEDIA_TEMPLATE_IMAGE;
 
     /**
-     * The table <code>public.media_template_import_command</code>.
+     * 模板导入命令的固定输入、幂等摘要和结果
      */
     public static final MediaTemplateImportCommand MEDIA_TEMPLATE_IMPORT_COMMAND = MediaTemplateImportCommand.MEDIA_TEMPLATE_IMPORT_COMMAND;
 
     /**
-     * Template provenance with no LibraryEntry dependency; template deletion
-     * never deletes project versions
+     * 模板图片导入到项目的不可变版本及模板来源审计
      */
     public static final MediaTemplateImportImage MEDIA_TEMPLATE_IMPORT_IMAGE = MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE;
 
     /**
-     * The table <code>public.media_template_import_source</code>.
+     * 模板导入命令固定的参考图片来源
      */
     public static final MediaTemplateImportSource MEDIA_TEMPLATE_IMPORT_SOURCE = MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE;
 
     /**
-     * Permission and configuration boundary for one creative workspace.
+     * 项目权限边界、当前活动 Run、事件序号与并发控制版本
      */
     public static final Project PROJECT = Project.PROJECT;
 
     /**
-     * Per-project transactional event log and replay outbox ordered by the
-     * project counter.
+     * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位
      */
     public static final ProjectEvent PROJECT_EVENT = ProjectEvent.PROJECT_EVENT;
 
     /**
-     * Submission ledger written before any external request; ambiguous outcomes
-     * remain UNKNOWN.
+     * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提
      */
     public static final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
 
     /**
-     * The table <code>public.skill_binding_command</code>.
+     * Agent Skill 绑定命令的幂等摘要与响应
      */
     public static final SkillBindingCommand SKILL_BINDING_COMMAND = SkillBindingCommand.SKILL_BINDING_COMMAND;
 
     /**
-     * The table <code>public.skill_draft</code>.
+     * Skill 可编辑草稿及内容格式版本
      */
     public static final SkillDraft SKILL_DRAFT = SkillDraft.SKILL_DRAFT;
 
     /**
-     * The table <code>public.skill_install_command</code>.
+     * Skill 安装命令幂等账本；多个命令可引用同一安装操作
      */
     public static final SkillInstallCommand SKILL_INSTALL_COMMAND = SkillInstallCommand.SKILL_INSTALL_COMMAND;
 
     /**
-     * The table <code>public.skill_install_operation</code>.
+     * 项目内固定 Skill 版本的安装操作、租约、结果和失败清理
      */
     public static final SkillInstallOperation SKILL_INSTALL_OPERATION = SkillInstallOperation.SKILL_INSTALL_OPERATION;
 
     /**
-     * Durable fenced local archival; no model or Provider execution
+     * Skill 发布操作、素材归档进度、租约及临时引用清理
      */
     public static final SkillPublishOperation SKILL_PUBLISH_OPERATION = SkillPublishOperation.SKILL_PUBLISH_OPERATION;
 
     /**
-     * Immutable Skill body, bounded text resources and independently archived
-     * image bindings
+     * 不可变 Skill 发布版本、内容包及完整性摘要
      */
     public static final SkillVersion SKILL_VERSION = SkillVersion.SKILL_VERSION;
 
     /**
-     * The table <code>public.spring_session</code>.
+     * Spring Session JDBC 持久会话及过期索引元数据
      */
     public static final SpringSession SPRING_SESSION = SpringSession.SPRING_SESSION;
 
     /**
-     * The table <code>public.spring_session_attributes</code>.
+     * Spring Session JDBC 序列化会话属性
      */
     public static final SpringSessionAttributes SPRING_SESSION_ATTRIBUTES = SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES;
 
     /**
-     * The table <code>public.storage_profile</code>.
+     * 不可变本地或对象存储配置及加密凭据
      */
     public static final StorageProfile STORAGE_PROFILE = StorageProfile.STORAGE_PROFILE;
 
     /**
-     * The table <code>public.storage_settings</code>.
+     * 当前存储配置选择及并发控制版本；已有资产保留原路由
      */
     public static final StorageSettings STORAGE_SETTINGS = StorageSettings.STORAGE_SETTINGS;
 
     /**
-     * Persistent recoverable work; leases fence workers and never cover
-     * provider waiting time.
+     * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入
      */
     public static final Task TASK = Task.TASK;
 
     /**
-     * Immutable content selection precondition captured when a generation Task
-     * is created.
+     * 任务固定目标与受理时的版本选择；结果不能覆盖并发用户选择
      */
     public static final TaskArtifactTarget TASK_ARTIFACT_TARGET = TaskArtifactTarget.TASK_ARTIFACT_TARGET;
 
     /**
-     * The table <code>public.task_dependency</code>.
-     */
-    public static final TaskDependency TASK_DEPENDENCY = TaskDependency.TASK_DEPENDENCY;
-
-    /**
-     * Results arriving after Run cancellation; never selected or used to
-     * promote dependents.
+     * 失效租约或取消后的晚到结果审计，不自动选用或启动后续任务
      */
     public static final TaskLateResult TASK_LATE_RESULT = TaskLateResult.TASK_LATE_RESULT;
 
     /**
-     * One explicit-risk new Task for an unresolved original; original Task and
-     * attempt remain UNKNOWN.
+     * 用户显式批准的 UNKNOWN 重试对应关系和确认记录
      */
     public static final TaskManualReplacement TASK_MANUAL_REPLACEMENT = TaskManualReplacement.TASK_MANUAL_REPLACEMENT;
 
     /**
-     * Consecutive query/download/archive failures for one accepted provider
-     * request; never a submission retry.
+     * 外部状态查询的重试计数；查询重试不代表重新提交生成
      */
     public static final TaskProviderPollRetry TASK_PROVIDER_POLL_RETRY = TaskProviderPollRetry.TASK_PROVIDER_POLL_RETRY;
 
     /**
-     * One caller-driven tool invocation. Reservation, business mutation and
-     * result commit together.
+     * 按 Run、回合及 tool_call_id 去重的工具执行账本
      */
     public static final ToolExecution TOOL_EXECUTION = ToolExecution.TOOL_EXECUTION;
 
     /**
-     * Immutable, idempotent usage entries; unknown external cost is NULL, never
-     * a fabricated zero.
+     * 使用量预留、结算与释放账本，记录估算或实际费用来源
      */
     public static final UsageLedger USAGE_LEDGER = UsageLedger.USAGE_LEDGER;
 }

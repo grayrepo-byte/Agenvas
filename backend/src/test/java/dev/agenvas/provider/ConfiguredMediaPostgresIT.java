@@ -18,7 +18,6 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.ProviderModeProperties;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
-import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.settings.application.SystemDiagnosticsService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
@@ -75,7 +74,6 @@ class ConfiguredMediaPostgresIT {
     void deploymentStartsWithoutMockDefaultsAndKeepsHistoryWhileUsingPublishedRealCapabilities() throws Exception {
         assertThat(mode.mode()).isEqualTo(ProviderModeProperties.Mode.CONFIGURED);
         assertThat(context.getBeansOfType(ComfyUiClient.class)).isEmpty();
-        assertThat(context.getBeansOfType(ComfyUiClientRegistry.class)).isEmpty();
         assertThat(catalog.publishedCandidates()).isEmpty();
         assertThat(diagnostics.snapshot().mediaMode()).isEqualTo("CONFIGURED");
         assertThat(diagnostics.snapshot().imageConfigured()).isFalse();

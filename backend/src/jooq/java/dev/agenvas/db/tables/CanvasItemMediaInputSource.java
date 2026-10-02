@@ -43,7 +43,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Manual and connection reasons that keep a deduplicated media input alive.
+ * 媒体输入的手工或连线来源，允许同一输入保留多个来源
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaInputSource extends TableImpl<CanvasItemMediaInputSourceRecord> {
@@ -65,50 +65,56 @@ public class CanvasItemMediaInputSource extends TableImpl<CanvasItemMediaInputSo
     }
 
     /**
-     * The column <code>public.canvas_item_media_input_source.id</code>.
+     * The column <code>public.canvas_item_media_input_source.id</code>. 记录身份
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
      * The column <code>public.canvas_item_media_input_source.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column
      * <code>public.canvas_item_media_input_source.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "固定的目标或上下文画布卡片");
 
     /**
      * The column
      * <code>public.canvas_item_media_input_source.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, UUID> ARTIFACT_VERSION_ID = createField(DSL.name("artifact_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, UUID> ARTIFACT_VERSION_ID = createField(DSL.name("artifact_version_id"), SQLDataType.UUID.nullable(false), this, "固定的不可变产物版本");
 
     /**
      * The column
      * <code>public.canvas_item_media_input_source.source_type</code>.
+     * 媒体输入来自手工选择或画布连线
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, String> SOURCE_TYPE = createField(DSL.name("source_type"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, String> SOURCE_TYPE = createField(DSL.name("source_type"), SQLDataType.VARCHAR(16).nullable(false), this, "媒体输入来自手工选择或画布连线");
 
     /**
      * The column
      * <code>public.canvas_item_media_input_source.connection_id</code>.
+     * 输入来源画布连线；手工来源为空
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, UUID> CONNECTION_ID = createField(DSL.name("connection_id"), SQLDataType.UUID, this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, UUID> CONNECTION_ID = createField(DSL.name("connection_id"), SQLDataType.UUID, this, "输入来源画布连线；手工来源为空");
 
     /**
      * The column <code>public.canvas_item_media_input_source.created_at</code>.
+     * 创建时间（UTC）
      */
-    public final TableField<CanvasItemMediaInputSourceRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasItemMediaInputSourceRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private CanvasItemMediaInputSource(Name alias, Table<CanvasItemMediaInputSourceRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CanvasItemMediaInputSource(Name alias, Table<CanvasItemMediaInputSourceRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Manual and connection reasons that keep a deduplicated media input alive."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("媒体输入的手工或连线来源，允许同一输入保留多个来源"), TableOptions.table(), where);
     }
 
     /**

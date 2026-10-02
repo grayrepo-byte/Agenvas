@@ -57,8 +57,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=media-version-integration-secret",
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.comfyui.scheduler-enabled=false",
-        "agenvas.provider.media.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CanvasMediaVersionsPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -147,6 +146,41 @@ class CanvasMediaVersionsPostgresIT {
                 .artifact().resourceDefaultVersionId()).isNull();
         assertThat(jdbc.sql("select count(*) from canvas_item_media_version where canvas_item_id = :id")
                 .param("id", card).query(Long.class).single()).isEqualTo(2);
+    }
+
+    @Test
+    void emptyNodeCanGenerateAfterAnotherNodeChangesTheSharedResourceDefault() {
+        UUID emptyNode = create(Artifact.Kind.IMAGE);
+        UUID artifactId = card(emptyNode).item().subjectId();
+        UUID sibling = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), artifactId);
+        save(sibling, "Independent sibling result", false);
+        UUID siblingVersion = generate(sibling);
+        var before = artifacts.get(owner.userId(), project.id(), artifactId).artifact();
+        var sharedDefault = artifacts.setResourceDefaultVersion(owner.userId(), project.id(),
+                artifactId, siblingVersion, before.version()).artifact();
+        assertThat(sharedDefault.version()).isPositive();
+        assertThat(sharedDefault.resourceDefaultVersionId()).isEqualTo(siblingVersion);
+        assertThat(card(emptyNode).item().selectedVersionId()).isNull();
+        assertThat(canvas.listMediaVersions(owner.userId(), project.id(), emptyNode)).isEmpty();
+
+        Task accepted = run(emptyNode);
+
+        assertThat(accepted.status()).isEqualTo(Task.Status.READY);
+        assertThat(accepted.input().path("parentVersionId").isNull()).isTrue();
+        assertThat(jdbc.sql("select expected_current_version_id from task_artifact_target where task_id=:id")
+                .param("id", accepted.id()).query(UUID.class).optional()).isEmpty();
+        assertThat(jdbc.sql("select expected_artifact_version from task_artifact_target where task_id=:id")
+                .param("id", accepted.id()).query(Long.class).single()).isEqualTo(sharedDefault.version());
+        assertThat(card(emptyNode).item().selectedVersionId()).isNull();
+        assertThat(card(sibling).item().selectedVersionId()).isEqualTo(siblingVersion);
+
+        // Finish the accepted task so this class's global claim queue stays isolated between tests.
+        assertThat(worker.submitOnce("empty-node-worker")).isEqualTo(1);
+        Task completed = tasks.get(owner.userId(), project.id(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.output().path("selected").asBoolean()).isTrue();
+        assertThat(card(emptyNode).item().selectedVersionId()).isNotNull();
+        assertThat(card(sibling).item().selectedVersionId()).isEqualTo(siblingVersion);
     }
 
     @Test
@@ -267,7 +301,7 @@ class CanvasMediaVersionsPostgresIT {
         ObjectNode content = mapper.createObjectNode();
         content.put("sourceTaskId", lease.id().toString());
         content.put("prompt", "Mock late result");
-        content.put("providerConfigVersion", 1);
+
         content.put("workflowVersion", "mock-v1");
         content.putObject("parameters");
         content.put("assetId", ImageAssetFixture.archive(assets, owner.userId(), project.id()).toString());

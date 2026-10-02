@@ -2,9 +2,9 @@
 
 [English](README.en.md)
 
-Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操作卡片存在于画布中，在明确的权限、审批、版本和恢复边界内生成三镜头短片。
+Agenvas 是一个可自托管的 AI 创作画布。用户直接在文字、图片、视频和音频卡片上创作，Agent 在明确的权限、审批、版本和恢复边界内读取上下文、编辑文字并编排画布。
 
-当前仓库已完成 M0–M2 的基础链路，并实现可运行的 Mock 三镜头、分阶段审批、媒体归档、局部重做与无声导出纵向切片：Vite 构建的 React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、项目与不可变内容版本、持久画布、Creator Agent、租约与 fencing epoch 任务、事务事件及可补发 SSE。真实 LLM/ComfyUI 接口和生产发布门禁仍未验收，不能把当前版本视为稳定 MVP 成品；逐项状态以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
+当前仓库已实现 Vite/React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、项目与不可变内容版本、持久画布、Agent、租约与 fencing epoch 任务、事务事件及可补发 SSE。媒体由用户逐卡片发起生成；Agent 的媒体提案须经用户批准后复用同一任务管线。仓库尚未发布，真实 Provider 与生产发布门禁的逐项状态以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
 
 ## 已实现的最小纵向切片
 
@@ -15,15 +15,15 @@ Agenvas 是一个可自托管的 AI 创作画布。目标是让 Agent 以可操�
 - Mock 媒体模式醒目标识；成功、失败和 UNKNOWN fixture 可重复。
 - 未授权 API 默认返回 ProblemDetail；写请求需要 CSRF；登录会话在服务重启后仍可恢复。
 - 登录后可创建、分页浏览、重命名和归档自己的项目；写操作使用乐观版本避免静默覆盖。
-- 六类 Artifact 使用严格内容 Schema；修订只追加不可变版本，语义引用固定到同项目的明确历史版本。
+- 文字、图片、视频和音频四类 Artifact 使用严格内容 Schema；修订只追加不可变版本，输入引用固定到同项目的明确历史版本。
 - 项目工作区支持卡片放置、框选、拖拽、缩放、锁定、左对齐和适配视图；布局结束后原子保存，失败草稿保留在 Zustand。
-- Creator Agent 是画布上的持久化卡片，可编辑名称/指令、明确绑定或清空选中 ArtifactVersion，并显示独立输出范围；创建卡片不会隐式读取全项目或启动模型。用户输入本次任务后先查看服务端返回的模型状态、精确输入和调用限额，再显式确认运行；配置变化会要求重新检查。停止入口及按 Agent 分页的运行记录、计划与任务摘要已接入。
+- Creator Agent 是画布上的持久化卡片，可编辑名称/指令、明确绑定或清空选中 ArtifactVersion，并显示独立输出范围；创建卡片不会隐式读取全项目或启动模型。用户输入本次任务后先查看服务端返回的模型状态、精确输入和调用限额，再显式确认运行；配置变化会要求重新检查。停止入口及按 Agent 分页的运行记录、审批与任务摘要已接入。
 - Run 创建固定输入与策略快照；同项目活动槽位由 PostgreSQL 行锁串行仲裁，同幂等键精确重放，同键异参冲突，终态释放槽位。
-- Task 及依赖持久化在数据库中；Worker 通过 `SKIP LOCKED` 竞争有期限的租约，旧 epoch 不能回写，网络处理在事务外执行，等待 Provider 时释放线程与租约。
-- UNKNOWN 任务可按需查看持久提交账本的关联键、attempt 状态与已知 Provider 请求 ID。新 ComfyUI attempt 可显式查询原 prompt：仅在 ID、client ID、endpoint 指纹与配置匹配时恢复原请求轮询；查不到仍为 UNKNOWN，不自动重提。旧 attempt 的关联键不证明已受理，也不具备此自动核对能力。
-- 画布侧栏可上传 PNG/JPEG/WebP 参考图：私有 Asset 按实际解码、20 MiB/40 MP 限制和 SHA-256 校验，原图与 480px 缩略图都归档后才登记 READY；用户上传分支创建真实 IMAGE Artifact 卡片，不伪造生成 Task ID，可选中后绑定为 Agent 精确版本输入。生成视频归档使用 FFprobe/FFmpeg 验证 MP4 与首帧、500 MiB 上限，保存封面；任务键 MP4 归档可恢复。IMAGE/VIDEO 版本只引用同项目真实 Asset。按项目鉴权的原文件 GET/HEAD 支持单段 Range，卡片加载原图、缩略图留给后续列表界面。图片原图、缩略图与 MP4 写入中途失败已有注入测试；真实物理磁盘耗尽及真实 Provider 仍未验证。
-- 已批准的 Mock 图片任务由后台调度自动推进；每张演示图都经过持久化提交 checkpoint、Provider attempt 与真实 Asset 归档，并在图像及元数据中明确标记为演示素材。全新输出的 IMAGE Artifact 也会在同一业务事务内放到 Agent 输出组的画布空位，画布直接加载归档原图。
-- 后台 Agent 回合调度会认领持久化 Task；Mock 模式的确定性演示模型沿同一工具账本创建三个镜头、图片计划、视频计划和顺序导出提案。图片与视频分阶段人工审批；图片完成后逐镜头选定关键帧才提出视频计划。批准后的 Mock 视频从固定图片版本生成实际 H.264 MP4，明确标记非 AI 视频。导出提案固定镜头/视频版本及区间，但不会自动执行；用户在导出面板核对哈希并批准后才创建本地 FFmpeg 任务。模型响应与工具结果先入账，下一回合从账本重建；切换到 `AGENVAS_LLM_MODE=configured` 但未配置 ChatModel 时，Run 会进入 `BLOCKED`。
+- Task 及其固定输入、目标和媒体能力绑定持久化在数据库中；Worker 通过 `SKIP LOCKED` 竞争有期限的租约，旧 epoch 不能回写，网络处理在事务外执行，等待 Provider 时释放线程与租约。
+- UNKNOWN 任务可按需查看持久提交账本的请求键、attempt 状态与已知 Provider 请求 ID。请求键不证明外部已受理，系统不会自动重提；用户显式重试会创建独立的新尝试。已确认受理的任务仅查询保存的原请求 ID，并使用任务固定的连接版本归档结果。
+- 画布侧栏可上传 PNG/JPEG/WebP 参考图：私有 Asset 按实际解码、20 MiB/40 MP 限制和 SHA-256 校验，媒体字节完成归档校验后才登记 Asset；用户上传分支创建真实 IMAGE Artifact 卡片，不伪造生成 Task ID，可选中后绑定为 Agent 精确版本输入。生成视频归档使用 FFprobe/FFmpeg 验证 MP4 与首帧、500 MiB 上限，保存封面；任务键 MP4 归档可恢复。IMAGE/VIDEO/AUDIO 版本只引用同项目真实 Asset。按项目鉴权的原文件 GET/HEAD 支持单段 Range，卡片加载原图、缩略图留给后续列表界面。图片原图、缩略图与 MP4 写入中途失败已有注入测试；真实物理磁盘耗尽及真实 Provider 仍未验证。
+- 用户在媒体卡片上保存草稿、选择能力并点击运行；受理时冻结节点、草稿与参考版本。统一媒体管线管理提交账本、排队、取消、UNKNOWN、原请求轮询与结果归档。重新生成追加节点版本；编辑及后处理创建独立派生节点。
+- Mock 图片、视频和音频由同一管线生成可读取的合成媒体，图面及元数据明确标为演示素材。Agent 保存模型响应和工具调用后再执行工具；文字工具复用应用服务，媒体提案固定批次、统一批准后才发起生成。
 - Artifact、Canvas、Agent 与 Run 命令写入项目序号事件；事件失败会回滚对应命令。项目快照在同一 PostgreSQL `REPEATABLE READ` 事务中读取画布、Agent、活动 Run/Task 与事件水位。
 - 一个项目由一个服务端事件轮询通道补发 SSE，客户端按序号去重并在缺口或过期时重取快照；每个连接的待发送队列与全局连接数都设有上限。
 - 启动服务不需要模型 Key、GPU 或作者账户；默认部署须先配置真实模型才能生成，开发版 Mock 可脱离外部模型运行。
@@ -114,7 +114,7 @@ Google Nano Banana 2 图片能力可在“媒体配置”页创建：配置服�
 
 默认部署 Compose 使用 `configured`；开发 Compose 显式使用 Mock。管理员在“媒体配置”页创建连接并发布固定能力，分别设置图片、视频和音频默认模型。媒体由用户在卡片上直接运行，任务冻结连接、能力、草稿和精确参考版本；Key 只在服务端加密保存。图片支持 GPT Image 2 / Nano Banana 的固定协议。火山方舟 Seedance 2 支持纯文本、首尾帧及全能参考（最多 9 图 / 3 音频，音频必须搭配视觉参考）；含音频参考时保留输出音轨，旧的单首帧请求继续生成无声 MP4。结果只从审核过的方舟域下载，禁止生成自动重试。Seed Audio 1.0 音频连接使用固定火山语音接口，提供提示词、参考音频/图片、音色库与声音参数；上传/播放/下载和节点内重新生成也可在 Mock 下独立运行。Mock 音频是演示提示音，不是语音合成；生成音色试听会新建可审计音频任务并计入用量。真实 Seed Audio / Seedance 调用本轮未运行，协议与归档通过本地假 HTTP 和 PostgreSQL 定向验证，见 音频验收（开发记录不随源码公开）。ComfyUI 仍仅接受固定模板与模型文件名，不允许上传任意工作流；本机地址限制为精确的 `http://127.0.0.1:<端口>`，跨容器需显式地址白名单。
 
-从旧版本升级时，V40 首次启动把 V34 保存的 ComfyUI 地址登记为不可变历史连接版本，并将当前旧环境配置导入数据库一次。之后更改 `AGENVAS_PROVIDER_MODE`、地址或模型文件名不会覆盖管理员在数据库中的媒体连接、能力和默认值。已受理的旧请求仅按保存的原地址指纹与请求 ID 核对；无法唯一映射的旧任务保持 UNKNOWN 或标记 `LEGACY_UNRESOLVED`，不会自动重新提交。升级前备份数据库、资产卷和密钥，并在恢复模式核对活动请求。
+媒体连接、能力与默认值仅通过管理员媒体目录管理，已移除旧 ComfyUI 环境装配、一次性配置导入和独立旧调度器。`AGENVAS_PROVIDER_MODE` 只选择 `mock` 或 `configured`；真实 ComfyUI 连接仍使用目录中发布的固定模板。任务冻结连接和能力版本，配置轮换不会改变已受理请求的查询来源。旧开发库与新 V1 的边界见[备份与恢复说明](docs/operations/backup-restore.md)。
 
 轮换部署主密钥时，先分别备份数据库与旧主密钥，再生成新的 32 字节随机 Base64 值：把 `AGENVAS_CREDENTIAL_KEY_VERSION` 增加 1，令 `AGENVAS_CREDENTIAL_MASTER_KEY` 指向新值，并把旧值以 `旧版本号=旧Base64` 加入 `AGENVAS_CREDENTIAL_PREVIOUS_KEYS`（多把旧密钥用逗号分隔，例如仅描述格式的 `1=<旧值>,2=<更早值>`）。重启后新配置用新密钥加密，已保存版本仍用其原 keyVersion 解密；在旧 Run、未知任务及备份可能引用旧版本期间不得移除旧密钥。缺失历史密钥会明确返回 `CREDENTIAL_KEY_VERSION_MISSING`，不会改用新密钥尝试解密。数据库中已验证的旧 LLM 配置可供固定该版本的 Run 继续使用；环境变量来源没有历史版本存储，变更后旧 Run 仍明确阻断。此流程尚未完成跨备份恢复演练，不得宣称密钥轮换具备生产发布验收。
 
@@ -131,14 +131,14 @@ docs/           MVP 规格、依赖基线与开发验收清单
 
 核心规格见 [MVP-SPEC.md](docs/MVP-SPEC.md)，执行顺序见 [DEVELOPMENT-CHECKLIST.md](docs/DEVELOPMENT-CHECKLIST.md)，实际验证版本见 [dependency-baseline.md](docs/dependency-baseline.md)。贡献前请同时阅读 [AGENTS.md](AGENTS.md)。
 
-旧备份恢复必须先以 `AGENVAS_RECOVERY_MODE=true` 启动；该模式不执行 Flyway 迁移，并暂停项目写入和后台调度。核对原外部请求、数据库与资产后，再决定何时迁移及恢复运行；操作顺序与本地演练边界见 [备份与恢复说明](docs/operations/backup-restore.md)。
+备份恢复必须使用与备份兼容的镜像，并先以 `AGENVAS_RECOVERY_MODE=true` 启动；该模式不执行 Flyway 迁移，并暂停项目写入和后台调度。旧 V1–V77 数据库须使用对应旧版本恢复，不能核对后直接切到新 V1；新基线版本使用独立空库和素材卷。操作顺序与演练边界见[备份与恢复说明](docs/operations/backup-restore.md)。
 
 ## 当前限制
 
 - 已实现单管理员身份闭环，但尚未提供账户找回、多管理员或团队能力。
-- 已有 Run 创建、读取和取消 API，受控模型回合、工具账本、后台模型回合调度、只读运行历史，以及图片/视频计划的审批。显式 Mock 模式的 LLM 可推进三镜头、图片审批、关键帧选择及视频审批，批准后的 Mock 图片和视频由后台 Worker 归档。可修订单个镜头并将共享场景新版本仅重绑该镜头，基于新镜头发起限定范围的 Mock Run，重新经历图片与视频审批。另有项目级无声顺序 MP4 导出、私有下载与脱敏项目 JSON/素材元数据清单；图片/视频 Task 已记录未定价用量的预留和唯一结算。ComfyUI 生图与图生视频候选模板已接入审批 Task、原请求核对与归档，并由假 HTTP 服务＋PostgreSQL 测试；真实模型/模板兼容、完整用量结算和发布门禁尚未完成。
+- 已有 Run 创建、读取和取消 API、受控模型回合、工具账本、公开执行记录与对话内媒体审批。项目可导出脱敏 JSON/素材元数据清单；清单不是媒体字节备份，也不是视频拼接导出。角色、场景、镜头、执行计划、关键帧审批和局部镜头重做已从产品范围移除。
 - grsai 中转站的 `gpt-image-2.5` 有真实文字生图成功记录；`nano-banana-2-lite` 已实测文字生图与单图编辑。GPT 最新一轮超时 UNKNOWN，不承诺稳定性；LLM/ComfyUI/Seedance 真实调用及 OpenAI/Google 官方端点仍未验证。本地假 HTTP 与演示素材不能作为真实 Provider 证据。
-- Flyway 已推进到 V56，覆盖当前画布、资源、直接生成、Provider 配置与任务恢复模型；V56 删除媒体能力并发字段和旧 ComfyUI 全局单槽表。迁移仍只增不改，详见 `backend/src/main/resources/db/migration/`。
+- 尚未发布的 V1–V77 开发迁移已重建为 [V1__initial_schema.sql](backend/src/main/resources/db/migration/V1__initial_schema.sql)，含当前 67 张业务表、28 条必需初始化数据及数据库对象注释，不包含用户数据或凭据。旧开发重置/媒体导入标记、旧 ComfyUI 配置版本表、任务依赖与多余字段已清理。新 V1 仅用于空库，后续从 V2 开始只增不改；旧库保留与恢复边界见 [ADR 0012 补充](docs/adr/0012-jooq-persistence.md#2026-10-02-未发布基线重建)。
 
 项目目标许可为 Apache-2.0；正式许可证、NOTICE 与第三方/模型许可证清单在 M6/T30 发布门禁完成前仍属于待办事项。安全报告边界见 [SECURITY.md](SECURITY.md)，当前支持范围与升级限制见 [0.1.0 发行说明草案](docs/release-notes/0.1.0-mvp-draft.md)。
 

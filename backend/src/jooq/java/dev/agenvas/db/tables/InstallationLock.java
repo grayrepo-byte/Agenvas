@@ -33,7 +33,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Singleton row used to serialize installation-wide bootstrap decisions.
+ * 管理员初始化的单例事务锁行
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class InstallationLock extends TableImpl<InstallationLockRecord> {
@@ -54,21 +54,16 @@ public class InstallationLock extends TableImpl<InstallationLockRecord> {
     }
 
     /**
-     * The column <code>public.installation_lock.id</code>.
+     * The column <code>public.installation_lock.id</code>. 记录身份
      */
-    public final TableField<InstallationLockRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "");
-
-    /**
-     * The column <code>public.installation_lock.purpose</code>.
-     */
-    public final TableField<InstallationLockRecord, String> PURPOSE = createField(DSL.name("purpose"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+    public final TableField<InstallationLockRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "记录身份");
 
     private InstallationLock(Name alias, Table<InstallationLockRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private InstallationLock(Name alias, Table<InstallationLockRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Singleton row used to serialize installation-wide bootstrap decisions."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("管理员初始化的单例事务锁行"), TableOptions.table(), where);
     }
 
     /**

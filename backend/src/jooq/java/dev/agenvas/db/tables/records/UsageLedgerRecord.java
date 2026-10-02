@@ -16,8 +16,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable, idempotent usage entries; unknown external cost is NULL, never a
- * fabricated zero.
+ * 使用量预留、结算与释放账本，记录估算或实际费用来源
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class UsageLedgerRecord extends UpdatableRecordImpl<UsageLedgerRecord> {
@@ -25,182 +24,186 @@ public class UsageLedgerRecord extends UpdatableRecordImpl<UsageLedgerRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.usage_ledger.id</code>.
+     * Setter for <code>public.usage_ledger.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.id</code>.
+     * Getter for <code>public.usage_ledger.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.project_id</code>.
+     * Setter for <code>public.usage_ledger.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.project_id</code>.
+     * Getter for <code>public.usage_ledger.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.run_id</code>.
+     * Setter for <code>public.usage_ledger.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
     public void setRunId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.run_id</code>.
+     * Getter for <code>public.usage_ledger.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.task_id</code>.
+     * Setter for <code>public.usage_ledger.task_id</code>. 持久任务身份
      */
     public void setTaskId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.task_id</code>.
+     * Getter for <code>public.usage_ledger.task_id</code>. 持久任务身份
      */
     public UUID getTaskId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.operation_key</code>.
+     * Setter for <code>public.usage_ledger.operation_key</code>. 使用量账本的业务操作去重键
      */
     public void setOperationKey(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.operation_key</code>.
+     * Getter for <code>public.usage_ledger.operation_key</code>. 使用量账本的业务操作去重键
      */
     public String getOperationKey() {
         return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.entry_type</code>.
+     * Setter for <code>public.usage_ledger.entry_type</code>. 使用量预留、结算或释放类型
      */
     public void setEntryType(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.entry_type</code>.
+     * Getter for <code>public.usage_ledger.entry_type</code>. 使用量预留、结算或释放类型
      */
     public String getEntryType() {
         return (String) get(5);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.quantity_json</code>.
+     * Setter for <code>public.usage_ledger.quantity_json</code>. 图片、视频、音频与 LLM
+     * 使用量明细
      */
     public void setQuantityJson(JSONB value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.quantity_json</code>.
+     * Getter for <code>public.usage_ledger.quantity_json</code>. 图片、视频、音频与 LLM
+     * 使用量明细
      */
     public JSONB getQuantityJson() {
         return (JSONB) get(6);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.estimated_cost</code>.
+     * Setter for <code>public.usage_ledger.estimated_cost</code>. 受理时估算费用；未知时为空
      */
     public void setEstimatedCost(BigDecimal value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.estimated_cost</code>.
+     * Getter for <code>public.usage_ledger.estimated_cost</code>. 受理时估算费用；未知时为空
      */
     public BigDecimal getEstimatedCost() {
         return (BigDecimal) get(7);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.actual_cost</code>.
+     * Setter for <code>public.usage_ledger.actual_cost</code>. 实际确认费用；未知时为空
      */
     public void setActualCost(BigDecimal value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.actual_cost</code>.
+     * Getter for <code>public.usage_ledger.actual_cost</code>. 实际确认费用；未知时为空
      */
     public BigDecimal getActualCost() {
         return (BigDecimal) get(8);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.currency</code>.
+     * Setter for <code>public.usage_ledger.currency</code>. 费用币种代码
      */
     public void setCurrency(String value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.currency</code>.
+     * Getter for <code>public.usage_ledger.currency</code>. 费用币种代码
      */
     public String getCurrency() {
         return (String) get(9);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.cost_status</code>.
+     * Setter for <code>public.usage_ledger.cost_status</code>. 费用已知、估算或未知状态
      */
     public void setCostStatus(String value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.cost_status</code>.
+     * Getter for <code>public.usage_ledger.cost_status</code>. 费用已知、估算或未知状态
      */
     public String getCostStatus() {
         return (String) get(10);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.cost_source</code>.
+     * Setter for <code>public.usage_ledger.cost_source</code>. 计费数据来源
      */
     public void setCostSource(String value) {
         set(11, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.cost_source</code>.
+     * Getter for <code>public.usage_ledger.cost_source</code>. 计费数据来源
      */
     public String getCostSource() {
         return (String) get(11);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.provider_config_version</code>.
+     * Setter for <code>public.usage_ledger.provider_config_version</code>. 实际
+     * LLM 或媒体连接配置版本审计
      */
     public void setProviderConfigVersion(Integer value) {
         set(12, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.provider_config_version</code>.
+     * Getter for <code>public.usage_ledger.provider_config_version</code>. 实际
+     * LLM 或媒体连接配置版本审计
      */
     public Integer getProviderConfigVersion() {
         return (Integer) get(12);
@@ -208,6 +211,7 @@ public class UsageLedgerRecord extends UpdatableRecordImpl<UsageLedgerRecord> {
 
     /**
      * Setter for <code>public.usage_ledger.workflow_version</code>.
+     * 固定工作流或适配器映射版本
      */
     public void setWorkflowVersion(String value) {
         set(13, value);
@@ -215,34 +219,35 @@ public class UsageLedgerRecord extends UpdatableRecordImpl<UsageLedgerRecord> {
 
     /**
      * Getter for <code>public.usage_ledger.workflow_version</code>.
+     * 固定工作流或适配器映射版本
      */
     public String getWorkflowVersion() {
         return (String) get(13);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.model_id</code>.
+     * Setter for <code>public.usage_ledger.model_id</code>. 实际使用的模型标识
      */
     public void setModelId(String value) {
         set(14, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.model_id</code>.
+     * Getter for <code>public.usage_ledger.model_id</code>. 实际使用的模型标识
      */
     public String getModelId() {
         return (String) get(14);
     }
 
     /**
-     * Setter for <code>public.usage_ledger.created_at</code>.
+     * Setter for <code>public.usage_ledger.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(15, value);
     }
 
     /**
-     * Getter for <code>public.usage_ledger.created_at</code>.
+     * Getter for <code>public.usage_ledger.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(15);

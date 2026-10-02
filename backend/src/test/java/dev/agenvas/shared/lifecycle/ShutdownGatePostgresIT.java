@@ -42,8 +42,6 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=shutdown-gate-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
-        "agenvas.provider.mock.scheduler-enabled=false",
-        "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class ShutdownGatePostgresIT {
 
@@ -77,8 +75,7 @@ class ShutdownGatePostgresIT {
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create storyboard", "before-close").run();
         Task image = tasks.create(owner.userId(), project.id(), run.id(),
-                "queued-image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
-                null, 1, List.of());
+                "queued-image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), 1);
         assertThat(image.status()).isEqualTo(Task.Status.READY);
         assertThat(gate.isClosing()).isFalse();
 
@@ -107,13 +104,7 @@ class ShutdownGatePostgresIT {
                 .andExpect(jsonPath("$.code").value("APPLICATION_STOPPING"));
 
         assertThat(tasks.claimDue("closed-generic", 10)).isEmpty();
-        assertThat(tasks.claimImagesDue("closed-image", 10)).isEmpty();
-        assertThat(tasks.claimComfyImage("closed-comfy-image")).isEmpty();
-        assertThat(tasks.claimComfyVideo("closed-comfy-video")).isEmpty();
-        assertThat(tasks.claimVideosDue("closed-video", 10)).isEmpty();
         assertThat(tasks.claimProviderPolls("closed-poller", 10)).isEmpty();
-        assertThat(tasks.claimComfyImagePolls("closed-comfy-image-poller", 10)).isEmpty();
-        assertThat(tasks.claimComfyVideoPolls("closed-comfy-video-poller", 10)).isEmpty();
         assertThat(tasks.claimBoundMedia("closed-bound-media", 10)).isEmpty();
         assertThat(tasks.claimBoundMediaPolls("closed-bound-media-poller", 10)).isEmpty();
         assertThat(tasks.claimTextGenerations("closed-direct-text", 10)).isEmpty();

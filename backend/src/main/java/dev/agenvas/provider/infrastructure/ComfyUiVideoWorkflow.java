@@ -7,18 +7,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Map;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** 固定且显式启用的 Wan 2.1 图生视频模板；模型不能指定节点、模型文件或输出路径。 */
-@Component
-@ConditionalOnProperty(prefix = "agenvas.provider.comfyui.video", name = "enabled",
-        havingValue = "true")
-@ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiVideoWorkflow {
 
     /** 固定模板中负责保存最终视频的节点编号，历史任务轮询依赖此编号。 */
@@ -69,11 +63,6 @@ public class ComfyUiVideoWorkflow {
     /** 版本摘要绑定精确工作流图及四个已配置模型文件名。 */
     public String version() {
         return version;
-    }
-
-    /** 即使当前模型配置变化，历史 v1 任务仍使用相同的输出节点编号。 */
-    public static boolean supportsHistoricalVersion(String version) {
-        return version != null && version.matches("image-to-video-v1-[0-9a-f]{32}");
     }
 
     /** 此模板只支持一至五秒且以四分之一秒为步长的时长。 */

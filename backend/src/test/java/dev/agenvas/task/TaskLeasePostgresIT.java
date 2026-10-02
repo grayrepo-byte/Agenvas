@@ -14,8 +14,8 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.application.TaskService;
-import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.MigrationVersions;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -26,7 +26,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -102,7 +101,7 @@ class TaskLeasePostgresIT {
                 .run();
         runService.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
-        Task task = create(owner.userId(), project.id(), run.id(), "exclusive", List.of());
+        Task task = create(owner.userId(), project.id(), run.id(), "exclusive");
 
         List<List<Task>> claims = concurrentClaims();
         assertThat(claims).flatExtracting(value -> value).hasSize(1);
@@ -127,38 +126,16 @@ class TaskLeasePostgresIT {
         assertThat(saved.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(saved.output().get("result").stringValue()).isEqualTo("current");
 
-        Task networkTask = create(owner.userId(), project.id(), run.id(), "network", List.of());
-        AtomicBoolean transactionSeen = new AtomicBoolean(true);
-        TaskWorker worker = new TaskWorker(taskService, callLogs);
-        assertThat(worker.runOnce("worker-network", 1, claimed -> {
-                    transactionSeen.set(TransactionSynchronizationManager.isActualTransactionActive());
-                    assertThat(jdbcClient.sql("select 1").query(Integer.class).single()).isEqualTo(1);
-                    return new TaskWorker.Succeeded(
-                            objectMapper.readTree("{\"network\":\"outside-transaction\"}"));
-                }))
-                .isEqualTo(1);
-        assertThat(transactionSeen).isFalse();
+        Task networkTask = create(owner.userId(), project.id(), run.id(), "network");
+        Task networkLease = taskService.claimDue("worker-network", 1).getFirst();
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+        assertThat(jdbcClient.sql("select 1").query(Integer.class).single()).isEqualTo(1);
+        taskService.succeed(networkLease, "worker-network",
+                objectMapper.readTree("{\"network\":\"outside-transaction\"}"));
         assertThat(taskService.get(owner.userId(), project.id(), networkTask.id()).status())
                 .isEqualTo(Task.Status.SUCCEEDED);
 
-        Task predecessor = create(owner.userId(), project.id(), run.id(), "predecessor", List.of());
-        Task dependent = create(
-                owner.userId(), project.id(), run.id(), "dependent", List.of(predecessor.id()));
-        assertThat(dependent.status()).isEqualTo(Task.Status.PENDING);
-        Task predecessorLease = taskService.claimDue("worker-dependency", 1).getFirst();
-        taskService.succeed(
-                predecessorLease,
-                "worker-dependency",
-                objectMapper.readTree("{\"output\":true}"));
-        assertThat(taskService.get(owner.userId(), project.id(), dependent.id()).status())
-                .isEqualTo(Task.Status.READY);
-        Task dependentLease = taskService.claimDue("worker-dependent", 1).getFirst();
-        taskService.succeed(
-                dependentLease,
-                "worker-dependent",
-                objectMapper.readTree("{\"dependent\":true}"));
-
-        Task providerTask = create(owner.userId(), project.id(), run.id(), "provider", List.of());
+        Task providerTask = create(owner.userId(), project.id(), run.id(), "provider");
         Task providerLease = taskService.claimDue("worker-provider", 1).getFirst();
         taskService.beginSubmission(providerLease, "worker-provider");
         taskService.waitForProvider(
@@ -177,8 +154,7 @@ class TaskLeasePostgresIT {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
                         .query(String.class)
                         .single())
-                .satisfies(version -> assertThat(Integer.parseInt(version))
-                        .isGreaterThanOrEqualTo(39));
+                .isEqualTo(MigrationVersions.latest());
     }
 
     private void assertLeaseWriteGuards(UUID ownerId, UUID projectId, UUID runId) {
@@ -186,7 +162,7 @@ class TaskLeasePostgresIT {
         Instant leaseUntil = now.plus(TEST_LEASE_DURATION);
         Instant renewedLeaseUntil = leaseUntil.plus(TEST_LEASE_DURATION);
         String workerId = "worker-write-guards";
-        Task task = create(ownerId, projectId, runId, "write-guards", List.of());
+        Task task = create(ownerId, projectId, runId, "write-guards");
         Task lease = taskRepository.claimDue(workerId, 1, now, leaseUntil).getFirst();
         assertThat(lease.id()).isEqualTo(task.id());
         JsonNode output = objectMapper.readTree("{\"result\":\"guarded\"}");
@@ -204,7 +180,7 @@ class TaskLeasePostgresIT {
         assertThat(taskRepository.finish(task.id(), workerId, lease.leaseEpoch(),
                 Task.Status.SUCCEEDED, output, null, now)).isFalse();
         assertThat(taskRepository.beginSubmission(task.id(), workerId, lease.leaseEpoch(),
-                UUID.randomUUID(), UUID.randomUUID(), null, now)).isFalse();
+                UUID.randomUUID(), UUID.randomUUID(), now)).isFalse();
         assertThat(taskRepository.findById(task.id())).contains(submitting);
         assertThat(jdbcClient.sql("select count(*) from provider_attempt where task_id = :id")
                 .param("id", task.id()).query(Long.class).single()).isZero();
@@ -247,18 +223,15 @@ class TaskLeasePostgresIT {
             UUID ownerId,
             UUID projectId,
             UUID runId,
-            String stepKey,
-            List<UUID> dependencies) {
+            String stepKey) {
         return taskService.create(
                 ownerId,
                 projectId,
                 runId,
                 stepKey,
-                Task.Kind.ASSET_INGEST,
+                Task.Kind.IMAGE_GENERATION,
                 objectMapper.readTree("{\"step\":\"" + stepKey + "\"}"),
-                null,
-                1,
-                dependencies);
+                1);
     }
 
     private List<List<Task>> concurrentClaims() throws Exception {

@@ -43,8 +43,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Per-project transactional event log and replay outbox ordered by the project
- * counter.
+ * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ProjectEvent extends TableImpl<ProjectEventRecord> {
@@ -65,9 +64,9 @@ public class ProjectEvent extends TableImpl<ProjectEventRecord> {
     }
 
     /**
-     * The column <code>public.project_event.project_id</code>.
+     * The column <code>public.project_event.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<ProjectEventRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProjectEventRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column <code>public.project_event.seq</code>. Commit-safe
@@ -76,46 +75,48 @@ public class ProjectEvent extends TableImpl<ProjectEventRecord> {
     public final TableField<ProjectEventRecord, Long> SEQ = createField(DSL.name("seq"), SQLDataType.BIGINT.nullable(false), this, "Commit-safe project-local waterline allocated while holding the project row lock.");
 
     /**
-     * The column <code>public.project_event.event_id</code>.
+     * The column <code>public.project_event.event_id</code>. 事件全局去重身份
      */
-    public final TableField<ProjectEventRecord, UUID> EVENT_ID = createField(DSL.name("event_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProjectEventRecord, UUID> EVENT_ID = createField(DSL.name("event_id"), SQLDataType.UUID.nullable(false), this, "事件全局去重身份");
 
     /**
-     * The column <code>public.project_event.type</code>.
+     * The column <code>public.project_event.type</code>. 项目事件类型
      */
-    public final TableField<ProjectEventRecord, String> TYPE = createField(DSL.name("type"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<ProjectEventRecord, String> TYPE = createField(DSL.name("type"), SQLDataType.VARCHAR(120).nullable(false), this, "项目事件类型");
 
     /**
-     * The column <code>public.project_event.schema_version</code>.
+     * The column <code>public.project_event.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
-    public final TableField<ProjectEventRecord, Integer> SCHEMA_VERSION = createField(DSL.name("schema_version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<ProjectEventRecord, Integer> SCHEMA_VERSION = createField(DSL.name("schema_version"), SQLDataType.INTEGER.nullable(false), this, "持久 JSON 内容格式版本");
 
     /**
-     * The column <code>public.project_event.aggregate_id</code>.
+     * The column <code>public.project_event.aggregate_id</code>. 变化的业务对象身份
      */
-    public final TableField<ProjectEventRecord, UUID> AGGREGATE_ID = createField(DSL.name("aggregate_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProjectEventRecord, UUID> AGGREGATE_ID = createField(DSL.name("aggregate_id"), SQLDataType.UUID.nullable(false), this, "变化的业务对象身份");
 
     /**
-     * The column <code>public.project_event.aggregate_version</code>.
+     * The column <code>public.project_event.aggregate_version</code>. 变化对象的并发版本
      */
-    public final TableField<ProjectEventRecord, Long> AGGREGATE_VERSION = createField(DSL.name("aggregate_version"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<ProjectEventRecord, Long> AGGREGATE_VERSION = createField(DSL.name("aggregate_version"), SQLDataType.BIGINT.nullable(false), this, "变化对象的并发版本");
 
     /**
      * The column <code>public.project_event.payload_json</code>.
+     * 与业务变更同事务提交的公开事件载荷
      */
-    public final TableField<ProjectEventRecord, JSONB> PAYLOAD_JSON = createField(DSL.name("payload_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<ProjectEventRecord, JSONB> PAYLOAD_JSON = createField(DSL.name("payload_json"), SQLDataType.JSONB.nullable(false), this, "与业务变更同事务提交的公开事件载荷");
 
     /**
-     * The column <code>public.project_event.occurred_at</code>.
+     * The column <code>public.project_event.occurred_at</code>. 业务事件发生时间
      */
-    public final TableField<ProjectEventRecord, OffsetDateTime> OCCURRED_AT = createField(DSL.name("occurred_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ProjectEventRecord, OffsetDateTime> OCCURRED_AT = createField(DSL.name("occurred_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "业务事件发生时间");
 
     private ProjectEvent(Name alias, Table<ProjectEventRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private ProjectEvent(Name alias, Table<ProjectEventRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Per-project transactional event log and replay outbox ordered by the project counter."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位"), TableOptions.table(), where);
     }
 
     /**

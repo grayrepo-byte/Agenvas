@@ -52,7 +52,7 @@ public class UsageController {
      * @param currency 金额币种；未知时为空
      * @param costStatus 金额处于预估、确认或未知等状态
      * @param costSource 金额来源说明
-     * @param providerConfigVersion 执行时使用的 Provider 配置版本
+     * @param providerConfigVersion 模型配置版本或媒体任务固定的连接版本
      * @param workflowVersion 执行时使用的工作流模板版本
      * @param modelId 执行时记录的模型标识
      * @param createdAt 账本记录创建时间

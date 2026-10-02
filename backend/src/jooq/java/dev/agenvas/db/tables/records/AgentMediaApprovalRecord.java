@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable Agent media batch and explicit user decision; approval never
- * performs network I/O.
+ * Agent 固定媒体批次、用户审批决定及原 Run 的结果通知状态
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaApprovalRecord> {
@@ -24,28 +23,28 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.agent_media_approval.id</code>.
+     * Setter for <code>public.agent_media_approval.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.id</code>.
+     * Getter for <code>public.agent_media_approval.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.agent_media_approval.owner_id</code>.
+     * Setter for <code>public.agent_media_approval.owner_id</code>. 所属用户及授权作用域
      */
     public void setOwnerId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.owner_id</code>.
+     * Getter for <code>public.agent_media_approval.owner_id</code>. 所属用户及授权作用域
      */
     public UUID getOwnerId() {
         return (UUID) get(1);
@@ -53,6 +52,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(2, value);
@@ -60,34 +60,39 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.agent_media_approval.run_id</code>.
+     * Setter for <code>public.agent_media_approval.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
     public void setRunId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.run_id</code>.
+     * Getter for <code>public.agent_media_approval.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.agent_media_approval.step_index</code>.
+     * Setter for <code>public.agent_media_approval.step_index</code>. Run
+     * 内模型回合序号
      */
     public void setStepIndex(Integer value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.step_index</code>.
+     * Getter for <code>public.agent_media_approval.step_index</code>. Run
+     * 内模型回合序号
      */
     public Integer getStepIndex() {
         return (Integer) get(4);
@@ -95,6 +100,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.tool_call_id</code>.
+     * 模型完整响应中的工具调用标识
      */
     public void setToolCallId(String value) {
         set(5, value);
@@ -102,6 +108,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.tool_call_id</code>.
+     * 模型完整响应中的工具调用标识
      */
     public String getToolCallId() {
         return (String) get(5);
@@ -109,6 +116,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.operation_id</code>.
+     * 审批批次或安装操作的稳定身份
      */
     public void setOperationId(UUID value) {
         set(6, value);
@@ -116,6 +124,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.operation_id</code>.
+     * 审批批次或安装操作的稳定身份
      */
     public UUID getOperationId() {
         return (UUID) get(6);
@@ -123,6 +132,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.request_json</code>.
+     * 固定的模型请求或媒体审批批次
      */
     public void setRequestJson(JSONB value) {
         set(7, value);
@@ -130,6 +140,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.request_json</code>.
+     * 固定的模型请求或媒体审批批次
      */
     public JSONB getRequestJson() {
         return (JSONB) get(7);
@@ -137,6 +148,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.target_json</code>.
+     * 批次受理时固定的目标卡片与版本选择
      */
     public void setTargetJson(JSONB value) {
         set(8, value);
@@ -144,6 +156,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.target_json</code>.
+     * 批次受理时固定的目标卡片与版本选择
      */
     public JSONB getTargetJson() {
         return (JSONB) get(8);
@@ -151,6 +164,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.task_ids_json</code>.
+     * 审批批准后创建的固定任务身份数组
      */
     public void setTaskIdsJson(JSONB value) {
         set(9, value);
@@ -158,6 +172,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.task_ids_json</code>.
+     * 审批批准后创建的固定任务身份数组
      */
     public JSONB getTaskIdsJson() {
         return (JSONB) get(9);
@@ -165,6 +180,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.result_json</code>.
+     * 已提交的结构化执行或审批结果
      */
     public void setResultJson(JSONB value) {
         set(10, value);
@@ -172,20 +188,23 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.result_json</code>.
+     * 已提交的结构化执行或审批结果
      */
     public JSONB getResultJson() {
         return (JSONB) get(10);
     }
 
     /**
-     * Setter for <code>public.agent_media_approval.status</code>.
+     * Setter for <code>public.agent_media_approval.status</code>. 持久状态，允许值由
+     * CHECK 约束限定
      */
     public void setStatus(String value) {
         set(11, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.status</code>.
+     * Getter for <code>public.agent_media_approval.status</code>. 持久状态，允许值由
+     * CHECK 约束限定
      */
     public String getStatus() {
         return (String) get(11);
@@ -193,6 +212,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(12, value);
@@ -200,34 +220,35 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.version</code>.
+     * 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(12);
     }
 
     /**
-     * Setter for <code>public.agent_media_approval.created_at</code>.
+     * Setter for <code>public.agent_media_approval.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(13, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.created_at</code>.
+     * Getter for <code>public.agent_media_approval.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(13);
     }
 
     /**
-     * Setter for <code>public.agent_media_approval.expires_at</code>.
+     * Setter for <code>public.agent_media_approval.expires_at</code>. 记录或审批过期时间
      */
     public void setExpiresAt(OffsetDateTime value) {
         set(14, value);
     }
 
     /**
-     * Getter for <code>public.agent_media_approval.expires_at</code>.
+     * Getter for <code>public.agent_media_approval.expires_at</code>. 记录或审批过期时间
      */
     public OffsetDateTime getExpiresAt() {
         return (OffsetDateTime) get(14);
@@ -235,6 +256,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.execution_deadline</code>.
+     * 已批准媒体批次等待结果的截止时间
      */
     public void setExecutionDeadline(OffsetDateTime value) {
         set(15, value);
@@ -242,6 +264,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.execution_deadline</code>.
+     * 已批准媒体批次等待结果的截止时间
      */
     public OffsetDateTime getExecutionDeadline() {
         return (OffsetDateTime) get(15);
@@ -249,6 +272,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.decision_key</code>.
+     * 用户审批决定幂等键
      */
     public void setDecisionKey(String value) {
         set(16, value);
@@ -256,6 +280,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.decision_key</code>.
+     * 用户审批决定幂等键
      */
     public String getDecisionKey() {
         return (String) get(16);
@@ -263,6 +288,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.decision_hash</code>.
+     * 规范化审批决定 SHA-256 摘要
      */
     public void setDecisionHash(String value) {
         set(17, value);
@@ -270,6 +296,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.decision_hash</code>.
+     * 规范化审批决定 SHA-256 摘要
      */
     public String getDecisionHash() {
         return (String) get(17);
@@ -277,6 +304,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Setter for <code>public.agent_media_approval.notification_pending</code>.
+     * 该审批结果仍待通知原 Run
      */
     public void setNotificationPending(Boolean value) {
         set(18, value);
@@ -284,6 +312,7 @@ public class AgentMediaApprovalRecord extends UpdatableRecordImpl<AgentMediaAppr
 
     /**
      * Getter for <code>public.agent_media_approval.notification_pending</code>.
+     * 该审批结果仍待通知原 Run
      */
     public Boolean getNotificationPending() {
         return (Boolean) get(18);

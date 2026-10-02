@@ -33,7 +33,7 @@ class ComfyUiVideoWorkflowTest {
                 .isEqualTo("mp4");
         assertThat(workflow.version()).startsWith("image-to-video-v1-");
         assertThat(workflow.version()).isNotEqualTo(new ComfyUiVideoWorkflow(
-                new ComfyUiVideoProperties(true, "another.safetensors",
+                new ComfyUiVideoProperties( "another.safetensors",
                         "text.safetensors", "vae.safetensors", "vision.safetensors"),
                 mapper).version());
     }
@@ -41,7 +41,7 @@ class ComfyUiVideoWorkflowTest {
     @Test
     void rejectsUnsafeModelNameAndUnrepresentableShotDuration() {
         assertThatThrownBy(() -> new ComfyUiVideoWorkflow(
-                new ComfyUiVideoProperties(true, "../private.safetensors",
+                new ComfyUiVideoProperties( "../private.safetensors",
                         "text.safetensors", "vae.safetensors", "vision.safetensors"),
                 mapper)).isInstanceOf(IllegalArgumentException.class);
         ComfyUiVideoWorkflow workflow = new ComfyUiVideoWorkflow(models(), mapper);
@@ -63,7 +63,7 @@ class ComfyUiVideoWorkflowTest {
     }
 
     private ComfyUiVideoProperties models() {
-        return new ComfyUiVideoProperties(true, "wan2.1.safetensors",
+        return new ComfyUiVideoProperties( "wan2.1.safetensors",
                 "text.safetensors", "vae.safetensors", "vision.safetensors");
     }
 }

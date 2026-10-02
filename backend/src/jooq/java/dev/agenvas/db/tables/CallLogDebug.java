@@ -40,8 +40,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Opt-in HTTP bodies and URLs, with credentials and private reasoning removed;
- * never part of project export.
+ * 仅在明确启用调试时保存的已脱敏请求与响应正文
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CallLogDebug extends TableImpl<CallLogDebugRecord> {
@@ -62,26 +61,27 @@ public class CallLogDebug extends TableImpl<CallLogDebugRecord> {
     }
 
     /**
-     * The column <code>public.call_log_debug.call_id</code>.
+     * The column <code>public.call_log_debug.call_id</code>. 对应的公开调用审计记录
      */
-    public final TableField<CallLogDebugRecord, UUID> CALL_ID = createField(DSL.name("call_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CallLogDebugRecord, UUID> CALL_ID = createField(DSL.name("call_id"), SQLDataType.UUID.nullable(false), this, "对应的公开调用审计记录");
 
     /**
-     * The column <code>public.call_log_debug.schema_version</code>.
+     * The column <code>public.call_log_debug.schema_version</code>. 持久 JSON
+     * 内容格式版本
      */
-    public final TableField<CallLogDebugRecord, Integer> SCHEMA_VERSION = createField(DSL.name("schema_version"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1"), SQLDataType.INTEGER)), this, "");
+    public final TableField<CallLogDebugRecord, Integer> SCHEMA_VERSION = createField(DSL.name("schema_version"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1"), SQLDataType.INTEGER)), this, "持久 JSON 内容格式版本");
 
     /**
-     * The column <code>public.call_log_debug.exchanges_json</code>.
+     * The column <code>public.call_log_debug.exchanges_json</code>. 已脱敏调用交换正文数组
      */
-    public final TableField<CallLogDebugRecord, JSONB> EXCHANGES_JSON = createField(DSL.name("exchanges_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<CallLogDebugRecord, JSONB> EXCHANGES_JSON = createField(DSL.name("exchanges_json"), SQLDataType.JSONB.nullable(false), this, "已脱敏调用交换正文数组");
 
     private CallLogDebug(Name alias, Table<CallLogDebugRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CallLogDebug(Name alias, Table<CallLogDebugRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Opt-in HTTP bodies and URLs, with credentials and private reasoning removed; never part of project export."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("仅在明确启用调试时保存的已脱敏请求与响应正文"), TableOptions.table(), where);
     }
 
     /**

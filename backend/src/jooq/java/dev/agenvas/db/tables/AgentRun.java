@@ -52,7 +52,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Persistent execution lifecycle with immutable input and policy snapshots.
+ * 单次 Agent 指令的持久执行状态及不可变上下文、策略快照
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentRun extends TableImpl<AgentRunRecord> {
@@ -73,91 +73,93 @@ public class AgentRun extends TableImpl<AgentRunRecord> {
     }
 
     /**
-     * The column <code>public.agent_run.id</code>.
+     * The column <code>public.agent_run.id</code>. 记录身份
      */
-    public final TableField<AgentRunRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentRunRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.agent_run.project_id</code>.
+     * The column <code>public.agent_run.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<AgentRunRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentRunRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.agent_run.agent_instance_id</code>.
+     * The column <code>public.agent_run.agent_instance_id</code>. Agent 卡片配置身份
      */
-    public final TableField<AgentRunRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentRunRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID.nullable(false), this, "Agent 卡片配置身份");
 
     /**
-     * The column <code>public.agent_run.user_id</code>.
+     * The column <code>public.agent_run.user_id</code>. 发起执行的可信用户身份
      */
-    public final TableField<AgentRunRecord, UUID> USER_ID = createField(DSL.name("user_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentRunRecord, UUID> USER_ID = createField(DSL.name("user_id"), SQLDataType.UUID.nullable(false), this, "发起执行的可信用户身份");
 
     /**
-     * The column <code>public.agent_run.status</code>.
+     * The column <code>public.agent_run.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
-    public final TableField<AgentRunRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(40).nullable(false), this, "");
+    public final TableField<AgentRunRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(40).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.agent_run.instruction</code>.
+     * The column <code>public.agent_run.instruction</code>. 用户指令或 Agent 系统指令
      */
-    public final TableField<AgentRunRecord, String> INSTRUCTION = createField(DSL.name("instruction"), SQLDataType.CLOB.nullable(false), this, "");
+    public final TableField<AgentRunRecord, String> INSTRUCTION = createField(DSL.name("instruction"), SQLDataType.CLOB.nullable(false), this, "用户指令或 Agent 系统指令");
 
     /**
      * The column <code>public.agent_run.context_snapshot_json</code>.
+     * 受理时固定的授权上下文快照
      */
-    public final TableField<AgentRunRecord, JSONB> CONTEXT_SNAPSHOT_JSON = createField(DSL.name("context_snapshot_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<AgentRunRecord, JSONB> CONTEXT_SNAPSHOT_JSON = createField(DSL.name("context_snapshot_json"), SQLDataType.JSONB.nullable(false), this, "受理时固定的授权上下文快照");
 
     /**
      * The column <code>public.agent_run.policy_snapshot_json</code>.
+     * 受理时固定的工具、额度和执行策略快照
      */
-    public final TableField<AgentRunRecord, JSONB> POLICY_SNAPSHOT_JSON = createField(DSL.name("policy_snapshot_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<AgentRunRecord, JSONB> POLICY_SNAPSHOT_JSON = createField(DSL.name("policy_snapshot_json"), SQLDataType.JSONB.nullable(false), this, "受理时固定的工具、额度和执行策略快照");
 
     /**
-     * The column <code>public.agent_run.profile_version</code>.
+     * The column <code>public.agent_run.profile_version</code>. Agent 配置格式版本
      */
-    public final TableField<AgentRunRecord, Integer> PROFILE_VERSION = createField(DSL.name("profile_version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<AgentRunRecord, Integer> PROFILE_VERSION = createField(DSL.name("profile_version"), SQLDataType.INTEGER.nullable(false), this, "Agent 配置格式版本");
 
     /**
-     * The column <code>public.agent_run.next_step_index</code>.
+     * The column <code>public.agent_run.next_step_index</code>. 下一次模型回合序号
      */
-    public final TableField<AgentRunRecord, Integer> NEXT_STEP_INDEX = createField(DSL.name("next_step_index"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.INTEGER)), this, "");
+    public final TableField<AgentRunRecord, Integer> NEXT_STEP_INDEX = createField(DSL.name("next_step_index"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.INTEGER)), this, "下一次模型回合序号");
 
     /**
-     * The column <code>public.agent_run.version</code>.
+     * The column <code>public.agent_run.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<AgentRunRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<AgentRunRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.agent_run.created_at</code>.
+     * The column <code>public.agent_run.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<AgentRunRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentRunRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.agent_run.updated_at</code>.
+     * The column <code>public.agent_run.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
-    public final TableField<AgentRunRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AgentRunRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
-     * The column <code>public.agent_run.completed_at</code>.
+     * The column <code>public.agent_run.completed_at</code>. 终态完成时间；未完成时为空
      */
-    public final TableField<AgentRunRecord, OffsetDateTime> COMPLETED_AT = createField(DSL.name("completed_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<AgentRunRecord, OffsetDateTime> COMPLETED_AT = createField(DSL.name("completed_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "终态完成时间；未完成时为空");
 
     /**
-     * The column <code>public.agent_run.conversation_id</code>.
+     * The column <code>public.agent_run.conversation_id</code>. 所属持久对话
      */
-    public final TableField<AgentRunRecord, UUID> CONVERSATION_ID = createField(DSL.name("conversation_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AgentRunRecord, UUID> CONVERSATION_ID = createField(DSL.name("conversation_id"), SQLDataType.UUID.nullable(false), this, "所属持久对话");
 
     /**
-     * The column <code>public.agent_run.conversation_turn</code>.
+     * The column <code>public.agent_run.conversation_turn</code>. 对话内单调递增的用户轮次
      */
-    public final TableField<AgentRunRecord, Long> CONVERSATION_TURN = createField(DSL.name("conversation_turn"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<AgentRunRecord, Long> CONVERSATION_TURN = createField(DSL.name("conversation_turn"), SQLDataType.BIGINT.nullable(false), this, "对话内单调递增的用户轮次");
 
     private AgentRun(Name alias, Table<AgentRunRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AgentRun(Name alias, Table<AgentRunRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Persistent execution lifecycle with immutable input and policy snapshots."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("单次 Agent 指令的持久执行状态及不可变上下文、策略快照"), TableOptions.table(), where);
     }
 
     /**

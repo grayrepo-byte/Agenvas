@@ -5,7 +5,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import dev.agenvas.artifact.application.ArtifactService;
-import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
@@ -138,7 +137,7 @@ class LocalImageProcessorAdapterTest {
         Instant now = Instant.now();
         Task task = new Task(UUID.randomUUID(), projectId, null, UUID.randomUUID().toString(),
                 Task.Kind.IMAGE_GENERATION, Task.Status.SUBMITTING, false, input, "0".repeat(64),
-                null, null, null, 1, now, null, null, 1, 0, null, now, now, null);
+                null, null, 1, now, null, null, 1, 0, null, now, now, null);
         MediaCapabilityBinding binding = new MediaCapabilityBinding(UUID.randomUUID(), 1,
                 UUID.randomUUID(), 1, "LOCAL_IMAGE_PROCESSOR", "1".repeat(64));
         return new AttemptContext(task, binding, ownerId, UUID.randomUUID().toString(), null);

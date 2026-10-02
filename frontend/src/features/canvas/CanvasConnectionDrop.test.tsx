@@ -57,7 +57,7 @@ const items: CanvasItem[] = [
   card("text-id", "TEXT", "文字", "22222222-2222-4222-8222-222222222222",
     { format: "PLAIN_TEXT", text: "正文" }),
   card("video-id", "VIDEO", "视频", "33333333-3333-4333-8333-333333333333",
-    { assetId: "asset-id", prompt: "缓慢推近", providerConfigVersion: 1,
+    { assetId: "asset-id", prompt: "缓慢推近",
       workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" }),
   { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
     title: "Agent",

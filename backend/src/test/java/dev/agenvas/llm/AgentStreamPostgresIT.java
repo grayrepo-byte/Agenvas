@@ -37,9 +37,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=synthetic-stream-bootstrap",
-        "agenvas.llm.scheduler-enabled=false",
-        "agenvas.providers.mock.scheduler-enabled=false",
-        "agenvas.providers.mock.video-scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false"})
 class AgentStreamPostgresIT {
     private static final String WORKER = "stream-test-worker";
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");

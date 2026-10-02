@@ -674,7 +674,6 @@ public class AgentRunService {
             ObjectNode item = bindings.addObject();
             item.put("artifactId", binding.artifactId().toString());
             item.put("selectedVersionId", binding.selectedVersionId().toString());
-            item.put("bindingType", "INPUT");
             item.put("kind", binding.kind().name());
             item.put("title", binding.title());
             item.put("source", "CONVERSATION_OUTPUT");
@@ -703,7 +702,6 @@ public class AgentRunService {
             ObjectNode item = bindings.addObject();
             item.put("artifactId", binding.artifactId().toString());
             item.put("selectedVersionId", binding.selectedVersionId().toString());
-            item.put("bindingType", binding.bindingType().name());
             ArtifactService.ArtifactView selected = artifacts.get(ownerId, project.id(),
                     binding.artifactId());
             item.put("kind", selected.artifact().kind().name());

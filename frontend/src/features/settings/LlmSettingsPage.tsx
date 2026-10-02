@@ -165,7 +165,7 @@ export function LlmSettingsPage() {
             <p className="ui-muted">{t("settings.llm.statusHint")}</p>
             {mediaStatus.isPending ? <LoadingState compact label={t("settings.llm.mediaStatusLoading")} /> : null}
             {mediaStatus.isError ? <Notice tone="danger"><p>{t("settings.llm.mediaStatusFailed")}</p><Button variant="outline"  type="button" disabled={mediaStatus.isFetching} onClick={() => { void mediaStatus.refetch(); }}>{t("settings.llm.refreshMediaStatus")}</Button></Notice> : null}
-            {mediaStatus.data ? <p className="settings-mode-summary">{t("settings.llm.providerSummary", { "0": mediaStatus.data.mediaMode === "MOCK" ? t("models.mockMode") : t("settings.llm.comfyMode"), "1": mediaStatus.data.imageConfigured ? t("common.configured") : t("models.unconfigured"), "2": mediaStatus.data.videoConfigured ? t("common.configured") : t("models.unconfigured") })}</p> : null}
+            {mediaStatus.data ? <p className="settings-mode-summary">{t("settings.llm.providerSummary", { "0": mediaStatus.data.mediaMode === "MOCK" ? t("models.mockMode") : t("settings.diagnostics.modelConfigured"), "1": mediaStatus.data.imageConfigured ? t("common.configured") : t("models.unconfigured"), "2": mediaStatus.data.videoConfigured ? t("common.configured") : t("models.unconfigured") })}</p> : null}
             <Link className="settings-nav-link" to="/settings/media">{t("settings.llm.manageMedia")}<ArrowUpRight size={16} aria-hidden /></Link>
             <Link className="settings-nav-link" to="/settings/general?tab=diagnostics">{t("settings.llm.viewDiagnostics")}<ArrowUpRight size={16} aria-hidden /></Link>
           </div>

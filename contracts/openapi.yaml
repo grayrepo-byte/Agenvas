@@ -4328,7 +4328,7 @@ components:
           description: 单次调用结果；异步受理或轮询返回等待也表示本次调用成功，不表示任务已生成完成。
         taskStatus:
           type: [string, "null"]
-          enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED, null]
+          enum: [READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED, null]
         provider: {type: [string, "null"]}
         model: {type: [string, "null"]}
         traceId: {type: [string, "null"]}
@@ -4700,7 +4700,7 @@ components:
         llmMode: {type: string, enum: [MOCK, CONFIGURED]}
         llmConfigured: {type: boolean}
         llmToolCallingVerified: {type: boolean}
-        mediaMode: {type: string, enum: [MOCK, COMFYUI, CONFIGURED], description: "CONFIGURED uses the administrator media catalog and excludes Mock capabilities from new generation."}
+        mediaMode: {type: string, enum: [MOCK, CONFIGURED], description: "CONFIGURED uses the administrator media catalog and excludes Mock capabilities from new generation."}
         imageConfigured: {type: boolean}
         videoConfigured: {type: boolean}
         recentErrors:
@@ -4814,13 +4814,12 @@ components:
         quantity:
           type: object
           additionalProperties: false
-          required: [imageCount, videoCount, videoSeconds, exportCount,
+          required: [imageCount, videoCount, videoSeconds,
             llmRequestCount, inputTokens, outputTokens]
           properties:
             imageCount: {type: integer, minimum: 0}
             videoCount: {type: integer, minimum: 0}
             videoSeconds: {type: string, pattern: "^[0-9]+\\.[0-9]{3}$"}
-            exportCount: {type: integer, minimum: 0}
             llmRequestCount: {type: integer, minimum: 0}
             inputTokens: {type: [integer, "null"], minimum: 0}
             outputTokens: {type: [integer, "null"], minimum: 0}
@@ -4904,27 +4903,9 @@ components:
       properties:
         format: {type: string}
         text: {type: string}
-        name: {type: string}
-        description: {type: string}
-        appearance: {type: string}
-        referenceVersionIds: {type: array, items: {type: string, format: uuid}}
-        location: {type: string}
-        timeOfDay: {type: string}
-        lighting: {type: string}
-        style: {type: string}
-        order: {type: integer}
-        durationMs: {type: integer}
-        durationSeconds: {type: integer, minimum: 1, maximum: 60}
-        camera: {type: string}
-        action: {type: string}
-        characterVersionIds: {type: array, items: {type: string, format: uuid}}
-        sceneVersionId: {type: string, format: uuid}
-        selectedImageVersionId: {type: [string, "null"], format: uuid}
-        selectedVideoVersionId: {type: [string, "null"], format: uuid}
         assetId: {type: string, format: uuid}
         prompt: {type: string}
         negativePrompt: {type: string}
-        providerConfigVersion: {type: integer}
         workflowVersion: {type: string}
     ManifestAsset:
       type: object
@@ -5551,12 +5532,11 @@ components:
     AgentBinding:
       type: object
       additionalProperties: false
-      required: [id, artifactId, selectedVersionId, bindingType]
+      required: [id, artifactId, selectedVersionId]
       properties:
         id: {type: string, format: uuid}
         artifactId: {type: string, format: uuid}
         selectedVersionId: {type: string, format: uuid}
-        bindingType: {type: string, const: INPUT}
     Agent:
       type: object
       additionalProperties: false
@@ -5758,11 +5738,10 @@ components:
     RunInputSnapshot:
       type: object
       additionalProperties: false
-      required: [artifactId, selectedVersionId, bindingType]
+      required: [artifactId, selectedVersionId]
       properties:
         artifactId: {type: string, format: uuid}
         selectedVersionId: {type: string, format: uuid}
-        bindingType: {type: string, const: INPUT}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string}
         expectedVersion: {type: integer, format: int64, minimum: 0}
@@ -5902,10 +5881,10 @@ components:
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     TaskKind:
       type: string
-      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION, ASSET_INGEST]
+      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]
     TaskStatus:
       type: string
-      enum: [PENDING, READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]
+      enum: [READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]
     ManualUnknownAttemptRequest:
       type: object
       additionalProperties: false
@@ -5933,7 +5912,6 @@ components:
           oneOf:
             - {type: object, additionalProperties: true}
             - {type: "null"}
-        providerId: {type: [string, "null"], format: uuid}
         providerRequestId: {type: [string, "null"]}
         attemptNo: {type: integer, minimum: 1}
         nextActionAt: {type: string, format: date-time}

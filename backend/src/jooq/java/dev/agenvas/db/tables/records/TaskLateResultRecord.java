@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Results arriving after Run cancellation; never selected or used to promote
- * dependents.
+ * 失效租约或取消后的晚到结果审计，不自动选用或启动后续任务
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskLateResultRecord extends UpdatableRecordImpl<TaskLateResultRecord> {
@@ -24,56 +23,58 @@ public class TaskLateResultRecord extends UpdatableRecordImpl<TaskLateResultReco
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.task_late_result.id</code>.
+     * Setter for <code>public.task_late_result.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.task_late_result.id</code>.
+     * Getter for <code>public.task_late_result.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.task_late_result.project_id</code>.
+     * Setter for <code>public.task_late_result.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.task_late_result.project_id</code>.
+     * Getter for <code>public.task_late_result.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.task_late_result.task_id</code>.
+     * Setter for <code>public.task_late_result.task_id</code>. 持久任务身份
      */
     public void setTaskId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.task_late_result.task_id</code>.
+     * Getter for <code>public.task_late_result.task_id</code>. 持久任务身份
      */
     public UUID getTaskId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.task_late_result.lease_epoch</code>.
+     * Setter for <code>public.task_late_result.lease_epoch</code>. 任务租约 fencing
+     * epoch，旧 Worker 不得回写结果
      */
     public void setLeaseEpoch(Long value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.task_late_result.lease_epoch</code>.
+     * Getter for <code>public.task_late_result.lease_epoch</code>. 任务租约 fencing
+     * epoch，旧 Worker 不得回写结果
      */
     public Long getLeaseEpoch() {
         return (Long) get(3);
@@ -81,6 +82,7 @@ public class TaskLateResultRecord extends UpdatableRecordImpl<TaskLateResultReco
 
     /**
      * Setter for <code>public.task_late_result.output_json</code>.
+     * 任务已提交结果或公开回答流进度
      */
     public void setOutputJson(JSONB value) {
         set(4, value);
@@ -88,20 +90,21 @@ public class TaskLateResultRecord extends UpdatableRecordImpl<TaskLateResultReco
 
     /**
      * Getter for <code>public.task_late_result.output_json</code>.
+     * 任务已提交结果或公开回答流进度
      */
     public JSONB getOutputJson() {
         return (JSONB) get(4);
     }
 
     /**
-     * Setter for <code>public.task_late_result.created_at</code>.
+     * Setter for <code>public.task_late_result.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.task_late_result.created_at</code>.
+     * Getter for <code>public.task_late_result.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(5);

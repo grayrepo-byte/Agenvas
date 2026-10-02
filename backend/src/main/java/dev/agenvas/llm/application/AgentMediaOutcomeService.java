@@ -191,7 +191,7 @@ public class AgentMediaOutcomeService {
                 .put("stepIndex", run.nextStepIndex());
         // READY with no success-only dependency: failed and expired media also need a reply.
         tasks.create(ownerId, projectId, runId, "agent-turn-" + run.nextStepIndex(),
-                Task.Kind.AGENT_TURN, input, null, 1, List.of());
+                Task.Kind.AGENT_TURN, input, 1);
         runs.transition(ownerId, projectId, runId, run.version(), AgentRun.Status.RUNNING);
         approvals.markNotified(projectId, runId, priorStepIndex);
     }

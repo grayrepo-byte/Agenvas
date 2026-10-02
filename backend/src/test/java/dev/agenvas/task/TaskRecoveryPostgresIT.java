@@ -74,7 +74,7 @@ class TaskRecoveryPostgresIT {
     @Autowired private WebApplicationContext webContext;
 
     @Test
-    void crashedSubmissionBecomesUnknownAndCanceledLateResultNeverPromotes() throws Exception {
+    void crashedSubmissionBecomesUnknownAndCanceledLateResultStaysHistorical() throws Exception {
         AdminPrincipal owner = identities.setup(
                 "recovery-integration-secret", "recovery-admin", "recovery-password-123");
         Project project = projects.create(owner.userId(), "Recovery project",
@@ -85,7 +85,7 @@ class TaskRecoveryPostgresIT {
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
 
-        Task submission = create(owner.userId(), project.id(), run.id(), "submission", List.of());
+        Task submission = create(owner.userId(), project.id(), run.id(), "submission");
         Task lease = tasks.claimDue("worker-submission", 1).getFirst();
         UUID requestKey = tasks.beginSubmission(lease, "worker-submission");
         assertThat(requestKey).isNotNull();
@@ -102,7 +102,6 @@ class TaskRecoveryPostgresIT {
                 .singleElement().satisfies(attempt -> {
                     assertThat(attempt.status()).isEqualTo(ProviderAttempt.Status.UNKNOWN);
                     assertThat(attempt.requestKey()).isEqualTo(requestKey);
-                    assertThat(attempt.candidateRequestId()).isNull();
                     assertThat(attempt.providerRequestId()).isNull();
                 });
         var mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
@@ -126,7 +125,7 @@ class TaskRecoveryPostgresIT {
                         + "and type = 'task.status.changed'")
                 .param("id", project.id()).query(Integer.class).single()).isEqualTo(4);
 
-        Task accepted = create(owner.userId(), project.id(), run.id(), "accepted", List.of());
+        Task accepted = create(owner.userId(), project.id(), run.id(), "accepted");
         AtomicBoolean checkpointSeen = new AtomicBoolean(false);
         new TaskWorker(tasks, callLogs).runOnce("worker-accepted", 1, claimed -> {
             checkpointSeen.set(tasks.get(owner.userId(), project.id(), claimed.id()).status()
@@ -159,7 +158,7 @@ class TaskRecoveryPostgresIT {
                 Instant.now().plusSeconds(60))).isInstanceOf(ApiProblemException.class);
         jdbc.sql("update task set lease_until = now() - interval '1 second' where id = :id")
                 .param("id", accepted.id()).update();
-        assertThat(tasks.claimImagesDue("wrong-submitter", 1)).isEmpty();
+        assertThat(tasks.claimDue("wrong-submitter", 1)).isEmpty();
         Task recoveredPoll = tasks.claimProviderPolls("recovered-poller", 1).getFirst();
         assertThat(recoveredPoll.providerRequestId()).isEqualTo("external-123");
         assertThat(recoveredPoll.leaseEpoch()).isGreaterThan(secondPoll.leaseEpoch());
@@ -196,13 +195,12 @@ class TaskRecoveryPostgresIT {
                 .param("id", accepted.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(tasks.claimProviderPolls("recovered-poller", 1)).isEmpty();
 
-        Task abandoned = create(owner.userId(), project.id(), run.id(), "abandoned", List.of());
+        Task abandoned = create(owner.userId(), project.id(), run.id(), "abandoned");
         Task abandonedLease = tasks.claimDue("worker-abandoned", 1).getFirst();
 
-        Task predecessor = create(owner.userId(), project.id(), run.id(), "predecessor", List.of());
-        Task dependent = create(owner.userId(), project.id(), run.id(), "dependent",
-                List.of(predecessor.id()));
-        Task predecessorLease = tasks.claimDue("worker-late", 1).getFirst();
+        Task executing = create(owner.userId(), project.id(), run.id(), "executing");
+        Task queued = create(owner.userId(), project.id(), run.id(), "queued");
+        Task executingLease = tasks.claimDue("worker-late", 1).getFirst();
         runs.cancel(owner.userId(), project.id(), run.id());
         jdbc.sql("update task set lease_until = now() - interval '1 second' where id = :id")
                 .param("id", abandoned.id()).update();
@@ -212,32 +210,31 @@ class TaskRecoveryPostgresIT {
         tasks.succeed(abandonedLease, "worker-abandoned", mapper.readTree("{\"lateAfterScan\":true}"));
         assertThat(jdbc.sql("select count(*) from task_late_result where task_id = :id")
                 .param("id", abandoned.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(tasks.get(owner.userId(), project.id(), dependent.id()).status())
+        assertThat(tasks.get(owner.userId(), project.id(), queued.id()).status())
                 .isEqualTo(Task.Status.CANCELED);
-        tasks.succeed(predecessorLease, "worker-late", mapper.readTree("{\"late\":true}"));
-        Task canceled = tasks.get(owner.userId(), project.id(), predecessor.id());
+        tasks.succeed(executingLease, "worker-late", mapper.readTree("{\"late\":true}"));
+        Task canceled = tasks.get(owner.userId(), project.id(), executing.id());
         assertThat(canceled.status()).isEqualTo(Task.Status.CANCELED);
         assertThat(canceled.output()).isNull();
         assertThat(jdbc.sql("select count(*) from task_late_result where task_id = :id")
-                .param("id", predecessor.id()).query(Integer.class).single()).isEqualTo(1);
+                .param("id", executing.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("""
                         select payload_json ->> 'possibleExternalCost' from project_event
                         where project_id = :projectId and aggregate_id = :taskId
                         order by seq desc limit 1
                         """)
                 .param("projectId", project.id())
-                .param("taskId", predecessor.id())
+                .param("taskId", executing.id())
                 .query(String.class).single()).isEqualTo("true");
-        assertThat(tasks.get(owner.userId(), project.id(), dependent.id()).status())
+        assertThat(tasks.get(owner.userId(), project.id(), queued.id()).status())
                 .isEqualTo(Task.Status.CANCELED);
         assertThat(tasks.claimDue("third-worker", 16)).isEmpty();
         assertThat(snapshots.snapshot(owner.userId(), project.id()).unknownTasks())
                 .extracting(Task::id).contains(submission.id());
     }
 
-    private Task create(UUID ownerId, UUID projectId, UUID runId, String stepKey,
-            List<UUID> dependencies) {
+    private Task create(UUID ownerId, UUID projectId, UUID runId, String stepKey) {
         return tasks.create(ownerId, projectId, runId, stepKey, Task.Kind.IMAGE_GENERATION,
-                mapper.readTree("{\"step\":\"" + stepKey + "\"}"), null, 1, dependencies);
+                mapper.readTree("{\"step\":\"" + stepKey + "\"}"), 1);
     }
 }

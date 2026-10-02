@@ -50,8 +50,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Spatial card plus card-local work context; Artifact content remains immutable
- * and shared.
+ * 画布空间卡片及卡片独立的标题、版本选择与内容选择 epoch
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItem extends TableImpl<CanvasItemRecord> {
@@ -72,84 +71,86 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
     }
 
     /**
-     * The column <code>public.canvas_item.id</code>.
+     * The column <code>public.canvas_item.id</code>. 记录身份
      */
-    public final TableField<CanvasItemRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.canvas_item.project_id</code>.
+     * The column <code>public.canvas_item.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<CanvasItemRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.canvas_item.subject_type</code>.
+     * The column <code>public.canvas_item.subject_type</code>. 卡片承载 Agent 或
+     * Artifact
      */
-    public final TableField<CanvasItemRecord, String> SUBJECT_TYPE = createField(DSL.name("subject_type"), SQLDataType.VARCHAR(32).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, String> SUBJECT_TYPE = createField(DSL.name("subject_type"), SQLDataType.VARCHAR(32).nullable(false), this, "卡片承载 Agent 或 Artifact");
 
     /**
-     * The column <code>public.canvas_item.subject_id</code>.
+     * The column <code>public.canvas_item.subject_id</code>. 卡片业务对象身份
      */
-    public final TableField<CanvasItemRecord, UUID> SUBJECT_ID = createField(DSL.name("subject_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemRecord, UUID> SUBJECT_ID = createField(DSL.name("subject_id"), SQLDataType.UUID.nullable(false), this, "卡片业务对象身份");
 
     /**
-     * The column <code>public.canvas_item.artifact_id</code>.
+     * The column <code>public.canvas_item.artifact_id</code>. 业务产物身份
      */
-    public final TableField<CanvasItemRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID, this, "");
+    public final TableField<CanvasItemRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID, this, "业务产物身份");
 
     /**
-     * The column <code>public.canvas_item.x</code>.
+     * The column <code>public.canvas_item.x</code>. 画布水平坐标
      */
-    public final TableField<CanvasItemRecord, BigDecimal> X = createField(DSL.name("x"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, BigDecimal> X = createField(DSL.name("x"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "画布水平坐标");
 
     /**
-     * The column <code>public.canvas_item.y</code>.
+     * The column <code>public.canvas_item.y</code>. 画布垂直坐标
      */
-    public final TableField<CanvasItemRecord, BigDecimal> Y = createField(DSL.name("y"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, BigDecimal> Y = createField(DSL.name("y"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "画布垂直坐标");
 
     /**
-     * The column <code>public.canvas_item.width</code>.
+     * The column <code>public.canvas_item.width</code>. 媒体像素宽度或画布卡片宽度
      */
-    public final TableField<CanvasItemRecord, BigDecimal> WIDTH = createField(DSL.name("width"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, BigDecimal> WIDTH = createField(DSL.name("width"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "媒体像素宽度或画布卡片宽度");
 
     /**
-     * The column <code>public.canvas_item.height</code>.
+     * The column <code>public.canvas_item.height</code>. 媒体像素高度或画布卡片高度
      */
-    public final TableField<CanvasItemRecord, BigDecimal> HEIGHT = createField(DSL.name("height"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, BigDecimal> HEIGHT = createField(DSL.name("height"), SQLDataType.NUMERIC(14, 3).nullable(false), this, "媒体像素高度或画布卡片高度");
 
     /**
-     * The column <code>public.canvas_item.z_index</code>.
+     * The column <code>public.canvas_item.z_index</code>. 画布层叠顺序
      */
-    public final TableField<CanvasItemRecord, Integer> Z_INDEX = createField(DSL.name("z_index"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<CanvasItemRecord, Integer> Z_INDEX = createField(DSL.name("z_index"), SQLDataType.INTEGER.nullable(false), this, "画布层叠顺序");
 
     /**
-     * The column <code>public.canvas_item.group_id</code>.
+     * The column <code>public.canvas_item.group_id</code>. 卡片所属画布分组
      */
-    public final TableField<CanvasItemRecord, UUID> GROUP_ID = createField(DSL.name("group_id"), SQLDataType.UUID, this, "");
+    public final TableField<CanvasItemRecord, UUID> GROUP_ID = createField(DSL.name("group_id"), SQLDataType.UUID, this, "卡片所属画布分组");
 
     /**
-     * The column <code>public.canvas_item.locked</code>.
+     * The column <code>public.canvas_item.locked</code>. 是否禁止交互修改卡片布局
      */
-    public final TableField<CanvasItemRecord, Boolean> LOCKED = createField(DSL.name("locked"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<CanvasItemRecord, Boolean> LOCKED = createField(DSL.name("locked"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "是否禁止交互修改卡片布局");
 
     /**
-     * The column <code>public.canvas_item.version</code>.
+     * The column <code>public.canvas_item.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<CanvasItemRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<CanvasItemRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.canvas_item.created_at</code>.
+     * The column <code>public.canvas_item.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<CanvasItemRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.canvas_item.updated_at</code>.
+     * The column <code>public.canvas_item.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
-    public final TableField<CanvasItemRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasItemRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
-     * The column <code>public.canvas_item.agent_instance_id</code>.
+     * The column <code>public.canvas_item.agent_instance_id</code>. Agent
+     * 卡片配置身份
      */
-    public final TableField<CanvasItemRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID, this, "");
+    public final TableField<CanvasItemRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID, this, "Agent 卡片配置身份");
 
     /**
      * The column <code>public.canvas_item.title</code>. Per-card display title
@@ -176,7 +177,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
     }
 
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Spatial card plus card-local work context; Artifact content remains immutable and shared."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("画布空间卡片及卡片独立的标题、版本选择与内容选择 epoch"), TableOptions.table(), where);
     }
 
     /**

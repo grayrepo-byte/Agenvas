@@ -41,8 +41,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * One explicit-risk new Task for an unresolved original; original Task and
- * attempt remain UNKNOWN.
+ * 用户显式批准的 UNKNOWN 重试对应关系和确认记录
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskManualReplacement extends TableImpl<TaskManualReplacementRecord> {
@@ -64,53 +63,61 @@ public class TaskManualReplacement extends TableImpl<TaskManualReplacementRecord
 
     /**
      * The column <code>public.task_manual_replacement.original_task_id</code>.
+     * 结果未知的原任务
      */
-    public final TableField<TaskManualReplacementRecord, UUID> ORIGINAL_TASK_ID = createField(DSL.name("original_task_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, UUID> ORIGINAL_TASK_ID = createField(DSL.name("original_task_id"), SQLDataType.UUID.nullable(false), this, "结果未知的原任务");
 
     /**
      * The column <code>public.task_manual_replacement.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<TaskManualReplacementRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column
      * <code>public.task_manual_replacement.replacement_task_id</code>.
+     * 用户显式创建的独立新尝试
      */
-    public final TableField<TaskManualReplacementRecord, UUID> REPLACEMENT_TASK_ID = createField(DSL.name("replacement_task_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, UUID> REPLACEMENT_TASK_ID = createField(DSL.name("replacement_task_id"), SQLDataType.UUID.nullable(false), this, "用户显式创建的独立新尝试");
 
     /**
      * The column
      * <code>public.task_manual_replacement.approved_by_user_id</code>.
+     * 确认重复费用风险的可信用户身份
      */
-    public final TableField<TaskManualReplacementRecord, UUID> APPROVED_BY_USER_ID = createField(DSL.name("approved_by_user_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, UUID> APPROVED_BY_USER_ID = createField(DSL.name("approved_by_user_id"), SQLDataType.UUID.nullable(false), this, "确认重复费用风险的可信用户身份");
 
     /**
      * The column
      * <code>public.task_manual_replacement.original_task_version</code>.
+     * 用户批准重试时核对的原任务版本
      */
-    public final TableField<TaskManualReplacementRecord, Long> ORIGINAL_TASK_VERSION = createField(DSL.name("original_task_version"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, Long> ORIGINAL_TASK_VERSION = createField(DSL.name("original_task_version"), SQLDataType.BIGINT.nullable(false), this, "用户批准重试时核对的原任务版本");
 
     /**
      * The column <code>public.task_manual_replacement.idempotency_key</code>.
+     * 作用域内的幂等命令键
      */
-    public final TableField<TaskManualReplacementRecord, String> IDEMPOTENCY_KEY = createField(DSL.name("idempotency_key"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, String> IDEMPOTENCY_KEY = createField(DSL.name("idempotency_key"), SQLDataType.VARCHAR(120).nullable(false), this, "作用域内的幂等命令键");
 
     /**
      * The column <code>public.task_manual_replacement.confirmation_code</code>.
+     * 明确重复成本确认的稳定代码
      */
-    public final TableField<TaskManualReplacementRecord, String> CONFIRMATION_CODE = createField(DSL.name("confirmation_code"), SQLDataType.VARCHAR(80).nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, String> CONFIRMATION_CODE = createField(DSL.name("confirmation_code"), SQLDataType.VARCHAR(80).nullable(false), this, "明确重复成本确认的稳定代码");
 
     /**
      * The column <code>public.task_manual_replacement.created_at</code>.
+     * 创建时间（UTC）
      */
-    public final TableField<TaskManualReplacementRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<TaskManualReplacementRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private TaskManualReplacement(Name alias, Table<TaskManualReplacementRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private TaskManualReplacement(Name alias, Table<TaskManualReplacementRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("One explicit-risk new Task for an unresolved original; original Task and attempt remain UNKNOWN."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("用户显式批准的 UNKNOWN 重试对应关系和确认记录"), TableOptions.table(), where);
     }
 
     /**

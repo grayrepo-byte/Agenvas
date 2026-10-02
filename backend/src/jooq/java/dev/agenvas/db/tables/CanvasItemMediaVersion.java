@@ -39,8 +39,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Card-local immutable result history; switching a card never updates pinned
- * inputs or library defaults.
+ * 媒体卡片独占的结果版本历史
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CanvasItemMediaVersion extends TableImpl<CanvasItemMediaVersionRecord> {
@@ -62,31 +61,35 @@ public class CanvasItemMediaVersion extends TableImpl<CanvasItemMediaVersionReco
 
     /**
      * The column <code>public.canvas_item_media_version.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<CanvasItemMediaVersionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaVersionRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column <code>public.canvas_item_media_version.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
-    public final TableField<CanvasItemMediaVersionRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaVersionRecord, UUID> CANVAS_ITEM_ID = createField(DSL.name("canvas_item_id"), SQLDataType.UUID.nullable(false), this, "固定的目标或上下文画布卡片");
 
     /**
      * The column
      * <code>public.canvas_item_media_version.artifact_version_id</code>.
+     * 固定的不可变产物版本
      */
-    public final TableField<CanvasItemMediaVersionRecord, UUID> ARTIFACT_VERSION_ID = createField(DSL.name("artifact_version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CanvasItemMediaVersionRecord, UUID> ARTIFACT_VERSION_ID = createField(DSL.name("artifact_version_id"), SQLDataType.UUID.nullable(false), this, "固定的不可变产物版本");
 
     /**
      * The column <code>public.canvas_item_media_version.created_at</code>.
+     * 创建时间（UTC）
      */
-    public final TableField<CanvasItemMediaVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CanvasItemMediaVersionRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private CanvasItemMediaVersion(Name alias, Table<CanvasItemMediaVersionRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CanvasItemMediaVersion(Name alias, Table<CanvasItemMediaVersionRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Card-local immutable result history; switching a card never updates pinned inputs or library defaults."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("媒体卡片独占的结果版本历史"), TableOptions.table(), where);
     }
 
     /**

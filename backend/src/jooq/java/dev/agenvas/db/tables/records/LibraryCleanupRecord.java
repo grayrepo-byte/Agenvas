@@ -15,7 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Durable idempotent file removal after catalogue deletion or duplicate save
+ * 个人素材库待清理的字节引用及下次清理时间
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupRecord> {
@@ -23,28 +23,28 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.library_cleanup.id</code>.
+     * Setter for <code>public.library_cleanup.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.library_cleanup.id</code>.
+     * Getter for <code>public.library_cleanup.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.library_cleanup.owner_id</code>.
+     * Setter for <code>public.library_cleanup.owner_id</code>. 所属用户及授权作用域
      */
     public void setOwnerId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.library_cleanup.owner_id</code>.
+     * Getter for <code>public.library_cleanup.owner_id</code>. 所属用户及授权作用域
      */
     public UUID getOwnerId() {
         return (UUID) get(1);
@@ -52,6 +52,7 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
 
     /**
      * Setter for <code>public.library_cleanup.metadata_json</code>.
+     * 存储对象元数据，包含定位和完整性验证所需信息
      */
     public void setMetadataJson(JSONB value) {
         set(2, value);
@@ -59,20 +60,21 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
 
     /**
      * Getter for <code>public.library_cleanup.metadata_json</code>.
+     * 存储对象元数据，包含定位和完整性验证所需信息
      */
     public JSONB getMetadataJson() {
         return (JSONB) get(2);
     }
 
     /**
-     * Setter for <code>public.library_cleanup.created_at</code>.
+     * Setter for <code>public.library_cleanup.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.library_cleanup.created_at</code>.
+     * Getter for <code>public.library_cleanup.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(3);
@@ -80,6 +82,7 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
 
     /**
      * Setter for <code>public.library_cleanup.next_attempt_at</code>.
+     * 字节清理下次允许尝试的时间
      */
     public void setNextAttemptAt(OffsetDateTime value) {
         set(4, value);
@@ -87,6 +90,7 @@ public class LibraryCleanupRecord extends UpdatableRecordImpl<LibraryCleanupReco
 
     /**
      * Getter for <code>public.library_cleanup.next_attempt_at</code>.
+     * 字节清理下次允许尝试的时间
      */
     public OffsetDateTime getNextAttemptAt() {
         return (OffsetDateTime) get(4);

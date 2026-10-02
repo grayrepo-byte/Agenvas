@@ -24,7 +24,6 @@ import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
-import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.application.AgentRunService;
@@ -74,7 +73,7 @@ class ApprovedMediaAcceptanceTest {
     @BeforeEach
     void setUp() {
         service = new DirectMediaTaskService(repository, drafts, artifacts, mock(AssetService.class),
-                cards, canvas, capabilities, new ProviderProperties("mock", 1), events, usage,
+                cards, canvas, capabilities, events, usage,
                 mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles);
         Artifact artifact = new Artifact(ARTIFACT, PROJECT, Artifact.Kind.IMAGE, "Proposal", null,
                 null, 0, NOW, NOW);
@@ -90,7 +89,6 @@ class ApprovedMediaAcceptanceTest {
         when(capabilities.settings(binding)).thenReturn(mapper.createObjectNode());
         when(capabilities.parameters(eq(binding), any())).thenAnswer(call -> call.getArgument(1));
         when(capabilities.inputPolicy(binding)).thenReturn(new MediaAdapterRegistry(List.of()).declaration("MOCK_IMAGE"));
-        when(capabilities.capabilitySnapshot(binding.capabilityId()).connectionVersion().originSha256()).thenReturn(null);
         when(canvas.mediaSelectionEpoch(OWNER, PROJECT, CARD)).thenReturn(2L);
         when(events.recordChange(eq(OWNER), eq(PROJECT), any())).thenAnswer(call -> {
             Supplier<?> mutation = call.getArgument(2);
@@ -109,7 +107,7 @@ class ApprovedMediaAcceptanceTest {
         assertThat(result.outputCount()).isEqualTo(4);
         assertThat(result.binding()).isEqualTo(binding);
         assertThat(result.safeSummary().path("priceUnknown").asBoolean()).isTrue();
-        verify(repository, never()).create(any(), anyList());
+        verify(repository, never()).create(any());
         verify(canvas, never()).forkMediaOutputWithinChange(any(), any(), any(), any(), anyLong(), anyInt());
         verifyNoInteractions(usage, events, runs);
     }
@@ -145,7 +143,7 @@ class ApprovedMediaAcceptanceTest {
         assertThat(target.getValue().canvasItemId()).isEqualTo(CARD);
         verify(repository).findAgentByStepKey(OWNER, PROJECT, RUN, "approved-command");
         verify(repository).bindMediaTask(task.id(), binding);
-        verify(usage).reserveMediaTask(OWNER, task, "PROVIDER_UNPRICED");
+        verify(usage).reserveMediaTask(OWNER, task, "PROVIDER_UNPRICED", binding.connectionVersion());
     }
 
     @Test
@@ -153,7 +151,7 @@ class ApprovedMediaAcceptanceTest {
         when(repository.findOccupyingDirectMediaTask(PROJECT, CARD)).thenReturn(java.util.Optional.of(mock(Task.class)));
         assertThatThrownBy(() -> service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
                 DRAFT_VERSION, "approved-command")).isInstanceOf(ApiProblemException.class);
-        verify(repository, never()).create(any(), anyList());
+        verify(repository, never()).create(any());
         verifyNoInteractions(usage);
     }
 
@@ -167,8 +165,8 @@ class ApprovedMediaAcceptanceTest {
                 DRAFT_VERSION, "approved-command")).isSameAs(task);
         assertThatThrownBy(() -> service.runApproved(OWNER, PROJECT, RUN, UUID.randomUUID(), ARTIFACT, CARD,
                 DRAFT_VERSION, "approved-command")).isInstanceOf(ApiProblemException.class);
-        verify(repository).create(task, List.of());
-        verify(usage).reserveMediaTask(OWNER, task, "PROVIDER_UNPRICED");
+        verify(repository).create(task);
+        verify(usage).reserveMediaTask(OWNER, task, "PROVIDER_UNPRICED", binding.connectionVersion());
     }
 
     @ParameterizedTest
@@ -219,7 +217,7 @@ class ApprovedMediaAcceptanceTest {
         assertThatThrownBy(() -> service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class)
                 .satisfies(error -> assertThat(((dev.agenvas.shared.error.ApiProblemException) error).code()).isEqualTo("MEDIA_STYLE_PROMPT_TOO_LONG"));
-        verify(repository, never()).create(any(), anyList());
+        verify(repository, never()).create(any());
     }
 
     private MediaDraft draft(String prompt, int count) {

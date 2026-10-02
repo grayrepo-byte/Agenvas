@@ -14,8 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable versioned LLM endpoint and AES-GCM encrypted credential; old
- * versions remain for recovery.
+ * 不可变 LLM 连接版本与加密凭据；激活标记选择当前配置
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConfigRecord> {
@@ -23,56 +22,58 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.llm_provider_config.id</code>.
+     * Setter for <code>public.llm_provider_config.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.id</code>.
+     * Getter for <code>public.llm_provider_config.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.version</code>.
+     * Setter for <code>public.llm_provider_config.version</code>. 全局串行分配的不可变
+     * LLM 配置版本
      */
     public void setVersion(Integer value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.version</code>.
+     * Getter for <code>public.llm_provider_config.version</code>. 全局串行分配的不可变
+     * LLM 配置版本
      */
     public Integer getVersion() {
         return (Integer) get(1);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.endpoint</code>.
+     * Setter for <code>public.llm_provider_config.endpoint</code>. 管理员配置的连接地址
      */
     public void setEndpoint(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.endpoint</code>.
+     * Getter for <code>public.llm_provider_config.endpoint</code>. 管理员配置的连接地址
      */
     public String getEndpoint() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.model_id</code>.
+     * Setter for <code>public.llm_provider_config.model_id</code>. 实际使用的模型标识
      */
     public void setModelId(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.model_id</code>.
+     * Getter for <code>public.llm_provider_config.model_id</code>. 实际使用的模型标识
      */
     public String getModelId() {
         return (String) get(3);
@@ -80,6 +81,7 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
 
     /**
      * Setter for <code>public.llm_provider_config.credential_ciphertext</code>.
+     * 服务端加密凭据密文
      */
     public void setCredentialCiphertext(byte[] value) {
         set(4, value);
@@ -87,6 +89,7 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
 
     /**
      * Getter for <code>public.llm_provider_config.credential_ciphertext</code>.
+     * 服务端加密凭据密文
      */
     public byte[] getCredentialCiphertext() {
         return (byte[]) get(4);
@@ -94,6 +97,7 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
 
     /**
      * Setter for <code>public.llm_provider_config.credential_nonce</code>.
+     * 凭据加密使用的 nonce
      */
     public void setCredentialNonce(byte[] value) {
         set(5, value);
@@ -101,34 +105,35 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
 
     /**
      * Getter for <code>public.llm_provider_config.credential_nonce</code>.
+     * 凭据加密使用的 nonce
      */
     public byte[] getCredentialNonce() {
         return (byte[]) get(5);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.key_version</code>.
+     * Setter for <code>public.llm_provider_config.key_version</code>. 加密主密钥版本
      */
     public void setKeyVersion(Integer value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.key_version</code>.
+     * Getter for <code>public.llm_provider_config.key_version</code>. 加密主密钥版本
      */
     public Integer getKeyVersion() {
         return (Integer) get(6);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.key_mask</code>.
+     * Setter for <code>public.llm_provider_config.key_mask</code>. 供设置页显示的凭据掩码
      */
     public void setKeyMask(String value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.key_mask</code>.
+     * Getter for <code>public.llm_provider_config.key_mask</code>. 供设置页显示的凭据掩码
      */
     public String getKeyMask() {
         return (String) get(7);
@@ -136,6 +141,7 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
 
     /**
      * Setter for <code>public.llm_provider_config.tool_calling_verified</code>.
+     * 模型工具调用能力已通过配置验证
      */
     public void setToolCallingVerified(Boolean value) {
         set(8, value);
@@ -143,34 +149,35 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
 
     /**
      * Getter for <code>public.llm_provider_config.tool_calling_verified</code>.
+     * 模型工具调用能力已通过配置验证
      */
     public Boolean getToolCallingVerified() {
         return (Boolean) get(8);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.active</code>.
+     * Setter for <code>public.llm_provider_config.active</code>. 是否选为当前 LLM 配置
      */
     public void setActive(Boolean value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.active</code>.
+     * Getter for <code>public.llm_provider_config.active</code>. 是否选为当前 LLM 配置
      */
     public Boolean getActive() {
         return (Boolean) get(9);
     }
 
     /**
-     * Setter for <code>public.llm_provider_config.created_at</code>.
+     * Setter for <code>public.llm_provider_config.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.llm_provider_config.created_at</code>.
+     * Getter for <code>public.llm_provider_config.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(10);

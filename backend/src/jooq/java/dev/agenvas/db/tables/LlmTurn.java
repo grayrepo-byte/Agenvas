@@ -44,8 +44,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Durable model-round checkpoint; a complete response is committed before any
- * tool side effect.
+ * 固定模型配置版本的持久模型回合，保存完整响应后才执行工具
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LlmTurn extends TableImpl<LlmTurnRecord> {
@@ -66,56 +65,57 @@ public class LlmTurn extends TableImpl<LlmTurnRecord> {
     }
 
     /**
-     * The column <code>public.llm_turn.project_id</code>.
+     * The column <code>public.llm_turn.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<LlmTurnRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LlmTurnRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.llm_turn.run_id</code>.
+     * The column <code>public.llm_turn.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
-    public final TableField<LlmTurnRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LlmTurnRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID.nullable(false), this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.llm_turn.step_index</code>.
+     * The column <code>public.llm_turn.step_index</code>. Run 内模型回合序号
      */
-    public final TableField<LlmTurnRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<LlmTurnRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER.nullable(false), this, "Run 内模型回合序号");
 
     /**
-     * The column <code>public.llm_turn.status</code>.
+     * The column <code>public.llm_turn.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
-    public final TableField<LlmTurnRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(20).nullable(false), this, "");
+    public final TableField<LlmTurnRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(20).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.llm_turn.model_config_version</code>.
+     * The column <code>public.llm_turn.model_config_version</code>. 本模型回合固定使用的
+     * LLM 配置版本
      */
-    public final TableField<LlmTurnRecord, Integer> MODEL_CONFIG_VERSION = createField(DSL.name("model_config_version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<LlmTurnRecord, Integer> MODEL_CONFIG_VERSION = createField(DSL.name("model_config_version"), SQLDataType.INTEGER.nullable(false), this, "本模型回合固定使用的 LLM 配置版本");
 
     /**
-     * The column <code>public.llm_turn.request_json</code>.
+     * The column <code>public.llm_turn.request_json</code>. 固定的模型请求或媒体审批批次
      */
-    public final TableField<LlmTurnRecord, JSONB> REQUEST_JSON = createField(DSL.name("request_json"), SQLDataType.JSONB.nullable(false), this, "");
+    public final TableField<LlmTurnRecord, JSONB> REQUEST_JSON = createField(DSL.name("request_json"), SQLDataType.JSONB.nullable(false), this, "固定的模型请求或媒体审批批次");
 
     /**
-     * The column <code>public.llm_turn.response_json</code>.
+     * The column <code>public.llm_turn.response_json</code>. 已提交的命令响应或完整模型响应
      */
-    public final TableField<LlmTurnRecord, JSONB> RESPONSE_JSON = createField(DSL.name("response_json"), SQLDataType.JSONB, this, "");
+    public final TableField<LlmTurnRecord, JSONB> RESPONSE_JSON = createField(DSL.name("response_json"), SQLDataType.JSONB, this, "已提交的命令响应或完整模型响应");
 
     /**
-     * The column <code>public.llm_turn.created_at</code>.
+     * The column <code>public.llm_turn.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<LlmTurnRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<LlmTurnRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.llm_turn.responded_at</code>.
+     * The column <code>public.llm_turn.responded_at</code>. 完整响应持久化时间
      */
-    public final TableField<LlmTurnRecord, OffsetDateTime> RESPONDED_AT = createField(DSL.name("responded_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<LlmTurnRecord, OffsetDateTime> RESPONDED_AT = createField(DSL.name("responded_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "完整响应持久化时间");
 
     private LlmTurn(Name alias, Table<LlmTurnRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private LlmTurn(Name alias, Table<LlmTurnRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Durable model-round checkpoint; a complete response is committed before any tool side effect."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("固定模型配置版本的持久模型回合，保存完整响应后才执行工具"), TableOptions.table(), where);
     }
 
     /**

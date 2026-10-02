@@ -65,6 +65,8 @@ class TaskArchivedProjectPostgresIT {
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
+    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
@@ -101,27 +103,22 @@ class TaskArchivedProjectPostgresIT {
         // 直连生成固定写入一张已存在的空媒体卡片；归档发生在提交之后。
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Archived image card", null);
-        Task task = tasks.createMediaTask(owner.userId(), project.id(), run.id(),
-                "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), null, 1,
-                List.of(), card.artifact().id());
-        Task lease = tasks.claimImagesDue("archive-submitter", 1).getFirst();
+        Task task = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), card.artifact().id());
+        Task lease = tasks.claimDue("archive-submitter", 1).getFirst();
         tasks.beginSubmission(lease, "archive-submitter");
         String requestId = UUID.randomUUID().toString();
         tasks.waitForProvider(lease, "archive-submitter", requestId,
                 Instant.now().plusSeconds(60));
         var unsubmittedCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Not submitted card", null);
-        Task unsubmitted = tasks.createMediaTask(owner.userId(), project.id(),
-                run.id(), "not-submitted", Task.Kind.IMAGE_GENERATION,
-                mapper.createObjectNode(), null, 1, List.of(),
-                unsubmittedCard.artifact().id());
+        Task unsubmitted = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "not-submitted", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), unsubmittedCard.artifact().id());
 
         Project archived = projects.archive(owner.userId(), project.id(),
                 projects.get(owner.userId(), project.id()).version());
         assertThat(archived.status()).isEqualTo(Project.Status.ARCHIVED);
         AtomicInteger newSubmissions = new AtomicInteger();
-        assertThat(new TaskWorker(tasks, callLogs).runImagesOnce("archive-new-worker", 1,
-                (claimed, key) -> {
+        assertThat(new TaskWorker(tasks, callLogs).runOnce("archive-new-worker", 1,
+                claimed -> {
                     newSubmissions.incrementAndGet();
                     return new TaskWorker.Failed("UNEXPECTED_SUBMISSION");
                 })).isEqualTo(1);
@@ -152,7 +149,7 @@ class TaskArchivedProjectPostgresIT {
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", assetId.toString());
         content.put("prompt", "Accepted before archive");
-        content.put("providerConfigVersion", 1);
+
         content.put("workflowVersion", "test-image-v1");
         content.putObject("parameters");
         content.put("sourceTaskId", task.id().toString());

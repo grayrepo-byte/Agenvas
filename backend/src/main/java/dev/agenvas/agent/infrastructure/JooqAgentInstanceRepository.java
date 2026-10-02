@@ -130,7 +130,6 @@ public class JooqAgentInstanceRepository implements AgentInstanceRepository {
                     .set(AGENT_BINDING.AGENT_INSTANCE_ID, agentId)
                     .set(AGENT_BINDING.ARTIFACT_ID, binding.artifactId())
                     .set(AGENT_BINDING.SELECTED_VERSION_ID, binding.selectedVersionId())
-                    .set(AGENT_BINDING.BINDING_TYPE, binding.bindingType().name())
                     .set(AGENT_BINDING.CREATED_AT, atUtc(binding.createdAt()))
                     .execute();
         }
@@ -179,7 +178,6 @@ public class JooqAgentInstanceRepository implements AgentInstanceRepository {
                 row.getId(),
                 row.getArtifactId(),
                 row.getSelectedVersionId(),
-                AgentInstance.BindingType.valueOf(row.getBindingType()),
                 row.getCreatedAt().toInstant());
     }
 

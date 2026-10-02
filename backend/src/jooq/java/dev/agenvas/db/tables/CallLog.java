@@ -45,8 +45,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Safe metadata for individual adapter invocations; no bodies, endpoints or
- * credentials.
+ * Provider 调用公开审计元数据，不包含凭据或模型私有推理
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class CallLog extends TableImpl<CallLogRecord> {
@@ -67,96 +66,97 @@ public class CallLog extends TableImpl<CallLogRecord> {
     }
 
     /**
-     * The column <code>public.call_log.id</code>.
+     * The column <code>public.call_log.id</code>. 记录身份
      */
-    public final TableField<CallLogRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CallLogRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.call_log.project_id</code>.
+     * The column <code>public.call_log.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<CallLogRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<CallLogRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.call_log.task_id</code>.
+     * The column <code>public.call_log.task_id</code>. 持久任务身份
      */
-    public final TableField<CallLogRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "");
+    public final TableField<CallLogRecord, UUID> TASK_ID = createField(DSL.name("task_id"), SQLDataType.UUID, this, "持久任务身份");
 
     /**
-     * The column <code>public.call_log.run_id</code>.
+     * The column <code>public.call_log.run_id</code>. 所属 Agent Run；用户直连任务为空
      */
-    public final TableField<CallLogRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "");
+    public final TableField<CallLogRecord, UUID> RUN_ID = createField(DSL.name("run_id"), SQLDataType.UUID, this, "所属 Agent Run；用户直连任务为空");
 
     /**
-     * The column <code>public.call_log.step_index</code>.
+     * The column <code>public.call_log.step_index</code>. Run 内模型回合序号
      */
-    public final TableField<CallLogRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER, this, "");
+    public final TableField<CallLogRecord, Integer> STEP_INDEX = createField(DSL.name("step_index"), SQLDataType.INTEGER, this, "Run 内模型回合序号");
 
     /**
-     * The column <code>public.call_log.kind</code>.
+     * The column <code>public.call_log.kind</code>. 业务类型，允许值由 CHECK 约束限定
      */
-    public final TableField<CallLogRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(12).nullable(false), this, "");
+    public final TableField<CallLogRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(12).nullable(false), this, "业务类型，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.call_log.operation</code>.
+     * The column <code>public.call_log.operation</code>. 本次调用执行的操作名称
      */
-    public final TableField<CallLogRecord, String> OPERATION = createField(DSL.name("operation"), SQLDataType.VARCHAR(12).nullable(false), this, "");
+    public final TableField<CallLogRecord, String> OPERATION = createField(DSL.name("operation"), SQLDataType.VARCHAR(12).nullable(false), this, "本次调用执行的操作名称");
 
     /**
-     * The column <code>public.call_log.status</code>.
+     * The column <code>public.call_log.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
-    public final TableField<CallLogRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(12).nullable(false), this, "");
+    public final TableField<CallLogRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(12).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.call_log.provider</code>.
+     * The column <code>public.call_log.provider</code>. Provider 或存储实现类型
      */
-    public final TableField<CallLogRecord, String> PROVIDER = createField(DSL.name("provider"), SQLDataType.VARCHAR(160), this, "");
+    public final TableField<CallLogRecord, String> PROVIDER = createField(DSL.name("provider"), SQLDataType.VARCHAR(160), this, "Provider 或存储实现类型");
 
     /**
-     * The column <code>public.call_log.model</code>.
+     * The column <code>public.call_log.model</code>. 本次调用的模型标识
      */
-    public final TableField<CallLogRecord, String> MODEL = createField(DSL.name("model"), SQLDataType.VARCHAR(160), this, "");
+    public final TableField<CallLogRecord, String> MODEL = createField(DSL.name("model"), SQLDataType.VARCHAR(160), this, "本次调用的模型标识");
 
     /**
-     * The column <code>public.call_log.trace_id</code>.
+     * The column <code>public.call_log.trace_id</code>. 调用链关联标识
      */
-    public final TableField<CallLogRecord, String> TRACE_ID = createField(DSL.name("trace_id"), SQLDataType.CHAR(32).nullable(false), this, "");
+    public final TableField<CallLogRecord, String> TRACE_ID = createField(DSL.name("trace_id"), SQLDataType.CHAR(32).nullable(false), this, "调用链关联标识");
 
     /**
      * The column <code>public.call_log.provider_request_id</code>.
+     * 外部已受理请求标识，供状态查询与结果归档
      */
-    public final TableField<CallLogRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "");
+    public final TableField<CallLogRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "外部已受理请求标识，供状态查询与结果归档");
 
     /**
-     * The column <code>public.call_log.error_code</code>.
+     * The column <code>public.call_log.error_code</code>. 稳定错误代码，不含堆栈或凭据
      */
-    public final TableField<CallLogRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(120), this, "");
+    public final TableField<CallLogRecord, String> ERROR_CODE = createField(DSL.name("error_code"), SQLDataType.VARCHAR(120), this, "稳定错误代码，不含堆栈或凭据");
 
     /**
-     * The column <code>public.call_log.started_at</code>.
+     * The column <code>public.call_log.started_at</code>. 调用开始时间
      */
-    public final TableField<CallLogRecord, OffsetDateTime> STARTED_AT = createField(DSL.name("started_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<CallLogRecord, OffsetDateTime> STARTED_AT = createField(DSL.name("started_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "调用开始时间");
 
     /**
-     * The column <code>public.call_log.responded_at</code>.
+     * The column <code>public.call_log.responded_at</code>. 完整响应持久化时间
      */
-    public final TableField<CallLogRecord, OffsetDateTime> RESPONDED_AT = createField(DSL.name("responded_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<CallLogRecord, OffsetDateTime> RESPONDED_AT = createField(DSL.name("responded_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "完整响应持久化时间");
 
     /**
-     * The column <code>public.call_log.duration_ms</code>.
+     * The column <code>public.call_log.duration_ms</code>. 媒体或调用持续时间，单位毫秒
      */
-    public final TableField<CallLogRecord, Long> DURATION_MS = createField(DSL.name("duration_ms"), SQLDataType.BIGINT, this, "");
+    public final TableField<CallLogRecord, Long> DURATION_MS = createField(DSL.name("duration_ms"), SQLDataType.BIGINT, this, "媒体或调用持续时间，单位毫秒");
 
     /**
-     * The column <code>public.call_log.mock</code>.
+     * The column <code>public.call_log.mock</code>. 明确标记演示调用，不证明真实 Provider 已接通
      */
-    public final TableField<CallLogRecord, Boolean> MOCK = createField(DSL.name("mock"), SQLDataType.BOOLEAN.nullable(false), this, "");
+    public final TableField<CallLogRecord, Boolean> MOCK = createField(DSL.name("mock"), SQLDataType.BOOLEAN.nullable(false), this, "明确标记演示调用，不证明真实 Provider 已接通");
 
     private CallLog(Name alias, Table<CallLogRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private CallLog(Name alias, Table<CallLogRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Safe metadata for individual adapter invocations; no bodies, endpoints or credentials."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Provider 调用公开审计元数据，不包含凭据或模型私有推理"), TableOptions.table(), where);
     }
 
     /**

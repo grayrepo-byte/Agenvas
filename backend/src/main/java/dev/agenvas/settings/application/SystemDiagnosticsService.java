@@ -6,9 +6,6 @@ import dev.agenvas.asset.application.AssetProperties;
 import dev.agenvas.llm.application.LlmModeProperties;
 import dev.agenvas.provider.application.ProviderModeProperties;
 import dev.agenvas.provider.application.MediaCapabilityService;
-import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
-import dev.agenvas.provider.infrastructure.ComfyUiProperties;
-import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
 import dev.agenvas.task.domain.Task;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -35,24 +32,17 @@ public class SystemDiagnosticsService {
     private final LlmModeProperties llmMode;
     /** 读取活动 LLM 配置的安全状态，不读取密钥明文。 */
     private final LlmProviderConfigService llmConfigs;
-    /** 决定媒体状态采用管理员目录、Mock 还是旧 ComfyUI 配置。 */
+    /** 决定媒体状态采用管理员目录还是 Mock。 */
     private final ProviderModeProperties mediaMode;
     /** 读取已发布媒体目录，不探测远端或执行生成。 */
     private final MediaCapabilityService mediaCapabilities;
-    /** ComfyUI 服务地址配置，仅检查是否填写，不向响应暴露。 */
-    private final ComfyUiProperties comfy;
-    /** ComfyUI 图片模板所需配置。 */
-    private final ComfyUiImageProperties image;
-    /** ComfyUI 视频模板所需配置及启用状态。 */
-    private final ComfyUiVideoProperties video;
     /** 生成诊断快照的检查时间。 */
     private final Clock clock;
 
     /** 固定本地存储根目录并注入各 Provider 的只读配置状态。 */
     public SystemDiagnosticsService(DSLContext dsl, AssetProperties storage,
             LlmModeProperties llmMode, LlmProviderConfigService llmConfigs,
-            ProviderModeProperties mediaMode, ComfyUiProperties comfy,
-            ComfyUiImageProperties image, ComfyUiVideoProperties video, Clock clock,
+            ProviderModeProperties mediaMode, Clock clock,
             MediaCapabilityService mediaCapabilities) {
         this.dsl = dsl;
         this.storageRoot = storage.root().toAbsolutePath().normalize();
@@ -60,9 +50,6 @@ public class SystemDiagnosticsService {
         this.llmConfigs = llmConfigs;
         this.mediaMode = mediaMode;
         this.mediaCapabilities = mediaCapabilities;
-        this.comfy = comfy;
-        this.image = image;
-        this.video = video;
         this.clock = clock;
     }
 
@@ -106,12 +93,8 @@ public class SystemDiagnosticsService {
             }
         }
         boolean mockMedia = mediaMode.mode() == ProviderModeProperties.Mode.MOCK;
-        boolean imageConfigured = mockMedia || (filled(comfy.endpoint())
-                && filled(image.checkpoint()));
-        boolean videoConfigured = mockMedia || (video.enabled()
-                && filled(comfy.endpoint()) && filled(video.diffusionModel())
-                && filled(video.textEncoder()) && filled(video.vae())
-                && filled(video.clipVision()));
+        boolean imageConfigured = mockMedia;
+        boolean videoConfigured = mockMedia;
         if (mediaMode.mode() == ProviderModeProperties.Mode.CONFIGURED) {
             imageConfigured = false;
             videoConfigured = false;
@@ -143,11 +126,6 @@ public class SystemDiagnosticsService {
         }
         return candidate != null && Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)
                 && Files.isReadable(candidate) && Files.isWritable(candidate);
-    }
-
-    /** 将非空白字符串视为已配置；不在此处校验远端连通性。 */
-    private boolean filled(String value) {
-        return value != null && !value.isBlank();
     }
 
     /** 对外呈现的可用性枚举，不携带底层异常或路径信息。 */

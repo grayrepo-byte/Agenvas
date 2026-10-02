@@ -42,8 +42,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Private archived bytes. READY is inserted only after validation and atomic
- * file move.
+ * 已校验、归档并发布的媒体字节及完整性元数据
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Asset extends TableImpl<AssetRecord> {
@@ -64,59 +63,54 @@ public class Asset extends TableImpl<AssetRecord> {
     }
 
     /**
-     * The column <code>public.asset.id</code>.
+     * The column <code>public.asset.id</code>. 记录身份
      */
-    public final TableField<AssetRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AssetRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.asset.project_id</code>.
+     * The column <code>public.asset.project_id</code>. 所属项目及授权作用域
      */
-    public final TableField<AssetRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<AssetRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.asset.media_kind</code>.
+     * The column <code>public.asset.media_kind</code>. 媒体字节类型
      */
-    public final TableField<AssetRecord, String> MEDIA_KIND = createField(DSL.name("media_kind"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<AssetRecord, String> MEDIA_KIND = createField(DSL.name("media_kind"), SQLDataType.VARCHAR(16).nullable(false), this, "媒体字节类型");
 
     /**
-     * The column <code>public.asset.status</code>.
+     * The column <code>public.asset.object_key</code>. 存储配置内的相对对象键，不是任意文件路径
      */
-    public final TableField<AssetRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<AssetRecord, String> OBJECT_KEY = createField(DSL.name("object_key"), SQLDataType.VARCHAR(200).nullable(false), this, "存储配置内的相对对象键，不是任意文件路径");
 
     /**
-     * The column <code>public.asset.object_key</code>.
+     * The column <code>public.asset.content_type</code>. 实际校验的媒体 MIME 类型
      */
-    public final TableField<AssetRecord, String> OBJECT_KEY = createField(DSL.name("object_key"), SQLDataType.VARCHAR(200).nullable(false), this, "");
+    public final TableField<AssetRecord, String> CONTENT_TYPE = createField(DSL.name("content_type"), SQLDataType.VARCHAR(80).nullable(false), this, "实际校验的媒体 MIME 类型");
 
     /**
-     * The column <code>public.asset.content_type</code>.
+     * The column <code>public.asset.byte_size</code>. 归档字节数
      */
-    public final TableField<AssetRecord, String> CONTENT_TYPE = createField(DSL.name("content_type"), SQLDataType.VARCHAR(80).nullable(false), this, "");
+    public final TableField<AssetRecord, Long> BYTE_SIZE = createField(DSL.name("byte_size"), SQLDataType.BIGINT.nullable(false), this, "归档字节数");
 
     /**
-     * The column <code>public.asset.byte_size</code>.
+     * The column <code>public.asset.sha256</code>. 归档字节的 SHA-256 完整性摘要
      */
-    public final TableField<AssetRecord, Long> BYTE_SIZE = createField(DSL.name("byte_size"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<AssetRecord, String> SHA256 = createField(DSL.name("sha256"), SQLDataType.CHAR(64).nullable(false), this, "归档字节的 SHA-256 完整性摘要");
 
     /**
-     * The column <code>public.asset.sha256</code>.
+     * The column <code>public.asset.width</code>. 媒体像素宽度或画布卡片宽度
      */
-    public final TableField<AssetRecord, String> SHA256 = createField(DSL.name("sha256"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<AssetRecord, Integer> WIDTH = createField(DSL.name("width"), SQLDataType.INTEGER, this, "媒体像素宽度或画布卡片宽度");
 
     /**
-     * The column <code>public.asset.width</code>.
+     * The column <code>public.asset.height</code>. 媒体像素高度或画布卡片高度
      */
-    public final TableField<AssetRecord, Integer> WIDTH = createField(DSL.name("width"), SQLDataType.INTEGER, this, "");
+    public final TableField<AssetRecord, Integer> HEIGHT = createField(DSL.name("height"), SQLDataType.INTEGER, this, "媒体像素高度或画布卡片高度");
 
     /**
-     * The column <code>public.asset.height</code>.
+     * The column <code>public.asset.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<AssetRecord, Integer> HEIGHT = createField(DSL.name("height"), SQLDataType.INTEGER, this, "");
-
-    /**
-     * The column <code>public.asset.created_at</code>.
-     */
-    public final TableField<AssetRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<AssetRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.asset.thumbnail_key</code>. Private, bounded PNG
@@ -148,7 +142,7 @@ public class Asset extends TableImpl<AssetRecord> {
     }
 
     private Asset(Name alias, Table<AssetRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Private archived bytes. READY is inserted only after validation and atomic file move."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("已校验、归档并发布的媒体字节及完整性元数据"), TableOptions.table(), where);
     }
 
     /**
@@ -250,7 +244,6 @@ public class Asset extends TableImpl<AssetRecord> {
             Internal.createCheck(this, DSL.name("ck_asset_media_duration"), "(((((media_kind)::text = 'IMAGE'::text) AND (duration_ms IS NULL)) OR (((media_kind)::text = 'VIDEO'::text) AND ((duration_ms IS NULL) OR ((duration_ms >= 1) AND (duration_ms <= 60000)))) OR (((media_kind)::text = 'AUDIO'::text) AND (duration_ms IS NOT NULL) AND ((duration_ms >= 1) AND (duration_ms <= 600000)) AND (width IS NULL) AND (height IS NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_asset_sha256"), "((sha256 ~ '^[0-9a-f]{64}$'::text))", true),
             Internal.createCheck(this, DSL.name("ck_asset_size"), "((byte_size > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_asset_status"), "(((status)::text = 'READY'::text))", true),
             Internal.createCheck(this, DSL.name("ck_asset_thumbnail_complete"), "((((thumbnail_key IS NULL) AND (thumbnail_byte_size IS NULL) AND (thumbnail_sha256 IS NULL)) OR ((thumbnail_key IS NOT NULL) AND (thumbnail_byte_size > 0) AND (thumbnail_sha256 ~ '^[0-9a-f]{64}$'::text))))", true)
         );
     }

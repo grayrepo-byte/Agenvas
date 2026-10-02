@@ -166,8 +166,7 @@ class AgentStreamTest {
 
     private Task task(long epoch, long version, Task.Status status, boolean canceled, JsonNode output) {
         return new Task(taskId, project, runId, "agent-turn-0", Task.Kind.AGENT_TURN, status, canceled,
-                mapper.createObjectNode().put("schemaVersion", 1).put("stepIndex", 0), "hash", output,
-                null, null, 1, NOW, WORKER, NOW.plusSeconds(45), epoch, version, null, NOW, NOW, null);
+                mapper.createObjectNode().put("schemaVersion", 1).put("stepIndex", 0), "hash", output, null, 1, NOW, WORKER, NOW.plusSeconds(45), epoch, version, null, NOW, NOW, null);
     }
 
     private static void assertLeaseLost(Runnable action) {

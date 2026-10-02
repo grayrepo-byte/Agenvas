@@ -13,8 +13,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable content selection precondition captured when a generation Task is
- * created.
+ * 任务固定目标与受理时的版本选择；结果不能覆盖并发用户选择
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTargetRecord> {
@@ -22,14 +21,14 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.task_artifact_target.task_id</code>.
+     * Setter for <code>public.task_artifact_target.task_id</code>. 持久任务身份
      */
     public void setTaskId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.task_artifact_target.task_id</code>.
+     * Getter for <code>public.task_artifact_target.task_id</code>. 持久任务身份
      */
     public UUID getTaskId() {
         return (UUID) get(0);
@@ -37,6 +36,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
 
     /**
      * Setter for <code>public.task_artifact_target.project_id</code>.
+     * 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
@@ -44,20 +44,21 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
 
     /**
      * Getter for <code>public.task_artifact_target.project_id</code>.
+     * 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.task_artifact_target.artifact_id</code>.
+     * Setter for <code>public.task_artifact_target.artifact_id</code>. 业务产物身份
      */
     public void setArtifactId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.task_artifact_target.artifact_id</code>.
+     * Getter for <code>public.task_artifact_target.artifact_id</code>. 业务产物身份
      */
     public UUID getArtifactId() {
         return (UUID) get(2);
@@ -66,6 +67,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     /**
      * Setter for
      * <code>public.task_artifact_target.expected_current_version_id</code>.
+     * 受理时的产物当前版本，结果提交时进行 CAS 校验
      */
     public void setExpectedCurrentVersionId(UUID value) {
         set(3, value);
@@ -74,6 +76,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     /**
      * Getter for
      * <code>public.task_artifact_target.expected_current_version_id</code>.
+     * 受理时的产物当前版本，结果提交时进行 CAS 校验
      */
     public UUID getExpectedCurrentVersionId() {
         return (UUID) get(3);
@@ -82,6 +85,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     /**
      * Setter for
      * <code>public.task_artifact_target.expected_artifact_version</code>.
+     * 受理时的产物并发控制版本
      */
     public void setExpectedArtifactVersion(Long value) {
         set(4, value);
@@ -90,41 +94,26 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     /**
      * Getter for
      * <code>public.task_artifact_target.expected_artifact_version</code>.
+     * 受理时的产物并发控制版本
      */
     public Long getExpectedArtifactVersion() {
         return (Long) get(4);
     }
 
     /**
-     * Setter for <code>public.task_artifact_target.output_slot_key</code>. A
-     * named output in an approved plan; no Artifact identity exists until the
-     * result arrives.
+     * Setter for <code>public.task_artifact_target.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
-    public void setOutputSlotKey(String value) {
+    public void setCanvasItemId(UUID value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.task_artifact_target.output_slot_key</code>. A
-     * named output in an approved plan; no Artifact identity exists until the
-     * result arrives.
-     */
-    public String getOutputSlotKey() {
-        return (String) get(5);
-    }
-
-    /**
-     * Setter for <code>public.task_artifact_target.canvas_item_id</code>.
-     */
-    public void setCanvasItemId(UUID value) {
-        set(6, value);
-    }
-
-    /**
      * Getter for <code>public.task_artifact_target.canvas_item_id</code>.
+     * 固定的目标或上下文画布卡片
      */
     public UUID getCanvasItemId() {
-        return (UUID) get(6);
+        return (UUID) get(5);
     }
 
     // -------------------------------------------------------------------------
@@ -150,7 +139,7 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
     /**
      * Create a detached, initialised TaskArtifactTargetRecord
      */
-    public TaskArtifactTargetRecord(UUID taskId, UUID projectId, UUID artifactId, UUID expectedCurrentVersionId, Long expectedArtifactVersion, String outputSlotKey, UUID canvasItemId) {
+    public TaskArtifactTargetRecord(UUID taskId, UUID projectId, UUID artifactId, UUID expectedCurrentVersionId, Long expectedArtifactVersion, UUID canvasItemId) {
         super(TaskArtifactTarget.TASK_ARTIFACT_TARGET);
 
         setTaskId(taskId);
@@ -158,7 +147,6 @@ public class TaskArtifactTargetRecord extends UpdatableRecordImpl<TaskArtifactTa
         setArtifactId(artifactId);
         setExpectedCurrentVersionId(expectedCurrentVersionId);
         setExpectedArtifactVersion(expectedArtifactVersion);
-        setOutputSlotKey(outputSlotKey);
         setCanvasItemId(canvasItemId);
         resetChangedOnNotNull();
     }

@@ -27,7 +27,6 @@ public class MediaExecutionScheduler {
     private static final long INITIAL_DELAY_MS = 1_000;
     private static final long TICK_DELAY_MS = 5_000;
     private final MediaExecutionWorker worker;
-    private final LegacyMediaImportService importer;
     private final ExecutorService executor = Executors.newFixedThreadPool(
             MAX_SUBMIT_WORKERS + MAX_POLL_WORKERS,
             Thread.ofPlatform().name("media-execution-", 0).factory());
@@ -37,14 +36,13 @@ public class MediaExecutionScheduler {
     private final String pollerId = "media-poll-" + UUID.randomUUID();
     private volatile boolean closed;
 
-    public MediaExecutionScheduler(MediaExecutionWorker worker, LegacyMediaImportService importer) {
+    public MediaExecutionScheduler(MediaExecutionWorker worker) {
         this.worker = worker;
-        this.importer = importer;
     }
 
     @Scheduled(initialDelay = INITIAL_DELAY_MS, fixedDelay = TICK_DELAY_MS)
     public void tick() {
-        if (closed || !importer.ready()) return;
+        if (closed) return;
         dispatch(pollSlots, () -> worker.pollOnce(pollerId));
         for (int index = 0; index < MAX_SUBMIT_WORKERS; index++) {
             dispatch(submitSlots, () -> worker.submitOnce(submitterId));

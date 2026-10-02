@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Editable generation input owned by one IMAGE/VIDEO CanvasItem and protected
- * by independent CAS.
+ * 媒体卡片独立草稿、参数、能力、风格和引用提及
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
@@ -24,168 +23,168 @@ public class MediaDraftRecord extends UpdatableRecordImpl<MediaDraftRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.media_draft.project_id</code>.
+     * Setter for <code>public.media_draft.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.project_id</code>.
+     * Getter for <code>public.media_draft.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.media_draft.canvas_item_id</code>.
+     * Setter for <code>public.media_draft.canvas_item_id</code>. 固定的目标或上下文画布卡片
      */
     public void setCanvasItemId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.canvas_item_id</code>.
+     * Getter for <code>public.media_draft.canvas_item_id</code>. 固定的目标或上下文画布卡片
      */
     public UUID getCanvasItemId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.media_draft.prompt</code>.
+     * Setter for <code>public.media_draft.prompt</code>. 用户媒体生成提示词
      */
     public void setPrompt(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.prompt</code>.
+     * Getter for <code>public.media_draft.prompt</code>. 用户媒体生成提示词
      */
     public String getPrompt() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.media_draft.duration_seconds</code>.
+     * Setter for <code>public.media_draft.duration_seconds</code>. 媒体草稿时长，单位秒
      */
     public void setDurationSeconds(Integer value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.duration_seconds</code>.
+     * Getter for <code>public.media_draft.duration_seconds</code>. 媒体草稿时长，单位秒
      */
     public Integer getDurationSeconds() {
         return (Integer) get(3);
     }
 
     /**
-     * Setter for <code>public.media_draft.capability_id</code>.
+     * Setter for <code>public.media_draft.capability_id</code>. 固定媒体能力身份
      */
     public void setCapabilityId(UUID value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.capability_id</code>.
+     * Getter for <code>public.media_draft.capability_id</code>. 固定媒体能力身份
      */
     public UUID getCapabilityId() {
         return (UUID) get(4);
     }
 
     /**
-     * Setter for <code>public.media_draft.display_mode</code>.
+     * Setter for <code>public.media_draft.display_mode</code>. 媒体卡片预览显示方式
      */
     public void setDisplayMode(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.display_mode</code>.
+     * Getter for <code>public.media_draft.display_mode</code>. 媒体卡片预览显示方式
      */
     public String getDisplayMode() {
         return (String) get(5);
     }
 
     /**
-     * Setter for <code>public.media_draft.version</code>.
+     * Setter for <code>public.media_draft.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.version</code>.
+     * Getter for <code>public.media_draft.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
         return (Long) get(6);
     }
 
     /**
-     * Setter for <code>public.media_draft.created_at</code>.
+     * Setter for <code>public.media_draft.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.created_at</code>.
+     * Getter for <code>public.media_draft.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(7);
     }
 
     /**
-     * Setter for <code>public.media_draft.updated_at</code>.
+     * Setter for <code>public.media_draft.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.updated_at</code>.
+     * Getter for <code>public.media_draft.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(8);
     }
 
     /**
-     * Setter for <code>public.media_draft.parameters_json</code>.
+     * Setter for <code>public.media_draft.parameters_json</code>. 媒体草稿的结构化参数
      */
     public void setParametersJson(JSONB value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.parameters_json</code>.
+     * Getter for <code>public.media_draft.parameters_json</code>. 媒体草稿的结构化参数
      */
     public JSONB getParametersJson() {
         return (JSONB) get(9);
     }
 
     /**
-     * Setter for <code>public.media_draft.video_input_mode</code>.
+     * Setter for <code>public.media_draft.video_input_mode</code>. 视频输入参考模式
      */
     public void setVideoInputMode(String value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.video_input_mode</code>.
+     * Getter for <code>public.media_draft.video_input_mode</code>. 视频输入参考模式
      */
     public String getVideoInputMode() {
         return (String) get(10);
     }
 
     /**
-     * Setter for <code>public.media_draft.mentions_json</code>.
+     * Setter for <code>public.media_draft.mentions_json</code>. 草稿内的明确输入引用提及
      */
     public void setMentionsJson(JSONB value) {
         set(11, value);
     }
 
     /**
-     * Getter for <code>public.media_draft.mentions_json</code>.
+     * Getter for <code>public.media_draft.mentions_json</code>. 草稿内的明确输入引用提及
      */
     public JSONB getMentionsJson() {
         return (JSONB) get(11);

@@ -204,15 +204,13 @@ public class AgentInstanceController {
      * @param id 绑定关系 UUID
      * @param artifactId 被引用产物
      * @param selectedVersionId 固定的不可变产物版本
-     * @param bindingType Agent 所需的输入角色
      */
     public record BindingResponse(
             UUID id,
             UUID artifactId,
-            UUID selectedVersionId,
-            AgentInstance.BindingType bindingType) {
+            UUID selectedVersionId) {
 
-        /** 复制绑定身份、精确版本及输入角色。
+        /** 复制绑定身份与精确版本。
          * @param binding 领域绑定关系
          * @return 公开绑定投影
          */
@@ -220,8 +218,7 @@ public class AgentInstanceController {
             return new BindingResponse(
                     binding.id(),
                     binding.artifactId(),
-                    binding.selectedVersionId(),
-                    binding.bindingType());
+                    binding.selectedVersionId());
         }
     }
 

@@ -104,11 +104,11 @@ public class DirectTextTaskService {
             Instant now = clock.instant();
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.TEXT_GENERATION, Task.Status.READY, false, input,
-                    Sha256.hex(input.toString()), null, null, null, 1, now,
+                    Sha256.hex(input.toString()), null, null, 1, now,
                     null, null, 0, 0, null, now, now, null);
-            tasks.create(task, List.of());
+            tasks.create(task);
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
-                    artifactId, expectedCurrentVersionId, expectedArtifactVersion, null, null));
+                    artifactId, expectedCurrentVersionId, expectedArtifactVersion, null));
             usage.reserveDirectTextTask(ownerId, task);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());

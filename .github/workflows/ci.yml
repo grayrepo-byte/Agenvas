@@ -96,7 +96,7 @@ jobs:
               .services.server.environment.AGENVAS_PROVIDER_MODE == "configured" and
               .volumes."postgres-data".name == "agenvas_postgres-data" and
               .volumes."asset-data".name == "agenvas_asset-data"'
-          AGENVAS_LLM_MODE=configured AGENVAS_PROVIDER_MODE=comfyui \
+          AGENVAS_LLM_MODE=configured AGENVAS_PROVIDER_MODE=configured \
             docker compose -f deploy/compose.dev.yaml config --format json |
             jq -e '.name == "agenvas-dev" and
               .services.server.environment.AGENVAS_LLM_MODE == "mock" and
@@ -120,21 +120,15 @@ jobs:
             docker compose -f deploy/compose.yaml config --format json |
             jq -e '.services.server.mem_limit == "2147483648" and
               .services.server.cpus == 3'
-      - name: Verify explicit candidate Provider overrides reach the server
+      - name: Verify explicit runtime overrides reach the server
         run: |
           AGENVAS_LLM_MODE=configured \
-          AGENVAS_PROVIDER_MODE=comfyui \
-          AGENVAS_PROVIDER_CONFIG_VERSION=2 \
-          AGENVAS_COMFYUI_ENDPOINT=http://192.168.1.20:8188 \
-          AGENVAS_COMFYUI_IMAGE_CHECKPOINT=test.safetensors \
+          AGENVAS_PROVIDER_MODE=configured \
           AGENVAS_SECURE_COOKIES=true \
           docker compose -f deploy/compose.yaml config --format json |
             jq -e '.services.server.environment |
               .AGENVAS_LLM_MODE == "configured" and
-              .AGENVAS_PROVIDER_MODE == "comfyui" and
-              .AGENVAS_PROVIDER_CONFIG_VERSION == "2" and
-              .AGENVAS_COMFYUI_ENDPOINT == "http://192.168.1.20:8188" and
-              .AGENVAS_COMFYUI_IMAGE_CHECKPOINT == "test.safetensors" and
+              .AGENVAS_PROVIDER_MODE == "configured" and
               .AGENVAS_SECURE_COOKIES == "true"'
 
   security-source:

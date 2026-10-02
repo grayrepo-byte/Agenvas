@@ -109,8 +109,8 @@ class MediaDraftPostgresIT {
         assertThat(run.path("runId").isNull()).isTrue();
         // 收缩后任务上不再有计划字段，直连任务响应里连该字段都不再出现。
         assertThat(run.has("planId")).isFalse();
-        assertThat(jdbc.sql("select origin from task where id=:id").param("id", taskId)
-                .query(String.class).single()).isEqualTo("USER_DIRECT");
+        assertThat(jdbc.sql("select run_id is null from task where id=:id").param("id", taskId)
+                .query(Boolean.class).single()).isTrue();
         JsonNode duplicate = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
                         .header("Idempotency-Key", "direct-image-1")
                         .contentType("application/json").content(runPayload))

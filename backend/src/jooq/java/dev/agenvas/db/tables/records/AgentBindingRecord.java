@@ -14,7 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Explicit Agent input fixed to an exact immutable ArtifactVersion.
+ * Agent 显式输入：固定引用不可变产物版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentBindingRecord extends UpdatableRecordImpl<AgentBindingRecord> {
@@ -22,56 +22,58 @@ public class AgentBindingRecord extends UpdatableRecordImpl<AgentBindingRecord> 
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.agent_binding.id</code>.
+     * Setter for <code>public.agent_binding.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.agent_binding.id</code>.
+     * Getter for <code>public.agent_binding.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.agent_binding.project_id</code>.
+     * Setter for <code>public.agent_binding.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.agent_binding.project_id</code>.
+     * Getter for <code>public.agent_binding.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.agent_binding.agent_instance_id</code>.
+     * Setter for <code>public.agent_binding.agent_instance_id</code>. Agent
+     * 卡片配置身份
      */
     public void setAgentInstanceId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.agent_binding.agent_instance_id</code>.
+     * Getter for <code>public.agent_binding.agent_instance_id</code>. Agent
+     * 卡片配置身份
      */
     public UUID getAgentInstanceId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.agent_binding.artifact_id</code>.
+     * Setter for <code>public.agent_binding.artifact_id</code>. 业务产物身份
      */
     public void setArtifactId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.agent_binding.artifact_id</code>.
+     * Getter for <code>public.agent_binding.artifact_id</code>. 业务产物身份
      */
     public UUID getArtifactId() {
         return (UUID) get(3);
@@ -79,6 +81,7 @@ public class AgentBindingRecord extends UpdatableRecordImpl<AgentBindingRecord> 
 
     /**
      * Setter for <code>public.agent_binding.selected_version_id</code>.
+     * 显式选择的不可变产物版本
      */
     public void setSelectedVersionId(UUID value) {
         set(4, value);
@@ -86,37 +89,24 @@ public class AgentBindingRecord extends UpdatableRecordImpl<AgentBindingRecord> 
 
     /**
      * Getter for <code>public.agent_binding.selected_version_id</code>.
+     * 显式选择的不可变产物版本
      */
     public UUID getSelectedVersionId() {
         return (UUID) get(4);
     }
 
     /**
-     * Setter for <code>public.agent_binding.binding_type</code>.
+     * Setter for <code>public.agent_binding.created_at</code>. 创建时间（UTC）
      */
-    public void setBindingType(String value) {
+    public void setCreatedAt(OffsetDateTime value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.agent_binding.binding_type</code>.
-     */
-    public String getBindingType() {
-        return (String) get(5);
-    }
-
-    /**
-     * Setter for <code>public.agent_binding.created_at</code>.
-     */
-    public void setCreatedAt(OffsetDateTime value) {
-        set(6, value);
-    }
-
-    /**
-     * Getter for <code>public.agent_binding.created_at</code>.
+     * Getter for <code>public.agent_binding.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(6);
+        return (OffsetDateTime) get(5);
     }
 
     // -------------------------------------------------------------------------
@@ -142,7 +132,7 @@ public class AgentBindingRecord extends UpdatableRecordImpl<AgentBindingRecord> 
     /**
      * Create a detached, initialised AgentBindingRecord
      */
-    public AgentBindingRecord(UUID id, UUID projectId, UUID agentInstanceId, UUID artifactId, UUID selectedVersionId, String bindingType, OffsetDateTime createdAt) {
+    public AgentBindingRecord(UUID id, UUID projectId, UUID agentInstanceId, UUID artifactId, UUID selectedVersionId, OffsetDateTime createdAt) {
         super(AgentBinding.AGENT_BINDING);
 
         setId(id);
@@ -150,7 +140,6 @@ public class AgentBindingRecord extends UpdatableRecordImpl<AgentBindingRecord> 
         setAgentInstanceId(agentInstanceId);
         setArtifactId(artifactId);
         setSelectedVersionId(selectedVersionId);
-        setBindingType(bindingType);
         setCreatedAt(createdAt);
         resetChangedOnNotNull();
     }

@@ -737,7 +737,7 @@ describe("MediaCanvasCard", () => {
   it("loads only the video poster until explicit playback, then handles loading, retry and close", async () => {
     const videoArtifact: Artifact = { ...artifact, kind: "VIDEO", resourceDefaultVersionId: "video-version",
       resourceDefaultVersion: { id: "video-version", versionNo: 1, schemaVersion: 1,
-        content: { assetId: "video-asset", prompt: "A camera movement", providerConfigVersion: 1,
+        content: { assetId: "video-asset", prompt: "A camera movement",
           workflowVersion: "mock-video-v1", sourceTaskId: "video-task", parameters: { mock: true } },
         inputReferences: [], createdByKind: "TASK", runId: null, createdAt: artifact.createdAt } };
     server.use(http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({

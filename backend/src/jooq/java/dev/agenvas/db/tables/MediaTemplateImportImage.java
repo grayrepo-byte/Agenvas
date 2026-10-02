@@ -39,8 +39,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Template provenance with no LibraryEntry dependency; template deletion never
- * deletes project versions
+ * 模板图片导入到项目的不可变版本及模板来源审计
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class MediaTemplateImportImage extends TableImpl<MediaTemplateImportImageRecord> {
@@ -62,36 +61,41 @@ public class MediaTemplateImportImage extends TableImpl<MediaTemplateImportImage
 
     /**
      * The column <code>public.media_template_import_image.project_id</code>.
+     * 所属项目及授权作用域
      */
-    public final TableField<MediaTemplateImportImageRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<MediaTemplateImportImageRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
      * The column <code>public.media_template_import_image.version_id</code>.
+     * 导入生成的不可变产物版本
      */
-    public final TableField<MediaTemplateImportImageRecord, UUID> VERSION_ID = createField(DSL.name("version_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<MediaTemplateImportImageRecord, UUID> VERSION_ID = createField(DSL.name("version_id"), SQLDataType.UUID.nullable(false), this, "导入生成的不可变产物版本");
 
     /**
      * The column <code>public.media_template_import_image.template_id</code>.
+     * 媒体模板身份
      */
-    public final TableField<MediaTemplateImportImageRecord, UUID> TEMPLATE_ID = createField(DSL.name("template_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<MediaTemplateImportImageRecord, UUID> TEMPLATE_ID = createField(DSL.name("template_id"), SQLDataType.UUID.nullable(false), this, "媒体模板身份");
 
     /**
      * The column
      * <code>public.media_template_import_image.template_version</code>.
+     * 导入时固定的模板版本
      */
-    public final TableField<MediaTemplateImportImageRecord, Long> TEMPLATE_VERSION = createField(DSL.name("template_version"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<MediaTemplateImportImageRecord, Long> TEMPLATE_VERSION = createField(DSL.name("template_version"), SQLDataType.BIGINT.nullable(false), this, "导入时固定的模板版本");
 
     /**
      * The column <code>public.media_template_import_image.template_name</code>.
+     * 导入时固定的模板名称
      */
-    public final TableField<MediaTemplateImportImageRecord, String> TEMPLATE_NAME = createField(DSL.name("template_name"), SQLDataType.VARCHAR(160).nullable(false), this, "");
+    public final TableField<MediaTemplateImportImageRecord, String> TEMPLATE_NAME = createField(DSL.name("template_name"), SQLDataType.VARCHAR(160).nullable(false), this, "导入时固定的模板名称");
 
     private MediaTemplateImportImage(Name alias, Table<MediaTemplateImportImageRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private MediaTemplateImportImage(Name alias, Table<MediaTemplateImportImageRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Template provenance with no LibraryEntry dependency; template deletion never deletes project versions"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("模板图片导入到项目的不可变版本及模板来源审计"), TableOptions.table(), where);
     }
 
     /**

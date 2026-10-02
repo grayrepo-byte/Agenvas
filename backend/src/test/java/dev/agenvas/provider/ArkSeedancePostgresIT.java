@@ -135,7 +135,6 @@ class ArkSeedancePostgresIT {
         image.put("assetId", assetId.toString());
         image.put("sourceTaskId", UUID.randomUUID().toString());
         image.put("prompt", "Studio keyframe");
-        image.put("providerConfigVersion", 1);
         image.put("workflowVersion", "fixture");
         image.putObject("parameters");
         var keyframe = artifacts.create(ownerId, project.id(), Artifact.Kind.IMAGE,

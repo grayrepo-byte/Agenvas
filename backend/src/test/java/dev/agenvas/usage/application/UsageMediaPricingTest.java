@@ -34,7 +34,7 @@ class UsageMediaPricingTest {
         Task task = task(Task.Kind.VIDEO_GENERATION, """
                 {"amount":"0.123456","currency":"CNY","unit":"SECOND"}
                 """);
-        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED");
+        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7);
         service.settleMediaTask(UUID.randomUUID(), task);
         assertThat(entries).hasSize(2).allSatisfy(entry -> {
             assertThat(entry.estimatedCost()).isEqualByComparingTo("0.987648");
@@ -42,6 +42,8 @@ class UsageMediaPricingTest {
             assertThat(entry.currency()).isEqualTo("CNY");
             assertThat(entry.costStatus()).isEqualTo(UsageEntry.CostStatus.ESTIMATED);
             assertThat(entry.costSource()).isEqualTo("ADMIN_CONFIGURED");
+            assertThat(entry.providerConfigVersion()).isEqualTo(7);
+            assertThat(entry.quantity().has("exportCount")).isFalse();
         });
     }
 
@@ -49,7 +51,7 @@ class UsageMediaPricingTest {
     void missingPricesRemainUnknownInReservationAndSettlement() {
         UsageService service = service();
         Task task = task(Task.Kind.IMAGE_GENERATION, null);
-        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED");
+        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7);
         service.settleMediaTask(UUID.randomUUID(), task);
         assertThat(entries).allSatisfy(entry -> {
             assertThat(entry.estimatedCost()).isNull();
@@ -63,7 +65,7 @@ class UsageMediaPricingTest {
         UsageService service = service();
         Task task = task(Task.Kind.IMAGE_GENERATION,
                 "{\"amount\":\"1\",\"currency\":\"USD\",\"unit\":\"IMAGE\"}");
-        service.reserveMediaTask(UUID.randomUUID(), task, "LOCAL_NO_COST");
+        service.reserveMediaTask(UUID.randomUUID(), task, "LOCAL_NO_COST", 7);
         assertThat(entries.getFirst().estimatedCost()).isZero();
         assertThat(entries.getFirst().actualCost()).isZero();
         assertThat(entries.getFirst().costStatus()).isEqualTo(UsageEntry.CostStatus.KNOWN);
@@ -75,7 +77,7 @@ class UsageMediaPricingTest {
         Task task = withRun(task(Task.Kind.AUDIO_GENERATION, null), UUID.randomUUID());
         ((tools.jackson.databind.node.ObjectNode) task.input()).put(Task.APPROVAL_INPUT_PROPERTY,
                 UUID.randomUUID().toString());
-        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED");
+        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7);
         service.settleMediaTask(UUID.randomUUID(), task);
         assertThat(entries).hasSize(2).allSatisfy(entry -> assertThat(entry.runId()).isEqualTo(task.runId()));
     }
@@ -84,17 +86,17 @@ class UsageMediaPricingTest {
     void unapprovedRunCannotReserveMediaEvenWithAMalformedApprovalMarker() {
         UsageService service = service();
         Task task = withRun(task(Task.Kind.IMAGE_GENERATION, null), UUID.randomUUID());
-        assertThatThrownBy(() -> service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED"))
+        assertThatThrownBy(() -> service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7))
                 .isInstanceOf(IllegalArgumentException.class);
         ((tools.jackson.databind.node.ObjectNode) task.input()).put(Task.APPROVAL_INPUT_PROPERTY, "untrusted");
-        assertThatThrownBy(() -> service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED"))
+        assertThatThrownBy(() -> service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(entries).isEmpty();
     }
 
     private Task withRun(Task task, UUID runId) {
         return new Task(task.id(), task.projectId(), runId, task.stepKey(), task.kind(), task.status(),
-                task.cancelRequested(), task.input(), task.inputHash(), task.output(), task.providerId(),
+                task.cancelRequested(), task.input(), task.inputHash(), task.output(),
                 task.providerRequestId(), task.attemptNo(), task.nextActionAt(), task.leaseOwner(),
                 task.leaseUntil(), task.leaseEpoch(), task.version(), task.errorCode(), task.createdAt(),
                 task.updatedAt(), task.completedAt());
@@ -111,10 +113,10 @@ class UsageMediaPricingTest {
     }
 
     private Task task(Task.Kind kind, String price) {
-        var input = mapper.createObjectNode().put("schemaVersion", 3).put("providerConfigVersion", 1)
+        var input = mapper.createObjectNode().put("schemaVersion", 3)
                 .put("workflowVersion", "TEST:version-1").put("durationSeconds", 8);
         if (price != null) input.set("mediaPricing", mapper.readTree(price));
         return new Task(UUID.randomUUID(), UUID.randomUUID(), null, "test", kind, Task.Status.READY,
-                false, input, "hash", null, null, null, 1, NOW, null, null, 0, 0, null, NOW, NOW, null);
+                false, input, "hash", null, null, 1, NOW, null, null, 0, 0, null, NOW, NOW, null);
     }
 }

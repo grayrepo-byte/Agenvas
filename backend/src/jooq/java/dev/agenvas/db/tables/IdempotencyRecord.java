@@ -43,8 +43,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Principal-scoped HTTP command replay record; same key with a different hash
- * conflicts.
+ * 按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class IdempotencyRecord extends TableImpl<IdempotencyRecordRecord> {
@@ -65,61 +64,66 @@ public class IdempotencyRecord extends TableImpl<IdempotencyRecordRecord> {
     }
 
     /**
-     * The column <code>public.idempotency_record.principal_id</code>.
+     * The column <code>public.idempotency_record.principal_id</code>. 服务端可信请求身份
      */
-    public final TableField<IdempotencyRecordRecord, UUID> PRINCIPAL_ID = createField(DSL.name("principal_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, UUID> PRINCIPAL_ID = createField(DSL.name("principal_id"), SQLDataType.UUID.nullable(false), this, "服务端可信请求身份");
 
     /**
-     * The column <code>public.idempotency_record.scope</code>.
+     * The column <code>public.idempotency_record.scope</code>. 命令或共享范围
      */
-    public final TableField<IdempotencyRecordRecord, String> SCOPE = createField(DSL.name("scope"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, String> SCOPE = createField(DSL.name("scope"), SQLDataType.VARCHAR(120).nullable(false), this, "命令或共享范围");
 
     /**
      * The column <code>public.idempotency_record.idempotency_key</code>.
+     * 作用域内的幂等命令键
      */
-    public final TableField<IdempotencyRecordRecord, String> IDEMPOTENCY_KEY = createField(DSL.name("idempotency_key"), SQLDataType.VARCHAR(200).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, String> IDEMPOTENCY_KEY = createField(DSL.name("idempotency_key"), SQLDataType.VARCHAR(200).nullable(false), this, "作用域内的幂等命令键");
 
     /**
-     * The column <code>public.idempotency_record.request_hash</code>.
+     * The column <code>public.idempotency_record.request_hash</code>. 规范化请求载荷
+     * SHA-256 摘要
      */
-    public final TableField<IdempotencyRecordRecord, String> REQUEST_HASH = createField(DSL.name("request_hash"), SQLDataType.CHAR(64).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, String> REQUEST_HASH = createField(DSL.name("request_hash"), SQLDataType.CHAR(64).nullable(false), this, "规范化请求载荷 SHA-256 摘要");
 
     /**
-     * The column <code>public.idempotency_record.state</code>.
+     * The column <code>public.idempotency_record.state</code>. 幂等请求处理状态
      */
-    public final TableField<IdempotencyRecordRecord, String> STATE = createField(DSL.name("state"), SQLDataType.VARCHAR(24).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, String> STATE = createField(DSL.name("state"), SQLDataType.VARCHAR(24).nullable(false), this, "幂等请求处理状态");
 
     /**
      * The column <code>public.idempotency_record.resource_id</code>.
+     * 幂等命令创建或修改的资源身份
      */
-    public final TableField<IdempotencyRecordRecord, UUID> RESOURCE_ID = createField(DSL.name("resource_id"), SQLDataType.UUID, this, "");
+    public final TableField<IdempotencyRecordRecord, UUID> RESOURCE_ID = createField(DSL.name("resource_id"), SQLDataType.UUID, this, "幂等命令创建或修改的资源身份");
 
     /**
      * The column <code>public.idempotency_record.response_json</code>.
+     * 已提交的命令响应或完整模型响应
      */
-    public final TableField<IdempotencyRecordRecord, JSONB> RESPONSE_JSON = createField(DSL.name("response_json"), SQLDataType.JSONB, this, "");
+    public final TableField<IdempotencyRecordRecord, JSONB> RESPONSE_JSON = createField(DSL.name("response_json"), SQLDataType.JSONB, this, "已提交的命令响应或完整模型响应");
 
     /**
-     * The column <code>public.idempotency_record.expires_at</code>.
+     * The column <code>public.idempotency_record.expires_at</code>. 记录或审批过期时间
      */
-    public final TableField<IdempotencyRecordRecord, OffsetDateTime> EXPIRES_AT = createField(DSL.name("expires_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, OffsetDateTime> EXPIRES_AT = createField(DSL.name("expires_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "记录或审批过期时间");
 
     /**
-     * The column <code>public.idempotency_record.created_at</code>.
+     * The column <code>public.idempotency_record.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<IdempotencyRecordRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
      * The column <code>public.idempotency_record.updated_at</code>.
+     * 最后状态或配置更新时间（UTC）
      */
-    public final TableField<IdempotencyRecordRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<IdempotencyRecordRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     private IdempotencyRecord(Name alias, Table<IdempotencyRecordRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private IdempotencyRecord(Name alias, Table<IdempotencyRecordRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Principal-scoped HTTP command replay record; same key with a different hash conflicts."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷"), TableOptions.table(), where);
     }
 
     /**

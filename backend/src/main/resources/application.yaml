@@ -93,24 +93,9 @@ agenvas:
     lease-duration: ${AGENVAS_TASK_LEASE_DURATION:PT30M}
   provider:
     mode: ${AGENVAS_PROVIDER_MODE:mock}
-    config-version: ${AGENVAS_PROVIDER_CONFIG_VERSION:1}
-    comfyui:
-      endpoint: ${AGENVAS_COMFYUI_ENDPOINT:}
-      image:
-        checkpoint: ${AGENVAS_COMFYUI_IMAGE_CHECKPOINT:}
-      video:
-        enabled: ${AGENVAS_COMFYUI_VIDEO_ENABLED:false}
-        diffusion-model: ${AGENVAS_COMFYUI_VIDEO_DIFFUSION_MODEL:}
-        text-encoder: ${AGENVAS_COMFYUI_VIDEO_TEXT_ENCODER:}
-        vae: ${AGENVAS_COMFYUI_VIDEO_VAE:}
-        clip-vision: ${AGENVAS_COMFYUI_VIDEO_CLIP_VISION:}
     mock:
       fixture: ${AGENVAS_MOCK_FIXTURE:SUCCESS}
-      scheduler-enabled: ${AGENVAS_MOCK_IMAGE_SCHEDULER_ENABLED:true}
-      video-scheduler-enabled: ${AGENVAS_MOCK_VIDEO_SCHEDULER_ENABLED:true}
     local-image:
       depth-model: ${AGENVAS_DEPTH_MODEL:}
   storage:
     root: ${AGENVAS_STORAGE_ROOT:data/assets}
-  export:
-    scheduler-enabled: ${AGENVAS_EXPORT_SCHEDULER_ENABLED:true}

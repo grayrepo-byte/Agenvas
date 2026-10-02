@@ -14,7 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Immutable provenance; library deletion never cascades to project content
+ * 素材库导入到项目的版本及原条目来源审计
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LibraryImportRecord extends UpdatableRecordImpl<LibraryImportRecord> {
@@ -22,56 +22,56 @@ public class LibraryImportRecord extends UpdatableRecordImpl<LibraryImportRecord
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.library_import.project_id</code>.
+     * Setter for <code>public.library_import.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.library_import.project_id</code>.
+     * Getter for <code>public.library_import.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.library_import.version_id</code>.
+     * Setter for <code>public.library_import.version_id</code>. 导入生成的不可变产物版本
      */
     public void setVersionId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.library_import.version_id</code>.
+     * Getter for <code>public.library_import.version_id</code>. 导入生成的不可变产物版本
      */
     public UUID getVersionId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.library_import.entry_id</code>.
+     * Setter for <code>public.library_import.entry_id</code>. 个人素材库来源条目
      */
     public void setEntryId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.library_import.entry_id</code>.
+     * Getter for <code>public.library_import.entry_id</code>. 个人素材库来源条目
      */
     public UUID getEntryId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.library_import.source_json</code>.
+     * Setter for <code>public.library_import.source_json</code>. 固定导入来源审计信息
      */
     public void setSourceJson(JSONB value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.library_import.source_json</code>.
+     * Getter for <code>public.library_import.source_json</code>. 固定导入来源审计信息
      */
     public JSONB getSourceJson() {
         return (JSONB) get(3);

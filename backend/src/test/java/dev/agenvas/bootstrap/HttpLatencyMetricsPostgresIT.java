@@ -30,8 +30,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         properties = {
                 "agenvas.identity.bootstrap-secret=http-latency-integration-secret",
                 "agenvas.llm.scheduler-enabled=false",
-                "agenvas.provider.mock.scheduler-enabled=false",
-                "agenvas.provider.mock.video-scheduler-enabled=false",
                 "agenvas.export.scheduler-enabled=false"})
 class HttpLatencyMetricsPostgresIT {
 

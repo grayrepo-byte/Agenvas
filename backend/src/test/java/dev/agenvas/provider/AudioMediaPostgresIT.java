@@ -53,7 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=audio-media-integration-test-secret",
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.comfyui.scheduler-enabled=false",
+        "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mock.scheduler-enabled=false", "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class AudioMediaPostgresIT {

@@ -19,14 +19,13 @@ export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   get CANCELED() { return t("agent.run.stopped"); }, get FAILED() { return t("agent.run.taskFailed"); }, get SUCCEEDED() { return t("agent.run.taskSucceeded"); },
 };
 const TASK_STATUS: Record<Task["status"], "running" | "pending" | "completed" | "failed" | "unknown" | "canceled"> = {
-  PENDING: "pending", READY: "pending", RUNNING: "running", SUBMITTING: "running",
+  READY: "pending", RUNNING: "running", SUBMITTING: "running",
   WAITING_PROVIDER: "running", UNKNOWN: "unknown", BLOCKED: "failed", SUCCEEDED: "completed",
   FAILED: "failed", CANCELED: "canceled",
 };
 const TASK_LABELS: Record<Task["kind"], string> = {
   get AGENT_TURN() { return t("agent.run.assistant"); }, get TEXT_GENERATION() { return t("text.generate"); },
   get IMAGE_GENERATION() { return t("agent.run.generateImage"); }, get AUDIO_GENERATION() { return t("agent.run.generateAudio"); }, get VIDEO_GENERATION() { return t("media.generateVideo"); },
-  get ASSET_INGEST() { return t("agent.run.archiveAsset"); },
 };
 const TOOL_LABELS: Record<string, string> = {
   get read_skill_resource() { return t("skills.resources"); }, get read_project_summary() { return t("agent.run.readProject"); }, get read_selection() { return t("agent.run.readSelection"); },

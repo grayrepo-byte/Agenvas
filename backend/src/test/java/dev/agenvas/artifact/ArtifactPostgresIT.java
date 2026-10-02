@@ -264,7 +264,6 @@ class ArtifactPostgresIT {
                 {
                   "assetId":"%s",
                   "prompt":"Direct clip",
-                  "providerConfigVersion":1,
                   "workflowVersion":"test-video-v1",
                   "parameters":{},
                   "sourceTaskId":"%s"
@@ -275,7 +274,7 @@ class ArtifactPostgresIT {
     private JsonNode legacyVideo(UUID assetId, UUID keyframeVersionId) {
         return json("""
                 {
-                  "assetId":"%s", "prompt":"Legacy", "providerConfigVersion":1,
+                  "assetId":"%s", "prompt":"Legacy",
                   "workflowVersion":"legacy", "parameters":{}, "sourceTaskId":"%s",
                   "keyframeVersionId":"%s"
                 }
@@ -319,7 +318,7 @@ class ArtifactPostgresIT {
 
     private JsonNode media(UUID assetId) {
         return json("""
-                {"assetId":"%s","prompt":"Uploaded image","providerConfigVersion":1,
+                {"assetId":"%s","prompt":"Uploaded image",
                  "workflowVersion":"manual-upload-v1","parameters":{},"sourceTaskId":"%s"}
                 """.formatted(assetId, UUID.randomUUID()));
     }

@@ -37,8 +37,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Immutable versioned LLM endpoint and AES-GCM encrypted credential; old
- * versions remain for recovery.
+ * 不可变 LLM 连接版本与加密凭据；激活标记选择当前配置
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class LlmProviderConfig extends TableImpl<LlmProviderConfigRecord> {
@@ -59,66 +58,70 @@ public class LlmProviderConfig extends TableImpl<LlmProviderConfigRecord> {
     }
 
     /**
-     * The column <code>public.llm_provider_config.id</code>.
+     * The column <code>public.llm_provider_config.id</code>. 记录身份
      */
-    public final TableField<LlmProviderConfigRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.llm_provider_config.version</code>.
+     * The column <code>public.llm_provider_config.version</code>. 全局串行分配的不可变
+     * LLM 配置版本
      */
-    public final TableField<LlmProviderConfigRecord, Integer> VERSION = createField(DSL.name("version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, Integer> VERSION = createField(DSL.name("version"), SQLDataType.INTEGER.nullable(false), this, "全局串行分配的不可变 LLM 配置版本");
 
     /**
-     * The column <code>public.llm_provider_config.endpoint</code>.
+     * The column <code>public.llm_provider_config.endpoint</code>. 管理员配置的连接地址
      */
-    public final TableField<LlmProviderConfigRecord, String> ENDPOINT = createField(DSL.name("endpoint"), SQLDataType.VARCHAR(500).nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, String> ENDPOINT = createField(DSL.name("endpoint"), SQLDataType.VARCHAR(500).nullable(false), this, "管理员配置的连接地址");
 
     /**
-     * The column <code>public.llm_provider_config.model_id</code>.
+     * The column <code>public.llm_provider_config.model_id</code>. 实际使用的模型标识
      */
-    public final TableField<LlmProviderConfigRecord, String> MODEL_ID = createField(DSL.name("model_id"), SQLDataType.VARCHAR(160).nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, String> MODEL_ID = createField(DSL.name("model_id"), SQLDataType.VARCHAR(160).nullable(false), this, "实际使用的模型标识");
 
     /**
      * The column <code>public.llm_provider_config.credential_ciphertext</code>.
+     * 服务端加密凭据密文
      */
-    public final TableField<LlmProviderConfigRecord, byte[]> CREDENTIAL_CIPHERTEXT = createField(DSL.name("credential_ciphertext"), SQLDataType.BLOB.nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, byte[]> CREDENTIAL_CIPHERTEXT = createField(DSL.name("credential_ciphertext"), SQLDataType.BLOB.nullable(false), this, "服务端加密凭据密文");
 
     /**
      * The column <code>public.llm_provider_config.credential_nonce</code>.
+     * 凭据加密使用的 nonce
      */
-    public final TableField<LlmProviderConfigRecord, byte[]> CREDENTIAL_NONCE = createField(DSL.name("credential_nonce"), SQLDataType.BLOB.nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, byte[]> CREDENTIAL_NONCE = createField(DSL.name("credential_nonce"), SQLDataType.BLOB.nullable(false), this, "凭据加密使用的 nonce");
 
     /**
-     * The column <code>public.llm_provider_config.key_version</code>.
+     * The column <code>public.llm_provider_config.key_version</code>. 加密主密钥版本
      */
-    public final TableField<LlmProviderConfigRecord, Integer> KEY_VERSION = createField(DSL.name("key_version"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, Integer> KEY_VERSION = createField(DSL.name("key_version"), SQLDataType.INTEGER.nullable(false), this, "加密主密钥版本");
 
     /**
-     * The column <code>public.llm_provider_config.key_mask</code>.
+     * The column <code>public.llm_provider_config.key_mask</code>. 供设置页显示的凭据掩码
      */
-    public final TableField<LlmProviderConfigRecord, String> KEY_MASK = createField(DSL.name("key_mask"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, String> KEY_MASK = createField(DSL.name("key_mask"), SQLDataType.VARCHAR(16).nullable(false), this, "供设置页显示的凭据掩码");
 
     /**
      * The column <code>public.llm_provider_config.tool_calling_verified</code>.
+     * 模型工具调用能力已通过配置验证
      */
-    public final TableField<LlmProviderConfigRecord, Boolean> TOOL_CALLING_VERIFIED = createField(DSL.name("tool_calling_verified"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<LlmProviderConfigRecord, Boolean> TOOL_CALLING_VERIFIED = createField(DSL.name("tool_calling_verified"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "模型工具调用能力已通过配置验证");
 
     /**
-     * The column <code>public.llm_provider_config.active</code>.
+     * The column <code>public.llm_provider_config.active</code>. 是否选为当前 LLM 配置
      */
-    public final TableField<LlmProviderConfigRecord, Boolean> ACTIVE = createField(DSL.name("active"), SQLDataType.BOOLEAN.nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, Boolean> ACTIVE = createField(DSL.name("active"), SQLDataType.BOOLEAN.nullable(false), this, "是否选为当前 LLM 配置");
 
     /**
-     * The column <code>public.llm_provider_config.created_at</code>.
+     * The column <code>public.llm_provider_config.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<LlmProviderConfigRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<LlmProviderConfigRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     private LlmProviderConfig(Name alias, Table<LlmProviderConfigRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private LlmProviderConfig(Name alias, Table<LlmProviderConfigRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Immutable versioned LLM endpoint and AES-GCM encrypted credential; old versions remain for recovery."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("不可变 LLM 连接版本与加密凭据；激活标记选择当前配置"), TableOptions.table(), where);
     }
 
     /**

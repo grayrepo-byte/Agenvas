@@ -52,10 +52,6 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
-    @Override public String candidateOriginSha256(AttemptContext context) {
-        return snapshot(context).connectionVersion().originSha256();
-    }
-
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         ComfyUiClient client = client(snapshot);

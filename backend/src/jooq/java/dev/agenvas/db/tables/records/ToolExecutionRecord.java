@@ -15,8 +15,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * One caller-driven tool invocation. Reservation, business mutation and result
- * commit together.
+ * 按 Run、回合及 tool_call_id 去重的工具执行账本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ToolExecutionRecord extends UpdatableRecordImpl<ToolExecutionRecord> {
@@ -24,56 +23,58 @@ public class ToolExecutionRecord extends UpdatableRecordImpl<ToolExecutionRecord
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.tool_execution.id</code>.
+     * Setter for <code>public.tool_execution.id</code>. 记录身份
      */
     public void setId(UUID value) {
         set(0, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.id</code>.
+     * Getter for <code>public.tool_execution.id</code>. 记录身份
      */
     public UUID getId() {
         return (UUID) get(0);
     }
 
     /**
-     * Setter for <code>public.tool_execution.project_id</code>.
+     * Setter for <code>public.tool_execution.project_id</code>. 所属项目及授权作用域
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.project_id</code>.
+     * Getter for <code>public.tool_execution.project_id</code>. 所属项目及授权作用域
      */
     public UUID getProjectId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.tool_execution.run_id</code>.
+     * Setter for <code>public.tool_execution.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
     public void setRunId(UUID value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.run_id</code>.
+     * Getter for <code>public.tool_execution.run_id</code>. 所属 Agent
+     * Run；用户直连任务为空
      */
     public UUID getRunId() {
         return (UUID) get(2);
     }
 
     /**
-     * Setter for <code>public.tool_execution.step_index</code>.
+     * Setter for <code>public.tool_execution.step_index</code>. Run 内模型回合序号
      */
     public void setStepIndex(Integer value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.step_index</code>.
+     * Getter for <code>public.tool_execution.step_index</code>. Run 内模型回合序号
      */
     public Integer getStepIndex() {
         return (Integer) get(3);
@@ -81,6 +82,7 @@ public class ToolExecutionRecord extends UpdatableRecordImpl<ToolExecutionRecord
 
     /**
      * Setter for <code>public.tool_execution.tool_call_id</code>.
+     * 模型完整响应中的工具调用标识
      */
     public void setToolCallId(String value) {
         set(4, value);
@@ -88,90 +90,95 @@ public class ToolExecutionRecord extends UpdatableRecordImpl<ToolExecutionRecord
 
     /**
      * Getter for <code>public.tool_execution.tool_call_id</code>.
+     * 模型完整响应中的工具调用标识
      */
     public String getToolCallId() {
         return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.tool_execution.tool_name</code>.
+     * Setter for <code>public.tool_execution.tool_name</code>. 受控工具名称
      */
     public void setToolName(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.tool_name</code>.
+     * Getter for <code>public.tool_execution.tool_name</code>. 受控工具名称
      */
     public String getToolName() {
         return (String) get(5);
     }
 
     /**
-     * Setter for <code>public.tool_execution.argument_hash</code>.
+     * Setter for <code>public.tool_execution.argument_hash</code>. 规范化工具参数
+     * SHA-256 摘要
      */
     public void setArgumentHash(String value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.argument_hash</code>.
+     * Getter for <code>public.tool_execution.argument_hash</code>. 规范化工具参数
+     * SHA-256 摘要
      */
     public String getArgumentHash() {
         return (String) get(6);
     }
 
     /**
-     * Setter for <code>public.tool_execution.status</code>.
+     * Setter for <code>public.tool_execution.status</code>. 持久状态，允许值由 CHECK
+     * 约束限定
      */
     public void setStatus(String value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.status</code>.
+     * Getter for <code>public.tool_execution.status</code>. 持久状态，允许值由 CHECK
+     * 约束限定
      */
     public String getStatus() {
         return (String) get(7);
     }
 
     /**
-     * Setter for <code>public.tool_execution.result_json</code>.
+     * Setter for <code>public.tool_execution.result_json</code>. 已提交的结构化执行或审批结果
      */
     public void setResultJson(JSONB value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.result_json</code>.
+     * Getter for <code>public.tool_execution.result_json</code>. 已提交的结构化执行或审批结果
      */
     public JSONB getResultJson() {
         return (JSONB) get(8);
     }
 
     /**
-     * Setter for <code>public.tool_execution.created_at</code>.
+     * Setter for <code>public.tool_execution.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.created_at</code>.
+     * Getter for <code>public.tool_execution.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
         return (OffsetDateTime) get(9);
     }
 
     /**
-     * Setter for <code>public.tool_execution.completed_at</code>.
+     * Setter for <code>public.tool_execution.completed_at</code>. 终态完成时间；未完成时为空
      */
     public void setCompletedAt(OffsetDateTime value) {
         set(10, value);
     }
 
     /**
-     * Getter for <code>public.tool_execution.completed_at</code>.
+     * Getter for <code>public.tool_execution.completed_at</code>. 终态完成时间；未完成时为空
      */
     public OffsetDateTime getCompletedAt() {
         return (OffsetDateTime) get(10);

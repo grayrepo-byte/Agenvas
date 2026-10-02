@@ -65,7 +65,7 @@ public class ArtifactContentValidator {
         return List.of();
     }
 
-    /** 区分用户图片上传和任务生成媒体；生成结果必须保留提示、配置、工作流与来源任务。 */
+    /** 区分用户图片上传和任务生成媒体；生成结果必须保留提示、固定工作流与来源任务。 */
     private List<ArtifactVersion.InputReference> validateMedia(JsonNode content) {
         if (java.util.Set.of(ArtifactVersion.MediaSourceType.UPLOAD.name(),
                 ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name(),
@@ -75,13 +75,12 @@ public class ArtifactContentValidator {
             return List.of();
         }
         allowOnly(content, "assetId", "prompt", "negativePrompt",
-                "providerConfigVersion", "workflowVersion", "parameters", "sourceTaskId");
+                "workflowVersion", "parameters", "sourceTaskId");
         requireUuid(content, "assetId");
         // Some published workflow/app contracts have no prompt input. Task acceptance
         // checks required inputs; immutable results retain the actual, possibly empty text.
         requireText(content, "prompt", 0, 20_000);
         optionalText(content, "negativePrompt", 8_000);
-        requireInteger(content, "providerConfigVersion", 1, Integer.MAX_VALUE);
         requireText(content, "workflowVersion", 1, 120);
         requireObject(content.get("parameters"), "parameters");
         requireUuid(content, "sourceTaskId");
@@ -162,19 +161,6 @@ public class ArtifactContentValidator {
         if (!Set.of(values).contains(actual)) {
             throw invalid(ApiMessage.of("api.artifact-content-validator.is-not-an-allowed-enum-value", field));
         }
-    }
-
-    /** 要求 JSON 整数并检查闭区间；小数或超界值均拒绝。 */
-    private int requireInteger(JsonNode content, String field, int minimum, int maximum) {
-        JsonNode value = content.get(field);
-        if (value == null || !value.isIntegralNumber()) {
-            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-an-integer", field));
-        }
-        int number = value.intValue();
-        if (number < minimum || number > maximum) {
-            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-between-and", field, minimum, maximum));
-        }
-        return number;
     }
 
     /** 从正文必填字段解析 UUID。 */

@@ -56,7 +56,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Permission and configuration boundary for one creative workspace.
+ * 项目权限边界、当前活动 Run、事件序号与并发控制版本
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Project extends TableImpl<ProjectRecord> {
@@ -77,29 +77,29 @@ public class Project extends TableImpl<ProjectRecord> {
     }
 
     /**
-     * The column <code>public.project.id</code>.
+     * The column <code>public.project.id</code>. 记录身份
      */
-    public final TableField<ProjectRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProjectRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.project.owner_id</code>.
+     * The column <code>public.project.owner_id</code>. 所属用户及授权作用域
      */
-    public final TableField<ProjectRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<ProjectRecord, UUID> OWNER_ID = createField(DSL.name("owner_id"), SQLDataType.UUID.nullable(false), this, "所属用户及授权作用域");
 
     /**
-     * The column <code>public.project.name</code>.
+     * The column <code>public.project.name</code>. 显示名称
      */
-    public final TableField<ProjectRecord, String> NAME = createField(DSL.name("name"), SQLDataType.VARCHAR(120).nullable(false), this, "");
+    public final TableField<ProjectRecord, String> NAME = createField(DSL.name("name"), SQLDataType.VARCHAR(120).nullable(false), this, "显示名称");
 
     /**
-     * The column <code>public.project.aspect_ratio</code>.
+     * The column <code>public.project.aspect_ratio</code>. 项目默认画幅比例
      */
-    public final TableField<ProjectRecord, String> ASPECT_RATIO = createField(DSL.name("aspect_ratio"), SQLDataType.VARCHAR(32).nullable(false), this, "");
+    public final TableField<ProjectRecord, String> ASPECT_RATIO = createField(DSL.name("aspect_ratio"), SQLDataType.VARCHAR(32).nullable(false), this, "项目默认画幅比例");
 
     /**
-     * The column <code>public.project.status</code>.
+     * The column <code>public.project.status</code>. 持久状态，允许值由 CHECK 约束限定
      */
-    public final TableField<ProjectRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(32).nullable(false), this, "");
+    public final TableField<ProjectRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(32).nullable(false), this, "持久状态，允许值由 CHECK 约束限定");
 
     /**
      * The column <code>public.project.active_run_id</code>. Reserved active
@@ -108,36 +108,36 @@ public class Project extends TableImpl<ProjectRecord> {
     public final TableField<ProjectRecord, UUID> ACTIVE_RUN_ID = createField(DSL.name("active_run_id"), SQLDataType.UUID, this, "Reserved active Agent Run slot; foreign key is added with the run migration.");
 
     /**
-     * The column <code>public.project.event_seq</code>.
+     * The column <code>public.project.event_seq</code>. 项目内事务分配的已提交事件序号
      */
-    public final TableField<ProjectRecord, Long> EVENT_SEQ = createField(DSL.name("event_seq"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<ProjectRecord, Long> EVENT_SEQ = createField(DSL.name("event_seq"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "项目内事务分配的已提交事件序号");
 
     /**
-     * The column <code>public.project.version</code>.
+     * The column <code>public.project.version</code>. 乐观并发控制版本，更新时递增并校验预期值
      */
-    public final TableField<ProjectRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<ProjectRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "乐观并发控制版本，更新时递增并校验预期值");
 
     /**
-     * The column <code>public.project.created_at</code>.
+     * The column <code>public.project.created_at</code>. 创建时间（UTC）
      */
-    public final TableField<ProjectRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ProjectRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
     /**
-     * The column <code>public.project.updated_at</code>.
+     * The column <code>public.project.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
-    public final TableField<ProjectRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "");
+    public final TableField<ProjectRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
     /**
-     * The column <code>public.project.archived_at</code>.
+     * The column <code>public.project.archived_at</code>. 归档时间；未归档时为空
      */
-    public final TableField<ProjectRecord, OffsetDateTime> ARCHIVED_AT = createField(DSL.name("archived_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<ProjectRecord, OffsetDateTime> ARCHIVED_AT = createField(DSL.name("archived_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "归档时间；未归档时为空");
 
     private Project(Name alias, Table<ProjectRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private Project(Name alias, Table<ProjectRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Permission and configuration boundary for one creative workspace."), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("项目权限边界、当前活动 Run、事件序号与并发控制版本"), TableOptions.table(), where);
     }
 
     /**
