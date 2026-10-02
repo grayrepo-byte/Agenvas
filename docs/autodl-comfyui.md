@@ -48,6 +48,6 @@
 
 ## 升级与验证
 
-新增 Flyway **V65** 仅扩展平台检查约束，保留现有连接、任务、版本和资源。jOOQ 源码通过隔离 PostgreSQL 17 重新生成；OpenAPI 新增 AUTODL 平台与工作流设置，TS 按合约生成。部署前备份数据库与文件卷，并同时更新前后端；没有旧协议兼容层或自动替换既有默认能力。2026-10-02 新增多分辨率及分档价格沿用既有 JSON，无新增数据库迁移；历史能力保持原来的单一分辨率，在编辑发布时显式开放更多档位。目录发现与管理员定义同样沿用能力 JSON，无新增迁移；详见 [分档价格验证](evidence/autodl-resolution-pricing-2026-10-02.md)与[工作流发现验证](evidence/autodl-workflow-discovery-2026-10-02.md)。
+新增 Flyway **V65** 仅扩展平台检查约束，保留现有连接、任务、版本和资源。jOOQ 源码通过隔离 PostgreSQL 17 重新生成；OpenAPI 新增 AUTODL 平台与工作流设置，TS 按合约生成。部署前备份数据库与文件卷，并同时更新前后端；没有旧协议兼容层或自动替换既有默认能力。2026-10-02 新增多分辨率及分档价格沿用既有 JSON，无新增数据库迁移；历史能力保持原来的单一分辨率，在编辑发布时显式开放更多档位。目录发现与管理员定义同样沿用能力 JSON，无新增迁移；详见 分档价格验证（开发记录不随源码公开）与工作流发现验证（开发记录不随源码公开）。
 
-官方来源：[API 文档](https://autodl.art/docs/comfyui_api/)、[工作流目录](https://www.autodl.art/large-model/comfyui)。文档描述 URL 输入，但本实现按用户确认的实际限制只使用 base64。真实 API、本地协议测试和 PostgreSQL 集成验证分别记录于 [验证证据](evidence/autodl-comfyui-2026-10-01.md)。
+官方来源：[API 文档](https://autodl.art/docs/comfyui_api/)、[工作流目录](https://www.autodl.art/large-model/comfyui)。文档描述 URL 输入，但本实现按用户确认的实际限制只使用 base64。真实 API、本地协议测试和 PostgreSQL 集成验证分别记录于 验证证据（开发记录不随源码公开）。

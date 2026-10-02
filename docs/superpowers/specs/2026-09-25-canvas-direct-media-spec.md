@@ -84,7 +84,7 @@
 - 上传空图片卡片复用同一 Artifact，通过上传 Asset、修订内容版本及选用该版本切到 RESULT；阶段失败保留已确认进度。视频空态使用生成入口，因为现有 API 没有视频上传能力。
 - 未接入的图片扩展在菜单中明确禁用。工作区已有锁定、移除、版本选用、打开原文件等操作保持可用。
 - Beautiful UI 加载态按实际任务状态展示；UNKNOWN 显示待核对而非无限转动。来源与 MIT 许可保存在组件旁。
-- 本轮验收与浏览器限制记录于 `docs/evidence/T07-canvas-display-refactor.md` 和根目录 `design-qa.md`；不能以组件测试替代浏览器视觉验收。
+- 本轮验收与浏览器限制记录于 开发记录（不随源码公开） 和根目录 开发记录（不随源码公开）；不能以组件测试替代浏览器视觉验收。
 
 - 好的测试从项目成员或管理员可观察的结果出发，覆盖 HTTP 状态、持久记录、事件、画布展示和 Provider 调用次数；不锁定内部方法调用顺序或组件私有状态。
 - 主要测试入口沿用项目级 API 与真实 PostgreSQL 集成测试，覆盖空 Artifact 与草稿刷新、版本冲突、权限、视频精确输入版本、同卡片互斥、不同卡片并行、AgentRun 并行、项目及能力限额、排队取消、额度预留/释放、UNKNOWN 占槽、Worker 失效与晚到结果。已有 Artifact、TaskLease、TaskRecovery、TaskArtifactSelection、AgentRun、用量及事件集成测试可作为先例。

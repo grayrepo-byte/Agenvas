@@ -10,4 +10,4 @@
 
 接口 `/api/v1/settings/system-logs` 强制 ADMIN 且返回 `Cache-Control: no-store`。缓存前移除 ANSI 颜色，并脱敏常见 Authorization/Cookie、凭证赋值、Bearer 与可识别 Provider Key、URL 用户凭据及查询参数；检测到凭证赋值时隐藏该行剩余内容，以涵盖含空格和 JSON 转义的值。规则不保证识别无标签的任意秘密，也不改变原控制台输出；应用继续禁止记录密钥、完整 Prompt、原始媒体与模型私有推理。网页以纯文本渲染，日志内容不能执行 HTML，也不进入项目导出或浏览器持久存储。
 
-这是新增只读接口，无旧 API 破坏、数据库迁移或 jOOQ 重生成；客户端需重新生成 OpenAPI 类型。启动生命周期与权限边界的实测见[系统日志证据](../evidence/T28-system-logs.md)。
+这是新增只读接口，无旧 API 破坏、数据库迁移或 jOOQ 重生成；客户端需重新生成 OpenAPI 类型。启动生命周期与权限边界的实测见系统日志证据（开发记录不随源码公开）。

@@ -1,9 +1,0 @@
-# T27：审批数量与任务数量核对（阶段性）
-
-- 行为：审批面板不再把独立的 `estimate` 当成将创建的任务数量，而是按冻结的执行步骤及任务类型展示图片/视频任务数。若步骤类型、阶段或估算数量不一致，禁用确认并提示重新生成计划；不会因前端文本或模型输出自动审批。
-- 服务端机制：`PlanDraftValidator` 从归一化步骤生成估算；`ExecutionPlanService.approveLocked` 每个步骤在同一审批事务中创建一个媒体 Task。未改 API 合约或数据库迁移。
-- 测试：前端组件覆盖三图片步骤显示 3 个任务、明确点击才提交审批哈希，以及视频估算与步骤不一致时拒绝点击。PostgreSQL 集成测试核对图片、视频两个阶段各自的估算步骤数与真实 `task` 表数量，并保留并发审批只创建一组任务的断言。
-- 实际检查：`frontend` 的定向组件测试 2/2、全量 Vitest 40/40、`tsc --noEmit`、`eslint . --max-warnings=0`、`vite build` 均通过；生产打包有大于 500 kB 的 chunk 提示。`backend` 的 `ExecutionPlanPostgresIT` 定向测试及完整 `./mvnw --batch-mode --no-transfer-progress -q verify` 均退出码 0；`git diff --check` 通过。
-- 2026-09-24 单镜头浏览器补验：隔离 `agenvas-task-count-e2e` Compose 项目从当前工作树构建，三个服务健康；真实 Chrome 运行 `AGENVAS_E2E_REDO=1 node frontend/e2e/manual-storyboard-browser.mjs`，在同一单镜头局部重做 Run 的图片计划和视频计划审批前，分别读取页面明确展示的图片/视频任务数及实际 `<ol>` 步骤数，核对为 `1/0/1` 与 `0/1/1`。两次人工点击批准、Mock 媒体完成后，经认证 Run Task 列表核对持久 `IMAGE_GENERATION` 与 `VIDEO_GENERATION` 各只有一项，状态均成功，均指向目标镜头。最终输出 `T27 browser smoke passed: displayed image/video counts and step counts match two persisted media Tasks`，退出码 0。测试后仅对该隔离项目执行 `down -v`，删除三个测试容器、网络与两只卷，数据不可恢复。
-
-- 2026-09-24 三镜头浏览器补验：另用隔离 `agenvas-three-count-e2e` Compose 项目、独立数据库和资产卷、同源 Chrome 运行 `AGENVAS_E2E_THREE_SHOT_COUNT=1 node frontend/e2e/manual-storyboard-browser.mjs`。在完整项目 Run 的图片审批前，面板显示 3 个步骤、图片任务 3、视频任务 0，实际媒体任务尚为 0；逐一选定三张已归档关键帧后，视频审批面板显示 3 个步骤、图片任务 0、视频任务 3。两次人工批准后，鉴权 Run Task 列表只含三个成功 `IMAGE_GENERATION` 与三个成功 `VIDEO_GENERATION`，各覆盖三个不同镜头且目标集合一致；隔离 PostgreSQL `task` 表也核对 3+3。输出 `T27 browser smoke passed: three-shot approval shows 3+3 tasks and persists exactly six media Tasks`，退出码 0。此证据将主规格 §22.2 场景 15 的 Mock 三镜头 UI 展示与持久创建数量打通；不证明真实 Provider 任务完成率。没有生产 API、合约或迁移改动，脚本 `node --check` 与 `git diff --check` 通过，后端/前端全量测试未因浏览器脚本更改重跑。验收后仅对该隔离项目执行 `down -v`，删除三个测试容器、网络与两只卷，测试数据不可恢复；原有 `agenvas` 项目未操作。T27 其他故障场景和 MVP 总门禁仍未完成。
