@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./shared/ui/design-tokens.css";
+@import "./features/canvas/agentConversation.css";
 
 /* shadcn semantic tokens share the existing application theme, including portals. */
 @theme inline {

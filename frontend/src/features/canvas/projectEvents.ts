@@ -1,4 +1,5 @@
 import { getProjectSnapshot, type ProjectEvent, type ProjectSnapshot } from "../../shared/api/client";
+import { ASSISTANT_STREAM_EVENT_TYPES, isAssistantStreamEvent } from "./agentRunStream";
 
 const supportedTypes = [
   "artifact.created",
@@ -13,6 +14,8 @@ const supportedTypes = [
   "agent.instance.changed",
   "agent.conversation.changed",
   "agent.run.changed",
+  "agent.media.approval.changed",
+  ...ASSISTANT_STREAM_EVENT_TYPES,
   "llm.turn.requested",
   "llm.turn.recorded",
   "usage.changed",
@@ -137,10 +140,14 @@ export function subscribeProjectEvents(
     callbacks.onStatus("live");
     // One database identity can host independent aggregates (for example CanvasItem layout
     // and its media draft), so their optimistic versions must never suppress each other.
-    const versionKey = `${parsed.type}:${parsed.aggregateId}`;
-    const previousVersion = versions.get(versionKey);
-    if (previousVersion !== undefined && parsed.aggregateVersion < previousVersion) return;
-    versions.set(versionKey, parsed.aggregateVersion);
+    // A stream's aggregate is its Run, while its ordering belongs to a Task lease
+    // epoch and chunk index. A Run version cannot suppress a later model step.
+    if (!isAssistantStreamEvent(parsed.type)) {
+      const versionKey = `${parsed.type}:${parsed.aggregateId}`;
+      const previousVersion = versions.get(versionKey);
+      if (previousVersion !== undefined && parsed.aggregateVersion < previousVersion) return;
+      versions.set(versionKey, parsed.aggregateVersion);
+    }
     callbacks.onChange(parsed);
   }
 

@@ -31,6 +31,7 @@ export const AGENT_CHAT_MIN_WIDTH = 360;
 export const AGENT_CHAT_MIN_HEIGHT = 420;
 const MAX_AGENT_NAME = 120;
 const MAX_INSTRUCTION = 8000;
+const BOTTOM_FOLLOW_THRESHOLD_PX = 24;
 
 export type AgentChatCardData = {
   item: CanvasItem;
@@ -72,6 +73,8 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     }
   }, [agent, configuration, configurationDirty]);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const followingBottom = useRef(true);
   const positionedConversation = useRef<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ConversationDraft>>({});
   const [review, setReview] = useState<RunReview | null>(null);
@@ -201,13 +204,32 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     },
   });
   useEffect(() => {
-    if (reviewInstruction && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-  }, [reviewInstruction, preflight.data, preflight.isFetching]);
+    if (reviewInstruction && bodyRef.current) {
+      followingBottom.current = true;
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [reviewInstruction]);
   useEffect(() => {
     if (view !== "chat" || !conversationId || !runs.isSuccess || positionedConversation.current === conversationId) return;
-    if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    if (bodyRef.current) {
+      followingBottom.current = true;
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
     positionedConversation.current = conversationId;
   }, [conversationId, runs.isSuccess, view]);
+  useEffect(() => {
+    const body = bodyRef.current;
+    const transcript = transcriptRef.current;
+    if (view !== "chat" || !body || !transcript) return;
+    // Observe layout rather than token events: child stream updates never need to
+    // rerender the card. Remember the user's position before content grows.
+    const observer = new ResizeObserver(() => {
+      if (followingBottom.current) body.scrollTop = body.scrollHeight;
+    });
+    observer.observe(transcript);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [agent?.id, conversationId, view]);
   if (!agent) return null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -281,7 +303,11 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         <span>{t("agent.chat.otherSessionRunningHint")}</span>
         <Button variant="ghost" type="button" disabled={sessionBusy} onClick={() => selectConversation.mutate(ownRun.conversationId)}>{t("agent.chat.returnToRunningSession")}</Button>
       </div> : null}
-      <div className="agent-chat-body nodrag nowheel nopan" ref={bodyRef}>
+      <div className="agent-chat-body nodrag nowheel nopan" ref={bodyRef} onScroll={(event) => {
+        const body = event.currentTarget;
+        followingBottom.current = body.scrollHeight - body.clientHeight - body.scrollTop <= BOTTOM_FOLLOW_THRESHOLD_PX;
+      }}>
+        <div className="agent-chat-transcript" ref={transcriptRef}>
         {view === "settings" ? <section aria-label={t("agent.chat.configuration")} className="agent-chat-settings">
           <p className="agent-chat-eyebrow">{agent.profileKey} · v{agent.profileVersion}</p>
           <form onSubmit={submit}>
@@ -374,6 +400,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         {selectConversation.error ? <ChatError error={selectConversation.error} /> : null}
         {start.error && start.variables?.input.conversationId === conversationId ? <ChatError error={start.error} /> : null}
         {stop.error && displayedRuns.some((run) => run.id === stop.variables) ? <ChatError error={stop.error} /> : null}
+        </div>
       </div>
       <form aria-label={t("agent.chat.sendTask")} className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
         <Textarea aria-label={t("agent.chat.currentTask")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {

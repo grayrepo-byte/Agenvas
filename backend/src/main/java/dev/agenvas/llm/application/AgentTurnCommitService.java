@@ -37,6 +37,7 @@ public class AgentTurnCommitService {
     private final ToolExecutionRepository toolExecutions;
     /** 从保存的响应恢复被选中的 Assistant 消息及调用顺序。 */
     private final LlmProtocolCodec codec;
+    private final AgentMediaOutcomeService mediaOutcomes;
 
     /** 组装回合租约校验、Run 推进、事件提交和完整模型响应核验能力。
      * @param taskRepository 读取任务项目所有者
@@ -53,7 +54,7 @@ public class AgentTurnCommitService {
             AgentRunService runs, AgentTurnLeaseGuard leaseGuard,
             ProjectEventService events, ObjectMapper mapper,
             LlmTurnRepository turns, ToolExecutionRepository toolExecutions,
-            LlmProtocolCodec codec) {
+            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes) {
         this.taskRepository = taskRepository;
         this.tasks = tasks;
         this.runs = runs;
@@ -63,6 +64,7 @@ public class AgentTurnCommitService {
         this.turns = turns;
         this.toolExecutions = toolExecutions;
         this.codec = codec;
+        this.mediaOutcomes = mediaOutcomes;
     }
 
     /**
@@ -116,11 +118,15 @@ public class AgentTurnCommitService {
             }
             AssistantMessage assistant = codec.selectedAssistant(turn.response());
             Decision decision = decisionFor(lease, stepIndex, assistant);
+            if (decision == Decision.CONTINUE
+                    && mediaOutcomes.hasOutstanding(lease.projectId(), lease.runId(), stepIndex)) {
+                decision = Decision.WAIT;
+            }
             ObjectNode output = mapper.createObjectNode();
             output.put("decision", decision.name());
             output.put("stepIndex", stepIndex);
             output.put("assistantText", assistant.getText() == null ? "" : assistant.getText());
-            if (decision == Decision.CONTINUE) {
+            if (decision == Decision.CONTINUE || decision == Decision.WAIT) {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Run state prevents model continuation");
                 }
@@ -131,15 +137,21 @@ public class AgentTurnCommitService {
                             run.version(), AgentRun.Status.BLOCKED);
                     return ProjectEventService.Change.unchanged(Decision.LIMIT_REACHED);
                 }
-                ObjectNode input = mapper.createObjectNode();
-                input.put("schemaVersion", 1);
-                input.put("stepIndex", stepIndex + 1);
-                tasks.create(ownerId, lease.projectId(), lease.runId(),
-                        "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input,
-                        null, 1, List.of(lease.id()));
+                if (decision == Decision.CONTINUE) {
+                    ObjectNode input = mapper.createObjectNode();
+                    input.put("schemaVersion", 1);
+                    input.put("stepIndex", stepIndex + 1);
+                    tasks.create(ownerId, lease.projectId(), lease.runId(),
+                            "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input,
+                            null, 1, List.of(lease.id()));
+                }
                 tasks.succeed(lease, workerId, output);
-                runs.advanceStep(ownerId, lease.projectId(), lease.runId(),
+                AgentRun advanced = runs.advanceStep(ownerId, lease.projectId(), lease.runId(),
                         run.version(), stepIndex);
+                if (decision == Decision.WAIT) {
+                    runs.transition(ownerId, lease.projectId(), lease.runId(),
+                            advanced.version(), AgentRun.Status.WAITING_TASKS);
+                }
             } else if (decision == Decision.FINISH) {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Only a running Run can finish");
@@ -298,6 +310,8 @@ public class AgentTurnCommitService {
     public enum Decision {
         /** 工具执行完成，继续创建下一个模型回合。 */
         CONTINUE,
+        /** Approval or generation is pending; a persisted outcome schedules the continuation. */
+        WAIT,
         /** 无后续工具调用，Run 可以结束。 */
         FINISH,
         /** 已达到模型回合上限，Run 被阻断。 */

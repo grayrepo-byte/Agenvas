@@ -87,6 +87,37 @@ function snapshot(seq: number): ProjectSnapshot {
 }
 
 describe("project event subscription", () => {
+  it("delivers approvals and every assistant stream event through the existing project cursor", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const open = vi.fn(() => stream);
+    const loadSnapshot = vi.fn(async () => snapshot(6));
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, { open, loadSnapshot, schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout });
+    const types = ["agent.media.approval.changed", "agent.turn.stream.started", "agent.turn.stream.delta",
+      "agent.turn.stream.completed", "agent.turn.stream.interrupted", "agent.run.changed"];
+    types.forEach((type, index) => stream.emit({ ...event(index + 1, 1), type }));
+    expect(changes.map((value) => value.type)).toEqual(types);
+    expect(open).toHaveBeenCalledOnce();
+    expect(loadSnapshot).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("does not discard streamed text because another step observed a higher Run version", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, { open: () => stream, loadSnapshot: async () => snapshot(3),
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout });
+    stream.emit({ ...event(1, 8), type: "agent.turn.stream.delta", payload: { taskId: "task-1", stepIndex: 0 } });
+    stream.emit({ ...event(2, 1), type: "agent.turn.stream.delta", payload: { taskId: "task-2", stepIndex: 1 } });
+    stream.emit({ ...event(2, 1), type: "agent.turn.stream.delta", payload: { taskId: "task-2", stepIndex: 1 } });
+    expect(changes.map((value) => value.seq)).toEqual([1, 2]);
+    stop();
+  });
+
   it("delivers conversation selection events at the same aggregate version without opening another stream", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

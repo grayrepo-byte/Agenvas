@@ -840,7 +840,14 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 从项目事件水位之后补发并订阅 SSE */
+        /**
+         * 从项目事件水位之后补发并订阅 SSE
+         * @description 一个项目共用一条 SSE。Agent 公开回答通过 agent.turn.stream.started / delta /
+         *     completed / interrupted 事件增量发送，使用同一项目 seq 可靠补发。
+         *     payload 为 AgentTurnStreamEventPayload；旧 epoch 和重复 chunk 不得追加。
+         *     刷新或游标过期后从快照 activeTasks 的 output.assistantStream 恢复累计文本，
+         *     已提交回合的 output.assistantText 为终稿。流式文本不包含模型私有推理或工具参数。
+         */
         get: operations["streamProjectEvents"];
         put?: never;
         post?: never;
@@ -1744,6 +1751,92 @@ export interface paths {
         get: operations["listRunActions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/runs/{runId}/media-approvals": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * 列出本 Run 的媒体生成审批批次
+         * @description 仅返回同项目、同 Run 的审批与安全生成预览，不包含连接地址、凭据或模型私有消息。
+         */
+        get: operations["listAgentMediaApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/runs/{runId}/media-approvals/{approvalId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        /** 获取媒体审批、固定输出与最终结果 */
+        get: operations["getAgentMediaApproval"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/runs/{runId}/media-approvals/{approvalId}/decision": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 以 CAS 和幂等键批准或拒绝整个固定批次
+         * @description APPROVE 只授权当前审批快照；重新核验草稿、能力和输入版本后受理持久媒体任务。 REJECT 不提交 Provider。相同幂等键和请求返回同一审批的当前状态，不重复受理； 同键不同请求、版本变化或非 PENDING 审批返回冲突。 尚为 PENDING 的过期审批转为 EXPIRED，返回 200 并通知 Agent。批准前没有第三方生成调用。
+         */
+        post: operations["decideAgentMediaApproval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3404,8 +3497,69 @@ export interface components {
             /** Format: uuid */
             currentConversationId: string | null;
         };
-        /** @enum {string} */
+        /**
+         * @description WAITING_TASKS 同时表示等待媒体审批或已批准媒体任务；审批详情通过 media-approvals 接口读取。
+         * @enum {string}
+         */
         AgentRunStatus: "QUEUED" | "RUNNING" | "WAITING_TASKS" | "BLOCKED" | "CANCEL_REQUESTED" | "CANCELED" | "FAILED" | "SUCCEEDED";
+        /**
+         * @description UNKNOWN 媒体任务以 FAILED 审批结果通知 Agent，原 Task 仍保留 UNKNOWN，且不会自动重提。
+         * @enum {string}
+         */
+        AgentMediaApprovalStatus: "PENDING" | "APPROVED" | "SUCCEEDED" | "FAILED" | "REJECTED" | "EXPIRED" | "CANCELED";
+        AgentMediaApprovalDecisionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            /** @enum {string} */
+            decision: "APPROVE" | "REJECT";
+        };
+        AgentMediaApprovalOutput: {
+            /** @enum {string} */
+            kind: "IMAGE" | "VIDEO" | "AUDIO";
+            title: string;
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: int64 */
+            draftVersion: number;
+            /** @description 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。 */
+            preview: {
+                [key: string]: unknown;
+            };
+        };
+        AgentMediaApproval: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            runId: string;
+            /** Format: uuid */
+            operationId: string;
+            status: components["schemas"]["AgentMediaApprovalStatus"];
+            /** Format: int64 */
+            version: number;
+            outputs: components["schemas"]["AgentMediaApprovalOutput"][];
+            /** @description 批准后受理的持久媒体任务；批准之前为空。 */
+            taskIds: string[];
+            /** @description 终态批次结果，包括可验证的输出和逐任务状态；等待时为空，不包含私有推理或凭据。 */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description 创建后 24 小时的审批截止时间。
+             */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description 批准后 24 小时的执行截止时间；批准前为空。
+             */
+            executionDeadline: string | null;
+        };
         CreateRunRequest: {
             /** Format: uuid */
             agentId: string;
@@ -3523,15 +3677,15 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New Run policies are schema v2 and pin systemPromptVersion=2. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
+        /** @description New Run policies are schema v2 and pin systemPromptVersion=3. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
         RunPolicySnapshot: {
             /** @enum {integer} */
             schemaVersion: 1 | 2;
             /**
-             * @description Required on new v2 snapshots; absent on historical v1 snapshots.
+             * @description New v2 snapshots pin version 3; historical versions 1/2 retain their original rules; absent on historical v1 snapshots.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2;
+            systemPromptVersion?: 1 | 2 | 3;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
@@ -3644,6 +3798,11 @@ export interface components {
             input: {
                 [key: string]: unknown;
             };
+            /**
+             * @description AGENT_TURN 执行中的 assistantStream 为持久公开回答进度，结构为
+             *     AssistantTurnStream；这不是已提交的工具响应。完整回合提交后
+             *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
+             */
             output?: {
                 [key: string]: unknown;
             } | null;
@@ -3662,6 +3821,35 @@ export interface components {
             updatedAt: string;
             /** Format: date-time */
             completedAt?: string | null;
+        };
+        AssistantTurnStream: {
+            /**
+             * Format: int64
+             * @description 任务本次租约身份；更高 epoch 重置旧文本。
+             */
+            streamEpoch: number;
+            /**
+             * Format: int64
+             * @description 本次流的已持久增量序号。
+             */
+            chunkIndex: number;
+            /** @description 累计公开回答；不含私有推理或工具参数。 */
+            text: string;
+            /** @enum {string} */
+            status: "STREAMING" | "COMPLETED" | "INTERRUPTED";
+        };
+        AgentTurnStreamEventPayload: {
+            /** Format: uuid */
+            runId: string;
+            /** Format: uuid */
+            taskId: string;
+            stepIndex: number;
+            /** Format: int64 */
+            streamEpoch: number;
+            /** Format: int64 */
+            chunkIndex: number;
+            /** @description 仅 delta 事件提供公开文本增量；completed 后重读已提交终稿。 */
+            textDelta?: string;
         };
         /** @enum {string} */
         CanvasSubjectType: "ARTIFACT" | "AGENT";
@@ -7012,6 +7200,108 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listAgentMediaApprovals: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 审批列表；尚无审批时返回空数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMediaApproval"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAgentMediaApproval: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 审批状态与安全预览 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMediaApproval"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    decideAgentMediaApproval: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMediaApprovalDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description 决策后的审批；媒体生成异步执行 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMediaApproval"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     cancelRun: {

@@ -4,6 +4,7 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.tool.ToolCallback;
@@ -29,6 +30,16 @@ public interface ChatGateway {
             throw new IllegalStateException("ChatGateway configuration changed before model call");
         }
         return call(messages, tools, toolContext);
+    }
+
+    /** Configured adapters stream once; deterministic fakes may deliver one final public text block. */
+    default Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
+            Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta) {
+        Exchange exchange = call(messages, tools, toolContext, expected);
+        var safe = PublicAssistantResponse.sanitize(exchange.response());
+        String text = PublicAssistantResponse.text(safe);
+        if (!text.isEmpty()) publicDelta.accept(text);
+        return new Exchange(exchange.configVersion(), safe);
     }
 
     /** 返回有测试依据的能力；未经验证的视觉和原生结构化输出必须保持关闭。 */

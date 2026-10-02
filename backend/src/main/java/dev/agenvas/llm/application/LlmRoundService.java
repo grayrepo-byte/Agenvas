@@ -3,6 +3,9 @@ package dev.agenvas.llm.application;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
+import java.util.function.Consumer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +24,7 @@ import tools.jackson.databind.JsonNode;
 public class LlmRoundService {
 
     /** 使用 Run 钉住的配置调用模型，且关闭自动工具执行。 */
+    private final TaskService tasks;
     private final ChatGateway gateway;
     private final CallLogService callLogs;
     /** 将模型可见消息与完整响应转换为版本化持久化协议。 */
@@ -38,7 +42,8 @@ public class LlmRoundService {
      */
     public LlmRoundService(ChatGateway gateway,
             LlmProtocolCodec codec, LlmTurnCheckpointService checkpoints,
-            AgentRunRepository runs, CallLogService callLogs) {
+            AgentRunRepository runs, CallLogService callLogs, TaskService tasks) {
+        this.tasks = tasks;
         this.callLogs = callLogs;
         this.gateway = gateway;
         this.codec = codec;
@@ -61,6 +66,20 @@ public class LlmRoundService {
      */
     public JsonNode call(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext) {
+        return callInternal(ownerId, projectId, runId, stepIndex, messages, tools, trustedContext, null, null);
+    }
+
+    /** Worker path: incremental public text and the final checkpoint use the same task fencing epoch. */
+    public JsonNode callLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext,
+            Task lease, String workerId) {
+        if (lease == null) throw new IllegalArgumentException("Missing model task lease");
+        return callInternal(ownerId, projectId, runId, stepIndex, messages, tools, trustedContext, lease, workerId);
+    }
+
+    private JsonNode callInternal(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext,
+            Task lease, String workerId) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Model calls must not hold a database transaction");
         }
@@ -74,8 +93,10 @@ public class LlmRoundService {
         gateway.requireToolCalling(selected);
         int configVersion = selected.version();
         String configSource = selected.source();
-        LlmTurn turn = checkpoints.reserve(ownerId, projectId, runId, stepIndex,
-                configVersion, configSource, request);
+        LlmTurn turn = lease == null
+                ? checkpoints.reserve(ownerId, projectId, runId, stepIndex, configVersion, configSource, request)
+                : checkpoints.reserveLeased(ownerId, projectId, runId, stepIndex, configVersion, configSource,
+                        request, lease, workerId);
         // 响应已落库时不再发起第二次模型调用，避免恢复路径重复消耗用量。
         if (turn.status() == LlmTurn.Status.RESPONDED) {
             return turn.response();
@@ -85,14 +106,37 @@ public class LlmRoundService {
         CallLogService.CallDescriptor descriptor = new CallLogService.CallDescriptor(
                 projectId, null, runId, stepIndex, CallLog.Kind.LLM, CallLog.Operation.CHAT,
                 mock ? "mock" : model.providerAdapter(), model.modelId(), mock);
-        ChatGateway.Exchange exchange = callLogs.record(descriptor,
-                () -> gateway.call(messages, tools, trustedContext, selected),
-                ignored -> CallLogService.CallOutcome.succeeded(null));
+        PublicStreamSink stream = lease == null ? null : new PublicStreamSink(lease, workerId);
+        if (lease != null) tasks.startAgentStream(lease, workerId);
+        ChatGateway.Exchange exchange = callLogs.record(descriptor, () -> {
+            return stream == null ? gateway.call(messages, tools, trustedContext, selected)
+                    : gateway.callStreaming(messages, tools, trustedContext, selected, stream);
+        }, ignored -> CallLogService.CallOutcome.succeeded(null));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");
         }
         JsonNode response = codec.response(exchange.response());
-        return checkpoints.saveResponse(ownerId, projectId, runId, stepIndex,
-                exchange.configVersion(), response).response();
+        return (lease == null
+                ? checkpoints.saveResponse(ownerId, projectId, runId, stepIndex, exchange.configVersion(), response)
+                : checkpoints.saveResponseLeased(ownerId, projectId, runId, stepIndex, exchange.configVersion(),
+                        response, lease, workerId)).response();
+    }
+    /** The gateway delivers timed public batches; each callback completes one fenced short transaction. */
+    private final class PublicStreamSink implements Consumer<String> {
+        private final Task lease;
+        private final String workerId;
+        private long chunkIndex;
+
+        private PublicStreamSink(Task lease, String workerId) {
+            this.lease = lease;
+            this.workerId = workerId;
+        }
+
+        @Override
+        public void accept(String delta) {
+            if (Thread.currentThread().isInterrupted()) throw new IllegalStateException("Model stream was interrupted");
+            if (delta == null || delta.isEmpty()) return;
+            chunkIndex = tasks.appendAgentStream(lease, workerId, chunkIndex, delta);
+        }
     }
 }

@@ -9,6 +9,7 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentConversation.AgentConversationPath;
 import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
+import dev.agenvas.db.tables.AgentMediaApproval.AgentMediaApprovalPath;
 import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.CallLog.CallLogPath;
 import dev.agenvas.db.tables.LlmTurn.LlmTurnPath;
@@ -299,6 +300,19 @@ public class AgentRun extends TableImpl<AgentRunRecord> {
             _callLog = new CallLogPath(this, null, Keys.CALL_LOG__CALL_LOG_PROJECT_ID_RUN_ID_FKEY.getInverseKey());
 
         return _callLog;
+    }
+
+    private transient AgentMediaApprovalPath _agentMediaApproval;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.agent_media_approval</code> table
+     */
+    public AgentMediaApprovalPath agentMediaApproval() {
+        if (_agentMediaApproval == null)
+            _agentMediaApproval = new AgentMediaApprovalPath(this, null, Keys.AGENT_MEDIA_APPROVAL__FK_AGENT_MEDIA_APPROVAL_RUN.getInverseKey());
+
+        return _agentMediaApproval;
     }
 
     private transient LlmTurnPath _llmTurn;

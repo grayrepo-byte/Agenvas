@@ -7,6 +7,7 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
+import dev.agenvas.db.tables.AgentMediaApproval.AgentMediaApprovalPath;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
 import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
@@ -186,6 +187,19 @@ public class AppUser extends TableImpl<AppUserRecord> {
     @Override
     public List<UniqueKey<AppUserRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.UQ_APP_USER_LOGIN_NAME);
+    }
+
+    private transient AgentMediaApprovalPath _agentMediaApproval;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.agent_media_approval</code> table
+     */
+    public AgentMediaApprovalPath agentMediaApproval() {
+        if (_agentMediaApproval == null)
+            _agentMediaApproval = new AgentMediaApprovalPath(this, null, Keys.AGENT_MEDIA_APPROVAL__FK_AGENT_MEDIA_APPROVAL_OWNER.getInverseKey());
+
+        return _agentMediaApproval;
     }
 
     private transient AgentRunPath _agentRun;

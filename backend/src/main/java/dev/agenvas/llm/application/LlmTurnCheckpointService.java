@@ -6,6 +6,9 @@ import dev.agenvas.run.application.AgentRunRepository;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.usage.application.UsageService;
+import dev.agenvas.task.application.AgentTurnLeaseGuard;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
 import java.time.Clock;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -31,6 +34,9 @@ public class LlmTurnCheckpointService {
     private final Clock clock;
     /** 按回合预留并根据实际响应结算模型用量。 */
     private final UsageService usage;
+    private final AgentTurnLeaseGuard leaseGuard;
+    private final TaskService tasks;
+    private final LlmProtocolCodec codec;
 
     /** 组装 Run 状态推进、模型回合检查点、事件和用量预留事务。
      * @param runs 条件推进 Run 的持久化服务
@@ -42,13 +48,16 @@ public class LlmTurnCheckpointService {
      */
     public LlmTurnCheckpointService(AgentRunRepository runs, LlmTurnRepository turns,
             ProjectEventService events, ObjectMapper mapper, Clock clock,
-            UsageService usage) {
+            UsageService usage, AgentTurnLeaseGuard leaseGuard, TaskService tasks, LlmProtocolCodec codec) {
         this.runs = runs;
         this.turns = turns;
         this.events = events;
         this.mapper = mapper;
         this.clock = clock;
         this.usage = usage;
+        this.leaseGuard = leaseGuard;
+        this.tasks = tasks;
+        this.codec = codec;
     }
 
     /**
@@ -67,12 +76,27 @@ public class LlmTurnCheckpointService {
     @Transactional
     public LlmTurn reserve(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             int configVersion, String configSource, JsonNode request) {
+        return reserveInternal(ownerId, projectId, runId, stepIndex, configVersion, configSource, request, null, null);
+    }
+
+    /** Production model requests are fenced before reserving usage or a checkpoint. */
+    @Transactional
+    public LlmTurn reserveLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            int configVersion, String configSource, JsonNode request, Task lease, String workerId) {
+        requireLeaseScope(projectId, runId, stepIndex, lease);
+        return reserveInternal(ownerId, projectId, runId, stepIndex, configVersion, configSource, request, lease, workerId);
+    }
+
+    private LlmTurn reserveInternal(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            int configVersion, String configSource, JsonNode request, Task lease, String workerId) {
         if (stepIndex < 0 || configVersion < 1 || configSource == null
                 || configSource.isBlank() || request == null || !request.isObject()) {
             throw new IllegalArgumentException("Invalid model turn request");
         }
         return events.recordChange(ownerId, projectId, () -> {
+            if (lease != null) leaseGuard.requireActive(lease, workerId);
             AgentRun run = requireRunning(ownerId, projectId, runId);
+            if (lease != null && run.nextStepIndex() != stepIndex) throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
             int pinnedVersion = run.policySnapshot().path("modelConfigVersion")
                     .asInt(-1);
             String pinnedSource = run.policySnapshot().path("modelConfigSource").asText("");
@@ -108,12 +132,29 @@ public class LlmTurnCheckpointService {
     @Transactional
     public LlmTurn saveResponse(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             int configVersion, JsonNode response) {
+        return saveResponseInternal(ownerId, projectId, runId, stepIndex, configVersion, response, null, null);
+    }
+
+    /** Complete public projection and protocol checkpoint atomically, while the exact lease is locked. */
+    @Transactional
+    public LlmTurn saveResponseLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            int configVersion, JsonNode response, Task lease, String workerId) {
+        requireLeaseScope(projectId, runId, stepIndex, lease);
+        return saveResponseInternal(ownerId, projectId, runId, stepIndex, configVersion, response, lease, workerId);
+    }
+
+    private LlmTurn saveResponseInternal(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            int configVersion, JsonNode response, Task lease, String workerId) {
         if (response == null || !response.isObject()) {
             throw new IllegalArgumentException("Invalid model response checkpoint");
         }
         return events.recordChange(ownerId, projectId, () -> {
+            if (lease != null) leaseGuard.requireActive(lease, workerId);
             AgentRun run = runs.find(ownerId, projectId, runId)
                     .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accessible")));
+            if (lease != null && (run.status() != AgentRun.Status.RUNNING || run.nextStepIndex() != stepIndex)) {
+                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
+            }
             LlmTurn existing = turns.find(projectId, runId, stepIndex)
                     .orElseThrow(() -> conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-request-checkpoint-is-missing")));
             if (existing.modelConfigVersion() != configVersion) {
@@ -125,6 +166,10 @@ public class LlmTurnCheckpointService {
                 }
                 return ProjectEventService.Change.unchanged(existing);
             }
+            if (lease != null) {
+                String text = codec.selectedAssistant(response).getText();
+                tasks.completeAgentStream(lease, workerId, text == null ? "" : text);
+            }
             if (!turns.saveResponse(projectId, runId, stepIndex, response, clock.instant())) {
                 throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-checkpoint-was-updated-concurrently"));
             }
@@ -133,6 +178,13 @@ public class LlmTurnCheckpointService {
             events.append(ownerId, projectId, event("llm.turn.recorded", run, stepIndex));
             return ProjectEventService.Change.unchanged(saved);
         }).value();
+    }
+
+    private void requireLeaseScope(UUID projectId, UUID runId, int stepIndex, Task lease) {
+        if (lease == null || !projectId.equals(lease.projectId()) || !runId.equals(lease.runId())
+                || stepIndex != lease.input().path("stepIndex").asInt(-1)) {
+            throw new IllegalArgumentException("Model checkpoint lease scope mismatch");
+        }
     }
 
     /** 新请求只能附着于仍在运行、且属于该所有者项目的 Run。 */

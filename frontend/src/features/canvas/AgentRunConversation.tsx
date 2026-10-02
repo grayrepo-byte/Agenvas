@@ -1,13 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Fragment } from "react";
-import {
-listRunActions,listRunTasks,
-type AgentRun,type Task
-} from "../../shared/api/client";
-import { getFormatLocale,t,useLocale } from "../../shared/i18n";
+import { listRunActions, listRunMediaApprovals, listRunTasks,
+  type AgentRun, type Task } from "../../shared/api/client";
+import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
-import { AgentChatMessage,AgentChatTaskRow } from "./AgentChatPrimitives";
+import { AgentChatMessage, AgentChatTaskRow, AgentExecutionTrace } from "./AgentChatPrimitives";
+import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
+import { useRunAssistantStream } from "./agentRunStream";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
@@ -32,15 +31,18 @@ const TOOL_LABELS: Record<string, string> = {
   get read_artifacts() { return t("agent.run.readArtifact"); }, get read_task_status() { return t("agent.run.readTask"); },
   get create_text() { return t("agent.run.createTextArtifact"); }, get revise_artifact() { return t("agent.run.updateArtifact"); },
   get place_artifacts() { return t("agent.run.placeArtifact"); }, get arrange_items() { return t("agent.run.arrangeCards"); },
+  get list_media_capabilities() { return t("agent.trace.listCapabilities"); },
+  get propose_media_generation() { return t("agent.trace.proposeMedia"); },
 };
 const RUNNING_STATUSES: ReadonlySet<AgentRun["status"]> = new Set(["QUEUED", "RUNNING", "WAITING_TASKS", "CANCEL_REQUESTED"]);
 const DEFAULT_STEP_INDEX = 0;
 
 function stepIndex(task: Task) {
-  return typeof task.output?.stepIndex === "number" ? task.output.stepIndex : DEFAULT_STEP_INDEX;
+  if (typeof task.output?.stepIndex === "number") return task.output.stepIndex;
+  return typeof task.input.stepIndex === "number" ? task.input.stepIndex : DEFAULT_STEP_INDEX;
 }
 
-/** Render only committed public text and action summaries, never arbitrary Task JSON or model traces. */
+/** Render persisted public stream text, committed replies, and verifiable actions. */
 export function AgentRunConversation({ projectId, run, active }: {
   projectId: string;
   run: Pick<AgentRun, "id" | "status" | "instruction" | "createdAt"> & Partial<Pick<AgentRun, "conversationTurn">>;
@@ -51,10 +53,31 @@ export function AgentRunConversation({ projectId, run, active }: {
     queryFn: () => listRunTasks(projectId, run.id) });
   const actions = useQuery({ queryKey: ["run-actions", projectId, run.id],
     queryFn: () => listRunActions(projectId, run.id) });
+  const approvals = useQuery({ queryKey: ["run-media-approvals", projectId, run.id],
+    queryFn: () => listRunMediaApprovals(projectId, run.id) });
+  const streams = useRunAssistantStream(projectId, run.id, tasks.data);
   const turns = (tasks.data ?? []).filter((task) => task.kind === "AGENT_TURN" && task.status === "SUCCEEDED");
-  const steps = [...new Set([...turns.map(stepIndex), ...(actions.data ?? []).map((action) => action.stepIndex)])].sort((a, b) => a - b);
-  const visibleTasks = (tasks.data ?? []).filter((task) => task.kind !== "AGENT_TURN" || task.status !== "SUCCEEDED");
-  const unknownTasks = visibleTasks.filter((task) => task.status === "UNKNOWN");
+  const visibleTasks = tasks.data ?? [];
+  const approvedTaskIds = new Set((approvals.data ?? []).flatMap((approval) => approval.taskIds));
+  const unknownTasks = visibleTasks.filter((task) => task.status === "UNKNOWN"
+    && typeof task.input.agentApprovalId !== "string" && !approvedTaskIds.has(task.id));
+  const replies = new Map<string, { step: number; text: string; status: "STREAMING" | "COMPLETED" | "INTERRUPTED" }>();
+  for (const task of turns) {
+    const reply = task.output?.assistantText;
+    if (typeof reply === "string" && reply.trim()) replies.set(task.id, { step: stepIndex(task), text: reply, status: "COMPLETED" });
+  }
+  for (const stream of streams) {
+    if (!turns.some((task) => task.id === stream.taskId) && stream.text.trim()) {
+      replies.set(stream.taskId, { step: stream.stepIndex, text: stream.text, status: stream.status });
+    }
+  }
+  const traceCount = (actions.data?.length ?? 0) + visibleTasks.length;
+  const waitingApproval = approvals.data?.some((approval) => approval.status === "PENDING");
+  const traceTitle = active && RUNNING_STATUSES.has(run.status)
+    ? waitingApproval ? t("agent.trace.waitingApproval") : RUN_STATUS_LABELS[run.status]
+    : t("agent.trace.completedWork");
+  const steps = [...new Set([...(actions.data ?? []).map((action) => action.stepIndex), ...visibleTasks.map(stepIndex)])]
+    .sort((left, right) => left - right);
 
   return <section aria-label={t("agent.run.title")} className="agent-run-conversation">
     <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString(getFormatLocale())}</time>{run.conversationTurn ? t("agent.run.roundSuffix", { "0": run.conversationTurn }) : ""}</p>
@@ -62,20 +85,27 @@ export function AgentRunConversation({ projectId, run, active }: {
     {tasks.isPending || actions.isPending ? <CanvasLoadingState compact label={t("agent.run.messagesLoading")} /> : null}
     {tasks.error ? <div className="agent-chat-error" role="alert">{t("agent.run.messagesFailed")}<Button variant="ghost" className="node-action" onClick={() => void tasks.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></div> : null}
     {actions.error ? <div className="agent-chat-error" role="alert">{t("agent.run.actionsFailed")}<Button variant="ghost" className="node-action" onClick={() => void actions.refetch()} type="button">{t("agent.run.retryActions")}</Button></div> : null}
-    {actions.data?.length ? <p className="agent-chat-eyebrow">{t("agent.run.actionSnapshotHint")}</p> : null}
-    {steps.map((step) => <Fragment key={step}>
-      {turns.filter((task) => stepIndex(task) === step).map((task) => {
-        const reply = task.output?.assistantText;
-        return typeof reply === "string" && reply.trim() ? <AgentChatMessage key={task.id} role="assistant">{reply}</AgentChatMessage> : null;
-      })}
-      {(actions.data ?? []).filter((action) => action.stepIndex === step).map((action) =>
-        <AgentChatTaskRow key={action.id} label={action.summary} status="completed"
-          detail={`${TOOL_LABELS[action.toolName] ?? action.toolName} · ${new Date(action.completedAt).toLocaleString(getFormatLocale())}`} />)}
-    </Fragment>)}
-    {visibleTasks.length ? <div className="agent-chat-tasks" aria-label={t("agent.run.executeTask")}>
-      {visibleTasks.map((task) => <AgentChatTaskRow key={task.id} label={`${TASK_LABELS[task.kind]} · ${task.stepKey}`}
-        status={TASK_STATUS[task.status]} detail={t("agent.run.attemptSummary", { "0": task.attemptNo, "1": taskErrorDetail(task.errorCode), "2": task.cancelRequested ? t("agent.run.stopRequestedSuffix") : "" })} />)}
-    </div> : null}
+    {traceCount ? <AgentExecutionTrace title={traceTitle} count={traceCount} active={active}>
+      {steps.map((step) => <div className="agent-execution-trace__round" key={step}>
+        <p className="agent-execution-trace__round-label">{t("agent.trace.round", { "0": step + 1 })}</p>
+        {(actions.data ?? []).filter((action) => action.stepIndex === step).map((action) =>
+          <AgentChatTaskRow key={action.id} label={action.summary} status="completed"
+            toolLabel={TOOL_LABELS[action.toolName] ?? action.toolName}
+            detail={`${TOOL_LABELS[action.toolName] ?? action.toolName} · ${new Date(action.completedAt).toLocaleString(getFormatLocale())}`} />)}
+        {visibleTasks.filter((task) => stepIndex(task) === step).map((task) =>
+          <AgentChatTaskRow key={task.id} label={TASK_LABELS[task.kind]}
+            status={TASK_STATUS[task.status]} detail={t("agent.run.attemptSummary", { "0": task.attemptNo, "1": taskErrorDetail(task.errorCode), "2": task.cancelRequested ? t("agent.run.stopRequestedSuffix") : "" })} />)}
+      </div>)}
+    </AgentExecutionTrace> : null}
+    {approvals.error ? <div className="agent-chat-error" role="alert">{t("agent.approval.loadFailed")}
+      <Button variant="ghost" size="sm" type="button" onClick={() => void approvals.refetch()}>{t("common.retry")}</Button></div> : null}
+    {(approvals.data ?? []).map((approval) => <AgentMediaApprovalCard key={approval.id}
+      projectId={projectId} runId={run.id} approval={approval} disabled={!active || run.status !== "WAITING_TASKS"} />)}
+    {[...replies.entries()].sort((left, right) => left[1].step - right[1].step).map(([id, reply]) =>
+      <AgentChatMessage key={id} role="assistant" streaming={reply.status === "STREAMING"}>
+        {reply.text}
+        {reply.status === "INTERRUPTED" ? <p className="agent-chat-stream-notice">{t("agent.trace.interrupted")}</p> : null}
+      </AgentChatMessage>)}
     {active && run.status === "BLOCKED" ? <BlockedRunNotice projectId={projectId} runId={run.id} /> : null}
     {unknownTasks.map((task) => <UnknownTaskRetryPanel key={task.id} projectId={projectId} taskId={task.id}
       taskVersion={task.version} errorCode={task.errorCode} />)}

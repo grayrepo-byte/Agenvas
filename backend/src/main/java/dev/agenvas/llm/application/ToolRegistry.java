@@ -29,6 +29,24 @@ public class ToolRegistry {
              "properties":{"taskIds":{"type":"array","minItems":1,"maxItems":12,
                "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
             """;
+    private static final String PROPOSE_MEDIA_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["outputs"],
+             "properties":{"outputs":{"type":"array","minItems":1,"maxItems":6,
+               "items":{"type":"object","additionalProperties":false,
+                 "required":["kind","title","prompt"],"properties":{
+                   "kind":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},
+                   "title":{"type":"string","minLength":1,"maxLength":160},
+                   "prompt":{"type":"string","maxLength":20000},
+                   "capabilityId":{"type":"string","format":"uuid"},
+                   "parameters":{"type":"object"},
+                   "durationSeconds":{"type":"integer","minimum":1,"maximum":60},
+                   "videoInputMode":{"type":"string","enum":["TEXT","START_END","GENERAL_REFERENCE"]},
+                   "mediaInputs":{"type":"array","maxItems":14,"items":{
+                     "type":"object","additionalProperties":false,"required":["versionId","role"],
+                     "properties":{"versionId":{"type":"string","format":"uuid"},
+                       "role":{"type":"string","enum":["REFERENCE","START_FRAME","END_FRAME",
+                         "AUDIO_REFERENCE","VIDEO_REFERENCE"]}}}}}}}}}
+            """;
 
     /** 文本产物只允许标题、正文和格式字段。 */
     private static final String CREATE_TEXT_SCHEMA = """
@@ -86,6 +104,13 @@ public class ToolRegistry {
                         "Read status only for up to twelve tasks in this Run; ordinary progress "
                                 + "arrives through the scheduler, so do not repeatedly poll",
                         READ_TASK_STATUS_SCHEMA),
+                definition("list_media_capabilities", "List published media capabilities and supported inputs; "
+                        + "never infer unavailable capabilities", READ_PROJECT_SUMMARY_SCHEMA),
+                definition("propose_media_generation", "Propose one fixed batch of image, video or audio generation. "
+                        + "The server pauses this Run for user approval and archived outcomes. "
+                        + "Never poll read_task_status for these tasks or claim user authorization. "
+                        + "Use one output per request, with generationCount=1; await the server's final tool reply.",
+                        PROPOSE_MEDIA_SCHEMA),
                 definition("create_text", "Create a text artifact in the current project",
                         CREATE_TEXT_SCHEMA),
                 definition("revise_artifact",

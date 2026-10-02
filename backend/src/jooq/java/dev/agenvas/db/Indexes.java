@@ -7,6 +7,7 @@ package dev.agenvas.db;
 import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
+import dev.agenvas.db.tables.AgentMediaApproval;
 import dev.agenvas.db.tables.AgentRun;
 import dev.agenvas.db.tables.AppUser;
 import dev.agenvas.db.tables.Artifact;
@@ -53,6 +54,9 @@ public class Indexes {
 
     public static final Index IX_AGENT_BINDING_AGENT = Internal.createIndex(DSL.name("ix_agent_binding_agent"), AgentBinding.AGENT_BINDING, new OrderField[] { AgentBinding.AGENT_BINDING.PROJECT_ID, AgentBinding.AGENT_BINDING.AGENT_INSTANCE_ID }, false);
     public static final Index IX_AGENT_INSTANCE_PROJECT = Internal.createIndex(DSL.name("ix_agent_instance_project"), AgentInstance.AGENT_INSTANCE, new OrderField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.CREATED_AT, AgentInstance.AGENT_INSTANCE.ID }, false);
+    public static final Index IX_AGENT_MEDIA_APPROVAL_OUTSTANDING = Internal.createIndex(DSL.name("ix_agent_media_approval_outstanding"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);
+    public static final Index IX_AGENT_MEDIA_APPROVAL_RUN = Internal.createIndex(DSL.name("ix_agent_media_approval_run"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.PROJECT_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.RUN_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.CREATED_AT, AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);
+    public static final Index IX_AGENT_MEDIA_APPROVAL_TASKS = Internal.createIndex(DSL.name("ix_agent_media_approval_tasks"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.TASK_IDS_JSON }, false);
     public static final Index IX_AGENT_RUN_PROJECT_CREATED = Internal.createIndex(DSL.name("ix_agent_run_project_created"), AgentRun.AGENT_RUN, new OrderField[] { AgentRun.AGENT_RUN.PROJECT_ID, AgentRun.AGENT_RUN.CREATED_AT.desc(), AgentRun.AGENT_RUN.ID.desc() }, false);
     public static final Index IX_AGENT_RUN_STATUS = Internal.createIndex(DSL.name("ix_agent_run_status"), AgentRun.AGENT_RUN, new OrderField[] { AgentRun.AGENT_RUN.STATUS, AgentRun.AGENT_RUN.UPDATED_AT }, false);
     public static final Index IX_ARTIFACT_PROJECT_ACTIVE = Internal.createIndex(DSL.name("ix_artifact_project_active"), Artifact.ARTIFACT, new OrderField[] { Artifact.ARTIFACT.PROJECT_ID, Artifact.ARTIFACT.ARCHIVED_AT, Artifact.ARTIFACT.CREATED_AT.desc() }, false);

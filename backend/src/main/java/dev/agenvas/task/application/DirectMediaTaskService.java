@@ -22,6 +22,8 @@ import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
@@ -41,6 +43,7 @@ import javax.imageio.ImageIO;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -75,13 +78,14 @@ public class DirectMediaTaskService {
     private final ObjectMapper mapper;
     private final Clock clock;
     private final ProjectService projects;
+    private final AgentRunService runs;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
             CanvasService canvas,
             MediaCapabilityService capabilities,
             ProviderProperties provider, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock, ProjectService projects) {
+            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -95,126 +99,81 @@ public class DirectMediaTaskService {
         this.mapper = mapper;
         this.clock = clock;
         this.projects = projects;
+        this.runs = runs;
     }
 
     @Transactional
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             long expectedDraftVersion, String commandKey) {
+        return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
+                expectedDraftVersion, commandKey);
+    }
+
+    /** Only the approval application service calls this after recording the user's decision. */
+    @Transactional
+    public Task runApproved(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey) {
+        if (runId == null || approvalId == null) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
+        }
+        return runInternal(ownerId, projectId, runId, approvalId, artifactId, canvasItemId,
+                expectedDraftVersion, commandKey);
+    }
+
+    private Task runInternal(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey) {
         if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             // The project event row lock serializes acceptance with all other card commands.
-            Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
+            AgentRun run = runId == null ? null : runs.get(ownerId, projectId, runId);
+            if (run != null && (run.status().terminal() || run.status() == AgentRun.Status.CANCEL_REQUESTED)) {
+                throw conflict(ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"));
+            }
+            Task prior = (runId == null ? tasks.findDirectByStepKey(ownerId, projectId, commandKey)
+                    : tasks.findAgentByStepKey(ownerId, projectId, runId, commandKey)).orElse(null);
             if (prior != null) {
                 String priorSourceCanvasItemId = prior.input().path("sourceCanvasItemId")
                         .asText(prior.input().path("canvasItemId").asText());
                 if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
                         || !priorSourceCanvasItemId.equals(canvasItemId.toString())
-                        || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion) {
+                        || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion
+                        || !prior.input().path(Task.APPROVAL_INPUT_PROPERTY).asText("")
+                                .equals(approvalId == null ? "" : approvalId.toString())) {
                     throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-key-has-been-used-in-different-card"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
-            Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
-            CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId,
-                    canvasItemId);
-            if (!canvasItem.subjectId().equals(artifactId)) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-run-target-must-be-the-canvas-card-of-the"));
-            }
+            // Occupancy lookup is internal: authorize the target before returning another command's task.
+            Artifact authorizedTarget = artifacts.get(ownerId, projectId, artifactId).artifact();
+            CanvasItem authorizedCard = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
+            requireTargetCard(authorizedTarget, authorizedCard);
             Task occupying = tasks.findOccupyingDirectMediaTask(projectId, canvasItemId)
                     .orElse(null);
-            if (occupying != null) return ProjectEventService.Change.unchanged(occupying);
-            if (target.archivedAt() != null) throw conflict(ApiMessage.of("api.direct-media-task-service.archived-cards-cannot-be-run"));
-            Task.Kind kind = switch (target.kind()) {
-                case IMAGE -> Task.Kind.IMAGE_GENERATION;
-                case VIDEO -> Task.Kind.VIDEO_GENERATION;
-                case AUDIO -> Task.Kind.AUDIO_GENERATION;
-                default -> throw invalid(ApiMessage.of("api.direct-media-task-service.only-picture-or-video-cards-can-be-run-directly"));
-            };
-            MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
-            if (draft.version() != expectedDraftVersion) throw conflict(ApiMessage.of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
-            MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
-            var definition = capabilities.runningHubDefinition(selected);
+            if (occupying != null) {
+                if (runId != null) throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
+                return ProjectEventService.Change.unchanged(occupying);
+            }
+            PreparedMedia prepared = prepare(ownerId, projectId, authorizedTarget, authorizedCard, expectedDraftVersion);
+            Artifact target = prepared.target();
+            CanvasItem canvasItem = prepared.canvasItem();
+            MediaDraft draft = prepared.draft();
+            Task.Kind kind = prepared.kind();
+            MediaCapabilityBinding binding = prepared.binding();
+            var definition = prepared.definition();
             boolean dynamic = definition != null;
-            if (!dynamic && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
-            if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
-                    && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
-                    && (draft.mediaInputs().isEmpty()
-                            || draft.mediaInputs().getFirst().role()
-                                    != MediaDraft.InputRole.START_FRAME)) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.before-running-the-first-and-last-frame-video-you-need"));
-            }
-            if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
-                    && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
-                    && draft.mediaInputs().isEmpty()) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-all-in-one-reference-video-requires-at-least-one"));
-            }
-            JsonNode configuredSettings = capabilities.settings(selected);
-            Integer duration = draft.durationSeconds();
-            if (kind == Task.Kind.VIDEO_GENERATION && duration == null
-                    && configuredSettings.has("defaultDurationSeconds")) {
-                duration = configuredSettings.path("defaultDurationSeconds").intValue();
-            }
-            if (dynamic && duration == null) {
-                var durationField = definition.fields().stream().filter(field -> field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.DURATION_SECONDS).findFirst().orElse(null);
-                if (durationField != null && durationField.defaultValue() != null && !durationField.defaultValue().isNull()) duration = durationField.defaultValue().asInt();
-            }
-            if (!dynamic && kind == Task.Kind.VIDEO_GENERATION && duration == null) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.you-need-to-select-the-duration-before-running-the-video"));
-            }
+            ObjectNode dynamicParameters = prepared.dynamicParameters();
+            ImageGenerationParameters imageParameters = prepared.imageParameters();
+            VideoGenerationParameters videoParameters = prepared.videoParameters();
+            Integer duration = prepared.duration();
             int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
-            MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
-            if (!selected.equals(binding)) throw conflict(ApiMessage.of("api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
-            if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
-            }
-            ObjectNode dynamicParameters = null;
-            if (dynamic) {
-                dynamicParameters = mapper.createObjectNode();
-                dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
-                        definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true));
-                dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
-            } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
-            validateReferenceAssets(ownerId, projectId, draft, binding);
-            ImageGenerationParameters imageParameters = !dynamic && kind == Task.Kind.IMAGE_GENERATION
-                    ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
-            VideoGenerationParameters videoParameters = !dynamic && kind == Task.Kind.VIDEO_GENERATION
-                    ? VideoGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
-            if (imageParameters != null) {
-                var policy = capabilities.inputPolicy(binding);
-                imageParameters.requireSupported(policy.supportedImageAspectRatios(),
-                        policy.supportedImageResolutions(), policy.supportedImageQualities(),
-                        policy.supportsTransparentBackground());
-            }
-            String renderedPrompt = renderPrompt(draft);
-            String autodlResolution = null;
-            String resolutionTier = null;
-            if (videoParameters != null && videoParameters.videoResolution() != null
-                    && !AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId()))
-                throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
-            if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())) {
-                var workflow = AutoDlWorkflows.require(configuredSettings);
-                int audios = (int) draft.mediaInputs().stream().filter(reference ->
-                        reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
-                workflow.validate(renderedPrompt, seconds, draft.videoInputMode().name(),
-                        draft.mediaInputs().size() - audios, audios);
-                if ("START_END".equals(workflow.mode()) && draft.mediaInputs().stream().noneMatch(reference ->
-                        reference.role() == MediaDraft.InputRole.END_FRAME)) throw invalid(ApiMessage.of("api.direct-media-task-service.this-autodl-workflow-requires-first-and-last-frames"));
-                String ratio = videoParameters.aspectRatio();
-                if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                    ratio = switch (projects.get(ownerId, projectId).aspectRatio()) {
-                        case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
-                        case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
-                        case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
-                    };
-                }
-                resolutionTier = AutoDlWorkflows.selectedResolution(configuredSettings, videoParameters.videoResolution());
-                autodlResolution = workflow.resolution(resolutionTier, ratio);
-            }
-            String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
-                    .connectionVersion().originSha256();
+            JsonNode configuredSettings = prepared.configuredSettings();
+            String renderedPrompt = prepared.renderedPrompt();
+            String autodlResolution = prepared.autodlResolution();
+            String resolutionTier = prepared.resolutionTier();
+            String originHash = prepared.originHash();
             Instant now = clock.instant();
             int outputCount = imageParameters == null ? 1 : imageParameters.generationCount();
             Task primary = null;
@@ -227,6 +186,7 @@ public class DirectMediaTaskService {
                                 UUID.randomUUID(), draft.version(), outputIndex);
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", MEDIA_TASK_INPUT_SCHEMA_VERSION);
+                if (approvalId != null) input.put(Task.APPROVAL_INPUT_PROPERTY, approvalId.toString());
                 if (dynamic) input.put("providerProtocol", "RUNNINGHUB_V2");
                 input.put("artifactId", artifactId.toString());
                 input.put("sourceCanvasItemId", canvasItemId.toString());
@@ -286,7 +246,7 @@ public class DirectMediaTaskService {
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 String stepKey = outputIndex == 0 ? commandKey
                         : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
-                Task task = new Task(UUID.randomUUID(), projectId, null, stepKey, kind,
+                Task task = new Task(UUID.randomUUID(), projectId, runId, stepKey, kind,
                         Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null, null,
                         1, now, null, null, 0, 0, null, now, now, null);
                 tasks.create(task, List.of());
@@ -309,6 +269,193 @@ public class DirectMediaTaskService {
             }
             return ProjectEventService.Change.unchanged(java.util.Objects.requireNonNull(primary));
         }).value();
+    }
+
+
+    private void requireTargetCard(Artifact target, CanvasItem canvasItem) {
+        if (!canvasItem.subjectId().equals(target.id())) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-run-target-must-be-the-canvas-card-of-the"));
+        }
+    }
+
+    private PreparedMedia prepare(UUID ownerId, UUID projectId, UUID artifactId,
+            UUID canvasItemId, long expectedDraftVersion) {
+        Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
+        CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
+        return prepare(ownerId, projectId, target, canvasItem, expectedDraftVersion);
+    }
+
+    private PreparedMedia prepare(UUID ownerId, UUID projectId, Artifact target,
+            CanvasItem canvasItem, long expectedDraftVersion) {
+        requireTargetCard(target, canvasItem);
+        if (target.archivedAt() != null) throw conflict(ApiMessage.of("api.direct-media-task-service.archived-cards-cannot-be-run"));
+        Task.Kind kind = switch (target.kind()) {
+            case IMAGE -> Task.Kind.IMAGE_GENERATION;
+            case VIDEO -> Task.Kind.VIDEO_GENERATION;
+            case AUDIO -> Task.Kind.AUDIO_GENERATION;
+            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.only-picture-or-video-cards-can-be-run-directly"));
+        };
+        MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
+        if (draft.version() != expectedDraftVersion) throw conflict(ApiMessage.of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
+        MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
+        var definition = capabilities.runningHubDefinition(selected);
+        boolean dynamic = definition != null;
+        if (!dynamic && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
+        if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
+                && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
+                && (draft.mediaInputs().isEmpty()
+                        || draft.mediaInputs().getFirst().role()
+                                != MediaDraft.InputRole.START_FRAME)) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.before-running-the-first-and-last-frame-video-you-need"));
+        }
+        if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
+                && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
+                && draft.mediaInputs().isEmpty()) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.the-all-in-one-reference-video-requires-at-least-one"));
+        }
+        JsonNode configuredSettings = capabilities.settings(selected);
+        Integer duration = draft.durationSeconds();
+        if (kind == Task.Kind.VIDEO_GENERATION && duration == null
+                && configuredSettings.has("defaultDurationSeconds")) {
+            duration = configuredSettings.path("defaultDurationSeconds").intValue();
+        }
+        if (dynamic && duration == null) {
+            var durationField = definition.fields().stream().filter(field -> field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.DURATION_SECONDS).findFirst().orElse(null);
+            if (durationField != null && durationField.defaultValue() != null && !durationField.defaultValue().isNull()) duration = durationField.defaultValue().asInt();
+        }
+        if (!dynamic && kind == Task.Kind.VIDEO_GENERATION && duration == null) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.you-need-to-select-the-duration-before-running-the-video"));
+        }
+        int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
+        MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
+        if (!selected.equals(binding)) throw conflict(ApiMessage.of("api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
+        if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
+        }
+        ObjectNode dynamicParameters = null;
+        if (dynamic) {
+            dynamicParameters = mapper.createObjectNode();
+            dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
+                    definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true));
+            dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
+        } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+        validateReferenceAssets(ownerId, projectId, draft, binding);
+        ImageGenerationParameters imageParameters = !dynamic && kind == Task.Kind.IMAGE_GENERATION
+                ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
+        VideoGenerationParameters videoParameters = !dynamic && kind == Task.Kind.VIDEO_GENERATION
+                ? VideoGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
+        if (imageParameters != null) {
+            var policy = capabilities.inputPolicy(binding);
+            imageParameters.requireSupported(policy.supportedImageAspectRatios(),
+                    policy.supportedImageResolutions(), policy.supportedImageQualities(),
+                    policy.supportsTransparentBackground());
+        }
+        String renderedPrompt = renderPrompt(draft);
+        String autodlResolution = null;
+        String resolutionTier = null;
+        if (videoParameters != null && videoParameters.videoResolution() != null
+                && !AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId()))
+            throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+        if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())) {
+            var workflow = AutoDlWorkflows.require(configuredSettings);
+            int audios = (int) draft.mediaInputs().stream().filter(reference ->
+                    reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+            workflow.validate(renderedPrompt, seconds, draft.videoInputMode().name(),
+                    draft.mediaInputs().size() - audios, audios);
+            if ("START_END".equals(workflow.mode()) && draft.mediaInputs().stream().noneMatch(reference ->
+                    reference.role() == MediaDraft.InputRole.END_FRAME)) throw invalid(ApiMessage.of("api.direct-media-task-service.this-autodl-workflow-requires-first-and-last-frames"));
+            String ratio = videoParameters.aspectRatio();
+            if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+                ratio = switch (projects.get(ownerId, projectId).aspectRatio()) {
+                    case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
+                    case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
+                    case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
+                };
+            }
+            resolutionTier = AutoDlWorkflows.selectedResolution(configuredSettings, videoParameters.videoResolution());
+            autodlResolution = workflow.resolution(resolutionTier, ratio);
+        }
+        String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
+                .connectionVersion().originSha256();
+        return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
+                dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
+                renderedPrompt, autodlResolution, resolutionTier, originHash);
+    }
+
+    private record PreparedMedia(Artifact target, CanvasItem canvasItem, MediaDraft draft,
+            Task.Kind kind, MediaCapabilityBinding binding,
+            dev.agenvas.provider.domain.RunningHubDefinition definition,
+            ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
+            VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
+            String renderedPrompt, String autodlResolution, String resolutionTier, String originHash) {}
+
+    /** Validates the exact proposal without creating cards, tasks, reservations or provider requests. */
+    @Transactional(readOnly = true)
+    public MediaPreflight preflight(UUID ownerId, UUID projectId, UUID artifactId,
+            UUID canvasItemId, long expectedDraftVersion) {
+        if (canvasItemId == null || expectedDraftVersion < 0) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
+        }
+        PreparedMedia prepared = prepare(ownerId, projectId, artifactId, canvasItemId, expectedDraftVersion);
+        if (tasks.findOccupyingDirectMediaTask(projectId, canvasItemId).isPresent()) {
+            throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
+        }
+        int outputCount = prepared.imageParameters() == null ? 1 : prepared.imageParameters().generationCount();
+        JsonNode effectiveParameters = prepared.dynamicParameters() != null ? prepared.dynamicParameters()
+                : prepared.imageParameters() != null ? prepared.imageParameters().toJson(mapper)
+                : prepared.videoParameters() != null ? prepared.videoParameters().toJson(mapper)
+                : AudioGenerationParameters.parse(capabilities.parameters(prepared.binding(),
+                        prepared.draft().parameters())).toJson(mapper);
+        JsonNode pricing = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(
+                prepared.configuredSettings(), prepared.resolutionTier());
+        ObjectNode snapshot = mapper.createObjectNode();
+        snapshot.put("schemaVersion", MEDIA_TASK_INPUT_SCHEMA_VERSION);
+        snapshot.put("artifactId", artifactId.toString());
+        snapshot.put("artifactVersion", prepared.target().version());
+        snapshot.put("canvasItemId", canvasItemId.toString());
+        if (prepared.canvasItem().selectedVersionId() == null) snapshot.putNull("parentVersionId");
+        else snapshot.put("parentVersionId", prepared.canvasItem().selectedVersionId().toString());
+        snapshot.put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId, projectId, canvasItemId));
+        snapshot.put("draftVersion", expectedDraftVersion);
+        snapshot.put("prompt", prepared.renderedPrompt());
+        snapshot.put("structuralPrompt", prepared.draft().prompt());
+        snapshot.set("parameters", effectiveParameters);
+        snapshot.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
+        snapshot.set("mentions", mapper.valueToTree(prepared.draft().mentions()));
+        snapshot.set("binding", mapper.valueToTree(prepared.binding()));
+        snapshot.put("kind", prepared.kind().name());
+        snapshot.put("mode", prepared.kind() == Task.Kind.IMAGE_GENERATION ? "GENERAL_REFERENCE"
+                : prepared.kind() == Task.Kind.AUDIO_GENERATION ? "TEXT" : prepared.draft().videoInputMode().name());
+        if (prepared.duration() != null) snapshot.put("durationSeconds", prepared.duration());
+        if (prepared.autodlResolution() != null) snapshot.put("providerResolution", prepared.autodlResolution());
+        snapshot.put("providerConfigVersion", provider.configVersion());
+        if (pricing != null) snapshot.set("mediaPricing", pricing);
+        ObjectNode summary = mapper.createObjectNode();
+        summary.put("kind", prepared.kind().name());
+        summary.put("prompt", prepared.renderedPrompt());
+        summary.set("parameters", effectiveParameters.deepCopy());
+        summary.put("capabilityId", prepared.binding().capabilityId().toString());
+        summary.put("adapterId", prepared.binding().adapterId());
+        summary.put("outputCount", outputCount);
+        // Approval clients must see exactly which immutable material versions will be sent.
+        summary.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
+        if (prepared.kind() == Task.Kind.VIDEO_GENERATION) {
+            summary.put("videoInputMode", prepared.draft().videoInputMode().name());
+        }
+        if (prepared.duration() != null) summary.put("durationSeconds", prepared.duration());
+        summary.put("priceUnknown", pricing == null);
+        if (pricing != null) summary.set("mediaPricing", pricing.deepCopy());
+        return new MediaPreflight(prepared.kind(), prepared.binding(), Sha256.hex(snapshot.toString()),
+                outputCount, summary);
+    }
+
+    public record MediaPreflight(Task.Kind kind, MediaCapabilityBinding binding,
+            String frozenInputHash, int outputCount, JsonNode safeSummary) {}
+
+    /** Holds catalog rows throughout approval validation and task creation, closing configuration races. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean lockApprovalBinding(MediaCapabilityBinding binding) {
+        return binding != null && tasks.lockCurrentMediaBinding(binding);
     }
 
     /** Accepts one image post-processing command while pinning the exact visible source version. */

@@ -53,6 +53,10 @@ export type AgentRunList = components["schemas"]["AgentRunList"];
 export type AgentConversation = components["schemas"]["AgentConversation"];
 export type AgentConversationList = components["schemas"]["AgentConversationList"];
 export type RunAction = components["schemas"]["RunAction"];
+export type AgentMediaApproval = components["schemas"]["AgentMediaApproval"];
+export type AgentMediaApprovalDecision = components["schemas"]["AgentMediaApprovalDecisionRequest"];
+export type AssistantTurnStreamProjection = components["schemas"]["AssistantTurnStream"];
+export type AgentTurnStreamEventPayload = components["schemas"]["AgentTurnStreamEventPayload"];
 export type RunPreflight = components["schemas"]["RunPreflight"];
 export type CreateRunRequest = components["schemas"]["CreateRunRequest"];
 export type Task = components["schemas"]["Task"];
@@ -695,6 +699,24 @@ export async function listRunActions(projectId: string, runId: string): Promise<
   return readJson<RunAction[]>(
     `/api/v1/projects/${projectId}/runs/${runId}/actions`,
     t("api.errors.actionsUnavailable"),
+  );
+}
+
+/** Reads frozen, owner-scoped media proposals without contacting a Provider. */
+export async function listRunMediaApprovals(projectId: string, runId: string): Promise<AgentMediaApproval[]> {
+  return readJson<AgentMediaApproval[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/media-approvals`,
+    t("api.errors.actionsUnavailable"),
+  );
+}
+
+/** An explicit user decision authorizes one frozen batch under CAS and command deduplication. */
+export async function decideRunMediaApproval(projectId: string, runId: string, approvalId: string,
+  body: AgentMediaApprovalDecision, idempotencyKey: string): Promise<AgentMediaApproval> {
+  return writeJson<AgentMediaApproval>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}` +
+      `/media-approvals/${encodeURIComponent(approvalId)}/decision`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
   );
 }
 

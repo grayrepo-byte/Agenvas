@@ -1,7 +1,7 @@
 import { t, useLocale } from "../../shared/i18n";
-import { CaretDown, Check, Clock, MinusCircle, Question, Robot,
+import { CaretDown, Check, Clock, MinusCircle, Question, Robot, Sparkle, Wrench,
   User, WarningCircle, type Icon } from "@phosphor-icons/react";
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import "./AgentChatPrimitives.css";
 
@@ -23,18 +23,20 @@ const TASK_STATUS_ICONS: Record<Exclude<TaskStatus, "running">, Icon> = {
   pending: Clock, completed: Check, failed: WarningCircle, unknown: Question, canceled: MinusCircle,
 };
 
-export function AgentChatMessage({ role, children, label }: {
+export function AgentChatMessage({ role, children, label, streaming = false }: {
   role: "user" | "assistant";
   children: ReactNode;
   label?: string;
+  streaming?: boolean;
 }) {
   useLocale();
   const labelId = useId();
   const RoleIcon = role === "user" ? User : Robot;
-  return <article className={`agent-chat-message agent-chat-message--${role}`} aria-labelledby={labelId}>
-    <div className="agent-chat-message__identity" id={labelId}>
+  return <article className={`agent-chat-message agent-chat-message--${role}${streaming ? " agent-chat-message--streaming" : ""}`} aria-labelledby={labelId} aria-busy={streaming}>
+    <div className="agent-chat-message__identity">
       <RoleIcon size={CHAT_ICON_SIZE} aria-hidden="true" />
-      <span>{label ?? MESSAGE_ROLE_LABELS[role]}</span>
+      <span id={labelId}>{label ?? MESSAGE_ROLE_LABELS[role]}</span>
+      {streaming ? <span className="agent-chat-stream-label" role="status">{t("agent.trace.streaming")}</span> : null}
     </div>
     <div className="agent-chat-message__body">{children}</div>
   </article>;
@@ -57,16 +59,18 @@ function TaskHeadline({ label, status }: { label: string; status: TaskStatus }) 
 }
 
 /** Detail is a verifiable action/result supplied by the caller, never a model reasoning trace. */
-export function AgentChatTaskRow({ label, status, detail }: {
+export function AgentChatTaskRow({ label, status, detail, toolLabel }: {
   label: string;
   status: TaskStatus;
   detail?: string;
+  toolLabel?: string;
 }) {
   useLocale();
   return <div className={`agent-chat-task agent-chat-task--${status}`}>
     {detail ? <details className="agent-chat-task__disclosure nodrag nowheel">
       <summary className="agent-chat-task__headline">
         <TaskHeadline label={label} status={status} />
+        {toolLabel ? <span className="agent-chat-tool-chip"><Wrench size={CHAT_ICON_SIZE} aria-hidden="true" />{toolLabel}</span> : null}
         <CaretDown className="agent-chat-task__caret" size={CHAT_ICON_SIZE} aria-hidden="true" />
       </summary>
       <div className="agent-chat-task__detail">{detail}</div>
@@ -74,6 +78,27 @@ export function AgentChatTaskRow({ label, status, detail }: {
       <TaskHeadline label={label} status={status} />
     </div>}
   </div>;
+}
+
+/** The trace describes public work and persisted outcomes, never hidden reasoning. */
+export function AgentExecutionTrace({ title, count, active, children }: {
+  title: string;
+  count: number;
+  active: boolean;
+  children: ReactNode;
+}) {
+  useLocale();
+  const [expanded, setExpanded] = useState(active);
+  return <details className="agent-execution-trace nodrag nowheel" open={expanded}
+    onToggle={(event) => setExpanded(event.currentTarget.open)}>
+    <summary className="agent-execution-trace__summary">
+      <Sparkle size={CHAT_ICON_SIZE} aria-hidden="true" />
+      <span>{title}</span>
+      <small>{t("agent.trace.operationCount", { "0": count })}</small>
+      <CaretDown size={CHAT_ICON_SIZE} className="agent-execution-trace__caret" aria-hidden="true" />
+    </summary>
+    <div className="agent-execution-trace__steps">{children}</div>
+  </details>;
 }
 
 /** The caller owns every approval action and supplies its complete review content. */

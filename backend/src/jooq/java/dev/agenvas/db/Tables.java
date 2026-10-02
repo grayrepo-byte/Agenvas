@@ -7,6 +7,7 @@ package dev.agenvas.db;
 import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
+import dev.agenvas.db.tables.AgentMediaApproval;
 import dev.agenvas.db.tables.AgentRun;
 import dev.agenvas.db.tables.AppUser;
 import dev.agenvas.db.tables.Artifact;
@@ -84,6 +85,12 @@ public class Tables {
      * mutable run context.
      */
     public static final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
+
+    /**
+     * Immutable Agent media batch and explicit user decision; approval never
+     * performs network I/O.
+     */
+    public static final AgentMediaApproval AGENT_MEDIA_APPROVAL = AgentMediaApproval.AGENT_MEDIA_APPROVAL;
 
     /**
      * Persistent execution lifecycle with immutable input and policy snapshots.

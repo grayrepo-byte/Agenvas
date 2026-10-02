@@ -1,0 +1,129 @@
+package dev.agenvas.llm.infrastructure;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.sun.net.httpserver.HttpServer;
+import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.LlmProtocolCodec;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/** Uses the real Spring AI adapter with a synthetic local HTTP stream, never a paid Provider. */
+class SpringAiStreamingHttpTest {
+    private static final int CONFIG_VERSION = 7;
+    private static final long TIMEOUT_SECONDS = 10;
+    private static final String MODEL_ID = "synthetic-stream-model";
+
+    @Test
+    void emitsPublicTextBeforeEndOfStreamAndPreservesToolsAndUsageWithoutExecutingTools() throws Exception {
+        CountDownLatch publicTextReceived = new CountDownLatch(1);
+        CountDownLatch finishAllowed = new CountDownLatch(1);
+        AtomicInteger requests = new AtomicInteger();
+        AtomicInteger executions = new AtomicInteger();
+        AtomicReference<JsonNode> requestBody = new AtomicReference<>();
+        List<String> deltas = new CopyOnWriteArrayList<>();
+        ObjectMapper mapper = new ObjectMapper();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
+            requestBody.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream output = exchange.getResponseBody()) {
+                chunk(output, "{\"content\":\"Preparing \"}", null);
+                chunk(output, "{\"content\":\"a media proposal.\"}", null);
+                if (!finishAllowed.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) return;
+                chunk(output, "{\"tool_calls\":[{\"index\":0,\"id\":\"call-media-1\",\"type\":\"function\","
+                        + "\"function\":{\"name\":\"propose_media_generation\",\"arguments\":\"{\\\"kind\\\":\"}}]}", null);
+                chunk(output, "{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"IMAGE\\\"}\"}}]}", null);
+                chunk(output, "{}", "tool_calls");
+                event(output, "{\"id\":\"chatcmpl-stream\",\"object\":\"chat.completion.chunk\","
+                        + "\"created\":1700000000,\"model\":\"" + MODEL_ID + "\",\"choices\":[],"
+                        + "\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":3,\"total_tokens\":15}}");
+                event(output, "[DONE]");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        ToolCallback tool = new ToolCallback() {
+            @Override public ToolDefinition getToolDefinition() {
+                return ToolDefinition.builder().name("propose_media_generation")
+                        .description("Propose a media generation batch")
+                        .inputSchema("{\"type\":\"object\",\"properties\":{\"kind\":{\"type\":\"string\"}}}").build();
+            }
+            @Override public String call(String input) {
+                executions.incrementAndGet();
+                throw new AssertionError("The persistent runtime owns tool execution");
+            }
+        };
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+                    .apiKey("synthetic-unusable-key").model(MODEL_ID).maxRetries(0)
+                    .streamUsage(true).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
+            SpringAiChatGateway gateway = new SpringAiChatGateway(model, CONFIG_VERSION);
+            var future = executor.submit(() -> gateway.callStreaming(List.of(new UserMessage("Prepare an image")),
+                    List.of(tool), Map.of(), new ChatGateway.ConfigIdentity("spring-ai", CONFIG_VERSION), delta -> {
+                        deltas.add(delta);
+                        publicTextReceived.countDown();
+                    }));
+            try {
+                assertThat(publicTextReceived.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+                assertThat(future.isDone()).as("Text is delivered before the Provider completes").isFalse();
+            } finally {
+                finishAllowed.countDown();
+            }
+            var result = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertThat(requests).hasValue(1);
+            assertThat(requestBody.get().path("stream").asBoolean()).isTrue();
+            assertThat(requestBody.get().path("tools").get(0).path("function").path("name").asText())
+                    .isEqualTo("propose_media_generation");
+            assertThat(executions).hasValue(0);
+            assertThat(String.join("", deltas)).isEqualTo("Preparing a media proposal.");
+            var assistant = result.response().getResult().getOutput();
+            assertThat(assistant.getText()).isEqualTo("Preparing a media proposal.");
+            assertThat(assistant.getToolCalls()).hasSize(1);
+            assertThat(assistant.getToolCalls().getFirst().id()).isEqualTo("call-media-1");
+            assertThat(mapper.readTree(assistant.getToolCalls().getFirst().arguments()).path("kind").asText())
+                    .isEqualTo("IMAGE");
+            JsonNode checkpoint = new LlmProtocolCodec(mapper).response(result.response());
+            assertThat(checkpoint.path("metadata").path("usage").path("promptTokens").asInt()).isEqualTo(12);
+            assertThat(checkpoint.path("metadata").path("usage").path("completionTokens").asInt()).isEqualTo(3);
+        } finally {
+            finishAllowed.countDown();
+            server.stop(0);
+        }
+    }
+
+    private static void chunk(OutputStream output, String delta, String finish) throws java.io.IOException {
+        event(output, "{\"id\":\"chatcmpl-stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,"
+                + "\"model\":\"" + MODEL_ID + "\",\"choices\":[{\"index\":0,\"delta\":" + delta
+                + ",\"finish_reason\":" + (finish == null ? "null" : "\"" + finish + "\"") + "}]}");
+    }
+
+    private static void event(OutputStream output, String value) throws java.io.IOException {
+        output.write(("data: " + value + "\n\n").getBytes(StandardCharsets.UTF_8));
+        output.flush();
+    }
+}

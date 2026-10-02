@@ -11,6 +11,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.AgentTurnLeaseGuard;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import java.time.Clock;
 import java.util.Set;
 import java.util.UUID;
@@ -29,6 +30,7 @@ public class ToolExecutionService {
 
     /** {@code create_text} 允许模型提供的字段；所有服务端管理字段均不在此集合中。 */
     private static final Set<String> CREATE_TEXT_FIELDS = Set.of("title", "text", "format");
+    private static final int MAX_MEDIA_CAPABILITIES = 40;
 
     /** 以项目和所有者范围锁定 Run，并核对其当前执行状态。 */
     private final AgentRunRepository runs;
@@ -50,6 +52,8 @@ public class ToolExecutionService {
     private final ObjectMapper mapper;
     /** 为账本的开始与完成记录提供统一时间源。 */
     private final Clock clock;
+    private final AgentMediaApprovalService mediaApprovals;
+    private final MediaCapabilityService capabilities;
 
     /** 组装工具身份验证、持久化去重、业务应用服务及租约 fencing 边界。
      * @param runs 校验工具调用所属 Run 和项目权限
@@ -67,7 +71,8 @@ public class ToolExecutionService {
             ToolExecutionRepository ledger, ArtifactService artifacts,
             CreativeArtifactToolService creative, ReadToolService reader,
             ProjectEventService events, AgentTurnLeaseGuard leaseGuard,
-            ObjectMapper mapper, Clock clock) {
+            ObjectMapper mapper, Clock clock, AgentMediaApprovalService mediaApprovals,
+            MediaCapabilityService capabilities) {
         this.runs = runs;
         this.turns = turns;
         this.ledger = ledger;
@@ -78,6 +83,8 @@ public class ToolExecutionService {
         this.leaseGuard = leaseGuard;
         this.mapper = mapper;
         this.clock = clock;
+        this.mediaApprovals = mediaApprovals;
+        this.capabilities = capabilities;
     }
 
     /**
@@ -187,6 +194,9 @@ public class ToolExecutionService {
             case "read_selection" -> reader.selection(run, operationId, arguments);
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
             case "read_task_status" -> reader.taskStatus(context, operationId, arguments);
+            case "list_media_capabilities" -> mediaCapabilities(operationId, arguments);
+            case "propose_media_generation" -> mediaApprovals.propose(context, run,
+                    operationId, stepIndex, toolCallId, arguments);
             case "create_text" -> createText(context, run, operationId, arguments);
             case "revise_artifact" -> creative.reviseArtifact(context, run, operationId, arguments);
             case "place_artifacts" -> creative.placeArtifacts(context, run,
@@ -204,6 +214,35 @@ public class ToolExecutionService {
                         && saved.result() != null)
                 .orElseThrow(() -> new IllegalStateException("Completed tool result is missing"))
                 .result();
+    }
+
+    /** Exposes a bounded administrator-published catalog, with no endpoint or credential data. */
+    private JsonNode mediaCapabilities(UUID operationId, String arguments) {
+        JsonNode input;
+        try {
+            input = mapper.readTree(arguments);
+        } catch (RuntimeException malformed) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
+        if (input == null || !input.isObject() || !input.isEmpty()) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
+        var result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
+                .put("operationId", operationId.toString()).put("userVisibleSummary", "已读取可用媒体能力");
+        var available = result.putArray("capabilities");
+        for (var candidate : capabilities.publishedCandidates().stream().limit(MAX_MEDIA_CAPABILITIES).toList()) {
+            var entry = available.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
+                    .put("name", candidate.capabilityName()).put("kind", candidate.kind().name())
+                    .put("minimumSeconds", candidate.minimumSeconds()).put("maximumSeconds", candidate.maximumSeconds());
+            var policy = capabilities.inputPolicy(candidate.binding());
+            entry.set("inputPolicy", mapper.valueToTree(policy));
+            var definition = capabilities.runningHubDefinition(candidate.binding());
+            if (definition != null) {
+                // Only published scalar field/slot definitions; never forward Provider settings.
+                entry.set("fields", mapper.valueToTree(definition.fields()));
+            }
+        }
+        return result;
     }
 
     /**

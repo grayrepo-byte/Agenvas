@@ -7,15 +7,24 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
+import okhttp3.MediaType;
+import okio.BufferedSource;
+import okio.ForwardingSource;
+import okio.Okio;
 
 /** 限定模型请求只能访问已准入端点，并在连接时校验 DNS 解析结果。 */
 final class SafeLlmTransport {
+
+    /** The protocol checkpoint remains capped at 1 MiB; repeated SSE envelopes get fixed wire overhead. */
+    static final long MAX_STREAM_RESPONSE_BYTES = 4L * 1024 * 1024;
 
     /** 准入策略检查通过的配置端点，作为请求校验的来源。 */
     private final HttpUrl base;
@@ -82,6 +91,44 @@ final class SafeLlmTransport {
             response.close();
             throw new IOException("LLM endpoint redirect is forbidden");
         }
-        return response;
+        boolean streamingRequest = request.headers("Accept").stream()
+                .anyMatch(value -> value.toLowerCase(Locale.ROOT).contains("text/event-stream"));
+        MediaType responseType = response.body() == null ? null : response.body().contentType();
+        boolean streamingResponse = responseType != null && responseType.type().equalsIgnoreCase("text")
+                && responseType.subtype().equalsIgnoreCase("event-stream");
+        return streamingRequest || streamingResponse ? boundStream(response) : response;
+    }
+
+    /** The bound precedes SDK line parsing and tool-fragment accumulation, including unknown lengths. */
+    static Response boundStream(Response response) throws IOException {
+        ResponseBody original = response.body();
+        if (original == null) return response;
+        if (original.contentLength() > MAX_STREAM_RESPONSE_BYTES) {
+            response.close();
+            throw new IOException("LLM stream response exceeds the transport size limit");
+        }
+        BufferedSource source = Okio.buffer(new ForwardingSource(original.source()) {
+            private long consumed;
+
+            @Override
+            public long read(okio.Buffer sink, long byteCount) throws IOException {
+                // Read at most one byte beyond the remaining allowance, so even an oversized
+                // single SSE line is stopped before a parser can allocate its complete content.
+                long read = super.read(sink, Math.min(byteCount, MAX_STREAM_RESPONSE_BYTES - consumed + 1));
+                if (read != -1) consumed += read;
+                if (consumed > MAX_STREAM_RESPONSE_BYTES) {
+                    IOException exceeded = new IOException("LLM stream response exceeds the transport size limit");
+                    try { super.close(); } catch (IOException closeFailure) { exceeded.addSuppressed(closeFailure); }
+                    response.close();
+                    throw exceeded;
+                }
+                return read;
+            }
+        });
+        return response.newBuilder().body(new ResponseBody() {
+            @Override public MediaType contentType() { return original.contentType(); }
+            @Override public long contentLength() { return original.contentLength(); }
+            @Override public BufferedSource source() { return source; }
+        }).build();
     }
 }

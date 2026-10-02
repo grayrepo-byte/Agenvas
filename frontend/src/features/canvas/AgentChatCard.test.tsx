@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactFlowProvider } from "@xyflow/react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight
 import { server } from "../../test/server";
 import { AgentChatCard, type AgentChatCardData } from "./AgentChatCard";
 import { useCanvasStore } from "./canvasStore";
+import { runAssistantStreamKey, type AssistantTurnStream } from "./agentRunStream";
 
 const PROJECT_ID = "project-1";
 const AGENT_ID = "agent-1";
@@ -118,15 +119,75 @@ beforeEach(() => {
     http.get(RUNS_URL, () => HttpResponse.json({ items: [], nextCursor: null })),
     http.get(`${RUNS_URL}/:runId/tasks`, () => HttpResponse.json([])),
     http.get(`${RUNS_URL}/:runId/actions`, () => HttpResponse.json([])),
+    http.get(`${RUNS_URL}/:runId/media-approvals`, () => HttpResponse.json([])),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
   );
 });
 afterEach(() => {
   useCanvasStore.getState().setSelectedIds([]);
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe("AgentChatCard", () => {
+  it("follows growing streamed content only while the user remains at the bottom, with the composer outside scrolling content", async () => {
+    const observations: { callback: ResizeObserverCallback; observer: ResizeObserver; targets: Set<Element> }[] = [];
+    class ControlledResizeObserver implements ResizeObserver {
+      private readonly targets = new Set<Element>();
+      constructor(callback: ResizeObserverCallback) { observations.push({ callback, observer: this, targets: this.targets }); }
+      observe(target: Element) { this.targets.add(target); }
+      unobserve(target: Element) { this.targets.delete(target); }
+      disconnect() { this.targets.clear(); }
+    }
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    let contentHeight = 1200;
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => contentHeight);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(400);
+    const current = run({ status: "RUNNING" });
+    const client = mountCard(current);
+    await readyComposer();
+    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const body = card.querySelector<HTMLElement>(".agent-chat-body");
+    const transcript = card.querySelector<HTMLElement>(".agent-chat-transcript");
+    if (!body || !transcript) throw new Error("Chat scrolling elements are required");
+    await waitFor(() => expect(body.scrollTop).toBe(contentHeight));
+    const observation = observations.find((entry) => entry.targets.has(transcript));
+    if (!observation) throw new Error("Transcript resize observer is required");
+    expect(observation.targets).toEqual(new Set([transcript, body]));
+    const composer = screen.getByRole("form", { name: "发送新任务" });
+    expect(body).not.toContainElement(composer);
+    expect(body.nextElementSibling).toBe(composer);
+
+    const updateReply = (text: string, height: number) => {
+      act(() => {
+        contentHeight = height;
+        client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, current.id), [{
+          taskId: "stream-task", stepIndex: 0, streamEpoch: 1, chunkIndex: 1, text, status: "STREAMING",
+        }]);
+        observation.callback([], observation.observer);
+      });
+    };
+    body.scrollTop = contentHeight - body.clientHeight;
+    fireEvent.scroll(body);
+    updateReply("正在收到的第一段回复", 1600);
+    expect(await screen.findByText("正在收到的第一段回复")).toBeInTheDocument();
+    expect(body.scrollTop).toBe(1600);
+
+    body.scrollTop = 300;
+    fireEvent.scroll(body);
+    updateReply("正在收到的第一段回复以及更多内容", 1800);
+    expect(await screen.findByText("正在收到的第一段回复以及更多内容")).toBeInTheDocument();
+    expect(body.scrollTop).toBe(300);
+
+    body.scrollTop = contentHeight - body.clientHeight;
+    fireEvent.scroll(body);
+    updateReply("继续看到最新收到的回复", 2200);
+    expect(await screen.findByText("继续看到最新收到的回复")).toBeInTheDocument();
+    expect(body.scrollTop).toBe(2200);
+    cleanup();
+    expect(observation.targets.size).toBe(0);
+  });
+
   it("checks a new message before creating a run and sends only after the reviewed confirmation", async () => {
     let checks = 0;
     const requests: CreateRunRequest[] = [];
@@ -227,6 +288,7 @@ describe("AgentChatCard", () => {
     if (!body) throw new Error("Chat body is missing");
     await waitFor(() => expect(body.scrollTop).toBe(1200));
     body.scrollTop = 140;
+    fireEvent.scroll(body);
     await user.click(screen.getByRole("button", { name: "加载更早的消息" }));
     await waitFor(() => expect(screen.getAllByRole("article", { name: "你" })).toHaveLength(2));
     expect(screen.getAllByRole("article", { name: "你" })[0]).toHaveTextContent(historical.instruction);

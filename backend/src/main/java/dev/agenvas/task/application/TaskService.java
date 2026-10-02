@@ -7,6 +7,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.event.application.ProjectEventService;
+import dev.agenvas.event.application.ProjectEventRecorded;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -22,12 +23,14 @@ import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.usage.application.UsageService;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +41,12 @@ import tools.jackson.databind.node.ObjectNode;
 /** 创建带固定输入和依赖关系的任务，并通过租约 epoch 约束 Worker 的每次状态写入。 */
 @Service
 public class TaskService {
+
+    public static final String AGENT_STREAM_PROPERTY = "assistantStream";
+    private static final int MAX_AGENT_STREAM_BYTES = 1024 * 1024;
+    private static final long FIRST_STREAM_CHUNK = 0;
+
+    public enum AgentStreamStatus { STREAMING, COMPLETED, INTERRUPTED }
 
     private static final int MAX_DEPENDENCIES = 100;
     private static final int MAX_TASK_KEY_LENGTH = 160;
@@ -136,6 +145,9 @@ public class TaskService {
             throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
                     ApiMessage.of("api.task-service.run-has-stopped"), ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
         }
+        if (input != null && input.has(Task.APPROVAL_INPUT_PROPERTY)) {
+            throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
+        }
         String stepKey = validateStepKey(requestedStepKey);
         if (kind == null || input == null || attemptNo < 1) {
             throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
@@ -210,6 +222,35 @@ public class TaskService {
         tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                 target.id(), target.resourceDefaultVersionId(), target.version(), null, null));
         return task;
+    }
+
+    /** Stops only approved Agent work; provider requests remain reconcilable and are never resubmitted. */
+    @Transactional
+    public Task cancelApprovedMedia(UUID ownerId, UUID projectId, UUID taskId) {
+        return events.recordChange(ownerId, projectId, () -> {
+            Task current = tasks.find(ownerId, projectId, taskId).orElseThrow(this::notFound);
+            if (!current.approvedMedia()) {
+                throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
+            }
+            if (current.status() == Task.Status.CANCELED) {
+                if (tasks.listProviderAttempts(ownerId, projectId, taskId).isEmpty()) {
+                    usage.releaseUnsubmittedMediaTask(ownerId, current);
+                }
+                return ProjectEventService.Change.unchanged(current);
+            }
+            boolean unsubmitted = current.providerRequestId() == null
+                    && (current.status() == Task.Status.PENDING || current.status() == Task.Status.READY
+                            || current.status() == Task.Status.RUNNING || current.status() == Task.Status.BLOCKED);
+            if (current.status() == Task.Status.SUCCEEDED || current.status() == Task.Status.FAILED
+                    || current.cancelRequested() && !unsubmitted) return ProjectEventService.Change.unchanged(current);
+            if (!tasks.cancelApprovedMedia(current, clock.instant())) throw leaseLost();
+            Task updated = tasks.findById(taskId).orElseThrow(this::notFound);
+            if (updated.status() == Task.Status.CANCELED) usage.releaseUnsubmittedMediaTask(ownerId, updated);
+            // Usage release appends its own event under this project lock. Append against
+            // that latest sequence rather than returning a draft using the outer watermark.
+            events.append(ownerId, projectId, taskEvent(updated, current.providerRequestId() != null));
+            return ProjectEventService.Change.unchanged(updated);
+        }).value();
     }
 
     /** 按项目所有者读取任务；不存在与无权访问使用相同的 404 响应。 */
@@ -384,6 +425,149 @@ public class TaskService {
         List<Task> execute(String workerId, int limit, Instant now, Instant leaseUntil);
     }
 
+    /** Begin a public stream under the same fenced lease used by the eventual tool transaction. */
+    @Transactional
+    public void startAgentStream(Task lease, String workerId) {
+        mutateAgentStream(lease, workerId, (current, run) -> {
+            JsonNode previous = stream(current);
+            if (previous.path("streamEpoch").asLong(-1) == lease.leaseEpoch()) {
+                if (!previous.path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
+                    throw leaseLost();
+                }
+                return null;
+            }
+            ObjectNode progress = objectMapper.createObjectNode();
+            progress.put("streamEpoch", lease.leaseEpoch());
+            progress.put("chunkIndex", FIRST_STREAM_CHUNK);
+            progress.put("text", "");
+            progress.put("status", AgentStreamStatus.STREAMING.name());
+            return new StreamMutation(progress, "agent.turn.stream.started", null);
+        });
+    }
+
+    /** Each persisted delta advances a per-epoch cursor exactly once; events and text commit together. */
+    @Transactional
+    public long appendAgentStream(Task lease, String workerId, long expectedChunkIndex, String textDelta) {
+        if (textDelta == null || textDelta.isEmpty() || expectedChunkIndex < FIRST_STREAM_CHUNK) {
+            throw new IllegalArgumentException("Invalid assistant stream delta");
+        }
+        JsonNode progress = mutateAgentStream(lease, workerId, (current, run) -> {
+            JsonNode previous = requireStreaming(current, lease);
+            if (previous.path("chunkIndex").asLong(-1) != expectedChunkIndex) throw leaseLost();
+            String text = previous.path("text").asText() + textDelta;
+            requireStreamSize(text);
+            ObjectNode next = (ObjectNode) previous.deepCopy();
+            next.put("chunkIndex", Math.addExact(expectedChunkIndex, 1));
+            next.put("text", text);
+            return new StreamMutation(next, "agent.turn.stream.delta", textDelta);
+        });
+        return progress.path("chunkIndex").asLong();
+    }
+
+    /** Called inside the response-checkpoint transaction, before any model tool can execute. */
+    @Transactional
+    public void completeAgentStream(Task lease, String workerId, String finalText) {
+        if (finalText == null) throw new IllegalArgumentException("Missing public assistant text");
+        requireStreamSize(finalText);
+        mutateAgentStream(lease, workerId, (current, run) -> {
+            ObjectNode next = (ObjectNode) requireStreaming(current, lease).deepCopy();
+            next.put("text", finalText);
+            next.put("status", AgentStreamStatus.COMPLETED.name());
+            return new StreamMutation(next, "agent.turn.stream.completed", null);
+        });
+    }
+
+    private JsonNode mutateAgentStream(Task lease, String workerId, StreamChange change) {
+        if (lease == null || lease.kind() != Task.Kind.AGENT_TURN || lease.runId() == null) {
+            throw leaseLost();
+        }
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            Instant now = clock.instant();
+            if (!tasks.lockActiveAgentTurnLease(lease.projectId(), lease.runId(), lease.id(),
+                    validateWorkerId(workerId), lease.leaseEpoch(), now)) throw leaseLost();
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            AgentRun run = runs.get(ownerId, lease.projectId(), lease.runId());
+            int step = lease.input().path("stepIndex").asInt(-1);
+            if (run.status() != AgentRun.Status.RUNNING || run.nextStepIndex() != step || step < 0) {
+                throw leaseLost();
+            }
+            StreamMutation mutation = change.apply(current, run);
+            if (mutation == null) return ProjectEventService.Change.unchanged(stream(current));
+            ObjectNode output = current.output() == null ? objectMapper.createObjectNode()
+                    : (ObjectNode) current.output().deepCopy();
+            output.put("schemaVersion", 1);
+            output.set(AGENT_STREAM_PROPERTY, mutation.progress());
+            if (!tasks.updateAgentStream(lease.id(), workerId, lease.leaseEpoch(), current.version(), output, now)) {
+                throw leaseLost();
+            }
+            events.append(ownerId, lease.projectId(), streamEvent(mutation.eventType(), current,
+                    run.version(), mutation.progress(), mutation.delta()));
+            return ProjectEventService.Change.unchanged((JsonNode) mutation.progress());
+        }).value();
+    }
+
+    private JsonNode requireStreaming(Task current, Task lease) {
+        JsonNode progress = stream(current);
+        if (!progress.isObject() || progress.path("streamEpoch").asLong(-1) != lease.leaseEpoch()
+                || !progress.path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
+            throw leaseLost();
+        }
+        return progress;
+    }
+
+    private JsonNode stream(Task task) {
+        return task.output() == null ? objectMapper.createObjectNode() : task.output().path(AGENT_STREAM_PROPERTY);
+    }
+
+    private void requireStreamSize(String text) {
+        if (text.getBytes(StandardCharsets.UTF_8).length > MAX_AGENT_STREAM_BYTES) {
+            throw new IllegalArgumentException("Public assistant response exceeds size limit");
+        }
+    }
+
+    private record StreamMutation(ObjectNode progress, String eventType, String delta) {}
+    @FunctionalInterface
+    private interface StreamChange { StreamMutation apply(Task task, AgentRun run); }
+
+    private ProjectEventService.EventDraft streamEvent(String type, Task task, long runVersion,
+            JsonNode progress, String delta) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("runId", task.runId().toString());
+        payload.put("taskId", task.id().toString());
+        payload.put("stepIndex", task.input().path("stepIndex").asInt());
+        payload.put("streamEpoch", progress.path("streamEpoch").asLong());
+        payload.put("chunkIndex", progress.path("chunkIndex").asLong());
+        if (delta != null) payload.put("textDelta", delta);
+        // Stream ordering uses projectSeq plus this task's epoch/cursor, not Run's model-step version.
+        return new ProjectEventService.EventDraft(type, 1, task.runId(), runVersion, payload);
+    }
+
+    /** Run cancellation persists interruption before this same-transaction notification is appended. */
+    @EventListener
+    public void onRunCanceled(ProjectEventRecorded recorded) {
+        var event = recorded.event();
+        if (!event.type().equals("agent.run.changed")
+                || !event.payload().path("status").asText().equals(AgentRun.Status.CANCELED.name())) return;
+        for (Task task : tasks.listByRun(recorded.ownerId(), event.projectId(), event.aggregateId())) {
+            if (task.kind() == Task.Kind.AGENT_TURN && task.cancelRequested()
+                    && stream(task).path("status").asText().equals(AgentStreamStatus.INTERRUPTED.name())) {
+                events.append(recorded.ownerId(), event.projectId(), streamEvent("agent.turn.stream.interrupted",
+                        task, event.aggregateVersion(), stream(task), null));
+            }
+        }
+    }
+
+    private JsonNode interruptedAgentOutput(Task task) {
+        if (task.kind() != Task.Kind.AGENT_TURN || task.output() == null) return null;
+        ObjectNode output = (ObjectNode) task.output().deepCopy();
+        JsonNode progress = output.path(AGENT_STREAM_PROPERTY);
+        if (progress.isObject() && progress.path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
+            ((ObjectNode) progress).put("status", AgentStreamStatus.INTERRUPTED.name());
+        }
+        return output;
+    }
+
     /** Saves the complete direct model response before any Artifact version is appended. */
     @Transactional
     public JsonNode checkpointTextResponse(Task lease, String workerId, JsonNode response) {
@@ -470,15 +654,22 @@ public class TaskService {
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            JsonNode finalOutput = output;
+            if (current.kind() == Task.Kind.AGENT_TURN && output != null && output.isObject()
+                    && stream(current).isObject()) {
+                ObjectNode combined = (ObjectNode) output.deepCopy();
+                combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
+                finalOutput = combined;
+            }
             if (current.cancelRequested()) {
-                preserveCanceledResult(lease, workerId, output, now);
+                preserveCanceledResult(lease, workerId, finalOutput, now);
             } else if (tasks.finish(lease.id(), validateWorkerId(workerId),
-                    lease.leaseEpoch(), Task.Status.SUCCEEDED, output, null, now)) {
+                    lease.leaseEpoch(), Task.Status.SUCCEEDED, finalOutput, null, now)) {
                 if (lease.runId() != null) {
                     tasks.promoteReady(lease.projectId(), lease.runId(), now);
                 }
             } else if (tasks.findById(lease.id()).filter(Task::cancelRequested).isPresent()) {
-                preserveCanceledResult(lease, workerId, output, now);
+                preserveCanceledResult(lease, workerId, finalOutput, now);
             } else {
                 throw leaseLost();
             }
@@ -626,7 +817,7 @@ public class TaskService {
                 throw leaseLost();
             } else if (selectResult && run != null) {
                 tasks.promoteReady(lease.projectId(), lease.runId(), now);
-            } else if (run != null) {
+            } else if (run != null && !lease.approvedMedia()) {
                 AgentRun latest = runs.get(ownerId, lease.projectId(), lease.runId());
                 if (latest.status() == AgentRun.Status.WAITING_TASKS) {
                     runs.transition(ownerId, lease.projectId(), lease.runId(),
@@ -634,14 +825,13 @@ public class TaskService {
                 }
             }
             tasks.clearProviderPollFailures(lease.id());
-            // Run-scoped media tasks carry no usage reservation; only direct tasks do.
-            if (lease.runId() == null) {
+            // Approved Agent media shares the same reservation ledger as direct generation.
+            if (lease.runId() == null || lease.approvedMedia()) {
                 usage.settleMediaTask(ownerId, lease);
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            ObjectNode payload = objectMapper.createObjectNode();
-            payload.put("taskId", lease.id().toString());
-            payload.put("status", updated.status().name());
+            ProjectEventService.EventDraft outcomeEvent = taskEvent(updated, false);
+            ObjectNode payload = (ObjectNode) outcomeEvent.payload();
             payload.put("artifactId", artifactId.toString());
             payload.put("artifactVersionId", result.versionId().toString());
             payload.put("selected", result.selected());
@@ -667,16 +857,17 @@ public class TaskService {
                     throw leaseLost();
                 }
             } else if (!tasks.finish(lease.id(), validateWorkerId(workerId),
-                    lease.leaseEpoch(), Task.Status.FAILED, null, normalizedCode, now)) {
+                    lease.leaseEpoch(), Task.Status.FAILED, interruptedAgentOutput(before), normalizedCode, now)) {
                 if (tasks.findById(lease.id()).filter(Task::cancelRequested).isEmpty()
                         || !tasks.finishCanceled(lease, validateWorkerId(workerId), now)) {
                     throw leaseLost();
                 }
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if (updated.runId() == null
+            if ((updated.runId() == null || updated.approvedMedia())
                     && (updated.kind() == Task.Kind.IMAGE_GENERATION
-                            || updated.kind() == Task.Kind.VIDEO_GENERATION)
+                            || updated.kind() == Task.Kind.VIDEO_GENERATION
+                            || updated.kind() == Task.Kind.AUDIO_GENERATION)
                     && before.status() == Task.Status.RUNNING
                     && before.providerRequestId() == null
                     && (updated.status() == Task.Status.FAILED
@@ -687,6 +878,13 @@ public class TaskService {
                     && (updated.status() == Task.Status.FAILED
                             || updated.status() == Task.Status.CANCELED)) {
                 usage.releaseDirectTextTask(ownerId, updated);
+            }
+            if (before.kind() == Task.Kind.AGENT_TURN
+                    && stream(before).path("status").asText().equals(AgentStreamStatus.STREAMING.name())
+                    && stream(updated).path("status").asText().equals(AgentStreamStatus.INTERRUPTED.name())) {
+                AgentRun run = runs.get(ownerId, updated.projectId(), updated.runId());
+                events.append(ownerId, lease.projectId(), streamEvent("agent.turn.stream.interrupted",
+                        updated, run.version(), stream(updated), null));
             }
             events.append(ownerId, lease.projectId(), taskEvent(updated, false));
             blockWaitingRunForMedia(ownerId, updated);
@@ -729,7 +927,7 @@ public class TaskService {
                 }
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if (updated.runId() == null) {
+            if (updated.runId() == null || updated.approvedMedia()) {
                 usage.releaseUnsubmittedMediaTask(ownerId, updated);
             }
             events.append(ownerId, lease.projectId(), taskEvent(updated, false));
@@ -962,9 +1160,10 @@ public class TaskService {
                             return ProjectEventService.Change.unchanged(false);
                         }
                         Task task = tasks.findById(candidate.taskId()).orElseThrow();
-                        if (task.runId() == null
+                        if ((task.runId() == null || task.approvedMedia())
                                 && (task.kind() == Task.Kind.IMAGE_GENERATION
-                                        || task.kind() == Task.Kind.VIDEO_GENERATION)
+                                        || task.kind() == Task.Kind.VIDEO_GENERATION
+                                        || task.kind() == Task.Kind.AUDIO_GENERATION)
                                 && task.providerRequestId() == null) {
                             usage.releaseUnsubmittedMediaTask(candidate.ownerId(), task);
                         }
@@ -1006,7 +1205,7 @@ public class TaskService {
      * @param task 发生终态失败或待核对状态的媒体任务
      */
     private void blockWaitingRunForMedia(UUID ownerId, Task task) {
-        if (task.runId() == null
+        if (task.runId() == null || task.approvedMedia()
                 || (task.kind() != Task.Kind.IMAGE_GENERATION
                         && task.kind() != Task.Kind.VIDEO_GENERATION)
                 || (task.status() != Task.Status.FAILED
@@ -1036,7 +1235,8 @@ public class TaskService {
         payload.put("possibleExternalCost", possibleExternalCost
                 || task.providerRequestId() != null
                 || ((task.kind() == Task.Kind.IMAGE_GENERATION
-                        || task.kind() == Task.Kind.VIDEO_GENERATION)
+                        || task.kind() == Task.Kind.VIDEO_GENERATION
+                        || task.kind() == Task.Kind.AUDIO_GENERATION)
                         && (task.status() == Task.Status.SUBMITTING
                                 || task.status() == Task.Status.WAITING_PROVIDER
                                 || task.status() == Task.Status.UNKNOWN
