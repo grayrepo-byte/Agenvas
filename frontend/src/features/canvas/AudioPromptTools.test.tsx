@@ -12,15 +12,12 @@ function tools(prompt = "", hasMentions = false) {
   return { onApply, changed: (next: string) => view.rerender(<QueryClientProvider client={client}><AudioPromptTools {...props} prompt={next} /></QueryClientProvider>) };
 }
 describe("audio prompt tools", () => {
-  it("previews a sound template and only applies it when requested", async () => {
-    const user = userEvent.setup(); const { onApply } = tools();
-    await user.click(screen.getByRole("button", { name: "音频提示词模板" }));
-    await user.click(screen.getByRole("button", { name: "环境音" }));
-    expect(onApply).not.toHaveBeenCalled();
-    expect((screen.getByRole("textbox", { name: "完整音频提示词" }) as HTMLTextAreaElement).value).toContain("清晨的森林");
-    await user.click(screen.getByRole("button", { name: "应用提示词" }));
-    expect(onApply).toHaveBeenCalledWith(expect.stringContaining("没有对白"));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  it("provides audio prompt editing tools without a template entry", () => {
+    tools();
+    expect(screen.queryByRole("button", { name: /模板/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "音频提示词助手" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "翻译音频提示词" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开音频提示词" })).toBeInTheDocument();
   });
   it("protects a prompt changed while the expanded editor is open", async () => {
     const user = userEvent.setup(); const { changed, onApply } = tools("开始");

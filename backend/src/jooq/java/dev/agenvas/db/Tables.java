@@ -46,6 +46,12 @@ import dev.agenvas.db.tables.MediaLegacyImportMarker;
 import dev.agenvas.db.tables.MediaLegacyOriginMap;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
+import dev.agenvas.db.tables.MediaTemplate;
+import dev.agenvas.db.tables.MediaTemplateAttachment;
+import dev.agenvas.db.tables.MediaTemplateImage;
+import dev.agenvas.db.tables.MediaTemplateImportCommand;
+import dev.agenvas.db.tables.MediaTemplateImportImage;
+import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -297,6 +303,37 @@ public class Tables {
      * The table <code>public.media_provider_connection_version</code>.
      */
     public static final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
+
+    /**
+     * The table <code>public.media_template</code>.
+     */
+    public static final MediaTemplate MEDIA_TEMPLATE = MediaTemplate.MEDIA_TEMPLATE;
+
+    /**
+     * The table <code>public.media_template_attachment</code>.
+     */
+    public static final MediaTemplateAttachment MEDIA_TEMPLATE_ATTACHMENT = MediaTemplateAttachment.MEDIA_TEMPLATE_ATTACHMENT;
+
+    /**
+     * The table <code>public.media_template_image</code>.
+     */
+    public static final MediaTemplateImage MEDIA_TEMPLATE_IMAGE = MediaTemplateImage.MEDIA_TEMPLATE_IMAGE;
+
+    /**
+     * The table <code>public.media_template_import_command</code>.
+     */
+    public static final MediaTemplateImportCommand MEDIA_TEMPLATE_IMPORT_COMMAND = MediaTemplateImportCommand.MEDIA_TEMPLATE_IMPORT_COMMAND;
+
+    /**
+     * Template provenance with no LibraryEntry dependency; template deletion
+     * never deletes project versions
+     */
+    public static final MediaTemplateImportImage MEDIA_TEMPLATE_IMPORT_IMAGE = MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE;
+
+    /**
+     * The table <code>public.media_template_import_source</code>.
+     */
+    public static final MediaTemplateImportSource MEDIA_TEMPLATE_IMPORT_SOURCE = MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE;
 
     /**
      * Permission and configuration boundary for one creative workspace.

@@ -870,6 +870,54 @@ export function setLibraryTrash(id: string, expectedVersion: number, restore = f
 export function deleteLibraryEntry(id: string, expectedVersion: number): Promise<void> {
   return writeEmpty(`/api/v1/library/entries/${id}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
 }
+
+export type MediaTemplate = components["schemas"]["MediaTemplate"];
+export type MediaTemplateImage = components["schemas"]["MediaTemplateImage"];
+export type WriteMediaTemplateRequest = components["schemas"]["CreateMediaTemplateRequest"] | components["schemas"]["UpdateMediaTemplateRequest"];
+export type MediaTemplateImport = components["schemas"]["MediaTemplateImport"];
+export type MediaTemplateKind = MediaTemplate["targetKind"];
+export type MediaTemplateScope = MediaTemplate["scope"];
+
+/** Templates contain reusable text and independently archived images; they never run a Provider. */
+export async function listMediaTemplates(targetKind?: MediaTemplateKind, system = false): Promise<MediaTemplate[]> {
+  const query = new URLSearchParams();
+  if (targetKind) query.set("targetKind", targetKind);
+  if (system) query.set("scope", "SYSTEM");
+  const result = await readJson<components["schemas"]["MediaTemplateList"]>(`/api/v1/media-templates?${query}`, t("templates.loadFailed"));
+  return result.items;
+}
+export function saveMediaTemplate(input: WriteMediaTemplateRequest, scope: MediaTemplateScope,
+  id?: string): Promise<MediaTemplate> {
+  const path = `/api/v1/${scope === "SYSTEM" ? "settings/" : ""}media-templates`;
+  return writeJson(id ? `${path}/${encodeURIComponent(id)}` : path,
+    { method: id ? "PATCH" : "POST", body: JSON.stringify(input) });
+}
+export function deleteMediaTemplate(template: MediaTemplate): Promise<void> {
+  return writeEmpty(`/api/v1/${template.scope === "SYSTEM" ? "settings/" : ""}media-templates/${encodeURIComponent(template.id)}?expectedVersion=${template.version}`,
+    { method: "DELETE" });
+}
+export function uploadMediaTemplateImage(file: File): Promise<MediaTemplateImage> {
+  const body = new FormData(); body.append("file", file);
+  return writeJson("/api/v1/media-templates/images", { method: "POST", body });
+}
+export function copyMediaTemplateImage(projectId: string, versionId: string): Promise<MediaTemplateImage> {
+  return writeJson("/api/v1/media-templates/images/from-version",
+    { method: "POST", body: JSON.stringify({ projectId, versionId }) });
+}
+export function deleteMediaTemplateImage(imageId: string): Promise<void> {
+  return writeEmpty(`/api/v1/media-templates/images/${encodeURIComponent(imageId)}`, { method: "DELETE" });
+}
+export function importMediaTemplate(projectId: string, template: MediaTemplate,
+  commandKey: string): Promise<MediaTemplateImport> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/media-templates/${encodeURIComponent(template.id)}/import`,
+    { method: "POST", body: JSON.stringify({ expectedTemplateVersion: template.version, commandKey }) });
+}
+/** Replaces a complete draft and its connected reference sources in one CAS transaction. */
+export function replaceMediaDraftInputs(projectId: string, canvasItemId: string,
+  input: SaveMediaDraftRequest): Promise<MediaDraft> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}/media-draft/replace-inputs`,
+    { method: "POST", body: JSON.stringify(input) });
+}
 export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | "VIDEO" | "AUDIO"; name: string; category: LibraryCategory; commandKey: string }): Promise<LibraryCommand> {
   const body = new FormData(); Object.entries(request).forEach(([key, value]) => body.append(key, value));
   return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("api.errors.libraryUploadFailed"));

@@ -1,4 +1,4 @@
-import { ArrowsOutSimple,Lightbulb,MagicWand,Translate } from "@phosphor-icons/react";
+import { ArrowsOutSimple,MagicWand,Translate } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useRef,useState } from "react";
 import {
@@ -21,14 +21,8 @@ const TEXT_NODE_WIDTH = 280;
 const TEXT_NODE_HEIGHT = 180;
 const TEXT_NODE_GAP = 64;
 const SOURCE_FALLBACK_WIDTH = 430;
-const TEMPLATES = [
-  { get title() { return t("audio.promptTools.dialogueTemplate"); }, text: '用自然亲切的语气说：“你好，欢迎来到创作画布。”语速适中，吐字清晰，尾句轻轻上扬。' },
-  { get title() { return t("audio.promptTools.emotionalTemplate"); }, text: '一位声音温暖沉稳的旁白说：“每一个微小的开始，都有可能成为新的故事。”从容地停顿，情绪由平静转向充满希望。' },
-  { get title() { return t("audio.promptTools.ambientTemplate"); }, text: '清晨的森林里，鸟鸣此起彼伏，微风轻拂树叶，远处传来潺潺流水声。声音自然，有空间感，没有对白。' },
-  { get title() { return t("audio.promptTools.advertisingTemplate"); }, text: '用明亮有活力的声音说：“让灵感即刻发生。”语气自信，节奏轻快，最后一句强调品牌感。' },
-] as const;
-type Mode = "templates" | "assist" | "translate" | "expand";
-const LABELS: Record<Mode, string> = { get templates() { return t("audio.promptTools.templateTitle"); }, get assist() { return t("audio.promptTools.assistantTitle"); }, get translate() { return t("audio.promptTools.translateTitle"); }, get expand() { return t("audio.promptTools.expandLabel"); } };
+type Mode = "assist" | "translate" | "expand";
+const LABELS: Record<Mode, string> = { get assist() { return t("audio.promptTools.assistantTitle"); }, get translate() { return t("audio.promptTools.translateTitle"); }, get expand() { return t("audio.promptTools.expandLabel"); } };
 
 export function AudioPromptTools({ projectId, canvasItemId, prompt, hasMentions, onApply }: {
   projectId: string; canvasItemId: string; prompt: string; hasMentions: boolean; onApply: (text: string) => void;
@@ -36,7 +30,6 @@ export function AudioPromptTools({ projectId, canvasItemId, prompt, hasMentions,
   useLocale();
   const [mode, setMode] = useState<Mode | null>(null);
   return <><span className="audio-prompt-tools">
-    <Button variant="ghost" type="button" aria-label={t("audio.promptTools.templateTitle")} title={t("audio.promptTools.template")} onClick={() => setMode("templates")}><Lightbulb size={15} /></Button>
     <Button variant="ghost" type="button" aria-label={t("audio.promptTools.assistantTitle")} title={t("audio.promptTools.assistant")} onClick={() => setMode("assist")}><MagicWand size={15} /></Button>
     <Button variant="ghost" type="button" aria-label={t("audio.promptTools.translateTitle")} title={t("audio.promptTools.translate")} onClick={() => setMode("translate")}><Translate size={15} /></Button>
     <Button variant="ghost" type="button" aria-label={t("audio.promptTools.expandLabel")} title={t("audio.promptTools.expand")} onClick={() => setMode("expand")}><ArrowsOutSimple size={15} /></Button>
@@ -96,8 +89,6 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
       {generated ? <Button variant="outline" type="button"  disabled={!text.trim() || !available || Boolean(target) || run.isPending || hasMentions}
         onClick={() => run.mutate()}>{run.isPending ? t("audio.promptTools.submitting") : run.error ? t("audio.promptTools.retry") : t("audio.promptTools.generate")}</Button> : null}
       <Button variant="default" type="submit"  disabled={hasMentions || prompt !== basis || !applyText?.trim() || applyText.length > MAX_AUDIO_PROMPT_LENGTH}>{t("audio.promptTools.apply")}</Button></>}>
-    {mode === "templates" ? <div className="audio-prompt-templates">{TEMPLATES.map((template) => <Button variant="outline" type="button"
-      key={template.title} onClick={() => setText(template.text)}>{template.title}</Button>)}</div> : null}
     {mode === "translate" ? <label>{t("audio.promptTools.targetLanguage")}<Select variant="ghost" value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="英文">{t("audio.promptTools.english")}</option><option value="中文">{t("common.chinese")}</option></Select></label> : null}
     <label>{t("audio.promptTools.prompt")}<Textarea className="audio-prompt-expanded" aria-label={t("audio.promptTools.fullPrompt")} maxLength={MAX_AUDIO_PROMPT_LENGTH}
       value={text} disabled={Boolean(target) || run.isPending || hasMentions} onChange={(event) => { if (!run.isPending) { progress.current = null; run.reset(); setText(event.target.value); } }} /></label>

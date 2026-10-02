@@ -23,7 +23,8 @@ public class RecoveryModeWriteGuard implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new WriteGuard())
                 .addPathPatterns("/api/v1/projects", "/api/v1/projects/**",
-                        "/api/v1/settings", "/api/v1/settings/**");
+                        "/api/v1/settings", "/api/v1/settings/**",
+                        "/api/v1/media-templates", "/api/v1/media-templates/**");
     }
 
     /** 保留认证相关入口，冻结项目资源的写操作。 */

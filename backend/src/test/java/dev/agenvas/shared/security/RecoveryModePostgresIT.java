@@ -126,6 +126,14 @@ class RecoveryModePostgresIT {
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        mvc.perform(post("/api/v1/media-templates").with(authentication).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        mvc.perform(post("/api/v1/media-templates/images/from-version").with(authentication).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
         assertThat(projects.list(owner.userId(), false, null, 20).items())
                 .extracting(Project::name).containsExactly("Restored project");
         assertThat(schemaVersion()).isEqualTo("27");

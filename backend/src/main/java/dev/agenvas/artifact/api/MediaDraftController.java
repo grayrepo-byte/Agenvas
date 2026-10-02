@@ -61,6 +61,17 @@ public class MediaDraftController {
                 request.versionId(), request.expectedVersion());
     }
 
+    /** User-confirmed replacement clears connected references and the draft in one transaction. */
+    @PostMapping("/replace-inputs")
+    public MediaDraft replaceInputs(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @PathVariable UUID canvasItemId,
+            @Valid @RequestBody SaveDraftRequest request) {
+        return restore.replaceInputs(principal.userId(), projectId, canvasItemId,
+                request.expectedVersion(), request.prompt(), request.parameters(),
+                request.durationSeconds(), request.capabilityId(), request.videoInputMode(),
+                request.mediaInputs(), request.mentions());
+    }
+
     /** Removes the image aggregate and every canvas line that currently owns it. */
     @PostMapping("/media-inputs/{versionId}/remove")
     public MediaDraft removeMediaInput(@AuthenticationPrincipal AdminPrincipal principal,

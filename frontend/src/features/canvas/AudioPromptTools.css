@@ -2,4 +2,3 @@
 .audio-prompt-tools button { display: grid; place-items: center; width: 26px; height: 26px; color: var(--muted); border-radius: 6px; }
 .audio-prompt-tools button:hover { background: var(--ui-hover); color: var(--ui-text); }
 .audio-prompt-expanded { display: block; width: 100%; min-height: 160px; margin-top: 8px; resize: vertical; }
-.audio-prompt-templates { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }

@@ -15,6 +15,7 @@ import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.CanvasItemMediaInput.CanvasItemMediaInputPath;
 import dev.agenvas.db.tables.CanvasItemMediaVersion.CanvasItemMediaVersionPath;
 import dev.agenvas.db.tables.LibraryImport.LibraryImportPath;
+import dev.agenvas.db.tables.MediaTemplateImportImage.MediaTemplateImportImagePath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
 
@@ -365,6 +366,19 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _libraryImport = new LibraryImportPath(this, null, Keys.LIBRARY_IMPORT__LIBRARY_IMPORT_PROJECT_ID_VERSION_ID_FKEY.getInverseKey());
 
         return _libraryImport;
+    }
+
+    private transient MediaTemplateImportImagePath _mediaTemplateImportImage;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.media_template_import_image</code> table
+     */
+    public MediaTemplateImportImagePath mediaTemplateImportImage() {
+        if (_mediaTemplateImportImage == null)
+            _mediaTemplateImportImage = new MediaTemplateImportImagePath(this, null, Keys.MEDIA_TEMPLATE_IMPORT_IMAGE__MEDIA_TEMPLATE_IMPORT_IMAGE_PROJECT_ID_VERSION_ID_FKEY.getInverseKey());
+
+        return _mediaTemplateImportImage;
     }
 
     @Override

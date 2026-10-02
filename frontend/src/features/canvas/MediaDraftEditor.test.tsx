@@ -1216,4 +1216,53 @@ describe("MediaDraftEditor", () => {
     await user.click(await screen.findByRole("button", { name: "重试读取草稿" }));
     expect(await screen.findByLabelText("图片提示词")).toHaveTextContent(initialDraft.prompt);
   });
+
+  it("applies bundled image templates atomically after a delayed import and retains the draft on CAS failure", async () => {
+    let finishImport: (() => void) | undefined;
+    const delayed = new Promise<void>((resolve) => { finishImport = resolve; });
+    let imported = false; let conflict = true;
+    const replacements: SaveMediaDraftRequest[] = []; const generate = vi.fn();
+    const ownTemplate = { id: "template-image", targetKind: "IMAGE", scope: "PERSONAL", name: "Synthetic style", prompt: "New style",
+      images: [{ id: "template-image-file", contentType: "image/png", byteSize: 100, width: 100, height: 100, thumbnailUrl: "/synthetic.png", contentUrl: "/synthetic.png" }],
+      version: 1, createdAt: NOW, updatedAt: NOW };
+    const original = { ...initialDraft, prompt: "Retain this until replacement", parameters: { aspectRatio: "9:16" as const, quality: "high" as const },
+      mediaInputs: [{ versionId: "old-version", artifactId: "old-reference", role: "REFERENCE" as const, order: 0, color: "#F15CAF",
+        sources: [{ id: "line-source", type: "CONNECTION" as const, connectionId: "line" }] }] };
+    const { saves } = setup({ draft: original, handlers: [
+      http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [ownTemplate] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "old-reference", title: "Old", resourceDefaultVersionId: "old-version" },
+        ...(imported ? [{ ...artifact, id: "new-reference", title: "Imported", resourceDefaultVersionId: "new-version" }] : []),
+      ] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/old-reference/versions`, () => HttpResponse.json({ items: [{ id: "old-version", versionNo: 1, content: { assetId: "old-asset" } }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/new-reference/versions`, () => HttpResponse.json({ items: [{ id: "new-version", versionNo: 1, content: { assetId: "new-asset" } }] })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/media-templates/template-image/import`, async () => { await delayed; imported = true; return HttpResponse.json({
+        templateId: ownTemplate.id, templateVersion: 1, targetKind: "IMAGE", prompt: ownTemplate.prompt,
+        images: [{ versionId: "new-version", assetId: "new-asset", title: "Imported", contentType: "image/png", byteSize: 100, width: 100, height: 100, thumbnailUrl: "/synthetic.png" }],
+      }); }),
+      http.post(`${DRAFT_URL}/replace-inputs`, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest; replacements.push(input);
+        if (conflict) return HttpResponse.json({ title: "Synthetic CAS conflict", status: 409, code: "MEDIA_DRAFT_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ ...original, ...input, version: 1, mediaInputs: input.mediaInputs.map((entry, index) => ({ ...entry, artifactId: "new-reference", order: index,
+          sources: [{ id: "manual", type: "MANUAL", connectionId: null }] })) });
+      }),
+      http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "模板" }));
+    await user.click(await screen.findByRole("button", { name: "Synthetic style" }));
+    await user.click(screen.getByRole("button", { name: "使用模板" }));
+    expect(screen.getByRole("button", { name: "关闭窗口" })).toBeDisabled();
+    expect(replacements).toHaveLength(0); finishImport?.();
+    await screen.findByText("Synthetic CAS conflict");
+    expect(screen.getByRole("dialog", { name: "图片模板" })).toBeInTheDocument();
+    expect(saves).toHaveLength(0); expect(generate).not.toHaveBeenCalled();
+    conflict = false; await user.click(screen.getByRole("button", { name: "使用模板" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "图片模板" })).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent("New style");
+    expect(replacements.at(-1)).toMatchObject({ expectedVersion: 0, prompt: "New style", mentions: [],
+      parameters: original.parameters, mediaInputs: [{ versionId: "new-version", role: "REFERENCE" }] });
+    expect(generate).not.toHaveBeenCalled();
+  });
 });
