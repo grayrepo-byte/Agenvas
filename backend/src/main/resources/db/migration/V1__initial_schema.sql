@@ -1,6 +1,7 @@
 -- 当前 PostgreSQL 数据库导出的最终应用结构，按依赖顺序及表归组。
 -- 仅用于空库；字段定义包含最终约束，不重放开发阶段的 ALTER/回填历史。
--- 四个循环引用外键在双方表创建后补充；其余约束直接写入 CREATE TABLE。
+-- 所有约束在所属表内定义；当前状态指针由应用事务与归属校验维护。
+-- 调用日志及用量账本的历史标识不设外键，保留原始关联身份。
 -- 表和字段说明同时保留行内文档及数据库 COMMENT ON。
 -- 初始化数据仅保留公开内置项，不导出用户、任务或真实配置。
 
@@ -318,7 +319,7 @@ CREATE TABLE public.creative_skill (
     owner_id uuid NOT NULL, -- 所属用户及授权作用域
     title character varying(160) NOT NULL, -- 显示标题
     description character varying(1024) DEFAULT ''::character varying NOT NULL, -- 用户可见说明
-    current_version_id uuid, -- 当前发布的不可变版本
+    current_version_id uuid, -- 当前发布版本指针；应用在同一事务插入所属版本并执行目录 CAS，不设循环外键
     trashed_at timestamp with time zone, -- 移入回收站的时间；未删除时为空
     version bigint DEFAULT 0 NOT NULL, -- 乐观并发控制版本，更新时递增并校验预期值
     created_at timestamp with time zone NOT NULL, -- 创建时间（UTC）
@@ -335,7 +336,7 @@ COMMENT ON COLUMN public.creative_skill.id IS '记录身份';
 COMMENT ON COLUMN public.creative_skill.owner_id IS '所属用户及授权作用域';
 COMMENT ON COLUMN public.creative_skill.title IS '显示标题';
 COMMENT ON COLUMN public.creative_skill.description IS '用户可见说明';
-COMMENT ON COLUMN public.creative_skill.current_version_id IS '当前发布的不可变版本';
+COMMENT ON COLUMN public.creative_skill.current_version_id IS '当前发布版本指针；应用在同一事务插入所属版本并执行目录 CAS，不设循环外键';
 COMMENT ON COLUMN public.creative_skill.trashed_at IS '移入回收站的时间；未删除时为空';
 COMMENT ON COLUMN public.creative_skill.version IS '乐观并发控制版本，更新时递增并校验预期值';
 COMMENT ON COLUMN public.creative_skill.created_at IS '创建时间（UTC）';
@@ -677,7 +678,7 @@ CREATE TABLE public.project (
     name character varying(120) NOT NULL, -- 显示名称
     aspect_ratio character varying(32) NOT NULL, -- 项目默认画幅比例
     status character varying(32) NOT NULL, -- 持久状态，允许值由 CHECK 约束限定
-    active_run_id uuid, -- Reserved active Agent Run slot; foreign key is added with the run migration.
+    active_run_id uuid, -- 当前活动 Run 指针；应用在项目锁内创建 Run 并占用或释放槽位，不设循环外键
     event_seq bigint DEFAULT 0 NOT NULL, -- 项目内事务分配的已提交事件序号
     version bigint DEFAULT 0 NOT NULL, -- 乐观并发控制版本，更新时递增并校验预期值
     created_at timestamp with time zone NOT NULL, -- 创建时间（UTC）
@@ -697,7 +698,7 @@ COMMENT ON COLUMN public.project.owner_id IS '所属用户及授权作用域';
 COMMENT ON COLUMN public.project.name IS '显示名称';
 COMMENT ON COLUMN public.project.aspect_ratio IS '项目默认画幅比例';
 COMMENT ON COLUMN public.project.status IS '持久状态，允许值由 CHECK 约束限定';
-COMMENT ON COLUMN public.project.active_run_id IS 'Reserved active Agent Run slot; foreign key is added with the run migration.';
+COMMENT ON COLUMN public.project.active_run_id IS '当前活动 Run 指针；应用在项目锁内创建 Run 并占用或释放槽位，不设循环外键';
 COMMENT ON COLUMN public.project.event_seq IS '项目内事务分配的已提交事件序号';
 COMMENT ON COLUMN public.project.version IS '乐观并发控制版本，更新时递增并校验预期值';
 COMMENT ON COLUMN public.project.created_at IS '创建时间（UTC）';
@@ -764,7 +765,7 @@ CREATE TABLE public.agent_instance (
     version bigint DEFAULT 0 NOT NULL, -- 乐观并发控制版本，更新时递增并校验预期值
     created_at timestamp with time zone NOT NULL, -- 创建时间（UTC）
     updated_at timestamp with time zone NOT NULL, -- 最后状态或配置更新时间（UTC）
-    current_conversation_id uuid, -- Selected conversation only; switching it never cancels or reassigns an active Run.
+    current_conversation_id uuid, -- 当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键
     CONSTRAINT ck_agent_instruction_not_blank CHECK ((length(btrim((instruction)::text)) > 0)),
     CONSTRAINT ck_agent_name_not_blank CHECK ((length(btrim((name)::text)) > 0)),
     CONSTRAINT ck_agent_profile_key_not_blank CHECK ((length(btrim((profile_key)::text)) > 0)),
@@ -786,7 +787,7 @@ COMMENT ON COLUMN public.agent_instance.output_group_id IS 'Agent 输出卡片�
 COMMENT ON COLUMN public.agent_instance.version IS '乐观并发控制版本，更新时递增并校验预期值';
 COMMENT ON COLUMN public.agent_instance.created_at IS '创建时间（UTC）';
 COMMENT ON COLUMN public.agent_instance.updated_at IS '最后状态或配置更新时间（UTC）';
-COMMENT ON COLUMN public.agent_instance.current_conversation_id IS 'Selected conversation only; switching it never cancels or reassigns an active Run.';
+COMMENT ON COLUMN public.agent_instance.current_conversation_id IS '当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键';
 COMMENT ON CONSTRAINT ck_agent_instruction_not_blank ON public.agent_instance IS '数据有效性约束：CHECK ((length(btrim((instruction)::text)) > 0))';
 COMMENT ON CONSTRAINT ck_agent_name_not_blank ON public.agent_instance IS '数据有效性约束：CHECK ((length(btrim((name)::text)) > 0))';
 COMMENT ON CONSTRAINT ck_agent_profile_key_not_blank ON public.agent_instance IS '数据有效性约束：CHECK ((length(btrim((profile_key)::text)) > 0))';
@@ -807,7 +808,7 @@ CREATE TABLE public.artifact (
     project_id uuid NOT NULL, -- 所属项目及授权作用域
     kind character varying(32) NOT NULL, -- 业务类型，允许值由 CHECK 约束限定
     title character varying(160) NOT NULL, -- 显示标题
-    resource_default_version_id uuid, -- Explicit library default used for new CanvasItems; card version selection never updates it.
+    resource_default_version_id uuid, -- 资源默认版本指针；应用校验所属产物并执行 CAS，不设循环外键
     archived_at timestamp with time zone, -- 归档时间；未归档时为空
     version bigint DEFAULT 0 NOT NULL, -- 乐观并发控制版本，更新时递增并校验预期值
     created_at timestamp with time zone NOT NULL, -- 创建时间（UTC）
@@ -825,7 +826,7 @@ COMMENT ON COLUMN public.artifact.id IS '记录身份';
 COMMENT ON COLUMN public.artifact.project_id IS '所属项目及授权作用域';
 COMMENT ON COLUMN public.artifact.kind IS '业务类型，允许值由 CHECK 约束限定';
 COMMENT ON COLUMN public.artifact.title IS '显示标题';
-COMMENT ON COLUMN public.artifact.resource_default_version_id IS 'Explicit library default used for new CanvasItems; card version selection never updates it.';
+COMMENT ON COLUMN public.artifact.resource_default_version_id IS '资源默认版本指针；应用校验所属产物并执行 CAS，不设循环外键';
 COMMENT ON COLUMN public.artifact.archived_at IS '归档时间；未归档时为空';
 COMMENT ON COLUMN public.artifact.version IS '乐观并发控制版本，更新时递增并校验预期值';
 COMMENT ON COLUMN public.artifact.created_at IS '创建时间（UTC）';
@@ -965,9 +966,7 @@ CREATE TABLE public.library_entry (
     CONSTRAINT library_entry_pkey PRIMARY KEY (id),
     CONSTRAINT library_entry_owner_id_id_key UNIQUE (owner_id, id),
     CONSTRAINT library_entry_owner_id_source_version_id_key UNIQUE (owner_id, source_version_id),
-    CONSTRAINT library_entry_owner_id_file_id_fkey FOREIGN KEY (owner_id, file_id) REFERENCES public.library_file(owner_id, id),
-    CONSTRAINT library_entry_owner_id_file_id_kind_fkey FOREIGN KEY (owner_id, file_id, kind) REFERENCES public.library_file(owner_id, id, kind),
-    CONSTRAINT library_entry_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.app_user(id)
+    CONSTRAINT library_entry_owner_id_file_id_kind_fkey FOREIGN KEY (owner_id, file_id, kind) REFERENCES public.library_file(owner_id, id, kind)
 );
 
 COMMENT ON TABLE public.library_entry IS '个人素材库条目、固定内容与精确导入来源';
@@ -998,9 +997,7 @@ COMMENT ON CONSTRAINT library_entry_version_check ON public.library_entry IS '�
 COMMENT ON CONSTRAINT library_entry_owner_id_id_key ON public.library_entry IS '唯一约束：禁止作用域内重复记录  (owner_id, id)';
 COMMENT ON CONSTRAINT library_entry_owner_id_source_version_id_key ON public.library_entry IS '唯一约束：禁止作用域内重复记录  (owner_id, source_version_id)';
 COMMENT ON CONSTRAINT library_entry_pkey ON public.library_entry IS '主键：唯一标识个人素材库条目、固定内容与精确导入来源的记录  (id)';
-COMMENT ON CONSTRAINT library_entry_owner_id_file_id_fkey ON public.library_entry IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id, file_id) REFERENCES public.library_file(owner_id, id)';
 COMMENT ON CONSTRAINT library_entry_owner_id_file_id_kind_fkey ON public.library_entry IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id, file_id, kind) REFERENCES public.library_file(owner_id, id, kind)';
-COMMENT ON CONSTRAINT library_entry_owner_id_fkey ON public.library_entry IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id) REFERENCES public.app_user(id)';
 COMMENT ON INDEX public.library_entry_pkey IS '支撑主键 library_entry.library_entry_pkey';
 COMMENT ON INDEX public.library_entry_owner_id_id_key IS '支撑唯一约束 library_entry.library_entry_owner_id_id_key';
 COMMENT ON INDEX public.library_entry_owner_id_source_version_id_key IS '支撑唯一约束 library_entry.library_entry_owner_id_source_version_id_key';
@@ -1252,10 +1249,6 @@ COMMENT ON INDEX public.skill_version_pkey IS '支撑主键 skill_version.skill_
 COMMENT ON INDEX public.skill_version_owner_id_skill_id_id_key IS '支撑唯一约束 skill_version.skill_version_owner_id_skill_id_id_key';
 COMMENT ON INDEX public.skill_version_owner_id_skill_id_version_number_key IS '支撑唯一约束 skill_version.skill_version_owner_id_skill_id_version_number_key';
 
--- 循环引用：creative_skill 的当前指针引用 skill_version；双方表已创建，此处补充外键。
-ALTER TABLE ONLY public.creative_skill
-    ADD CONSTRAINT fk_creative_skill_current_version FOREIGN KEY (owner_id, id, current_version_id) REFERENCES public.skill_version(owner_id, skill_id, id);
-COMMENT ON CONSTRAINT fk_creative_skill_current_version ON public.creative_skill IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id, id, current_version_id) REFERENCES public.skill_version(owner_id, skill_id, id)';
 
 -- Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run。
 CREATE TABLE public.agent_conversation (
@@ -1296,10 +1289,6 @@ COMMENT ON INDEX public.uq_conversation_agent_scope IS '支撑唯一约束 agent
 CREATE INDEX ix_conversation_agent_updated ON public.agent_conversation USING btree (project_id, agent_instance_id, updated_at DESC, id DESC);
 COMMENT ON INDEX public.ix_conversation_agent_updated IS '查询索引：支持Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run的定位与排序；USING btree (project_id, agent_instance_id, updated_at DESC, id DESC)';
 
--- 循环引用：agent_instance 的当前指针引用 agent_conversation；双方表已创建，此处补充外键。
-ALTER TABLE ONLY public.agent_instance
-    ADD CONSTRAINT fk_agent_current_conversation FOREIGN KEY (project_id, id, current_conversation_id) REFERENCES public.agent_conversation(project_id, agent_instance_id, id);
-COMMENT ON CONSTRAINT fk_agent_current_conversation ON public.agent_instance IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, id, current_conversation_id) REFERENCES public.agent_conversation(project_id, agent_instance_id, id)';
 
 -- Agent 选定的 Skill 不可变版本。
 CREATE TABLE public.agent_skill_binding (
@@ -1310,7 +1299,6 @@ CREATE TABLE public.agent_skill_binding (
     skill_version_id uuid NOT NULL, -- 固定的不可变 Skill 发布版本
     updated_at timestamp with time zone NOT NULL, -- 最后状态或配置更新时间（UTC）
     CONSTRAINT agent_skill_binding_pkey PRIMARY KEY (agent_id),
-    CONSTRAINT agent_skill_binding_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.app_user(id),
     CONSTRAINT agent_skill_binding_owner_id_skill_id_skill_version_id_fkey FOREIGN KEY (owner_id, skill_id, skill_version_id) REFERENCES public.skill_version(owner_id, skill_id, id),
     CONSTRAINT agent_skill_binding_project_id_agent_id_fkey FOREIGN KEY (project_id, agent_id) REFERENCES public.agent_instance(project_id, id) ON DELETE CASCADE
 );
@@ -1323,7 +1311,6 @@ COMMENT ON COLUMN public.agent_skill_binding.skill_id IS 'Skill 业务身份';
 COMMENT ON COLUMN public.agent_skill_binding.skill_version_id IS '固定的不可变 Skill 发布版本';
 COMMENT ON COLUMN public.agent_skill_binding.updated_at IS '最后状态或配置更新时间（UTC）';
 COMMENT ON CONSTRAINT agent_skill_binding_pkey ON public.agent_skill_binding IS '主键：唯一标识Agent 选定的 Skill 不可变版本的记录  (agent_id)';
-COMMENT ON CONSTRAINT agent_skill_binding_owner_id_fkey ON public.agent_skill_binding IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id) REFERENCES public.app_user(id)';
 COMMENT ON CONSTRAINT agent_skill_binding_owner_id_skill_id_skill_version_id_fkey ON public.agent_skill_binding IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (owner_id, skill_id, skill_version_id) REFERENCES public.skill_version(owner_id, skill_id, id)';
 COMMENT ON CONSTRAINT agent_skill_binding_project_id_agent_id_fkey ON public.agent_skill_binding IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, agent_id) REFERENCES public.agent_instance(project_id, id) ON DELETE CASCADE';
 COMMENT ON INDEX public.agent_skill_binding_pkey IS '支撑主键 agent_skill_binding.agent_skill_binding_pkey';
@@ -1340,7 +1327,7 @@ CREATE TABLE public.artifact_version (
     created_by_kind character varying(32) NOT NULL, -- 内容创建来源类型
     run_id uuid, -- 所属 Agent Run；用户直连任务为空
     created_at timestamp with time zone NOT NULL, -- 创建时间（UTC）
-    base_version_id uuid, -- Displayed parent version from the originating CanvasItem when this immutable version was created.
+    base_version_id uuid, -- 创作所基于的父版本标识；应用校验所属产物后冻结，不设自引用外键
     frozen_input_json jsonb, -- Read-only generation input copied from the accepting Task; null for uploads and text edits.
     CONSTRAINT ck_artifact_content_object CHECK ((jsonb_typeof(content_json) = 'object'::text)),
     CONSTRAINT ck_artifact_created_by_kind CHECK ((created_by_kind IN ('USER', 'AGENT', 'TASK'))),
@@ -1353,8 +1340,7 @@ CREATE TABLE public.artifact_version (
     CONSTRAINT uq_artifact_version_number UNIQUE (artifact_id, version_no),
     CONSTRAINT uq_artifact_version_project_artifact_id UNIQUE (project_id, artifact_id, id),
     CONSTRAINT uq_artifact_version_project_id UNIQUE (project_id, id),
-    CONSTRAINT fk_artifact_version_artifact FOREIGN KEY (project_id, artifact_id) REFERENCES public.artifact(project_id, id) ON DELETE CASCADE,
-    CONSTRAINT fk_artifact_version_base FOREIGN KEY (artifact_id, base_version_id) REFERENCES public.artifact_version(artifact_id, id)
+    CONSTRAINT fk_artifact_version_artifact FOREIGN KEY (project_id, artifact_id) REFERENCES public.artifact(project_id, id) ON DELETE CASCADE
 );
 
 COMMENT ON TABLE public.artifact_version IS '不可变产物内容、固定输入及生成来源；触发器禁止更新和删除';
@@ -1368,7 +1354,7 @@ COMMENT ON COLUMN public.artifact_version.input_refs_json IS '生成时固定的
 COMMENT ON COLUMN public.artifact_version.created_by_kind IS '内容创建来源类型';
 COMMENT ON COLUMN public.artifact_version.run_id IS '所属 Agent Run；用户直连任务为空';
 COMMENT ON COLUMN public.artifact_version.created_at IS '创建时间（UTC）';
-COMMENT ON COLUMN public.artifact_version.base_version_id IS 'Displayed parent version from the originating CanvasItem when this immutable version was created.';
+COMMENT ON COLUMN public.artifact_version.base_version_id IS '创作所基于的父版本标识；应用校验所属产物后冻结，不设自引用外键';
 COMMENT ON COLUMN public.artifact_version.frozen_input_json IS 'Read-only generation input copied from the accepting Task; null for uploads and text edits.';
 COMMENT ON CONSTRAINT ck_artifact_content_object ON public.artifact_version IS '数据有效性约束：CHECK ((jsonb_typeof(content_json) = ''object''::text))';
 COMMENT ON CONSTRAINT ck_artifact_created_by_kind ON public.artifact_version IS '数据有效性约束：CHECK ((created_by_kind IN (''USER'', ''AGENT'', ''TASK'')))';
@@ -1382,7 +1368,6 @@ COMMENT ON CONSTRAINT uq_artifact_version_number ON public.artifact_version IS '
 COMMENT ON CONSTRAINT uq_artifact_version_project_artifact_id ON public.artifact_version IS '唯一约束：禁止作用域内重复记录  (project_id, artifact_id, id)';
 COMMENT ON CONSTRAINT uq_artifact_version_project_id ON public.artifact_version IS '唯一约束：禁止作用域内重复记录  (project_id, id)';
 COMMENT ON CONSTRAINT fk_artifact_version_artifact ON public.artifact_version IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, artifact_id) REFERENCES public.artifact(project_id, id) ON DELETE CASCADE';
-COMMENT ON CONSTRAINT fk_artifact_version_base ON public.artifact_version IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (artifact_id, base_version_id) REFERENCES public.artifact_version(artifact_id, id)';
 COMMENT ON INDEX public.artifact_version_pkey IS '支撑主键 artifact_version.artifact_version_pkey';
 COMMENT ON INDEX public.uq_artifact_version_artifact_id IS '支撑唯一约束 artifact_version.uq_artifact_version_artifact_id';
 COMMENT ON INDEX public.uq_artifact_version_number IS '支撑唯一约束 artifact_version.uq_artifact_version_number';
@@ -1398,10 +1383,6 @@ COMMENT ON TRIGGER artifact_version_no_delete ON public.artifact_version IS '在
 CREATE TRIGGER artifact_version_no_update BEFORE UPDATE ON public.artifact_version FOR EACH ROW EXECUTE FUNCTION public.reject_artifact_version_mutation();
 COMMENT ON TRIGGER artifact_version_no_update ON public.artifact_version IS '在修改产物版本前拒绝操作，保护不可变内容及精确引用';
 
--- 循环引用：artifact 的当前指针引用 artifact_version；双方表已创建，此处补充外键。
-ALTER TABLE ONLY public.artifact
-    ADD CONSTRAINT fk_artifact_resource_default_version FOREIGN KEY (id, resource_default_version_id) REFERENCES public.artifact_version(artifact_id, id);
-COMMENT ON CONSTRAINT fk_artifact_resource_default_version ON public.artifact IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (id, resource_default_version_id) REFERENCES public.artifact_version(artifact_id, id)';
 
 -- 模板导入命令固定的参考图片来源。
 CREATE TABLE public.media_template_import_source (
@@ -1693,10 +1674,6 @@ COMMENT ON INDEX public.ix_agent_run_project_created IS '查询索引：支持�
 CREATE INDEX ix_agent_run_status ON public.agent_run USING btree (status, updated_at) WHERE (status NOT IN ('CANCELED', 'FAILED', 'SUCCEEDED'));
 COMMENT ON INDEX public.ix_agent_run_status IS '查询索引：支持单次 Agent 指令的持久执行状态及不可变上下文、策略快照的定位与排序；USING btree (status, updated_at) WHERE (status NOT IN (''CANCELED'', ''FAILED'', ''SUCCEEDED''))';
 
--- 循环引用：project 的当前指针引用 agent_run；双方表已创建，此处补充外键。
-ALTER TABLE ONLY public.project
-    ADD CONSTRAINT fk_project_active_run FOREIGN KEY (id, active_run_id) REFERENCES public.agent_run(project_id, id);
-COMMENT ON CONSTRAINT fk_project_active_run ON public.project IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (id, active_run_id) REFERENCES public.agent_run(project_id, id)';
 
 -- 不可变版本之间的精确输入引用及顺序。
 CREATE TABLE public.artifact_version_reference (
@@ -2263,9 +2240,9 @@ COMMENT ON INDEX public.uq_task_run_step_attempt IS '唯一索引：保证限定
 -- Provider 调用公开审计元数据，不包含凭据或模型私有推理。
 CREATE TABLE public.call_log (
     id uuid NOT NULL, -- 记录身份
-    project_id uuid NOT NULL, -- 所属项目及授权作用域
-    task_id uuid, -- 持久任务身份
-    run_id uuid, -- 所属 Agent Run；用户直连任务为空
+    project_id uuid NOT NULL, -- 原所属项目的历史标识；不设外键，查询仍须校验项目权限
+    task_id uuid, -- 原持久任务的历史标识；允许任务清理后保留
+    run_id uuid, -- 原 Agent Run 的历史标识；允许执行对象清理后保留，直连任务为空
     step_index integer, -- Run 内模型回合序号
     kind character varying(12) NOT NULL, -- 业务类型，允许值由 CHECK 约束限定
     operation character varying(12) NOT NULL, -- 本次调用执行的操作名称
@@ -2287,17 +2264,14 @@ CREATE TABLE public.call_log (
     CONSTRAINT call_log_trace_id_check CHECK ((trace_id ~ '^[0-9a-f]{32}$'::text)),
     CONSTRAINT ck_call_log_operation_scope CHECK (((((operation)::text = 'CHAT'::text) AND ((kind)::text = 'LLM'::text) AND (((run_id IS NOT NULL) AND (step_index IS NOT NULL) AND (step_index >= 0)) OR ((task_id IS NOT NULL) AND (run_id IS NULL) AND (step_index IS NULL)))) OR ((operation IN ('SUBMIT', 'POLL')) AND (kind IN ('IMAGE', 'VIDEO', 'AUDIO')) AND (task_id IS NOT NULL) AND (step_index IS NULL)))),
     CONSTRAINT call_log_pkey PRIMARY KEY (id),
-    CONSTRAINT call_log_trace_id_key UNIQUE (trace_id),
-    CONSTRAINT call_log_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id),
-    CONSTRAINT call_log_project_id_run_id_fkey FOREIGN KEY (project_id, run_id) REFERENCES public.agent_run(project_id, id),
-    CONSTRAINT call_log_project_id_task_id_fkey FOREIGN KEY (project_id, task_id) REFERENCES public.task(project_id, id)
+    CONSTRAINT call_log_trace_id_key UNIQUE (trace_id)
 );
 
 COMMENT ON TABLE public.call_log IS 'Provider 调用公开审计元数据，不包含凭据或模型私有推理';
 COMMENT ON COLUMN public.call_log.id IS '记录身份';
-COMMENT ON COLUMN public.call_log.project_id IS '所属项目及授权作用域';
-COMMENT ON COLUMN public.call_log.task_id IS '持久任务身份';
-COMMENT ON COLUMN public.call_log.run_id IS '所属 Agent Run；用户直连任务为空';
+COMMENT ON COLUMN public.call_log.project_id IS '原所属项目的历史标识；不设外键，查询仍须校验项目权限';
+COMMENT ON COLUMN public.call_log.task_id IS '原持久任务的历史标识；允许任务清理后保留';
+COMMENT ON COLUMN public.call_log.run_id IS '原 Agent Run 的历史标识；允许执行对象清理后保留，直连任务为空';
 COMMENT ON COLUMN public.call_log.step_index IS 'Run 内模型回合序号';
 COMMENT ON COLUMN public.call_log.kind IS '业务类型，允许值由 CHECK 约束限定';
 COMMENT ON COLUMN public.call_log.operation IS '本次调用执行的操作名称';
@@ -2320,9 +2294,6 @@ COMMENT ON CONSTRAINT call_log_trace_id_check ON public.call_log IS '数据有�
 COMMENT ON CONSTRAINT ck_call_log_operation_scope ON public.call_log IS '数据有效性约束：CHECK (((((operation)::text = ''CHAT''::text) AND ((kind)::text = ''LLM''::text) AND (((run_id IS NOT NULL) AND (step_index IS NOT NULL) AND (step_index >= 0)) OR ((task_id IS NOT NULL) AND (run_id IS NULL) AND (step_index IS NULL)))) OR ((operation IN (''SUBMIT'', ''POLL'')) AND (kind IN (''IMAGE'', ''VIDEO'', ''AUDIO'')) AND (task_id IS NOT NULL) AND (step_index IS NULL))))';
 COMMENT ON CONSTRAINT call_log_pkey ON public.call_log IS '主键：唯一标识Provider 调用公开审计元数据，不包含凭据或模型私有推理的记录  (id)';
 COMMENT ON CONSTRAINT call_log_trace_id_key ON public.call_log IS '唯一约束：禁止作用域内重复记录  (trace_id)';
-COMMENT ON CONSTRAINT call_log_project_id_fkey ON public.call_log IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id) REFERENCES public.project(id)';
-COMMENT ON CONSTRAINT call_log_project_id_run_id_fkey ON public.call_log IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, run_id) REFERENCES public.agent_run(project_id, id)';
-COMMENT ON CONSTRAINT call_log_project_id_task_id_fkey ON public.call_log IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, task_id) REFERENCES public.task(project_id, id)';
 COMMENT ON INDEX public.call_log_pkey IS '支撑主键 call_log.call_log_pkey';
 COMMENT ON INDEX public.call_log_trace_id_key IS '支撑唯一约束 call_log.call_log_trace_id_key';
 
@@ -2607,9 +2578,9 @@ COMMENT ON INDEX public.ix_tool_execution_run IS '查询索引：支持按 Run�
 -- 使用量预留、结算与释放账本，记录估算或实际费用来源。
 CREATE TABLE public.usage_ledger (
     id uuid NOT NULL, -- 记录身份
-    project_id uuid NOT NULL, -- 所属项目及授权作用域
-    run_id uuid, -- 所属 Agent Run；用户直连任务为空
-    task_id uuid, -- 持久任务身份
+    project_id uuid NOT NULL, -- 原所属项目的历史标识；不设外键，查询仍须校验项目权限
+    run_id uuid, -- 原 Agent Run 的历史标识；允许执行对象清理后保留，直连任务为空
+    task_id uuid, -- 原持久任务的历史标识；允许任务清理后保留
     operation_key character varying(180) NOT NULL, -- 使用量账本的业务操作去重键
     entry_type character varying(24) NOT NULL, -- 使用量预留、结算或释放类型
     quantity_json jsonb NOT NULL, -- 图片、视频、音频与 LLM 使用量明细
@@ -2628,17 +2599,14 @@ CREATE TABLE public.usage_ledger (
     CONSTRAINT ck_usage_entry_type CHECK ((entry_type IN ('RESERVATION', 'SETTLEMENT', 'RELEASE'))),
     CONSTRAINT ck_usage_unknown_amount CHECK ((((cost_status)::text <> 'UNKNOWN'::text) OR ((estimated_cost IS NULL) AND (actual_cost IS NULL)))),
     CONSTRAINT usage_ledger_pkey PRIMARY KEY (id),
-    CONSTRAINT usage_ledger_operation_key_key UNIQUE (operation_key),
-    CONSTRAINT fk_usage_run_project FOREIGN KEY (project_id, run_id) REFERENCES public.agent_run(project_id, id),
-    CONSTRAINT fk_usage_task_project FOREIGN KEY (project_id, task_id) REFERENCES public.task(project_id, id),
-    CONSTRAINT usage_ledger_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id)
+    CONSTRAINT usage_ledger_operation_key_key UNIQUE (operation_key)
 );
 
 COMMENT ON TABLE public.usage_ledger IS '使用量预留、结算与释放账本，记录估算或实际费用来源';
 COMMENT ON COLUMN public.usage_ledger.id IS '记录身份';
-COMMENT ON COLUMN public.usage_ledger.project_id IS '所属项目及授权作用域';
-COMMENT ON COLUMN public.usage_ledger.run_id IS '所属 Agent Run；用户直连任务为空';
-COMMENT ON COLUMN public.usage_ledger.task_id IS '持久任务身份';
+COMMENT ON COLUMN public.usage_ledger.project_id IS '原所属项目的历史标识；不设外键，查询仍须校验项目权限';
+COMMENT ON COLUMN public.usage_ledger.run_id IS '原 Agent Run 的历史标识；允许执行对象清理后保留，直连任务为空';
+COMMENT ON COLUMN public.usage_ledger.task_id IS '原持久任务的历史标识；允许任务清理后保留';
 COMMENT ON COLUMN public.usage_ledger.operation_key IS '使用量账本的业务操作去重键';
 COMMENT ON COLUMN public.usage_ledger.entry_type IS '使用量预留、结算或释放类型';
 COMMENT ON COLUMN public.usage_ledger.quantity_json IS '图片、视频、音频与 LLM 使用量明细';
@@ -2658,9 +2626,6 @@ COMMENT ON CONSTRAINT ck_usage_entry_type ON public.usage_ledger IS '数据有�
 COMMENT ON CONSTRAINT ck_usage_unknown_amount ON public.usage_ledger IS '数据有效性约束：CHECK ((((cost_status)::text <> ''UNKNOWN''::text) OR ((estimated_cost IS NULL) AND (actual_cost IS NULL))))';
 COMMENT ON CONSTRAINT usage_ledger_operation_key_key ON public.usage_ledger IS '唯一约束：禁止作用域内重复记录  (operation_key)';
 COMMENT ON CONSTRAINT usage_ledger_pkey ON public.usage_ledger IS '主键：唯一标识使用量预留、结算与释放账本，记录估算或实际费用来源的记录  (id)';
-COMMENT ON CONSTRAINT fk_usage_run_project ON public.usage_ledger IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, run_id) REFERENCES public.agent_run(project_id, id)';
-COMMENT ON CONSTRAINT fk_usage_task_project ON public.usage_ledger IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id, task_id) REFERENCES public.task(project_id, id)';
-COMMENT ON CONSTRAINT usage_ledger_project_id_fkey ON public.usage_ledger IS '外键：保证引用存在并保持用户、项目或版本作用域一致；FOREIGN KEY (project_id) REFERENCES public.project(id)';
 COMMENT ON INDEX public.usage_ledger_pkey IS '支撑主键 usage_ledger.usage_ledger_pkey';
 COMMENT ON INDEX public.usage_ledger_operation_key_key IS '支撑唯一约束 usage_ledger.usage_ledger_operation_key_key';
 
