@@ -179,6 +179,8 @@ public final class SkillService {
     }
     /** Trusted Agent application service performs project ownership and Agent CAS in its outer event transaction. */
     public Optional<SkillContent.Binding> getBinding(UUID owner, UUID project, UUID agent) { return repository.binding(owner, project, agent); }
+    /** Trusted export caller validates project ownership and supplies its consistent read transaction. */
+    public List<SkillContent.Binding> getProjectBindings(UUID owner, UUID project) { return repository.projectBindings(owner, project); }
     public void saveBinding(UUID owner, UUID project, UUID agent, UUID skill, UUID version) {
         if ((skill == null) != (version == null)) throw conflict();
         tx.executeWithoutResult(status -> {

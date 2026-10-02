@@ -3704,6 +3704,7 @@ export interface components {
             createdAt: string;
         };
         ProjectExportManifest: {
+            /** @description 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId）；未安装时 mapping.assets 为空。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];

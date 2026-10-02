@@ -4839,7 +4839,10 @@ components:
       required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
         canvasItems, connections]
       properties:
-        creativeSkills: {type: array, items: {type: object, additionalProperties: true}}
+        creativeSkills:
+          type: array
+          description: 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId）；未安装时 mapping.assets 为空。
+          items: {type: object, additionalProperties: true}
         schemaVersion: {type: integer, const: 6}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}

@@ -20,12 +20,15 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
+import dev.agenvas.library.application.LibraryService;
+import dev.agenvas.library.domain.LibraryEntry;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.settings.application.LlmProviderConfigService;
 import dev.agenvas.settings.application.MediaStyleService;
 import dev.agenvas.skill.application.SkillRunService;
 import dev.agenvas.skill.application.SkillService;
+import dev.agenvas.skill.domain.SkillContent;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
@@ -54,6 +57,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.identity.bootstrap-secret=manifest-integration-secret",
+        "agenvas.library.worker-enabled=false",
         "agenvas.skill.worker-enabled=false",
         "agenvas.settings.llm.allow-loopback-http=true"})
 class ProjectExportManifestPostgresIT {
@@ -82,6 +86,7 @@ class ProjectExportManifestPostgresIT {
     @Autowired private AgentInstanceService agents;
     @Autowired private SkillService skills;
     @Autowired private SkillRunService skillRuns;
+    @Autowired private LibraryService library;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
@@ -125,13 +130,46 @@ class ProjectExportManifestPostgresIT {
                 revisedImage.resourceDefaultVersion().id(),
                 CanvasConnection.RelationType.MEDIA_INPUT, 1);
 
+        var librarySource = library.source(owner.userId(), project.id(), sourceItemId);
+        var libraryCommand = library.save(owner.userId(), project.id(), sourceItemId,
+                librarySource.versionId(), librarySource.expectedSelectionEpoch(), librarySource.expectedArtifactVersion(),
+                "Synthetic watercolor reference", LibraryEntry.Category.OTHER, "manifest-library-save");
+        assertThat(library.processNext()).isTrue();
+        UUID libraryEntryId = UUID.fromString(library.command(owner.userId(), libraryCommand.id())
+                .result().path("entryId").asText());
         var skill = skills.create(owner.userId(), "Exported creative method", "Synthetic export fixture");
-        var publication = skills.publish(owner.userId(), skill.id(), 0, "manifest-skill-publish");
+        var emptyDraft = skills.getDraft(owner.userId(), skill.id());
+        var firstDraft = skills.saveDraft(owner.userId(), skill.id(), emptyDraft.version(),
+                new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, emptyDraft.skillMd(),
+                        emptyDraft.outputKinds(), emptyDraft.inputSlots(),
+                        List.of(new SkillContent.Resource("references/style-guide.md", "Use the warm watercolor palette.")),
+                        List.of(new SkillContent.DraftAsset("style-reference", libraryEntryId, 0L, null, null, null,
+                                SkillContent.Usage.PROVIDER_REFERENCE, true, "Synthetic palette reference"))));
+        var publication = skills.publish(owner.userId(), skill.id(), firstDraft.version(), "manifest-skill-publish");
         assertThat(skills.processNext()).isTrue();
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
         var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method", List.of());
+        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), skill.id(), skillVersionId,
+                "manifest-agent-binding");
         skillRuns.install(owner.userId(), project.id(), agent.id(), skill.id(), skillVersionId, "manifest-skill-install");
         assertThat(skillRuns.processNext()).isTrue();
+        var secondDraft = skills.saveDraft(owner.userId(), skill.id(), firstDraft.version(),
+                new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, firstDraft.skillMd() + "\nUse the cold palette.\n",
+                        firstDraft.outputKinds(), firstDraft.inputSlots(),
+                        List.of(new SkillContent.Resource("references/style-guide.md", "Use the cold watercolor palette.")),
+                        firstDraft.assets()));
+        var secondPublication = skills.publish(owner.userId(), skill.id(), secondDraft.version(), "manifest-skill-publish-next");
+        assertThat(skills.processNext()).isTrue();
+        UUID uninstalledVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
+        var uninstalledAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version", List.of());
+        skillRuns.saveBinding(owner.userId(), project.id(), uninstalledAgent.id(), uninstalledAgent.version(),
+                skill.id(), uninstalledVersionId, "manifest-uninstalled-agent-binding");
+        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).installed()).isTrue();
+        assertThat(skillRuns.preview(owner.userId(), project.id(), uninstalledAgent.id(), null).installed()).isFalse();
+        var otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
+        var otherAgent = agents.create(owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project", List.of());
+        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(),
+                skill.id(), uninstalledVersionId, "other-project-agent-binding");
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
                 .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
@@ -178,10 +216,34 @@ class ProjectExportManifestPostgresIT {
         assertThat(targetCard.path("mediaDraft").path("styleId").asText()).isEqualTo(style.id().toString());
         assertThat(targetCard.path("mediaDraft").path("style").path("promptSuffix").asText())
                 .isEqualTo("Soft paper texture");
-        assertThat(manifest.path("creativeSkills").size()).isEqualTo(1);
-        JsonNode exportedSkill = manifest.path("creativeSkills").get(0).path("version");
-        assertThat(exportedSkill.path("id").asText()).isEqualTo(skillVersionId.toString());
-        assertThat(exportedSkill.path("skillMd").asText()).isEqualTo(skills.getDraft(owner.userId(), skill.id()).skillMd());
+        assertThat(manifest.path("creativeSkills").size()).isEqualTo(2);
+        JsonNode installedSkill = findSkillVersion(manifest.path("creativeSkills"), skillVersionId);
+        assertThat(installedSkill.path("version").path("skillMd").asText()).isEqualTo(firstDraft.skillMd());
+        assertThat(installedSkill.path("version").path("resources").get(0).path("content").asText())
+                .isEqualTo("Use the warm watercolor palette.");
+        assertSkillBinding(installedSkill, agent.id(), skill.id(), skillVersionId);
+        assertThat(installedSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
+        assertThat(installedSkill.path("mapping").path("assets").size()).isEqualTo(1);
+        JsonNode installedMapping = installedSkill.path("mapping").path("assets").get(0);
+        assertThat(installedMapping.path("alias").asText()).isEqualTo("style-reference");
+        assertThat(artifacts.requireVersion(owner.userId(), project.id(),
+                UUID.fromString(installedMapping.path("artifactId").asText()),
+                UUID.fromString(installedMapping.path("artifactVersionId").asText()))
+                .content().path("sourceType").asText()).isEqualTo("SKILL_IMPORT");
+        JsonNode uninstalledSkill = findSkillVersion(manifest.path("creativeSkills"), uninstalledVersionId);
+        assertThat(uninstalledSkill.path("version").path("skillMd").asText()).isEqualTo(secondDraft.skillMd());
+        assertThat(uninstalledSkill.path("version").path("resources").get(0).path("content").asText())
+                .isEqualTo("Use the cold watercolor palette.");
+        assertSkillBinding(uninstalledSkill, uninstalledAgent.id(), skill.id(), uninstalledVersionId);
+        assertThat(uninstalledSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
+        assertThat(uninstalledSkill.path("mapping").path("assets").isArray()).isTrue();
+        assertThat(uninstalledSkill.path("mapping").path("assets").isEmpty()).isTrue();
+        for (JsonNode exportedSkill : manifest.path("creativeSkills")) {
+            assertThat(exportedSkill.path("version").path("assets").size()).isEqualTo(1);
+            assertThat(exportedSkill.path("version").path("assets").get(0).has("contentUrl")).isFalse();
+            assertThat(exportedSkill.path("version").path("assets").get(0).has("thumbnailUrl")).isFalse();
+            assertThat(exportedSkill.path("version").path("assets").get(0).has("media")).isFalse();
+        }
         JsonNode input = targetCard.path("mediaDraft").path("mediaInputs").get(0);
         assertThat(input.path("versionId").asText())
                 .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
@@ -196,7 +258,8 @@ class ProjectExportManifestPostgresIT {
                 "127.0.0.1:18080", "manifest-session-secret-456", session.getId(),
                 "TOP_SECRET_KEY", "signedUrl",
                 "sourceTaskId", "providerRequestId", "objectKey", "thumbnailKey",
-                "ownerId", "session");
+                "ownerId", "session", "libraryEntryId", "preparedAssets", "\"pin\"",
+                otherProject.id().toString(), otherAgent.id().toString());
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
         mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(
                         UUID.randomUUID(), "foreign")))))
@@ -233,6 +296,21 @@ class ProjectExportManifestPostgresIT {
             if (id.toString().equals(value.path("id").asText())) return value;
         }
         throw new AssertionError("Missing manifest entry " + id);
+    }
+
+    private JsonNode findSkillVersion(JsonNode values, UUID id) {
+        for (JsonNode value : values) {
+            if (id.toString().equals(value.path("version").path("id").asText())) return value;
+        }
+        throw new AssertionError("Missing Skill version " + id);
+    }
+
+    private void assertSkillBinding(JsonNode skill, UUID agentId, UUID skillId, UUID versionId) {
+        assertThat(skill.path("agentBindings").size()).isEqualTo(1);
+        JsonNode binding = skill.path("agentBindings").get(0);
+        assertThat(binding.path("agentId").asText()).isEqualTo(agentId.toString());
+        assertThat(binding.path("skillId").asText()).isEqualTo(skillId.toString());
+        assertThat(binding.path("skillVersionId").asText()).isEqualTo(versionId.toString());
     }
 
     private static UsernamePasswordAuthenticationToken asUser(AdminPrincipal principal) {

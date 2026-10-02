@@ -1060,3 +1060,11 @@ RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用
 - [ ] 后续视频/音频固定参考及相应用例、多模态分析、AI Skill 制造机、公共分享、包导入导出和多 Skill 叠加。
 
 本次新增 Skill 模块及 Agent Runtime/审批/来源接口，复用现有模型通信、媒体 Task 和资产归档，不新增模型或脚本执行能力。永久删除 Skill 尚未提供；发布版本与归档内容保守保留。全量复验的 5 项跳过为 4 项真实服务 opt-in 与 1 项缺少本地深度模型权重；一次 PostgreSQL 认证连接 EOF 的测试单项及完整复验均通过。未进行真实模型或 Provider 调用、浏览器端到端或部署验证；用户参考截图未加入仓库。本轮测试修复不新增 API、迁移或依赖，最终验证范围统一记录于 [实施设计第 10 节](creative-skills-design.md#10-首阶段实现与验证范围)。
+
+## 2026-10-02 将 Agent Skill 合并 main
+
+- [x] 保留 main 的媒体模板、风格预设与设置页改动；Skill 保持 Agent 节点专用。媒体审批同时冻结和校验风格与 Skill 来源，恢复模式保留两套功能的写入边界。
+- [x] 保留 main V74/V75，未部署 Skill SQL 内容不变并顺延 V76/V77；隔离 PostgreSQL 执行到 V77，重新生成全部 jOOQ。Skill 规格为 §6.17 / ADR 0031，风格 ADR 0030 保留。项目导出版本统一 6，保留风格与 Skill 内容；补齐 Agent 默认固定绑定，已安装与未安装版本按 ID 去重，跨项目隔离及私有地址排除有测试。
+- [x] 合并后 16 类后端 88 项（48 单元、40 真实 PostgreSQL）及前端 11 文件 133 项＋Node 检查器 6 项通过；主代码/全部测试源码编译、TypeScript、完整 lint、语言/主题检查和生产构建通过。OpenAPI 与重新生成的 TypeScript 同步，两轴审查问题全部修复，文本模式和差异空白检查通过。
+
+合并前全量结果保留于 Skill 条目；合并后仅执行上述定向回归，没有重复全量、真实 Provider、浏览器端到端或部署验证。本轮未推送远端或更新运行中的应用，保留其他已提交文档改动。已有 Vite 分块、JSDOM 媒体和 Mockito 动态 Agent 提示保留。详细验证与升级说明见 [Skill 实施设计](creative-skills-design.md)。

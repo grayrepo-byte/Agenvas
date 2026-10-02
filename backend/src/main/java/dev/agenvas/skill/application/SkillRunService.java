@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -261,14 +262,31 @@ public class SkillRunService {
     /** Export fixed source content and exact project mappings without private archive metadata. */
     public List<JsonNode> exportProject(UUID owner, UUID project) {
         projects.get(owner,project);
-        return operations.successful(owner,project).stream().map(op -> {
-            var published=skills.getVersion(owner,op.skillId(),op.skillVersionId());
-            ObjectNode safe=mapper.createObjectNode();
-            safe.set("version",mapper.valueToTree(published));safe.set("mapping",op.result().deepCopy());
-            // Account-serving URLs are regenerated on import, never persisted in a backup.
-            for(JsonNode item:safe.path("version").path("assets")) if(item instanceof ObjectNode asset) {asset.remove("contentUrl");asset.remove("thumbnailUrl");}
-            return (JsonNode)safe;
-        }).toList();
+        var versions = new LinkedHashMap<UUID, ObjectNode>();
+        for (var operation : operations.successful(owner,project)) {
+            ObjectNode entry = exportVersion(owner, operation.skillId(), operation.skillVersionId());
+            entry.set("mapping", operation.result().deepCopy());
+            versions.put(operation.skillVersionId(), entry);
+        }
+        for (var binding : skills.getProjectBindings(owner,project)) {
+            ObjectNode entry = versions.computeIfAbsent(binding.skillVersionId(),
+                    ignored -> exportVersion(owner, binding.skillId(), binding.skillVersionId()));
+            ((ArrayNode) entry.path("agentBindings")).addObject()
+                    .put("agentId", binding.agentId().toString()).put("skillId", binding.skillId().toString())
+                    .put("skillVersionId", binding.skillVersionId().toString());
+        }
+        return versions.values().stream().map(entry -> (JsonNode) entry).toList();
+    }
+    private ObjectNode exportVersion(UUID owner, UUID skill, UUID version) {
+        ObjectNode safe = mapper.createObjectNode();
+        safe.set("version", mapper.valueToTree(skills.getVersion(owner,skill,version)));
+        safe.putObject("mapping").put("schemaVersion", SkillContent.SCHEMA_VERSION).putArray("assets");
+        safe.putArray("agentBindings");
+        // Account-serving URLs are regenerated on import, never persisted in a backup.
+        for (JsonNode item : safe.path("version").path("assets")) {
+            if (item instanceof ObjectNode asset) { asset.remove("contentUrl"); asset.remove("thumbnailUrl"); }
+        }
+        return safe;
     }
     private SkillContent.Version selectedVersion(UUID owner, UUID project, UUID agent, Selection selection) {
         if(selection!=null && selection.mode()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));

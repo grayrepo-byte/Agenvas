@@ -268,10 +268,13 @@ class AgentMediaApprovalServiceTest {
         order.verify(mediaTasks).preflightApproved(ownerId, projectId, artifactId, canvasItemId, 1, source);
         order.verify(mediaTasks).runApproved(ownerId, projectId, runId, approvalId, artifactId,
                 canvasItemId, 1, "agent-media:" + approvalId + ":0", source);
-        order.verify(approvals).update(any(), eq(0L));
+        ArgumentCaptor<AgentMediaApproval> captured = ArgumentCaptor.forClass(AgentMediaApproval.class);
+        order.verify(approvals).update(captured.capture(), eq(0L));
         assertThat(result.status()).isEqualTo(AgentMediaApproval.Status.APPROVED);
-        assertThat(result.request().path("creativeSkill")).isEqualTo(source);
-        assertThat(result.targets().path("outputs").get(0).path("preview").path("styleId").asText())
+        assertThat(captured.getValue().request().path("creativeSkill")).isEqualTo(source);
+        assertThat(result.outputs()).hasSize(1);
+        assertThat(result.outputs().getFirst().preview().path("creativeSkill")).isEqualTo(source);
+        assertThat(result.outputs().getFirst().preview().path("styleId").asText())
                 .isEqualTo(styleId.toString());
         assertThat(result.taskIds()).containsExactly(task.id());
     }

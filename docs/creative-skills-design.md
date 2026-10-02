@@ -1,4 +1,4 @@
-# ADR 0030 与实施设计：Agent 节点创作 Skill 系统
+# ADR 0031 与实施设计：Agent 节点创作 Skill 系统
 
 状态：已接受并实施首阶段（2026-10-02，Issue #27）。用户先确认产品/技术设计和 Agent 节点专用边界，再要求实施。账号级草稿、发布版本、文本资料、固定图片、Agent 选择、Run/审批/结果来源为首阶段；视频/音频参考、多模态分析与制作助手属于后续阶段。以下历史设计说明与当前实现边界以本文件第 10 节为准。
 
@@ -168,7 +168,7 @@ Skill 别名映射为所选能力的既有角色或真实具名槽位，按声�
 
 Skill 新版本不会自动更新 Agent 选择，用户明确切换发布版本。回收站中的 Skill 不供新选择；已保存默认绑定可以供下一次 Run 显式确认其固定版本使用，活动 Run 保持不变。当前不提供永久删除，版本和归档保守保留；后续若增加清理，须保护 Agent 绑定、执行/结果及有效备份引用，不能因移入回收站删除内容。
 
-项目导出清单版本 6 包含已安装/使用的固定 Skill 正文、文本资料、Agent 绑定和项目素材映射；媒体字节仍遵循现有清单的独立备份边界。清单不是完整 Skill 包导出或自动导入实现；恢复运行绑定仍只针对 Agent，产物节点历史来源不得转换成执行绑定。后续专用 Skill 包导出才包括独立资产字节。导出排除密钥、私有存储地址、模型原始响应和私有推理。
+项目导出清单版本 6 包含已安装/使用及 Agent 默认绑定的固定 Skill 正文、文本资料、`agentBindings`（Agent 与固定 Skill 版本的关联）和项目素材映射；未安装版本的 `mapping.assets` 为空，不伪造安装操作。媒体字节仍遵循现有清单的独立备份边界。清单不是完整 Skill 包导出或自动导入实现；恢复运行绑定仍只针对 Agent，产物节点历史来源不得转换成执行绑定。后续专用 Skill 包导出才包括独立资产字节。导出排除密钥、私有存储地址、模型原始响应和私有推理。
 
 ## 8. 模块接口与合约
 
@@ -288,6 +288,10 @@ Issue #27 首阶段已落地：`skill` 模块提供账号目录、草稿 CAS、Y
 
 ### 合并 main 的兼容调整（2026-10-02）
 
-main 已保留媒体模板 V74 与风格 V75。尚未部署的 Skill 迁移以相同 SQL 内容顺延至 V76/V77，并从包含双方表的隔离数据库重新生成 jOOQ；不改写 main 既有迁移。Skill 规格移至 §6.17，决策编号为 ADR 0031，保留风格 ADR 0030。项目导出清单统一为版本 6，同时保存媒体草稿风格与固定 Skill 资料/素材映射，读取方须接受新版本。前端类型由合并后的 OpenAPI 重新生成。
+main 已保留媒体模板 V74 与风格 V75。尚未部署的 Skill 迁移以相同 SQL 内容顺延至 V76/V77，并从包含双方表的隔离数据库重新生成 jOOQ；不改写 main 既有迁移。Skill 规格移至 §6.17，决策编号为 ADR 0031，保留风格 ADR 0030。项目导出清单统一为版本 6，同时保存媒体草稿风格与固定 Skill 资料/素材映射，读取方须接受新版本。前端类型由合并后的 OpenAPI 重新生成。导出明确保存 Agent 默认绑定；即使尚未安装也保留其固定版本内容，同一版本仅导出一次，已安装素材映射保持原结构。
 
 Agent 媒体审批同时检查风格与 Skill 快照；Skill 不能替代用户批准或绕过风格版本检查。模板应用仍保留当前风格，产物节点仍不提供 Skill 选择或执行入口。合并不部署应用，也不推送远端；上文全量测试记录属于合并前 Skill 分支，合并后定向验证单独记录。
+
+合并后定向验证通过：后端 16 类、88 项（48 单元、40 真实 PostgreSQL），0 失败/错误/跳过；选择器为 `MessageCatalogTest,ApiI18nTest,ArtifactContentValidatorTest,AgentMediaApprovalServiceTest,RunToolPolicyTest,InitialModelContextServiceTest,SkillFormatTest,SkillPostgresIT,SkillRunPostgresIT,SkillAssetArchivePostgresIT,AgentRunPostgresIT,AgentMediaApprovalPostgresIT,ProjectExportManifestPostgresIT,RecoveryModePostgresIT,MediaStylesPostgresIT,MediaTemplatePostgresIT`。先清理旧构建资源再运行定向测试，修正审批测试接口断言与风格导出版本断言后，完整重跑该选择器成功，Java 主代码与全部测试源码编译通过。
+
+前端 11 个模板、风格、草稿、Agent、Skill、工作区与国际化测试文件 133 项，加 Node 检查器 6 项，共 139 项通过；TypeScript、完整 lint（2023 条四语言消息）、生产构建通过。OpenAPI/生成类型同步，Flyway 在隔离 PostgreSQL 执行到 V77，jOOQ 完整重新生成。两轴独立审查发现的绑定导出和 ADR 标题问题均修复，复审无残留；新增文本凭据/私有信息模式与差异空白检查通过。未重复运行合并后的全量测试、真实 Provider、浏览器端到端或部署验证。

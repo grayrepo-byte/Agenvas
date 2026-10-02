@@ -167,8 +167,12 @@ public class SkillRepository {
     public Optional<SkillContent.Binding> binding(UUID owner, UUID project, UUID agent) {
         return db.selectFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
                 .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent)))
-                .fetchOptional().map(row -> new SkillContent.Binding(row.getAgentId(), row.getProjectId(), row.getOwnerId(),
-                        row.getSkillId(), row.getSkillVersionId(), instant(row.getUpdatedAt())));
+                .fetchOptional().map(this::binding);
+    }
+    public List<SkillContent.Binding> projectBindings(UUID owner, UUID project) {
+        return db.selectFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
+                .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)))
+                .orderBy(AGENT_SKILL_BINDING.AGENT_ID).fetch(this::binding);
     }
     public void saveBinding(UUID owner, UUID project, UUID agent, UUID skill, UUID version, Instant now) {
         if (skill == null && version == null) {
@@ -188,6 +192,10 @@ public class SkillRepository {
                 mapper.readValue(row.getInputJson().data(), SkillContent.PublishInput.class), mapper.readTree(row.getProgressJson().data()),
                 SkillContent.OperationStatus.valueOf(row.getStatus()), row.getEpoch(), instant(row.getLeaseUntil()), row.getResultVersionId(),
                 row.getErrorCode(), row.getErrorDetail(), row.getPinsCleaned(), instant(row.getCreatedAt()), instant(row.getUpdatedAt()));
+    }
+    private SkillContent.Binding binding(dev.agenvas.db.tables.records.AgentSkillBindingRecord row) {
+        return new SkillContent.Binding(row.getAgentId(), row.getProjectId(), row.getOwnerId(),
+                row.getSkillId(), row.getSkillVersionId(), instant(row.getUpdatedAt()));
     }
     private JSONB json(Object value) { return JSONB.valueOf(mapper.writeValueAsString(value)); }
     private OffsetDateTime time(Instant value) { return value == null ? null : value.atOffset(ZoneOffset.UTC); }
