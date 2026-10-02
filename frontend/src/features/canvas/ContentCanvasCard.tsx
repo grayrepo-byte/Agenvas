@@ -2,7 +2,7 @@ import {
 LinkSimple,LockSimple,PencilSimple,
 SlidersHorizontal,Stack,TextT
 } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { MouseEvent,ReactNode } from "react";
 import { useEffect,useRef,useState } from "react";
 import type { Artifact,CanvasItem } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -49,6 +49,13 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   const references = artifact.resourceDefaultVersion?.inputReferences.length ?? 0;
   const emptyText = !text.trim();
 
+  function beginEditing(event: MouseEvent<HTMLElement>) {
+    event.stopPropagation();
+    if (!hasCurrentVersion(artifact)) return;
+    setEditingText(true);
+    editorRef.current?.focus();
+  }
+
   return <ArtifactCardFrame title={item.title} titleIcon={<Icon size={16} />} kindLabel={label} selected={selected} locked={locked}
     toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
@@ -60,7 +67,7 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
             {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("暂无版本")}</span>}
         <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact)}
           aria-pressed={editingText} className={editingText ? "is-open" : undefined}
-          onClick={() => { setEditingText(true); editorRef.current?.focus(); }}>
+          onClick={beginEditing}>
           <PencilSimple size={17} aria-hidden />{t("编辑内容")}</Button>
         <Button variant="ghost" type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("卡片详情")}</Button>
       </>}>
@@ -73,11 +80,11 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
         <Icon size={17} aria-hidden />
         <h3 title={header}>{header}</h3>
       </div>
-      {emptyText ? <div className="content-card-empty">
+      {emptyText ? <div className="content-card-empty nodrag nowheel nopan" onDoubleClick={beginEditing}>
         <TextT size={44} aria-hidden />
         <span>{t("写下想法，让创作开始")}</span>
       </div> : <div className="content-card-body nodrag nowheel nopan" tabIndex={0}
-        role="region" aria-label={t("{0}正文", { "0": label })}>
+        role="region" aria-label={t("{0}正文", { "0": label })} onDoubleClick={beginEditing}>
         <p className="content-card-text">{text}</p>
       </div>}
       {references > 0 || locked ? <footer className="content-card-sources">

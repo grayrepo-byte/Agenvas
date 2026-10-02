@@ -41,9 +41,10 @@ export function TextVersionPicker({ artifact, disabled = false }: {
 
   return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="text-card-version-picker" ref={anchor}>
     <DropdownMenuTrigger asChild><Button variant="ghost" aria-expanded={open} aria-haspopup="menu" ref={trigger}
-      className="content-card-chip text-card-version-tag" type="button">
-      <Stack size={12} aria-hidden />v{artifact.resourceDefaultVersion.versionNo}
-      <CaretDown size={10} aria-hidden />
+      className="text-card-version-tag" type="button">
+      <Stack data-icon="inline-start" aria-hidden />
+      {t("版本{0}", { "0": ` v${artifact.resourceDefaultVersion.versionNo}` })}
+      <CaretDown data-icon="inline-end" aria-hidden />
     </Button></DropdownMenuTrigger>
     {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="text-card-version-menu" role="menu" aria-label={t("文字版本")}><DropdownMenuGroup>
       {disabled ? <p>{t("请先保存或退出编辑，再切换版本。")}</p> : null}

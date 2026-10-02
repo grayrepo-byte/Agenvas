@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render,screen,waitFor,within } from "@testing-library/react";
+import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { readFileSync } from "node:fs";
@@ -17,9 +17,10 @@ vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
 
 const CREATED_AT = "2026-09-26T00:00:00Z";
 const contentCanvasCardStyles = readFileSync("src/features/canvas/ContentCanvasCard.css", "utf8");
+const artifactCardFrameStyles = readFileSync("src/features/canvas/ArtifactCardFrame.css", "utf8");
 const style = document.createElement("style");
 beforeAll(() => {
-  style.textContent = contentCanvasCardStyles;
+  style.textContent = `${artifactCardFrameStyles}\n${contentCanvasCardStyles}`;
   document.head.append(style);
 });
 afterAll(() => style.remove());
@@ -39,13 +40,16 @@ function itemFor(value: Artifact): CanvasItem {
 
 function showCard(value: Artifact, selected = true, locked = false) {
   const onInspect = vi.fn();
+  const onCanvasDoubleClick = vi.fn();
   const client = createQueryClient();
   const card = (next: Artifact) => <QueryClientProvider client={client}>
-    <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}
-      onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
+    <div onDoubleClick={onCanvasDoubleClick}>
+      <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}
+        onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
+    </div>
   </QueryClientProvider>;
   const result = render(card(value));
-  return { ...result, onInspect, rerenderArtifact: (next: Artifact) => result.rerender(card(next)) };
+  return { ...result, onInspect, onCanvasDoubleClick, rerenderArtifact: (next: Artifact) => result.rerender(card(next)) };
 }
 
 describe("ContentCanvasCard", () => {
@@ -85,7 +89,12 @@ describe("ContentCanvasCard", () => {
   it("places the version in the toolbar without a text tag and focuses content on every edit click", async () => {
     showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
     const toolbar = screen.getByLabelText("文字卡片操作");
-    expect(within(toolbar).getByRole("button", { name: /v2/ })).toBeInTheDocument();
+    const version = within(toolbar).getByRole("button", { name: "版本 v2" });
+    const versionStyle = getComputedStyle(version);
+    const detailsStyle = getComputedStyle(within(toolbar).getByRole("button", { name: "卡片详情" }));
+    for (const property of ["height", "padding", "background-color", "color", "font-size", "border-radius"]) {
+      expect(versionStyle.getPropertyValue(property)).toBe(detailsStyle.getPropertyValue(property));
+    }
     expect(screen.getByRole("article").querySelector(".content-card-chip")).toBeNull();
     const user = userEvent.setup();
     await user.click(within(toolbar).getByRole("button", { name: "编辑内容" }));
@@ -134,6 +143,32 @@ describe("ContentCanvasCard", () => {
     expect(screen.queryByText(/artifact-hidden-id|version-hidden-id|project-hidden-id/)).not.toBeInTheDocument();
   });
 
+  it.each([true, false])("edits on content double-click when selected=%s and focuses the existing text", async (selected) => {
+    const { onCanvasDoubleClick, onInspect } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "双击编辑正文" }), selected);
+    const user = userEvent.setup();
+    await user.click(screen.getByText("双击编辑正文"));
+    expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
+    await user.dblClick(screen.getByText("双击编辑正文"));
+    const editor = screen.getByRole("textbox", { name: "内容" });
+    expect(editor).toHaveValue("双击编辑正文");
+    expect(editor).toHaveFocus();
+    expect(onCanvasDoubleClick).not.toHaveBeenCalled();
+    expect(onInspect).not.toHaveBeenCalled();
+    await user.type(editor, "，未保存");
+    await user.dblClick(editor);
+    expect(editor).toHaveValue("双击编辑正文，未保存");
+    await user.click(screen.getByRole("button", { name: "退出内容编辑" }));
+    expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
+  });
+
+  it("enters editing from an empty text card on double-click", async () => {
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "" }), false);
+    await userEvent.dblClick(screen.getByText("写下想法，让创作开始"));
+    const editor = screen.getByRole("textbox", { name: "内容" });
+    expect(editor).toHaveValue("");
+    expect(editor).toHaveFocus();
+  });
+
   it("renders Markdown as safe source text without executing markup", async () => {
     const { container } = showCard(artifact("TEXT", { format: "MARKDOWN", text: "# 标题\n<script>private()</script>" }));
     expect(screen.getByText(/# 标题/)).toBeInTheDocument();
@@ -150,6 +185,7 @@ describe("ContentCanvasCard", () => {
     expect(screen.getByText("写下想法，让创作开始")).toBeInTheDocument();
     expect(screen.getByText("暂无版本")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑内容" })).toBeDisabled();
+    fireEvent.doubleClick(screen.getByText("写下想法，让创作开始"));
     expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
   });
 
