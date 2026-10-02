@@ -178,11 +178,11 @@ public class UsageService {
     /** 在已鉴权的项目事务中，每创建一个直接媒体任务后写入对应预留。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveMediaTask(UUID ownerId, Task task, String costSource) {
-        boolean directMedia = task.runId() == null
+        boolean directMedia = (task.runId() == null || task.approvedMedia())
                 && (task.kind() == Task.Kind.AUDIO_GENERATION || task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION);
         if (!directMedia) {
-            throw new IllegalArgumentException("Media reservation requires a direct media Task");
+            throw new IllegalArgumentException("Media reservation requires direct or approved media work");
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RESERVATION,
                 costSource, "media:" + task.id() + ":reserve"));

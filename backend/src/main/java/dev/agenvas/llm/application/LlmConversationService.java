@@ -24,6 +24,7 @@ public class LlmConversationService {
     private final ToolExecutionRepository tools;
     /** 恢复版本化请求消息和按原顺序排列的工具回复。 */
     private final LlmProtocolCodec codec;
+    private final AgentMediaOutcomeService mediaOutcomes;
 
     /** 注入 Run 权限、完整模型回合和工具账本读取边界。
      * @param runs 验证调用者可访问该 Run
@@ -32,11 +33,12 @@ public class LlmConversationService {
      * @param codec 将应用协议消息还原为 Spring AI 消息
      */
     public LlmConversationService(AgentRunRepository runs, LlmTurnRepository turns,
-            ToolExecutionRepository tools, LlmProtocolCodec codec) {
+            ToolExecutionRepository tools, LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes) {
         this.runs = runs;
         this.turns = turns;
         this.tools = tools;
         this.codec = codec;
+        this.mediaOutcomes = mediaOutcomes;
     }
 
     /**
@@ -77,6 +79,8 @@ public class LlmConversationService {
                     || results.putIfAbsent(call.id(), execution.result()) != null) {
                 throw new IllegalStateException("Tool result does not match model call");
             }
+            results.put(call.id(), mediaOutcomes.finalToolResult(projectId, runId,
+                    priorStepIndex, call.id(), execution.result()));
         }
         history.add(assistant);
         history.add(codec.toolResults(assistant, results));

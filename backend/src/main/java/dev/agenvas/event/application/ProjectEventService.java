@@ -76,6 +76,10 @@ public class ProjectEventService {
                 draft.payload().deepCopy(),
                 clock.instant());
         events.insert(event);
+        // Synchronous consumers persist dependent work in this same transaction. A listener
+        // failure rolls back both the original change and its continuation; SSE still uses
+        // the separate after-commit signal and durable replay below.
+        publisher.publishEvent(new ProjectEventRecorded(ownerId, event));
         publisher.publishEvent(new ProjectEventCommitted(projectId));
         return new RecordedChange<>(change.value(), event);
     }

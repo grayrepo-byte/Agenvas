@@ -50,6 +50,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.CANCELED.name())
                 .set(TASK.CANCEL_REQUESTED, true)
+                .set(TASK.OUTPUT_JSON, interruptedAgentOutput())
                 .set(TASK.ERROR_CODE, dev.agenvas.task.application.TaskHistoryCleanupService.CLEANED_ERROR_CODE)
                 .setNull(TASK.LEASE_OWNER).setNull(TASK.LEASE_UNTIL)
                 .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1))
@@ -412,6 +413,44 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .and(TASK.STEP_KEY.eq(stepKey))
                 .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name()))
                 .fetchOptional(row -> mapTask(row.into(TASK)));
+    }
+
+    @Override
+    public Optional<Task> findAgentByStepKey(UUID ownerId, UUID projectId, UUID runId, String stepKey) {
+        return dsl.select(TASK.fields()).from(TASK)
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId))
+                .and(TASK.PROJECT_ID.eq(projectId))
+                .and(TASK.RUN_ID.eq(runId))
+                .and(TASK.STEP_KEY.eq(stepKey))
+                .and(TASK.ORIGIN.eq(TaskOrigin.AGENT.name()))
+                .fetchOptional(row -> mapTask(row.into(TASK)));
+    }
+
+    @Override
+    public boolean cancelApprovedMedia(Task current, Instant now) {
+        boolean unsubmitted = current.status() == Task.Status.PENDING
+                || current.status() == Task.Status.READY
+                || current.status() == Task.Status.RUNNING && current.providerRequestId() == null
+                || current.status() == Task.Status.BLOCKED && current.providerRequestId() == null;
+        var update = dsl.update(TASK)
+                .set(TASK.CANCEL_REQUESTED, true)
+                .set(TASK.UPDATED_AT, utc(now))
+                .set(TASK.VERSION, TASK.VERSION.plus(1));
+        if (unsubmitted) {
+            // Fencing prevents a claimed, not-yet-submitted Worker from contacting the provider.
+            update = update.set(TASK.STATUS, Task.Status.CANCELED.name())
+                    .set(TASK.COMPLETED_AT, utc(now))
+                    .setNull(TASK.LEASE_OWNER).setNull(TASK.LEASE_UNTIL)
+                    .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1));
+        }
+        return update.where(TASK.ID.eq(current.id()))
+                .and(TASK.PROJECT_ID.eq(current.projectId()))
+                .and(TASK.RUN_ID.eq(current.runId()))
+                .and(TASK.VERSION.eq(current.version()))
+                .and(TASK.STATUS.notIn(Task.Status.SUCCEEDED.name(), Task.Status.FAILED.name(),
+                        Task.Status.CANCELED.name()))
+                .execute() == 1;
     }
 
     @Override
@@ -825,6 +864,19 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute() == 1;
     }
 
+    @Override
+    public boolean updateAgentStream(UUID taskId, String workerId, long leaseEpoch,
+            long expectedVersion, JsonNode output, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
+                .and(TASK.VERSION.eq(expectedVersion))
+                .and(TASK.KIND.eq(Task.Kind.AGENT_TURN.name()))
+                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.CANCEL_REQUESTED.isFalse()).execute() == 1;
+    }
+
     /** 只阻断尚无外部请求 ID 的过期输入任务，避免把已提交任务当成本地失败。 */
     @Override
     public boolean blockStaleInput(UUID taskId, String workerId, long leaseEpoch,
@@ -878,6 +930,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     public List<Task> requestCancellation(UUID projectId, UUID runId, Instant now) {
         List<UUID> canceledBeforeSubmission = dsl.update(TASK)
                 .set(TASK.CANCEL_REQUESTED, true)
+                .set(TASK.OUTPUT_JSON, interruptedAgentOutput())
                 .set(TASK.STATUS, DSL.when(TASK.STATUS.in(Task.Status.PENDING.name(),
                                         Task.Status.READY.name()),
                                 Task.Status.CANCELED.name())
@@ -1162,11 +1215,19 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute() == 1;
     }
 
+    private Field<JSONB> interruptedAgentOutput() {
+        return DSL.when(TASK.KIND.eq(Task.Kind.AGENT_TURN.name()).and(DSL.condition(
+                        "{0}->'assistantStream'->>'status' = 'STREAMING'", TASK.OUTPUT_JSON)),
+                DSL.field("jsonb_set({0}, '{assistantStream,status}', '\"INTERRUPTED\"'::jsonb)",
+                        JSONB.class, TASK.OUTPUT_JSON)).otherwise(TASK.OUTPUT_JSON);
+    }
+
     /** 晚到结果归档后终结取消任务；接受仍持有原 epoch 的 Worker 或已释放的 UNKNOWN。 */
     @Override
     public boolean finishCanceled(Task lease, String workerId, Instant now) {
         return dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.CANCELED.name())
+                .set(TASK.OUTPUT_JSON, interruptedAgentOutput())
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.COMPLETED_AT, utc(now))

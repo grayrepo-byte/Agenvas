@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 export const server = setupServer(
+  http.get("/api/v1/projects/:projectId/runs/:runId/media-approvals", () => HttpResponse.json([])),
   http.get("/api/v1/settings/call-log-retention", () => HttpResponse.json({ retentionDays: null, version: 1 })),
   http.get("/api/v1/settings/debug", () => HttpResponse.json({ debugMode: false, version: 1 })),
   http.get("/api/v1/call-logs/:id/debug", ({ params }) => HttpResponse.json({ id: params.id, captured: false, exchanges: [] })),

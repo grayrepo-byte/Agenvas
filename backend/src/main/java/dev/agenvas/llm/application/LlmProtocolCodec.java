@@ -68,6 +68,7 @@ public class LlmProtocolCodec {
      * @return 受大小上限约束的响应检查点，工具执行必须晚于此值落库
      */
     public ObjectNode response(ChatResponse response) {
+        response = PublicAssistantResponse.sanitize(response);
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("schemaVersion", 1);
         ObjectNode metadata = envelope.putObject("metadata");
@@ -185,8 +186,8 @@ public class LlmProtocolCodec {
                             required(call, "type"), required(call, "name"),
                             required(call, "arguments")));
                 }
-                yield AssistantMessage.builder().content(content).properties(metadata)
-                        .toolCalls(List.copyOf(calls)).build();
+                yield PublicAssistantResponse.sanitize(AssistantMessage.builder().content(content).properties(metadata)
+                        .toolCalls(List.copyOf(calls)).build());
             }
             case "TOOL" -> {
                 List<ToolResponseMessage.ToolResponse> replies = new ArrayList<>();
@@ -253,6 +254,7 @@ public class LlmProtocolCodec {
      * @return 含角色、文本、元数据及必要工具关联字段的协议对象
      */
     private ObjectNode encodeMessage(Message message) {
+        if (message instanceof AssistantMessage assistant) message = PublicAssistantResponse.sanitize(assistant);
         ObjectNode value = mapper.createObjectNode();
         value.put("role", message.getMessageType().name());
         if (message.getText() == null) {

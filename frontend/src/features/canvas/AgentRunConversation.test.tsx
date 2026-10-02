@@ -1,11 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { AgentRun, RunAction, Task } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { AgentRunConversation } from "./AgentRunConversation";
+import { runAssistantStreamKey, type AssistantTurnStream } from "./agentRunStream";
 
 const PROJECT_ID = "project-1";
 const RUN_ID = "run-1";
@@ -31,6 +32,7 @@ function mockConversation(tasks: Task[], actions: RunAction[] = []) {
   server.use(
     http.get(`${RUN_URL}/tasks`, () => HttpResponse.json(tasks)),
     http.get(`${RUN_URL}/actions`, () => HttpResponse.json(actions)),
+    http.get(`${RUN_URL}/media-approvals`, () => HttpResponse.json([])),
   );
 }
 
@@ -42,15 +44,54 @@ function mountConversation(status: AgentRun["status"] = "SUCCEEDED", active = fa
     <AgentRunConversation projectId={PROJECT_ID} active={active}
       run={{ id: RUN_ID, status, instruction: USER_INSTRUCTION, createdAt: NOW }} />
   </QueryClientProvider>);
+  return client;
 }
 
-function taskSummary(label: string) {
-  const summary = screen.getByText(label).closest("summary");
+function taskSummary(label: string, index = 0) {
+  const summary = screen.getAllByText(label)[index]?.closest("summary");
   if (!summary) throw new Error(`Missing task summary: ${label}`);
   return within(summary);
 }
 
 describe("AgentRunConversation", () => {
+  it("renders persisted public streaming text and replaces it with one committed final reply", async () => {
+    const streaming = task({ status: "RUNNING", input: { stepIndex: 0 }, output: {
+      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "收到的公开片段", status: "STREAMING" },
+      reasoning: "PRIVATE_STREAM_REASONING",
+    } });
+    mockConversation([streaming]);
+    const client = mountConversation("RUNNING", true);
+    expect(await screen.findByText("收到的公开片段")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("正在输出")).toBeInTheDocument();
+    expect(screen.queryByText("PRIVATE_STREAM_REASONING")).not.toBeInTheDocument();
+
+    act(() => {
+      client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, RUN_ID), [{
+        taskId: streaming.id, stepIndex: 0, streamEpoch: 1, chunkIndex: 2,
+        text: "收到的公开片段以及后续内容", status: "COMPLETED",
+      }]);
+      client.setQueryData(["run-history-tasks", PROJECT_ID, RUN_ID], [
+        { ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "持久化最终回复" } },
+      ]);
+    });
+    expect(await screen.findByText("持久化最终回复")).toBeInTheDocument();
+    expect(screen.getAllByRole("article", { name: "Agent" })).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
+    expect(screen.queryByText(/收到的公开片段/)).not.toBeInTheDocument();
+    expect(screen.queryByText("正在输出")).not.toBeInTheDocument();
+  });
+
+  it("keeps an interrupted public stream visible and identifies the interruption", async () => {
+    mockConversation([task({ status: "FAILED", input: { stepIndex: 0 }, output: {
+      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "中断前收到的内容", status: "INTERRUPTED" },
+    } })]);
+    mountConversation("FAILED");
+    expect(await screen.findByText("中断前收到的内容")).toBeInTheDocument();
+    expect(screen.getByText("输出已中断，已保留收到的内容。")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
+  });
+
   it("renders only committed public assistant text and never raw task input or output metadata", async () => {
     mockConversation([
       task({ id: "later-turn", output: { stepIndex: 2, assistantText: "镜头草稿已保存。",
@@ -69,8 +110,9 @@ describe("AgentRunConversation", () => {
     expect(replies).toHaveLength(2);
     expect(replies[0]).toHaveTextContent("我会先整理镜头说明。");
     expect(replies[1]).toHaveTextContent("镜头草稿已保存。");
+    expect(screen.getAllByText("AI 回复")).toHaveLength(3);
     for (const hidden of ["PRIVATE_TASK_INPUT", "PRIVATE_RAW_RESPONSE", "PRIVATE_OUTPUT_METADATA",
-      "PRIVATE_REASONING", "UNCOMMITTED_ASSISTANT_TEXT", "assistantText", "stepIndex"]) {
+      "PRIVATE_REASONING", "UNCOMMITTED_ASSISTANT_TEXT", "assistantText", "stepIndex", "agent-turn-1"]) {
       expect(conversation).not.toHaveTextContent(hidden);
     }
   });
@@ -122,17 +164,35 @@ describe("AgentRunConversation", () => {
     ]);
     mountConversation("CANCELED");
 
-    expect(await screen.findByText("生成图片 · shot-failed")).toBeInTheDocument();
-    expect(taskSummary("AI 回复 · planning-failed").getByText("失败")).toBeInTheDocument();
+    expect(await screen.findAllByText("生成图片")).toHaveLength(2);
+    expect(taskSummary("AI 回复").getByText("失败")).toBeInTheDocument();
     expect(screen.getByText(/MODEL_TURN_LIMIT_REACHED/)).toBeInTheDocument();
-    expect(taskSummary("生成图片 · shot-failed").getByText("失败")).toBeInTheDocument();
-    expect(taskSummary("生成视频 · shot-canceled").getByText("已取消")).toBeInTheDocument();
-    expect(taskSummary("生成图片 · shot-unknown").getByText("未知")).toBeInTheDocument();
-    expect(taskSummary("生成图片 · shot-unknown").queryByText("失败")).not.toBeInTheDocument();
-    expect(taskSummary("生成图片 · shot-unknown").queryByText("已完成")).not.toBeInTheDocument();
-    expect(taskSummary("归档素材 · ingest").getByText("等待中")).toBeInTheDocument();
+    expect(taskSummary("生成图片").getByText("失败")).toBeInTheDocument();
+    expect(taskSummary("生成视频").getByText("已取消")).toBeInTheDocument();
+    expect(taskSummary("生成图片", 1).getByText("未知")).toBeInTheDocument();
+    expect(taskSummary("生成图片", 1).queryByText("失败")).not.toBeInTheDocument();
+    expect(taskSummary("生成图片", 1).queryByText("已完成")).not.toBeInTheDocument();
+    expect(taskSummary("归档素材").getByText("等待中")).toBeInTheDocument();
+    const conversation = screen.getByRole("region", { name: "任务对话" });
+    for (const internalKey of ["planning-failed", "shot-failed", "shot-canceled", "shot-unknown", " · ingest"]) {
+      expect(conversation).not.toHaveTextContent(internalKey);
+    }
     expect(screen.getByText("结果未知")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     expect(screen.getByText("仅停止本系统后续编排；外部任务可能继续执行并产生费用。")).toBeInTheDocument();
+  });
+
+  it("labels media tools in the public trace and never offers direct retry for an approved unknown task", async () => {
+    mockConversation([
+      task({ kind: "AUDIO_GENERATION", stepKey: "approved-audio", status: "UNKNOWN", input: { agentApprovalId: "approval-1" } }),
+    ], [action({ toolName: "list_media_capabilities", summary: "已读取可用能力" }),
+      action({ id: "proposal", toolName: "propose_media_generation", summary: "已提交生成审批" })]);
+    mountConversation("WAITING_TASKS", true);
+    expect(await screen.findByText("已读取可用能力")).toBeInTheDocument();
+    expect(taskSummary("已读取可用能力").getByText("查看媒体能力")).toBeInTheDocument();
+    expect(taskSummary("已提交生成审批").getByText("提出媒体生成")).toBeInTheDocument();
+    expect(taskSummary("音频生成").getByText("未知")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Reasoning|Search|思考/ })).not.toBeInTheDocument();
   });
 });

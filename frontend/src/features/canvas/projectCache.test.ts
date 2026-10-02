@@ -2,11 +2,12 @@ import { QueryClient, type QueryKey } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectEvent, ProjectSnapshot } from "../../shared/api/client";
 import { projectCacheCallbacks } from "./projectCache";
+import { runAssistantStreamKey, type AssistantTurnStream } from "./agentRunStream";
 
 const projectId = "project-1";
 const createdAt = "2026-09-24T00:00:00Z";
 const historyPrefixes = [
-  "run-history", "agent-conversations", "conversation-runs", "run-history-tasks", "run-actions",
+  "run-history", "agent-conversations", "conversation-runs", "run-history-tasks", "run-actions", "run-media-approvals",
 ];
 type CacheCall = readonly [operation: "invalidate" | "read" | "write", key: QueryKey | undefined];
 const readSnapshot: CacheCall = ["read", ["snapshot", projectId]];
@@ -81,8 +82,9 @@ describe("project cache callbacks", () => {
     { type: "usage.changed", beforeRead: [], afterRead: ["project-usage"] },
     { type: "task.changed", beforeRead: [], afterRead: [] },
     { type: "asset.ready", beforeRead: [], afterRead: [] },
-    { type: "llm.turn.requested", beforeRead: [], afterRead: [] },
-    { type: "llm.turn.recorded", beforeRead: [], afterRead: [] },
+    { type: "llm.turn.requested", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
+    { type: "llm.turn.recorded", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
+    { type: "agent.media.approval.changed", beforeRead: ["run-media-approvals", "snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
   ])("refreshes only the expected views for $type in order", ({ type, beforeRead, afterRead }) => {
     const tracked = trackCache();
     tracked.callbacks.onChange(event(type));
@@ -171,4 +173,47 @@ describe("project cache callbacks", () => {
     expect(tracked.queryClient.getQueryData(["canvas", projectId])).toEqual(fresh.canvas);
     expect(tracked.queryClient.getQueryData(["canvas-connections", projectId])).toEqual({ items: fresh.connections });
   });
+
+  it.each(["agent.media.approval.changed", "llm.turn.requested", "llm.turn.recorded"])(
+    "scopes public Run refreshes to the event Run for %s", (type) => {
+      const tracked = trackCache();
+      const ownKeys = [["run-history-tasks", projectId, "run-1"], ["run-actions", projectId, "run-1"],
+        ["run-tasks", projectId, "run-1"], ["run-media-approvals", projectId, "run-1"]];
+      const unrelatedKeys = [["run-history-tasks", projectId, "run-2"], ["run-actions", projectId, "run-2"],
+        ["run-media-approvals", projectId, "run-2"]];
+      for (const key of [...ownKeys, ...unrelatedKeys]) tracked.queryClient.setQueryData(key, []);
+      tracked.callbacks.onChange(event(type, { runId: "run-1" }));
+      for (const key of ownKeys.slice(0, type === "agent.media.approval.changed" ? ownKeys.length : ownKeys.length - 1)) {
+        expect(tracked.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+      }
+      for (const key of unrelatedKeys) expect(tracked.queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    });
+
+  it("updates contiguous streamed text without invalidating queries per delta, then refreshes on a chunk gap", () => {
+    const tracked = trackCache();
+    const invalidate = vi.spyOn(tracked.queryClient, "invalidateQueries");
+    const payload = { runId: "run-1", taskId: "task-1", stepIndex: 0, streamEpoch: 1, chunkIndex: 0 };
+    tracked.callbacks.onChange(event("agent.turn.stream.started", payload));
+    invalidate.mockClear();
+    tracked.callbacks.onChange(event("agent.turn.stream.delta", { ...payload, chunkIndex: 1, textDelta: "Hello" }));
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(tracked.queryClient.getQueryData<AssistantTurnStream[]>(runAssistantStreamKey(projectId, "run-1"))?.[0]?.text).toBe("Hello");
+    tracked.callbacks.onChange(event("agent.turn.stream.delta", { ...payload, chunkIndex: 3, textDelta: "Gap" }));
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ["snapshot", projectId], ["run-history-tasks", projectId, "run-1"],
+      ["run-actions", projectId, "run-1"], ["run-tasks", projectId, "run-1"],
+    ]);
+    expect(tracked.queryClient.getQueryData<AssistantTurnStream[]>(runAssistantStreamKey(projectId, "run-1"))?.[0]?.text).toBe("Hello");
+  });
+
+  it.each(["agent.turn.stream.completed", "agent.turn.stream.interrupted"])(
+    "refreshes durable final text and public action state after %s", (type) => {
+      const tracked = trackCache();
+      const invalidate = vi.spyOn(tracked.queryClient, "invalidateQueries");
+      tracked.callbacks.onChange(event(type, { runId: "run-1", taskId: "task-1", stepIndex: 0,
+        streamEpoch: 1, chunkIndex: 0 }));
+      expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+        ["run-history-tasks", projectId, "run-1"], ["run-actions", projectId, "run-1"], ["run-tasks", projectId, "run-1"],
+      ]);
+    });
 });

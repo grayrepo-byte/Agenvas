@@ -54,6 +54,18 @@ public record Task(
         Instant updatedAt,
         Instant completedAt) {
 
+    public static final String APPROVAL_INPUT_PROPERTY = "agentApprovalId";
+
+    /** Only the approval application entry point attaches this server-created identity. */
+    public boolean approvedMedia() {
+        if (runId == null || kind != Kind.IMAGE_GENERATION
+                && kind != Kind.VIDEO_GENERATION && kind != Kind.AUDIO_GENERATION) return false;
+        JsonNode approvalId = input.get(APPROVAL_INPUT_PROPERTY);
+        if (approvalId == null || !approvalId.isTextual()) return false;
+        try { UUID.fromString(approvalId.asText()); return true; }
+        catch (IllegalArgumentException invalid) { return false; }
+    }
+
     /** Worker 可以认领的受限任务类别。 */
     public enum Kind {
         /** 调用模型并恢复受控工具回合。 */

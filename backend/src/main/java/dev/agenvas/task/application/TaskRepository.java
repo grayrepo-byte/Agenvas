@@ -41,11 +41,17 @@ public interface TaskRepository {
     /** A queued, executing, or unresolved request still owns this card's execution slot. */
     Optional<Task> findOccupyingMediaTask(UUID projectId, UUID artifactId);
 
-    /** A direct request occupies only the CanvasItem that supplied its working draft. */
+    /** Any media request occupies only the CanvasItem that supplied its working draft. */
     Optional<Task> findOccupyingDirectMediaTask(UUID projectId, UUID canvasItemId);
 
     /** Direct requests use a project-scoped immutable command key. */
     Optional<Task> findDirectByStepKey(UUID ownerId, UUID projectId, String stepKey);
+
+    /** Approved media commands are idempotent within the authenticated Run. */
+    Optional<Task> findAgentByStepKey(UUID ownerId, UUID projectId, UUID runId, String stepKey);
+
+    /** Cancel an approved task; pending work stops locally while accepted requests retain their ledger. */
+    boolean cancelApprovedMedia(Task current, Instant now);
 
     /** Recent direct requests for one stable media Artifact, newest first. */
     List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId);
@@ -149,6 +155,10 @@ public interface TaskRepository {
     /** 业务副作用前锁定并核验活动模型回合租约；旧 epoch、过期或取消均返回 false。 */
     boolean lockActiveAgentTurnLease(UUID projectId, UUID runId, UUID taskId,
             String workerId, long leaseEpoch, Instant now);
+
+    /** Public stream progress shares the task lease, fencing epoch and optimistic version. */
+    boolean updateAgentStream(UUID taskId, String workerId, long leaseEpoch,
+            long expectedVersion, JsonNode output, Instant now);
 
     /** 仅当前 Worker、epoch 和未过期租约同时匹配时续租。 */
     boolean heartbeat(

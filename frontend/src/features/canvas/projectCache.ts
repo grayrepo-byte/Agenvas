@@ -1,8 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectEvent, ProjectSnapshot } from "../../shared/api/client";
+import { applyAssistantStreamEvent, isAssistantStreamEvent, restoreAssistantStreams } from "./agentRunStream";
 
 const HISTORY_QUERY_PREFIXES = [
-  "run-history", "agent-conversations", "conversation-runs", "run-history-tasks", "run-actions",
+  "run-history", "agent-conversations", "conversation-runs", "run-history-tasks", "run-actions", "run-media-approvals",
 ] as const;
 
 /** Updates the workspace cache after validated project events or snapshot recovery. */
@@ -13,8 +14,31 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
     }
   }
 
+  function invalidateRunState(runId: unknown) {
+    for (const prefix of ["run-history-tasks", "run-actions", "run-tasks"]) {
+      void queryClient.invalidateQueries({ queryKey: typeof runId === "string"
+        ? [prefix, projectId, runId] : [prefix, projectId] });
+    }
+  }
+
   return {
     onChange: (event: ProjectEvent) => {
+      if (isAssistantStreamEvent(event.type)) {
+        const needsRecovery = applyAssistantStreamEvent(queryClient, projectId, event);
+        if (needsRecovery) invalidate("snapshot");
+        if (needsRecovery || event.type !== "agent.turn.stream.delta") invalidateRunState(event.payload.runId);
+        return;
+      }
+      if (event.type === "agent.media.approval.changed") {
+        void queryClient.invalidateQueries({ queryKey: typeof event.payload.runId === "string"
+          ? ["run-media-approvals", projectId, event.payload.runId] : ["run-media-approvals", projectId] });
+        invalidate("snapshot");
+        invalidateRunState(event.payload.runId);
+      }
+      if (event.type === "llm.turn.requested" || event.type === "llm.turn.recorded") {
+        invalidate("snapshot");
+        invalidateRunState(event.payload.runId);
+      }
       if (event.type.startsWith("canvas.") || event.type === "task.status.changed") {
         invalidate("canvas-media-versions");
       }
@@ -60,6 +84,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       queryClient.setQueryData(["projects", projectId], fresh.project);
       queryClient.setQueryData(["canvas", projectId], fresh.canvas);
       queryClient.setQueryData(["canvas-connections", projectId], { items: fresh.connections });
+      restoreAssistantStreams(queryClient, projectId, fresh.activeTasks);
       // The snapshot contains the current workspace, but not historical panels or lists.
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",

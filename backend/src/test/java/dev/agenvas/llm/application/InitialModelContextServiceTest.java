@@ -36,6 +36,10 @@ class InitialModelContextServiceTest {
         policy.put("systemPromptVersion", 2);
         assertThat(InitialModelContextService.systemRules(policy))
                 .contains("no image pixels").contains("verified archived result");
+        policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        assertThat(InitialModelContextService.systemRules(policy))
+                .contains("propose_media_generation").contains("Never poll read_task_status")
+                .contains("no image pixels");
     }
 
     @Test
@@ -44,7 +48,7 @@ class InitialModelContextServiceTest {
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("malformed");
-        policy.put("systemPromptVersion", 3);
+        policy.put("systemPromptVersion", 4);
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");

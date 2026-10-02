@@ -715,7 +715,7 @@ public class AgentRunService {
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
         policy.put("schemaVersion", 2);
-        policy.put("systemPromptVersion", 2);
+        policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
         policy.put("modelConfigVersion", model.version());
         policy.put("modelConfigSource", model.source());

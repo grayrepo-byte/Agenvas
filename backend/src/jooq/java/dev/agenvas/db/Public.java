@@ -7,6 +7,7 @@ package dev.agenvas.db;
 import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
+import dev.agenvas.db.tables.AgentMediaApproval;
 import dev.agenvas.db.tables.AgentRun;
 import dev.agenvas.db.tables.AppUser;
 import dev.agenvas.db.tables.Artifact;
@@ -98,6 +99,12 @@ public class Public extends SchemaImpl {
      * mutable run context.
      */
     public final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
+
+    /**
+     * Immutable Agent media batch and explicit user decision; approval never
+     * performs network I/O.
+     */
+    public final AgentMediaApproval AGENT_MEDIA_APPROVAL = AgentMediaApproval.AGENT_MEDIA_APPROVAL;
 
     /**
      * Persistent execution lifecycle with immutable input and policy snapshots.
@@ -408,6 +415,7 @@ public class Public extends SchemaImpl {
             AgentBinding.AGENT_BINDING,
             AgentConversation.AGENT_CONVERSATION,
             AgentInstance.AGENT_INSTANCE,
+            AgentMediaApproval.AGENT_MEDIA_APPROVAL,
             AgentRun.AGENT_RUN,
             AppUser.APP_USER,
             Artifact.ARTIFACT,

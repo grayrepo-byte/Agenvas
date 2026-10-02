@@ -1,6 +1,7 @@
 package dev.agenvas.usage.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -66,6 +67,37 @@ class UsageMediaPricingTest {
         assertThat(entries.getFirst().estimatedCost()).isZero();
         assertThat(entries.getFirst().actualCost()).isZero();
         assertThat(entries.getFirst().costStatus()).isEqualTo(UsageEntry.CostStatus.KNOWN);
+    }
+
+    @Test
+    void approvedAgentMediaReservesAndSettlesUnderItsRun() {
+        UsageService service = service();
+        Task task = withRun(task(Task.Kind.AUDIO_GENERATION, null), UUID.randomUUID());
+        ((tools.jackson.databind.node.ObjectNode) task.input()).put(Task.APPROVAL_INPUT_PROPERTY,
+                UUID.randomUUID().toString());
+        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED");
+        service.settleMediaTask(UUID.randomUUID(), task);
+        assertThat(entries).hasSize(2).allSatisfy(entry -> assertThat(entry.runId()).isEqualTo(task.runId()));
+    }
+
+    @Test
+    void unapprovedRunCannotReserveMediaEvenWithAMalformedApprovalMarker() {
+        UsageService service = service();
+        Task task = withRun(task(Task.Kind.IMAGE_GENERATION, null), UUID.randomUUID());
+        assertThatThrownBy(() -> service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED"))
+                .isInstanceOf(IllegalArgumentException.class);
+        ((tools.jackson.databind.node.ObjectNode) task.input()).put(Task.APPROVAL_INPUT_PROPERTY, "untrusted");
+        assertThatThrownBy(() -> service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(entries).isEmpty();
+    }
+
+    private Task withRun(Task task, UUID runId) {
+        return new Task(task.id(), task.projectId(), runId, task.stepKey(), task.kind(), task.status(),
+                task.cancelRequested(), task.input(), task.inputHash(), task.output(), task.providerId(),
+                task.providerRequestId(), task.attemptNo(), task.nextActionAt(), task.leaseOwner(),
+                task.leaseUntil(), task.leaseEpoch(), task.version(), task.errorCode(), task.createdAt(),
+                task.updatedAt(), task.completedAt());
     }
 
     private UsageService service() {

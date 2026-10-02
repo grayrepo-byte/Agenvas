@@ -6,6 +6,7 @@ import dev.agenvas.settings.application.LlmProviderConfig;
 import dev.agenvas.settings.application.LlmProviderConfigRepository;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
@@ -52,6 +53,14 @@ public class ConfiguredChatGateway implements ChatGateway {
             Map<String, Object> toolContext, ConfigIdentity expected) {
         LlmProviderConfig config = pinnedConfig(expected);
         return requireConfigured(config).call(messages, tools, toolContext);
+    }
+
+    @Override
+    public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
+            Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta) {
+        LlmProviderConfig config = pinnedConfig(expected);
+        SpringAiChatGateway pinned = requireConfigured(config);
+        return pinned.callStreaming(messages, tools, toolContext, pinned.configIdentity(), publicDelta);
     }
 
     /** 数据库配置能力只按其固定历史版本报告；缺失配置或其他来源走接口默认核验。 */
