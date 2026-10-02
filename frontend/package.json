@@ -13,7 +13,7 @@
     "api:generate": "openapi-typescript ../contracts/openapi.yaml -o src/shared/api/schema.ts",
     "typecheck": "tsc --noEmit",
     "lint": "node scripts/check-theme-colors.mjs && node scripts/check-i18n.mjs && eslint . --max-warnings=0",
-    "test": "vitest run",
+    "test": "node --test scripts/check-i18n.test.mjs && vitest run",
     "test:i18n": "node --test scripts/check-i18n.test.mjs && vitest run src/shared/i18n/i18n.test.tsx src/features/canvas/VoiceLibrary.test.tsx src/features/settings/AutoDlWorkflowFields.test.tsx",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"

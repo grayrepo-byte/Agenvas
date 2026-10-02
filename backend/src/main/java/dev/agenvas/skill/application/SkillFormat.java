@@ -91,10 +91,10 @@ public final class SkillFormat {
         options.setCodePointLimit(MAX_SKILL_LENGTH);
         Object parsed;
         try { parsed = new Yaml(new SafeConstructor(options)).load(yamlSource); }
-        catch (RuntimeException badYaml) { throw problem("SKILL_INVALID_FRONTMATTER", "api.skill.invalid-frontmatter"); }
+        catch (RuntimeException badYaml) { throw problem("SKILL_INVALID_FRONTMATTER", ApiMessage.of("api.skill.invalid-frontmatter")); }
         if (!(parsed instanceof Map<?, ?> map) || !(map.get("name") instanceof String)
                 || !(map.get("description") instanceof String))
-            throw problem("SKILL_INVALID_FRONTMATTER", "api.skill.invalid-frontmatter");
+            throw problem("SKILL_INVALID_FRONTMATTER", ApiMessage.of("api.skill.invalid-frontmatter"));
         String name = (String) ((Map<?, ?>) parsed).get("name");
         String description = (String) ((Map<?, ?>) parsed).get("description");
         alias(name);
@@ -121,9 +121,9 @@ public final class SkillFormat {
         if (value == null || value.size() > max) invalid();
         return value;
     }
-    private void invalid() { throw problem("SKILL_INVALID_CONTENT", "api.skill.invalid-content"); }
-    private ApiProblemException problem(String code, String key) {
+    private void invalid() { throw problem("SKILL_INVALID_CONTENT", ApiMessage.of("api.skill.invalid-content")); }
+    private ApiProblemException problem(String code, ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, code,
-                ApiMessage.of("api.skill.operation-failed"), ApiMessage.of(key), false);
+                ApiMessage.of("api.skill.operation-failed"), detail, false);
     }
 }

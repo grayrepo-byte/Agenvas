@@ -74,13 +74,13 @@ public class SkillRunService {
 
     public BindingResponse saveBinding(UUID owner, UUID project, UUID agent, long expected, UUID skill, UUID version, String key) {
         checkKey(key);
-        if ((skill==null)!=(version==null) || expected<0) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST);
+        if ((skill==null)!=(version==null) || expected<0) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
         String hash=Sha256.hex(agent+"\n"+expected+"\n"+skill+"\n"+version);
         return events.recordChange(owner,project,() -> {
             agents.get(owner,project,agent); // Ordinary canvas IDs cannot enter this boundary.
             var prior=operations.bindingCommand(owner,project,key);
             if(prior.isPresent()) {
-                if(!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT",HttpStatus.CONFLICT);
+                if(!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.idempotency-conflict"));
                 return ProjectEventService.Change.unchanged(mapper.treeToValue(prior.get().response(),BindingResponse.class));
             }
             if(skill!=null) skills.requireSelectableVersion(owner,skill,version);
@@ -101,7 +101,7 @@ public class SkillRunService {
             projects.requireActiveProject(owner,project); agents.get(owner,project,agent);
             var prior=operations.command(owner,project,key);
             if(prior.isPresent()) {
-                if(!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT",HttpStatus.CONFLICT);
+                if(!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.idempotency-conflict"));
                 return ProjectEventService.Change.unchanged(response(requireOperation(owner,project,prior.get().operationId())));
             }
             // A retained default binding may explicitly reuse its frozen version after trash.
@@ -114,7 +114,7 @@ public class SkillRunService {
                 operation=new Operation(UUID.randomUUID(),owner,project,skill,version,key,hash,input,null,mapper.createArrayNode(),InstallStatus.ACCEPTED.name(),0,null,null,null);
                 operations.create(operation,clock.instant());
             } else if(InstallStatus.FAILED.name().equals(operation.status())) {
-                if(!operations.retry(operation,clock.instant())) throw problem("SKILL_INSTALL_CONFLICT",HttpStatus.CONFLICT);
+                if(!operations.retry(operation,clock.instant())) throw problem("SKILL_INSTALL_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-conflict"));
                 operation=requireOperation(owner,project,operation.id());
             }
             operations.saveCommand(owner,project,key,hash,operation.id(),clock.instant());
@@ -212,7 +212,7 @@ public class SkillRunService {
         var version=selectedVersion(owner,project,agent.id(),selection);
         if(version==null) return;
         Operation installed=operations.version(owner,project,version.id()).filter(Operation::registered)
-                .orElseThrow(() -> problem("SKILL_INSTALL_PENDING",HttpStatus.CONFLICT));
+                .orElseThrow(() -> problem("SKILL_INSTALL_PENDING",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-pending")));
         ObjectNode snapshot=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
         snapshot.put("agentRunId",runId.toString()).put("skillId",version.skillId().toString()).put("skillVersionId",version.id().toString())
                 .put("versionNumber",version.versionNumber()).put("bundleHash",version.bundleHash()).put("name",version.bundle().name())
@@ -223,20 +223,20 @@ public class SkillRunService {
         version.bundle().resources().forEach(resource -> manifest.addObject().put("path",resource.path()).put("contentHash",resource.contentHash()));
         ArrayNode inputs=snapshot.putArray("inputs");
         List<Input> requested=selection==null||selection.inputs()==null?List.of():selection.inputs();
-        if(requested.size()>MAX_INPUTS) throw problem("SKILL_INPUT_INVALID",HttpStatus.BAD_REQUEST);
+        if(requested.size()>MAX_INPUTS) throw problem("SKILL_INPUT_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-input-invalid"));
         HashSet<String> aliases=new HashSet<>();
         for(var input:requested) {
             if(input==null || input.alias()==null || input.artifactVersionId()==null || !aliases.add(input.alias())
-                    || version.bundle().inputSlots().stream().noneMatch(slot -> slot.alias().equals(input.alias()))) throw problem("SKILL_INPUT_INVALID",HttpStatus.BAD_REQUEST);
+                    || version.bundle().inputSlots().stream().noneMatch(slot -> slot.alias().equals(input.alias()))) throw problem("SKILL_INPUT_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-input-invalid"));
         }
         for(var slot:version.bundle().inputSlots()) {
             Input input=requested.stream().filter(item -> item.alias().equals(slot.alias())).findFirst().orElse(null);
-            if(input==null) { if(slot.required()) throw problem("SKILL_INPUT_REQUIRED",HttpStatus.UNPROCESSABLE_ENTITY); else continue; }
+            if(input==null) { if(slot.required()) throw problem("SKILL_INPUT_REQUIRED",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-input-required")); else continue; }
             var binding=agent.bindings().stream().filter(item -> item.selectedVersionId().equals(input.artifactVersionId())).findFirst()
-                    .orElseThrow(() -> problem("SKILL_INPUT_NOT_BOUND",HttpStatus.UNPROCESSABLE_ENTITY));
+                    .orElseThrow(() -> problem("SKILL_INPUT_NOT_BOUND",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-input-not-bound")));
             var artifact=artifacts.get(owner,project,binding.artifactId()).artifact();
             artifacts.requireVersion(owner,project,binding.artifactId(),input.artifactVersionId());
-            if(artifact.kind()!=slot.kind()) throw problem("SKILL_INPUT_KIND_MISMATCH",HttpStatus.UNPROCESSABLE_ENTITY);
+            if(artifact.kind()!=slot.kind()) throw problem("SKILL_INPUT_KIND_MISMATCH",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-input-kind-mismatch"));
             inputs.addObject().put("alias",slot.alias()).put("artifactId",binding.artifactId().toString())
                     .put("artifactVersionId",input.artifactVersionId().toString()).put("kind",slot.kind().name()).put("required",slot.required());
         }
@@ -254,7 +254,7 @@ public class SkillRunService {
             bindings.addObject().put("artifactId",artifactId.toString()).put("selectedVersionId",versionId.toString())
                     .put("bindingType",AgentInstance.BindingType.INPUT.name()).put("kind",source.kind().name()).put("title",source.title());
         }
-        if(bindings.size()>MAX_BINDINGS) throw problem("SKILL_CONTEXT_LIMIT",HttpStatus.UNPROCESSABLE_ENTITY);
+        if(bindings.size()>MAX_BINDINGS) throw problem("SKILL_CONTEXT_LIMIT",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-context-limit"));
         context.set("creativeSkill",snapshot);
     }
 
@@ -271,26 +271,28 @@ public class SkillRunService {
         }).toList();
     }
     private SkillContent.Version selectedVersion(UUID owner, UUID project, UUID agent, Selection selection) {
-        if(selection!=null && selection.mode()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST);
+        if(selection!=null && selection.mode()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
         SelectionMode mode=selection==null?SelectionMode.DEFAULT:selection.mode();
-        if(mode!=SelectionMode.VERSION && selection!=null&&(selection.skillId()!=null||selection.skillVersionId()!=null)) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST);
+        if(mode!=SelectionMode.VERSION && selection!=null&&(selection.skillId()!=null||selection.skillVersionId()!=null)) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
         if(mode==SelectionMode.NONE) {
-            if(selection.inputs()!=null&&!selection.inputs().isEmpty()) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST);
+            if(selection.inputs()!=null&&!selection.inputs().isEmpty()) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
             return null;
         }
         if(mode==SelectionMode.DEFAULT) {
             var binding = skills.getBinding(owner,project,agent);
-            if(binding.isEmpty() && selection!=null && selection.inputs()!=null && !selection.inputs().isEmpty()) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST);
+            if(binding.isEmpty() && selection!=null && selection.inputs()!=null && !selection.inputs().isEmpty()) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
             return binding.map(value -> skills.getBundle(owner,value.skillId(),value.skillVersionId())).orElse(null);
         }
-        if(selection.skillId()==null||selection.skillVersionId()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST);
+        if(selection.skillId()==null||selection.skillVersionId()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
         boolean retained = skills.getBinding(owner,project,agent).filter(binding -> binding.skillId().equals(selection.skillId())
                 && binding.skillVersionId().equals(selection.skillVersionId())).isPresent();
         return retained ? skills.getBundle(owner,selection.skillId(),selection.skillVersionId())
                 : skills.requireSelectableVersion(owner,selection.skillId(),selection.skillVersionId());
     }
-    private Operation requireOperation(UUID owner, UUID project, UUID id) {return operations.find(owner,project,id).orElseThrow(() -> problem("SKILL_INSTALL_NOT_FOUND",HttpStatus.NOT_FOUND));}
+    private Operation requireOperation(UUID owner, UUID project, UUID id) {return operations.find(owner,project,id).orElseThrow(() -> problem("SKILL_INSTALL_NOT_FOUND",HttpStatus.NOT_FOUND,ApiMessage.of("api.skill-run.skill-install-not-found")));}
     private Installation response(Operation op){return new Installation(op.id(),op.registered()?InstallStatus.SUCCEEDED:InstallStatus.valueOf(op.status()),op.skillId(),op.skillVersionId(),op.errorCode(),op.errorDetail());}
-    private void checkKey(String key){if(key==null||key.isBlank()||key.length()>MAX_KEY)throw problem("IDEMPOTENCY_KEY_INVALID",HttpStatus.BAD_REQUEST);}
-    private ApiProblemException problem(String code,HttpStatus status){return new ApiProblemException(status,code,ApiMessage.of("api.skill-run.invalid"),ApiMessage.of("api.skill-run."+code.toLowerCase(java.util.Locale.ROOT).replace('_','-')),false);}
+    private void checkKey(String key){if(key==null||key.isBlank()||key.length()>MAX_KEY)throw problem("IDEMPOTENCY_KEY_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.idempotency-key-invalid"));}
+    private ApiProblemException problem(String code, HttpStatus status, ApiMessage detail) {
+        return new ApiProblemException(status, code, ApiMessage.of("api.skill-run.invalid"), detail, false);
+    }
 }

@@ -307,9 +307,9 @@ public final class SkillService {
     private SkillContent.Catalogue require(UUID owner, UUID skill, boolean lock) { return repository.skill(owner, skill, lock).orElseThrow(this::notFound); }
     private SkillContent.Draft draft(UUID owner, UUID skill, boolean lock) { return repository.draft(owner, skill, lock).orElseThrow(this::notFound); }
     private SkillContent.PublishOperation requireOperation(UUID owner, UUID id) { return repository.operation(owner, id).orElseThrow(this::notFound); }
-    private void active(SkillContent.Catalogue value) { if (value.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "SKILL_TRASHED", "api.skill.trashed"); }
+    private void active(SkillContent.Catalogue value) { if (value.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "SKILL_TRASHED", ApiMessage.of("api.skill.trashed")); }
     private OperationResponse replay(SkillContent.PublishOperation value, String hash) {
-        if (!value.payloadHash().equals(hash)) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "api.skill.key-conflict");
+        if (!value.payloadHash().equals(hash)) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", ApiMessage.of("api.skill.key-conflict"));
         return response(value);
     }
     private SkillResponse response(SkillContent.Catalogue value) { return new SkillResponse(value.id(), value.title(), value.description(),
@@ -335,14 +335,14 @@ public final class SkillService {
             String[] values = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8).split("\\|", -1);
             if (values.length != 2) throw new IllegalArgumentException();
             return new SkillRepository.Cursor(Instant.parse(values[0]), UUID.fromString(values[1]));
-        } catch (RuntimeException invalid) { throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "SKILL_INVALID_CURSOR", "api.skill.invalid-content"); }
+        } catch (RuntimeException invalid) { throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "SKILL_INVALID_CURSOR", ApiMessage.of("api.skill.invalid-content")); }
     }
     private String cursor(SkillContent.Catalogue value) { return Base64.getUrlEncoder().withoutPadding()
             .encodeToString((value.updatedAt() + "|" + value.id()).getBytes(StandardCharsets.UTF_8)); }
-    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "SKILL_NOT_FOUND", "api.skill.not-found"); }
-    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "SKILL_VERSION_CONFLICT", "api.skill.conflict"); }
-    private ApiProblemException referenceChanged() { return problem(HttpStatus.CONFLICT, "SKILL_REFERENCE_CHANGED", "api.skill.reference-changed"); }
-    private ApiProblemException problem(HttpStatus status, String code, String key) { return new ApiProblemException(status, code,
-            ApiMessage.of("api.skill.operation-failed"), ApiMessage.of(key), status == HttpStatus.CONFLICT); }
+    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "SKILL_NOT_FOUND", ApiMessage.of("api.skill.not-found")); }
+    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "SKILL_VERSION_CONFLICT", ApiMessage.of("api.skill.conflict")); }
+    private ApiProblemException referenceChanged() { return problem(HttpStatus.CONFLICT, "SKILL_REFERENCE_CHANGED", ApiMessage.of("api.skill.reference-changed")); }
+    private ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) { return new ApiProblemException(status, code,
+            ApiMessage.of("api.skill.operation-failed"), detail, status == HttpStatus.CONFLICT); }
     private static final class LeaseLost extends RuntimeException {}
 }

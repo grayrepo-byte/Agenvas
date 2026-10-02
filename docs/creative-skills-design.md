@@ -267,4 +267,21 @@ Issue #27 首阶段已落地：`skill` 模块提供账号目录、草稿 CAS、Y
 
 按固定基线进行 Standards / Spec 两轴独立审查，发现全部修复并复验，最终无未解决项；本次文本差异的凭据/隐私模式扫描与差异空白检查通过，扫描范围不包括 Git 历史或二进制。
 
-未运行全量测试，未执行 Skill 浏览器交互验收或真实模型/媒体 Provider 调用。Mock/合成图片与假 HTTP 结果不证明真实风格迁移或特定 Provider 效果。用户参考截图未加入仓库，运行日志与测试资料不作为公开附件提交。
+未执行 Skill 浏览器交互验收或真实模型/媒体 Provider 调用。Mock/合成图片与假 HTTP 结果不证明真实风格迁移或特定 Provider 效果。用户参考截图未加入仓库，运行日志与测试资料不作为公开附件提交。
+
+### 2026-10-02 全量自动化测试复验
+
+按用户要求完成全量测试。上文 72 项后端、76 项前端为实施阶段专项记录；本次完整套件的最终结果如下，复跑不叠加计数：
+
+| 套件 | 收集范围 | 通过 | 跳过 | 失败 / 错误 |
+|---|---|---:|---:|---:|
+| 后端 Surefire | 98 类、529 项 | 528 | 1 | 0 / 0 |
+| 后端 Failsafe | 90 类、178 项 | 174 | 4 | 0 / 0 |
+| 前端 Vitest | 77 文件、615 项 | 615 | 0 | 0 / 0 |
+| 前端 Node 国际化检查器 | 1 脚本、6 项 | 6 | 0 | 0 / 0 |
+
+后端在 JDK 21 下执行 `./mvnw --batch-mode --no-transfer-progress clean verify`，Maven 构建成功。188 个默认命名测试类均有本轮报告，合计 702 项通过、5 项跳过，没有遗漏测试类。前端执行 `pnpm test`，合计 621 项通过；`pnpm typecheck`、完整 `pnpm lint` 和 `pnpm build` 通过。
+
+首次全量发现并修复：Vitest 误收集使用 `node:test` 的检查器，现仅排除该精确文件，`pnpm test` 先用 Node 执行它再运行 Vitest，保留默认测试发现范围和失败退出；Skill 错误消息改用固定字面量 `ApiMessage`，默认目录与中文目录一致并补齐 Run 消息；五份目录同步移除 3 个无生产引用的旧 key。未放宽测试断言或目录检查，未调整 API、迁移、依赖或 Skill 执行边界。一次集成测试初始化遇到 PostgreSQL 认证连接 EOF，单项复验及随后完整 `clean verify` 均通过；未因此修改测试或生产连接配置。修复经 Standards / Spec 两轴独立审查，均无剩余发现。
+
+跳过项为 `AutoDlRealProviderPostgresIT`、`RunningHubRealProviderIT`、`RunningHubRealUsageIT`、`RunningHubRealResultArchiveIT` 的 4 项显式 opt-in 真实服务测试，以及未提供 ONNX 权重的 `LocalImageProcessorAdapterTest.runsConfiguredDepthAnythingModel`。本次未启用真实 Provider 调用，未运行浏览器端到端、Compose/镜像整栈或 CI 安全扫描；旧浏览器脚本依赖已移除的规划流程，不作为当前 Skill 验收。已有 Vite 分块大小、JSDOM 媒体方法和 Mockito 动态 Agent 提示保留。

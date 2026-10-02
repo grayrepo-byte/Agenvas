@@ -1010,10 +1010,11 @@ RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用
 - [x] Java/OpenAPI、生成 TS、受信图片来源 Schema、项目导出版本 5、V74/V75 与工具生成的 jOOQ 同步。
 - [x] 目录最终专项：`SkillFormatTest` 8 项和 `SkillPostgresIT` 7 项通过，覆盖权限/CSRF、HTTP 必需字段与 Schema、CAS/幂等、不可变版本、独立资产及复制、持久 pin 恢复、过期租约和并发单次发布。
 - [x] 已运行 Agent/归档专项：`SkillRunPostgresIT` 6 项与 `SkillAssetArchivePostgresIT` 4 项通过，覆盖 Agent 专用边界、固定输入/资料、旧策略恢复、媒体审批来源和项目文件归档/清理；均使用真实 PostgreSQL 与受控合成输入。
-- [x] 相关后端最终验证：17 类、72 项去重测试通过（40 单元、32 真实 PostgreSQL），含 Runtime/审批、文件安装/清理、旧工具策略、项目导出与恢复模式，详细类名及复验选择器见设计第 10 节；未运行全量。
+- [x] 实施阶段后端专项验证：17 类、72 项去重测试通过（40 单元、32 真实 PostgreSQL），含 Runtime/审批、文件安装/清理、旧工具策略、项目导出与恢复模式，详细类名及复验选择器见设计第 10 节；全量复验见下项。
 - [x] 前端 9 文件、76 项组件测试通过；TypeScript、完整 lint、四语言/主题检查与 Vite 生产构建通过。
 - [x] 固定基线的 Standards / Spec 两轴独立审查：发现全部修复并复验，最终无未解决项；文本差异凭据/隐私模式扫描和差异空白检查通过。
+- [x] 按用户要求完成全量自动化测试：后端 `clean verify` 构建成功，188 类、707 项收集，702 通过、5 按条件跳过、0 失败/错误；前端 `pnpm test` 77 个 Vitest 文件 615 项及 Node 检查器 6 项全部通过。TypeScript、完整 lint、生产构建通过。修复 Node/Vitest 入口边界、Skill 消息声明与默认目录一致性，清理 3 个无引用消息 key；未放宽断言或降低覆盖，修复两轴审查均无发现。
 - [ ] Skill 浏览器交互与真实文字模型/图片 Provider 验收；不得以 Mock 或合成素材证明真实风格迁移效果。
 - [ ] 后续视频/音频固定参考及相应用例、多模态分析、AI Skill 制造机、公共分享、包导入导出和多 Skill 叠加。
 
-本次新增 Skill 模块及 Agent Runtime/审批/来源接口，复用现有模型通信、媒体 Task 和资产归档，不新增模型或脚本执行能力。永久删除 Skill 尚未提供；发布版本与归档内容保守保留。未运行全量测试，未进行真实模型或 Provider 调用；用户参考截图未加入仓库。最终验证范围统一记录于 [实施设计第 10 节](creative-skills-design.md#10-首阶段实现与验证范围)。
+本次新增 Skill 模块及 Agent Runtime/审批/来源接口，复用现有模型通信、媒体 Task 和资产归档，不新增模型或脚本执行能力。永久删除 Skill 尚未提供；发布版本与归档内容保守保留。全量复验的 5 项跳过为 4 项真实服务 opt-in 与 1 项缺少本地深度模型权重；一次 PostgreSQL 认证连接 EOF 的测试单项及完整复验均通过。未进行真实模型或 Provider 调用、浏览器端到端或部署验证；用户参考截图未加入仓库。本轮测试修复不新增 API、迁移或依赖，最终验证范围统一记录于 [实施设计第 10 节](creative-skills-design.md#10-首阶段实现与验证范围)。
