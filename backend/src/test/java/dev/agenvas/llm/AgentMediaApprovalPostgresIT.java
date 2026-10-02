@@ -233,10 +233,12 @@ class AgentMediaApprovalPostgresIT {
         assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.SUCCEEDED);
         Task generated = mediaTasks(scenario).getFirst();
         assertThat(generated.status()).isEqualTo(Task.Status.SUCCEEDED);
+        UUID artifactId = UUID.fromString(generated.output().path("artifactId").asText());
+        UUID itemId = scenario.approval().outputs().getFirst().canvasItemId();
         String versionId = generated.output().path("artifactVersionId").asText();
         assertThat(versionId).isNotBlank();
         assertThat(jdbc.sql("select resource_default_version_id is null from artifact where id=:id")
-                .param("id", UUID.fromString(generated.output().path("artifactId").asText()))
+                .param("id", artifactId)
                 .query(Boolean.class).single()).isTrue();
 
         assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
@@ -253,10 +255,45 @@ class AgentMediaApprovalPostgresIT {
         });
 
         assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(scenario).status())
+                .as("Placing approved media must reuse its existing selected node")
+                .isEqualTo(AgentRun.Status.RUNNING);
+        assertThat(canvas.list(owner.userId(), scenario.project().id()).stream()
+                .filter(entry -> entry.item().subjectId().equals(artifactId)).toList())
+                .singleElement().satisfies(entry -> {
+                    assertThat(entry.item().id()).isEqualTo(itemId);
+                    assertThat(entry.item().selectedVersionId()).isEqualTo(UUID.fromString(versionId));
+                });
+
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(scenario).status())
+                .as("Arranging approved media must preserve its node-selected content")
+                .isEqualTo(AgentRun.Status.RUNNING);
+        assertThat(canvas.list(owner.userId(), scenario.project().id()).stream()
+                .filter(entry -> entry.item().id().equals(itemId)).toList())
+                .singleElement().satisfies(entry -> {
+                    assertThat(entry.item().selectedVersionId()).isEqualTo(UUID.fromString(versionId));
+                    assertThat(entry.item().version()).isEqualTo(plan.placementReply.at("/data/0/itemVersion").asLong() + 1);
+                });
+
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
         assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
-        assertThat(plan.calls).hasValue(3);
+        assertThat(plan.calls).hasValue(5);
         assertThat(plan.artifactReply.at("/data/0/versionId").asText()).isEqualTo(versionId);
         assertThat(plan.artifactReply.at("/data/0/kind").asText()).isEqualTo("IMAGE");
+        assertThat(plan.placementReply.at("/data/0/itemId").asText()).isEqualTo(itemId.toString());
+        assertThat(plan.placementReply.at("/data/0/created").asBoolean()).isFalse();
+        assertThat(plan.arrangementReply.at("/data/0/itemId").asText()).isEqualTo(itemId.toString());
+        assertThat(plan.arrangementReply.at("/data/0/itemVersion").asLong())
+                .isEqualTo(plan.placementReply.at("/data/0/itemVersion").asLong() + 1);
+        assertThat(mediaTasks(scenario)).singleElement().satisfies(task -> {
+            assertThat(task.id()).isEqualTo(generated.id());
+            assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(task.attemptNo()).isEqualTo(1);
+        });
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isZero();
+        assertThat(jdbc.sql("select resource_default_version_id is null from artifact where id=:id")
+                .param("id", artifactId).query(Boolean.class).single()).isTrue();
     }
 
     @Test
@@ -612,6 +649,8 @@ class AgentMediaApprovalPostgresIT {
         private volatile JsonNode reply;
         private volatile boolean readGeneratedOutput;
         private volatile JsonNode artifactReply;
+        private volatile JsonNode placementReply;
+        private volatile JsonNode arrangementReply;
         private Plan(UUID runId, String arguments) { this.arguments = arguments; this.toolCallId = "media-call-" + runId; }
     }
 
@@ -638,14 +677,26 @@ class AgentMediaApprovalPostgresIT {
             assertThat(messages.getLast()).isInstanceOf(ToolResponseMessage.class);
             ToolResponseMessage response = (ToolResponseMessage) messages.getLast();
             if (plan.readGeneratedOutput && callIndex == 3) {
-                assertThat(response.getResponses()).singleElement().satisfies(tool -> {
-                    assertThat(tool.id()).isEqualTo("read-generated-" + context.get("runId"));
-                    assertThat(tool.name()).isEqualTo("read_artifacts");
-                    plan.artifactReply = mapper.readTree(tool.responseData());
-                    assertThat(plan.artifactReply.path("status").asText()).isEqualTo("SUCCEEDED");
-                });
+                plan.artifactReply = successfulReply(response, "read-generated-" + context.get("runId"), "read_artifacts");
+                ObjectNode arguments = mapper.createObjectNode().put("group", "AGENT_OUTPUT");
+                arguments.putArray("versionIds").add(plan.artifactReply.at("/data/0/versionId").asText());
+                return toolCall("place-generated-" + context.get("runId"), "place_artifacts", arguments,
+                        "Place the verified media in my output group.");
+            }
+            if (plan.readGeneratedOutput && callIndex == 4) {
+                plan.placementReply = successfulReply(response, "place-generated-" + context.get("runId"), "place_artifacts");
+                ObjectNode arguments = mapper.createObjectNode().put("layout", "HORIZONTAL");
+                ObjectNode item = arguments.putArray("items").addObject();
+                item.put("itemId", plan.placementReply.at("/data/0/itemId").asText());
+                item.put("versionId", plan.placementReply.at("/data/0/versionId").asText());
+                item.put("expectedVersion", plan.placementReply.at("/data/0/itemVersion").asLong());
+                return toolCall("arrange-generated-" + context.get("runId"), "arrange_items", arguments,
+                        "Arrange the existing media output node.");
+            }
+            if (plan.readGeneratedOutput && callIndex == 5) {
+                plan.arrangementReply = successfulReply(response, "arrange-generated-" + context.get("runId"), "arrange_items");
                 return new Exchange(1, new ChatResponse(List.of(new Generation(
-                        new AssistantMessage("The generated media version is readable.")))));
+                        new AssistantMessage("The generated media version is verified and arranged.")))));
             }
             assertThat(response.getResponses()).singleElement().satisfies(tool -> {
                 assertThat(tool.id()).isEqualTo(plan.toolCallId);
@@ -655,12 +706,27 @@ class AgentMediaApprovalPostgresIT {
             if (plan.readGeneratedOutput) {
                 ObjectNode arguments = mapper.createObjectNode();
                 arguments.putArray("versionIds").add(plan.reply.at("/mediaApproval/tasks/0/artifactVersionId").asText());
-                AssistantMessage read = AssistantMessage.builder().content("Verify the archived media version.")
-                        .toolCalls(List.of(new AssistantMessage.ToolCall("read-generated-" + context.get("runId"),
-                                "function", "read_artifacts", arguments.toString()))).build();
-                return new Exchange(1, new ChatResponse(List.of(new Generation(read))));
+                return toolCall("read-generated-" + context.get("runId"), "read_artifacts", arguments,
+                        "Verify the archived media version.");
             }
             return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("The media batch result is recorded.")))));
+        }
+
+        private JsonNode successfulReply(ToolResponseMessage response, String callId, String name) {
+            assertThat(response.getResponses()).singleElement().satisfies(tool -> {
+                assertThat(tool.id()).isEqualTo(callId);
+                assertThat(tool.name()).isEqualTo(name);
+            });
+            JsonNode reply = mapper.readTree(response.getResponses().getFirst().responseData());
+            assertThat(reply.path("status").asText()).isEqualTo("SUCCEEDED");
+            return reply;
+        }
+
+        private Exchange toolCall(String callId, String name, ObjectNode arguments, String text) {
+            AssistantMessage response = AssistantMessage.builder().content(text)
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(callId, "function", name, arguments.toString())))
+                    .build();
+            return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
         }
     }
 }

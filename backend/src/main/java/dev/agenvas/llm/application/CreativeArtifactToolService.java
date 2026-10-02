@@ -2,6 +2,7 @@ package dev.agenvas.llm.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasItem;
@@ -96,7 +97,7 @@ public class CreativeArtifactToolService {
         canvas.apply(context.ownerId(), context.projectId(), commands);
     }
 
-    /** 仅将本 Run 可见且仍为当前版本的产物放入服务端确定的 Agent 输出分组。 */
+    /** 复用本 Run 可见且仍选用精确结果的媒体输出卡片；新建卡片与文字按资源默认版本校验。 */
     public JsonNode placeArtifacts(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -119,13 +120,21 @@ public class CreativeArtifactToolService {
         }
         List<UUID> artifactIds = new ArrayList<>();
         Set<UUID> uniqueArtifacts = new HashSet<>();
+        UUID outputGroupId = parseUuid(run.contextSnapshot().path("outputGroupId"));
+        List<CanvasService.CanvasEntry> existing = canvas.list(context.ownerId(),
+                context.projectId());
         for (UUID versionId : versionIds) {
             ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
                     context.projectId(), context.runId(), versionId, run.contextSnapshot());
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), version.artifactId());
+            CanvasItem output = existing.stream().map(CanvasService.CanvasEntry::item)
+                    .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                            && item.subjectId().equals(version.artifactId())
+                            && outputGroupId.equals(item.groupId()))
+                    .findFirst().orElse(null);
             if (view.artifact().archivedAt() != null
-                    || !view.resourceDefaultVersion().id().equals(versionId)) {
+                    || !isCurrentCardVersion(view, output, versionId)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
                         "ARTIFACT_VERSION_CONFLICT", ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed"),
                         ApiMessage.of("api.creative-artifact-tool-service.the-output-card-can-only-point-to-the-currently-selected"), false);
@@ -224,7 +233,7 @@ public class CreativeArtifactToolService {
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), item.subjectId());
             if (view.artifact().archivedAt() != null
-                    || !view.resourceDefaultVersion().id().equals(request.versionId())) {
+                    || !isCurrentCardVersion(view, item, request.versionId())) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
                         "ARTIFACT_VERSION_CONFLICT", ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed"),
                         ApiMessage.of("api.creative-artifact-tool-service.old-content-versions-do-not-determine-the-current-card-layout"), false);
@@ -285,6 +294,19 @@ public class CreativeArtifactToolService {
             item.put("y", current.y());
         }
         return result;
+    }
+
+    /**
+     * 媒体已有卡片按自身选用结果校验；没有卡片时只能从明确的资源默认版本创建。
+     * 文字卡片继续展示资源默认版本，媒体生成归档不必设置该默认版本。
+     */
+    private boolean isCurrentCardVersion(ArtifactService.ArtifactView view, CanvasItem item,
+            UUID versionId) {
+        if (view.artifact().kind() != Artifact.Kind.TEXT && item != null) {
+            return versionId.equals(item.selectedVersionId());
+        }
+        ArtifactVersion resourceDefault = view.resourceDefaultVersion();
+        return resourceDefault != null && versionId.equals(resourceDefault.id());
     }
 
     /** 已校验的单张卡片布局请求，在批量画布更新前保持不可变。

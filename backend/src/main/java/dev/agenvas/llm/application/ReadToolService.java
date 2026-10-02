@@ -163,7 +163,9 @@ public class ReadToolService {
             item.put("artifactId", version.artifactId().toString());
             item.put("versionId", version.id().toString());
             item.put("kind", view.artifact().kind().name());
-            boolean current = view.resourceDefaultVersion().id().equals(versionId);
+            // 已归档的媒体可由节点选用，而资源库默认版本仍为空；读取不改变这两个独立选择。
+            boolean current = view.resourceDefaultVersion() != null
+                    && view.resourceDefaultVersion().id().equals(versionId);
             item.put("current", current);
             if (current) {
                 item.put("title", view.artifact().title());
