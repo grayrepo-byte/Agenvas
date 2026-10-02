@@ -35,7 +35,7 @@
 
 jOOQ 生成源码（101 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
-Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置，加载应用自有确定性 Mock `ChatGateway` 和 Mock `GenerationGateway`；只有部署者明确启用聊天适配器并配置端点、模型与 Key 才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
+Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置；独立 JVM 的默认 Mock 与开发 Compose 的显式 Mock 加载应用自有确定性 `ChatGateway` 和 `GenerationGateway`。默认部署 Compose 使用 `configured`，管理员配置数据库模型或部署者配置候选聊天适配器的端点、模型与 Key 后才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 
 ## 前端直接依赖
 
@@ -84,14 +84,14 @@ Compose 在真实 PostgreSQL 17.11 执行 Flyway V1–V15 且服务健康，反�
 
 V20 本地 Asset 上传、原子文件归档、项目事件与私有 GET/HEAD/Range，以及 V21 私有 PNG 缩略图生成、鉴权读取和画布新输出放置，已由 PostgreSQL Testcontainers 和 MockMvc 测试；媒体产物版本的真实同项目 Asset 引用也由 PostgreSQL 测试验证。这些不是 Compose 端到端或真实 Provider 测试。画布图片卡片改为加载归档原图，缩略图仍归档但不由卡片加载，由 Vitest 组件测试验证。
 Mock 图片后台调度、实际 PNG 归档、同步成功/拒绝/UNKNOWN fixture，以及错误配置在提交前失败，由 `MockImageSchedulerPostgresIT` 在 PostgreSQL Testcontainers 中验证；尚未执行浏览器端到端或真实模型黄金路径。
-Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前端组件测试验证；默认安装报告明确标记的演示模型。无外部账户的演示剧本（三镜头、分阶段审批、关键帧选择）已随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 移除；Mock 模式仍可脱离外部模型启动并跑通直连文本、图片与视频。这不表示真实 ChatModel 或媒体 Provider 已接通。`AssetPostgresIT` 还验证 MP4 的私有 Range/HEAD、封面和错误媒体拒绝。容器镜像已成功构建，并实测其中 `libx264` 可编码。
+Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前端组件测试验证；开发 Mock 模式报告明确标记的演示模型；默认部署 Compose 使用 configured，未配置真实模型时不产生演示生成。无外部账户的演示剧本（三镜头、分阶段审批、关键帧选择）已随 [ADR 0013](adr/0013-contract-to-direct-generation.md) 移除；Mock 模式仍可脱离外部模型启动并跑通直连文本、图片与视频。这不表示真实 ChatModel 或媒体 Provider 已接通。`AssetPostgresIT` 还验证 MP4 的私有 Range/HEAD、封面和错误媒体拒绝。容器镜像已成功构建，并实测其中 `libx264` 可编码。
 
 ## 尚未验证或不在本基线范围
 
 - 上述初始 Compose 验证发生于 V15；当前 V35 已在隔离空卷 Compose 中构建、初始化、登录及停机重启，见 开发记录（不随源码公开）。从 V15 旧部署原位升级到 V35 仍未演练。
 - T04 已加入 fork PR 可运行且不注入 Provider/部署密钥的 Trivy 源码密钥与依赖扫描、三个运行镜像的 HIGH/CRITICAL 漏洞门禁，以及每镜像的 CycloneDX SBOM/许可证清单工件。2026-09-24 本机用 Trivy 0.74.0 验证：源码密钥与依赖扫描均为 0；后端运行镜像的许可证 JSON 和 CycloneDX 输出成功；Web 原镜像有 37 项 HIGH/CRITICAL，Alpine 安全更新后为 0；后端原镜像的 Tomcat 11.0.24 命中 CVE-2026-68525，固定到 11.0.25 后的运行镜像 OS 和 JAR 均为 0；PostgreSQL 派生镜像精确排除已被 `su-exec` 替换的底层旧 `gosu` 文件后为 0。后端 `./mvnw verify` 实际通过（Surefire 50、Failsafe 41），Docker 内构建通过（Surefire 50）；三张运行镜像均成功构建，PostgreSQL 派生镜像初始化并通过 `pg_isready`，Nginx 配置测试通过。工作流 YAML 已解析且无 `secrets.*` 引用，Compose 配置检查通过；GitHub Actions 托管运行尚未在本工作区验证。源码离线扫描无法完整解析 Maven 父 BOM 的传递依赖，后端镜像扫描补足了运行 JAR 覆盖。
 - Spring AI 2.0.1 的受控 ChatClient 工具往返经假模型测试；OpenAI 兼容 starter 的实际 `ChatModel` 又经假 HTTP Chat Completions 端点与真实 PostgreSQL 上下文验证工具 ID、下一回合 tool reply 和 Token 元数据。完整响应 checkpoint、持久工具结果的下一回合消息重建与剩余工具（读取上下文、创建与修改文字、摆放卡片）的业务执行经真实 PostgreSQL + 假 ChatGateway 或保存的假模型响应测试。尚未验证特定真实 Provider 对恢复后元数据的要求；没有真实 LLM 或视觉调用。
-- ComfyUI `image-v1` 候选模板已接入图片提交、原 prompt_id 状态跟踪与 Asset 归档；V56 移除 V23 的全局单槽，假 HTTP 服务与 PostgreSQL 集成测试验证活动请求可重叠提交。尚未以真实 ComfyUI/模型验证图片。默认仍是 Mock。PNG/JPEG/WebP 上传已由 PostgreSQL＋HTTP 验证；真实 Provider 的归档失败恢复、并发资源表现和固定视频模板现场兼容性尚未完成。
+- ComfyUI `image-v1` 候选模板已接入图片提交、原 prompt_id 状态跟踪与 Asset 归档；V56 移除 V23 的全局单槽，假 HTTP 服务与 PostgreSQL 集成测试验证活动请求可重叠提交。尚未以真实 ComfyUI/模型验证图片。默认部署 Compose 为 configured，开发 Compose 显式启用 Mock。PNG/JPEG/WebP 上传已由 PostgreSQL＋HTTP 验证；真实 Provider 的归档失败恢复、并发资源表现和固定视频模板现场兼容性尚未完成。
 
 ## FFmpeg 分发说明
 

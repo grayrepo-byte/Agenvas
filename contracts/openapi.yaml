@@ -3205,7 +3205,7 @@ components:
       required: [kind, capabilityId, version]
       properties:
         kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]}
-        capabilityId: {type: string, format: uuid}
+        capabilityId: {type: [string, "null"], format: uuid, description: "Null when no capability is available in the active deployment mode, including a retained Mock default in CONFIGURED mode."}
         version: {type: integer, format: int64, minimum: 0}
     CreateMediaConnectionRequest:
       type: object
@@ -3288,7 +3288,7 @@ components:
         llmMode: {type: string, enum: [MOCK, CONFIGURED]}
         llmConfigured: {type: boolean}
         llmToolCallingVerified: {type: boolean}
-        mediaMode: {type: string, enum: [MOCK, COMFYUI]}
+        mediaMode: {type: string, enum: [MOCK, COMFYUI, CONFIGURED], description: "CONFIGURED uses the administrator media catalog and excludes Mock capabilities from new generation."}
         imageConfigured: {type: boolean}
         videoConfigured: {type: boolean}
         recentErrors:

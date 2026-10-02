@@ -1103,7 +1103,9 @@ describe("MediaDraftEditor", () => {
     let failed = false;
     const { client } = setup({ handlers: [http.get("/api/v1/settings/media-connections", () => failed
       ? HttpResponse.json({ code: "TEMPORARY", detail: "配置读取失败" }, { status: 503 })
-      : HttpResponse.json(configured ? settings : { connections: [], defaults: [] }))] });
+      : HttpResponse.json(configured ? settings : { connections: [], defaults: [
+        { kind: "IMAGE_GENERATION", capabilityId: null, version: 0 },
+      ] }))] });
     const user = userEvent.setup();
     await screen.findByText("尚未配置默认模型，请选择可用模型或先在媒体设置中配置。");
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();

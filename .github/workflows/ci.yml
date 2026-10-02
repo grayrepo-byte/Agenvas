@@ -78,24 +78,44 @@ jobs:
       - uses: actions/checkout@v4
       - name: Reject missing required installation secrets
         run: |
-          if env -u AGENVAS_DB_PASSWORD docker compose -f deploy/compose.yaml config --quiet >/dev/null 2>&1; then
-            echo 'Compose accepted a missing database password' >&2
-            exit 1
-          fi
-          if env -u AGENVAS_BOOTSTRAP_SECRET docker compose -f deploy/compose.yaml config --quiet >/dev/null 2>&1; then
-            echo 'Compose accepted a missing bootstrap secret' >&2
-            exit 1
-          fi
-      - run: docker compose -f deploy/compose.yaml config --quiet
-      - name: Verify bounded resources, log rotation, and shutdown window
+          for compose_file in deploy/compose.yaml deploy/compose.dev.yaml; do
+            if env -u AGENVAS_DB_PASSWORD docker compose -f "$compose_file" config --quiet >/dev/null 2>&1; then
+              echo "$compose_file accepted a missing database password" >&2
+              exit 1
+            fi
+            if env -u AGENVAS_BOOTSTRAP_SECRET docker compose -f "$compose_file" config --quiet >/dev/null 2>&1; then
+              echo "$compose_file accepted a missing bootstrap secret" >&2
+              exit 1
+            fi
+          done
+      - name: Verify deployment and development defaults
         run: |
           docker compose -f deploy/compose.yaml config --format json |
-            jq -e '([.services.postgres, .services.server, .services.web] |
-              all(.[]; (.mem_limit | tonumber) > 0 and .cpus > 0 and
-                .logging.driver == "json-file" and
-                .logging.options."max-size" == "10m" and
-                .logging.options."max-file" == "3")) and
-              .services.server.stop_grace_period == "45s"'
+            jq -e '.name == "agenvas" and
+              .services.server.environment.AGENVAS_LLM_MODE == "configured" and
+              .services.server.environment.AGENVAS_PROVIDER_MODE == "configured" and
+              .volumes."postgres-data".name == "agenvas_postgres-data" and
+              .volumes."asset-data".name == "agenvas_asset-data"'
+          AGENVAS_LLM_MODE=configured AGENVAS_PROVIDER_MODE=comfyui \
+            docker compose -f deploy/compose.dev.yaml config --format json |
+            jq -e '.name == "agenvas-dev" and
+              .services.server.environment.AGENVAS_LLM_MODE == "mock" and
+              .services.server.environment.AGENVAS_PROVIDER_MODE == "mock" and
+              .volumes."postgres-data".name == "agenvas-dev_postgres-data" and
+              .volumes."asset-data".name == "agenvas-dev_asset-data"'
+      - name: Verify bounded resources, log rotation, and shutdown window
+        run: |
+          for compose_file in deploy/compose.yaml deploy/compose.dev.yaml; do
+            docker compose -f "$compose_file" config --format json |
+              jq -e '([.services.postgres, .services.server, .services.web] |
+                all(.[]; (.mem_limit | tonumber) > 0 and .cpus > 0 and
+                  .logging.driver == "json-file" and
+                  .logging.options."max-size" == "10m" and
+                  .logging.options."max-file" == "3" and
+                  all(.ports[]; .host_ip == "127.0.0.1"))) and
+                .services.server.read_only and .services.web.read_only and
+                .services.server.stop_grace_period == "45s"'
+          done
           AGENVAS_SERVER_MEMORY_LIMIT=2g AGENVAS_SERVER_CPUS=3.0 \
             docker compose -f deploy/compose.yaml config --format json |
             jq -e '.services.server.mem_limit == "2147483648" and

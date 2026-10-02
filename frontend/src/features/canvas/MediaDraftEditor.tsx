@@ -571,7 +571,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function chooseCapability(capabilityId: string | null) {
     if (!fields) return;
-    const resolvedCapabilityId = capabilityId ?? defaultCapabilityId;
+    const resolvedCapabilityId = capabilityId ?? defaultCapabilityId ?? undefined;
     const next = availableCapabilities.find((candidate) => candidate.id === resolvedCapabilityId);
     const change = planMediaCapabilityChange({ kind: artifact.kind, fields, capabilityId,
       resolvedCapabilityId, previous: chosenCapability, next });

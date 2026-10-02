@@ -67,11 +67,13 @@ backup_restore_services() {
   local backup_exit=$?
   trap - EXIT
   if [[ $backup_stopped == true ]]; then
+    # Resume the exact containers stopped above; rebuilding from the deployment file
+    # would replace a development project's Mock configuration after its backup.
     if [[ $backup_restart_server == true ]]; then
-      "${backup_compose[@]}" up -d --no-build server || backup_exit=1
+      "${backup_compose[@]}" start server || backup_exit=1
     fi
     if [[ $backup_restart_web == true ]]; then
-      "${backup_compose[@]}" up -d --no-build web || backup_exit=1
+      "${backup_compose[@]}" start web || backup_exit=1
     fi
   fi
   if [[ $backup_exit -ne 0 ]]; then

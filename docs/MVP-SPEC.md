@@ -203,7 +203,7 @@ Spring MVC 支持异步响应和 SSE，本项目不因为需要流式进度就�
 
 ### 4.3 基础设施
 
-默认部署只有三个服务：`web`、`server`、`postgres`。媒体服务是外接推理能力，Mock 模式不需要它。
+默认部署只有三个服务：`web`、`server`、`postgres`。`deploy/compose.yaml` 默认文字与媒体均为 `configured`，不启用 Mock；`deploy/compose.dev.yaml` 显式使用 Mock。媒体服务是外接推理能力，Mock 模式不需要它。
 
 - web：Vite 静态构建文件 + Nginx 反向代理；没有 Node 生产运行时。
 - server：一个 Spring Boot 应用，内部包含受限的 Agent、任务和媒体处理执行器。
@@ -910,6 +910,8 @@ ComfyUI 新提交以数据库已提交的 `provider_attempt.request_key` 作为�
 
 ### 13.6 Mock 模式
 
+Mock 通过开发 Compose 显式启用，不是默认部署模式。默认部署使用 `configured`，新生成只接受已配置的真实能力；没有真实媒体能力时目录为空，预置 Mock 不可选。切换模式不删除管理员配置、历史内容或已受理任务，固定任务继续按原能力版本核对和恢复。
+
 不需要 API Key 或 GPU，可创建项目、操纵画布、直连生成文字/图片/视频，并模拟等待、失败与未知。
 
 所有 Mock 输出必须明显标注“演示素材”，不能伪装为真实模型输出。测试支持可重复的成功、失败、超时、重复返回、晚到结果和断网场景。
@@ -1484,11 +1486,13 @@ UNKNOWN 任务新出现、数据库连接池饱和、事件明显积压、磁盘
 
 ### 25.1 仓库与运行方式
 
-本地开发：前端 Vite（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；默认 Mock Provider。
+本地开发：前端 Vite（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；独立 JVM 保留 Mock 默认。容器开发使用 `deploy/compose.dev.yaml`，通过 `extends` 复用部署版服务并显式启用文字/媒体 Mock。
 
-自托管：Docker Compose 三服务。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
+自托管：`deploy/compose.yaml` 为默认部署版，Docker Compose 三服务；文字和媒体使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。保存云凭证还须设置服务端 `AGENVAS_CREDENTIAL_MASTER_KEY`。部署和开发版均要求数据库密码与 bootstrap secret；默认项目名分别为 `agenvas`、`agenvas-dev`，卷按项目名隔离，两版默认端口相同，并行运行须显式配置不同端口。`deploy/update-local.sh` 继续更新默认部署版；配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
 
 Nginx 统一域名处理前端与 `/api`，避免生产跨域鉴权复杂度。SSE 反代禁缓冲。所有镜像锁版本与 digest，不使用 latest。
+
+`configured` 媒体模式对新生成排除 Mock，保留已受理任务的精确历史配置。设置响应把保留的 Mock 默认能力投影为 `capabilityId: null`，管理员设置真实默认值后恢复具体 ID；诊断响应的 `mediaMode` 可为 `CONFIGURED`，就绪状态读取已启用的发布目录。客户端升级须重新生成 OpenAPI 类型并处理空默认值，无需数据库迁移。
 
 ### 25.2 容器要求
 
@@ -1544,6 +1548,7 @@ agent-canvas/
     workflows/
   deploy/
     compose.yaml
+    compose.dev.yaml
     nginx/
     docker/
   docs/

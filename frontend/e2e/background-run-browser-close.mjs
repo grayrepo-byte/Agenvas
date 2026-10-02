@@ -56,7 +56,7 @@ async function page(fn, ...args) {
 /** All Compose operations are confined to the caller-selected isolated project. */
 function compose(...args) {
   return execFileSync("docker", ["compose", "-p", composeProject,
-    "-f", "deploy/compose.yaml", ...args],
+    "-f", "deploy/compose.dev.yaml", ...args],
   { cwd: repoRoot, encoding: "utf8" }).trim();
 }
 

@@ -37,7 +37,7 @@ describe("SystemSettingsPage", () => {
     expect(currentPassword).toHaveValue("temporary-input");
   });
 
-  it("renders redacted local states and refreshes with GET only", async () => {
+  it("renders configured media states and refreshes with GET only", async () => {
     const requests = vi.fn();
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
@@ -46,7 +46,7 @@ describe("SystemSettingsPage", () => {
         return HttpResponse.json({
           checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "UNAVAILABLE",
           llmMode: "CONFIGURED", llmConfigured: true, llmToolCallingVerified: false,
-          mediaMode: "COMFYUI", imageConfigured: true, videoConfigured: false,
+          mediaMode: "CONFIGURED", imageConfigured: true, videoConfigured: false,
           recentErrors: [{ status: "UNKNOWN", count: 2, lastAt: "2026-09-24T00:00:00Z" }],
         });
       }),
@@ -56,6 +56,7 @@ describe("SystemSettingsPage", () => {
     expect(await screen.findByText("路径检查异常")).toBeInTheDocument();
     expect(screen.getByText(/工具协议未验证/)).toBeInTheDocument();
     expect(screen.getByText(/未知：2 项/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("Mock");
     expect(document.body).not.toHaveTextContent("apiKey");
     await userEvent.setup().click(screen.getByRole("button", { name: "刷新状态" }));
     expect(requests).toHaveBeenCalledTimes(2);

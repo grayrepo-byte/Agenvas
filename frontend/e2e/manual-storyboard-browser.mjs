@@ -806,7 +806,7 @@ try {
     assert.match(projectId, /^[0-9a-f-]{36}$/);
     const firstSeq = afterReload.snapshotSeq;
     const sceneId = sceneAfterReload.artifact.id;
-    const composeFile = fileURLToPath(new URL("../../deploy/compose.yaml", import.meta.url));
+    const composeFile = fileURLToPath(new URL("../../deploy/compose.dev.yaml", import.meta.url));
     await cdp("Network.setBlockedURLs", { urls: [
       `*api/v1/projects/${projectId}/events*`,
       `*api/v1/projects/${projectId}/snapshot*`,

@@ -46,20 +46,23 @@ public class MediaCapabilityService {
     private final CredentialCipher cipher;
     private final Clock clock;
     private final ObjectMapper mapper;
+    private final ProviderModeProperties mode;
 
     public MediaCapabilityService(JooqMediaCapabilityRepository repository,
             MediaAdapterRegistry registry, CredentialCipher cipher, Clock clock,
-            ObjectMapper mapper) {
+            ObjectMapper mapper, ProviderModeProperties mode) {
         this.repository = repository;
         this.registry = registry;
         this.cipher = cipher;
         this.clock = clock;
         this.mapper = mapper;
+        this.mode = mode;
     }
 
     @Transactional
     public Connection createConnection(String name, String origin) {
         String normalizedName = requireName(name);
+        requireAvailablePlatform(origin == null ? MediaPlatform.MOCK : MediaPlatform.COMFYUI);
         UUID id = UUID.randomUUID();
         Instant now = clock.instant();
         repository.insertConnection(id, normalizedName,
@@ -78,6 +81,7 @@ public class MediaCapabilityService {
         }
         String normalizedName = requireName(name);
         MediaPlatform normalizedPlatform = requirePlatform(platform);
+        requireAvailablePlatform(normalizedPlatform);
         if (normalizedPlatform == MediaPlatform.LOCAL) {
             throw invalid(ApiMessage.of("api.media-capability-service.local-image-processing-is-a-built-in-capability-of-the"));
         }
@@ -109,6 +113,7 @@ public class MediaCapabilityService {
     public Connection updateConnection(UUID id, long expectedVersion, String name,
             boolean enabled, String origin, String apiKey) {
         Connection current = getConnection(id);
+        requireAvailablePlatform(current.platform());
         rejectSystemManaged(current);
         if (current.version() != expectedVersion) {
             throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
@@ -146,11 +151,12 @@ public class MediaCapabilityService {
     }
 
     public List<Connection> connections() {
-        return repository.connections();
+        return repository.connections().stream()
+                .filter(connection -> availablePlatform(connection.platform())).toList();
     }
 
     public List<Capability> capabilities(UUID connectionId) {
-        getConnection(connectionId);
+        if (!availablePlatform(getConnection(connectionId).platform())) return List.of();
         return repository.capabilities(connectionId);
     }
 
@@ -204,6 +210,7 @@ public class MediaCapabilityService {
     private Capability publishCapabilityWithId(UUID id, UUID connectionId,
             String name, String adapterId, JsonNode settings) {
         Connection connection = getConnection(connectionId);
+        requireAvailablePlatform(connection.platform());
         rejectSystemManaged(connection);
         MediaAdapterRegistry.Declaration declaration = registry.declaration(adapterId);
         if (!connection.enabled()) {
@@ -241,6 +248,7 @@ public class MediaCapabilityService {
             long expectedVersion, String name, boolean enabled, String adapterId,
             JsonNode settings) {
         Snapshot current = capabilitySnapshot(capabilityId);
+        requireAvailablePlatform(current.connection().platform());
         if (!current.connection().id().equals(connectionId)) {
             throw invalid(ApiMessage.of("api.media-capability-service.capability-does-not-belong-to-this-connection"));
         }
@@ -413,7 +421,9 @@ public class MediaCapabilityService {
     @Transactional
     public Connection setConnectionEnabled(UUID connectionId, long expectedVersion,
             boolean enabled) {
-        rejectSystemManaged(getConnection(connectionId));
+        Connection connection = getConnection(connectionId);
+        requireAvailablePlatform(connection.platform());
+        rejectSystemManaged(connection);
         if (!repository.updateConnectionEnabled(connectionId, expectedVersion, enabled,
                 clock.instant())) {
             throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
@@ -426,7 +436,10 @@ public class MediaCapabilityService {
     }
 
     public UUID defaultCapabilityId(Task.Kind kind) {
-        return repository.defaultCapabilityId(requireMediaKind(kind).name());
+        UUID capabilityId = repository.defaultCapabilityId(requireMediaKind(kind).name());
+        if (mode.mode() != ProviderModeProperties.Mode.CONFIGURED) return capabilityId;
+        return availablePlatform(capabilitySnapshot(capabilityId).connection().platform())
+                ? capabilityId : null;
     }
 
     /** Immutable administrator limits within the protocol pinned by this task. */
@@ -518,7 +531,7 @@ public class MediaCapabilityService {
     }
 
     private Stream<Snapshot> publishedSnapshots() {
-        return repository.connections().stream().filter(Connection::enabled)
+        return connections().stream().filter(Connection::enabled)
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
@@ -569,11 +582,26 @@ public class MediaCapabilityService {
 
     private Snapshot enabledSnapshot(UUID capabilityId) {
         Snapshot snapshot = capabilitySnapshot(capabilityId);
+        requireAvailablePlatform(snapshot.connection().platform());
         if (!snapshot.connection().enabled() || !snapshot.capability().enabled()) {
             throw conflict(ApiMessage.of("api.media-capability-service.media-connection-or-capability-is-disabled"));
         }
         registry.declaration(snapshot.adapterId());
         return snapshot;
+    }
+
+    /** Hide development fixtures without changing persisted configuration or pinned task history. */
+    private boolean availablePlatform(MediaPlatform platform) {
+        return mode.mode() != ProviderModeProperties.Mode.CONFIGURED || platform != MediaPlatform.MOCK;
+    }
+
+    private void requireAvailablePlatform(MediaPlatform platform) {
+        if (!availablePlatform(platform)) {
+            throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "PROVIDER_UNSUPPORTED_CAPABILITY",
+                    ApiMessage.of("api.media-adapter-registry.media-capabilities-are-not-available"),
+                    ApiMessage.of("api.media-adapter-registry.this-media-adapter-is-not-installed-by-the-current-application"), false);
+        }
     }
 
     private static MediaCapabilityBinding binding(Snapshot snapshot) {

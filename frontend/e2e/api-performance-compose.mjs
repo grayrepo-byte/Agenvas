@@ -7,7 +7,7 @@ import { readdir } from "node:fs/promises";
 /** Runs the browser performance probe against an isolated, disposable Mock stack. */
 const project = "agenvas-api-perf-e2e";
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const composeFile = fileURLToPath(new URL("../../deploy/compose.yaml", import.meta.url));
+const composeFile = fileURLToPath(new URL("../../deploy/compose.dev.yaml", import.meta.url));
 const browserScript = fileURLToPath(new URL("./manual-storyboard-browser.mjs", import.meta.url));
 const serverRuntimeDockerfile = fileURLToPath(new URL("./server-runtime.Dockerfile", import.meta.url));
 const webRuntimeDockerfile = fileURLToPath(new URL("./web-runtime.Dockerfile", import.meta.url));

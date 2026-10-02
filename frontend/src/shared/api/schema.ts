@@ -2575,8 +2575,11 @@ export interface components {
         MediaDefault: {
             /** @enum {string} */
             kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
-            /** Format: uuid */
-            capabilityId: string;
+            /**
+             * Format: uuid
+             * @description Null when no capability is available in the active deployment mode, including a retained Mock default in CONFIGURED mode.
+             */
+            capabilityId: string | null;
             /** Format: int64 */
             version: number;
         };
@@ -2651,8 +2654,11 @@ export interface components {
             llmMode: "MOCK" | "CONFIGURED";
             llmConfigured: boolean;
             llmToolCallingVerified: boolean;
-            /** @enum {string} */
-            mediaMode: "MOCK" | "COMFYUI";
+            /**
+             * @description CONFIGURED uses the administrator media catalog and excludes Mock capabilities from new generation.
+             * @enum {string}
+             */
+            mediaMode: "MOCK" | "COMFYUI" | "CONFIGURED";
             imageConfigured: boolean;
             videoConfigured: boolean;
             recentErrors: components["schemas"]["RecentTaskError"][];

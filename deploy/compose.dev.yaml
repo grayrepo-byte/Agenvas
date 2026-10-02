@@ -1,0 +1,25 @@
+# Local Mock development stack; share deployment hardening and isolate persistent volumes.
+name: agenvas-dev
+
+services:
+  postgres:
+    extends:
+      file: compose.yaml
+      service: postgres
+
+  server:
+    extends:
+      file: compose.yaml
+      service: server
+    environment:
+      AGENVAS_LLM_MODE: mock
+      AGENVAS_PROVIDER_MODE: mock
+
+  web:
+    extends:
+      file: compose.yaml
+      service: web
+
+volumes:
+  postgres-data:
+  asset-data:

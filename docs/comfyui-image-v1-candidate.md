@@ -4,7 +4,7 @@
 
 候选图仅使用 ComfyUI core 节点：`LoadImage`、`CheckpointLoaderSimple`、两个 `CLIPTextEncode`、`VAEEncode`、`KSampler`、`VAEDecode`、`SaveImage`；无需 Custom Node。连接固定为 `LoadImage → VAEEncode → KSampler.latent_image → VAEDecode → SaveImage`，参考图不是只写入 Prompt。服务端从同项目已钉住的 `SHOT.selectedImageVersionId` 读取受保护 Asset，等比留边归一化后上传；无参考图时上传同画幅空白图且 `denoise=1.0`。有参考图时使用 `denoise=0.65`。模型只可提出 prompt/negativePrompt，不能修改节点、连接、模型文件名、输出路径或 endpoint。
 
-启用候选接入需要部署者配置 `AGENVAS_PROVIDER_MODE=comfyui`、精确 `AGENVAS_COMFYUI_ENDPOINT` 和已安装 checkpoint 的安全 basename `AGENVAS_COMFYUI_IMAGE_CHECKPOINT`。默认仍为 Mock，不需要 ComfyUI。checkpoint 模型的确切名称、来源、哈希、许可证和适用硬件由实际选型确认；**目前未选择或下载模型，也未记录真实兼容的 ComfyUI 版本**，不得把这份候选模板写成已验证能力。管理员应仅将可信 ComfyUI 实例暴露给后端；HTTP 路由不接受用户 URL。
+默认部署 Compose 使用 `configured`；启用候选接入由管理员在媒体配置页发布 ComfyUI 连接与固定能力，配置精确服务地址及已安装 checkpoint 的安全 basename。旧 `AGENVAS_PROVIDER_MODE=comfyui`、`AGENVAS_COMFYUI_ENDPOINT` 和 `AGENVAS_COMFYUI_IMAGE_CHECKPOINT` 仅用于 V40 的一次性导入，不覆盖数据库配置。开发 Compose 显式启用 Mock，不需要 ComfyUI。checkpoint 模型的确切名称、来源、哈希、许可证和适用硬件由实际选型确认；**目前未选择或下载模型，也未记录真实兼容的 ComfyUI 版本**，不得把这份候选模板写成已验证能力。管理员应仅将可信 ComfyUI 实例暴露给后端；HTTP 路由不接受用户 URL。
 
 当前证据：`ComfyUiImageWorkflowTest` 验证固定节点和输入覆盖；`ComfyUiImagePostgresIT` 用假 HTTP 服务与真实 PostgreSQL 验证图片审批、真实参考 Asset 上传、工作流映射、原 prompt_id 查询、空历史等待、归档，以及竞争 Worker 的单外部槽位。它不能证明真实模型存在或输出符合预期。发布门禁仍需在选定模型和真实 ComfyUI 上冻结兼容版本、完成至少一次真实参考图生图，记录结果、模型与节点许可证；视频 `image-to-video-v1` 另行验证。
 

@@ -21,3 +21,5 @@
 新增供应商仍需要编写和测试适配器，但计划、审批与画布使用稳定能力契约，无须增加供应商分支。管理员不能通过填 API 模板接入任意平台；这降低了当前交付范围，也避免把尚未验证的动态代码执行和任意平台兼容性标记为已完成。基础层及首批渠道分别见[媒体能力规格](../superpowers/specs/2026-09-25-media-capability-foundation-design.md)和[固定渠道规格](../superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)。
 
 2026-10-01 补充：用户明确要求的 AutoDL ComfyUI 工作流接入采用同一固定 Java 协议与受审查参数声明，局部修订本 ADR 暂不接入工作流平台的范围；不开放任意工作流图、脚本或远程发现。见 [ADR 0024](0024-autodl-comfyui-workflows.md)。
+
+2026-10-02 补充：用户决定区分默认部署与开发 Compose。`deploy/compose.yaml` 的文字和媒体默认使用 `configured`，不启用 Mock；`deploy/compose.dev.yaml` 通过 `extends` 复用三服务并显式启用 Mock。默认项目名分别为 `agenvas` 和 `agenvas-dev`，数据卷按项目名隔离；默认端口相同，并行运行须显式配置不同端口。两版仍要求数据库密码与初始化密钥，保存云凭证还须配置服务端主密钥；部署后由管理员配置真实 LLM、连接与已发布能力。没有真实媒体能力时目录为空，预置 Mock 不能用于新生成。切换模式只影响新生成的能力选择，不删除既有配置、结果或固定任务；已受理任务继续按原能力版本核对和恢复。Mock 保留为可独立运行的开发/测试路径，配置分离不代表真实 Provider 或生产发布已验收。

@@ -5,6 +5,7 @@ import static dev.agenvas.db.Tables.TASK;
 import dev.agenvas.asset.application.AssetProperties;
 import dev.agenvas.llm.application.LlmModeProperties;
 import dev.agenvas.provider.application.ProviderModeProperties;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoProperties;
@@ -34,8 +35,10 @@ public class SystemDiagnosticsService {
     private final LlmModeProperties llmMode;
     /** 读取活动 LLM 配置的安全状态，不读取密钥明文。 */
     private final LlmProviderConfigService llmConfigs;
-    /** 决定媒体状态采用 Mock 还是 ComfyUI 配置。 */
+    /** 决定媒体状态采用管理员目录、Mock 还是旧 ComfyUI 配置。 */
     private final ProviderModeProperties mediaMode;
+    /** 读取已发布媒体目录，不探测远端或执行生成。 */
+    private final MediaCapabilityService mediaCapabilities;
     /** ComfyUI 服务地址配置，仅检查是否填写，不向响应暴露。 */
     private final ComfyUiProperties comfy;
     /** ComfyUI 图片模板所需配置。 */
@@ -49,12 +52,14 @@ public class SystemDiagnosticsService {
     public SystemDiagnosticsService(DSLContext dsl, AssetProperties storage,
             LlmModeProperties llmMode, LlmProviderConfigService llmConfigs,
             ProviderModeProperties mediaMode, ComfyUiProperties comfy,
-            ComfyUiImageProperties image, ComfyUiVideoProperties video, Clock clock) {
+            ComfyUiImageProperties image, ComfyUiVideoProperties video, Clock clock,
+            MediaCapabilityService mediaCapabilities) {
         this.dsl = dsl;
         this.storageRoot = storage.root().toAbsolutePath().normalize();
         this.llmMode = llmMode;
         this.llmConfigs = llmConfigs;
         this.mediaMode = mediaMode;
+        this.mediaCapabilities = mediaCapabilities;
         this.comfy = comfy;
         this.image = image;
         this.video = video;
@@ -107,6 +112,22 @@ public class SystemDiagnosticsService {
                 && filled(comfy.endpoint()) && filled(video.diffusionModel())
                 && filled(video.textEncoder()) && filled(video.vae())
                 && filled(video.clipVision()));
+        if (mediaMode.mode() == ProviderModeProperties.Mode.CONFIGURED) {
+            imageConfigured = false;
+            videoConfigured = false;
+            if (databaseAvailable) {
+                try {
+                    var candidates = mediaCapabilities.publishedCandidates();
+                    imageConfigured = candidates.stream().anyMatch(candidate ->
+                            candidate.kind() == Task.Kind.IMAGE_GENERATION);
+                    videoConfigured = candidates.stream().anyMatch(candidate ->
+                            candidate.kind() == Task.Kind.VIDEO_GENERATION);
+                } catch (DataAccessException unavailable) {
+                    databaseAvailable = false;
+                    recentErrors = List.of();
+                }
+            }
+        }
         return new Snapshot(clock.instant(),
                 databaseAvailable ? Status.AVAILABLE : Status.UNAVAILABLE,
                 storageAvailable(storageRoot) ? Status.AVAILABLE : Status.UNAVAILABLE,

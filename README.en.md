@@ -2,17 +2,20 @@
 
 Agenvas is a self-hostable AI creation canvas. A Creator Agent lives on the canvas as an editable card and works through explicit input bindings, human approvals, immutable content versions, and persistent tasks. The target MVP turns one instruction into a three-shot silent video, with image and video approvals, local redo, and sequential export.
 
-**This repository is still under development.** The default installation uses a deterministic Mock model and clearly marked demonstration media. The LLM, ComfyUI, GPT Image 2, and Ark Seedance adapters have been tested against fake HTTP servers and PostgreSQL; no real cloud image or video generation call has been made. A successful Mock export does not establish real-provider support or production readiness. See [MVP-SPEC.md](docs/MVP-SPEC.md), [DEVELOPMENT-CHECKLIST.md](docs/DEVELOPMENT-CHECKLIST.md), and [dependency-baseline.md](docs/dependency-baseline.md) for scope and evidence.
+**This repository is still under development.** The default Compose file is for deployment and uses configured LLM and media providers. The separate development Compose file enables a deterministic Mock model and clearly marked demonstration media. The LLM, ComfyUI, GPT Image 2, and Ark Seedance adapters have been tested against fake HTTP servers and PostgreSQL; no real cloud image or video generation call has been made. A successful Mock export does not establish real-provider support or production readiness. See [MVP-SPEC.md](docs/MVP-SPEC.md), [DEVELOPMENT-CHECKLIST.md](docs/DEVELOPMENT-CHECKLIST.md), and [dependency-baseline.md](docs/dependency-baseline.md) for scope and evidence.
 
-## Quick start: local Mock mode
+## Quick start: default deployment
 
 Install Docker Engine/Desktop with Compose. From the repository root:
 
 ```sh
 cp .env.example .env
 # Set random AGENVAS_DB_PASSWORD and AGENVAS_BOOTSTRAP_SECRET values in .env.
+# Set AGENVAS_CREDENTIAL_MASTER_KEY before saving cloud credentials.
 ./deploy/update-local.sh
 ```
+
+`deploy/compose.yaml` defaults both text and media modes to `configured` and does not enable Mock. After setup, use the administrator settings to configure a real LLM, media connections, and published capabilities. With no real media configuration, the capability catalog is empty and preloaded Mock capabilities cannot start new generation. Saving cloud credentials requires `AGENVAS_CREDENTIAL_MASTER_KEY`, a Base64-encoded random 32-byte key kept separately from database backups. Changing modes preserves existing configuration, results, and fixed tasks; accepted tasks still reconcile against their original configuration. These defaults do not establish production readiness.
 
 For later local rebuilds and updates, run `./deploy/update-local.sh` from the repository root. It pulls the pinned base images, rebuilds local images, updates the Compose containers, and waits for health checks. The script uses the repository's `.env` and retains the database and asset volumes. A failed build leaves running containers in place. Base image digests are pinned, so this command does not upgrade them to newer versions.
 
@@ -26,7 +29,7 @@ Stop without deleting the database or asset volumes:
 docker compose --env-file .env -f deploy/compose.yaml down
 ```
 
-Do not add `--volumes` unless you intentionally want to delete that Compose project's data. For an isolated acceptance instance, set a distinct `COMPOSE_PROJECT_NAME`, `AGENVAS_API_PORT`, and `AGENVAS_WEB_PORT`, plus separate passwords and bootstrap secret.
+Do not add `--volumes` unless you intentionally want to delete that Compose project's data. The deployment project defaults to `agenvas`. For an isolated acceptance instance, set a distinct `COMPOSE_PROJECT_NAME`, `AGENVAS_API_PORT`, and `AGENVAS_WEB_PORT`, plus separate passwords and bootstrap secret.
 
 PostgreSQL is also published on loopback only, defaulting to 5432 and overridable with `AGENVAS_DB_PORT` (raise it if 5432 is already taken on the host, otherwise Compose fails with a port conflict). It exists solely so a local client can inspect the database while debugging; the server reaches the database over the Compose network and does not use this mapping.
 
@@ -35,7 +38,7 @@ Compose defaults cap PostgreSQL/server/web at 768 MiB/1 CPU, 1536 MiB/2 CPUs, an
 ## What the current build can do
 
 - Create projects, versioned text/image/video/character/scene/shot artifacts, and persistent canvas cards. A card can bind exact historical artifact versions; moving it does not alter approved content.
-- Run the default Mock three-shot path through an image plan, explicit approval, generated demonstration images, manual keyframe selection, a video plan, explicit approval, demonstration MP4 clips, an Agent export proposal that requires separate human approval, local single-shot redo, and a silent ordered MP4 export.
+- Run the explicit Mock three-shot path through an image plan, explicit approval, generated demonstration images, manual keyframe selection, a video plan, explicit approval, demonstration MP4 clips, an Agent export proposal that requires separate human approval, local single-shot redo, and a silent ordered MP4 export.
 - Keep Run, plan, and task state in PostgreSQL. The Agent card shows paginated Run history and safe plan/task summaries after refresh. Project events are replayable over SSE.
 - Upload PNG, JPEG, or WebP reference images with actual decoding and limits. Private original reads require project authorization and support a single byte range. Every image keeps a bounded 480px preview beside the original; image cards load the original, while video cards load the extracted cover frame.
 - Display UNKNOWN external submissions and their task identifiers without automatically resubmitting. An operator can expand the persisted attempt ledger to see a pre-network correlation key and any saved Provider request ID; the key is not proof of acceptance. For new ComfyUI attempts, an explicit lookup checks the original prompt and resumes polling only after its ID, client ID, endpoint fingerprint, and configuration match. No evidence leaves the task UNKNOWN. Cancellation stops further local orchestration; it does not promise to stop or refund external work.
@@ -44,9 +47,20 @@ Compose defaults cap PostgreSQL/server/web at 768 MiB/1 CPU, 1536 MiB/2 CPUs, an
 
 The current ComfyUI image and image-to-video adapters use fixed candidate templates. A fixed Google Nano Banana 2 (`gemini-3.1-flash-image`) image adapter supports text generation and one approved reference image through the Gemini API. To configure it, set the server credential master key, then add a Google Gemini connection and publish its image capability in the administrator media settings. Google has only been tested against a local fake HTTP server and PostgreSQL; no real Google call has been made. Real model/template compatibility, provider recovery, full usage accounting, and release gates remain open. Do not label Mock images or videos as real AI generation.
 
-Compose remains in Mock mode by default. Candidate-provider testing can set `AGENVAS_LLM_MODE=configured` and `AGENVAS_CREDENTIAL_MASTER_KEY`, then save and diagnose the LLM through the administrator page. Media connections, capabilities, and defaults are managed in the UI; the legacy `AGENVAS_PROVIDER_MODE` and ComfyUI environment settings are imported only once during the V40 upgrade. A local ComfyUI origin must be explicitly reachable from the server container; container `127.0.0.1` is not the host. Existing/UNKNOWN submissions may still need reconciliation on the original instance. These settings enable only candidate paths, not verified real generation.
+The default deployment Compose uses `configured`; the development Compose explicitly enables Mock. Set `AGENVAS_CREDENTIAL_MASTER_KEY`, then save and diagnose the LLM through the administrator page. Media connections, capabilities, and defaults are managed in the UI; the legacy `AGENVAS_PROVIDER_MODE` and ComfyUI environment settings are imported only once during the V40 upgrade. A local ComfyUI origin must be explicitly reachable from the server container; container `127.0.0.1` is not the host. Existing/UNKNOWN submissions may still need reconciliation on the original instance. These settings enable only candidate paths, not verified real generation.
 
 ## Local development
+
+The container development file extends the deployment services and explicitly enables text and media Mock modes:
+
+```sh
+# .env still requires the database password and bootstrap secret.
+docker compose --env-file .env -f deploy/compose.dev.yaml up -d --build
+# Stop development services without deleting their volumes.
+docker compose --env-file .env -f deploy/compose.dev.yaml down
+```
+
+Unless `COMPOSE_PROJECT_NAME` is set, development uses project `agenvas-dev`, so database and asset volumes are separate from deployment. Both files use the same default ports. To run them together, use separate env files or environment variables for `AGENVAS_API_PORT`, `AGENVAS_WEB_PORT`, and `AGENVAS_DB_PORT`, and keep project names distinct.
 
 The frontend requires Node 24 and pnpm 12.5.1; the backend requires JDK 21, PostgreSQL 17, and FFmpeg/FFprobe for video operations.
 

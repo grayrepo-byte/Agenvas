@@ -38,7 +38,7 @@
 
 2026-09-26 数据访问迁移到 jOOQ：按 [ADR 0012](adr/0012-jooq-persistence.md) 把生产数据访问从 Spring `JdbcClient` 换成 jOOQ（24 个类、229 处调用点），jOOQ 生成源码提交在 `backend/src/jooq/java` 且构建期不连数据库，同时移除零引用的 MyBatis-Plus starter，并把状态魔法值收敛为枚举/常量。Surefire 112 项、Failsafe 80 项全部通过（先前两项既有失败经 A/B 对比确认与本次迁移无关并已修复），生成结果连续两次字节一致。未做真实 Provider 调用、容器镜像构建与前端浏览器验收，见 迁移证据（开发记录不随源码公开）。
 
-### T02 默认三服务与 Mock 模式
+### T02 默认部署三服务与开发 Mock 模式
 
 依赖：T01。
 
@@ -47,6 +47,8 @@
 - [x] 无模型 Key 和 GPU 时能启动，不产生未说明的外部请求。
 - [x] 默认端口安全，SSE 代理配置正确，容器非 root。
 - [x] Mock 状态醒目标识，支持可重复成功和失败 fixture。
+
+2026-10-02 部署与开发分离：默认 `deploy/compose.yaml` 的文字/媒体均为 `configured`，`deploy/compose.dev.yaml` 复用三服务并显式 Mock。默认项目名分别为 `agenvas`、`agenvas-dev`，卷按项目名隔离，端口相同时由部署者显式避开。两版数据库密码与初始化密钥仍必填；部署配置云凭证另需主密钥，并由管理员发布真实能力。没有真实媒体配置时生成能力目录为空，预置 Mock 不能用于新生成；已有配置、历史和固定任务保留。备份后直接启动原容器，避免按部署配置重建开发实例。同步 README、规格、ADR 0002、OpenAPI 与生成 TypeScript；`MediaDefault.capabilityId` 允许 null，诊断模式新增 `CONFIGURED`，客户端须重新生成类型并处理空默认值，无数据库迁移。两版 Compose 及 CI 配置断言通过；后端定向单元测试 15 项、真实 PostgreSQL 集成测试 6 项、前端 3 个相关文件 74 项均通过，Java 编译、TypeScript 类型检查、修改文件 ESLint、脚本语法及 `git diff --check` 通过。未运行全量测试、容器整栈构建/启动、完整备份恢复或真实 Provider 调用，不作为生产部署验收。
 
 ### T03 数据迁移、初始化与会话
 
@@ -362,7 +364,7 @@ PNG/JPEG/WebP 上传、私有缩略图与受保护读取、用户上传图片的
 
 进展：精确服务地址与固定 HTTP 路由、`image-v1` 候选模板、参考图到固定节点映射、从任务受理到提交/原 ID 跟踪/归档的假服务＋PostgreSQL 闭环见 开发记录（不随源码公开）。V23 持久单槽已由 V56 删除，活动 ComfyUI 请求不再阻塞其他卡片提交。真实 ComfyUI/模型、并发资源表现和模板兼容性尚未验证，验收项保持未勾选。
 
-Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模板模型名及 Provider 配置版本，默认仍为 Mock；见 开发记录（不随源码公开）。这只解除部署配置阻断，不作为真实兼容性证据。
+Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模板模型名及 Provider 配置版本；2026-10-02 起默认部署为 `configured`，Mock 改由开发 Compose 显式启用；见 开发记录（不随源码公开）。这只解除部署配置阻断，不作为真实兼容性证据。
 
 - [ ] 至少一个真实生图任务完成，并验证参考图实际进入正确输入路径。
 - [ ] 返回 prompt_id 后只查询原任务；历史为空不被立即当成失败。

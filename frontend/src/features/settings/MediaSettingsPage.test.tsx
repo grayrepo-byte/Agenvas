@@ -192,12 +192,12 @@ describe("MediaSettingsPage", () => {
     expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument();
   });
 
-  it("keeps default actions in the table and edits a capability in a tabbed dialog", async () => {
+  it("sets the first configured default and edits a capability in a tabbed dialog", async () => {
     let defaultSelection: unknown;
     const settings: MediaSettings = {
       defaults: [
-        { kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 2 },
-        { kind: "VIDEO_GENERATION", capabilityId: "mock-video", version: 0 },
+        { kind: "IMAGE_GENERATION", capabilityId: null, version: 2 },
+        { kind: "VIDEO_GENERATION", capabilityId: null, version: 0 },
       ],
       connections: [{
         id: "openai-1", name: "OpenAI", platform: "OPENAI", enabled: true,
