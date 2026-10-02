@@ -1,4 +1,4 @@
-import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,SidebarSimple,SignOut,TerminalWindow,UserCircle } from "@phosphor-icons/react";
+import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,SidebarSimple,SignOut,TerminalWindow,UserCircle } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link,Navigate,useLocation,useNavigate } from "react-router";
@@ -16,7 +16,7 @@ const UNAUTHORIZED_STATUS = 401;
 const NAVIGATION = [
   { to: "/projects", get label() { return t("项目"); }, icon: FolderSimple },
   { to: "/library", get label() { return t("资产"); }, icon: Cube },
-  { to: "/settings/providers", get label() { return t("Provider 配置"); }, icon: Cube },
+  { to: "/settings/providers", get label() { return t("Provider 配置"); }, icon: PlugsConnected },
   { to: "/settings/media", get label() { return t("媒体配置"); }, icon: FilmStrip },
   { to: "/settings/storage", get label() { return t("资源存储"); }, icon: HardDrives },
   { to: "/settings/calls", get label() { return t("调用日志"); }, icon: ListMagnifyingGlass },

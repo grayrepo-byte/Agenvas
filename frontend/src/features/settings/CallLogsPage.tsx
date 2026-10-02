@@ -88,8 +88,8 @@ export function CallLogsPage() {
       {data.items.length === 0 ? <EmptyState icon={<ListMagnifyingGlass size={27} />} title={t("没有匹配的调用记录")}
         description={t("调整筛选条件，或在完成模型与媒体调用后刷新查看。")} /> :
         <Table className="call-log-table"><TableCaption className="sr-only">{t("模型与媒体调用审计记录")}</TableCaption><TableHeader><TableRow>
-          <TableHead scope="col">{t("调用")}</TableHead><TableHead scope="col">{t("项目")}</TableHead><TableHead scope="col">{t("调用时间")}</TableHead><TableHead scope="col">{t("响应时间")}</TableHead>
-          <TableHead scope="col">{t("耗时")}</TableHead><TableHead scope="col">{t("调用结果")}</TableHead><TableHead scope="col"><span className="sr-only">{t("详情")}</span></TableHead>
+          <TableHead scope="col" className="call-log-model-column">{t("模型")}</TableHead><TableHead scope="col" className="call-log-type-column">{t("调用类型")}</TableHead><TableHead scope="col">{t("项目")}</TableHead><TableHead scope="col">{t("调用时间")}</TableHead><TableHead scope="col">{t("响应时间")}</TableHead>
+          <TableHead scope="col" className="call-log-duration-column">{t("耗时")}</TableHead><TableHead scope="col" className="call-log-result-column">{t("调用结果")}</TableHead><TableHead scope="col" className="call-log-details-column"><span className="sr-only">{t("详情")}</span></TableHead>
         </TableRow></TableHeader><TableBody>{data.items.map((log) => <CallLogRow key={log.id} log={log}
           onDetails={() => setSelectedId(log.id)} />)}</TableBody></Table>}
       <nav className="call-log-pagination" aria-label={t("调用日志分页")}>
@@ -145,16 +145,15 @@ function CallLogFilterForm({ filters, onApply }: { filters: CallLogFilters; onAp
 function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void }) {
   useLocale();
   return <TableRow>
-      <TableCell data-label={t("调用")}><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong>
-        <span className="call-log-secondary">{log.model ?? t("模型未记录")}</span>
+      <TableCell data-label={t("模型")}><span className="call-log-model" title={log.model ?? t("模型未记录")}>{log.model ?? t("模型未记录")}</span></TableCell>
+      <TableCell data-label={t("调用类型")}><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong>
         <div className="call-log-badges">{log.mock ? <StatusBadge>{t("Mock 模拟调用")}</StatusBadge> : null}
           {log.historical ? <StatusBadge>{t("历史记录")}</StatusBadge> : null}</div></TableCell>
       <TableCell data-label={t("项目")}><Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}>{log.projectTitle}<ArrowSquareOut size={13} aria-hidden /></Link></TableCell>
       <TableCell data-label={t("调用时间")}><LogTime value={log.startedAt} /></TableCell>
       <TableCell data-label={t("响应时间")}><LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("等待响应") : t("未记录")} /></TableCell>
       <TableCell data-label={t("耗时")}>{log.durationMs === null ? t("未记录") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</TableCell>
-      <TableCell data-label={t("调用结果")}><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
-        {log.taskStatus ? <span className="call-log-secondary">{t("任务：{0}", { "0": TASK_STATUS_LABELS[log.taskStatus] })}</span> : null}</TableCell>
+      <TableCell data-label={t("调用结果")}><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge></TableCell>
       <TableCell className="call-log-toggle"><Button variant="ghost"  type="button" aria-haspopup="dialog"
         aria-label={t("查看调用详情 {0}", { "0": log.id })} onClick={onDetails}>{t("详情")}<ArrowSquareOut size={14} aria-hidden /></Button></TableCell>
     </TableRow>;

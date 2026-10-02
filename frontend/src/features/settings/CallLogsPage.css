@@ -3,11 +3,13 @@
 .call-log-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ui-text-sm); }
 .call-log-table th { padding: 0 10px 12px; color: var(--muted); font-size: var(--ui-text-xs); font-weight: 500; }
 .call-log-table td { padding: 16px 10px; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
-.call-log-table th:first-child { width: 22%; }
-.call-log-table th:nth-child(5) { width: 10%; }
-.call-log-table th:nth-child(6), .call-log-table th:last-child { width: 9%; }
+.call-log-table .call-log-model-column { width: 18%; }
+.call-log-table .call-log-type-column { width: 13%; }
+.call-log-table .call-log-duration-column { width: 9%; }
+.call-log-table .call-log-result-column { width: 8%; }
+.call-log-table .call-log-details-column { width: 7%; }
 .call-log-table strong { font-weight: 550; }
-.call-log-secondary { display: block; margin-top: 3px; color: var(--muted); font-size: var(--ui-text-xs); }
+.call-log-model { display: block; overflow: hidden; text-overflow: ellipsis; }
 .call-log-project { display: inline-flex; align-items: baseline; gap: 5px; color: var(--ui-text-secondary); text-decoration: none; }
 .call-log-project:hover { text-decoration: underline; text-underline-offset: 3px; }
 .call-log-project svg { flex: none; }
