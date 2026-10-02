@@ -1,5 +1,5 @@
 import { getLocale, t } from "../i18n";
-import type { components, paths } from "./schema";
+import type { components, paths, operations } from "./schema";
 
 export type SetupStatus = paths["/api/v1/auth/setup-status"]["get"]["responses"][200]["content"]["application/json"];
 export type CurrentUser = components["schemas"]["CurrentUser"];
@@ -275,6 +275,15 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 }
 
 /** Media settings expose only public connection and capability metadata. */
+export async function getAutoDlWorkflowCatalog(): Promise<operations["listAutoDlWorkflows"]["responses"][200]["content"]["application/json"]> {
+  return readJson("/api/v1/settings/autodl-workflows", t("无法读取 AutoDL 工作流目录"));
+}
+export async function previewAutoDlWorkflow(workflowId: string, source?: object): Promise<components["schemas"]["AutoDlWorkflowDefinition"]> {
+  return writeJson("/api/v1/settings/autodl-workflows/preview", {
+    method: "POST", body: JSON.stringify({ workflowId, ...(source ? { source } : {}) }),
+  });
+}
+
 export async function getMediaSettings(): Promise<MediaSettings> {
   return readJson<MediaSettings>("/api/v1/settings/media-connections", t("无法读取媒体配置"));
 }

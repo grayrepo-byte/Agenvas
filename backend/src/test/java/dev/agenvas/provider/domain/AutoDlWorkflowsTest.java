@@ -37,4 +37,23 @@ class AutoDlWorkflowsTest {
         source.put("seed", AutoDlWorkflows.MAX_SEED + 1);
         assertThatThrownBy(() -> AutoDlWorkflows.normalize(source, target)).hasMessageContaining("随机种子");
     }
+    @Test void publishesMultipleTiersAndPreservesHistoricalSingleTier() {
+        var source = mapper.readTree("""
+                {"workflowId":"minimax_h3_z0901","videoResolution":"480p","videoResolutions":["480p","768p"]}
+                """);
+        var target = mapper.createObjectNode();
+        AutoDlWorkflows.normalize(source, target);
+        assertThat(AutoDlWorkflows.selectedResolution(target, null)).isEqualTo("480p");
+        assertThat(AutoDlWorkflows.selectedResolution(target, "768p")).isEqualTo("768p");
+        assertThatThrownBy(() -> AutoDlWorkflows.selectedResolution(target, "1080p")).hasMessageContaining("分辨率");
+        AutoDlWorkflows.normalize(mapper.readTree("{\"videoResolution\":\"480p\"}"), target);
+        assertThat(target.path("videoResolutions").size()).isEqualTo(1);
+        assertThatThrownBy(() -> AutoDlWorkflows.selectedResolution(target, "768p")).hasMessageContaining("分辨率");
+    }
+    @Test void rejectsEmptyDuplicateUnsupportedTiersAndDefaultOutsidePublishedList() {
+        for (String tiers : java.util.List.of("[]", "[\"480p\",\"480p\"]", "[\"1440p\"]", "[\"768p\"]", "[480]")) {
+            var source = mapper.readTree("{\"workflowId\":\"minimax_h3_z0901\",\"videoResolution\":\"480p\",\"videoResolutions\":" + tiers + "}");
+            assertThatThrownBy(() -> AutoDlWorkflows.normalize(source, mapper.createObjectNode())).hasMessageContaining("分辨率");
+        }
+    }
 }

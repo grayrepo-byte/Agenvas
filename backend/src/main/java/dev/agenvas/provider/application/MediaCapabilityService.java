@@ -393,7 +393,8 @@ public class MediaCapabilityService {
                 throw invalid(ApiMessage.of("api.media-capability-service.the-reference-upper-limit-cannot-be-lower-than-the-required"));
             if (settings.has("defaultParameters")) {
                 String ratio = settings.path("defaultParameters").path("aspectRatio").asText();
-                if (!"AUTO".equals(ratio)) workflow.resolution(settings.path("videoResolution").asText(), ratio);
+                String tier = AutoDlWorkflows.selectedResolution(settings, null);
+                if (!"AUTO".equals(ratio)) workflow.resolution(tier, ratio);
             }
         }
         normalized.put("minimumSeconds", policy.minimumSeconds());
@@ -459,6 +460,8 @@ public class MediaCapabilityService {
         ObjectNode parameters = mapper.createObjectNode();
         JsonNode configuration = settings(binding);
         if (configuration.has("quality")) parameters.set("quality", configuration.get("quality"));
+        if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId()))
+            parameters.set("videoResolution", configuration.path("videoResolution"));
         JsonNode defaults = configuration.path("defaultParameters");
         if (defaults.isObject()) defaults.properties().forEach(entry ->
                 parameters.set(entry.getKey(), entry.getValue()));

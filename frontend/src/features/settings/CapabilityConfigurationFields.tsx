@@ -6,6 +6,7 @@ import { Select } from "../../shared/ui/Select";
 import { adapterMetadata } from "./mediaAdapterCatalog";
 
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
+import { VideoResolutionPricingFields } from "./VideoResolutionPricingFields";
 import { autodlWorkflow } from "./AutoDlWorkflowFields";
 type Settings = MediaCapability["settings"];
 type Parameters = NonNullable<Settings["defaultParameters"]>;
@@ -110,6 +111,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
         </Select>
       </FieldLabel></Field>
       <p className="ui-muted">{t("用于运行前估算和用量账本，实际扣费以平台账单为准。留空保留“费用未知”。")}</p>
+      {workflow ? <VideoResolutionPricingFields values={values} onChange={onChange} /> : null}
     </div> : null}
   </>;
 }

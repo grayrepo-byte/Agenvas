@@ -651,15 +651,56 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "H3 mixed");
     expect(screen.getByRole("combobox", { name: "AutoDL 工作流" })).toHaveValue("minimax_h3_z0903");
-    await selectValue(screen.getByRole("combobox", { name: "AutoDL 输出分辨率" }), "480p");
+    const resolutions = screen.getByRole("group", { name: "可选视频分辨率" });
+    await user.click(within(resolutions).getByRole("button", { name: "1088p" }));
+    await user.click(within(resolutions).getByRole("button", { name: "1440p" }));
+    await selectValue(screen.getByRole("combobox", { name: "默认分辨率" }), "480p");
     await user.type(screen.getByRole("spinbutton", { name: "随机种子（留空使用工作流默认）" }), "123");
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    await user.type(screen.getByRole("spinbutton", { name: "480p 单位价格" }), "0.1");
+    await user.type(screen.getByRole("spinbutton", { name: "768p 单位价格" }), "0.3");
     await user.click(screen.getByRole("tab", { name: "输入限制" }));
     expect(screen.getByRole("spinbutton", { name: "最多参考图数量" })).toHaveAttribute("max", "6");
     expect(screen.getByRole("spinbutton", { name: "最多参考音频数量" })).toHaveAttribute("min", "1");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(capabilityWrites).toEqual([{ name: "H3 mixed", adapterId: "AUTODL_COMFY_VIDEO",
-      settings: { workflowId: "minimax_h3_z0903", videoResolution: "480p", seed: 123 } }]));
+      settings: { workflowId: "minimax_h3_z0903", videoResolution: "480p", videoResolutions: ["480p", "768p"], pricingByResolution: { "480p": { amount: "0.1", currency: "CNY", unit: "SECOND" }, "768p": { amount: "0.3", currency: "CNY", unit: "SECOND" } }, seed: 123 } }]));
     expect(window.localStorage.getItem("mediaApiKey")).toBeNull();
+  });
+
+  it("publishes an imported AutoDL target with its complete local definition and tier price", async () => {
+    const fixture = settingsFixture({ platform: "AUTODL", name: "AutoDL", origin: null, capabilities: [] });
+    const definition: NonNullable<MediaCapability["settings"]["workflowDefinition"]> = {
+      schemaVersion: 1, id: "future_video_v1", label: "Future video", minimumSeconds: 1, maximumSeconds: 20,
+      promptLimit: 10000, mode: "TEXT", imageFields: [], audioFields: [], minimumImages: 0, minimumAudios: 0,
+      resolutions: ["720p横(1280*720)", "720p竖(720*1280)"], defaultResolution: "720p", supportsSeed: false,
+    };
+    const published: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "fake" })),
+      http.get("/api/v1/settings/autodl-workflows", () => HttpResponse.json({ items: [{ id: definition.id, label: definition.label }] })),
+      http.post("/api/v1/settings/autodl-workflows/preview", () => HttpResponse.json(definition)),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        published.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Future video");
+    await user.click(screen.getByRole("button", { name: "刷新官方工作流目录" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新官方工作流目录" })).toBeEnabled());
+    await selectValue(screen.getByRole("combobox", { name: "AutoDL 工作流" }), definition.id);
+    expect(await screen.findByRole("textbox", { name: "工作流 ID" })).toHaveValue(definition.id);
+    expect(published).toEqual([]);
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    await user.type(screen.getByRole("spinbutton", { name: "720p 单位价格" }), "0.2");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(published).toEqual([{ name: "Future video", adapterId: "AUTODL_COMFY_VIDEO", settings: {
+      workflowId: definition.id, workflowDefinition: definition, videoResolution: "720p", videoResolutions: ["720p"],
+      pricingByResolution: { "720p": { amount: "0.2", currency: "CNY", unit: "SECOND" } },
+    } }]));
   });
 
 });

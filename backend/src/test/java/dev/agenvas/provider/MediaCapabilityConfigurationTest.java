@@ -87,6 +87,28 @@ class MediaCapabilityConfigurationTest {
                 .maxReferenceImages()).isEqualTo(14);
     }
 
+    @Test void resolutionPricesUsePublishedTiersAndSameDecimalAndUnitRules() {
+        var source = mapper.readTree("""
+                {"workflowId":"minimax_h3_z0901","videoResolution":"480p","videoResolutions":["480p","768p"],
+                "pricing":{"amount":"1","currency":"CNY","unit":"VIDEO"},
+                "pricingByResolution":{"768p":{"amount":"0.123456","currency":"USD","unit":"SECOND"},
+                "480p":{"amount":"0","currency":"CNY","unit":"VIDEO"}}}
+                """);
+        var target = mapper.createObjectNode();
+        dev.agenvas.provider.domain.AutoDlWorkflows.normalize(source, target);
+        MediaCapabilityConfiguration.normalize(mapper, registry.declaration("AUTODL_COMFY_VIDEO"), source, target);
+        assertThat(MediaCapabilityConfiguration.price(target, "480p").path("amount").asText()).isEqualTo("0");
+        assertThat(MediaCapabilityConfiguration.price(target, "768p").path("amount").asText()).isEqualTo("0.123456");
+        assertThat(MediaCapabilityConfiguration.price(target, null).path("amount").asText()).isEqualTo("1");
+        for (String json : List.of("{\"1080p\":{\"amount\":\"1\",\"currency\":\"CNY\",\"unit\":\"VIDEO\"}}",
+                "{\"768p\":{\"amount\":\"1\",\"currency\":\"CNY\",\"unit\":\"IMAGE\"}}",
+                "{\"768p\":{\"amount\":\"0.1234567\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}}", "[]")) {
+            ((ObjectNode) source).set("pricingByResolution", mapper.readTree(json));
+            assertThatThrownBy(() -> MediaCapabilityConfiguration.normalize(mapper, registry.declaration("AUTODL_COMFY_VIDEO"), source, target))
+                    .isInstanceOf(ApiProblemException.class);
+        }
+    }
+
     private ObjectNode normalize(String adapter, String json) {
         JsonNode source = mapper.readTree(json);
         ObjectNode target = mapper.createObjectNode();

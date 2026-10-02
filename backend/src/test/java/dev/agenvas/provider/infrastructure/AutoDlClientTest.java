@@ -96,4 +96,24 @@ class AutoDlClientTest {
         assertThatThrownBy(() -> client.downloadVideo(url)).isInstanceOf(AutoDlClient.ResultRejected.class);
         assertThat(calls.get()).isEqualTo(before + 1);
     }
+    @Test void publicCatalogAndDetailRequestsNeverCarryCredentialsOrGenerateTasks() {
+        client.workflowCatalog(1);
+        assertThat(receivedPath).isEqualTo("/api/v1/comfyui/workflows");
+        assertThat(receivedAuthorization).isNull();
+        assertThat(mapper.readTree(receivedBody).path("page_index").asInt()).isEqualTo(1);
+        client.workflowMetadata("future_video_v1");
+        assertThat(receivedPath).isEqualTo("/api/v1/comfyui/workflows/future_video_v1");
+        assertThat(receivedAuthorization).isNull();
+        assertThat(receivedBody).isEmpty();
+        assertThatThrownBy(() -> client.workflowMetadata("../private")).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        assertThat(calls).hasValue(2);
+    }
+    @Test void newlyPublishedIdsUseTheFixedTaskPathAndCatalogFailuresDoNotRetry() {
+        assertThat(client.create("fake-token", "future_video_v1", mapper.createObjectNode())).isEqualTo(ID);
+        assertThat(receivedPath).isEqualTo("/api/v1/comfyui/comfyui_workflow/future_video_v1");
+        int before = calls.get();
+        status = 503;
+        assertThatThrownBy(() -> client.workflowCatalog(1)).isInstanceOf(AutoDlClient.TechnicalFailure.class);
+        assertThat(calls.get()).isEqualTo(before + 1);
+    }
 }

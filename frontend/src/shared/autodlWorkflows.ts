@@ -1,3 +1,5 @@
+import type { MediaCapability } from "./api/client";
+
 // Reviewed fixed workflow metadata, paired with providers/autodl-h3-workflows.json.
 export const autodlWorkflows = [
   {
@@ -423,8 +425,25 @@ export const AUTODL_DEFAULT_WORKFLOW = "minimax_h3_z0903";
 export function getAutoDlWorkflow(id: string | undefined) {
   return autodlWorkflows.find((workflow) => workflow.id === (id ?? AUTODL_DEFAULT_WORKFLOW));
 }
-export function autoDlRatioSupported(workflow: typeof autodlWorkflows[number], tier: string, ratio: string) {
+export function autoDlRatioSupported(workflow: AutoDlWorkflow, tier: string, ratio: string) {
   if (ratio === "AUTO") return true;
   const suffix = ratio === "16:9" ? "横" : ratio === "9:16" ? "竖" : "(1:1)";
   return workflow.resolutions.some((label) => label.startsWith(tier + suffix));
+}
+
+export type AutoDlResolution = NonNullable<MediaCapability["settings"]["videoResolution"]>;
+export function autoDlResolutionTiers(workflow: AutoDlWorkflow): AutoDlResolution[] {
+  return [...new Set(workflow.resolutions.filter((label) => /^[1-9][0-9]{2,3}p/.test(label)).map((label) => `${label.split("p")[0]}p` as AutoDlResolution))];
+}
+export function publishedAutoDlResolutions(settings: MediaCapability["settings"]): AutoDlResolution[] {
+  const workflow = resolveAutoDlWorkflow(settings);
+  if (!workflow) return [];
+  return settings.videoResolutions ?? [settings.videoResolution ?? workflow.defaultResolution as AutoDlResolution];
+}
+
+export type AutoDlWorkflow = Omit<NonNullable<MediaCapability["settings"]["workflowDefinition"]>, "schemaVersion" | "imageFields" | "audioFields" | "resolutions"> & {
+  imageFields: readonly string[]; audioFields: readonly string[]; resolutions: readonly string[];
+};
+export function resolveAutoDlWorkflow(settings: MediaCapability["settings"]): AutoDlWorkflow | undefined {
+  return settings.workflowDefinition ?? getAutoDlWorkflow(settings.workflowId);
 }

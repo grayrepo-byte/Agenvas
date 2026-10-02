@@ -16,7 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Versioned administrator defaults, prices and narrower limits within a compiled protocol. */
 public final class MediaCapabilityConfiguration {
     public static final Set<String> FIELDS = Set.of("defaultParameters", "defaultDurationSeconds",
-            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "pricing");
+            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "pricing", "pricingByResolution");
     private static final Set<String> PRICE_FIELDS = Set.of("amount", "currency", "unit");
     private static final Set<String> CURRENCIES = Set.of("CNY", "USD");
     private static final String PRICE_PATTERN = "[0-9]{1,10}(\\.[0-9]{1,6})?";
@@ -50,28 +50,44 @@ public final class MediaCapabilityConfiguration {
             } else if (adapter.kind() == Task.Kind.AUDIO_GENERATION) {
                 target.set("defaultParameters", dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parameters).toJson(mapper));
             } else {
-                target.set("defaultParameters", VideoGenerationParameters.parse(parameters).toJson(mapper));
+                var parsed = VideoGenerationParameters.parse(parameters);
+                if (parsed.videoResolution() != null)
+                    throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+                target.set("defaultParameters", parsed.toJson(mapper));
             }
         }
-        if (source.has("pricing")) {
-            JsonNode price = source.get("pricing");
-            if (!price.isObject() || !PRICE_FIELDS.equals(price.propertyNames())) {
-                throw invalid(ApiMessage.of("api.media-capability-configuration.price-must-contain-amount-currency-and-unit"));
+        if (source.has("pricing")) target.set("pricing", normalizePrice(mapper, adapter, source.get("pricing")));
+        if (source.has("pricingByResolution")) {
+            JsonNode prices = source.get("pricingByResolution");
+            // Only AutoDL currently declares selectable video resolution tiers.
+            if (adapter.platform() != MediaPlatform.AUTODL || adapter.kind() != Task.Kind.VIDEO_GENERATION || !prices.isObject())
+                throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+            ObjectNode normalized = target.putObject("pricingByResolution");
+            for (String tier : prices.propertyNames()) {
+                AutoDlWorkflows.selectedResolution(target, tier);
+                normalized.set(tier, normalizePrice(mapper, adapter, prices.get(tier)));
             }
-            if (!price.path("amount").isTextual()
-                    || !price.path("amount").asText().matches(PRICE_PATTERN)
-                    || !CURRENCIES.contains(price.path("currency").asText())) {
-                throw invalid(ApiMessage.of("api.media-capability-configuration.price-should-be-a-non-negative-decimal-amount-up-to"));
-            }
-            Set<String> units = adapter.kind() == Task.Kind.IMAGE_GENERATION
-                    ? Set.of("IMAGE") : adapter.kind() == Task.Kind.AUDIO_GENERATION
-                    ? Set.of("AUDIO", "SECOND") : Set.of("VIDEO", "SECOND");
-            if (!units.contains(price.path("unit").asText())) throw invalid(ApiMessage.of("api.media-capability-configuration.price-unit-does-not-match-media-type"));
-            ObjectNode normalized = target.putObject("pricing");
-            normalized.put("amount", new BigDecimal(price.path("amount").asText()).toPlainString());
-            normalized.put("currency", price.path("currency").asText());
-            normalized.put("unit", price.path("unit").asText());
         }
+    }
+
+    /** A resolution override wins; an absent override uses the optional uniform estimate. */
+    public static JsonNode price(JsonNode settings, String resolution) {
+        JsonNode tier = resolution == null ? null : settings.path("pricingByResolution").get(resolution);
+        return tier == null ? settings.get("pricing") : tier;
+    }
+
+    private static ObjectNode normalizePrice(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter, JsonNode price) {
+        if (!price.isObject() || !PRICE_FIELDS.equals(price.propertyNames()))
+            throw invalid(ApiMessage.of("api.media-capability-configuration.price-must-contain-amount-currency-and-unit"));
+        if (!price.path("amount").isTextual() || !price.path("amount").asText().matches(PRICE_PATTERN)
+                || !CURRENCIES.contains(price.path("currency").asText()))
+            throw invalid(ApiMessage.of("api.media-capability-configuration.price-should-be-a-non-negative-decimal-amount-up-to"));
+        Set<String> units = adapter.kind() == Task.Kind.IMAGE_GENERATION ? Set.of("IMAGE")
+                : adapter.kind() == Task.Kind.AUDIO_GENERATION ? Set.of("AUDIO", "SECOND") : Set.of("VIDEO", "SECOND");
+        if (!units.contains(price.path("unit").asText()))
+            throw invalid(ApiMessage.of("api.media-capability-configuration.price-unit-does-not-match-media-type"));
+        return mapper.createObjectNode().put("amount", new BigDecimal(price.path("amount").asText()).toPlainString())
+                .put("currency", price.path("currency").asText()).put("unit", price.path("unit").asText());
     }
 
     public static MediaAdapterRegistry.Declaration policy(MediaAdapterRegistry.Declaration adapter,

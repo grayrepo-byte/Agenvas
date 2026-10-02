@@ -26,6 +26,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class AutoDlClient {
     public static final URI OFFICIAL = URI.create("https://autodl.art");
+    public static final int CATALOG_PAGE_SIZE = 100;
+    private static final URI CATALOG_OFFICIAL = URI.create("https://www.autodl.art");
     private static final String TASKS = "/api/v1/comfyui/comfyui_workflow/";
     private static final int MAX_JSON_BYTES = 2 * 1024 * 1024;
     private static final long MAX_RESULT_BYTES = 500L * 1024 * 1024;
@@ -51,11 +53,35 @@ public class AutoDlClient {
                 Duration.ofSeconds(10), Duration.ofSeconds(30), Duration.ofMinutes(2));
     }
     public String create(String key, String workflowId, ObjectNode body) {
-        dev.agenvas.provider.domain.AutoDlWorkflows.require(workflowId);
+        if (workflowId == null || !workflowId.matches(dev.agenvas.provider.domain.AutoDlWorkflowDefinition.ID_PATTERN)) throw new IllegalArgumentException("Invalid workflow ID");
         JsonNode data = request(key, TASKS + workflowId, body);
         String id = data.path("task_id").asText();
         if (!validId(id)) throw new Uncertain();
         return id;
+    }
+    /** Public catalog requests carry no credentials and never submit a generation. */
+    public JsonNode workflowCatalog(int page) {
+        return metadata("/api/v1/comfyui/workflows", mapper.createObjectNode().put("page_size", CATALOG_PAGE_SIZE).put("page_index", page));
+    }
+    public JsonNode workflowMetadata(String id) {
+        if (id == null || !id.matches(dev.agenvas.provider.domain.AutoDlWorkflowDefinition.ID_PATTERN))
+            throw dev.agenvas.provider.domain.AutoDlWorkflowDefinition.invalid();
+        return metadata("/api/v1/comfyui/workflows/" + id, null);
+    }
+    private JsonNode metadata(String path, ObjectNode body) {
+        URI metadataOrigin = OFFICIAL.equals(origin) ? CATALOG_OFFICIAL : origin;
+        var request = new Request.Builder().url(metadataOrigin.resolve(path).toString()).header("Accept", "application/json");
+        if (body == null) request.get();
+        else request.post(RequestBody.create(mapper.writeValueAsBytes(body), MediaType.get("application/json")));
+        try (Response response = http.newCall(request.build()).execute()) {
+            if (response.code() != 200 || response.body() == null) throw new TechnicalFailure();
+            byte[] bytes = response.body().byteStream().readNBytes(MAX_JSON_BYTES + 1);
+            if (bytes.length > MAX_JSON_BYTES) throw new TechnicalFailure();
+            JsonNode parsed = mapper.readTree(bytes);
+            if (!"Success".equals(parsed.path("code").asText()) || !parsed.path("data").isObject()) throw new TechnicalFailure();
+            return parsed.path("data");
+        } catch (IOException failure) { throw new TechnicalFailure(); }
+        catch (RuntimeException failure) { throw new TechnicalFailure(); }
     }
     public record Result(String url, String type) {}
     public record TaskState(String status, List<Result> results) {}

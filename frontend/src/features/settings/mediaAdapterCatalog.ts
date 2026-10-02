@@ -6,7 +6,7 @@ export const mediaAdapters = {
   RUNNINGHUB_IMAGE: { get label() { return t("RunningHub · 图片工作流 / 应用"); }, kind: "IMAGE_GENERATION", references: 14, minimum: 0, maximum: 0 },
   RUNNINGHUB_VIDEO: { get label() { return t("RunningHub · 视频工作流 / 应用"); }, kind: "VIDEO_GENERATION", references: 14, minimum: 0, maximum: 60 },
   RUNNINGHUB_AUDIO: { get label() { return t("RunningHub · 音频工作流 / 应用"); }, kind: "AUDIO_GENERATION", references: 14, minimum: 0, maximum: 0 },
-  AUTODL_COMFY_VIDEO: { get label() { return t("ComfyUI 工作流 · AutoDL H3"); }, kind: "VIDEO_GENERATION", references: 9, minimum: 1, maximum: 15 },
+  AUTODL_COMFY_VIDEO: { get label() { return t("AutoDL · 视频工作流"); }, kind: "VIDEO_GENERATION", references: 9, minimum: 1, maximum: 15 },
   LOCAL_IMAGE_PROCESSOR: { get label() { return t("本地图片处理"); }, kind: "IMAGE_GENERATION", references: 1, minimum: 0, maximum: 0 },
   MOCK_IMAGE: { get label() { return t("Mock 图片演示"); }, kind: "IMAGE_GENERATION", references: 4, minimum: 0, maximum: 0 },
   MOCK_AUDIO: { get label() { return t("Mock 音频演示"); }, kind: "AUDIO_GENERATION", references: 1, minimum: 0, maximum: 0 },

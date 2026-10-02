@@ -759,6 +759,27 @@ pnpm test:e2e
 
 合并 main 复验：保留对象存储与画布连线改动，AutoDL 使用 V65 / ADR 0024。清理改名前的构建资源后，37 个后端单元测试、53 个前端测试、4 个 PostgreSQL 集成用例、类型检查/lint/构建通过；TS/jOOQ 重新生成一致。未重跑付费真实生成、全量测试或部署。
 
+### 2026-10-02 AutoDL 多分辨率与分档价格
+
+依据 ADR 0024 后续决定，实际检查见 [专项记录](evidence/autodl-resolution-pricing-2026-10-02.md)。
+
+- [x] 同一工作流能力发布多个受支持分辨率、指定默认值；旧能力保持原单一档位。
+- [x] 视频逐档位配置单价、币种与按视频/秒单位；档位优先、统一价兜底、缺失未知、零价明确。
+- [x] 画布选择并保存档位，预估随档位变化；不兼容草稿保留选择并阻断，手动调整恢复。
+- [x] 任务冻结实际档位与对应价格，改价后的取消释放保留原估算；合约/生成 TS/规格/ADR 同步，无数据库迁移。
+- [x] 57 项前端定向测试、32 项后端单元及 2 项真实 PostgreSQL 集成用例、类型检查、定向 ESLint、四语言检查、前端构建与差异检查通过。
+- [ ] 多档位的真实付费 Provider 验收、浏览器端到端及生产部署（本次未运行）。
+
+### 2026-10-02 AutoDL 工作流目录与自定义发布
+
+依据用户决定与 ADR 0024 后续修订；见 [官方目录核对](research/autodl-workflow-catalog-2026-10-02.md)及[专项验证](evidence/autodl-workflow-discovery-2026-10-02.md)。
+
+- [x] 匿名官方目录/详情发现、完整分辨率输入枚举导入；14 个内置视频预设与官方集合一致。
+- [x] 管理员发布 schemaVersion=1 数据定义，新同协议 ID/档位无需修改源码；离线导入与手工编辑回退，失败保留草稿。
+- [x] 目录只返回候选，保存新能力版本后才生效；未知协议拒绝，图/脚本/地址不执行；已提交任务保持原绑定，排队预检规则不变。
+- [x] 合约/生成 TS/规格/ADR/说明同步；管理员与 CSRF 校验、57 项后端单元、2 项真实 PostgreSQL 集成、64 项前端测试、类型检查/定向 ESLint/四语言/构建/差异检查通过，无新增迁移。
+- [ ] 新工作流真实付费生成、浏览器端到端与生产部署（本次未运行）；视频参考、自动音频时长和 IndexTTS 仍未适配。
+
 ## 2026-10-01 RunningHub 与动态表单
 
 跟踪：[GitHub Issue #26](https://github.com/grayrepo-byte/Agenvas/issues/26)。依据 [ADR 0025](adr/0025-runninghub-versioned-input-contracts.md) 与规格 6.13，操作说明见 [RunningHub 接入文档](research/runninghub-api-integration.md)，验证记录见 [专项证据](evidence/runninghub-api-integration-2026-10-01.md)。

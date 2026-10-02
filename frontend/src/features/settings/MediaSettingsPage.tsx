@@ -9,7 +9,7 @@ getMediaSettings,setMediaDefault,updateMediaCapability,
 updateMediaConnection,
 type MediaCapability,type MediaConnection,type MediaSettings,
 } from "../../shared/api/client";
-import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW } from "../../shared/autodlWorkflows";
+import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW,autoDlResolutionTiers,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -59,8 +59,11 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
     maxReferenceImages, maxReferenceAudios, pricing } = values;
   return { ...fields, ...(adapterId === AUTODL_ADAPTER ? {
-    workflowId: values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
+    workflowId: values.workflowDefinition?.id ?? values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
+    ...(values.workflowDefinition ? { workflowDefinition: values.workflowDefinition } : {}),
     ...(values.videoResolution ? { videoResolution: values.videoResolution } : {}),
+    videoResolutions: values.videoResolutions ?? (values.videoResolution ? [values.videoResolution] : autoDlResolutionTiers(resolveAutoDlWorkflow(values)!)),
+    ...(values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
     ...(values.seed !== undefined ? { seed: values.seed } : {}),
   } : {}), ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
     ...(defaultParameters ? { defaultParameters } : {}),

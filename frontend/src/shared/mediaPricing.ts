@@ -6,8 +6,9 @@ const MONEY_SCALE = 10n ** BigInt(DECIMAL_SCALE);
 
 /** Decimal arithmetic keeps configured prices exact across batches and video seconds. */
 export function estimatedMediaCost(capability: MediaCapability | undefined,
-  imageCount: number, durationSeconds: number | null | undefined): string {
-  const price = capability?.settings.pricing;
+  imageCount: number, durationSeconds: number | null | undefined, videoResolution?: string): string {
+  const tier = videoResolution as NonNullable<MediaCapability["settings"]["videoResolution"]> | undefined;
+  const price = (tier ? capability?.settings.pricingByResolution?.[tier] : undefined) ?? capability?.settings.pricing;
   if (!price || !/^[0-9]{1,10}(\.[0-9]{1,6})?$/.test(price.amount)) return t("费用未知");
   const quantity = price.unit === "IMAGE" ? imageCount
     : price.unit === "SECOND" ? durationSeconds : 1;

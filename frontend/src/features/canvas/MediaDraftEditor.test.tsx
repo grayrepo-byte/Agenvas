@@ -178,6 +178,67 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
+  it("saves a selected AutoDL tier and updates its exact estimate", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
+      name: "H3 text", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 0,
+      supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT", supportsEndFrame: false,
+      settings: { workflowId: "minimax_h3_z0901", videoResolution: "480p", videoResolutions: ["480p", "768p"],
+        pricingByResolution: { "480p": { amount: "0.1", currency: "CNY", unit: "SECOND" }, "768p": { amount: "0.3", currency: "CNY", unit: "SECOND" } } } };
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT", durationSeconds: 5, parameters: { aspectRatio: "16:9" } } });
+    expect(await screen.findByText("预计 CNY 0.5")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    await user.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" })).getByRole("radio", { name: "768p" }));
+    expect(screen.getByText("预计 CNY 1.5")).toBeInTheDocument();
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "16:9", videoResolution: "768p" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" })).getByRole("radio", { name: "9:16" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "9:16", videoResolution: "768p" }));
+  });
+
+
+  it("uses the published definition for a new AutoDL target and its new resolution tier", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "autodl-new", adapterId: "AUTODL_COMFY_VIDEO",
+      name: "Future video", minimumSeconds: 1, maximumSeconds: 20, maxReferenceImages: 0,
+      supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT", supportsEndFrame: false,
+      settings: { workflowId: "future_video_v1", videoResolution: "720p", videoResolutions: ["720p", "2160p"],
+        workflowDefinition: { schemaVersion: 1, id: "future_video_v1", label: "Future video", minimumSeconds: 1, maximumSeconds: 20,
+          promptLimit: 10000, mode: "TEXT", imageFields: [], audioFields: [], minimumImages: 0, minimumAudios: 0,
+          resolutions: ["720p横(1280*720)", "2160p横(3840*2160)"], defaultResolution: "720p", supportsSeed: false } } };
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT", durationSeconds: 18, parameters: { aspectRatio: "16:9" } } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    await user.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" })).getByRole("radio", { name: "2160p" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.videoResolution).toBe("2160p"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("preserves a removed AutoDL tier and blocks running until the user selects an allowed tier", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
+      name: "H3 text", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 0,
+      supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT", supportsEndFrame: false,
+      settings: { workflowId: "minimax_h3_z0901", videoResolution: "480p", videoResolutions: ["480p"] } };
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT", durationSeconds: 5,
+        parameters: { aspectRatio: "16:9", videoResolution: "768p" } } });
+    expect(await screen.findByText("当前能力不支持已选分辨率，请重新选择。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(saves).toHaveLength(0);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const picker = screen.getByRole("dialog", { name: "尺寸与画质设置" });
+    expect(within(picker).queryByRole("radio", { name: "768p" })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole("radio", { name: "480p" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.videoResolution).toBe("480p"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
   it("explains required AutoDL mixed references before generation", async () => {
     const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
       name: "H3 mixed", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 6, maxReferenceAudios: 3,

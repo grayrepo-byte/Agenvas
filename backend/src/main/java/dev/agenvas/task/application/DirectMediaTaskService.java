@@ -202,6 +202,10 @@ public class DirectMediaTaskService {
             }
             String renderedPrompt = renderPrompt(draft);
             String autodlResolution = null;
+            String resolutionTier = null;
+            if (videoParameters != null && videoParameters.videoResolution() != null
+                    && !AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId()))
+                throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())) {
                 var workflow = AutoDlWorkflows.require(configuredSettings);
                 int audios = (int) draft.mediaInputs().stream().filter(reference ->
@@ -218,7 +222,8 @@ public class DirectMediaTaskService {
                         case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
                     };
                 }
-                autodlResolution = workflow.resolution(configuredSettings.path("videoResolution").asText(), ratio);
+                resolutionTier = AutoDlWorkflows.selectedResolution(configuredSettings, videoParameters.videoResolution());
+                autodlResolution = workflow.resolution(resolutionTier, ratio);
             }
             String originHash = capabilities.capabilitySnapshot(binding.capabilityId())
                     .connectionVersion().originSha256();
@@ -247,9 +252,8 @@ public class DirectMediaTaskService {
                 input.put("generationIndex", outputIndex);
                 input.put("generationCount", outputCount);
                 input.put("prompt", renderedPrompt);
-                if (configuredSettings.has("pricing")) {
-                    input.set("mediaPricing", configuredSettings.get("pricing"));
-                }
+                JsonNode selectedPrice = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(configuredSettings, resolutionTier);
+                if (selectedPrice != null) input.set("mediaPricing", selectedPrice);
                 input.put("providerConfigVersion", provider.configVersion());
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
                 if (originHash != null) input.put("providerOriginSha256", originHash);

@@ -493,6 +493,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/autodl-workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the public official AutoDL catalog without submitting generation */
+        get: operations["listAutoDlWorkflows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/autodl-workflows/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import official input rules as a data-only video workflow candidate */
+        post: operations["previewAutoDlWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/media-connections": {
         parameters: {
             query?: never;
@@ -2394,13 +2428,13 @@ export interface components {
         /** @description Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
             runningHub?: components["schemas"]["RunningHubDefinition"];
-            /** @description AUTODL_COMFY_VIDEO only; reviewed H3 workflow ID. Defaults to minimax_h3_z0903. Each workflow fixes its input mode, duration, required references and supported resolutions. */
+            /** @description AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present. */
             workflowId?: string;
-            /**
-             * @description AutoDL resolution tier; mapped to the workflow's exact enum using the frozen card/project aspect ratio. Unsupported combinations are rejected before task acceptance.
-             * @enum {string}
-             */
-            videoResolution?: "480p" | "736p" | "768p" | "1080p" | "1088p" | "1440p";
+            workflowDefinition?: components["schemas"]["AutoDlWorkflowDefinition"];
+            /** @description AutoDL default resolution tier, included in videoResolutions; mapped to the workflow's exact enum using the frozen card/project aspect ratio. Unsupported combinations are rejected before task acceptance. */
+            videoResolution?: string;
+            /** @description AutoDL published resolution tiers, restricted to the selected workflow. Omitted preserves the single videoResolution tier for historical capabilities. */
+            videoResolutions?: string[];
             /**
              * Format: int64
              * @description Optional AutoDL seed, only for workflows that declare it.
@@ -2423,6 +2457,28 @@ export interface components {
             maxReferenceImages?: number;
             maxReferenceAudios?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
+            /** @description AutoDL video estimates by a published resolution tier. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost. */
+            pricingByResolution?: {
+                [key: string]: components["schemas"]["MediaCapabilityPricing"];
+            };
+        };
+        /** @description Versioned data-only contract for the fixed AutoDL prompt/duration/video protocol. No graph, node IDs, scripts, endpoints or credentials. New same-protocol workflows need configuration only; other protocols are rejected. Resolution labels are exact provider enum values, not actual pixel guarantees. */
+        AutoDlWorkflowDefinition: {
+            /** @enum {integer} */
+            schemaVersion: 1;
+            id: string;
+            label: string;
+            minimumSeconds: number;
+            maximumSeconds: number;
+            promptLimit: number;
+            mode: components["schemas"]["VideoInputMode"];
+            imageFields: string[];
+            audioFields: string[];
+            minimumImages: number;
+            minimumAudios: number;
+            resolutions: string[];
+            defaultResolution: string;
+            supportsSeed: boolean;
         };
         RunningHubScalar: string | number | boolean;
         /** @description Data-only local contract. No scripts, endpoints or credentials. Local versions do not freeze remote workflow implementations. Companion ZIP results are skipped without download or extraction; mapped primary media remains required. */
@@ -3063,7 +3119,7 @@ export interface components {
             loudnessRate?: number;
             pitchRate?: number;
         };
-        /** @description 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
+        /** @description 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio 和 AutoDL 专用 videoResolution，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
         ImageGenerationParameters: {
             /** @description RunningHub only. Named media values are exact version UUIDs matched against mediaInputs; arbitrary URLs are rejected. */
             dynamicValues?: {
@@ -3075,6 +3131,8 @@ export interface components {
             pitchRate?: number;
             /** @enum {string} */
             aspectRatio?: "AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
+            /** @description AutoDL only; a published resolution tier. Omitted uses the capability default. Frozen into accepted tasks. */
+            videoResolution?: string;
             /** @enum {string} */
             resolution?: "1K" | "2K" | "4K";
             /** @enum {string} */
@@ -4703,6 +4761,92 @@ export interface operations {
                 };
             };
             /** @description 模型连接或调用失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAutoDlWorkflows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Administrator-only catalog candidates; publication is explicit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            label: string;
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Problem response */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewAutoDlWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    workflowId: string;
+                    /** @description Optional official detail JSON. Omitted fetches metadata from the fixed official endpoint without credentials. Graphs */
+                    source?: {
+                        [key: string]: unknown;
+                    } | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Candidate only; administrator reviews and explicitly publishes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoDlWorkflowDefinition"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description Problem response */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem response */
             502: {
                 headers: {
                     [name: string]: unknown;

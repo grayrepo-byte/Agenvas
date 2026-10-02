@@ -69,6 +69,7 @@ class AutoDlVideoPostgresIT {
     private static volatile byte[] videoBytes;
     private static volatile JsonNode receivedBody;
     private static volatile String submittedKey;
+    private static volatile String submittedPath;
     private static volatile String queriedKey;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
@@ -206,6 +207,36 @@ class AutoDlVideoPostgresIT {
         assertThat(direct.cancelQueued(owner, queued.project(), queuedTask.id()).status()).isEqualTo(Task.Status.CANCELED);
         assertThat(worker.submitOnce("autodl-queued-cancel")).isZero();
         assertThat(CREATES.get()).isEqualTo(createsBeforeCancel);
+        // A new target is published from a data-only definition and its submitted version stays pinned while polling.
+        var definition = mapper.readTree("""
+                {"schemaVersion":1,"id":"new_video_v1","label":"New video","minimumSeconds":1,"maximumSeconds":20,
+                 "promptLimit":10000,"mode":"TEXT","imageFields":[],"audioFields":[],"minimumImages":0,"minimumAudios":0,
+                 "resolutions":["720p横(1280*720)","720p竖(720*1280)"],"defaultResolution":"720p","supportsSeed":false}
+                """);
+        var customSettings = mapper.createObjectNode().put("workflowId", "new_video_v1").put("videoResolution", "720p");
+        customSettings.set("workflowDefinition", definition);
+        customSettings.putArray("videoResolutions").add("720p");
+        customSettings.putObject("pricingByResolution").putObject("720p").put("amount", "0.2").put("currency", "CNY").put("unit", "SECOND");
+        var custom = catalog.publishCapability(connection.id(), "New target", AutoDlWorkflows.ADAPTER_ID, customSettings);
+        UUID customProject = projects.create(owner, "New target", Project.AspectRatio.LANDSCAPE_16_9).id();
+        UUID customArtifact = artifacts.create(owner, customProject, Artifact.Kind.VIDEO, "New target", null).artifact().id();
+        UUID customCard = CanvasMediaFixture.place(canvas, owner, customProject, customArtifact);
+        var customDraft = drafts.save(owner, customProject, customCard, 0, "Future video", mapper.createObjectNode().put("videoResolution", "720p"),
+                18, custom.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of());
+        Task customTask = direct.run(owner, customProject, customArtifact, customCard, customDraft.version(), "new-target-run");
+        worker.submitOnce("autodl-custom-submit");
+        assertThat(submittedPath).endsWith("/comfyui_workflow/new_video_v1");
+        assertThat(receivedBody.path("resolution").asText()).isEqualTo("720p横(1280*720)");
+        assertThat(receivedBody.path("duration").asInt()).isEqualTo(18);
+        var changedDefinition = definition.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) changedDefinition).put("id", "new_video_v2");
+        var changedSettings = customSettings.deepCopy().put("workflowId", "new_video_v2");
+        changedSettings.set("workflowDefinition", changedDefinition);
+        catalog.updateCapability(connection.id(), custom.id(), custom.version(), "Updated target", true, AutoDlWorkflows.ADAPTER_ID, changedSettings);
+        poll(customTask);
+        assertThat(tasks.get(owner, customProject, customTask.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(customTask.input().at("/mediaPricing/amount").asText()).isEqualTo("0.2");
+
         assertThat(jdbc.sql("select credential_ciphertext is not null from media_provider_connection_version where connection_id=:id limit 1")
                 .param("id", connection.id()).query(Boolean.class).single()).isTrue();
     }
@@ -270,6 +301,7 @@ class AutoDlVideoPostgresIT {
                 var data = mapper.createObjectNode();
                 if (exchange.getRequestMethod().equals("POST")) {
                     submittedKey = exchange.getRequestHeaders().getFirst("Authorization");
+                    submittedPath = path;
                     receivedBody = mapper.readTree(exchange.getRequestBody().readAllBytes());
                     int count = CREATES.incrementAndGet();
                     if (DROP_CREATE.getAndSet(false)) { exchange.close(); return; }

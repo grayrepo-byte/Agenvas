@@ -534,6 +534,57 @@ paths:
           content:
             application/problem+json:
               schema: {$ref: "#/components/schemas/Problem"}
+  /api/v1/settings/autodl-workflows:
+    get:
+      operationId: listAutoDlWorkflows
+      tags: [Settings]
+      summary: Read the public official AutoDL catalog without submitting generation
+      responses:
+        '200':
+          description: Administrator-only catalog candidates; publication is explicit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label]
+                      properties:
+                        id: {type: string}
+                        label: {type: string}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '502': {description: Problem response, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  /api/v1/settings/autodl-workflows/preview:
+    post:
+      operationId: previewAutoDlWorkflow
+      tags: [Settings]
+      summary: Import official input rules as a data-only video workflow candidate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [workflowId]
+              properties:
+                workflowId: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$'}
+                source: {type: [object, 'null'], additionalProperties: true, description: Optional official detail JSON. Omitted fetches metadata from the fixed official endpoint without credentials. Graphs, node mappings and result URLs are not executed.}
+      responses:
+        '200':
+          description: Candidate only; administrator reviews and explicitly publishes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AutoDlWorkflowDefinition'}
+        '422': {description: Problem response, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '502': {description: Problem response, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
   /api/v1/settings/media-connections:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -2965,8 +3016,16 @@ components:
       description: Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge.
       properties:
         runningHub: {$ref: "#/components/schemas/RunningHubDefinition"}
-        workflowId: {type: string, maxLength: 120, description: "AUTODL_COMFY_VIDEO only; reviewed H3 workflow ID. Defaults to minimax_h3_z0903. Each workflow fixes its input mode, duration, required references and supported resolutions."}
-        videoResolution: {type: string, enum: [480p, 736p, 768p, 1080p, 1088p, 1440p], description: "AutoDL resolution tier; mapped to the workflow's exact enum using the frozen card/project aspect ratio. Unsupported combinations are rejected before task acceptance."}
+        workflowId: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$', description: AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present.}
+        workflowDefinition: {$ref: '#/components/schemas/AutoDlWorkflowDefinition'}
+        videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL default resolution tier, included in videoResolutions; mapped to the workflow's exact enum using the frozen card/project aspect ratio. Unsupported combinations are rejected before task acceptance."}
+        videoResolutions:
+          type: array
+          minItems: 1
+          maxItems: 16
+          uniqueItems: true
+          items: {type: string, pattern: '^[1-9][0-9]{2,3}p$'}
+          description: AutoDL published resolution tiers, restricted to the selected workflow. Omitted preserves the single videoResolution tier for historical capabilities.
         seed: {type: integer, format: int64, minimum: 1, maximum: 999999999999999, description: "Optional AutoDL seed, only for workflows that declare it."}
         checkpoint: {type: string, maxLength: 160}
         diffusionModel: {type: string, maxLength: 160}
@@ -2984,6 +3043,45 @@ components:
         maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
         maxReferenceAudios: {type: integer, minimum: 0, maximum: 3}
         pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
+        pricingByResolution:
+          type: object
+          maxProperties: 16
+          propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
+          additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
+          description: AutoDL video estimates by a published resolution tier. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+    AutoDlWorkflowDefinition:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, id, label, minimumSeconds, maximumSeconds, promptLimit, mode, imageFields, audioFields, minimumImages, minimumAudios, resolutions, defaultResolution, supportsSeed]
+      description: Versioned data-only contract for the fixed AutoDL prompt/duration/video protocol. No graph, node IDs, scripts, endpoints or credentials. New same-protocol workflows need configuration only; other protocols are rejected. Resolution labels are exact provider enum values, not actual pixel guarantees.
+      properties:
+        schemaVersion: {type: integer, enum: [1]}
+        id: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$'}
+        label: {type: string, minLength: 1, maxLength: 160}
+        minimumSeconds: {type: integer, minimum: 1, maximum: 30}
+        maximumSeconds: {type: integer, minimum: 1, maximum: 30}
+        promptLimit: {type: integer, minimum: 1, maximum: 10000}
+        mode: {$ref: '#/components/schemas/VideoInputMode'}
+        imageFields:
+          type: array
+          maxItems: 14
+          uniqueItems: true
+          items: {type: string, pattern: '^(first_frame|last_frame|ref_image_[0-9]{1,2})$'}
+        audioFields:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items: {type: string, pattern: '^ref_audio_[0-9]$'}
+        minimumImages: {type: integer, minimum: 0, maximum: 14}
+        minimumAudios: {type: integer, minimum: 0, maximum: 3}
+        resolutions:
+          type: array
+          minItems: 1
+          maxItems: 48
+          uniqueItems: true
+          items: {type: string, pattern: '^[1-9][0-9]{2,3}p(横|竖|\(1:1\))(\([0-9]{1,5}\*[0-9]{1,5}\))?$'}
+        defaultResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$'}
+        supportsSeed: {type: boolean}
     RunningHubScalar:
       oneOf:
         - {type: string, maxLength: 20000}
@@ -3765,7 +3863,7 @@ components:
     ImageGenerationParameters:
       type: object
       additionalProperties: false
-      description: 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
+      description: 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio 和 AutoDL 专用 videoResolution，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
       properties:
         dynamicValues:
           type: object
@@ -3777,6 +3875,7 @@ components:
         loudnessRate: {type: integer, minimum: -50, maximum: 100}
         pitchRate: {type: integer, minimum: -12, maximum: 12}
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
+        videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL only; a published resolution tier. Omitted uses the capability default. Frozen into accepted tasks."}
         resolution: {type: string, enum: [1K, 2K, 4K]}
         quality: {type: string, enum: [low, medium, high]}
         transparentBackground: {type: boolean}
