@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -8,12 +9,8 @@ import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -107,7 +104,7 @@ public class DirectTextTaskService {
             Instant now = clock.instant();
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.TEXT_GENERATION, Task.Status.READY, false, input,
-                    hash(input.toString()), null, null, null, 1, now,
+                    Sha256.hex(input.toString()), null, null, null, 1, now,
                     null, null, 0, 0, null, now, now, null);
             tasks.create(task, List.of());
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
@@ -130,15 +127,6 @@ public class DirectTextTaskService {
         if (target.artifact().kind() != Artifact.Kind.TEXT) throw invalid(ApiMessage.of("api.direct-text-task-service.the-goal-is-not-a-word-card"));
         return tasks.listDirectForArtifact(ownerId, projectId, artifactId).stream()
                 .filter(task -> task.kind() == Task.Kind.TEXT_GENERATION).toList();
-    }
-
-    private static String hash(String input) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException unavailable) {
-            throw new IllegalStateException("SHA-256 unavailable", unavailable);
-        }
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {

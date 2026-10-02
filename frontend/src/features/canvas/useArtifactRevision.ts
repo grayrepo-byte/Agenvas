@@ -1,12 +1,11 @@
 import { t } from "../../shared/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ApiError, getArtifact, type Artifact } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError, getArtifact, type Artifact } from "../../shared/api/client";
 import { hasCurrentVersion, type VersionedArtifact } from "./versionedArtifact";
 
-const CONFLICT_STATUS = 409;
 
-export type ArtifactRevisionStatus = {
+type ArtifactRevisionStatus = {
   dirty: boolean;
   busy: boolean;
   saving: boolean;
@@ -69,7 +68,7 @@ export function useArtifactRevision<Fields extends object, Revision>({
   const status: ArtifactRevisionStatus = {
     dirty, busy, saving: save.isPending, saved: save.isSuccess,
     newerAvailable: artifact.version > base.version,
-    conflict: save.error instanceof ApiError && save.error.status === CONFLICT_STATUS,
+    conflict: save.error instanceof ApiError && save.error.status === HTTP_STATUS.CONFLICT,
     error: save.error, reloadError: reload.error,
   };
   return {

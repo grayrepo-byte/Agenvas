@@ -43,6 +43,11 @@ public record AgentRun(
         Instant updatedAt,
         Instant completedAt) {
 
+    /** 包含响应修复在内的单次 Run 模型回合上限。 */
+    public static final int MAX_MODEL_TURNS = 12;
+    /** 重放已完成工具结果不重复占用这个副作用预算。 */
+    public static final int MAX_TOOL_EXECUTIONS = 40;
+
     /** 持久化运行状态；等待任务和阻断均未释放项目活动槽位。 */
     public enum Status {
         /** 已创建首个模型任务，等待 Worker 认领。 */

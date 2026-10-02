@@ -250,12 +250,6 @@
   background: var(--agent-chat-field);
 }
 
-.agent-chat-approval__progress {
-  color: var(--agent-chat-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
 .agent-chat-approval__footer .agent-chat-panel-actions { margin-top: 0; }
 .agent-chat-approval__footer button { border-radius: 999px; }
 .agent-chat-approval__footer .agent-chat-panel-primary {

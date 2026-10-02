@@ -2,6 +2,7 @@ import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { useState } from "react";
 import type { RunningHubDefinition,RunningHubField } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
@@ -55,7 +56,7 @@ function UploadSlot({ field, disabled, onUpload }: { field: RunningHubField; dis
   }
   return <div>
     <Field><FieldLabel className="ui-field block">{t("上传{0}", { "0": field.label })}<Input type="file" disabled={disabled || busy}
-      accept={field.type === "IMAGE" ? "image/png,image/jpeg,image/webp" : field.type === "VIDEO" ? "video/mp4" : "audio/mpeg,audio/wav,audio/flac"}
+      accept={field.type === "IMAGE" ? MEDIA_FILE_ACCEPT.IMAGE : field.type === "VIDEO" ? MEDIA_FILE_ACCEPT.VIDEO : "audio/mpeg,audio/wav,audio/flac"}
       onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ""; if (selected) void upload(selected); }} /></FieldLabel></Field>
     {busy ? <p role="status">{t("正在上传并保存精确版本…")}</p> : null}
     {error ? <p role="alert">{error}{file ? <Button variant="ghost" type="button" disabled={busy || disabled} onClick={() => void upload(file)}>{t("重试上传")}</Button> : null}</p> : null}

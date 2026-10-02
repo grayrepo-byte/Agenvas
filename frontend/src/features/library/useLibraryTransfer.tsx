@@ -1,6 +1,6 @@
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import { ApiError,getLibraryCommand,retryLibraryCommand,type LibraryCommand } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,getLibraryCommand,retryLibraryCommand,type LibraryCommand } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 
@@ -12,7 +12,7 @@ export function useLibraryTransfer<T extends object>(submit: (input: T & { comma
   const send = useMutation({ mutationFn: (input: T) => {
     intent.current ??= { ...input, commandKey: crypto.randomUUID() };
     return submit(intent.current);
-  }, onError: (error) => { if (error instanceof ApiError && error.status < 500) intent.current = null; } });
+  }, onError: (error) => { if (error instanceof ApiError && error.status < HTTP_STATUS.INTERNAL_SERVER_ERROR) intent.current = null; } });
   const id = send.data?.id;
   const command = useQuery({ queryKey: ["library-command", id], queryFn: () => getLibraryCommand(id!),
     enabled: Boolean(id), initialData: send.data, retry: false, staleTime: 0,

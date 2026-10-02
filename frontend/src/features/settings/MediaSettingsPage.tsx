@@ -4,7 +4,7 @@ import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useId,useRef,useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
 import {
-ApiError,createMediaCapability,createMediaConnection,getCurrentUser,
+HTTP_STATUS,ApiError,createMediaCapability,createMediaConnection,getCurrentUser,
 getMediaSettings,setMediaDefault,updateMediaCapability,
 updateMediaConnection,
 type MediaCapability,type MediaConnection,type MediaSettings,
@@ -32,9 +32,6 @@ const MODEL_LIMIT = 120;
 const settingsKey = ["settings", "media"] as const;
 const NAME_LIMIT = 160;
 const ORIGIN_LIMIT = 500;
-const HTTP_UNAUTHORIZED = 401;
-const HTTP_FORBIDDEN = 403;
-const HTTP_CONFLICT = 409;
 const comfyImageFields = [{ key: "checkpoint", get label() { return t("图片 checkpoint 文件名"); } }] as const;
 const comfyVideoFields = [
   { key: "diffusionModel", get label() { return t("视频扩散模型文件名"); } },
@@ -265,7 +262,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       apply(result); setError(""); setEditing(false);
     },
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
       setError(errorMessage(cause));
@@ -349,7 +346,7 @@ function useMediaActions(connection: MediaConnection, settings: MediaSettings, a
     },
     onSuccess: apply,
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
     },
@@ -418,10 +415,10 @@ function ConnectionRow({ connection, settings, apply }: {
     },
     onError: (cause) => {
       setNotice("");
-      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
-      setError(cause instanceof ApiError && cause.status === HTTP_CONFLICT
+      setError(cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT
         ? t("配置已被其他管理员修改，已请求刷新；当前草稿已保留。")
         : errorMessage(cause));
     },
@@ -443,7 +440,7 @@ function ConnectionRow({ connection, settings, apply }: {
       setDialog(null);
     },
     onError: (cause) => {
-      if (cause instanceof ApiError && cause.status === HTTP_CONFLICT) {
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
         void queryClient.invalidateQueries({ queryKey: settingsKey });
       }
       setError(errorMessage(cause));
@@ -549,7 +546,7 @@ export function MediaSettingsPage() {
     onError: (cause) => setError(errorMessage(cause)),
   });
 
-  if (settings.error instanceof ApiError && settings.error.status === HTTP_UNAUTHORIZED) {
+  if (settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.UNAUTHORIZED) {
     return <Navigate to="/login" replace />;
   }
   return <PageShell title={t("媒体连接与能力")}
@@ -566,9 +563,9 @@ export function MediaSettingsPage() {
       <Notice title={t("配置与生成彼此独立")}>
         {t("默认配置补充未填写的草稿参数，已受理任务保留固定输入。保存配置不会调用付费生成接口，实际生成结果见调用日志。")}</Notice>
       {currentUser.isSuccess && settings.isPending ? <LoadingState label={t("正在读取媒体配置…")} /> : null}
-      {settings.error instanceof ApiError && settings.error.status === HTTP_FORBIDDEN
+      {settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.FORBIDDEN
         ? <Notice tone="warning" title={t("需要管理员权限")}>{t("只有管理员可以查看媒体配置。")}</Notice> : null}
-      {settings.isError && !(settings.error instanceof ApiError && [HTTP_UNAUTHORIZED, HTTP_FORBIDDEN].includes(settings.error.status))
+      {settings.isError && !(settings.error instanceof ApiError && (settings.error.status === HTTP_STATUS.UNAUTHORIZED || settings.error.status === HTTP_STATUS.FORBIDDEN))
         ? <Notice tone="danger" title={t("读取失败")}>
           <p>{t("读取失败，请刷新后重试。")}</p>
           <Button variant="outline"  type="button" onClick={() => { void settings.refetch(); }}

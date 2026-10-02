@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
@@ -9,10 +10,7 @@ import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -121,7 +119,7 @@ public final class RunningHubImportService {
         if (fields.size() > RunningHubDefinition.MAX_FIELDS) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.there-are-more-than-64-fields-please-import-the-selected"));
         RunningHubDefinition definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION, type, targetId,
                 List.copyOf(fields), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.valueOf(kind.name().replace("_GENERATION", "")), true, 1)),
-                "default", false, false, null, sha256(source.toString()));
+                "default", false, false, null, Sha256.hex(source.toString()));
         definition.validate(kind);
         return new Preview(definition, List.copyOf(warnings));
     }
@@ -156,9 +154,5 @@ public final class RunningHubImportService {
             rejectCredentials(entry.getValue());
         }
         if (node.isArray()) for (JsonNode child : node) rejectCredentials(child);
-    }
-    private static String sha256(String value) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
-        catch (NoSuchAlgorithmException unavailable) { throw new IllegalStateException(unavailable); }
     }
 }

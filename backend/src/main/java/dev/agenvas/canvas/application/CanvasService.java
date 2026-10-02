@@ -751,23 +751,7 @@ public class CanvasService {
         if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
-        CanvasItem updated = new CanvasItem(
-                current.id(),
-                current.projectId(),
-                current.subjectType(),
-                current.subjectId(),
-                current.selectedVersionId(),
-                title,
-                current.x(),
-                current.y(),
-                current.width(),
-                current.height(),
-                current.zIndex(),
-                current.groupId(),
-                current.locked(),
-                current.version(),
-                current.createdAt(),
-                current.updatedAt());
+        CanvasItem updated = current.withTitle(title);
         if (!canvasItems.update(ownerId, updated, command.expectedVersion(), clock.instant())) {
             throw conflict();
         }
@@ -799,23 +783,9 @@ public class CanvasService {
         if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
-        CanvasItem updated = new CanvasItem(
-                current.id(),
-                current.projectId(),
-                current.subjectType(),
-                current.subjectId(),
-                current.selectedVersionId(),
-                current.title(),
-                command.x(),
-                command.y(),
-                command.width(),
-                command.height(),
-                command.zIndex(),
-                command.groupId(),
-                current.locked(),
-                current.version(),
-                current.createdAt(),
-                current.updatedAt());
+        CanvasItem updated = current.withLayout(
+                command.x(), command.y(), command.width(), command.height(),
+                command.zIndex(), command.groupId());
         if (!canvasItems.update(ownerId, updated, command.expectedVersion(), clock.instant())) {
             throw conflict();
         }
@@ -833,23 +803,7 @@ public class CanvasService {
         if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
-        CanvasItem updated = new CanvasItem(
-                current.id(),
-                current.projectId(),
-                current.subjectType(),
-                current.subjectId(),
-                current.selectedVersionId(),
-                current.title(),
-                current.x(),
-                current.y(),
-                current.width(),
-                current.height(),
-                current.zIndex(),
-                current.groupId(),
-                command.locked(),
-                current.version(),
-                current.createdAt(),
-                current.updatedAt());
+        CanvasItem updated = current.withLocked(command.locked());
         if (!canvasItems.update(ownerId, updated, command.expectedVersion(), clock.instant())) {
             throw conflict();
         }
@@ -862,8 +816,7 @@ public class CanvasService {
         if (current == null) {
             return;
         }
-        if (current.version() != command.expectedVersion()
-                ) {
+        if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
         connections.removeItemConnectionsWithinChange(ownerId, projectId, command.itemId());
@@ -958,8 +911,8 @@ public class CanvasService {
                 || outside(y, MIN_COORDINATE, MAX_COORDINATE)
                 || outside(width, MIN_WIDTH, MAX_WIDTH)
                 || outside(height, MIN_HEIGHT, MAX_HEIGHT)
-                || zIndex < -1000
-                || zIndex > 1000) {
+                || zIndex < -MAX_Z_INDEX
+                || zIndex > MAX_Z_INDEX) {
             throw validation(ApiMessage.of("api.canvas-service.canvas-coordinates-dimensions-or-levels-are-outside-the-allowed-range"));
         }
     }

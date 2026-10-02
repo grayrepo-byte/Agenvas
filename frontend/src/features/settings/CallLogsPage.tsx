@@ -3,7 +3,7 @@ import { ArrowSquareOut,ArrowsClockwise,ListMagnifyingGlass } from "@phosphor-ic
 import { useQuery } from "@tanstack/react-query";
 import { useState,type FormEvent,type ReactNode } from "react";
 import { Link,Navigate,useSearchParams } from "react-router";
-import { ApiError,getCurrentUser,getTask,listCallLogs,type CallLog,type CallLogFilters,type Task } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,getCurrentUser,getTask,listCallLogs,type CallLog,type CallLogFilters,type Task } from "../../shared/api/client";
 import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -19,8 +19,6 @@ import "./CallLogsPage.css";
 const PAGE_SIZE = 20;
 const FIRST_PAGE = 0;
 const BAD_REQUEST_STATUS = 400;
-const UNAUTHORIZED_STATUS = 401;
-const FORBIDDEN_STATUS = 403;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const LOCAL_DATE_TIME_LENGTH = 19;
 const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("文本模型"); }, get IMAGE() { return t("图片"); }, get VIDEO() { return t("视频"); }, get AUDIO() { return t("音频"); } };
@@ -58,9 +56,9 @@ export function CallLogsPage() {
   const logs = useQuery({
     queryKey: ["call-logs", filters], queryFn: () => listCallLogs(filters), enabled: currentUser.isSuccess, retry: false,
   });
-  const forbidden = logs.error instanceof ApiError && logs.error.status === FORBIDDEN_STATUS;
+  const forbidden = logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.FORBIDDEN;
   const invalidFilters = logs.error instanceof ApiError && logs.error.status === BAD_REQUEST_STATUS;
-  if (logs.error instanceof ApiError && logs.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
+  if (logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   const data = forbidden ? undefined : logs.data;
   const selectedLog = data?.items.find((log) => log.id === selectedId);
   const setPage = (page: number) => {
@@ -197,8 +195,8 @@ function CallLogDetails({ log }: { log: CallLog }) {
 function CallLogTask({ projectId, taskId }: { projectId: string; taskId: string }) {
   useLocale();
   const task = useQuery({ queryKey: ["call-log-task", projectId, taskId], queryFn: () => getTask(projectId, taskId), retry: false });
-  const forbidden = task.error instanceof ApiError && task.error.status === FORBIDDEN_STATUS;
-  if (task.error instanceof ApiError && task.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
+  const forbidden = task.error instanceof ApiError && task.error.status === HTTP_STATUS.FORBIDDEN;
+  if (task.error instanceof ApiError && task.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   return <section className="call-log-task" aria-label={t("关联任务")}>
     <h3>{t("关联任务")}</h3>
     {task.isPending ? <LoadingState compact label={t("正在读取关联任务")} /> : null}

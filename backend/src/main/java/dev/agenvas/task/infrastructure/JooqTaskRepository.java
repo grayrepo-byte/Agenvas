@@ -13,6 +13,7 @@ import static dev.agenvas.db.Tables.TASK_LATE_RESULT;
 import static dev.agenvas.db.Tables.TASK_MANUAL_REPLACEMENT;
 import static dev.agenvas.db.Tables.TASK_PROVIDER_POLL_RETRY;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.db.tables.records.TaskManualReplacementRecord;
 import dev.agenvas.db.tables.records.TaskRecord;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
@@ -25,13 +26,9 @@ import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.TaskOrigin;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -89,9 +86,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     public boolean checkpointProviderResults(Task lease, String workerId,
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now) {
         return dsl.update(TASK).set(TASK.PROVIDER_RESULT_MANIFEST, JSONB.valueOf(objectMapper.writeValueAsString(manifest)))
-                .where(TASK.ID.eq(lease.id())).and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch())).and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_UNTIL.gt(utc(now))).and(TASK.PROVIDER_RESULT_MANIFEST.isNull()).execute() == 1;
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.PROVIDER_RESULT_MANIFEST.isNull()).execute() == 1;
     }
 
     @Override
@@ -293,13 +290,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     public UUID createInitialTurn(UUID projectId, UUID runId, Instant now) {
         JsonNode input = objectMapper.createObjectNode().put("schemaVersion", 1)
                 .put("stepIndex", 0);
-        String inputHash;
-        try {
-            inputHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(input.toString().getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
+        String inputHash = Sha256.hex(input.toString());
         UUID taskId = UUID.randomUUID();
         create(new Task(taskId, projectId, runId, "agent-turn-0",
                 Task.Kind.AGENT_TURN, Task.Status.READY, false, input, inputHash,
@@ -708,12 +699,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.OUTPUT_JSON, JSONB.valueOf(response.toString()))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .set(TASK.UPDATED_AT, utc(now))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.KIND.eq(Task.Kind.TEXT_GENERATION.name()))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .and(TASK.OUTPUT_JSON.isNull())
                 .execute() == 1;
@@ -725,15 +713,12 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
             String workerId, long leaseEpoch, Instant now) {
         return dsl.select(TASK.ID)
                 .from(TASK)
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.PROJECT_ID.eq(projectId))
                 .and(TASK.RUN_ID.eq(runId))
                 .and(TASK.KIND.eq(Task.Kind.AGENT_TURN.name()))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .forUpdate()
                 .fetchOptional(TASK.ID)
                 .isPresent();
@@ -809,11 +794,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.LEASE_UNTIL, utc(leaseUntil))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.in(Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .execute() == 1;
     }
@@ -837,11 +819,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.COMPLETED_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .execute() == 1;
     }
@@ -857,12 +836,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.isNull())
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .execute() == 1;
     }
@@ -936,11 +912,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.STATUS, Task.Status.SUBMITTING.name())
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .and(TASK.ORIGIN.eq(TaskOrigin.USER_DIRECT.name())
                         .or(DSL.exists(DSL.selectOne()
@@ -995,11 +968,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .execute();
         if (changed == 0) {
             return false;
@@ -1029,12 +999,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .execute() == 1;
     }
 
@@ -1087,12 +1054,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(taskId))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .execute() == 1;
     }
 
@@ -1229,11 +1193,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.COMPLETED_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(lease.id()))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch()))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .execute();
         if (changed == 0) {
@@ -1263,12 +1224,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.COMPLETED_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(lease.id()))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.eq(lease.providerRequestId()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch()))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .execute() == 1;
     }
@@ -1286,13 +1244,10 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.COMPLETED_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(lease.id()))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
                 .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch()))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .execute();
         if (changed == 0) {
             return false;
@@ -1333,13 +1288,10 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .where(TASK.ID.eq(lease.id()))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
                 .and(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                .and(TASK.LEASE_OWNER.eq(workerId))
-                .and(TASK.LEASE_EPOCH.eq(lease.leaseEpoch()))
-                .and(TASK.LEASE_UNTIL.gt(utc(now)))
                 .execute();
         if (changed == 0) {
             return false;
@@ -1355,6 +1307,15 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
             throw new IllegalStateException("Missing provider attempt for uncertain submission");
         }
         return true;
+    }
+
+    /** 当前 Worker 持有的未到期租约；状态、取消及业务边界由调用点另行约束。 */
+    private Condition currentWorkerLease(UUID taskId, String workerId, long leaseEpoch,
+            Instant now) {
+        return TASK.ID.eq(taskId)
+                .and(TASK.LEASE_OWNER.eq(workerId))
+                .and(TASK.LEASE_EPOCH.eq(leaseEpoch))
+                .and(TASK.LEASE_UNTIL.gt(utc(now)));
     }
 
     /** 统一把任务行映射为领域对象，JSONB 列取文本后再交给 Jackson。 */

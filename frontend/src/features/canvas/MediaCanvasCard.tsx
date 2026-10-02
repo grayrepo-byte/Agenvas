@@ -23,6 +23,7 @@ runImageOperation,type Artifact,type CanvasItem,type MediaCapability,
 type RunImageOperationRequest,type Task
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
@@ -161,20 +162,13 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       instruction: instruction || null, capabilityId: capabilityId || null, parameters, ...extras });
   }
 
-  function chooseOperation(name: ImageTool) {
+  function chooseOperation(name: ImageTool, threeView: ThreeViewType | null = null) {
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
-    setThreeViewType(null);
+    setThreeViewType(threeView);
     if (name === "ROTATE") runOperation(name, { quarterTurns: 1 });
     else if (name === "FLIP_HORIZONTAL" || name === "FLIP_VERTICAL") runOperation(name);
     else setOperationOpen(name);
-  }
-
-  function chooseThreeView(type: ThreeViewType) {
-    setThreeViewType(type);
-    setThreeViewMenuOpen(false);
-    setMenuOpen(false);
-    setOperationOpen("THREE_VIEW");
   }
 
   return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("图片") : isAudio ? t("音频") : t("视频")}
@@ -201,7 +195,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent aria-labelledby={undefined} aria-label={t("三视图类型")} className="w-max p-2"><DropdownMenuGroup>
                   {THREE_VIEW_OPTIONS.map((option) => <DropdownMenuItem key={option.value} className="py-2"
-                    disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseThreeView(option.value)}>
+                    disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseOperation("THREE_VIEW", option.value)}>
                     <option.icon /><span>{option.label}</span><small>AI</small>
                   </DropdownMenuItem>)}
                 </DropdownMenuGroup></DropdownMenuSubContent>
@@ -257,7 +251,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     </>}>
       {children}
       {(isImage || isAudio) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
-        aria-label={isAudio ? t("选择要上传的音频") : t("选择要上传的图片")} accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
+        aria-label={isAudio ? t("选择要上传的音频") : t("选择要上传的图片")} accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => {
@@ -278,7 +272,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
               : isAudio ? <MusicNotes className="media-empty-icon" size={44} /> : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
-              <TaskReason errorCode={latest?.errorCode} />
+              {latest?.errorCode ? <small>{taskErrorMessage(latest.errorCode) || latest.errorCode}</small> : null}
               {latest?.status === "UNKNOWN" ? <small>{t("可在编辑区重试")}</small> : null}
             </div> : null}
             {uploadFile ? <MediaCardUpload key={`${uploadFile.name}:${uploadFile.size}:${uploadFile.lastModified}`}
@@ -423,14 +417,6 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
       <Button variant="ghost" type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
         {busy ? t("正在受理…") : t("开始处理")}</Button></footer>
   </div>;
-}
-
-/** 优先展示可读原因；未登记的码原样回退，便于用户拿它去检索而不是被隐藏。 */
-function TaskReason({ errorCode }: { errorCode: Task["errorCode"] }) {
-  useLocale();
-  const reason = taskErrorMessage(errorCode);
-  if (reason) return <small>{reason}</small>;
-  return errorCode ? <small>{errorCode}</small> : null;
 }
 
 /**

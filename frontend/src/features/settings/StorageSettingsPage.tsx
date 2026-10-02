@@ -3,7 +3,7 @@ import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent } from "react";
 import { Navigate } from "react-router";
 import {
-ApiError,activateStorageProfile,createStorageProfile,getCurrentUser,getStorageSettings,rotateStorageCredentials,
+HTTP_STATUS,ApiError,activateStorageProfile,createStorageProfile,getCurrentUser,getStorageSettings,rotateStorageCredentials,
 type CreateStorageProfileRequest,type StorageProvider,type StorageSettings
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -16,8 +16,6 @@ import { Input } from "../../shared/ui/primitives/input";
 import { Select } from "../../shared/ui/Select";
 import "./SettingsPages.css";
 
-const UNAUTHORIZED_STATUS = 401;
-const CONFLICT_STATUS = 409;
 const CONNECTION_NAME_MAX_LENGTH = 120;
 const LABELS: Record<StorageProvider, string> = { get ALIYUN_OSS() { return t("阿里云 OSS"); }, get TENCENT_COS() { return t("腾讯云 COS"); }, get S3() { return t("Amazon S3 / S3 兼容"); } };
 const EXAMPLES: Record<StorageProvider, { endpoint: string; region: string; bucket: string }> = {
@@ -58,7 +56,7 @@ export function StorageSettingsPage() {
       setMessage(success);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : t("存储配置保存失败，请重试。"));
-      if (cause instanceof ApiError && cause.status === CONFLICT_STATUS) await query.refetch();
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) await query.refetch();
     } finally {
       setBusy(false);
       // Request secrets never enter Query cache, persistent browser storage, or rendered status messages.
@@ -72,8 +70,8 @@ export function StorageSettingsPage() {
       region: current.region.trim(), bucket: current.bucket.trim(), keyPrefix: current.keyPrefix.trim() }),
     t("连接已加密保存。默认存储未切换。"), true);
   }
-  if (session.error instanceof ApiError && session.error.status === UNAUTHORIZED_STATUS
-      || query.error instanceof ApiError && query.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
+  if (session.error instanceof ApiError && session.error.status === HTTP_STATUS.UNAUTHORIZED
+      || query.error instanceof ApiError && query.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   return <PageShell title={t("资源存储")} description={t("默认使用本地存储。云存储适用于磁盘容量不足等需求；切换仅影响之后归档的资源，历史文件继续从原位置读取。")}>
     {query.isPending ? <LoadingState label={t("正在读取存储配置")} /> : null}
     {query.isError ? <Notice tone="danger" title={t("无法读取存储配置")}><p>{query.error.message}</p>

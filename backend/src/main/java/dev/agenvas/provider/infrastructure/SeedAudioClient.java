@@ -20,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Fixed speech origin, no redirect or automatic POST retry; bounded JSON/audio streaming. */
 @Component
 public final class SeedAudioClient {
+    public static final String MODEL_ID = "seed-audio-1.0";
     private static final URI OFFICIAL = URI.create("https://openspeech.bytedance.com");
     private static final String PATH = "/api/v3/tts/create";
     private static final int MAX_AUDIO_BYTES = 50 * 1024 * 1024;
@@ -46,7 +47,7 @@ public final class SeedAudioClient {
     public byte[] synthesize(String key, String requestId, String text,
             AudioGenerationParameters parameters, List<Reference> references) {
         var body = mapper.createObjectNode();
-        body.put("model", "seed-audio-1.0").put("text_prompt", text);
+        body.put("model", MODEL_ID).put("text_prompt", text);
         var resources = body.putArray("references");
         for (Reference reference : references) {
             if (!java.util.Set.of("image_data", "audio_data").contains(reference.field()))

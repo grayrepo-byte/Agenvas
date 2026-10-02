@@ -144,7 +144,7 @@ public class GoogleNanoBananaClient {
 
     MediaPayload generate(String key, String model, String origin, String prompt,
             String aspectRatio, List<InputImage> references) {
-        return generate(key, model, origin, prompt, aspectRatio, "1K", references);
+        return generate(key, model, origin, prompt, aspectRatio, ImageGenerationParameters.DEFAULT_RESOLUTION, references);
     }
 
     /**

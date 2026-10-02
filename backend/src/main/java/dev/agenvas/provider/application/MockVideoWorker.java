@@ -180,18 +180,9 @@ public class MockVideoWorker {
                             throw new IllegalStateException("Cannot read generated demo MP4", failure);
                         }
                     });
-            ObjectNode content = mapper.createObjectNode();
-            content.put("assetId", archived.id().toString());
-            content.put("prompt", task.input().path("prompt").asText("Mock video"));
-            if (task.input().has("negativePrompt")) {
-                content.put("negativePrompt", task.input().path("negativePrompt").asText());
-            }
-            content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
-            content.put("workflowVersion", task.input().path("workflowVersion").asText());
-            content.put("sourceTaskId", task.id().toString());
-            ObjectNode parameters = content.putObject("parameters");
-            task.input().path("mediaInput").path("parameters").properties().forEach(entry ->
-                    parameters.set(entry.getKey(), entry.getValue().deepCopy()));
+            ObjectNode content = MediaResult.content(mapper, task, archived.id(),
+                    task.input().path("prompt").asText("Mock video"));
+            ObjectNode parameters = MediaResult.copyFrozenParameters(content, task);
             parameters.put("mock", true);
             parameters.put("displayLabel", "演示视频（非 AI 生成）");
             parameters.put("providerRequestId", result.providerRequestId());

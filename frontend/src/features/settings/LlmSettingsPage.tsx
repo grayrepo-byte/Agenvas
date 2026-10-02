@@ -3,7 +3,7 @@ import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@phosphor-icons/react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
-import { ApiError,diagnoseLlmSettings,getCurrentUser,getLlmSettings,getSystemDiagnostics,replaceLlmSettings,type LlmSettings } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,diagnoseLlmSettings,getCurrentUser,getLlmSettings,getSystemDiagnostics,replaceLlmSettings,type LlmSettings } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice,Panel,StatusBadge,SummaryStrip } from "../../shared/ui/PagePrimitives";
@@ -13,8 +13,6 @@ import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Input } from "../../shared/ui/primitives/input";
 import "./SettingsPages.css";
 
-const UNAUTHORIZED_STATUS = 401;
-const CONFLICT_STATUS = 409;
 
 type ConfigurationDraft = { base: LlmSettings; endpoint: string; modelId: string };
 
@@ -70,7 +68,7 @@ export function LlmSettingsPage() {
       setAcknowledgedVersion(null);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : t("保存失败，请重试。"));
-      if (cause instanceof ApiError && cause.status === CONFLICT_STATUS) void settings.refetch();
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) void settings.refetch();
     } finally {
       setApiKey("");
       setSaving(false);
@@ -88,15 +86,15 @@ export function LlmSettingsPage() {
       if (result.version === snapshot.version && result.toolCallingVerified) setDiagnosedVersion(result.version);
     } catch (cause) {
       setDiagnosticError(cause instanceof ApiError ? cause.message : t("诊断失败，请重试。"));
-      if (cause instanceof ApiError && cause.status === CONFLICT_STATUS) void settings.refetch();
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) void settings.refetch();
     } finally {
       setAcknowledgedVersion(null);
       setDiagnosing(false);
     }
   }
 
-  if ((settings.error instanceof ApiError && settings.error.status === UNAUTHORIZED_STATUS)
-      || (mediaStatus.error instanceof ApiError && mediaStatus.error.status === UNAUTHORIZED_STATUS)) {
+  if ((settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.UNAUTHORIZED)
+      || (mediaStatus.error instanceof ApiError && mediaStatus.error.status === HTTP_STATUS.UNAUTHORIZED)) {
     return <Navigate to="/login" replace />;
   }
 

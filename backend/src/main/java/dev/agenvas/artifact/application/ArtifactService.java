@@ -1,5 +1,6 @@
 package dev.agenvas.artifact.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
@@ -9,13 +10,9 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.idempotency.IdempotencyState;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -100,7 +97,7 @@ public class ArtifactService {
             JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
                     ArtifactView created = createLocked(ownerId, projectId, kind, requestedTitle,
-                            content, ArtifactVersion.CreatedByKind.USER, null);
+                            content, ArtifactVersion.CreatedByKind.USER, null, false);
                     return ProjectEventService.Change.changed(
                             created, artifactEvent("artifact.created", created));
                 })
@@ -148,7 +145,7 @@ public class ArtifactService {
                     ApiMessage.of("api.artifact-content-validator.product-content-is-invalid"), ApiMessage.of("api.artifact-service.product-type-and-complete-content-must-be-provided"), false);
         }
         String scope = "project:" + projectId + ":create-artifact";
-        String requestHash = sha256(kind.name() + "\n" + title + "\n" + normalizedContent);
+        String requestHash = Sha256.hex(kind.name() + "\n" + title + "\n" + normalizedContent);
         Instant now = clock.instant();
         if (!artifacts.reserveCreateKey(ownerId, scope, key, requestHash,
                 now.plus(CREATE_KEY_RETENTION), now)) {
@@ -169,7 +166,7 @@ public class ArtifactService {
         }
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, title, normalizedContent,
-                    ArtifactVersion.CreatedByKind.USER, null);
+                    ArtifactVersion.CreatedByKind.USER, null, false);
             String responseJson = objectMapper.writeValueAsString(created);
             if (!artifacts.completeCreateKey(ownerId, scope, key, requestHash,
                     created.artifact().id(), responseJson, now)) {
@@ -193,40 +190,19 @@ public class ArtifactService {
                 ApiMessage.of("api.artifact-service.the-same-request-is-being-processed"), ApiMessage.of("api.artifact-service.please-try-again-later-with-the-same-idempotency-key"), true);
     }
 
-    /** 对类型、规范化标题及正文文本计算幂等请求摘要。 */
-    private String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is required by Java", impossible);
-        }
-    }
-
     /** Agent 通过已鉴权 Run 创建新产物；复用用户创建路径的正文、引用和媒体校验。 */
     @Transactional
     public ArtifactView createFromAgent(UUID ownerId, UUID projectId, UUID runId,
             Artifact.Kind kind, String requestedTitle, JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, requestedTitle,
-                    content, ArtifactVersion.CreatedByKind.AGENT, runId);
+                    content, ArtifactVersion.CreatedByKind.AGENT, runId, false);
             return ProjectEventService.Change.changed(created,
                     artifactEvent("artifact.created", created));
         }).value();
     }
 
     /** 统一创建边界；只允许在活动项目内创建产物。 */
-    private ArtifactView createLocked(
-            UUID ownerId,
-            UUID projectId,
-            Artifact.Kind kind,
-            String requestedTitle,
-            JsonNode content,
-            ArtifactVersion.CreatedByKind createdByKind,
-            UUID runId) {
-        return createLocked(ownerId, projectId, kind, requestedTitle, content, createdByKind, runId, false);
-    }
-
     private ArtifactView createLocked(UUID ownerId, UUID projectId, Artifact.Kind kind,
             String requestedTitle, JsonNode content, ArtifactVersion.CreatedByKind createdByKind,
             UUID runId, boolean libraryImport) {
@@ -476,9 +452,8 @@ public class ArtifactService {
                 .orElseThrow(this::notFound);
     }
 
-    /** 只解析同项目图片版本，供可信媒体任务读取已固定的参考图。 */
-    @Transactional(readOnly = true)
     /** Resolves an exact media version within the authenticated project, never a mutable default. */
+    @Transactional(readOnly = true)
     public ArtifactVersion requireMediaVersionForTask(UUID ownerId, UUID projectId, UUID versionId, Artifact.Kind kind) {
         projects.get(ownerId, projectId);
         var target = artifacts.findVersionTarget(projectId, versionId).orElseThrow(this::notFound);
@@ -486,14 +461,10 @@ public class ArtifactService {
         return artifacts.findVersion(projectId, target.artifactId(), versionId).orElseThrow(this::notFound);
     }
 
+    /** 只解析同项目图片版本，供可信媒体任务读取已固定的参考图。 */
     public ArtifactVersion requireImageVersionForTask(UUID ownerId, UUID projectId,
             UUID versionId) {
-        projects.get(ownerId, projectId);
-        ArtifactRepository.VersionTarget target = artifacts.findVersionTarget(projectId, versionId)
-                .orElseThrow(this::notFound);
-        if (target.kind() != Artifact.Kind.IMAGE) throw notFound();
-        return artifacts.findVersion(projectId, target.artifactId(), versionId)
-                .orElseThrow(this::notFound);
+        return requireMediaVersionForTask(ownerId, projectId, versionId, Artifact.Kind.IMAGE);
     }
 
     /**

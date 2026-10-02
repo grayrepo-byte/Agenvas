@@ -124,7 +124,7 @@ public class AgentTurnCommitService {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Run state prevents model continuation");
                 }
-                if (stepIndex >= 11) {
+                if (stepIndex >= AgentRun.MAX_MODEL_TURNS - 1) {
                     // 当前响应及工具账本已持久化；达到上限后停止，不创建第 13 轮任务。
                     tasks.fail(lease, workerId, "MODEL_TURN_LIMIT");
                     runs.transition(ownerId, lease.projectId(), lease.runId(),
@@ -182,7 +182,7 @@ public class AgentTurnCommitService {
             if (attempt < 0 || attempt > 2) {
                 throw new IllegalStateException("Invalid model repair count");
             }
-            if (attempt >= 2 || stepIndex >= 11) {
+            if (attempt >= 2 || stepIndex >= AgentRun.MAX_MODEL_TURNS - 1) {
                 tasks.fail(lease, workerId, "MODEL_OUTPUT_INVALID");
                 runs.transition(ownerId, lease.projectId(), lease.runId(),
                         run.version(), AgentRun.Status.BLOCKED);

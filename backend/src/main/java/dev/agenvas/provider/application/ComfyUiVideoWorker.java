@@ -8,16 +8,13 @@ import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
+import dev.agenvas.provider.infrastructure.ComfyUiInputImage;
 import dev.agenvas.provider.infrastructure.ComfyUiVideoWorkflow;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -148,27 +145,8 @@ public class ComfyUiVideoWorker {
         ComfyUiVideoWorkflow.Dimensions dimensions = workflow.dimensions(ratio);
         int width = dimensions.width();
         int height = dimensions.height();
-        BufferedImage normalized = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = normalized.createGraphics();
         try {
-            graphics.setColor(new Color(127, 127, 127));
-            graphics.fillRect(0, 0, width, height);
-            double scale = Math.min((double) width / source.getWidth(),
-                    (double) height / source.getHeight());
-            int drawWidth = Math.max(1, (int) Math.round(source.getWidth() * scale));
-            int drawHeight = Math.max(1, (int) Math.round(source.getHeight() * scale));
-            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            graphics.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2,
-                    drawWidth, drawHeight, null);
-        } finally {
-            graphics.dispose();
-        }
-        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            if (!ImageIO.write(normalized, "png", output)) {
-                throw new IllegalStateException("PNG encoder unavailable");
-            }
-            return output.toByteArray();
+            return ComfyUiInputImage.png(source, width, height);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot encode pinned video input", failure);
         }

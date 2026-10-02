@@ -10,10 +10,10 @@ PaintBrush,Plus,SlidersHorizontal,UploadSimple,VideoCamera,
 X
 } from "@phosphor-icons/react";
 import { useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
-import type { CSSProperties,FormEvent,KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { CSSProperties,FormEvent } from "react";
 import { useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";
 import {
-ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
+HTTP_STATUS,ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
 getMediaDraft,getMediaSettings,
 listArtifactVersions,listArtifacts,listCanvasItems,listDirectMediaTasks,
 removeMediaDraftMediaInput,
@@ -22,22 +22,22 @@ uploadAudioAsset,
 uploadImageAsset,
 uploadVideoAsset,
 type Artifact,
-type ImageGenerationParameters,
-type MediaCapability,type MediaDraft,
+type MediaDraft,
 type RunningHubField,
 type SaveMediaDraftRequest
 } from "../../shared/api/client";
 import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
+import { isAudioFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { OptionContent } from "../../shared/ui/OptionContent";
 import { Button } from "../../shared/ui/primitives/button";
-import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
 import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
 import { mediaModelDetails } from "./mediaModelPresentation";
+import { mediaDraftQueryOptions } from "./mediaDisplay";
 import { AudioPromptTools } from "./AudioPromptTools";
 import "./MediaDraftEditor.css";
 import { RunningHubForm,runningHubErrors,runningHubUsedVersions,type RunningHubValue } from "./RunningHubForm";
@@ -49,14 +49,20 @@ import { saveClosedMediaDraft,type PendingMediaDraftSave } from "./mediaDraftClo
 import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { VOICES } from "./voiceCatalog";
+import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
+  GENERATION_COUNT_OPTIONS, normalizedImageParameters, normalizedVideoParameters,
+  preferredImageVideoMode, inputsForVideoMode, planMediaCapabilityChange,
+  type MediaDraftFields as DraftFields } from "./mediaDraftCapability";
+import { PromptMentionEditor, type PromptReference } from "./PromptMentionEditor";
+import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
 
 const AUTOSAVE_DELAY_MS = 650;
 const REFERENCE_SOURCE_CLOSE_DELAY_MS = 120;
 const MAX_PROMPT_LENGTH = 20000;
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
+const MAX_RUNNINGHUB_INPUT_BYTES = 30 * 1024 * 1024;
 const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
-const CONFLICT_STATUS = 409;
 const MAX_ARTIFACT_TITLE_LENGTH = 160;
 const INPUT_COLORS = [
   "#F15CAF", "#67C7F3", "#F1B95C", "#8DD17E", "#A98AF7", "#F27979", "#56C8B5",
@@ -66,11 +72,6 @@ const QUEUE_LABELS = {
   get WAITING_WORKER() { return t("等待执行器"); }, get NOT_QUEUED() { return t("未排队"); },
 } as const;
 const QUALITY_LABELS = { get low() { return t("低"); }, get medium() { return t("中"); }, get high() { return t("高"); } } as const;
-const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9", "AUTO"] as const;
-const VIDEO_ASPECT_RATIO_OPTIONS = ["AUTO", "16:9", "9:16", "1:1"] as const;
-const RESOLUTION_OPTIONS = ["1K", "2K", "4K"] as const;
-const QUALITY_OPTIONS = ["low", "medium", "high"] as const;
-const GENERATION_COUNT_OPTIONS = [1, 2, 4] as const;
 const ASPECT_RATIO_LABELS: Readonly<Record<(typeof ASPECT_RATIO_OPTIONS)[number], string>> = {
   "1:1": "1:1", "2:3": "2:3", "3:2": "3:2", "9:16": "9:16", "16:9": "16:9",
   "3:4": "3:4", "4:3": "4:3", "21:9": "21:9", get AUTO() { return t("自动"); },
@@ -80,10 +81,6 @@ const VIDEO_MODE_OPTIONS = [
   { value: "GENERAL_REFERENCE", get label() { return t("全能参考"); }, get description() { return t("按顺序参考图片和音频"); }, needsImage: true },
   { value: "START_END", get label() { return t("首尾帧"); }, get description() { return t("固定首帧，可选尾帧"); }, needsImage: true },
 ] as const;
-// Each object-replacement character occupies one position in the prompt and maps to the
-// structurally equivalent entry in mentions. Human-readable labels are a view of that pair.
-const MENTION_MARKER = "\uFFFC";
-type DraftFields = Omit<SaveMediaDraftRequest, "expectedVersion">;
 type Popover = "models" | "modes" | "parameters" | "assetReferences" | "canvasReferences" | "libraryReferences" | "voices";
 type RunIntent = { key: string; expectedDraftVersion: number };
 type UploadProgress = { assetId?: string; createKey: string };
@@ -92,58 +89,7 @@ type AssetReferenceCommit = {
   nextFields: DraftFields;
   request: SaveMediaDraftRequest;
 };
-type PromptReference = DraftFields["mediaInputs"][number] & {
-  label: string; thumbnailUrl?: string;
-};
-type ImageParameters = Required<Omit<ImageGenerationParameters, "speaker" | "speechRate" | "loudnessRate" | "pitchRate" | "dynamicValues" | "videoResolution">>;
 type VideoInputMode = NonNullable<MediaDraft["videoInputMode"]>;
-type VideoParameters = { aspectRatio: (typeof VIDEO_ASPECT_RATIO_OPTIONS)[number]; videoResolution?: ImageGenerationParameters["videoResolution"] };
-
-function normalizedImageParameters(raw: ImageGenerationParameters | undefined,
-  capability?: MediaCapability): ImageParameters {
-  raw = { ...capability?.settings.defaultParameters, ...raw };
-  const supportedRatios = capability?.supportedImageAspectRatios ?? ["AUTO"];
-  const supportedResolutions = capability?.supportedImageResolutions ?? ["1K"];
-  const supportedQualities = capability?.supportedImageQualities ?? [];
-  const configuredQuality = capability?.settings.quality;
-  const aspectRatio = raw?.aspectRatio && supportedRatios.includes(raw.aspectRatio)
-    ? raw.aspectRatio : supportedRatios.includes("AUTO") ? "AUTO" : supportedRatios[0] ?? "AUTO";
-  const resolution = raw?.resolution && supportedResolutions.includes(raw.resolution)
-    ? raw.resolution : supportedResolutions[0] ?? "1K";
-  const quality = raw?.quality && (supportedQualities.length === 0 || supportedQualities.includes(raw.quality))
-    ? raw.quality : configuredQuality ?? supportedQualities[0] ?? "medium";
-  return {
-    aspectRatio, resolution, quality,
-    transparentBackground: capability?.supportsTransparentBackground
-      ? raw?.transparentBackground ?? false : false,
-    generationCount: raw?.generationCount === 2 || raw?.generationCount === 4
-      ? raw.generationCount : 1,
-  };
-}
-
-function normalizedVideoParameters(raw: ImageGenerationParameters | undefined, capability?: MediaCapability): VideoParameters {
-  raw = { ...capability?.settings.defaultParameters, ...raw };
-  const aspectRatio = VIDEO_ASPECT_RATIO_OPTIONS.find((candidate) => candidate === raw?.aspectRatio);
-  return { aspectRatio: aspectRatio ?? "AUTO",
-    ...(capability?.adapterId === AUTODL_ADAPTER ? { videoResolution: raw?.videoResolution ?? capability.settings.videoResolution ?? resolveAutoDlWorkflow(capability.settings)?.defaultResolution as VideoParameters["videoResolution"] } : raw?.videoResolution ? { videoResolution: raw.videoResolution } : {}) };
-}
-
-function preferredImageVideoMode(capability?: MediaCapability): VideoInputMode {
-  if (capability?.supportedVideoInputModes.includes("GENERAL_REFERENCE")) return "GENERAL_REFERENCE";
-  if (capability?.supportedVideoInputModes.includes("START_END")) return "START_END";
-  return "GENERAL_REFERENCE";
-}
-
-function inputsForVideoMode(inputs: DraftFields["mediaInputs"], mode: VideoInputMode) {
-  if (mode === "GENERAL_REFERENCE") {
-    return inputs.map((input) => ({ ...input, role: input.role === "AUDIO_REFERENCE" ? "AUDIO_REFERENCE" as const : "REFERENCE" as const }));
-  }
-  if (mode === "START_END") {
-    return inputs.filter((input) => input.role !== "AUDIO_REFERENCE").slice(0, 2).map((input, index) => ({ ...input,
-      role: index === 0 ? "START_FRAME" as const : "END_FRAME" as const }));
-  }
-  return [];
-}
 
 function imageAssetId(content: unknown) {
   const value = readContentText(content, "assetId");
@@ -165,221 +111,6 @@ function fieldsFromDraft(draft: MediaDraft): DraftFields {
     })),
     mentions: draft.mentions ?? [],
   };
-}
-
-function readPromptEditor(root: HTMLElement) {
-  let prompt = "";
-  const mentions: DraftFields["mentions"] = [];
-  function visit(node: Node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      prompt += (node.textContent ?? "").replaceAll("\u00A0", " ");
-      return;
-    }
-    if (!(node instanceof HTMLElement)) return;
-    const versionId = node.dataset.mentionVersion;
-    const role = node.dataset.mentionRole as DraftFields["mentions"][number]["role"] | undefined;
-    if (versionId && role) {
-      prompt += MENTION_MARKER;
-      mentions.push({ versionId, role });
-      return;
-    }
-    if (node instanceof HTMLBRElement) {
-      prompt += "\n";
-      return;
-    }
-    const block = node.tagName === "DIV" || node.tagName === "P";
-    if (block && prompt && !prompt.endsWith("\n")) prompt += "\n";
-    node.childNodes.forEach(visit);
-  }
-  root.childNodes.forEach(visit);
-  return { prompt, mentions };
-}
-
-function mentionToken(reference: PromptReference) {
-  const token = document.createElement("span");
-  token.className = "media-draft-inline-mention";
-  token.contentEditable = "false";
-  token.dataset.mentionVersion = reference.versionId;
-  token.dataset.mentionRole = reference.role;
-  token.style.setProperty("--reference-color", reference.color);
-  if (reference.thumbnailUrl) {
-    const image = document.createElement("img");
-    image.src = reference.thumbnailUrl;
-    image.alt = "";
-    token.append(image);
-  }
-  const label = document.createElement("span");
-  label.textContent = `@${reference.label}`;
-  token.append(label);
-  return token;
-}
-
-function renderPromptEditor(root: HTMLElement, prompt: string,
-    mentions: DraftFields["mentions"], references: PromptReference[]) {
-  root.replaceChildren();
-  let mentionIndex = 0;
-  let text = "";
-  const flush = () => {
-    if (!text) return;
-    root.append(document.createTextNode(text));
-    text = "";
-  };
-  for (const character of prompt) {
-    if (character === MENTION_MARKER) {
-      flush();
-      const mention = mentions[mentionIndex++];
-      const reference = mention && references.find((candidate) =>
-        candidate.versionId === mention.versionId && candidate.role === mention.role);
-      if (reference) root.append(mentionToken(reference));
-      continue;
-    }
-    if (character === "\n") {
-      flush();
-      root.append(document.createElement("br"));
-    } else text += character;
-  }
-  flush();
-}
-
-function removePromptReferences(prompt: string, mentions: DraftFields["mentions"],
-    versionId: string) {
-  let mentionIndex = 0;
-  let nextPrompt = "";
-  const nextMentions: DraftFields["mentions"] = [];
-  for (const character of prompt) {
-    if (character !== MENTION_MARKER) {
-      nextPrompt += character;
-      continue;
-    }
-    const mention = mentions[mentionIndex++];
-    if (mention && mention.versionId !== versionId) {
-      nextPrompt += MENTION_MARKER;
-      nextMentions.push(mention);
-    }
-  }
-  return { prompt: nextPrompt, mentions: nextMentions };
-}
-
-function promptForMediaInputs(fields: DraftFields, inputs: DraftFields["mediaInputs"]) {
-  let result = { prompt: fields.prompt, mentions: fields.mentions };
-  for (const input of fields.mediaInputs) {
-    if (!inputs.some((next) => next.versionId === input.versionId))
-      result = removePromptReferences(result.prompt, result.mentions, input.versionId);
-  }
-  return { ...result, mentions: result.mentions.map((mention) => ({ ...mention,
-    role: inputs.find((input) => input.versionId === mention.versionId)?.role ?? mention.role })) };
-}
-
-function PromptMentionEditor({ id, label, placeholder, prompt, mentions, references, onChange }: {
-  id: string; label: string; placeholder: string; prompt: string;
-  mentions: DraftFields["mentions"]; references: PromptReference[];
-  onChange: (prompt: string, mentions: DraftFields["mentions"]) => void;
-}) {
-  useLocale();
-  const editorRef = useRef<HTMLDivElement>(null);
-  const triggerRange = useRef<Range | null>(null);
-  const presentationRef = useRef("");
-  const [menu, setMenu] = useState<{ left: number; top: number; selected: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    const current = readPromptEditor(editor);
-    const presentation = references.map((reference) => [reference.versionId, reference.role,
-      reference.label, reference.thumbnailUrl, reference.color].join(":")).join("|");
-    if (current.prompt !== prompt || JSON.stringify(current.mentions) !== JSON.stringify(mentions)
-        || presentationRef.current !== presentation) {
-      renderPromptEditor(editor, prompt, mentions, references);
-      presentationRef.current = presentation;
-    }
-  }, [prompt, mentions, references]);
-
-  function update(event: FormEvent<HTMLDivElement>) {
-    const editor = event.currentTarget;
-    const value = readPromptEditor(editor);
-    if (value.prompt.length > MAX_PROMPT_LENGTH) {
-      renderPromptEditor(editor, prompt, mentions, references);
-      return;
-    }
-    onChange(value.prompt, value.mentions);
-    const selection = window.getSelection();
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    const container = range?.startContainer;
-    const offset = range?.startOffset ?? 0;
-    if (references.length && range?.collapsed && container?.nodeType === Node.TEXT_NODE
-        && (container.textContent ?? "").slice(offset - 1, offset) === "@") {
-      triggerRange.current = range.cloneRange();
-      const bounds = editor.getBoundingClientRect();
-      const caret = typeof range.getBoundingClientRect === "function"
-        ? range.getBoundingClientRect() : bounds;
-      setMenu({ left: Math.max(0, caret.left - bounds.left),
-        top: Math.max(30, caret.bottom - bounds.top + 8), selected: 0 });
-    } else {
-      triggerRange.current = null;
-      setMenu(null);
-    }
-  }
-
-  function insert(reference: PromptReference) {
-    const editor = editorRef.current;
-    const range = triggerRange.current;
-    if (!editor || !range) return;
-    const container = range.startContainer;
-    if (container.nodeType === Node.TEXT_NODE && range.startOffset > 0) {
-      range.setStart(container, range.startOffset - 1);
-      range.deleteContents();
-    }
-    const token = mentionToken(reference);
-    range.insertNode(token);
-    range.setStartAfter(token);
-    range.collapse(true);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    editor.focus();
-    const value = readPromptEditor(editor);
-    onChange(value.prompt, value.mentions);
-    triggerRange.current = null;
-    setMenu(null);
-  }
-
-  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (!menu) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setMenu(null);
-      return;
-    }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const delta = event.key === "ArrowDown" ? 1 : -1;
-      setMenu({ ...menu, selected: (menu.selected + delta + references.length) % references.length });
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      const reference = references[menu.selected];
-      if (reference) insert(reference);
-    }
-  }
-
-  return <div className="media-draft-prompt-shell">
-    <label className="media-draft-prompt-label" htmlFor={id}>{label}</label>
-    <div ref={editorRef} id={id} className="media-draft-prompt" role="textbox"
-      aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
-      data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
-    {menu ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("图片引用")}
-      style={{ left: menu.left, top: menu.top }}>
-      <CommandList label={t("图片引用")}><CommandGroup heading="Image">
-      {references.map((reference, index) => <CommandItem key={reference.versionId} value={reference.versionId}
-        role="option" aria-selected={index === menu.selected}
-        aria-label={`${reference.label} ${reference.versionId}`}
-        onMouseDown={(event) => event.preventDefault()} onSelect={() => insert(reference)}>
-        {reference.thumbnailUrl ? <img src={reference.thumbnailUrl} alt="" /> : reference.role === "AUDIO_REFERENCE" ? <MusicNotes size={28} /> : <ImageSquare size={28} />}
-        <span>{reference.label}</span>
-      </CommandItem>)}
-    </CommandGroup></CommandList></Command> : null}
-  </div>;
 }
 
 function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, connected, audio = false,
@@ -436,9 +167,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   useLocale();
   const isAudio = artifact.kind === "AUDIO";
   const queryClient = useQueryClient();
-  const key = ["media-draft", artifact.projectId, canvasItemId] as const;
-  const draft = useQuery({ queryKey: key,
-    queryFn: () => getMediaDraft(artifact.projectId, canvasItemId) });
+  const draftOptions = mediaDraftQueryOptions(artifact.projectId, canvasItemId);
+  const key = draftOptions.queryKey;
+  const draft = useQuery(draftOptions);
   const resources = useQuery({
     queryKey: ["artifacts", artifact.projectId],
     queryFn: () => listArtifacts(artifact.projectId),
@@ -562,6 +293,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     (firstControl ?? popoverRef.current)?.focus();
     function onPointerDown(event: PointerEvent) {
       if (popover === "libraryReferences" && libraryBusy) return;
+      const listbox = event.target instanceof Element ? event.target.closest('[role="listbox"]') : null;
+      // Select portals sit outside the picker; the trigger's ARIA link identifies only its own menu.
+      if (popover === "libraryReferences" && listbox?.id
+        && [...popoverRef.current?.querySelectorAll('[role="combobox"][aria-controls]') ?? []]
+          .some((control) => control.getAttribute("aria-controls") === listbox.id)) return;
       if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
         && !triggerRef.current?.contains(event.target)) setPopover(null);
     }
@@ -575,14 +311,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         triggerRef.current?.focus();
         suppressReferenceSourceFocusOpen.current = false;
       }
-      if (popover !== "models" || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-      const choices = Array.from(popoverRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']") ?? []);
-      if (!choices.length) return;
-      event.preventDefault();
-      const current = choices.findIndex((choice) => choice === document.activeElement);
-      const next = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1
-        : (current + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
-      choices[next]?.focus();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown, true);
@@ -798,12 +526,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     });
     setDirty(true);
     setFailedRemovalVersionId(null);
-    if (!(error instanceof ApiError && error.status === CONFLICT_STATUS)) setError(null);
+    if (!(error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT)) setError(null);
   }
 
   async function retry() {
     if (!fields || expectedVersion === null) return;
-    if (error instanceof ApiError && error.status === CONFLICT_STATUS) {
+    if (error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT) {
       try {
         const fresh = await getMediaDraft(artifact.projectId, canvasItemId);
         queryClient.setQueryData(key, fresh);
@@ -843,57 +571,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function chooseCapability(capabilityId: string | null) {
     if (!fields) return;
-    const nextCapabilityId = capabilityId ?? defaultCapabilityId;
-    const nextCapability = availableCapabilities.find((candidate) => candidate.id === nextCapabilityId);
-    const nextDefinition = nextCapability?.settings.runningHub;
-    if (nextDefinition || runningHub) {
-      const oldValues = fields.parameters.dynamicValues ?? {};
-      const compatible: Record<string, RunningHubValue> = {};
-      if (nextDefinition && runningHub) for (const candidate of nextDefinition.fields) {
-        const before = runningHub.fields.find((item) => item.key === candidate.key);
-        const value = oldValues[candidate.key];
-        if (value !== undefined && before?.type === candidate.type && before.source === candidate.source
-          && before.nodeId === candidate.nodeId && before.fieldName === candidate.fieldName
-          && (typeof value !== "number" || (candidate.minimum == null || value >= candidate.minimum) && (candidate.maximum == null || value <= candidate.maximum))
-          && (candidate.type !== "SELECT" || candidate.options?.some((option) => option.value === value))) compatible[candidate.key] = value;
-      }
-      const used = new Set(Object.values(compatible).filter((value) => typeof value === "string"));
-      const retained = nextDefinition ? fields.mediaInputs.filter((input) => used.has(input.versionId)) : [];
-      const removed = Object.keys(oldValues).filter((key) => !(key in compatible));
-      if ((removed.length || retained.length !== fields.mediaInputs.length || !runningHub && Object.keys(fields.parameters).length)
-        && !window.confirm(t("切换能力将移除不兼容参数{0}与未匹配素材引用。是否继续？", { "0": removed.length ? `（${removed.join("、")}）` : "" }))) return;
-      edit({ capabilityId: nextCapabilityId ?? null, parameters: nextDefinition ? { dynamicValues: compatible } : {},
-        mediaInputs: retained, ...promptForMediaInputs(fields, retained),
-        durationSeconds: nextDefinition?.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
-        ...(artifact.kind === "VIDEO" ? { videoInputMode: retained.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) });
-      setPopover(null); triggerRef.current?.focus(); return;
-    }
-    const nextImageParameters = artifact.kind === "IMAGE"
-      ? normalizedImageParameters(fields.parameters, nextCapability) : null;
-    if (nextImageParameters && Object.keys(fields.parameters).length > 0
-        && JSON.stringify(nextImageParameters) !== JSON.stringify(normalizedImageParameters(fields.parameters, chosenCapability))
-        && !window.confirm(t("切换模型会将不受支持的图片参数调整为该模型的默认值。是否继续？"))) return;
-    const nextVideoMode = artifact.kind === "VIDEO" && fields.mediaInputs.length > 0
-      && (!fields.videoInputMode || fields.videoInputMode === "TEXT"
-        || !nextCapability?.supportedVideoInputModes.includes(fields.videoInputMode))
-      ? preferredImageVideoMode(nextCapability) : fields.videoInputMode;
-    const nextVideoInputs = nextVideoMode && artifact.kind === "VIDEO"
-      ? inputsForVideoMode(fields.mediaInputs, nextVideoMode) : fields.mediaInputs;
-    const nextVideoParameters = normalizedVideoParameters(fields.parameters, nextCapability);
-    const previousResolution = fields.parameters.videoResolution;
-    const resolutionIncompatible = artifact.kind === "VIDEO" && previousResolution !== undefined
-      && (nextCapability?.adapterId !== AUTODL_ADAPTER || !publishedAutoDlResolutions(nextCapability.settings).includes(previousResolution));
-    if (resolutionIncompatible) {
-      if (nextCapability?.adapterId === AUTODL_ADAPTER) nextVideoParameters.videoResolution = nextCapability.settings.videoResolution;
-      else delete nextVideoParameters.videoResolution;
-    }
-    if ((nextVideoInputs.length < fields.mediaInputs.length || resolutionIncompatible)
-        && !window.confirm(resolutionIncompatible
-          ? t("切换模型会重置不支持的分辨率，并移除不兼容的图片/音频参考及其连线、提示词标签。是否继续？")
-          : t("切换模型会移除不兼容的图片/音频参考及其连线、提示词标签。是否继续？"))) return;
-    edit({ capabilityId, ...(nextImageParameters ? { parameters: nextImageParameters } : {}),
-      ...(artifact.kind === "VIDEO" ? { parameters: nextVideoParameters,
-        videoInputMode: nextVideoMode, mediaInputs: nextVideoInputs, ...promptForMediaInputs(fields, nextVideoInputs) } : {}) });
+    const resolvedCapabilityId = capabilityId ?? defaultCapabilityId;
+    const next = availableCapabilities.find((candidate) => candidate.id === resolvedCapabilityId);
+    const change = planMediaCapabilityChange({ kind: artifact.kind, fields, capabilityId,
+      resolvedCapabilityId, previous: chosenCapability, next });
+    if (change.confirmation && !window.confirm(change.confirmation)) return;
+    edit(change.fields);
     setPopover(null);
     triggerRef.current?.focus();
   }
@@ -1022,17 +705,22 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     edit({ parameters: { dynamicValues }, mediaInputs: inputs, ...(artifact.kind === "VIDEO" ? { videoInputMode: inputs.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) });
   }
 
-  async function uploadDynamicSlot(field: RunningHubField, file: File) {
-    if (file.size > 30 * 1024 * 1024) throw new Error(t("RunningHub 输入素材不能超过 30 MB。"));
-    const capabilityAtStart = chosenCapability?.id;
+  async function uploadReferenceArtifact(file: File, kind: "IMAGE" | "AUDIO" | "VIDEO") {
     const progress = uploadProgress.current.get(file) ?? { createKey: crypto.randomUUID() };
     uploadProgress.current.set(file, progress);
     if (!progress.assetId) {
-      const asset = await (field.type === "VIDEO" ? uploadVideoAsset : field.type === "AUDIO" ? uploadAudioAsset : uploadImageAsset)(artifact.projectId, file);
+      const asset = await (kind === "VIDEO" ? uploadVideoAsset : kind === "AUDIO" ? uploadAudioAsset : uploadImageAsset)(artifact.projectId, file);
       progress.assetId = asset.id;
     }
-    const uploaded = await createArtifact(artifact.projectId, { kind: field.type === "VIDEO" ? "VIDEO" : field.type === "AUDIO" ? "AUDIO" : "IMAGE",
+    // Keep the archived bytes and command key until the caller has accepted the exact version.
+    return createArtifact(artifact.projectId, { kind,
       title: uploadArtifactTitle(file), content: { sourceType: "UPLOAD", assetId: progress.assetId } }, progress.createKey);
+  }
+
+  async function uploadDynamicSlot(field: RunningHubField, file: File) {
+    if (file.size > MAX_RUNNINGHUB_INPUT_BYTES) throw new Error(t("RunningHub 输入素材不能超过 30 MB。"));
+    const capabilityAtStart = chosenCapability?.id;
+    const uploaded = await uploadReferenceArtifact(file, field.type === "VIDEO" ? "VIDEO" : field.type === "AUDIO" ? "AUDIO" : "IMAGE");
     await queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
     if (!uploaded.resourceDefaultVersionId) throw new Error(t("上传成功，精确版本暂不可用，请重试。"));
     if (fieldsRef.current?.capabilityId && fieldsRef.current.capabilityId !== capabilityAtStart) throw new Error(t("能力已变化；素材已保存到资源库，请重新选择。"));
@@ -1047,9 +735,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     return null;
   }
 
-  function canAddReference(versionId: string, inputs: DraftFields["mediaInputs"]) {
-    const kind = imageChoices.find((choice) => choice.id === versionId)?.kind
+  function referenceKind(versionId: string) {
+    return imageChoices.find((choice) => choice.id === versionId)?.kind
       ?? canvasChoices.find((choice) => choice.versionId === versionId)?.kind ?? uploadedKinds.current.get(versionId);
+  }
+
+  function canAddReference(kind: Artifact["kind"] | undefined, inputs: DraftFields["mediaInputs"]) {
     const audio = kind === "AUDIO";
     const count = inputs.filter((input) => (input.role === "AUDIO_REFERENCE") === audio).length;
     if (!kind || count >= (audio ? audioCapacity - (isAudio && audioSpeaker ? 1 : 0) : imageCapacity)) return false;
@@ -1063,12 +754,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     const nextMode = artifact.kind === "VIDEO" && nextInputs.length === 0
       ? preferredImageVideoMode(chosenCapability) : effectiveMode;
     for (const versionId of versionIds) {
-      const kind = imageChoices.find((choice) => choice.id === versionId)?.kind
-        ?? canvasChoices.find((choice) => choice.versionId === versionId)?.kind ?? uploadedKinds.current.get(versionId);
-      const audio = kind === "AUDIO";
-      const usedCapacity = nextInputs.filter((input) => (input.role === "AUDIO_REFERENCE") === audio).length;
       if (nextInputs.some((input) => input.versionId === versionId)) continue;
-      if (!canAddReference(versionId, nextInputs) || usedCapacity >= (audio ? audioCapacity : imageCapacity)) return baseFields;
+      const kind = referenceKind(versionId);
+      if (!canAddReference(kind, nextInputs)) return baseFields;
+      const audio = kind === "AUDIO";
       const role = audio && (isAudio || nextMode === "GENERAL_REFERENCE") ? "AUDIO_REFERENCE" : nextRole(nextInputs, nextMode);
       if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) continue;
       const used = new Set(nextInputs.map((input) => input.color));
@@ -1087,10 +776,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ...(artifact.kind === "VIDEO" ? { videoInputMode: next.videoInputMode } : {}) });
   }
 
-  function chooseReference(versionId: string) {
-    appendReferences([versionId]);
-  }
-
   function openAssetReferences() {
     setAssetSearch("");
     setAssetSelection([]);
@@ -1103,7 +788,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     setAssetSelection((current) => {
       if (current.includes(versionId)) return current.filter((candidate) => candidate !== versionId);
       const pending = fieldsWithReferences(current).mediaInputs;
-      return canAddReference(versionId, pending) ? [...current, versionId] : current;
+      return canAddReference(referenceKind(versionId), pending) ? [...current, versionId] : current;
     });
   }
 
@@ -1126,7 +811,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       setFailedUploads([]);
       return;
     }
-    const selectedAudioCount = files.filter((file) => file.type.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(file.name)).length;
+    const selectedAudioCount = files.filter(isAudioFile).length;
     const selectedImageCount = files.length - selectedAudioCount;
     if (selectedImageCount + imageCount > imageCapacity || selectedAudioCount + audioCount + (isAudio && audioSpeaker ? 1 : 0) > audioCapacity
         || isAudio && selectedImageCount + imageCount > 0 && (selectedAudioCount + audioCount > 0 || Boolean(audioSpeaker))) {
@@ -1138,18 +823,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     const failures: File[] = [];
     let firstFailure: Error | null = null;
     for (const file of files) {
-      const progress = uploadProgress.current.get(file) ?? { createKey: crypto.randomUUID() };
-      uploadProgress.current.set(file, progress);
+      const audio = isAudioFile(file);
       try {
-        if (!progress.assetId) {
-          const audio = file.type.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(file.name);
-          const asset = await (audio ? uploadAudioAsset : uploadImageAsset)(artifact.projectId, file);
-          progress.assetId = asset.id;
-        }
-        const uploadedArtifact = await createArtifact(artifact.projectId, {
-          kind: file.type.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(file.name) ? "AUDIO" : "IMAGE", title: uploadArtifactTitle(file),
-          content: { sourceType: "UPLOAD", assetId: progress.assetId },
-        }, progress.createKey);
+        const uploadedArtifact = await uploadReferenceArtifact(file, audio ? "AUDIO" : "IMAGE");
         if (!uploadedArtifact.resourceDefaultVersionId) {
           throw new Error(t("“{0}”已上传，但图片版本尚不可用。", { "0": file.name }));
         }
@@ -1200,11 +876,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     triggerRef.current?.focus();
   }
 
-  function moveReference(index: number, delta: -1 | 1) {
-    const target = index + delta;
-    moveReferenceTo(index, target);
-  }
-
   function moveReferenceTo(index: number, target: number) {
     if (target < 0 || target >= currentFields.mediaInputs.length || index === target
         || effectiveMode === "START_END") return;
@@ -1250,7 +921,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           }, REFERENCE_SOURCE_CLOSE_DELAY_MS);
         }}>
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
-          accept={audioCapacity > 0 ? "image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"} multiple aria-label={audioCapacity > 0 ? t("选择本地图片或音频") : t("选择本地图片")} onChange={handleUploadSelection} />
+          accept={audioCapacity > 0 ? `${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.AUDIO}` : MEDIA_FILE_ACCEPT.IMAGE} multiple aria-label={audioCapacity > 0 ? t("选择本地图片或音频") : t("选择本地图片")} onChange={handleUploadSelection} />
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-reference-add" type="button"
           disabled={!chosenCapability || referenceLimitReached || uploading
             || commitAssetReferences.isPending}
@@ -1311,11 +982,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           <LibraryReferencePicker projectId={artifact.projectId} itemId={canvasItemId}
             kinds={audioCapacity > 0 ? ["IMAGE", "AUDIO"] : ["IMAGE"]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
             plan={(entry) => {
+              if (!canAddReference(entry.kind, fields.mediaInputs)) return null;
               const audio = entry.kind === "AUDIO";
-              const count = fields.mediaInputs.filter((input) => (input.role === "AUDIO_REFERENCE") === audio).length;
-              if (count >= (audio ? audioCapacity - (isAudio && audioSpeaker ? 1 : 0) : imageCapacity)
-                  || isAudio && (audio ? fields.mediaInputs.some((input) => input.role !== "AUDIO_REFERENCE")
-                    : Boolean(audioSpeaker) || fields.mediaInputs.some((input) => input.role === "AUDIO_REFERENCE"))) return null;
               const mode = artifact.kind === "VIDEO" && fields.mediaInputs.length === 0 ? preferredImageVideoMode(chosenCapability) : effectiveMode;
               const role = audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
               if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
@@ -1344,7 +1012,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             {filteredImageChoices.map((choice) => {
               const alreadyAdded = fields.mediaInputs.some((input) => input.versionId === choice.id);
               const selected = assetSelection.includes(choice.id);
-              const selectionFull = !selected && !canAddReference(choice.id, fieldsWithReferences(assetSelection).mediaInputs);
+              const selectionFull = !selected && !canAddReference(referenceKind(choice.id), fieldsWithReferences(assetSelection).mediaInputs);
               return <button key={choice.id} type="button" role="checkbox"
               className="media-draft-reference-option" aria-label={t("选择 {0}", { "0": choice.label })}
               aria-checked={alreadyAdded || selected}
@@ -1385,8 +1053,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             {canvasChoices.map((choice) => <Button variant="ghost" key={choice.canvasItemId} type="button"
               className="media-draft-reference-option" aria-label={t("使用画布{0} {1}", { "0": choice.kind === "AUDIO" ? t("音频") : t("图片"), "1": choice.title })}
               aria-pressed={fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
-              disabled={fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(choice.versionId, fields.mediaInputs)}
-              onClick={() => chooseReference(choice.versionId)}>
+              disabled={fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(referenceKind(choice.versionId), fields.mediaInputs)}
+              onClick={() => appendReferences([choice.versionId])}>
               {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
               <span><strong>{choice.title}</strong><small>{t("画布当前选用 · v{0}", { "0": choice.versionNo })}</small></span>
               {fields.mediaInputs.some((input) => input.versionId === choice.versionId) ? <Check size={15} /> : null}
@@ -1407,7 +1075,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           connected={hasConnectionSource(input.versionId)}
           busy={removeConnectedInput.isPending || commitAssetReferences.isPending || dirty || save.isPending}
           reorderable={effectiveMode !== "START_END"}
-          onMove={(delta) => moveReference(index, delta)}
+          onMove={(delta) => moveReferenceTo(index, index + delta)}
           onDragStart={() => { draggedReferenceIndex.current = index; }}
           onDragEnd={() => { draggedReferenceIndex.current = null; }}
           onDrop={() => {
@@ -1421,7 +1089,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     </div>
     : <RunningHubForm definition={runningHub} values={fields.parameters.dynamicValues ?? {}} prompt={fields.prompt}
       durationSeconds={fields.durationSeconds} choices={imageChoices} disabled={run.isPending} onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
-    {!runningHub ? <PromptMentionEditor id={`${id}-prompt`}
+    {!runningHub ? <PromptMentionEditor id={`${id}-prompt`} maxLength={MAX_PROMPT_LENGTH}
       label={isAudio ? t("音频提示词") : artifact.kind === "IMAGE" ? t("图片提示词") : t("视频提示词")}
       placeholder={isAudio ? t("描述声音、对白、情绪和环境音；输入 @ 引用音频…") : artifact.kind === "IMAGE" ? t("描述你想创作的画面，让想象发生…") : t("描述镜头、动作和运镜，让画面动起来…")}
       prompt={fields.prompt} mentions={fields.mentions} references={promptReferences}
@@ -1605,18 +1273,18 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
         ? <p role="alert">{t("生成未完成{0}", { "0": taskErrorDetail(latestTask.errorCode) })}</p> : null}
       {latestTask?.status === "READY" ? <div className="media-draft-task-status">
-        {queue.data && latestTask.status === "READY" ? <span>{t("前方 {0} 项 · {1}（排位可能变化）", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })}</span> : null}
-        {queue.error && latestTask.status === "READY" ? <span role="alert">{t("暂时无法读取排位，任务仍在排队。")}</span> : null}
-        {latestTask.status === "READY" ? <Button variant="ghost" className="media-draft-text-action" type="button"
-          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("取消中…") : t("取消排队")}</Button> : null}
+        {queue.data ? <span>{t("前方 {0} 项 · {1}（排位可能变化）", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })}</span> : null}
+        {queue.error ? <span role="alert">{t("暂时无法读取排位，任务仍在排队。")}</span> : null}
+        <Button variant="ghost" className="media-draft-text-action" type="button"
+          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("取消中…") : t("取消排队")}</Button>
       </div> : null}
       {cancel.error ? <p role="alert">{t("取消失败：{0}", { "0": cancel.error.message })}</p> : null}
       {latestTask?.status === "UNKNOWN" ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} /> : null}
-      {error ? <div role="alert"><span>{error instanceof ApiError && error.status === CONFLICT_STATUS
+      {error ? <div role="alert"><span>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT
         ? t("草稿有冲突；本地输入已保留。重新读取版本后可再保存。") : error.message}</span>
         <Button variant="ghost" className="media-draft-text-action" onClick={() => void retry()} type="button">
-          {error instanceof ApiError && error.status === CONFLICT_STATUS ? t("重新读取版本")
+          {error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("重新读取版本")
             : failedRemovalVersionId ? t("重试取消引入") : t("重试保存")}</Button></div> : null}
     </div>
   </div>;

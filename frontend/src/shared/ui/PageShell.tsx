@@ -2,7 +2,7 @@ import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,Plug
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link,Navigate,useLocation,useNavigate } from "react-router";
-import { ApiError,getCurrentUser,logout } from "../api/client";
+import { HTTP_STATUS,ApiError,getCurrentUser,logout } from "../api/client";
 import { t,useLocale } from "../i18n";
 import { LanguageSelect } from "../i18n/LanguageSelect";
 import { BrandLogo } from "./BrandLogo";
@@ -12,7 +12,6 @@ import "./PageShell.css";
 import { useNavigationStore } from "./navigationStore";
 import { Button } from "./primitives/button";
 
-const UNAUTHORIZED_STATUS = 401;
 const NAVIGATION = [
   { to: "/projects", get label() { return t("项目"); }, icon: FolderSimple },
   { to: "/library", get label() { return t("资产"); }, icon: Cube },
@@ -40,7 +39,7 @@ export function PageShell({ title, description, actions, children }: {
     navigate("/login", { replace: true });
   } });
 
-  if (session.error instanceof ApiError && session.error.status === UNAUTHORIZED_STATUS) {
+  if (session.error instanceof ApiError && session.error.status === HTTP_STATUS.UNAUTHORIZED) {
     return <Navigate to="/login" replace />;
   }
   if (session.isPending) return <main className="app-page app-page-loading"><LoadingState label={t("正在读取会话")} /></main>;

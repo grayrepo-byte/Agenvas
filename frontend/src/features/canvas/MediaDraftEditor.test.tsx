@@ -49,6 +49,11 @@ const versatileVideoCapability: MediaCapability = {
   supportedVideoInputModes: ["TEXT", "START_END", "GENERAL_REFERENCE"],
   defaultVideoInputMode: "TEXT", supportsEndFrame: true,
 };
+const audioCapability: MediaCapability = {
+  ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
+  kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,
+  supportedImageAspectRatios: [], supportedImageResolutions: [], supportedImageQualities: [], settings: {},
+};
 const settings: MediaSettings = {
   connections: [{ id: "connection", name: "我的媒体连接", platform: "OPENAI", enabled: true,
     version: 0, connectionVersion: 1, origin: null, keyMask: null,
@@ -61,6 +66,10 @@ const settings: MediaSettings = {
     capabilities: [{ ...imageCapability, id: "hidden-capability", name: "隐藏模型" }] }],
   defaults: [{ kind: "IMAGE_GENERATION", capabilityId: imageCapability.id, version: 0 },
     { kind: "VIDEO_GENERATION", capabilityId: videoCapability.id, version: 0 }],
+};
+const audioSettings: MediaSettings = {
+  connections: [{ ...settings.connections[0]!, platform: "VOLCENGINE", capabilities: [audioCapability] }],
+  defaults: [{ kind: "AUDIO_GENERATION", capabilityId: audioCapability.id, version: 0 }],
 };
 function task(status: Task["status"]): Task {
   return { id: "task-direct", projectId: PROJECT_ID, runId: null,
@@ -134,6 +143,43 @@ describe("MediaDraftEditor", () => {
     const recovery = useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`];
     expect(recovery?.saving).toBe(false);
     expect(recovery?.error?.message).toContain("参考转存");
+  });
+  it("keeps the library reference picker open when choosing a media type", async () => {
+    setup({ kind: "AUDIO", settings: audioSettings, handlers: [
+      http.get("/api/v1/library/entries", ({ request }) => {
+        const kind = new URL(request.url).searchParams.get("kind");
+        return HttpResponse.json({ items: [{ id: `library-${kind}`, name: kind === "AUDIO" ? "音频资产" : "图片资产",
+          category: "OTHER", kind, version: 0, source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }],
+          total: 1, categoryCounts: {} });
+      }),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片或音频输入" }));
+    await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    expect(await screen.findByRole("button", { name: "用作参考：图片资产" })).toBeVisible();
+    await changeControl(screen.getByLabelText("媒体类型"), { target: { value: "AUDIO" } });
+    expect(screen.queryByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "用作参考：音频资产" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "用作参考：图片资产" })).not.toBeInTheDocument();
+  });
+  it.each(["outside click", "Escape", "unowned listbox"] as const)("closes the idle library picker on %s", async (action) => {
+    setup({ handlers: [http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [], total: 0, categoryCounts: {} }))] });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+    if (action === "Escape") await user.keyboard("{Escape}");
+    else if (action === "outside click") await user.click(screen.getByRole("textbox", { name: "图片提示词" }));
+    else {
+      const unrelated = document.createElement("div");
+      unrelated.setAttribute("role", "listbox");
+      unrelated.id = "unrelated-listbox";
+      document.body.append(unrelated);
+      try { await user.click(unrelated); } finally { unrelated.remove(); }
+    }
+    expect(screen.queryByRole("dialog", { name: "我的资产参考" })).not.toBeInTheDocument();
   });
   it("uses RunningHub fields for a promptless video app and persists named exact video slots", async () => {
     const capability: MediaCapability = { ...videoCapability, id: "rh-video", adapterId: "RUNNINGHUB_VIDEO", name: "视频换背景", supportedVideoInputModes: ["TEXT", "GENERAL_REFERENCE"],
@@ -252,11 +298,7 @@ describe("MediaDraftEditor", () => {
   });
 
   it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
-    const audioCapability: MediaCapability = { ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
-      kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,
-      supportedImageAspectRatios: [], supportedImageResolutions: [], supportedImageQualities: [], settings: {} };
-    const { saves } = setup({ kind: "AUDIO", settings: { connections: [{ ...settings.connections[0]!, platform: "VOLCENGINE",
-      capabilities: [audioCapability] }], defaults: [{ kind: "AUDIO_GENERATION", capabilityId: audioCapability.id, version: 0 }] } });
+    const { saves } = setup({ kind: "AUDIO", settings: audioSettings });
     expect(await screen.findByRole("textbox", { name: "音频提示词" })).toBeVisible();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     const user = userEvent.setup();
@@ -271,6 +313,48 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "音频参数" }));
     await changeControl(screen.getByLabelText("语速"), { target: { value: "-20" } });
     await waitFor(() => expect(saves.at(-1)?.parameters.speechRate).toBe(-20));
+  });
+
+  it.each([
+    { name: "reserves an audio slot for the selected voice", roles: ["AUDIO_REFERENCE", "AUDIO_REFERENCE"], speaker: "zh_female_xiaohe_uranus_bigtts", kind: "AUDIO", allowed: false },
+    { name: "rejects an image alongside an audio reference", roles: ["AUDIO_REFERENCE"], speaker: "", kind: "IMAGE", allowed: false },
+    { name: "rejects an audio reference alongside an image", roles: ["REFERENCE"], speaker: "", kind: "AUDIO", allowed: false },
+    { name: "rejects an image alongside the selected voice", roles: [], speaker: "zh_female_xiaohe_uranus_bigtts", kind: "IMAGE", allowed: false },
+    { name: "accepts a third audio reference when no voice is selected", roles: ["AUDIO_REFERENCE", "AUDIO_REFERENCE"], speaker: "", kind: "AUDIO", allowed: true },
+  ] as const)("$name when selecting a library asset", async ({ roles, speaker, kind, allowed }) => {
+    const mediaInputs = roles.map((role, order) => ({ versionId: `reference-v${order}`, artifactId: `reference-${order}`,
+      role, order, color: "#F15CAF", sources: [] }));
+    const archived = vi.fn();
+    setup({ kind: "AUDIO", settings: audioSettings,
+      draft: { ...initialDraft, parameters: { speaker }, mediaInputs },
+      handlers: [
+        http.get("/api/v1/library/entries", ({ request }) => {
+          const items = new URL(request.url).searchParams.get("kind") === kind
+            ? [{ id: "library-reference", name: "资产参考", category: "OTHER", kind, version: 2,
+              source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }] : [];
+          return HttpResponse.json({ items, total: items.length, categoryCounts: {} });
+        }),
+        http.post(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/library-references`, async ({ request }) => {
+          archived(await request.json());
+          return HttpResponse.json({ id: "library-command", status: "ARCHIVING" }, { status: 202 });
+        }),
+        http.get("/api/v1/library/commands/library-command", () => HttpResponse.json({ id: "library-command", status: "ARCHIVING" })),
+      ] });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片或音频输入" }));
+    await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    if (kind === "AUDIO") await changeControl(screen.getByLabelText("媒体类型"), { target: { value: kind } });
+    await user.click(await screen.findByRole("button", { name: "用作参考：资产参考" }));
+    if (allowed) {
+      await waitFor(() => expect(archived).toHaveBeenCalledOnce());
+      expect(archived).toHaveBeenCalledWith(expect.objectContaining({ entryId: "library-reference", expectedVersion: 2,
+        role: "AUDIO_REFERENCE", draft: expect.objectContaining({ mediaInputs: mediaInputs.map(({ versionId, role, color }) => ({ versionId, role, color })),
+          parameters: { speaker }, expectedVersion: initialDraft.version }) }));
+    } else {
+      expect(await screen.findByText("所选能力或当前模式不能再添加这个类型的参考，请先调整模式或移除已有输入。")).toBeVisible();
+      expect(archived).not.toHaveBeenCalled();
+    }
   });
 
   it("confirms removal of audio when switching mixed references to frames and updates surviving mention roles", async () => {
@@ -606,40 +690,97 @@ describe("MediaDraftEditor", () => {
     expect(addImage).toHaveFocus();
   });
 
-  it("uploads a device image as a reusable artifact and adds its exact version", async () => {
+  it.each([
+    { kind: "IMAGE", type: "image/png", filename: "reference.png" },
+    { kind: "AUDIO", type: "", filename: "reference.WAV" },
+    { kind: "AUDIO", type: "audio/ogg", filename: "reference.bin" },
+  ] as const)("uploads $kind ($type, $filename) as a reusable exact-version reference", async ({ kind, type, filename }) => {
+    const audio = kind === "AUDIO";
+    const uploadPath = `/api/v1/projects/${PROJECT_ID}/assets${audio ? "/audio" : ""}`;
     const artifactRequests: { key: string | null; body: unknown }[] = [];
     const interceptedFetch = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      if (input === `/api/v1/projects/${PROJECT_ID}/assets`) {
+      if (input === uploadPath) {
         expect(init?.body).toBeInstanceOf(FormData);
-        return HttpResponse.json({ id: "uploaded-asset", mediaKind: "IMAGE" }, { status: 201 });
+        return HttpResponse.json({ id: "uploaded-asset", mediaKind: kind }, { status: 201 });
       }
       return interceptedFetch(input, init);
     });
-    const { saves } = setup({ handlers: [
+    const capability = { ...versatileVideoCapability, maxReferenceAudios: 2 };
+    const { saves } = setup({ kind: audio ? "VIDEO" : "IMAGE", settings: audio ? {
+      ...settings, connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }],
+    } : settings, handlers: [
       http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, async ({ request }) => {
         artifactRequests.push({ key: request.headers.get("Idempotency-Key"), body: await request.json() });
-        return HttpResponse.json({ ...artifact, id: "uploaded-artifact", title: "reference",
+        return HttpResponse.json({ ...artifact, kind, id: "uploaded-artifact", title: "reference",
           resourceDefaultVersionId: "uploaded-version" });
       }),
     ] });
     const user = userEvent.setup();
-    await screen.findByLabelText("图片提示词");
-    await user.hover(screen.getByRole("button", { name: "添加图片输入" }));
-    const uploadInput = screen.getByLabelText("选择本地图片");
+    await screen.findByLabelText(audio ? "视频提示词" : "图片提示词");
+    await user.hover(screen.getByRole("button", { name: audio ? "添加图片或音频输入" : "添加图片输入" }));
+    const uploadInput = screen.getByLabelText(audio ? "选择本地图片或音频" : "选择本地图片");
     const openPicker = vi.spyOn(uploadInput, "click");
     await clickControl(screen.getByRole("menuitem", { name: "从设备上传" }));
     expect(openPicker).toHaveBeenCalledOnce();
     await changeControl(uploadInput, { target: { files: [
-      new File(["image bytes"], "reference.png", { type: "image/png" }),
+      new File(["synthetic media bytes"], filename, { type }),
     ] } });
     await waitFor(() => expect(artifactRequests).toHaveLength(1));
-    expect(artifactRequests[0]).toMatchObject({ body: { kind: "IMAGE", title: "reference",
+    expect(artifactRequests[0]).toMatchObject({ body: { kind, title: "reference",
       content: { sourceType: "UPLOAD", assetId: "uploaded-asset" } } });
     expect(artifactRequests[0]?.key).toBeTruthy();
     await waitFor(() => expect(saves.at(-1)).toMatchObject({ mediaInputs: [{
-      versionId: "uploaded-version", role: "REFERENCE", color: "#F15CAF",
+      versionId: "uploaded-version", role: audio ? "AUDIO_REFERENCE" : "REFERENCE", color: "#F15CAF",
     }] }));
+  });
+
+  it.each([false, true])("reuses archived bytes and the creation key after an artifact failure (RunningHub: %s)", async (dynamic) => {
+    const kind = dynamic ? "VIDEO" : "IMAGE";
+    const uploadPath = `/api/v1/projects/${PROJECT_ID}/assets${dynamic ? "/video" : ""}`;
+    let uploads = 0;
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === uploadPath) {
+        uploads++;
+        return HttpResponse.json({ id: "retry-asset", mediaKind: kind }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const capability: MediaCapability = { ...videoCapability, id: "rh-upload", adapterId: "RUNNINGHUB_VIDEO",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123",
+        usePersonalQueue: false, addMetadata: false,
+        fields: [{ key: "clip", label: "参考视频", type: "VIDEO", nodeId: "1", fieldName: "video", required: true, advanced: false }],
+        outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }] } } };
+    const writes: { key: string | null; body: unknown }[] = [];
+    const { saves } = setup({ kind,
+      ...(dynamic ? { settings: { connections: [{ ...settings.connections[0]!, platform: "RUNNINGHUB", capabilities: [capability] }],
+        defaults: [{ kind: "VIDEO_GENERATION" as const, capabilityId: capability.id, version: 0 }] },
+        draft: { ...initialDraft, prompt: "", capabilityId: capability.id, parameters: { dynamicValues: {} }, videoInputMode: "TEXT" as const } } : {}),
+      handlers: [http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, async ({ request }) => {
+        writes.push({ key: request.headers.get("Idempotency-Key"), body: await request.json() });
+        if (writes.length === 1) return HttpResponse.json({ code: "TEMPORARY", detail: "产物暂未创建" },
+          { status: 503, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ ...artifact, kind, id: "retry-artifact", resourceDefaultVersionId: "retry-version" });
+      })],
+    });
+    const user = userEvent.setup();
+    if (!dynamic) {
+      await screen.findByLabelText("图片提示词");
+      await user.hover(screen.getByRole("button", { name: "添加图片输入" }));
+    }
+    const input = await screen.findByLabelText(dynamic ? "上传参考视频" : "选择本地图片");
+    await changeControl(input, { target: { files: [new File(["synthetic media"], dynamic ? "clip.mp4" : "reference.png", { type: dynamic ? "video/mp4" : "image/png" })] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("产物暂未创建");
+    await user.click(screen.getByRole("button", { name: dynamic ? "重试上传" : "重试失败图片" }));
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs).toEqual([{ versionId: "retry-version",
+      role: dynamic ? "VIDEO_REFERENCE" : "REFERENCE", color: "#F15CAF" }]));
+    expect(uploads).toBe(1);
+    expect(writes).toHaveLength(2);
+    expect(writes[0]?.key).toBeTruthy();
+    expect(writes[1]).toEqual(writes[0]);
+    if (dynamic) expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ clip: "retry-version" });
   });
 
   it("excludes the current card when choosing an image from the canvas", async () => {

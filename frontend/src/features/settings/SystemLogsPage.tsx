@@ -3,7 +3,7 @@ import { ArrowsClockwise,TerminalWindow } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
 import { Navigate } from "react-router";
-import { ApiError,getCurrentUser,listSystemLogs,type SystemLogStream } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,getCurrentUser,listSystemLogs,type SystemLogStream } from "../../shared/api/client";
 import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState,Notice,Panel } from "../../shared/ui/PagePrimitives";
@@ -18,8 +18,6 @@ const REFRESH_INTERVAL_MS = 3000;
 const DEFAULT_LIMIT = 500;
 const LINE_LIMITS = [200, DEFAULT_LIMIT, 1000] as const;
 const MAX_SEARCH_LENGTH = 200;
-const UNAUTHORIZED_STATUS = 401;
-const FORBIDDEN_STATUS = 403;
 
 /** Replaces bounded snapshots so process restarts and retention never produce duplicate lines. */
 export function SystemLogsPage() {
@@ -44,9 +42,9 @@ export function SystemLogsPage() {
     if (follow && output.current) output.current.scrollTop = output.current.scrollHeight;
   }, [logs.data, follow]);
 
-  if (logs.error instanceof ApiError && logs.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
+  if (logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   const forbidden = currentUser.data?.role !== undefined && currentUser.data.role !== "ADMIN"
-    || logs.error instanceof ApiError && logs.error.status === FORBIDDEN_STATUS;
+    || logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.FORBIDDEN;
   const snapshot = logs.data;
   return <PageShell title={t("系统日志")} description={t("查看当前后端进程的标准输出与标准错误，帮助排查运行问题。")} actions={
     <Button variant="outline" type="button"  disabled={logs.isFetching || !currentUser.isSuccess || forbidden}

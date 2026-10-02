@@ -8,14 +8,14 @@ import java.util.UUID;
  *
  * @param id 素材 ID
  * @param projectId 素材所属项目
- * @param mediaKind 图片或视频
+ * @param mediaKind 图片、视频或音频
  * @param objectKey 由服务端生成且相对资产根目录的存储键
  * @param contentType 根据实际解码结果确认的媒体类型
  * @param byteSize 原始文件字节数
  * @param sha256 原始文件 SHA-256 摘要
  * @param width 解码得到的像素宽度
  * @param height 解码得到的像素高度
- * @param durationMs 视频时长毫秒数；图片为空
+ * @param durationMs 视频或音频时长毫秒数；图片为空
  * @param thumbnailKey 缩略图存储键；没有预览时为空
  * @param thumbnailByteSize 缩略图字节数
  * @param thumbnailSha256 缩略图 SHA-256 摘要

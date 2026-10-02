@@ -1,5 +1,6 @@
 package dev.agenvas.run.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.event.application.ProjectEventService;
@@ -7,13 +8,10 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.run.domain.AgentConversation;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -91,7 +89,7 @@ public class AgentConversationService {
         projects.requireActiveProject(ownerId, projectId);
         agents.get(ownerId, projectId, agentId);
         String scope = "agent:" + agentId + ":create-conversation";
-        String hash = sha256(projectId + ":" + agentId);
+        String hash = Sha256.hex(projectId + ":" + agentId);
         Instant now = clock.instant();
         if (!runs.reserveIdempotency(ownerId, scope, key, hash, now.plus(KEY_RETENTION), now)) {
             var prior = runs.findIdempotency(ownerId, scope, key).orElseThrow(this::notFound);
@@ -180,12 +178,6 @@ public class AgentConversationService {
         String raw = conversation.updatedAt().getEpochSecond() + ":" + conversation.updatedAt().getNano()
                 + ":" + conversation.id();
         return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String sha256(String value) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8))); }
-        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
     private ApiProblemException notFound() {

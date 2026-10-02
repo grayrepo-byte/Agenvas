@@ -1,7 +1,7 @@
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link,Navigate } from "react-router";
-import { ApiError,getDebugSettings,updateDebugSettings } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,getDebugSettings,updateDebugSettings } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -9,9 +9,6 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 
 const SETTINGS_KEY = ["settings", "debug"] as const;
-const UNAUTHORIZED_STATUS = 401;
-const FORBIDDEN_STATUS = 403;
-const CONFLICT_STATUS = 409;
 
 export function DebugModeSection({ enabled }: { enabled: boolean }) {
   useLocale();
@@ -23,9 +20,9 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
     onSuccess: (value) => { client.setQueryData(SETTINGS_KEY, value); setDraft(null); },
   });
   const error = save.error ?? settings.error;
-  if (error instanceof ApiError && error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
-  const forbidden = error instanceof ApiError && error.status === FORBIDDEN_STATUS;
-  const conflict = error instanceof ApiError && error.status === CONFLICT_STATUS;
+  if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
+  const forbidden = error instanceof ApiError && error.status === HTTP_STATUS.FORBIDDEN;
+  const conflict = error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT;
   const checked = draft ?? settings.data?.debugMode ?? false;
 
   return <Panel title={t("Debug 模式")} description={t("默认关闭。仅影响之后开始的调用，设置会保存到系统中。")}

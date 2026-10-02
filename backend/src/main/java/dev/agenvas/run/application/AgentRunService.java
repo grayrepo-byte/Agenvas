@@ -1,5 +1,6 @@
 package dev.agenvas.run.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
@@ -18,13 +19,10 @@ import dev.agenvas.shared.idempotency.IdempotencyState;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.domain.Task;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.DateTimeException;
-import java.util.HexFormat;
 import java.util.Base64;
 import java.util.List;
 import java.util.ArrayList;
@@ -46,9 +44,9 @@ public class AgentRunService {
     /** 相同创建命令可重放的幂等记录保留时间。 */
     private static final Duration IDEMPOTENCY_RETENTION = Duration.ofHours(24);
     /** 单次用户指令的最大字符数，避免无界内容进入模型上下文。 */
-    private static final int MAX_INSTRUCTION_LENGTH = 20_000;
+    public static final int MAX_INSTRUCTION_LENGTH = 20_000;
     /** 一次运行允许附带的画布选择数量上限。 */
-    private static final int MAX_SELECTED_ITEMS = 20;
+    public static final int MAX_SELECTED_ITEMS = 20;
     /** 历史列表默认每页条数。 */
     private static final int DEFAULT_PAGE_SIZE = 20;
     /** 历史列表每页最大条数。 */
@@ -233,7 +231,7 @@ public class AgentRunService {
         // Absent conversation fields preserve the legacy command hash, even after the current pointer changes.
         if (requestedConversationId != null) requestFingerprint += "\nconversation:" + requestedConversationId;
         if (expectedConversationVersion != null) requestFingerprint += "\nconversation-version:" + expectedConversationVersion;
-        String requestHash = sha256(requestFingerprint);
+        String requestHash = Sha256.hex(requestFingerprint);
         Instant now = clock.instant();
         boolean reserved = runs.reserveIdempotency(
                 ownerId, scope, key, requestHash, now.plus(IDEMPOTENCY_RETENTION), now);
@@ -538,7 +536,7 @@ public class AgentRunService {
     @Transactional
     public AgentRun advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex) {
-        if (expectedStepIndex < 0 || expectedStepIndex >= 11) {
+        if (expectedStepIndex < 0 || expectedStepIndex >= AgentRun.MAX_MODEL_TURNS - 1) {
             throw validation(ApiMessage.of("api.agent-run-service.model-turns-have-reached-the-default-limit"));
         }
         return events.recordChange(ownerId, projectId, () -> {
@@ -721,8 +719,8 @@ public class AgentRunService {
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
         policy.put("modelConfigVersion", model.version());
         policy.put("modelConfigSource", model.source());
-        policy.put("maxModelTurns", 12);
-        policy.put("maxToolExecutions", 40);
+        policy.put("maxModelTurns", AgentRun.MAX_MODEL_TURNS);
+        policy.put("maxToolExecutions", AgentRun.MAX_TOOL_EXECUTIONS);
         return policy;
     }
 
@@ -787,17 +785,6 @@ public class AgentRunService {
             throw validation(ApiMessage.of("api.artifact-service.idempotency-key-must-be-1-to-200-characters"));
         }
         return normalized;
-    }
-
-    /** 用 UTF-8 原文本计算小写十六进制 SHA-256 请求摘要。 */
-    private String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
-        }
     }
 
     /** 构造 Run 不存在或不属于当前所有者时的 404 响应。 */

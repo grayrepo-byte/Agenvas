@@ -1,7 +1,7 @@
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate } from "react-router";
-import { ApiError,cleanupCallLogs,getCallLogRetentionSettings,updateCallLogRetentionSettings } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,cleanupCallLogs,getCallLogRetentionSettings,updateCallLogRetentionSettings } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -15,9 +15,6 @@ const MIN_DAYS = 1;
 const MAX_DAYS = 3650;
 const MONTH_DAYS = 30;
 const QUARTER_DAYS = 90;
-const UNAUTHORIZED = 401;
-const FORBIDDEN = 403;
-const CONFLICT = 409;
 type Draft = { mode: "forever" | "30" | "90" | "custom"; custom: string };
 function fromDays(days: number | null): Draft {
   return { mode: days === null ? "forever" : days === MONTH_DAYS ? "30" : days === QUARTER_DAYS ? "90" : "custom", custom: String(days ?? MONTH_DAYS) };
@@ -38,9 +35,9 @@ export function CallLogRetentionSection({ enabled }: { enabled: boolean }) {
     onSettled: () => setConfirmation(null),
   });
   const error = cleanup.error ?? save.error ?? settings.error;
-  if (error instanceof ApiError && error.status === UNAUTHORIZED) return <Navigate to="/login" replace />;
-  const forbidden = error instanceof ApiError && error.status === FORBIDDEN;
-  const conflict = error instanceof ApiError && error.status === CONFLICT;
+  if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
+  const forbidden = error instanceof ApiError && error.status === HTTP_STATUS.FORBIDDEN;
+  const conflict = error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT;
   const value = draft ?? fromDays(settings.data?.retentionDays ?? null);
   const days = value.mode === "forever" ? null : value.mode === "custom" ? Number(value.custom) : Number(value.mode);
   const valid = days === null || ((value.mode !== "custom" || value.custom.trim() !== "") && Number.isInteger(days) && days >= MIN_DAYS && days <= MAX_DAYS);

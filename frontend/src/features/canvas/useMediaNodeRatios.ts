@@ -17,27 +17,22 @@ export function useMediaNodeRatios(items: CanvasItem[] = EMPTY_ITEMS): Record<st
   const drafts = useQueries({ queries: mediaItems.map(({ item, artifact }) =>
     mediaDraftQueryOptions(artifact.projectId, item.id)),
     combine: combineDrafts });
-  const displayedMedia = useMemo(() => {
-    return mediaItems.flatMap(({ item, artifact }, index) => {
-      const assetId = displayedMediaAssetId(item, drafts[index]);
-      return assetId ? [{ itemId: item.id, projectId: artifact.projectId, assetId }] : [];
-    });
-  }, [mediaItems, drafts]);
-  const uniqueAssets = useMemo(() => [...new Map(displayedMedia.map((media) =>
-    [`${media.projectId}:${media.assetId}`, media])).values()], [displayedMedia]);
+  const uniqueAssets = useMemo(() => [...new Map(mediaItems.flatMap(({ item, artifact }, index) => {
+    const assetId = displayedMediaAssetId(item, drafts[index]);
+    return assetId ? [[`${artifact.projectId}:${assetId}`, { projectId: artifact.projectId, assetId }] as const] : [];
+  })).values()], [mediaItems, drafts]);
   const assets = useQueries({ queries: uniqueAssets.map(({ projectId, assetId }) =>
     assetMetadataQueryOptions(projectId, assetId)), combine: combineAssets });
   return useMemo(() => {
     const ratiosByAsset = new Map(uniqueAssets.map(({ projectId, assetId }, index) =>
       [`${projectId}:${assetId}`, imageAspectRatio(assets[index])]));
-    const assetsByItem = new Map(displayedMedia.map(({ itemId, projectId, assetId }) =>
-      [itemId, ratiosByAsset.get(`${projectId}:${assetId}`)]));
     return Object.fromEntries(mediaItems.flatMap(({ item, artifact }, index) => {
       const draftRatio = artifact.kind === "IMAGE"
         ? imageDraftAspectRatio(localRatios[`${artifact.projectId}:${item.id}`]
           ?? drafts[index]?.parameters.aspectRatio) : undefined;
-      const ratio = draftRatio ?? assetsByItem.get(item.id);
+      const assetId = displayedMediaAssetId(item, drafts[index]);
+      const ratio = draftRatio ?? (assetId ? ratiosByAsset.get(`${artifact.projectId}:${assetId}`) : undefined);
       return ratio === undefined ? [] : [[item.id, ratio]];
     }));
-  }, [displayedMedia, uniqueAssets, assets, mediaItems, drafts, localRatios]);
+  }, [uniqueAssets, assets, mediaItems, drafts, localRatios]);
 }

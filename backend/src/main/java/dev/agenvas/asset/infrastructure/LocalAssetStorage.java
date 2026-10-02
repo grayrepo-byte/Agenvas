@@ -504,16 +504,10 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     }
 
     public StoredVideo storeVideo(UUID projectId, UUID assetId, InputStream source) {
-        Path directory = root.resolve(projectId.toString());
         Path temporary = null;
         Path posterTemporary = null;
-        Path stable = null;
-        Path posterStable = null;
-        boolean originalMoved = false;
-        boolean posterMoved = false;
-        boolean installed = false;
         try {
-            directory = prepareProjectDirectory(projectId);
+            Path directory = prepareProjectDirectory(projectId);
             temporary = Files.createTempFile(directory, ".video-ingest-", ".mp4");
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             long size = copyBounded(source, temporary, digest, MAX_VIDEO_BYTES);
@@ -535,29 +529,16 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             }
             String key = projectId + "/" + assetId + ".mp4";
             String posterKey = projectId + "/" + assetId + ".thumb.png";
-            stable = checkedPath(key);
-            posterStable = checkedPath(posterKey);
-            Files.move(temporary, stable, StandardCopyOption.ATOMIC_MOVE);
-            temporary = null;
-            originalMoved = true;
-            Files.move(posterTemporary, posterStable, StandardCopyOption.ATOMIC_MOVE);
-            posterTemporary = null;
-            posterMoved = true;
-            StoredVideo result = new StoredVideo(key, size,
-                    HexFormat.of().formatHex(digest.digest()), details.width(),
-                    details.height(), details.durationMs(), posterKey,
-                    Files.size(posterStable), sha256(posterStable));
-            installed = true;
-            return result;
-        } catch (ApiProblemException exception) {
-            throw exception;
+            Path stable = checkedPath(key);
+            Path posterStable = checkedPath(posterKey);
+            return installVisualArchive(temporary, posterTemporary, stable, posterStable,
+                    () -> new StoredVideo(key, size,
+                            HexFormat.of().formatHex(digest.digest()), details.width(),
+                            details.height(), details.durationMs(), posterKey,
+                            Files.size(posterStable), sha256(posterStable)));
         } catch (IOException | NoSuchAlgorithmException exception) {
             throw new IllegalStateException("Private video archive failed", exception);
         } finally {
-            if (!installed) {
-                if (originalMoved) cleanup(stable);
-                if (posterMoved) cleanup(posterStable);
-            }
             cleanup(temporary);
             cleanup(posterTemporary);
         }
@@ -565,16 +546,10 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
 
     /** 仅用服务端生成的项目和素材 ID 构造从不复用的图片文件键。 */
     public StoredImage storeImage(UUID projectId, UUID assetId, InputStream source) {
-        Path directory = root.resolve(projectId.toString());
         Path temporary = null;
         Path thumbnailTemporary = null;
-        Path stable = null;
-        Path thumbnailStable = null;
-        boolean originalMoved = false;
-        boolean thumbnailMoved = false;
-        boolean installed = false;
         try {
-            directory = prepareProjectDirectory(projectId);
+            Path directory = prepareProjectDirectory(projectId);
             temporary = Files.createTempFile(directory, ".ingest-", ".tmp");
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             long size = copyBounded(source, temporary, digest, MAX_IMAGE_BYTES);
@@ -583,41 +558,51 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             writeThumbnail(details.decoded(), thumbnailTemporary);
             String key = projectId + "/" + assetId + details.extension();
             String thumbnailKey = projectId + "/" + assetId + ".thumb.png";
-            stable = checkedPath(key);
-            thumbnailStable = checkedPath(thumbnailKey);
+            Path stable = checkedPath(key);
+            Path thumbnailStable = checkedPath(thumbnailKey);
             try {
-                Files.move(temporary, stable, StandardCopyOption.ATOMIC_MOVE);
-                temporary = null;
-                originalMoved = true;
-                Files.move(thumbnailTemporary, thumbnailStable, StandardCopyOption.ATOMIC_MOVE);
-                thumbnailTemporary = null;
-                thumbnailMoved = true;
+                return installVisualArchive(temporary, thumbnailTemporary, stable, thumbnailStable,
+                        () -> new StoredImage(key, details.contentType(), size,
+                                HexFormat.of().formatHex(digest.digest()), details.width(), details.height(),
+                                thumbnailKey, Files.size(thumbnailStable), sha256(thumbnailStable)));
             } catch (AtomicMoveNotSupportedException exception) {
                 throw new IllegalStateException("Asset volume must support atomic file moves", exception);
             }
-            long thumbnailSize = Files.size(thumbnailStable);
-            String thumbnailHash = sha256(thumbnailStable);
-            StoredImage result = new StoredImage(key, details.contentType(), size,
-                    HexFormat.of().formatHex(digest.digest()), details.width(), details.height(),
-                    thumbnailKey, thumbnailSize, thumbnailHash);
-            installed = true;
-            return result;
-        } catch (ApiProblemException exception) {
-            throw exception;
         } catch (IOException | NoSuchAlgorithmException exception) {
             throw new IllegalStateException("Private asset archive failed", exception);
         } finally {
-            if (!installed) {
-                if (originalMoved) {
-                    cleanup(stable);
-                }
-                if (thumbnailMoved) {
-                    cleanup(thumbnailStable);
-                }
-            }
             cleanup(temporary);
             cleanup(thumbnailTemporary);
         }
+    }
+
+    /** 两个稳定文件及结果元数据全部就绪前失败，只回滚本次已成功移动的文件。 */
+    private <T> T installVisualArchive(Path originalTemporary, Path previewTemporary,
+            Path originalStable, Path previewStable, VisualArchiveResult<T> resultFactory)
+            throws IOException, NoSuchAlgorithmException {
+        boolean originalMoved = false;
+        boolean previewMoved = false;
+        boolean installed = false;
+        try {
+            Files.move(originalTemporary, originalStable, StandardCopyOption.ATOMIC_MOVE);
+            originalMoved = true;
+            Files.move(previewTemporary, previewStable, StandardCopyOption.ATOMIC_MOVE);
+            previewMoved = true;
+            T result = resultFactory.get();
+            installed = true;
+            return result;
+        } finally {
+            if (!installed) {
+                if (originalMoved) cleanup(originalStable);
+                if (previewMoved) cleanup(previewStable);
+            }
+        }
+    }
+
+    /** 归档元数据读取可能失败，必须仍处于稳定文件回滚范围内。 */
+    @FunctionalInterface
+    private interface VisualArchiveResult<T> {
+        T get() throws IOException, NoSuchAlgorithmException;
     }
 
     /** 从任务固定路径重建崩溃前已安装的图片元数据；冲突文件或孤立缩略图会报错。 */

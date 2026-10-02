@@ -1,23 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link,Navigate } from "react-router";
-import { ApiError,getCallDebug,type CallLog } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,getCallDebug,type CallLog } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 import { FormattedCallExchange } from "./FormattedCallExchange";
 
-const UNAUTHORIZED_STATUS = 401;
-const FORBIDDEN_STATUS = 403;
 
 /** Bodies are fetched only while the detail dialog is open and discarded from the query cache on closing. */
 export function CallDebugDetails({ id, kind }: { id: string; kind?: CallLog["kind"] }) {
   useLocale();
   const [mode, setMode] = useState<"formatted" | "raw">("formatted");
   const details = useQuery({ queryKey: ["call-debug", id], queryFn: () => getCallDebug(id), retry: false, gcTime: 0 });
-  if (details.error instanceof ApiError && details.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
-  const forbidden = details.error instanceof ApiError && details.error.status === FORBIDDEN_STATUS;
+  if (details.error instanceof ApiError && details.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
+  const forbidden = details.error instanceof ApiError && details.error.status === HTTP_STATUS.FORBIDDEN;
   return <section className="call-log-debug" aria-label={t("调用内容")}>
     <h3>{t("调用内容")}</h3>
     {details.isPending ? <LoadingState compact label={t("正在读取调用正文")} /> : null}

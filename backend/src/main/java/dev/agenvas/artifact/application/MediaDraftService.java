@@ -35,7 +35,7 @@ public class MediaDraftService {
     private static final int MAX_PROMPT_LENGTH = 20_000;
     private static final int MIN_VIDEO_SECONDS = 1;
     private static final int MAX_VIDEO_SECONDS = 30;
-    private static final int MAX_IMAGE_INPUTS = 14;
+    private static final int MAX_MEDIA_INPUTS = 14;
     // Each marker maps positionally to one exact-version structured prompt mention.
     private static final char MENTION_MARKER = '\uFFFC';
     private static final String COLOR_PATTERN = "^#[0-9A-F]{6}$";
@@ -109,7 +109,7 @@ public class MediaDraftService {
         }
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
-        if (inputCommands.size() > MAX_IMAGE_INPUTS) {
+        if (inputCommands.size() > MAX_MEDIA_INPUTS) {
             throw invalid(ApiMessage.of("api.media-draft-service.a-single-card-can-save-up-to-14-media-inputs"));
         }
         MediaDraft.VideoInputMode mode = kind != Artifact.Kind.VIDEO ? null
@@ -174,8 +174,7 @@ public class MediaDraftService {
                     before.displayMode(),
                     expectedVersion + 1, before.createdAt(), clock.instant());
             if (!artifacts.updateMediaDraft(update, expectedVersion)) {
-                throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                        ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"), true);
+                throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
             }
             artifacts.replaceMediaInputs(projectId, canvasItemId, effectiveInputs,
                     update.updatedAt());
@@ -279,8 +278,7 @@ public class MediaDraftService {
             long expectedSourceDraftVersion) {
         MediaDraft source = get(ownerId, projectId, sourceCanvasItemId);
         if (source.version() != expectedSourceDraftVersion) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.media-draft-service.the-source-draft-has-changed-before-copying-please-save-and"), true);
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-source-draft-has-changed-before-copying-please-save-and"));
         }
         Instant now = clock.instant();
         artifacts.createMediaDraft(projectId, targetCanvasItemId, "",
@@ -337,8 +335,7 @@ public class MediaDraftService {
         }
         MediaDraft before = get(ownerId, projectId, canvasItemId);
         if (before.version() != expectedVersion) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-connection-was-established"), true);
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-connection-was-established"));
         }
         List<MediaDraft.MediaInput> inputs = new ArrayList<>(before.mediaInputs());
         int existingIndex = java.util.stream.IntStream.range(0, inputs.size())
@@ -353,7 +350,7 @@ public class MediaDraftService {
                     existing.artifactId(), existing.role(), existing.order(), existing.color(),
                     List.copyOf(sources)));
         } else {
-            if (inputs.size() >= MAX_IMAGE_INPUTS) {
+            if (inputs.size() >= MAX_MEDIA_INPUTS) {
                 throw invalid(ApiMessage.of("api.media-draft-service.image-input-has-reached-the-current-card-limit"));
             }
             if (target.kind() == Artifact.Kind.AUDIO && kind != Artifact.Kind.AUDIO && (kind != Artifact.Kind.VIDEO
@@ -369,7 +366,7 @@ public class MediaDraftService {
                     inputs.size(), color, List.of(new MediaDraft.InputSource(UUID.randomUUID(),
                             MediaDraft.SourceType.CONNECTION, connectionId))));
         }
-        return replaceInputsWithinChange(ownerId, before, inputs, before.mentions());
+        return replaceInputsWithinChange(before, inputs, before.mentions());
     }
 
     /** Removes only one connection reason; manual or other connection sources keep the input. */
@@ -377,8 +374,7 @@ public class MediaDraftService {
             UUID canvasItemId, long expectedVersion, UUID connectionId) {
         MediaDraft before = get(ownerId, projectId, canvasItemId);
         if (before.version() != expectedVersion) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-disconnection"), true);
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-disconnection"));
         }
         List<MediaDraft.MediaInput> inputs = new ArrayList<>();
         Set<UUID> removedVersions = new HashSet<>();
@@ -399,7 +395,7 @@ public class MediaDraftService {
         List<MediaDraft.PromptMention> mentions = before.mentions().stream()
                 .filter(mention -> !removedVersions.contains(mention.versionId()))
                 .toList();
-        return replaceInputsWithinChange(ownerId, before, inputs, mentions);
+        return replaceInputsWithinChange(before, inputs, mentions);
     }
 
     /** Removes one exact-version input and every structured mention bound to it. */
@@ -407,8 +403,7 @@ public class MediaDraftService {
             UUID canvasItemId, long expectedVersion, UUID imageVersionId) {
         MediaDraft before = get(ownerId, projectId, canvasItemId);
         if (before.version() != expectedVersion) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-image-was-removed"), true);
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-image-was-removed"));
         }
         if (before.mediaInputs().stream().noneMatch(input ->
                 input.versionId().equals(imageVersionId))) {
@@ -423,10 +418,10 @@ public class MediaDraftService {
         List<MediaDraft.PromptMention> mentions = before.mentions().stream()
                 .filter(mention -> !mention.versionId().equals(imageVersionId))
                 .toList();
-        return replaceInputsWithinChange(ownerId, before, inputs, mentions);
+        return replaceInputsWithinChange(before, inputs, mentions);
     }
 
-    private MediaDraft replaceInputsWithinChange(UUID ownerId, MediaDraft before,
+    private MediaDraft replaceInputsWithinChange(MediaDraft before,
             List<MediaDraft.MediaInput> inputs, List<MediaDraft.PromptMention> mentions) {
         Instant now = clock.instant();
         String prompt = pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
@@ -441,8 +436,7 @@ public class MediaDraftService {
                 List.copyOf(mentions), before.displayMode(), before.version() + 1,
                 before.createdAt(), now);
         if (!artifacts.updateMediaDraft(update, before.version())) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.media-draft-service.the-media-input-has-been-modified-by-another-operation"), true);
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-media-input-has-been-modified-by-another-operation"));
         }
         artifacts.replaceMediaInputs(update.projectId(), update.canvasItemId(), inputs, now);
         return update;
@@ -560,15 +554,10 @@ public class MediaDraftService {
             MediaDraft.MediaInput existing = before.stream()
                     .filter(input -> input.versionId().equals(requestedInput.versionId()))
                     .findFirst().orElse(null);
-            List<MediaDraft.InputSource> sources;
-            if (existing != null) {
-                // The save payload describes the ordered input projection, not a new source.
-                // Preserve its exact source set so autosave cannot turn a connection-only input
-                // into a manual selection that survives disconnecting the line.
-                sources = new ArrayList<>(existing.sources());
-            } else {
-                sources = new ArrayList<>(requestedInput.sources());
-            }
+            // Autosave edits the ordered projection, not its source set. In particular,
+            // a connection-only input must not become manual and survive disconnection.
+            List<MediaDraft.InputSource> sources = existing == null
+                    ? requestedInput.sources() : existing.sources();
             result.add(new MediaDraft.MediaInput(requestedInput.versionId(),
                     requestedInput.artifactId(), requestedInput.role(), result.size(),
                     requestedInput.color(), List.copyOf(sources)));
@@ -589,6 +578,11 @@ public class MediaDraftService {
     }
 
     public record SaveMediaInput(UUID versionId, MediaDraft.InputRole role, String color) {}
+
+    private static ApiProblemException draftConflict(ApiMessage detail) {
+        return new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), detail, true);
+    }
 
     private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",

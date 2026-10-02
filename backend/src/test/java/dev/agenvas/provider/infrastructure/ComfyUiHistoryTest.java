@@ -5,7 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Fixed-node history parsing must not conflate pending, execution failure and safe output. */
 class ComfyUiHistoryTest {
@@ -39,15 +44,91 @@ class ComfyUiHistoryTest {
                 .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void terminalExecutionErrorIsNotAnEmptyHistoryOrDownloadCandidate(boolean complete) {
+        assertThat(ComfyUiHistory.image(history(complete, "error", "image.png", "output", ""),
+                promptId, "9")).isInstanceOf(ComfyUiHistory.Failed.class);
+        assertThat(ComfyUiHistory.video(videoHistory(complete, "error", "clip.mp4", true),
+                promptId, "14")).isInstanceOf(ComfyUiHistory.VideoFailed.class);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"null", "[]", "\"history\"", "1", "true"})
+    void bothMediaRequireAnObjectResponse(String responseJson) {
+        JsonNode response = responseJson == null ? null : mapper.readTree(responseJson);
+        assertThatThrownBy(() -> ComfyUiHistory.image(response, promptId, "9"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Exact prompt and template output node required");
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Exact prompt and video output node required");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "123456789", "-1", "1.0", "9 ", "node", "9/1"})
+    void bothMediaRequireAFixedNumericOutputNode(String outputNodeId) {
+        JsonNode response = mapper.createObjectNode();
+        assertThatThrownBy(() -> ComfyUiHistory.image(response, promptId, outputNodeId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Exact prompt and template output node required");
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, outputNodeId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Exact prompt and video output node required");
+    }
+
     @Test
-    void terminalExecutionErrorIsNotAnEmptyHistoryOrDownloadCandidate() {
-        assertThat(ComfyUiHistory.image(history(true, "error", "image.png", "output", ""),
-                promptId, "9")).isInstanceOf(ComfyUiHistory.Failed.class);
-        assertThat(ComfyUiHistory.image(history(false, "error", "image.png", "output", ""),
-                promptId, "9")).isInstanceOf(ComfyUiHistory.Failed.class);
-        assertThatThrownBy(() -> ComfyUiHistory.image(
-                mapper.readTree("{\"" + UUID.randomUUID() + "\":{}}"), promptId, "9"))
-                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+    void bothMediaRequireThePersistedPromptId() {
+        JsonNode response = mapper.createObjectNode();
+        assertThatThrownBy(() -> ComfyUiHistory.image(response, null, "9"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Exact prompt and template output node required");
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, null, "14"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Exact prompt and video output node required");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "\"entry\"", "1", "true"})
+    void malformedExactPromptEntriesAreProtocolFailures(String entryJson) {
+        JsonNode response = mapper.createObjectNode()
+                .set(promptId.toString(), mapper.readTree(entryJson));
+        assertBothMediaReject(response, "History entry is malformed");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "\"running\"", "1", "true", "{}",
+            "{\"completed\":null}", "{\"completed\":1}", "{\"completed\":\"true\"}",
+            "{\"completed\":[]}", "{\"completed\":{}}"})
+    void malformedStatusesAndNonBooleanCompletionAreProtocolFailures(String statusJson) {
+        var response = mapper.createObjectNode();
+        response.putObject(promptId.toString()).set("status", mapper.readTree(statusJson));
+        assertBothMediaReject(response, "History status is malformed");
+    }
+
+    @Test
+    void missingStatusIsAProtocolFailureBeforeReadingOutputs() {
+        var response = mapper.createObjectNode();
+        response.putObject(promptId.toString());
+        assertBothMediaReject(response, "History status is malformed");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "running", "unknown", "SUCCESS"})
+    void completedHistoryRequiresTheSuccessStatus(String status) {
+        assertBothMediaReject(history(true, status, "image.png", "output", ""),
+                "Completed history has unknown status");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "{}", "[]"})
+    void anotherPromptsHistoryCannotCompleteOrFailTheRequestedPrompt(String entryJson) {
+        JsonNode response = mapper.createObjectNode()
+                .set(UUID.randomUUID().toString(), mapper.readTree(entryJson));
+        assertBothMediaReject(response, "History returned an unrelated prompt");
     }
 
     @Test
@@ -71,7 +152,63 @@ class ComfyUiHistoryTest {
                 .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
     }
 
-    private tools.jackson.databind.JsonNode videoHistory(boolean complete, String status,
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "true", "[]", "[true,true]", "[\"true\"]", "[false]"})
+    void videoRequiresExactlyOneBooleanTrueAnimationFlag(String animatedJson) {
+        JsonNode response = videoHistory(true, "success", "clip.mp4", true);
+        ((ObjectNode) response.path(promptId.toString()).path("outputs").path("14"))
+                .set("animated", mapper.readTree(animatedJson));
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("Fixed video output is missing or ambiguous");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"clip.MP4", "clip.mp4.tmp", "clip..mp4", "folder/clip.mp4"})
+    void videoRejectsUnsafeOrNonMp4Filenames(String filename) {
+        assertThatThrownBy(() -> ComfyUiHistory.video(
+                videoHistory(true, "success", filename, true), promptId, "14"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("Fixed MP4 output path is unsafe");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"type", "subfolder"})
+    void videoRequiresTheRootOutputDirectory(String field) {
+        JsonNode response = videoHistory(true, "success", "clip.mp4", true);
+        ((ObjectNode) response.path(promptId.toString()).path("outputs").path("14")
+                .path("images").get(0)).put(field, "input");
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("Fixed MP4 output path is unsafe");
+    }
+
+    @Test
+    void filenameLengthLimitsRemainSpecificToEachMedia() {
+        String imageFilename = "a".repeat(160);
+        String videoFilename = imageFilename + ".mp4";
+        assertThat(ComfyUiHistory.image(history(true, "success", imageFilename, "output", ""),
+                promptId, "9")).isEqualTo(new ComfyUiHistory.Ready(imageFilename));
+        assertThat(ComfyUiHistory.video(videoHistory(true, "success", videoFilename, true),
+                promptId, "14")).isEqualTo(new ComfyUiHistory.VideoReady(videoFilename));
+        assertThatThrownBy(() -> ComfyUiHistory.image(
+                history(true, "success", "a" + imageFilename, "output", ""), promptId, "9"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("Fixed image output path is unsafe");
+        assertThatThrownBy(() -> ComfyUiHistory.video(
+                videoHistory(true, "success", "a" + videoFilename, true), promptId, "14"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("Fixed MP4 output path is unsafe");
+    }
+
+    private void assertBothMediaReject(JsonNode response, String message) {
+        assertThatThrownBy(() -> ComfyUiHistory.image(response, promptId, "9"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class).hasMessage(message);
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class).hasMessage(message);
+    }
+
+    private JsonNode videoHistory(boolean complete, String status,
             String filename, boolean animated) {
         var root = mapper.createObjectNode();
         var entry = root.putObject(promptId.toString());
@@ -83,7 +220,7 @@ class ComfyUiHistoryTest {
         return root;
     }
 
-    private tools.jackson.databind.JsonNode history(boolean complete, String status,
+    private JsonNode history(boolean complete, String status,
             String filename, String type, String subfolder) {
         var root = mapper.createObjectNode();
         var entry = root.putObject(promptId.toString());

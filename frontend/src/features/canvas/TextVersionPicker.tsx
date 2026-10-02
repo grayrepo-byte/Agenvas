@@ -1,8 +1,8 @@
 import { CaretDown,Stack } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
-import { useRef,useState } from "react";
+import { useState } from "react";
 import {
-ApiError,listArtifactVersions,
+HTTP_STATUS,ApiError,listArtifactVersions,
 setArtifactResourceDefaultVersion
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -18,8 +18,6 @@ export function TextVersionPicker({ artifact, disabled = false }: {
   useLocale();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
   const history = useQuery({
     queryKey: ["artifact-versions", artifact.projectId, artifact.id],
     queryFn: () => listArtifactVersions(artifact.projectId, artifact.id),
@@ -39,8 +37,8 @@ export function TextVersionPicker({ artifact, disabled = false }: {
     },
   });
 
-  return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="text-card-version-picker" ref={anchor}>
-    <DropdownMenuTrigger asChild><Button variant="ghost" aria-expanded={open} aria-haspopup="menu" ref={trigger}
+  return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="text-card-version-picker">
+    <DropdownMenuTrigger asChild><Button variant="ghost" aria-expanded={open} aria-haspopup="menu"
       className="text-card-version-tag" type="button">
       <Stack data-icon="inline-start" aria-hidden />
       {t("版本{0}", { "0": ` v${artifact.resourceDefaultVersion.versionNo}` })}
@@ -55,7 +53,7 @@ export function TextVersionPicker({ artifact, disabled = false }: {
         <span>v{version.versionNo}</span>
         <small>{version.id === artifact.resourceDefaultVersionId ? t("当前选用") : version.createdByKind}</small>
       </DropdownMenuItem>)}
-      {select.error ? <p role="alert">{select.error instanceof ApiError && select.error.status === 409
+      {select.error ? <p role="alert">{select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
         ? t("内容有冲突，未切换版本；请重新打开版本列表后重试。")
         : select.error instanceof ApiError ? select.error.message : t("版本选用失败，请重试。")}</p> : null}
     </DropdownMenuGroup></DropdownMenuContent> : null}

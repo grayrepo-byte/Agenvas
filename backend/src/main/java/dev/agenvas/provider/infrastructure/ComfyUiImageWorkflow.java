@@ -13,7 +13,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 使用随应用打包的核心节点图生图模板；审批任务只能修改明确列出的安全输入。 */
+/** 使用随应用打包的核心节点图生图模板；任务只能修改明确列出的安全输入。 */
 @Component
 @ConditionalOnProperty(name = "agenvas.provider.mode", havingValue = "comfyui")
 public class ComfyUiImageWorkflow {
@@ -33,7 +33,7 @@ public class ComfyUiImageWorkflow {
     private final ObjectNode template;
     /** 服务端配置的检查点文件名，不接受模型或任务输入覆盖。 */
     private final String checkpoint;
-    /** 绑定模板内容和检查点名的版本摘要，计划审批时固定该版本。 */
+    /** 绑定模板内容和检查点名的版本摘要，任务受理时固定该版本。 */
     private final String version;
 
     /** 读取安全检查点配置与内置模板，并在启动时校验完整固定工作流。 */
@@ -59,7 +59,7 @@ public class ComfyUiImageWorkflow {
         this.version = "image-v1-" + sha256(bytes, checkpoint).substring(0, 32);
     }
 
-    /** 返回模板和检查点组合版本；任一变化都会使待审批计划失效。 */
+    /** 返回模板和检查点组合版本，用于固定任务的执行配置。 */
     public String version() {
         return version;
     }

@@ -7,6 +7,7 @@ import static dev.agenvas.db.Tables.PROJECT;
 import static dev.agenvas.db.Tables.PROVIDER_ATTEMPT;
 import static dev.agenvas.db.Tables.TASK;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.domain.MediaPlatform;
@@ -177,7 +178,7 @@ public class LegacyMediaImportService implements ApplicationRunner {
             UUID id = UUID.randomUUID();
             String spec = "{\"schemaVersion\":1,\"legacyHistoricalOnly\":true,\"settings\":{}}";
             repository.insertCapability(id, connectionId, name, adapterId,
-                    sha256(adapterId + ":legacy:v1"), spec, clock.instant());
+                    Sha256.hex(adapterId + ":legacy:v1"), spec, clock.instant());
             repository.updateCapability(id, 0, name, false, 1, clock.instant());
             return id;
         }
@@ -346,16 +347,6 @@ public class LegacyMediaImportService implements ApplicationRunner {
                 .where(COMFYUI_CONFIG_VERSION.CONFIG_VERSION.eq(configVersion))
                 .fetchOptional(row -> new OldOrigin(row.value1(), row.value2(), row.value3()))
                 .orElse(null);
-    }
-
-    private static String sha256(String value) {
-        try {
-            byte[] bytes = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return java.util.HexFormat.of().formatHex(bytes);
-        } catch (java.security.NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
     }
 
     private record OldOrigin(int configVersion, String origin, String sha256) {}

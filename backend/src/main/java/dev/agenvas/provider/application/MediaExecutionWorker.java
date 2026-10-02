@@ -229,16 +229,9 @@ public class MediaExecutionWorker {
 
     private ObjectNode resultContent(AttemptContext attempt, Asset asset) {
         Task task = attempt.lease();
-        ObjectNode content = mapper.createObjectNode();
-        content.put("assetId", asset.id().toString());
-        content.put("prompt", task.input().path("prompt").asText());
-        if (task.input().has("negativePrompt")) content.put("negativePrompt", task.input().path("negativePrompt").asText());
-        content.put("sourceTaskId", task.id().toString());
-        content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
-        content.put("workflowVersion", task.input().path("workflowVersion").asText());
-        ObjectNode parameters = content.putObject("parameters");
-        JsonNode frozen = task.input().path("mediaInput").path("parameters");
-        if (frozen.isObject()) frozen.properties().forEach(entry -> parameters.set(entry.getKey(), entry.getValue().deepCopy()));
+        ObjectNode content = MediaResult.content(mapper, task, asset.id(),
+                task.input().path("prompt").asText());
+        ObjectNode parameters = MediaResult.copyFrozenParameters(content, task);
         parameters.put("adapterId", attempt.binding().adapterId());
         parameters.put("capabilityId", attempt.binding().capabilityId().toString());
         parameters.put("providerRequestId", attempt.originalRequestId() != null ? attempt.originalRequestId() : attempt.requestKey());

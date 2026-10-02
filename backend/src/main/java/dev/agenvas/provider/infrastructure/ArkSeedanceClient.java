@@ -24,7 +24,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class ArkSeedanceClient {
     private static final URI OFFICIAL = URI.create("https://ark.cn-beijing.volces.com");
     private static final String TASKS = "/api/v3/contents/generations/tasks";
-    private static final String MODEL = "doubao-seedance-2-0-260128";
+    public static final String MODEL_ID = "doubao-seedance-2-0-260128";
     private static final int MAX_JSON_BYTES = 2 * 1024 * 1024;
     private final URI origin;
     private final OkHttpClient http;
@@ -70,7 +70,7 @@ public class ArkSeedanceClient {
                 || !java.util.Set.of("16:9", "9:16", "1:1").contains(ratio))
             throw new IllegalArgumentException("Seedance parameters unsupported");
         ObjectNode request = mapper.createObjectNode();
-        request.put("model", MODEL);
+        request.put("model", MODEL_ID);
         var content = request.putArray("content");
         content.addObject().put("type", "text").put("text", prompt);
         for (var reference : references) {
@@ -101,7 +101,7 @@ public class ArkSeedanceClient {
         JsonNode response = request(key, "GET", TASKS + "/" + originalTaskId,
                 null, false);
         if (!originalTaskId.equals(response.path("id").asText())
-                || !MODEL.equals(response.path("model").asText())) {
+                || !MODEL_ID.equals(response.path("model").asText())) {
             throw new ProtocolFailure("Ark query returned a different task identity");
         }
         String status = response.path("status").asText();

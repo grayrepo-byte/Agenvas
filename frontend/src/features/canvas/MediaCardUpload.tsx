@@ -1,12 +1,13 @@
 import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type FormEvent } from "react";
 import {
-ApiError,listCanvasItems,
+HTTP_STATUS,ApiError,listCanvasItems,
 uploadAudioAsset,
 uploadCanvasItemVersion,uploadImageAsset,
 type Artifact,type CanvasItem
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 
@@ -40,7 +41,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
       try {
         await uploadCanvasItemVersion(artifact.projectId, item.id, request);
       } catch (failure) {
-        if (!(failure instanceof ApiError) || failure.status === 409 || failure.status < 500) throw failure;
+        if (!(failure instanceof ApiError) || failure.status < HTTP_STATUS.INTERNAL_SERVER_ERROR) throw failure;
         // Reuse the same target ID so a response lost after commit cannot create another node.
         await uploadCanvasItemVersion(artifact.projectId, item.id, request);
       }
@@ -77,7 +78,8 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
       setRefreshError(failure instanceof Error ? failure.message : t("无法读取当前版本"));
     } finally { setRefreshing(false); }
   }
-  const errorMessage = upload.error instanceof ApiError && upload.error.status === 409
+  const conflict = upload.error instanceof ApiError && upload.error.status === HTTP_STATUS.CONFLICT;
+  const errorMessage = conflict
     ? t("卡片已有更新，文件已保留；读取最新版本后可重新上传。")
     : upload.error?.message;
   if (compact) return <div className="media-card-upload-status nodrag nowheel nopan">
@@ -87,7 +89,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
       <Button variant="ghost" type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
         {refreshing ? t("读取中…") : t("重试上传")}
       </Button>
-      {upload.error instanceof ApiError && upload.error.status === 409 ? <Button variant="ghost" type="button"
+      {conflict ? <Button variant="ghost" type="button"
         disabled={refreshing} onClick={() => void refreshVersion()}>{t("读取最新版本")}</Button> : null}
     </div> : null}
     {refreshError ? <p className="media-card-error" role="alert">{refreshError}</p> : null}
@@ -96,7 +98,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     <p>{item.selectedVersionId ? t("基于「{0}」上传{1}，并创建一个新节点。", { "0": artifact.title, "1": label })
       : t("上传{0}到「{1}」。", { "0": label, "1": artifact.title })}</p>
     <p className="text-xs text-[var(--muted)]">{t("已选择：{0}", { "0": file?.name })}</p>
-    <label>{t("更换{0}", { "0": label })}<Input type="file" accept={isAudio ? "audio/mpeg,audio/wav,audio/ogg" : "image/png,image/jpeg,image/webp"}
+    <label>{t("更换{0}", { "0": label })}<Input type="file" accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
       disabled={upload.isPending} onChange={(event) => {
         const selected = event.target.files?.[0] ?? null;
         setFile(selected);
@@ -107,7 +109,7 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     <Button variant="default"  type="submit" disabled={!file || upload.isPending || refreshing}>
       {upload.isPending ? t("正在上传…") : upload.error ? t("重试上传") : t("上传并创建节点")}</Button>
     {upload.error ? <p role="alert">{errorMessage}</p> : null}
-    {upload.error instanceof ApiError && upload.error.status === 409 ? <Button variant="outline"
+    {conflict ? <Button variant="outline"
       type="button" disabled={refreshing} onClick={() => void refreshVersion()}>
       {refreshing ? t("读取中…") : t("读取最新版本")}</Button> : null}
     {expectedVersion !== item.version ? <p role="status">{t("已读取当前节点状态，可再次上传并创建新节点。")}</p> : null}

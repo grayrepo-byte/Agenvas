@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
@@ -8,6 +9,11 @@ import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
+import dev.agenvas.provider.infrastructure.GoogleNanoBananaClient;
+import dev.agenvas.provider.infrastructure.SeedAudioClient;
+import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
+import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
@@ -15,15 +21,12 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,8 +37,9 @@ import tools.jackson.databind.node.ObjectNode;
 /** Owns the media catalog; the returned binding freezes both published versions. */
 @Service
 public class MediaCapabilityService {
-    private static final String NANO_BANANA_MODEL_ID = "gemini-3.1-flash-image";
-    private static final String NANO_BANANA_IMAGE_SIZE = "1K";
+    private static final int CAPABILITY_SCHEMA_VERSION = 1;
+    private static final String MODEL_NAME_PATTERN = "[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}";
+    private static final String COMFY_MODEL_FILE_PATTERN = "[A-Za-z0-9][A-Za-z0-9._-]{0,159}";
 
     private final JooqMediaCapabilityRepository repository;
     private final MediaAdapterRegistry registry;
@@ -60,7 +64,7 @@ public class MediaCapabilityService {
         Instant now = clock.instant();
         repository.insertConnection(id, normalizedName,
                 origin == null ? MediaPlatform.MOCK : MediaPlatform.COMFYUI, origin,
-                origin == null ? null : sha256(origin), null, null, null, null, now);
+                origin == null ? null : Sha256.hex(origin), null, null, null, null, now);
         return repository.connection(id).orElseThrow();
     }
 
@@ -79,7 +83,7 @@ public class MediaCapabilityService {
         }
         String normalizedOrigin = validatedOrigin(normalizedPlatform, origin);
         validateCredential(normalizedPlatform, apiKey, true);
-        String hash = sha256(normalizedName + "\u0000" + normalizedPlatform.name() + "\u0000"
+        String hash = Sha256.hex(normalizedName + "\u0000" + normalizedPlatform.name() + "\u0000"
                 + normalizedOrigin + "\u0000" + apiKey);
         UUID id = UUID.randomUUID();
         Instant now = clock.instant();
@@ -93,7 +97,7 @@ public class MediaCapabilityService {
         CredentialCipher.Encrypted encrypted = apiKey == null || apiKey.isBlank()
                 ? null : cipher.encryptMedia(id, 1, apiKey);
         repository.insertConnection(id, normalizedName, normalizedPlatform, normalizedOrigin,
-                normalizedOrigin == null ? null : sha256(normalizedOrigin),
+                normalizedOrigin == null ? null : Sha256.hex(normalizedOrigin),
                 encrypted == null ? null : encrypted.ciphertext(),
                 encrypted == null ? null : encrypted.nonce(),
                 encrypted == null ? null : encrypted.keyVersion(),
@@ -132,7 +136,7 @@ public class MediaCapabilityService {
             CredentialCipher.Encrypted encrypted = versionKey == null || versionKey.isBlank()
                     ? null : cipher.encryptMedia(id, nextVersion, versionKey);
             repository.insertConnectionVersion(id, nextVersion, normalizedOrigin,
-                    normalizedOrigin == null ? null : sha256(normalizedOrigin),
+                    normalizedOrigin == null ? null : Sha256.hex(normalizedOrigin),
                     encrypted == null ? null : encrypted.ciphertext(),
                     encrypted == null ? null : encrypted.nonce(),
                     encrypted == null ? null : encrypted.keyVersion(),
@@ -184,7 +188,7 @@ public class MediaCapabilityService {
         }
         String normalizedName = requireName(name);
         String spec = spec(adapterId, settings);
-        String hash = sha256(connectionId + "\u0000" + normalizedName + "\u0000"
+        String hash = Sha256.hex(connectionId + "\u0000" + normalizedName + "\u0000"
                 + adapterId + "\u0000" + spec);
         UUID id = UUID.randomUUID();
         if (!repository.claimCapabilityCreateKey(idempotencyKey, hash, id, clock.instant())) {
@@ -221,7 +225,7 @@ public class MediaCapabilityService {
         }
         String spec = spec(adapterId, settings);
         repository.insertCapability(id, connectionId, requireName(name), adapterId,
-                sha256(adapterId + ":v1:" + spec), spec, clock.instant());
+                Sha256.hex(adapterId + ":v1:" + spec), spec, clock.instant());
         return repository.capability(id).orElseThrow();
     }
 
@@ -251,17 +255,17 @@ public class MediaCapabilityService {
         if (registry.declaration(current.adapterId()).kind() != replacement.kind()) {
             throw invalid(ApiMessage.of("api.media-capability-service.ability-s-output-type-is-immutable-please-publish-new-capabilities"));
         }
-        JsonNode effectiveSettings = settings == null && current.adapterId().equals(adapterId)
-                ? mapper.readTree(current.specJson()).path("settings") : settings;
+        JsonNode oldSettings = settings == null && current.adapterId().equals(adapterId)
+                ? settings(current) : null;
+        JsonNode effectiveSettings = oldSettings == null ? settings : oldSettings;
         if (effectiveSettings != null && effectiveSettings.isMissingNode()) {
             effectiveSettings = mapper.createObjectNode();
         }
         String spec = spec(adapterId, effectiveSettings);
-        JsonNode oldSettings = mapper.readTree(current.specJson()).path("settings");
+        if (oldSettings == null) oldSettings = settings(current);
         JsonNode newSettings = mapper.readTree(spec).path("settings");
         boolean newVersion = !current.adapterId().equals(adapterId)
-                || !newSettings.equals(oldSettings.isMissingNode()
-                        ? mapper.createObjectNode() : oldSettings);
+                || !newSettings.equals(oldSettings);
         int nextVersion = current.capability().currentVersion() + (newVersion ? 1 : 0);
         Instant now = clock.instant();
         if (!repository.updateCapability(capabilityId, expectedVersion, requireName(name),
@@ -270,7 +274,7 @@ public class MediaCapabilityService {
         }
         if (newVersion) {
             repository.insertCapabilityVersion(capabilityId, nextVersion, adapterId,
-                    sha256(adapterId + ":v1:" + spec), spec, now);
+                    Sha256.hex(adapterId + ":v1:" + spec), spec, now);
         }
         return repository.capability(capabilityId).orElseThrow();
     }
@@ -300,41 +304,18 @@ public class MediaCapabilityService {
 
     /** Versioned protocol settings; graph structure and adapter support remain compiled code. */
     private String spec(String adapterId, JsonNode suppliedSettings) {
-        var declaration = AutoDlWorkflows.ADAPTER_ID.equals(adapterId)
-                ? AutoDlWorkflows.require(suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings).declaration()
-                : registry.declaration(adapterId);
+        JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
+        var declaration = declaration(adapterId, source);
         ObjectNode normalized = mapper.createObjectNode();
-        normalized.put("schemaVersion", 1);
+        normalized.put("schemaVersion", CAPABILITY_SCHEMA_VERSION);
         normalized.put("kind", declaration.kind().name());
-        normalized.put("minimumSeconds", declaration.minimumSeconds());
-        normalized.put("maximumSeconds", declaration.maximumSeconds());
-        normalized.put("maxReferenceImages", declaration.maxReferenceImages());
-        normalized.put("maxReferenceAudios", declaration.maxReferenceAudios());
+        putInputLimits(normalized, declaration);
         var modes = normalized.putArray("supportedVideoInputModes");
         declaration.supportedVideoInputModes().stream().sorted().forEach(modes::add);
-        if (declaration.defaultVideoInputMode() == null) {
-            normalized.putNull("defaultVideoInputMode");
-        } else {
-            normalized.put("defaultVideoInputMode", declaration.defaultVideoInputMode());
-        }
+        normalized.put("defaultVideoInputMode", declaration.defaultVideoInputMode());
         normalized.put("supportsEndFrame", declaration.supportsEndFrame());
-        if ("OPENAI_GPT_IMAGE_2".equals(adapterId)) {
-            normalized.put("modelId", "gpt-image-2");
-            normalized.put("outputFormat", "png");
-        } else if ("GOOGLE_NANO_BANANA_2".equals(adapterId)) {
-            normalized.put("modelId", NANO_BANANA_MODEL_ID);
-            normalized.put("outputFormat", "image");
-            normalized.put("imageSize", NANO_BANANA_IMAGE_SIZE);
-        } else if ("VOLC_SEED_AUDIO_1".equals(adapterId)) {
-            normalized.put("modelId", "seed-audio-1.0");
-            normalized.put("outputFormat", "mp3");
-        } else if ("ARK_SEEDANCE_2_I2V".equals(adapterId)) {
-            normalized.put("modelId", "doubao-seedance-2-0-260128");
-            normalized.put("outputFormat", "mp4");
-            normalized.put("generateAudio", false);
-        }
+        putModelMetadata(normalized, adapterId);
         ObjectNode settings = normalized.putObject("settings");
-        JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
         if (!source.isObject()) throw invalid(ApiMessage.of("api.media-capability-service.capability-template-parameters-must-be-objects"));
         if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId)) {
             if (!java.util.Set.of("runningHub", "pricing").containsAll(source.propertyNames()))
@@ -346,6 +327,25 @@ public class MediaCapabilityService {
             MediaCapabilityConfiguration.normalize(mapper, declaration, price, settings);
             return normalized.toString();
         }
+        normalizeAdapterSettings(adapterId, source, settings);
+        if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
+        MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
+        var policy = MediaCapabilityConfiguration.policy(declaration, settings);
+        if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
+            var workflow = AutoDlWorkflows.require(settings);
+            if (policy.maxReferenceImages() < workflow.minimumImages() || policy.maxReferenceAudios() < workflow.minimumAudios())
+                throw invalid(ApiMessage.of("api.media-capability-service.the-reference-upper-limit-cannot-be-lower-than-the-required"));
+            if (settings.has("defaultParameters")) {
+                String ratio = settings.path("defaultParameters").path("aspectRatio").asText();
+                String tier = AutoDlWorkflows.selectedResolution(settings, null);
+                if (!"AUTO".equals(ratio)) workflow.resolution(tier, ratio);
+            }
+        }
+        putInputLimits(normalized, policy);
+        return normalized.toString();
+    }
+
+    private void normalizeAdapterSettings(String adapterId, JsonNode source, ObjectNode settings) {
         List<String> fields = switch (adapterId) {
             case "COMFY_IMAGE_V1" -> List.of("checkpoint");
             case "COMFY_VIDEO_V1" -> List.of("diffusionModel", "textEncoder", "vae",
@@ -362,8 +362,8 @@ public class MediaCapabilityService {
         for (String field : fields) {
             JsonNode value = source.path(field);
             if ("quality".equals(field)) {
-                String quality = value.isMissingNode() ? "medium" : value.asText();
-                if (!List.of("low", "medium", "high").contains(quality)) {
+                String quality = value.isMissingNode() ? ImageGenerationParameters.DEFAULT_QUALITY : value.asText();
+                if (!ImageGenerationParameters.QUALITIES.contains(quality)) {
                     throw invalid(ApiMessage.of("api.media-capability-service.gpt-image-2-quality-can-only-be-low-medium-or"));
                 }
                 settings.put(field, quality);
@@ -372,36 +372,42 @@ public class MediaCapabilityService {
             // 模型名留空表示沿用适配器内置默认；中转站命名格式无法预知，只挡明显非法的取值。
             if ("model".equals(field)) {
                 String model = value.isMissingNode() || value.isNull() ? "" : value.asText();
-                if (!model.isEmpty() && !model.matches("[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}")) {
+                if (!model.isEmpty() && !model.matches(MODEL_NAME_PATTERN)) {
                     throw invalid(ApiMessage.of("api.media-capability-service.the-model-name-can-only-contain-letters-numbers-and-and"));
                 }
                 settings.put(field, model);
                 continue;
             }
-            if (!value.isTextual() || !value.asText().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
+            if (!value.isTextual() || !value.asText().matches(COMFY_MODEL_FILE_PATTERN)
                     || value.asText().contains("..") || !value.asText().endsWith(".safetensors")) {
                 throw invalid(ApiMessage.of("api.media-capability-service.comfyui-template-model-file-name-must-be-safetensors-file-name"));
             }
             settings.put(field, value.asText());
         }
-        if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
-        MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
-        var policy = MediaCapabilityConfiguration.policy(declaration, settings);
-        if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
-            var workflow = AutoDlWorkflows.require(settings);
-            if (policy.maxReferenceImages() < workflow.minimumImages() || policy.maxReferenceAudios() < workflow.minimumAudios())
-                throw invalid(ApiMessage.of("api.media-capability-service.the-reference-upper-limit-cannot-be-lower-than-the-required"));
-            if (settings.has("defaultParameters")) {
-                String ratio = settings.path("defaultParameters").path("aspectRatio").asText();
-                String tier = AutoDlWorkflows.selectedResolution(settings, null);
-                if (!"AUTO".equals(ratio)) workflow.resolution(tier, ratio);
-            }
+    }
+
+    private MediaAdapterRegistry.Declaration declaration(String adapterId, JsonNode settings) {
+        return AutoDlWorkflows.ADAPTER_ID.equals(adapterId)
+                ? AutoDlWorkflows.require(settings).declaration() : registry.declaration(adapterId);
+    }
+
+    private static void putInputLimits(ObjectNode target, MediaAdapterRegistry.Declaration policy) {
+        target.put("minimumSeconds", policy.minimumSeconds());
+        target.put("maximumSeconds", policy.maximumSeconds());
+        target.put("maxReferenceImages", policy.maxReferenceImages());
+        target.put("maxReferenceAudios", policy.maxReferenceAudios());
+    }
+
+    private static void putModelMetadata(ObjectNode target, String adapterId) {
+        switch (adapterId) {
+            case "OPENAI_GPT_IMAGE_2" -> target.put("modelId", OpenAiImage2Client.DEFAULT_MODEL).put("outputFormat", "png");
+            case "GOOGLE_NANO_BANANA_2" -> target.put("modelId", GoogleNanoBananaClient.DEFAULT_MODEL)
+                    .put("outputFormat", "image").put("imageSize", ImageGenerationParameters.DEFAULT_RESOLUTION);
+            case "VOLC_SEED_AUDIO_1" -> target.put("modelId", SeedAudioClient.MODEL_ID).put("outputFormat", "mp3");
+            case "ARK_SEEDANCE_2_I2V" -> target.put("modelId", ArkSeedanceClient.MODEL_ID)
+                    .put("outputFormat", "mp4").put("generateAudio", false);
+            default -> { }
         }
-        normalized.put("minimumSeconds", policy.minimumSeconds());
-        normalized.put("maximumSeconds", policy.maximumSeconds());
-        normalized.put("maxReferenceImages", policy.maxReferenceImages());
-        normalized.put("maxReferenceAudios", policy.maxReferenceAudios());
-        return normalized.toString();
     }
 
     @Transactional
@@ -430,8 +436,7 @@ public class MediaCapabilityService {
 
     public MediaAdapterRegistry.Declaration inputPolicy(Snapshot snapshot) {
         JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
-        var declaration = AutoDlWorkflows.ADAPTER_ID.equals(snapshot.adapterId())
-                ? AutoDlWorkflows.require(settings).declaration() : registry.declaration(snapshot.adapterId());
+        var declaration = declaration(snapshot.adapterId(), settings);
         return MediaCapabilityConfiguration.policy(declaration, settings);
     }
 
@@ -441,17 +446,12 @@ public class MediaCapabilityService {
                 registry.declaration(binding.adapterId()).kind());
     }
 
-    /** Validates only supplied values so incomplete dynamic drafts can still be persisted. */
-    public void validateDynamicDraft(UUID capabilityId, Task.Kind kind, JsonNode parameters,
-            String prompt, Integer seconds) {
-        if (capabilityId == null) throw invalid(ApiMessage.of("api.media-capability-service.dynamic-parameters-must-be-selected-with-explicit-capabilities"));
-        var definition = runningHubDefinition(forDraft(capabilityId, kind));
-        if (definition == null) throw invalid(ApiMessage.of("api.media-capability-service.the-current-capability-does-not-accept-dynamic-parameters"));
-        definition.values(mapper, parameters, prompt, seconds, false);
+    public JsonNode settings(MediaCapabilityBinding binding) {
+        return settings(pinnedSnapshot(binding));
     }
 
-    public JsonNode settings(MediaCapabilityBinding binding) {
-        JsonNode settings = mapper.readTree(pinnedSnapshot(binding).specJson()).path("settings");
+    private JsonNode settings(Snapshot snapshot) {
+        JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
         return settings.isMissingNode() ? mapper.createObjectNode() : settings;
     }
 
@@ -506,35 +506,31 @@ public class MediaCapabilityService {
     /** Candidate metadata is server-selected and contains no endpoint or credential. */
     public List<Candidate> candidates(Task.Kind kind, int durationSeconds) {
         Task.Kind mediaKind = requireMediaKind(kind);
-        return repository.connections().stream().filter(Connection::enabled)
-                .flatMap(connection -> repository.capabilities(connection.id()).stream())
-                .filter(Capability::enabled)
-                .map(capability -> repository.snapshot(capability.id()).orElseThrow())
-                .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
-                        snapshot.adapterId()))
+        return publishedSnapshots()
                 .filter(snapshot -> supports(snapshot, mediaKind, durationSeconds))
-                .map(snapshot -> new Candidate(binding(snapshot), snapshot.connection().name(),
-                        snapshot.capability().name(), mediaKind,
-                        inputPolicy(snapshot).minimumSeconds(),
-                        inputPolicy(snapshot).maximumSeconds(),
-                        false, mapper.readTree(snapshot.specJson()).path("settings"))).toList();
+                .map(snapshot -> candidate(snapshot, inputPolicy(snapshot))).toList();
     }
 
     /** Safe published catalog for model planning; duration suitability is checked per step. */
     public List<Candidate> publishedCandidates() {
+        return publishedSnapshots().map(snapshot -> candidate(snapshot, inputPolicy(snapshot)))
+                .toList();
+    }
+
+    private Stream<Snapshot> publishedSnapshots() {
         return repository.connections().stream().filter(Connection::enabled)
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
                 .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
-                        snapshot.adapterId()))
-                .map(snapshot -> {
-                    var declaration = inputPolicy(snapshot);
-                    return new Candidate(binding(snapshot), snapshot.connection().name(),
-                            snapshot.capability().name(), declaration.kind(),
-                            declaration.minimumSeconds(), declaration.maximumSeconds(), false,
-                            mapper.readTree(snapshot.specJson()).path("settings"));
-                }).toList();
+                        snapshot.adapterId()));
+    }
+
+    private Candidate candidate(Snapshot snapshot, MediaAdapterRegistry.Declaration policy) {
+        return new Candidate(binding(snapshot), snapshot.connection().name(),
+                snapshot.capability().name(), policy.kind(), policy.minimumSeconds(),
+                policy.maximumSeconds(), false,
+                mapper.readTree(snapshot.specJson()).path("settings"));
     }
 
     /** Approval only accepts the exact still-published versions frozen in the step. */
@@ -572,9 +568,7 @@ public class MediaCapabilityService {
     }
 
     private Snapshot enabledSnapshot(UUID capabilityId) {
-        Snapshot snapshot = repository.snapshot(capabilityId).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.NOT_FOUND, "MEDIA_CAPABILITY_NOT_FOUND",
-                        ApiMessage.of("api.media-capability-service.media-capabilities-do-not-exist"), ApiMessage.of("api.media-capability-service.the-media-capability-cannot-be-found"), false));
+        Snapshot snapshot = capabilitySnapshot(capabilityId);
         if (!snapshot.connection().enabled() || !snapshot.capability().enabled()) {
             throw conflict(ApiMessage.of("api.media-capability-service.media-connection-or-capability-is-disabled"));
         }
@@ -681,15 +675,6 @@ public class MediaCapabilityService {
     private static String keyMask(String key) {
         return key == null || key.isBlank() ? null
                 : "••••" + key.substring(Math.max(0, key.length() - 4));
-    }
-
-    private static String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {

@@ -6,11 +6,13 @@ import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
+import dev.agenvas.provider.infrastructure.ComfyUiInputImage;
 import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
@@ -18,11 +20,7 @@ import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.task.domain.Task;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
@@ -128,16 +126,15 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     private byte[] inputImage(UUID ownerId, Task task, boolean reference) {
         ImageGenerationParameters parameters = ImageGenerationParameters.parse(
                 task.input().path("mediaInput").path("parameters"));
-        String ratio = parameters.aspectRatio();
-        if (ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-            ratio = switch (projects.get(ownerId, task.projectId()).aspectRatio()) {
-                case LANDSCAPE_16_9 -> "16:9";
-                case PORTRAIT_9_16 -> "9:16";
-                case SQUARE_1_1 -> "1:1";
-            };
-        }
-        int width = "9:16".equals(ratio) ? 576 : "1:1".equals(ratio) ? 768 : 1024;
-        int height = "9:16".equals(ratio) ? 1024 : "1:1".equals(ratio) ? 768 : 576;
+        Project.AspectRatio ratio = switch (parameters.aspectRatio()) {
+            case ImageGenerationParameters.AUTO_ASPECT_RATIO -> projects.get(ownerId, task.projectId()).aspectRatio();
+            case "9:16" -> Project.AspectRatio.PORTRAIT_9_16;
+            case "1:1" -> Project.AspectRatio.SQUARE_1_1;
+            default -> Project.AspectRatio.LANDSCAPE_16_9;
+        };
+        var dimensions = ComfyUiInputImage.imageDimensions(ratio);
+        int width = dimensions.width();
+        int height = dimensions.height();
         BufferedImage source = null;
         if (reference) {
             UUID versionId = FrozenMediaInputs.first(task).versionId();
@@ -155,29 +152,8 @@ public class ComfyUiImageAdapter implements MediaAdapter {
             }
             if (source == null) throw new IllegalStateException("Pinned reference is not decodable");
         }
-        BufferedImage normalized = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = normalized.createGraphics();
         try {
-            graphics.setColor(new Color(127, 127, 127));
-            graphics.fillRect(0, 0, width, height);
-            if (source != null) {
-                double scale = Math.min((double) width / source.getWidth(),
-                        (double) height / source.getHeight());
-                int drawWidth = Math.max(1, (int) Math.round(source.getWidth() * scale));
-                int drawHeight = Math.max(1, (int) Math.round(source.getHeight() * scale));
-                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                        RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                graphics.drawImage(source, (width - drawWidth) / 2,
-                        (height - drawHeight) / 2, drawWidth, drawHeight, null);
-            }
-        } finally {
-            graphics.dispose();
-        }
-        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            if (!ImageIO.write(normalized, "png", output)) {
-                throw new IllegalStateException("PNG encoder unavailable");
-            }
-            return output.toByteArray();
+            return ComfyUiInputImage.png(source, width, height);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot encode ComfyUI input image", failure);
         }

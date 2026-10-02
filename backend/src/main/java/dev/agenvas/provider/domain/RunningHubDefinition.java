@@ -197,8 +197,6 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         return effective;
     }
 
-    public boolean hasSource(Source source) { return fields.stream().anyMatch(field -> field.effectiveSource() == source); }
-
     /** JSON numbers have value semantics: browsers serialize 1.0 as 1, without changing an enum or condition. */
     public static boolean scalarEquals(JsonNode left, JsonNode right) {
         return left != null && right != null && left.isNumber() && right.isNumber()

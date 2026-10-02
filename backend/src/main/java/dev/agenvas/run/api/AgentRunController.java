@@ -119,9 +119,9 @@ public class AgentRunController {
      */
     public record CreateRunRequest(
             @NotNull UUID agentId,
-            @NotBlank @Size(max = 20_000) String instruction,
+            @NotBlank @Size(max = AgentRunService.MAX_INSTRUCTION_LENGTH) String instruction,
             @jakarta.validation.constraints.PositiveOrZero Long expectedAgentVersion,
-            @Size(max = 20) List<@NotNull UUID> selectedItemIds,
+            @Size(max = AgentRunService.MAX_SELECTED_ITEMS) List<@NotNull UUID> selectedItemIds,
             @Size(max = 80) String expectedModelConfigSource,
             @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion,
             @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion,

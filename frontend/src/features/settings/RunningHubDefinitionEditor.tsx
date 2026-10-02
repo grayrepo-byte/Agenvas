@@ -12,6 +12,7 @@ import { RunningHubForm } from "../canvas/RunningHubForm";
 
 const MAX_FIELDS = 64;
 const MAX_OUTPUTS = 16;
+const MAX_IMPORT_SOURCE_CHARACTERS = 256 * 1024;
 function emptyDefinition(adapterId: string): RunningHubDefinition {
   const kind = adapterId === "RUNNINGHUB_VIDEO" ? "VIDEO" : adapterId === "RUNNINGHUB_AUDIO" ? "AUDIO" : "IMAGE";
   return { schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "", fields: [],
@@ -40,6 +41,18 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   function field(index: number, patch: Partial<RunningHubField>) {
     update({ ...definition, fields: definition.fields.map((item, i) => i === index ? { ...item, ...patch } : item) });
   }
+  function commitScalar(input: HTMLInputElement, errorMessage: string, commit: (value: string | number | boolean) => void) {
+    try {
+      const parsed: unknown = JSON.parse(input.value);
+      if (typeof parsed !== "string" && typeof parsed !== "number" && typeof parsed !== "boolean") throw new Error(errorMessage);
+      input.setCustomValidity("");
+      commit(parsed);
+      setLocalError("");
+    } catch {
+      input.setCustomValidity(errorMessage);
+      setLocalError(errorMessage);
+    }
+  }
   return <div className="ui-stack runninghub-definition-editor">
     <p>{t("填写真实工作流 / 应用 ID，导入候选后整理用户可见字段。保存与发布不提交生成。")}</p>
     <div className="ui-form-grid">
@@ -51,7 +64,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
     </div>
     <p className="ui-muted">{t("从 RunningHub 请求路径 /run/workflow/ 或 /run/ai-app/ 读取 ID；文档目录中的 SKU ID 不能直接使用。")}</p>
     <details><summary>{t("导入脱敏 JSON（自动发现不可用时）")}</summary>
-      <Field><FieldLabel className="ui-field block">{t("nodeInfoList 或 ComfyUI API-format JSON")}<Textarea value={source} onChange={(event) => setSource(event.target.value)} rows={5} maxLength={256 * 1024} />
+      <Field><FieldLabel className="ui-field block">{t("nodeInfoList 或 ComfyUI API-format JSON")}<Textarea value={source} onChange={(event) => setSource(event.target.value)} rows={5} maxLength={MAX_IMPORT_SOURCE_CHARACTERS} />
       </FieldLabel></Field><p>{t("请先移除 Key、密码和请求示例。这里不会执行 cURL。")}</p>
     </details>
     <Button variant="outline"  type="button" disabled={imported.isPending || !/^[0-9]{1,32}$/.test(definition.targetId)}
@@ -82,8 +95,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
             : <Input key={JSON.stringify(item.defaultValue)} defaultValue={item.defaultValue == null ? "" : JSON.stringify(item.defaultValue)} onChange={() => setReviewed(false)} onBlur={(event) => {
               const raw = event.target.value;
               if (!raw) { event.target.setCustomValidity(""); field(index, { defaultValue: null }); setLocalError(""); return; }
-              try { const parsed: unknown = JSON.parse(raw); if (!["string", "number", "boolean"].includes(typeof parsed)) throw new Error(); event.target.setCustomValidity(""); field(index, { defaultValue: parsed as string | number | boolean }); setLocalError(""); }
-              catch { event.target.setCustomValidity(t("默认值需要有效数字或 JSON 标量。")); setLocalError(t("默认值需要有效数字或 JSON 标量。")); }
+              commitScalar(event.target, t("默认值需要有效数字或 JSON 标量。"), (defaultValue) => field(index, { defaultValue }));
             }} />}</FieldLabel></Field>}
 
           {["NUMBER", "INTEGER"].includes(item.type) ? <>{(["minimum", "maximum"] as const).map((bound) => <Field><FieldLabel className="ui-field block" key={bound}>{bound === "minimum" ? t("最小值") : t("最大值")}<Input type="number" value={item[bound] ?? ""} onChange={(event) => field(index, { [bound]: event.target.value ? Number(event.target.value) : null })} /></FieldLabel></Field>)}</> : null}
@@ -92,9 +104,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
             <option value="">{t("始终显示")}</option>{definition.fields.filter((parent) => parent.key !== item.key && !parent.enabledWhen && !["IMAGE", "AUDIO", "VIDEO"].includes(parent.type)).map((parent) => <option key={parent.key} value={parent.key}>{parent.label}</option>)}
           </Select></FieldLabel></Field>
           {item.enabledWhen ? <Field><FieldLabel className="ui-field block">{t("条件值（JSON 标量）")}<Input key={JSON.stringify(item.enabledWhen)} defaultValue={JSON.stringify(item.enabledWhen.value)} onChange={() => setReviewed(false)} onBlur={(event) => {
-            try { const parsed: unknown = JSON.parse(event.target.value); if (!["string", "number", "boolean"].includes(typeof parsed)) throw new Error();
-              event.target.setCustomValidity(""); field(index, { enabledWhen: { field: item.enabledWhen!.field, value: parsed as string | number | boolean } }); setLocalError("");
-            } catch { event.target.setCustomValidity(t("显示条件需要有效的 JSON 标量。")); setLocalError(t("显示条件需要有效的 JSON 标量。")); }
+            commitScalar(event.target, t("显示条件需要有效的 JSON 标量。"), (value) => field(index, { enabledWhen: { field: item.enabledWhen!.field, value } }));
           }} /></FieldLabel></Field> : null}
           <Field><FieldLabel className="ui-field block">{t("提交编码")}<Select value={item.encoding ?? "NATIVE"} onChange={(event) => field(index, { encoding: event.target.value as RunningHubField["encoding"] })}><option value="NATIVE">{t("保持原类型")}</option><option value="STRING">{t("转成字符串")}</option></Select></FieldLabel></Field>
         </div>
@@ -125,9 +135,8 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
         <Field><FieldLabel className="ui-field block">{t("固定节点 ID")}<Input required pattern="[0-9]{1,32}" value={binding.nodeId} onChange={(event) => update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, nodeId: event.target.value } : item) })} /></FieldLabel></Field>
         <Field><FieldLabel className="ui-field block">{t("固定字段")}<Input required pattern="[A-Za-z_][A-Za-z0-9_]{0,79}" value={binding.fieldName} onChange={(event) => update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, fieldName: event.target.value } : item) })} /></FieldLabel></Field>
         <Field><FieldLabel className="ui-field block">{t("固定值（JSON 标量）")}<Input key={JSON.stringify(binding.value)} defaultValue={JSON.stringify(binding.value)} onChange={() => setReviewed(false)} onBlur={(event) => {
-          try { const parsed: unknown = JSON.parse(event.target.value); if (!["string", "number", "boolean"].includes(typeof parsed)) throw new Error();
-            event.target.setCustomValidity(""); update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, value: parsed as string | number | boolean } : item) }); setLocalError("");
-          } catch { event.target.setCustomValidity(t("固定值需要有效的 JSON 文字、数字或布尔值。")); setLocalError(t("固定值需要有效的 JSON 文字、数字或布尔值。")); }
+          commitScalar(event.target, t("固定值需要有效的 JSON 文字、数字或布尔值。"), (value) => update({ ...definition,
+            fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, value } : item) }));
         }} /></FieldLabel></Field>
         <Button variant="ghost" type="button" onClick={() => update({ ...definition, fixedBindings: definition.fixedBindings?.filter((_, i) => i !== index) })}>{t("移除固定映射")}</Button>
       </div>)}

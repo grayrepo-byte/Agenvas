@@ -1,7 +1,7 @@
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-ApiError,listArtifactVersions,setArtifactResourceDefaultVersion,
+HTTP_STATUS,ApiError,listArtifactVersions,setArtifactResourceDefaultVersion,
 type Artifact
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -59,7 +59,7 @@ function TextArtifactVersionHistory({ artifact }: { artifact: Artifact }) {
       </li>)}
     </ol> : null}
     {select.error ? <p className="mt-2 text-red-700" role="alert">
-      {select.error instanceof ApiError && select.error.status === 409
+      {select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
         ? t("内容有冲突，未切换版本；请核对当前版本后重试。")
         : select.error instanceof ApiError ? select.error.message : t("版本选用失败，请重试。")}
     </p> : null}

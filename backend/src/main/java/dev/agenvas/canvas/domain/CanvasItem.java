@@ -42,6 +42,29 @@ public record CanvasItem(
         Instant createdAt,
         Instant updatedAt) {
 
+    public CanvasItem withTitle(String title) {
+        return withPresentation(title, x, y, width, height, zIndex, groupId, locked);
+    }
+
+    public CanvasItem withLayout(
+            BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height,
+            int zIndex, UUID groupId) {
+        return withPresentation(title, x, y, width, height, zIndex, groupId, locked);
+    }
+
+    public CanvasItem withLocked(boolean locked) {
+        return withPresentation(title, x, y, width, height, zIndex, groupId, locked);
+    }
+
+    /** 保留业务引用与持久化版本；应用服务校验变更，Repository 在 CAS 成功后推进版本和时间。 */
+    private CanvasItem withPresentation(
+            String title, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height,
+            int zIndex, UUID groupId, boolean locked) {
+        return new CanvasItem(
+                id, projectId, subjectType, subjectId, selectedVersionId, title,
+                x, y, width, height, zIndex, groupId, locked, version, createdAt, updatedAt);
+    }
+
     /** 可投影到画布上的业务对象类别。 */
     public enum SubjectType {
         /** 画布项引用 Artifact；媒体卡片渲染自身选用的版本。 */

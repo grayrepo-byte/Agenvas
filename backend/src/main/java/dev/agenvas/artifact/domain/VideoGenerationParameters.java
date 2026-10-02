@@ -32,7 +32,7 @@ public record VideoGenerationParameters(String aspectRatio, String videoResoluti
         }
         JsonNode value = input.get("aspectRatio");
         String aspectRatio = value == null ? AUTO_ASPECT_RATIO
-                : value.isTextual() && !value.asText().isBlank() ? value.asText() : null;
+                : value.isTextual() ? value.asText() : null;
         if (aspectRatio == null || !ASPECT_RATIOS.contains(aspectRatio)) {
             throw invalid(ApiMessage.of("api.video-generation-parameters.video-ratio-must-be-auto-16-9-9-16-or"));
         }

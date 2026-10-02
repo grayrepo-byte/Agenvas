@@ -81,16 +81,9 @@ public class ComfyUiVideoPoller {
         UUID ownerId = tasks.ownerForWorker(task);
         Asset archived = assets.archiveTaskVideo(ownerId, task.projectId(), task.id(),
                 () -> original.output(filename));
-        ObjectNode content = mapper.createObjectNode();
-        content.put("assetId", archived.id().toString());
-        content.put("prompt", task.input().path("prompt").asText());
-        if (task.input().has("negativePrompt")) {
-            content.put("negativePrompt", task.input().path("negativePrompt").asText());
-        }
-        content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
-        content.put("workflowVersion", task.input().path("workflowVersion").asText());
-        content.put("sourceTaskId", task.id().toString());
-        ObjectNode parameters = content.putObject("parameters");
+        ObjectNode content = MediaResult.content(mapper, task, archived.id(),
+                task.input().path("prompt").asText());
+        ObjectNode parameters = content.withObject("parameters");
         parameters.put("providerRequestId", promptId.toString());
         return new TaskWorker.PollGenerated(content);
     }

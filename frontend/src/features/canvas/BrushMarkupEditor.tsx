@@ -8,6 +8,7 @@ import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
+HTTP_STATUS,
 ApiError,
 uploadCanvasItemVersion,
 uploadImageAsset,
@@ -145,7 +146,7 @@ export function BrushMarkupEditor(props: {
     if (next < 0 || next > strokes.length || save.isPending) return;
     changed(); setText(null); setCursor(next);
   }
-  const error = localError ?? (save.error instanceof ApiError && save.error.status === 409
+  const error = localError ?? (save.error instanceof ApiError && save.error.status === HTTP_STATUS.CONFLICT
     ? t("来源节点已有更新，标注已保留。请关闭后基于当前图片重新标注。")
     : save.error?.message);
 

@@ -1,6 +1,13 @@
 import { getLocale, t } from "../i18n";
 import type { components, paths, operations } from "./schema";
 
+export const HTTP_STATUS = {
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  CONFLICT: 409,
+  INTERNAL_SERVER_ERROR: 500,
+} as const;
+
 export type SetupStatus = paths["/api/v1/auth/setup-status"]["get"]["responses"][200]["content"]["application/json"];
 export type CurrentUser = components["schemas"]["CurrentUser"];
 export type SetupRequest = components["schemas"]["SetupRequest"];
@@ -16,7 +23,6 @@ export type Artifact = components["schemas"]["Artifact"];
 export type ArtifactList = components["schemas"]["ArtifactList"];
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
-export type RestoreMediaDraftVersionInputsRequest = components["schemas"]["RestoreMediaDraftVersionInputsRequest"];
 export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMediaDraftMediaInputRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunImageOperationRequest = components["schemas"]["RunImageOperationRequest"];
@@ -51,7 +57,6 @@ export type RunPreflight = components["schemas"]["RunPreflight"];
 export type CreateRunRequest = components["schemas"]["CreateRunRequest"];
 export type Task = components["schemas"]["Task"];
 export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAttemptRequest"];
-export type UsageEntry = components["schemas"]["UsageEntry"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
 export type CallLogCleanupResult = components["schemas"]["CallLogCleanupResult"];
@@ -84,6 +89,11 @@ type CsrfToken = components["schemas"]["CsrfToken"];
 type Problem = components["schemas"]["Problem"];
 
 let csrfToken: CsrfToken | undefined;
+
+const MEBIBYTE = 1024 * 1024;
+const MAX_IMAGE_UPLOAD_BYTES = 20 * MEBIBYTE;
+const MAX_AUDIO_UPLOAD_BYTES = 50 * MEBIBYTE;
+const MAX_VIDEO_UPLOAD_BYTES = 500 * MEBIBYTE;
 
 /** Reads a server-filtered audit page; this never contacts a model or media Provider. */
 export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage> {
@@ -149,79 +159,33 @@ export async function getAssetMetadata(projectId: string, assetId: string): Prom
 
 /** Uploads real image bytes with the session CSRF token; the browser supplies the multipart boundary. */
 export async function uploadImageAsset(projectId: string, file: File): Promise<Asset> {
-  if (file.size > 20 * 1024 * 1024) {
-    throw new ApiError(413, "ASSET_TOO_LARGE", t("图片不能超过 20 MiB。"), false);
-  }
-  const form = new FormData();
-  form.append("file", file);
-  const token = await getCsrfToken();
-  const response = await apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json, application/problem+json",
-      [token.headerName]: token.token,
-    },
-    body: form,
-  });
-  if (!response.ok) throw await apiError(response, t("图片上传未完成"));
-  return (await response.json()) as Asset;
+  return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets`, file,
+    MAX_IMAGE_UPLOAD_BYTES, t("图片不能超过 20 MiB。"), t("图片上传未完成"));
 }
 
-/** Session-protected metadata download; the manifest contains no signed media URLs. */
+/** Uploads audio with the same session protection and backend decoding as images. */
 export async function uploadAudioAsset(projectId: string, file: File): Promise<Asset> {
-  if (file.size > 50 * 1024 * 1024) {
-    throw new ApiError(413, "ASSET_TOO_LARGE", t("音频不能超过 50 MiB。"), false);
-  }
-  const form = new FormData();
-  form.append("file", file);
-  const token = await getCsrfToken();
-  const response = await apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json, application/problem+json",
-      [token.headerName]: token.token,
-    },
-    body: form,
-  });
-  if (!response.ok) throw await apiError(response, t("音频上传未完成"));
-  return (await response.json()) as Asset;
+  return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, file,
+    MAX_AUDIO_UPLOAD_BYTES, t("音频不能超过 50 MiB。"), t("音频上传未完成"));
 }
 
-const MAX_VIDEO_UPLOAD_BYTES = 500 * 1024 * 1024;
 /** MP4 uploads use actual backend decoding and the selected per-asset storage destination. */
 export async function uploadVideoAsset(projectId: string, file: File): Promise<Asset> {
-  if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
-    throw new ApiError(413, "ASSET_TOO_LARGE", t("视频不能超过 500 MiB。"), false);
-  }
+  return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, file,
+    MAX_VIDEO_UPLOAD_BYTES, t("视频不能超过 500 MiB。"), t("视频上传未完成"));
+}
+
+async function uploadAsset(path: string, file: File, maxBytes: number,
+  sizeError: string, failureMessage: string): Promise<Asset> {
+  if (file.size > maxBytes) throw new ApiError(413, "ASSET_TOO_LARGE", sizeError, false);
   const form = new FormData();
   form.append("file", file);
-  const token = await getCsrfToken();
-  const response = await apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json, application/problem+json",
-      [token.headerName]: token.token,
-    },
-    body: form,
-  });
-  if (!response.ok) throw await apiError(response, t("视频上传未完成"));
-  return (await response.json()) as Asset;
+  return writeJson<Asset>(path, { method: "POST", body: form }, failureMessage);
 }
 
 /** Session-protected metadata download; the manifest contains no signed media URLs. */
 export function projectExportManifestUrl(projectId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/export-manifest`;
-}
-
-/** Reads durable quantities without treating unknown external cost as zero. */
-export async function listProjectUsage(projectId: string): Promise<UsageEntry[]> {
-  return readJson<UsageEntry[]>(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/usage`,
-    t("无法读取项目用量记录"),
-  );
 }
 
 /** Stable API error carrying the ProblemDetail code used by UI decisions. */
@@ -457,15 +421,6 @@ export async function saveMediaDraft(projectId: string, canvasItemId: string,
   return writeJson<MediaDraft>(
     `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
     { method: "PUT", body: JSON.stringify(input) },
-  );
-}
-
-/** Deliberately replaces a card draft from immutable provenance; historical lines are not restored. */
-export async function restoreMediaDraftVersionInputs(projectId: string, canvasItemId: string,
-  input: RestoreMediaDraftVersionInputsRequest): Promise<MediaDraft> {
-  return writeJson<MediaDraft>(
-    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft/restore-version-inputs`,
-    { method: "POST", body: JSON.stringify(input) },
   );
 }
 
@@ -735,26 +690,12 @@ export async function createRun(
   });
 }
 
-/** Loads one owner-scoped Run and its immutable creation snapshots. */
-export async function getRun(projectId: string, runId: string): Promise<AgentRun> {
-  return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, t("无法读取运行状态"));
-}
-
 /** Lists only committed, server-authored action summaries for one owned Run. */
 export async function listRunActions(projectId: string, runId: string): Promise<RunAction[]> {
   return readJson<RunAction[]>(
     `/api/v1/projects/${projectId}/runs/${runId}/actions`,
     t("无法读取执行动作"),
   );
-}
-
-/** Lists one Agent's durable Run summaries without model-private messages. */
-export async function listAgentRuns(projectId: string, agentId: string,
-  cursor?: string, limit = 20): Promise<AgentRunList> {
-  const params = new URLSearchParams({ agentId, limit: String(limit) });
-  if (cursor) params.set("cursor", cursor);
-  return readJson<AgentRunList>(`/api/v1/projects/${projectId}/runs?${params}`,
-    t("无法读取运行记录"));
 }
 
 /** Stops future orchestration; external work may still require later reconciliation. */
@@ -796,8 +737,9 @@ async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function writeJson<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await write(path, init);
+async function writeJson<T>(path: string, init: RequestInit,
+  failureMessage = t("请求未完成")): Promise<T> {
+  const response = await write(path, init, failureMessage);
   return (await response.json()) as T;
 }
 
@@ -805,20 +747,22 @@ async function writeEmpty(path: string, init: RequestInit): Promise<void> {
   await write(path, init);
 }
 
-async function write(path: string, init: RequestInit): Promise<Response> {
+async function write(path: string, init: RequestInit,
+  failureMessage = t("请求未完成")): Promise<Response> {
   const token = await getCsrfToken();
   const response = await apiFetch(path, {
     ...init,
     credentials: "same-origin",
     headers: {
       Accept: "application/json, application/problem+json",
-      "Content-Type": "application/json",
+      // Multipart boundaries are generated by the browser, including for library uploads.
+      ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       [token.headerName]: token.token,
       ...init.headers,
     },
   });
   if (!response.ok) {
-    throw await apiError(response, t("请求未完成"));
+    throw await apiError(response, failureMessage);
   }
   return response;
 }
@@ -842,7 +786,7 @@ async function apiError(response: Response, fallbackMessage: string): Promise<Ap
       problem.retryable,
     );
   }
-  return new ApiError(response.status, "HTTP_ERROR", fallbackMessage, response.status >= 500);
+  return new ApiError(response.status, "HTTP_ERROR", fallbackMessage, response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR);
 }
 
 export type SystemLogSnapshot = components["schemas"]["SystemLogSnapshot"];
@@ -906,11 +850,7 @@ export function deleteLibraryEntry(id: string, expectedVersion: number): Promise
 }
 export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | "VIDEO" | "AUDIO"; name: string; category: LibraryCategory; commandKey: string }): Promise<LibraryCommand> {
   const body = new FormData(); Object.entries(request).forEach(([key, value]) => body.append(key, value));
-  const token = await getCsrfToken();
-  const response = await apiFetch("/api/v1/library/uploads", { method: "POST", credentials: "same-origin", body,
-    headers: { Accept: "application/json, application/problem+json", [token.headerName]: token.token } });
-  if (!response.ok) throw await apiError(response, t("资产上传未完成"));
-  return await response.json() as LibraryCommand;
+  return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("资产上传未完成"));
 }
 
 export type StorageSettings = components["schemas"]["StorageSettings"];

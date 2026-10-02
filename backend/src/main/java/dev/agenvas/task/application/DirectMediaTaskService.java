@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
@@ -18,25 +19,22 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.ImageOperation;
+import dev.agenvas.task.domain.ImageOperationSpec;
 import dev.agenvas.usage.application.UsageService;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -52,22 +50,12 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
-    private static final int MIN_RELIGHT_BRIGHTNESS = -100;
-    private static final int MAX_RELIGHT_BRIGHTNESS = 100;
-    private static final int MIN_RELIGHT_COLOR_TEMPERATURE = 2000;
-    private static final int MAX_RELIGHT_COLOR_TEMPERATURE = 10000;
-    private static final long MAX_OPENAI_MASK_BYTES = 4L * 1024 * 1024;
-    private static final Set<String> RELIGHT_PRESETS = Set.of(
-            "GOLDEN_HOUR", "BLUE_HOUR", "OVERCAST_SOFT", "MOONLIGHT",
-            "SOFT_STUDIO", "NEON_NIGHT");
-    private static final Map<String, String> LAYER_RESULT_LABELS = Map.of(
-            "FOREGROUND", "主体图层", "BACKGROUND", "背景图层");
-    private static final Map<String, String> THREE_VIEW_RESULT_LABELS = Map.of(
-            "CHARACTER", "角色三视图", "FACE", "脸部三视图",
-            "PROP", "道具三视图", "SCENE_GRID", "场景宫格图");
-    private static final Set<String> VIEW_ANGLES = Set.of(
-            "FRONT", "LEFT_THREE_QUARTER", "RIGHT_THREE_QUARTER", "LEFT_PROFILE",
-            "RIGHT_PROFILE", "HIGH_ANGLE", "LOW_ANGLE", "BACK");
+    private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
+    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 3;
+    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 6;
+    private static final int TASK_EVENT_SCHEMA_VERSION = 1;
+    private static final int BATCH_KEY_DIGEST_LENGTH = 32;
+    private static final String LOCAL_COST_SOURCE = "LOCAL_NO_COST";
     private static final String COST_SOURCE = "PROVIDER_UNPRICED";
     // The saved prompt stays structural; only the immutable Task input sent to providers is rendered.
     private static final char MENTION_MARKER = '\uFFFC';
@@ -238,7 +226,7 @@ public class DirectMediaTaskService {
                         : canvas.forkMediaOutputWithinChange(ownerId, projectId, canvasItemId,
                                 UUID.randomUUID(), draft.version(), outputIndex);
                 ObjectNode input = mapper.createObjectNode();
-                input.put("schemaVersion", 3);
+                input.put("schemaVersion", MEDIA_TASK_INPUT_SCHEMA_VERSION);
                 if (dynamic) input.put("providerProtocol", "RUNNINGHUB_V2");
                 input.put("artifactId", artifactId.toString());
                 input.put("sourceCanvasItemId", canvasItemId.toString());
@@ -297,9 +285,9 @@ public class DirectMediaTaskService {
                 }
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 String stepKey = outputIndex == 0 ? commandKey
-                        : "image-batch:" + hash(commandKey).substring(0, 32) + ":" + outputIndex;
+                        : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
                 Task task = new Task(UUID.randomUUID(), projectId, null, stepKey, kind,
-                        Task.Status.READY, false, input, hash(input.toString()), null, null, null,
+                        Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null, null,
                         1, now, null, null, 0, 0, null, now, now, null);
                 tasks.create(task, List.of());
                 tasks.bindMediaTask(task.id(), binding);
@@ -315,7 +303,7 @@ public class DirectMediaTaskService {
                 payload.put("canvasItemId", outputCard.id().toString());
                 payload.put("status", task.status().name());
                 events.append(ownerId, projectId,
-                        new ProjectEventService.EventDraft("task.status.changed", 1, task.id(),
+                        new ProjectEventService.EventDraft("task.status.changed", TASK_EVENT_SCHEMA_VERSION, task.id(),
                                 task.version(), payload));
                 if (primary == null) primary = task;
             }
@@ -334,8 +322,8 @@ public class DirectMediaTaskService {
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-image-action-card-version-and-idempotency-key"));
         }
-        ObjectNode operationParameters = normalizeOperationParameters(operation,
-                requestedParameters);
+        ImageOperationSpec operationSpec = ImageOperationSpec.parse(mapper, operation, requestedParameters);
+        ObjectNode operationParameters = operationSpec.parameters();
         List<UUID> normalizedReferenceIds = referenceVersionIds == null
                 ? List.of() : List.copyOf(referenceVersionIds);
         if (new HashSet<>(normalizedReferenceIds).size() != normalizedReferenceIds.size()) {
@@ -348,7 +336,7 @@ public class DirectMediaTaskService {
         ArrayNode requestedReferenceIds = mapper.createArrayNode();
         normalizedReferenceIds.forEach(id -> requestedReferenceIds.add(id.toString()));
         String normalizedInstruction = instruction == null ? "" : instruction.trim();
-        if (normalizedInstruction.length() > 4000) throw invalid(ApiMessage.of("api.direct-media-task-service.edit-description-cannot-exceed-4000-characters"));
+        if (normalizedInstruction.length() > MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH) throw invalid(ApiMessage.of("api.direct-media-task-service.edit-description-cannot-exceed-4000-characters"));
         if (operation.instructionRequired() && normalizedInstruction.isBlank()) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.this-ai-image-processing-requires-filling-in-processing-instructions"));
         }
@@ -427,13 +415,11 @@ public class DirectMediaTaskService {
                 }
                 assets.requireReadyMedia(ownerId, projectId, maskAssetId, Asset.MediaKind.IMAGE);
             }
-            boolean transparentOutput = requiresTransparentOutput(operation,
-                    operationParameters);
+            boolean transparentOutput = operationSpec.requiresTransparentOutput();
             if (transparentOutput && !inputPolicy.supportsTransparentBackground()) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-transparent-background"));
             }
-            String prompt = operationPrompt(operation, normalizedInstruction,
-                    operationParameters);
+            String prompt = operationSpec.prompt(normalizedInstruction);
             if (!referenceVersions.isEmpty()) {
                 prompt += " Image 1 is the source to edit. Images 2 through "
                         + (referenceVersions.size() + 1)
@@ -447,10 +433,10 @@ public class DirectMediaTaskService {
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
                     canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0,
-                    operationResultLabel(operation, operationParameters));
+                    operationSpec.resultLabel());
             Instant now = clock.instant();
             ObjectNode input = mapper.createObjectNode();
-            input.put("schemaVersion", 6);
+            input.put("schemaVersion", IMAGE_OPERATION_INPUT_SCHEMA_VERSION);
             input.put("artifactId", artifactId.toString());
             input.put("sourceCanvasItemId", canvasItemId.toString());
             input.put("sourceCanvasItemVersion", expectedCanvasItemVersion);
@@ -514,14 +500,14 @@ public class DirectMediaTaskService {
             frozen.putArray("mentions");
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.IMAGE_GENERATION, Task.Status.READY, false, input,
-                    hash(input.toString()), null, null, null, 1, now, null, null, 0, 0,
+                    Sha256.hex(input.toString()), null, null, null, 1, now, null, null, 0, 0,
                     null, now, now, null);
             tasks.create(task, List.of());
             tasks.bindMediaTask(task.id(), binding);
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                     artifactId, sourceVersionId, target.version(), null, outputCard.id()));
             usage.reserveMediaTask(ownerId, task,
-                    operation.cloud() ? COST_SOURCE : "LOCAL_NO_COST");
+                    operation.cloud() ? COST_SOURCE : LOCAL_COST_SOURCE);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());
             payload.put("artifactId", artifactId.toString());
@@ -530,13 +516,12 @@ public class DirectMediaTaskService {
             payload.put("status", task.status().name());
             payload.put("imageOperation", operation.name());
             events.append(ownerId, projectId, new ProjectEventService.EventDraft(
-                    "task.status.changed", 1, task.id(), task.version(), payload));
+                    "task.status.changed", TASK_EVENT_SCHEMA_VERSION, task.id(), task.version(), payload));
             return ProjectEventService.Change.unchanged(task);
         }).value();
     }
 
     private MediaCapabilityBinding cloudImageBinding(UUID capabilityId) {
-        if (capabilityId == null) throw invalid(ApiMessage.of("api.direct-media-task-service.ai-image-processing-requires-selecting-openai-or-google-image-capabilities"));
         MediaCapabilityBinding binding = capabilities.resolve(capabilityId,
                 Task.Kind.IMAGE_GENERATION, 0);
         if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
@@ -549,217 +534,13 @@ public class DirectMediaTaskService {
         return binding;
     }
 
-    ObjectNode normalizeOperationParameters(ImageOperation operation, JsonNode supplied) {
-        JsonNode source = supplied == null || supplied.isNull()
-                ? mapper.createObjectNode() : supplied;
-        if (!source.isObject()) throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-parameters-must-be-objects"));
-        ObjectNode result = mapper.createObjectNode();
-        switch (operation) {
-            case DEPTH_MAP, SMART_EDIT, EXPRESSION_EDIT,
-                    REMOVE_BACKGROUND, OBJECT_REMOVE, FLIP_HORIZONTAL, FLIP_VERTICAL -> { }
-            case RELIGHT -> {
-                String preset = source.path("lightingPreset").asText("GOLDEN_HOUR");
-                int brightness = source.path("brightness").asInt(10);
-                int colorTemperature = source.path("colorTemperature").asInt(3200);
-                double lightX = source.path("lightX").asDouble(0.15);
-                double lightY = source.path("lightY").asDouble(0.75);
-                if (!RELIGHT_PRESETS.contains(preset)) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.lighting-presets-are-not-supported"));
-                }
-                if (brightness < MIN_RELIGHT_BRIGHTNESS
-                        || brightness > MAX_RELIGHT_BRIGHTNESS) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-lighting-brightness-must-be-between-100-and-100"));
-                }
-                if (colorTemperature < MIN_RELIGHT_COLOR_TEMPERATURE
-                        || colorTemperature > MAX_RELIGHT_COLOR_TEMPERATURE) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.color-temperature-must-be-between-2000k-and-10000k"));
-                }
-                if (lightX < 0 || lightX > 1 || lightY < 0 || lightY > 1) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-light-source-position-must-be-within-the-image-range"));
-                }
-                result.put("lightingPreset", preset);
-                result.put("brightness", brightness);
-                result.put("colorTemperature", colorTemperature);
-                result.put("lightX", lightX);
-                result.put("lightY", lightY);
-            }
-            case UPSCALE -> {
-                int scale = source.path("scale").asInt(2);
-                if (scale != 2 && scale != 4) throw invalid(ApiMessage.of("api.direct-media-task-service.magnification-can-only-be-2-or-4"));
-                result.put("scale", scale);
-            }
-            case CROP -> {
-                double x = source.path("x").asDouble(0);
-                double y = source.path("y").asDouble(0);
-                double width = source.path("width").asDouble(1);
-                double height = source.path("height").asDouble(1);
-                if (x < 0 || y < 0 || width <= 0 || height <= 0
-                        || x + width > 1.000001 || y + height > 1.000001) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-cropped-area-must-be-within-the-image"));
-                }
-                result.put("x", x); result.put("y", y);
-                result.put("width", width); result.put("height", height);
-            }
-            case ROTATE -> {
-                int turns = source.path("quarterTurns").asInt(1);
-                if (turns < 1 || turns > 3) throw invalid(ApiMessage.of("api.direct-media-task-service.rotation-only-supports-90-180-or-270-degrees"));
-                result.put("quarterTurns", turns);
-            }
-            case OUTPAINT -> {
-                String ratio = source.path("aspectRatio").asText("");
-                if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
-                        || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.expanding-images-requires-choosing-a-clear-target-frame"));
-                }
-                result.put("aspectRatio", ratio);
-            }
-            case THREE_VIEW -> {
-                String ratio = source.path("aspectRatio").asText("");
-                if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
-                        || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.three-views-require-a-clear-output-frame-to-be-selected"));
-                }
-                String type = source.path("threeViewType").asText("");
-                if (!THREE_VIEW_RESULT_LABELS.containsKey(type)) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
-                }
-                result.put("aspectRatio", ratio);
-                result.put("threeViewType", type);
-            }
-            case LAYER_SPLIT -> {
-                String target = source.path("layerTarget").asText("FOREGROUND");
-                if (!LAYER_RESULT_LABELS.containsKey(target)) throw invalid(ApiMessage.of("api.direct-media-task-service.layer-output-type-is-not-supported"));
-                result.put("layerTarget", target);
-            }
-            case VIEW_ANGLE -> {
-                String angle = source.path("viewAngle").asText("FRONT");
-                if (!VIEW_ANGLES.contains(angle)) throw invalid(ApiMessage.of("api.direct-media-task-service.target-perspective-is-not-supported"));
-                result.put("viewAngle", angle);
-            }
-        }
-        return result;
-    }
-
-    /** Parameters have already been normalized and validated before naming the result node. */
-    String operationResultLabel(ImageOperation operation, ObjectNode parameters) {
-        return switch (operation) {
-            case THREE_VIEW -> THREE_VIEW_RESULT_LABELS.get(parameters.path("threeViewType").asText());
-            case LAYER_SPLIT -> LAYER_RESULT_LABELS.get(parameters.path("layerTarget").asText());
-            default -> operation.resultLabel();
-        };
-    }
-
-    String operationPrompt(ImageOperation operation, String instruction,
-            ObjectNode parameters) {
-        return switch (operation) {
-            case SMART_EDIT -> "Edit the provided image according to this instruction. Preserve all "
-                    + "unmentioned subjects, identity, composition, and visual style. Instruction: "
-                    + instruction;
-            case RELIGHT -> "Relight the provided image realistically while preserving subject identity, "
-                    + "geometry, materials, composition, and camera view. Use a "
-                    + relightPresetPrompt(parameters.path("lightingPreset").asText())
-                    + " lighting style, brightness adjustment "
-                    + parameters.path("brightness").asInt() + " on a -100 to 100 scale, color "
-                    + "temperature " + parameters.path("colorTemperature").asInt()
-                    + "K, and a normalized light source position of ("
-                    + parameters.path("lightX").asDouble() + ", "
-                    + parameters.path("lightY").asDouble()
-                    + "), where (0, 0) is top-left and (1, 1) is bottom-right."
-                    + (instruction.isBlank() ? "" : " Additional lighting direction: " + instruction);
-            case OUTPAINT -> "Extend the provided image naturally to "
-                    + parameters.path("aspectRatio").asText() + ". Preserve the original image exactly "
-                    + "inside the expanded canvas and continue its scene, perspective, lighting, and style."
-                    + (instruction.isBlank() ? "" : " Additional instruction: " + instruction);
-            case THREE_VIEW -> threeViewPrompt(parameters.path("threeViewType").asText())
-                    + (instruction.isBlank() ? "" : " Subject guidance: " + instruction);
-            case LAYER_SPLIT -> "FOREGROUND".equals(parameters.path("layerTarget").asText())
-                    ? "Extract the primary foreground subject from the provided image as a clean isolated "
-                            + "layer on a fully transparent background. Preserve fine edges, hair, materials, "
-                            + "colors, and all subject details."
-                            + (instruction.isBlank() ? "" : " Subject guidance: " + instruction)
-                    : "Reconstruct a clean background layer from the provided image with all foreground "
-                            + "subjects removed. Fill occluded regions seamlessly while preserving the scene, "
-                            + "perspective, lighting, and visual style."
-                            + (instruction.isBlank() ? "" : " Background guidance: " + instruction);
-            case EXPRESSION_EDIT -> "Change only the subject's facial expression according to the instruction. "
-                    + "Preserve identity, face shape, hair, pose, clothing, composition, lighting, and style. "
-                    + "Instruction: " + instruction;
-            case REMOVE_BACKGROUND -> "Remove the entire background from the provided image and return the "
-                    + "primary subject on a fully transparent background. Preserve fine edges, hair, shadows "
-                    + "belonging to the subject, original colors, and full subject detail."
-                    + (instruction.isBlank() ? "" : " Subject guidance: " + instruction);
-            case OBJECT_REMOVE -> "Remove only the described object or region from the provided image and "
-                    + "reconstruct the newly exposed background seamlessly. Preserve all other pixels, "
-                    + "subjects, perspective, lighting, and style. Target: " + instruction;
-            case VIEW_ANGLE -> "Re-render the same subject from "
-                    + viewAnglePrompt(parameters.path("viewAngle").asText())
-                    + " while preserving identity, proportions, clothing, materials, environment, lighting, "
-                    + "and visual style."
-                    + (instruction.isBlank() ? "" : " Additional guidance: " + instruction);
-            case DEPTH_MAP -> "Local monocular depth map";
-            case UPSCALE -> "Local " + parameters.path("scale").asInt() + "x upscale";
-            case CROP -> "Local crop";
-            case ROTATE -> "Local rotation";
-            case FLIP_HORIZONTAL -> "Local horizontal mirror";
-            case FLIP_VERTICAL -> "Local vertical mirror";
-        };
-    }
-
-    boolean requiresTransparentOutput(ImageOperation operation, ObjectNode parameters) {
-        return operation == ImageOperation.REMOVE_BACKGROUND
-                || operation == ImageOperation.LAYER_SPLIT
-                        && "FOREGROUND".equals(parameters.path("layerTarget").asText());
-    }
-
-    private String viewAnglePrompt(String angle) {
-        return switch (angle) {
-            case "FRONT" -> "a straight-on front view";
-            case "LEFT_THREE_QUARTER" -> "a left three-quarter view";
-            case "RIGHT_THREE_QUARTER" -> "a right three-quarter view";
-            case "LEFT_PROFILE" -> "a left profile view";
-            case "RIGHT_PROFILE" -> "a right profile view";
-            case "HIGH_ANGLE" -> "a high-angle view looking downward";
-            case "LOW_ANGLE" -> "a low-angle view looking upward";
-            case "BACK" -> "a straight-on back view";
-            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.target-perspective-is-not-supported"));
-        };
-    }
-
-    private String threeViewPrompt(String type) {
-        return switch (type) {
-            case "CHARACTER" -> "Create one clean professional full-body character turnaround sheet from "
-                    + "the provided image. Show the same character at equal scale in straight front, exact "
-                    + "side profile, and straight back orthographic views. Keep a neutral standing pose and "
-                    + "preserve identity, body proportions, hairstyle, clothing construction, accessories, "
-                    + "materials, and colors. Use a simple neutral background, even lighting, clear separation "
-                    + "between views, and no labels or unrelated objects.";
-            case "FACE" -> "Create one clean professional facial turnaround sheet from the provided image. "
-                    + "Show the same head and shoulders at equal scale in straight front, three-quarter, and "
-                    + "exact side profile views. Preserve facial identity, skull and face proportions, skin "
-                    + "tone, hairstyle, makeup, expression, and accessories. Use a simple neutral background, "
-                    + "even lighting, aligned eye level, clear separation between views, and no labels.";
-            case "PROP" -> "Create one clean professional prop turnaround sheet from the provided image. "
-                    + "Show the exact same object at equal scale in straight front, exact side, and straight "
-                    + "back orthographic views. Preserve geometry, construction, materials, textures, colors, "
-                    + "wear, and functional details. Use a simple neutral background, even lighting, clear "
-                    + "separation between views, and do not add hands, people, labels, or unrelated objects.";
-            case "SCENE_GRID" -> "Create one coherent 2 by 2 environment reference grid from the provided "
-                    + "scene. The four panels must show the same location as a wide establishing view, a "
-                    + "reverse view, a medium view, and a key-detail view. Preserve the spatial layout, "
-                    + "architecture, landmarks, materials, colors, time of day, weather, and lighting across "
-                    + "all panels. Use clean equal gutters and do not add labels, characters, or unrelated "
-                    + "objects unless they are already essential to the source scene.";
-            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
-        };
-    }
-
     /** A provider mask is an immutable, project-scoped PNG with a real alpha channel. */
     private void validateImageMask(UUID ownerId, UUID projectId, UUID maskAssetId) {
         AssetService.AssetFile file = assets.get(ownerId, projectId, maskAssetId);
         Asset mask = file.asset();
         if (mask.mediaKind() != Asset.MediaKind.IMAGE
                 || !"image/png".equals(mask.contentType())
-                || mask.byteSize() < 1 || mask.byteSize() > MAX_OPENAI_MASK_BYTES) {
+                || mask.byteSize() < 1 || mask.byteSize() > OpenAiImage2Client.MAX_MASK_BYTES) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-must-be-png-images-smaller-than-4"));
         }
         try {
@@ -770,18 +551,6 @@ public class DirectMediaTaskService {
         } catch (IOException unreadable) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-cannot-be-read"));
         }
-    }
-
-    private String relightPresetPrompt(String preset) {
-        return switch (preset) {
-            case "GOLDEN_HOUR" -> "warm golden-hour";
-            case "BLUE_HOUR" -> "cool blue-hour";
-            case "OVERCAST_SOFT" -> "soft overcast daylight";
-            case "MOONLIGHT" -> "cool moonlight";
-            case "SOFT_STUDIO" -> "soft studio";
-            case "NEON_NIGHT" -> "colorful neon-night";
-            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.lighting-presets-are-not-supported"));
-        };
     }
 
     private String sourceAspectRatio(UUID ownerId, UUID projectId, ArtifactVersion source) {
@@ -884,15 +653,6 @@ public class DirectMediaTaskService {
             throw invalid(ApiMessage.of("api.direct-media-task-service.this-task-is-not-a-direct-media-task"));
         }
         return tasks.queueStatus(taskId);
-    }
-
-    private static String hash(String input) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException unavailable) {
-            throw new IllegalStateException("SHA-256 unavailable", unavailable);
-        }
     }
 
     /** Checks library reference reuse with the same protocol rules as direct generation, without a task or provider call. */

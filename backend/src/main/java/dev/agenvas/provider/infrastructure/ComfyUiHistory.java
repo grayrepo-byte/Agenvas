@@ -11,30 +11,11 @@ public final class ComfyUiHistory {
 
     /** 可信输出节点由已安装模板固定，用户不能自行指定。 */
     public static ImageResult image(JsonNode response, UUID promptId, String outputNodeId) {
-        if (response == null || !response.isObject() || promptId == null
-                || outputNodeId == null || !outputNodeId.matches("[0-9]{1,8}")) {
-            throw new IllegalArgumentException("Exact prompt and template output node required");
-        }
-        JsonNode entry = response.path(promptId.toString());
-        if (entry.isMissingNode()) {
-            if (response.isEmpty()) return new Pending();
-            throw new ComfyUiClient.ProtocolFailure("History returned an unrelated prompt");
-        }
-        if (!entry.isObject()) {
-            throw new ComfyUiClient.ProtocolFailure("History entry is malformed");
-        }
-        JsonNode status = entry.path("status");
-        if (!status.isObject() || !status.path("completed").isBoolean()) {
-            throw new ComfyUiClient.ProtocolFailure("History status is malformed");
-        }
-        // ComfyUI records runtime failures with completed=false and status_str=error.
-        if ("error".equals(status.path("status_str").asText())) return new Failed();
-        if (!status.path("completed").booleanValue()) return new Pending();
-        if (!"success".equals(status.path("status_str").asText())) {
-            throw new ComfyUiClient.ProtocolFailure("Completed history has unknown status");
-        }
-        JsonNode outputs = entry.path("outputs");
-        JsonNode images = outputs.path(outputNodeId).path("images");
+        HistoryState state = historyState(response, promptId, outputNodeId, "template");
+        if (state == HistoryState.PENDING) return new Pending();
+        if (state == HistoryState.FAILED) return new Failed();
+        JsonNode images = response.path(promptId.toString()).path("outputs")
+                .path(outputNodeId).path("images");
         if (!images.isArray() || images.size() != 1) {
             throw new ComfyUiClient.ProtocolFailure("Fixed image output is missing or ambiguous");
         }
@@ -56,28 +37,10 @@ public final class ComfyUiHistory {
      * @return 尚未完成、失败或包含一个安全 MP4 文件名的结果
      */
     public static VideoResult video(JsonNode response, UUID promptId, String outputNodeId) {
-        if (response == null || !response.isObject() || promptId == null
-                || outputNodeId == null || !outputNodeId.matches("[0-9]{1,8}")) {
-            throw new IllegalArgumentException("Exact prompt and video output node required");
-        }
-        JsonNode entry = response.path(promptId.toString());
-        if (entry.isMissingNode()) {
-            if (response.isEmpty()) return new VideoPending();
-            throw new ComfyUiClient.ProtocolFailure("History returned an unrelated prompt");
-        }
-        if (!entry.isObject()) {
-            throw new ComfyUiClient.ProtocolFailure("History entry is malformed");
-        }
-        JsonNode status = entry.path("status");
-        if (!status.isObject() || !status.path("completed").isBoolean()) {
-            throw new ComfyUiClient.ProtocolFailure("History status is malformed");
-        }
-        if ("error".equals(status.path("status_str").asText())) return new VideoFailed();
-        if (!status.path("completed").booleanValue()) return new VideoPending();
-        if (!"success".equals(status.path("status_str").asText())) {
-            throw new ComfyUiClient.ProtocolFailure("Completed history has unknown status");
-        }
-        JsonNode output = entry.path("outputs").path(outputNodeId);
+        HistoryState state = historyState(response, promptId, outputNodeId, "video");
+        if (state == HistoryState.PENDING) return new VideoPending();
+        if (state == HistoryState.FAILED) return new VideoFailed();
+        JsonNode output = response.path(promptId.toString()).path("outputs").path(outputNodeId);
         JsonNode files = output.path("images");
         JsonNode animated = output.path("animated");
         if (!files.isArray() || files.size() != 1 || !animated.isArray()
@@ -94,6 +57,35 @@ public final class ComfyUiHistory {
             throw new ComfyUiClient.ProtocolFailure("Fixed MP4 output path is unsafe");
         }
         return new VideoReady(filename);
+    }
+
+    private enum HistoryState { PENDING, FAILED, READY }
+
+    private static HistoryState historyState(JsonNode response, UUID promptId,
+            String outputNodeId, String outputKind) {
+        if (response == null || !response.isObject() || promptId == null
+                || outputNodeId == null || !outputNodeId.matches("[0-9]{1,8}")) {
+            throw new IllegalArgumentException("Exact prompt and " + outputKind + " output node required");
+        }
+        JsonNode entry = response.path(promptId.toString());
+        if (entry.isMissingNode()) {
+            if (response.isEmpty()) return HistoryState.PENDING;
+            throw new ComfyUiClient.ProtocolFailure("History returned an unrelated prompt");
+        }
+        if (!entry.isObject()) {
+            throw new ComfyUiClient.ProtocolFailure("History entry is malformed");
+        }
+        JsonNode status = entry.path("status");
+        if (!status.isObject() || !status.path("completed").isBoolean()) {
+            throw new ComfyUiClient.ProtocolFailure("History status is malformed");
+        }
+        // ComfyUI records runtime failures with completed=false and status_str=error.
+        if ("error".equals(status.path("status_str").asText())) return HistoryState.FAILED;
+        if (!status.path("completed").booleanValue()) return HistoryState.PENDING;
+        if (!"success".equals(status.path("status_str").asText())) {
+            throw new ComfyUiClient.ProtocolFailure("Completed history has unknown status");
+        }
+        return HistoryState.READY;
     }
 
     /** 原 prompt 完成前，ComfyUI 可能尚未创建对应历史记录。 */

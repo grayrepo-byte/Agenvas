@@ -12,10 +12,13 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -35,6 +38,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** PostgreSQL evidence for SKIP LOCKED claims, lease fencing, and transaction-free work. */
@@ -44,6 +48,8 @@ import tools.jackson.databind.ObjectMapper;
         classes = AgenvasApplication.class,
         properties = "agenvas.identity.bootstrap-secret=task-integration-bootstrap-secret")
 class TaskLeasePostgresIT {
+
+    private static final Duration TEST_LEASE_DURATION = Duration.ofMinutes(1);
 
     @Container
     static final PostgreSQLContainer POSTGRES =
@@ -73,6 +79,9 @@ class TaskLeasePostgresIT {
 
     @Autowired
     private TaskService taskService;
+
+    @Autowired
+    private TaskRepository taskRepository;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -161,6 +170,7 @@ class TaskLeasePostgresIT {
         assertThat(waiting.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(waiting.leaseOwner()).isNull();
         assertThat(waiting.leaseUntil()).isNull();
+        assertLeaseWriteGuards(owner.userId(), project.id(), run.id());
         assertProblem(
                 "RESOURCE_NOT_FOUND",
                 () -> taskService.get(UUID.randomUUID(), project.id(), task.id()));
@@ -169,6 +179,68 @@ class TaskLeasePostgresIT {
                         .single())
                 .satisfies(version -> assertThat(Integer.parseInt(version))
                         .isGreaterThanOrEqualTo(39));
+    }
+
+    private void assertLeaseWriteGuards(UUID ownerId, UUID projectId, UUID runId) {
+        Instant now = Instant.parse("2030-01-01T00:00:00Z");
+        Instant leaseUntil = now.plus(TEST_LEASE_DURATION);
+        Instant renewedLeaseUntil = leaseUntil.plus(TEST_LEASE_DURATION);
+        String workerId = "worker-write-guards";
+        Task task = create(ownerId, projectId, runId, "write-guards", List.of());
+        Task lease = taskRepository.claimDue(workerId, 1, now, leaseUntil).getFirst();
+        assertThat(lease.id()).isEqualTo(task.id());
+        JsonNode output = objectMapper.readTree("{\"result\":\"guarded\"}");
+
+        assertThat(taskRepository.heartbeat(
+                task.id(), "worker-other", lease.leaseEpoch(), now, renewedLeaseUntil)).isFalse();
+        assertThat(taskRepository.finish(task.id(), "worker-other", lease.leaseEpoch(),
+                Task.Status.SUCCEEDED, output, null, now)).isFalse();
+        assertThat(taskRepository.findById(task.id())).contains(lease);
+
+        assertThat(jdbcClient.sql("update task set status = :status where id = :id")
+                .param("status", Task.Status.SUBMITTING.name())
+                .param("id", task.id()).update()).isEqualTo(1);
+        Task submitting = taskRepository.findById(task.id()).orElseThrow();
+        assertThat(taskRepository.finish(task.id(), workerId, lease.leaseEpoch(),
+                Task.Status.SUCCEEDED, output, null, now)).isFalse();
+        assertThat(taskRepository.beginSubmission(task.id(), workerId, lease.leaseEpoch(),
+                UUID.randomUUID(), UUID.randomUUID(), null, now)).isFalse();
+        assertThat(taskRepository.findById(task.id())).contains(submitting);
+        assertThat(jdbcClient.sql("select count(*) from provider_attempt where task_id = :id")
+                .param("id", task.id()).query(Long.class).single()).isZero();
+
+        // SUBMITTING permits renewal even though ordinary completion requires RUNNING.
+        assertThat(taskRepository.heartbeat(
+                task.id(), workerId, lease.leaseEpoch(), now, renewedLeaseUntil)).isTrue();
+        Task renewed = taskRepository.findById(task.id()).orElseThrow();
+        assertThat(renewed.status()).isEqualTo(Task.Status.SUBMITTING);
+        assertThat(renewed.leaseUntil()).isEqualTo(renewedLeaseUntil);
+        assertThat(renewed.version()).isEqualTo(lease.version() + 1);
+
+        assertThat(jdbcClient.sql("update task set status = :status, lease_until = :leaseUntil where id = :id")
+                .param("status", Task.Status.RUNNING.name())
+                .param("leaseUntil", now.atOffset(ZoneOffset.UTC))
+                .param("id", task.id()).update()).isEqualTo(1);
+        Task expiredAtBoundary = taskRepository.findById(task.id()).orElseThrow();
+        assertThat(expiredAtBoundary.leaseUntil()).isEqualTo(now);
+        assertThat(taskRepository.heartbeat(
+                task.id(), workerId, lease.leaseEpoch(), now, renewedLeaseUntil)).isFalse();
+        assertThat(taskRepository.finish(task.id(), workerId, lease.leaseEpoch(),
+                Task.Status.SUCCEEDED, output, null, now)).isFalse();
+        assertThat(taskRepository.findById(task.id())).contains(expiredAtBoundary);
+
+        assertThat(jdbcClient.sql("update task set lease_until = :leaseUntil where id = :id")
+                .param("leaseUntil", renewedLeaseUntil.atOffset(ZoneOffset.UTC))
+                .param("id", task.id()).update()).isEqualTo(1);
+        assertThat(taskRepository.finish(task.id(), workerId, lease.leaseEpoch(),
+                Task.Status.SUCCEEDED, output, null, now)).isTrue();
+        Task succeeded = taskRepository.findById(task.id()).orElseThrow();
+        assertThat(succeeded.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(succeeded.output()).isEqualTo(output);
+        assertThat(succeeded.leaseOwner()).isNull();
+        assertThat(succeeded.leaseUntil()).isNull();
+        assertThat(succeeded.completedAt()).isEqualTo(now);
+        assertThat(succeeded.version()).isEqualTo(renewed.version() + 1);
     }
 
     private Task create(

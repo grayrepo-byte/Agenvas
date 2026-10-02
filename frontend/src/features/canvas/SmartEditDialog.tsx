@@ -12,6 +12,7 @@ ApiError,assetContentUrl,createArtifact,listArtifacts,listCanvasItems,uploadImag
 type MediaCapability
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Button } from "../../shared/ui/primitives/button";
 import { DialogContent, Dialog as DialogRoot, DialogTitle } from "../../shared/ui/primitives/dialog";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -357,7 +358,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           <Button variant="ghost" type="button" aria-expanded={referencePickerOpen}
             onClick={() => setReferencePickerOpen((open) => !open)}><Plus size={17} />{t("引用")}</Button>
           <Button variant="ghost" type="button" onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("上传")}</Button>
-          <Input ref={uploadRef} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp"
+          <Input ref={uploadRef} className="sr-only" type="file" accept={MEDIA_FILE_ACCEPT.IMAGE}
             multiple aria-label={t("上传智能编辑参考图")} onChange={handleUpload} />
           {referencePickerOpen ? <div className="smart-edit-reference-picker" role="dialog"
             aria-label={t("选择智能编辑参考图")}>

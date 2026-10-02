@@ -7,6 +7,7 @@ deleteLibraryEntry,getLibraryEntry,importLibraryEntry,libraryContentUrl,listProj
 type ImportLibraryRequest,type LibraryCategory,type LibraryEntry
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Dialog } from "../../shared/ui/Dialog";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
@@ -85,7 +86,7 @@ function UploadWindow({ onClose }: { onClose: () => void }) {
     footer={<><Button variant="outline"  type="button" disabled={transfer.working} onClick={() => { void client.invalidateQueries({ queryKey: ["library"] }); onClose(); }}>{done ? t("完成") : t("取消")}</Button>
       <Button variant="default"  type="submit" disabled={!file || !name.trim() || transfer.working || done}>{t("上传并保存")}</Button></>}>
     <p>{t("图片 PNG/JPEG/WebP：20 MiB、40 MP；音频 MP3/WAV/OGG Opus：50 MiB、10 分钟；MP4 视频：50 MiB、40 MP、60 秒。均按实际解码校验。")}</p>
-    <Field><FieldLabel className="field block">{t("资源文件")}<Input type="file" required accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg,video/mp4" disabled={transfer.frozen} onChange={(event) => { const selected = event.target.files?.[0] ?? null; setFile(selected); if (!name && selected) setName(selected.name.replace(/\.[^.]+$/, "")); }} /></FieldLabel></Field>
+    <Field><FieldLabel className="field block">{t("资源文件")}<Input type="file" required accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.AUDIO},${MEDIA_FILE_ACCEPT.VIDEO}`} disabled={transfer.frozen} onChange={(event) => { const selected = event.target.files?.[0] ?? null; setFile(selected); if (!name && selected) setName(selected.name.replace(/\.[^.]+$/, "")); }} /></FieldLabel></Field>
     <Field><FieldLabel className="field block">{t("资产名称")}<Input required maxLength={MAX_LIBRARY_NAME_LENGTH} value={name} disabled={transfer.frozen} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
     <Field><FieldLabel className="field block">{t("资产分类")}<Select value={category} disabled={transfer.frozen} onChange={(event) => setCategory(event.target.value as LibraryCategory)}>{Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></FieldLabel></Field>
     <TransferState transfer={transfer} success={t("已保存到我的资产 · {0}", { "0": CATEGORY_LABELS[category] })} />

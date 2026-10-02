@@ -21,11 +21,13 @@ import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /** 校验项目权限并管理私有媒体归档；文件先安装，数据库只记录已校验的 READY 元数据。 */
 @Service
 public class AssetService {
+
+    private static final int ASSET_EVENT_SCHEMA_VERSION = 1;
+    private static final int IMMUTABLE_ASSET_VERSION = 0;
 
     /** 对上传和读取执行所有者、项目及归档状态检查。 */
     private final ProjectService projects;
@@ -110,9 +112,7 @@ public class AssetService {
                 return ProjectEventService.Change.unchanged(asset);
             }
             assets.insert(asset);
-            return ProjectEventService.Change.changed(asset, new ProjectEventService.EventDraft("asset.ready", 1,
-                    asset.id(), 0, mapper.createObjectNode().put("assetId", asset.id().toString())
-                    .put("contentType", asset.contentType()).put("byteSize", asset.byteSize())));
+            return ProjectEventService.Change.changed(asset, assetReadyEvent(asset));
         });
     }
 
@@ -172,14 +172,7 @@ public class AssetService {
         Asset asset = new Asset(id, projectId, Asset.MediaKind.AUDIO, stored.objectKey(),
                 stored.contentType(), stored.byteSize(), stored.sha256(), null, null,
                 stored.durationMs(), null, null, null, now());
-        return events.recordChange(ownerId, projectId, () -> {
-            if (taskOutput) projects.get(ownerId, projectId); else projects.requireActiveProject(ownerId, projectId);
-            assets.insert(asset);
-            ObjectNode payload = mapper.createObjectNode().put("assetId", id.toString())
-                    .put("contentType", asset.contentType()).put("byteSize", asset.byteSize());
-            return ProjectEventService.Change.changed(asset,
-                    new ProjectEventService.EventDraft("asset.ready", 1, id, 0, payload));
-        }).value();
+        return registerReadyAsset(ownerId, asset, taskOutput);
     }
 
     /** 流式接收用户图片，在字节、像素和解码校验通过并生成缩略图后才写 READY。 */
@@ -187,7 +180,7 @@ public class AssetService {
         projects.requireActiveProject(ownerId, projectId);
         UUID assetId = UUID.randomUUID();
         LocalAssetStorage.StoredImage stored = storage.storeImage(projectId, assetId, input);
-        return publishImage(ownerId, projectId, assetId, stored, true, false);
+        return publishImage(ownerId, projectId, assetId, stored, false);
     }
 
     /** 以任务 ID 派生稳定素材 ID，并在共享卷锁内恢复或完成唯一图片归档。 */
@@ -217,13 +210,13 @@ public class AssetService {
             return asset;
         }
         if (recovered.isPresent()) {
-            return publishImage(ownerId, projectId, assetId, recovered.get(), false, true);
+            return publishImage(ownerId, projectId, assetId, recovered.get(), true);
         }
         try (InputStream input = download.get()) {
             if (input == null) throw new IllegalStateException("Image download returned no stream");
             LocalAssetStorage.StoredImage stored = storage.storeImage(projectId, assetId, input);
             // 数据库写入失败时保留任务键文件，后续轮询可核对文件并补交元数据。
-            return publishImage(ownerId, projectId, assetId, stored, false, true);
+            return publishImage(ownerId, projectId, assetId, stored, true);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close generated image stream", failure);
         }
@@ -246,40 +239,13 @@ public class AssetService {
 
     /** 图片原件与缩略图都已落盘后才在项目事件事务中创建 READY 元数据。 */
     private Asset publishImage(UUID ownerId, UUID projectId, UUID assetId,
-            LocalAssetStorage.StoredImage stored, boolean discardOnFailure,
-            boolean taskOutput) {
+            LocalAssetStorage.StoredImage stored, boolean taskOutput) {
         Asset asset = new Asset(assetId, projectId, Asset.MediaKind.IMAGE,
                 stored.objectKey(), stored.contentType(), stored.byteSize(),
                 stored.sha256(), stored.width(), stored.height(), null,
                 stored.thumbnailKey(), stored.thumbnailByteSize(),
                 stored.thumbnailSha256(), now());
-        try {
-            events.recordChange(ownerId, projectId, () -> {
-                if (taskOutput) {
-                    projects.get(ownerId, projectId);
-                } else {
-                    projects.requireActiveProject(ownerId, projectId);
-                }
-                assets.insert(asset);
-                ObjectNode payload = mapper.createObjectNode();
-                payload.put("assetId", asset.id().toString());
-                payload.put("contentType", asset.contentType());
-                payload.put("byteSize", asset.byteSize());
-                return ProjectEventService.Change.changed(asset,
-                        new ProjectEventService.EventDraft("asset.ready", 1,
-                                asset.id(), 0, payload));
-            });
-            return asset;
-        } catch (RuntimeException exception) {
-            if (discardOnFailure) {
-                try {
-                    storage.discard(stored.objectKey());
-                } finally {
-                    storage.discard(stored.thumbnailKey());
-                }
-            }
-            throw exception;
-        }
+        return publishAsset(ownerId, asset, taskOutput);
     }
 
     /** 校验实际视频容器、解码结果、时长和分辨率，提取海报图后才发布 READY。 */
@@ -287,7 +253,7 @@ public class AssetService {
         projects.requireActiveProject(ownerId, projectId);
         UUID assetId = UUID.randomUUID();
         LocalAssetStorage.StoredVideo stored = storage.storeVideo(projectId, assetId, input);
-        return publishVideo(ownerId, projectId, assetId, stored, true, false);
+        return publishVideo(ownerId, projectId, assetId, stored, false);
     }
 
     /** 以任务 ID 派生稳定素材 ID，在共享卷锁内恢复唯一 MP4 和海报图。 */
@@ -318,12 +284,12 @@ public class AssetService {
             return asset;
         }
         if (recovered.isPresent()) {
-            return publishVideo(ownerId, projectId, assetId, recovered.get(), false, true);
+            return publishVideo(ownerId, projectId, assetId, recovered.get(), true);
         }
         try (InputStream input = download.get()) {
             if (input == null) throw new IllegalStateException("Video download returned no stream");
             LocalAssetStorage.StoredVideo stored = storage.storeVideo(projectId, assetId, input);
-            return publishVideo(ownerId, projectId, assetId, stored, false, true);
+            return publishVideo(ownerId, projectId, assetId, stored, true);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close generated video stream", failure);
         }
@@ -338,47 +304,50 @@ public class AssetService {
 
     /** 视频原件及 PNG 海报均安装成功后，才提交 READY 元数据和事件。 */
     private Asset publishVideo(UUID ownerId, UUID projectId, UUID assetId,
-            LocalAssetStorage.StoredVideo stored, boolean discardOnFailure,
-            boolean taskOutput) {
+            LocalAssetStorage.StoredVideo stored, boolean taskOutput) {
         Asset asset = new Asset(assetId, projectId, Asset.MediaKind.VIDEO,
                 stored.objectKey(), "video/mp4", stored.byteSize(), stored.sha256(),
                 stored.width(), stored.height(), stored.durationMs(), stored.thumbnailKey(),
                 stored.thumbnailByteSize(), stored.thumbnailSha256(), now());
+        return publishAsset(ownerId, asset, taskOutput);
+    }
+
+    /** Image/video uploads clean both installed files on failure; task files remain recoverable. */
+    private Asset publishAsset(UUID ownerId, Asset asset, boolean taskOutput) {
         try {
-            events.recordChange(ownerId, projectId, () -> {
-                if (taskOutput) {
-                    projects.get(ownerId, projectId);
-                } else {
-                    projects.requireActiveProject(ownerId, projectId);
-                }
-                assets.insert(asset);
-                ObjectNode payload = mapper.createObjectNode();
-                payload.put("assetId", asset.id().toString());
-                payload.put("contentType", asset.contentType());
-                payload.put("byteSize", asset.byteSize());
-                return ProjectEventService.Change.changed(asset,
-                        new ProjectEventService.EventDraft("asset.ready", 1,
-                                asset.id(), 0, payload));
-            });
-            return asset;
+            return registerReadyAsset(ownerId, asset, taskOutput);
         } catch (RuntimeException exception) {
-            if (discardOnFailure) {
+            if (!taskOutput) {
                 try {
-                    storage.discard(stored.objectKey());
+                    storage.discard(asset.objectKey());
                 } finally {
-                    storage.discard(stored.thumbnailKey());
+                    storage.discard(asset.thumbnailKey());
                 }
             }
             throw exception;
         }
     }
 
+    /** Uploads require an active project; accepted task output may finish after archival. */
+    private Asset registerReadyAsset(UUID ownerId, Asset asset, boolean taskOutput) {
+        return events.recordChange(ownerId, asset.projectId(), () -> {
+            if (taskOutput) projects.get(ownerId, asset.projectId());
+            else projects.requireActiveProject(ownerId, asset.projectId());
+            assets.insert(asset);
+            return ProjectEventService.Change.changed(asset, assetReadyEvent(asset));
+        }).value();
+    }
+
+    private ProjectEventService.EventDraft assetReadyEvent(Asset asset) {
+        return new ProjectEventService.EventDraft("asset.ready", ASSET_EVENT_SCHEMA_VERSION,
+                asset.id(), IMMUTABLE_ASSET_VERSION, mapper.createObjectNode()
+                .put("assetId", asset.id().toString()).put("contentType", asset.contentType())
+                .put("byteSize", asset.byteSize()));
+    }
+
     /** 先核验项目所有权，再检查 READY 文件路径和字节大小后返回私有文件。 */
     public AssetFile get(UUID ownerId, UUID projectId, UUID assetId) {
-        projects.get(ownerId, projectId);
-        Asset asset = assets.find(projectId, assetId).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND",
-                        ApiMessage.of("api.asset-service.material-does-not-exist"), ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
+        Asset asset = metadata(ownerId, projectId, assetId);
         Path path = checkedReadyFile(asset.objectKey(), asset.byteSize());
         return new AssetFile(asset, path);
     }
@@ -392,9 +361,7 @@ public class AssetService {
 
     /** Authorize before accessing storage; metadata/HEAD never materialize a remote video. */
     public AssetContent content(UUID ownerId, UUID projectId, UUID assetId, boolean thumbnail) {
-        projects.get(ownerId, projectId);
-        Asset asset = assets.find(projectId, assetId).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"), ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
+        Asset asset = metadata(ownerId, projectId, assetId);
         if (thumbnail && (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null))
             throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND", ApiMessage.of("api.asset-service.preview-does-not-exist"), ApiMessage.of("api.asset-service.there-is-no-thumbnail-available-for-this-footage"), false);
         String key = thumbnail ? asset.thumbnailKey() : asset.objectKey();

@@ -8,6 +8,7 @@ import dev.agenvas.provider.application.ProviderProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
+import dev.agenvas.provider.infrastructure.ComfyUiInputImage;
 import dev.agenvas.provider.infrastructure.ComfyUiClientRegistry;
 import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
@@ -15,11 +16,7 @@ import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.TaskWorker;
 import dev.agenvas.task.domain.Task;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
@@ -150,10 +147,9 @@ public class ComfyUiImageWorker {
     /** 将选定参考图字节归一化后上传，供固定模板的 LoadImage 节点读取。 */
     private byte[] inputImage(UUID ownerId, Task task, boolean reference) {
         Project.AspectRatio ratio = projects.get(ownerId, task.projectId()).aspectRatio();
-        int width = ratio == Project.AspectRatio.PORTRAIT_9_16 ? 576
-                : ratio == Project.AspectRatio.SQUARE_1_1 ? 768 : 1024;
-        int height = ratio == Project.AspectRatio.PORTRAIT_9_16 ? 1024
-                : ratio == Project.AspectRatio.SQUARE_1_1 ? 768 : 576;
+        var dimensions = ComfyUiInputImage.imageDimensions(ratio);
+        int width = dimensions.width();
+        int height = dimensions.height();
         BufferedImage source = null;
         if (reference) {
             UUID versionId = FrozenMediaInputs.first(task).versionId();
@@ -171,29 +167,8 @@ public class ComfyUiImageWorker {
             }
             if (source == null) throw new IllegalStateException("Pinned reference is not decodable");
         }
-        BufferedImage normalized = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = normalized.createGraphics();
         try {
-            graphics.setColor(new Color(127, 127, 127));
-            graphics.fillRect(0, 0, width, height);
-            if (source != null) {
-                double scale = Math.min((double) width / source.getWidth(),
-                        (double) height / source.getHeight());
-                int drawWidth = Math.max(1, (int) Math.round(source.getWidth() * scale));
-                int drawHeight = Math.max(1, (int) Math.round(source.getHeight() * scale));
-                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                        RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                graphics.drawImage(source, (width - drawWidth) / 2,
-                        (height - drawHeight) / 2, drawWidth, drawHeight, null);
-            }
-        } finally {
-            graphics.dispose();
-        }
-        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            if (!ImageIO.write(normalized, "png", output)) {
-                throw new IllegalStateException("PNG encoder unavailable");
-            }
-            return output.toByteArray();
+            return ComfyUiInputImage.png(source, width, height);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot encode ComfyUI input image", failure);
         }
@@ -205,16 +180,9 @@ public class ComfyUiImageWorker {
         UUID ownerId = tasks.ownerForWorker(task);
         Asset archived = assets.archiveTaskImage(ownerId, task.projectId(), task.id(),
                 () -> original.output(filename));
-        ObjectNode content = mapper.createObjectNode();
-        content.put("assetId", archived.id().toString());
-        content.put("prompt", task.input().path("prompt").asText());
-        if (task.input().has("negativePrompt")) {
-            content.put("negativePrompt", task.input().path("negativePrompt").asText());
-        }
-        content.put("providerConfigVersion", task.input().path("providerConfigVersion").asInt());
-        content.put("workflowVersion", task.input().path("workflowVersion").asText());
-        content.put("sourceTaskId", task.id().toString());
-        ObjectNode parameters = content.putObject("parameters");
+        ObjectNode content = MediaResult.content(mapper, task, archived.id(),
+                task.input().path("prompt").asText());
+        ObjectNode parameters = content.withObject("parameters");
         parameters.put("providerRequestId", promptId.toString());
         return new TaskWorker.PollGenerated(content);
     }

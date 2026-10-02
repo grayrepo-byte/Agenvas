@@ -50,24 +50,35 @@ class MediaCloudCapabilityPostgresIT {
                 null, "ark-test-secret");
         var google = catalog.createConnection("cloud-google-1", "Google", "GOOGLE",
                 null, "google-test-secret");
+        var volc = catalog.createConnection("cloud-volc-1", "Volc", "VOLCENGINE",
+                null, "synthetic-audio-secret");
         var image = catalog.publishCapability(openAi.id(), "GPT Image 2",
                 "OPENAI_GPT_IMAGE_2", mapper.readTree("{\"quality\":\"high\"}"));
         var nanoBanana = catalog.publishCapability(google.id(), "Nano Banana 2",
                 "GOOGLE_NANO_BANANA_2");
         var video = catalog.publishCapability(ark.id(), "Seedance",
                 "ARK_SEEDANCE_2_I2V");
+        var audio = catalog.publishCapability(volc.id(), "Seed Audio", "VOLC_SEED_AUDIO_1");
+        var defaultImage = catalog.publishCapability(openAi.id(), "Default quality", "OPENAI_GPT_IMAGE_2");
 
         var imageSpec = mapper.readTree(catalog.capabilitySnapshot(image.id()).specJson());
         var videoSpec = mapper.readTree(catalog.capabilitySnapshot(video.id()).specJson());
         var googleSpec = mapper.readTree(catalog.capabilitySnapshot(nanoBanana.id()).specJson());
+        var audioSpec = mapper.readTree(catalog.capabilitySnapshot(audio.id()).specJson());
         assertThat(imageSpec.path("modelId").asText()).isEqualTo("gpt-image-2");
         assertThat(imageSpec.path("maxReferenceImages").asInt()).isEqualTo(4);
         assertThat(imageSpec.path("settings").path("quality").asText()).isEqualTo("high");
+        assertThat(imageSpec.path("defaultVideoInputMode").isNull()).isTrue();
+        assertThat(mapper.readTree(catalog.capabilitySnapshot(defaultImage.id()).specJson())
+                .path("settings").path("quality").asText()).isEqualTo("medium");
         assertThat(videoSpec.path("modelId").asText()).isEqualTo("doubao-seedance-2-0-260128");
         assertThat(videoSpec.path("generateAudio").booleanValue()).isFalse();
         assertThat(googleSpec.path("modelId").asText()).isEqualTo("gemini-3.1-flash-image");
         assertThat(googleSpec.path("maxReferenceImages").asInt()).isEqualTo(14);
         assertThat(googleSpec.path("imageSize").asText()).isEqualTo("1K");
+        assertThat(audioSpec.path("modelId").asText()).isEqualTo("seed-audio-1.0");
+        assertThat(audioSpec.path("outputFormat").asText()).isEqualTo("mp3");
+        assertThat(audioSpec.path("defaultVideoInputMode").isNull()).isTrue();
         assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0))
                 .anyMatch(candidate -> candidate.binding().capabilityId().equals(nanoBanana.id())
                         && !candidate.realGenerationTested());

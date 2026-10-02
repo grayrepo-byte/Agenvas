@@ -1,5 +1,6 @@
 package dev.agenvas.library.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
@@ -16,13 +17,10 @@ import dev.agenvas.library.infrastructure.LibraryRepository;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -105,7 +103,7 @@ public class LibraryService {
     public LibraryCommand save(UUID owner, UUID project, UUID itemId, UUID versionId,
             long selectionEpoch, Long artifactVersion, String name, LibraryEntry.Category category, String key) {
         name = name(name); key = key(key);
-        String hash = hash(mapper.writeValueAsString(List.of("SAVE", project, itemId, versionId,
+        String hash = Sha256.hex(mapper.writeValueAsString(List.of("SAVE", project, itemId, versionId,
                 selectionEpoch, artifactVersion == null ? -1 : artifactVersion, name, category)));
         var replay = replay(owner, key, hash);
         if (replay != null) return replay;
@@ -150,7 +148,7 @@ public class LibraryService {
         Media media;
         try (var stream = file.getInputStream()) { media = archive.archive(owner, id, kind, stream); }
         catch (java.io.IOException failure) { throw new IllegalStateException("Cannot read upload", failure); }
-        String hash = hash(mapper.writeValueAsString(List.of("UPLOAD", name, category, kind, media.sha256())));
+        String hash = Sha256.hex(mapper.writeValueAsString(List.of("UPLOAD", name, category, kind, media.sha256())));
         try {
             var replay = replay(owner, key, hash);
             if (replay != null) { archive.discard(owner, media); return replay; }
@@ -167,7 +165,7 @@ public class LibraryService {
     public LibraryCommand importEntry(UUID owner, UUID project, UUID entryId, long expected,
             java.math.BigDecimal x, java.math.BigDecimal y, String key) {
         key = key(key);
-        String hash = hash(mapper.writeValueAsString(List.of("IMPORT", project, entryId, expected, x, y)));
+        String hash = Sha256.hex(mapper.writeValueAsString(List.of("IMPORT", project, entryId, expected, x, y)));
         var replay = replay(owner, key, hash);
         if (replay != null) return replay;
         projects.requireActiveProject(owner, project);
@@ -186,7 +184,7 @@ public class LibraryService {
     public LibraryCommand reference(UUID owner, UUID project, UUID item, UUID entryId, long expected,
             ReferenceDraft draft, MediaDraft.InputRole role, String color, String key) {
         key = key(key);
-        String hash = hash(mapper.writeValueAsString(List.of("REFERENCE", project, item, entryId, expected, draft, role, color)));
+        String hash = Sha256.hex(mapper.writeValueAsString(List.of("REFERENCE", project, item, entryId, expected, draft, role, color)));
         var replay = replay(owner, key, hash); if (replay != null) return replay;
         LibraryEntry entry = require(owner, entryId); checkEntry(entry, expected);
         if (entry.kind() != Artifact.Kind.IMAGE && entry.kind() != Artifact.Kind.AUDIO)
@@ -480,10 +478,6 @@ public class LibraryService {
         if (value == null || value.isBlank() || value.length() > MAX_COMMAND_KEY_LENGTH)
             throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.library-service.command-keys-must-be-between-1-and-200-characters"));
         return value;
-    }
-    private String hash(String value) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
-        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     private ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
         return new ApiProblemException(status, code, ApiMessage.of("api.library-service.asset-operation-not-completed"), detail, status == HttpStatus.CONFLICT);

@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css";
 import { memo,useCallback,useEffect,useMemo,useRef,useState,type FormEvent } from "react";
 import { Link,Navigate,useParams } from "react-router";
 import {
+HTTP_STATUS,
 ApiError,
 applyCanvasCommands,
 createAgent,
@@ -45,11 +46,12 @@ uploadVideoAsset,
 type Agent,
 type AgentRun,
 type Artifact,
+type Canvas,
 type CanvasCommand,
 type CanvasItem,
-type ProjectSnapshot,
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { isAudioFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Input } from "../../shared/ui/primitives/input";
@@ -76,6 +78,7 @@ import { useCanvasStore } from "./canvasStore";
 import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageNodeSize } from "./imageNodeLayout";
 import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
+import { projectCacheCallbacks } from "./projectCache";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
 import { KIND_LABELS } from "../library/libraryLabels";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
@@ -90,6 +93,8 @@ type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "agent-input" | "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
+const DUPLICATE_ITEM_OFFSET = 32;
+const MAX_CANVAS_Z_INDEX = 1000;
 const MEDIA_EDITOR_VIEW_HEIGHT = 320;
 const MEDIA_TOOLBAR_VIEW_HEIGHT = 70;
 const MEDIA_VIEW_MARGIN = 24;
@@ -100,6 +105,7 @@ const MEDIA_FOCUS_DURATION_MS = 360;
 /** Smooth pan/zoom on one path; unlike a zoom flight, it never pulls away from the card first. */
 const mediaFocusEase = (progress: number) => progress * progress * (3 - 2 * progress);
 const MAX_AGENT_TITLE_LENGTH = 120;
+const MAX_MEDIA_TITLE_LENGTH = 160;
 const AUDIO_AGENT_INSTRUCTION = "协助用户创作音频提示词、对白与 MV 方案。绑定的音频只提供归档元数据和生成描述，不代表你已听到或分析了声音。不能调用媒体生成；需要生成音频或视频时，请引导用户在对应卡片中运行。";
 const CREATION_MENU_WIDTH = 208;
 /** Match the menu's title, rows, gaps and padding in styles.css so edge clamping stays accurate. */
@@ -108,6 +114,11 @@ const CREATION_MENU_MARGIN = 12;
 const DEFAULT_CARD_WIDTH = 280;
 const DEFAULT_TEXT_CARD_HEIGHT = 180;
 const DEFAULT_TEXT_CARD_TITLE = "新文字";
+const DEFAULT_CANVAS_ORIGIN = 80;
+const AUTO_PLACEMENT_COLUMNS = 3;
+const UPLOAD_GRID_SPACING = { x: 320, y: 220 };
+const AGENT_GRID_ORIGIN = 100;
+const AGENT_GRID_SPACING = 360;
 const DEFAULT_MEDIA_CARD_HEIGHT = 300;
 const AUDIO_RESULT_CARD_HEIGHT = 160;
 const DEFAULT_IMAGE_CARD_WIDTH = 225;
@@ -204,7 +215,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const clearDraft = useCanvasStore((state) => state.clearDraft);
   const setSaveState = useCanvasStore((state) => state.setSaveState);
   const setSaveError = (error: Error) => setSaveState(
-    error instanceof ApiError && error.status === 409 ? "conflict" : "failed");
+    error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? "conflict" : "failed");
+  const canvasMutationFeedback = {
+    onMutate: () => setSaveState("saving"),
+    onError: setSaveError,
+  };
+  const acceptCanvasSnapshot = (saved: Canvas) => {
+    queryClient.setQueryData(["canvas", projectId], saved);
+    setSaveState("saved");
+  };
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const displaySettings = useCanvasDisplayPreferences(currentUser.data?.id, projectId);
@@ -255,88 +274,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (initialEventSequence.current === null || typeof EventSource === "undefined") return;
     return subscribeProjectEvents(projectId, initialEventSequence.current, {
-      onChange: (event) => {
-        if (event.type.startsWith("canvas.") || event.type === "task.status.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["canvas-media-versions", projectId] });
-        }
-        if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
-            event.type === "agent.instance.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
-          if (event.type.startsWith("canvas.connection.")) {
-            void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
-            void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
-          }
-          if (event.type === "canvas.items.changed") {
-            void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
-            void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
-          }
-          if (event.type === "agent.instance.changed") {
-            void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
-          }
-          if (event.type.startsWith("artifact.")) {
-            void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
-          }
-          if (event.type === "canvas.item.selected_version.changed"
-              && typeof event.payload.canvasItemId === "string") {
-            void queryClient.invalidateQueries({
-              queryKey: ["media-draft", projectId, event.payload.canvasItemId],
-            });
-            if (typeof event.payload.artifactId === "string") {
-              void queryClient.invalidateQueries({
-                queryKey: ["artifact-versions", projectId, event.payload.artifactId],
-              });
-            }
-          }
-        }
-        if (event.type === "project.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
-        }
-        if (event.type === "task.status.changed" || event.type === "agent.run.changed" || event.type === "agent.conversation.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["agent-conversations", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["conversation-runs", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
-        }
-        const activeRunId = queryClient.getQueryData<ProjectSnapshot>(["snapshot", projectId])?.activeRun?.id;
-        if (event.type === "task.status.changed" && event.payload.artifactId) {
-          void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
-        }
-        if (event.type.startsWith("task.") && activeRunId) {
-          void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId, activeRunId] });
-        }
-        if (event.type === "task.status.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["direct-media-queue", projectId] });
-        }
-        if (event.type === "media.draft.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
-          void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
-        }
-        if (event.type === "usage.changed") {
-          void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
-        }
-      },
-      onSnapshot: (fresh) => {
-        queryClient.setQueryData(["snapshot", projectId], fresh);
-        queryClient.setQueryData(["projects", projectId], fresh.project);
-        queryClient.setQueryData(["canvas", projectId], fresh.canvas);
-        queryClient.setQueryData(["canvas-connections", projectId], { items: fresh.connections });
-        // The snapshot contains the current workspace, but not historical panels or lists.
-        // A missed event may have changed any of them while the stream was unavailable.
-        void queryClient.invalidateQueries({ queryKey: ["run-history", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["agent-conversations", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["conversation-runs", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["run-history-tasks", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["run-actions", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["canvas-media-versions", projectId] });
-        void queryClient.invalidateQueries({ queryKey: ["project-usage", projectId] });
-      },
+      ...projectCacheCallbacks(queryClient, projectId),
       onStatus: setEventStatus,
     });
   }, [projectId, queryClient, snapshot.isSuccess]);
@@ -360,45 +298,42 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       return applyCanvasCommands(projectId, commands);
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: (saved, variables) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       (Array.isArray(variables) ? variables : [variables]).forEach(({ item }) => clearDraft(item.id));
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
       applyCanvasCommands(projectId, [
         { type: "REMOVE", itemId: item.id, expectedVersion: item.version },
       ]),
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: (saved, item) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       clearDraft(item.id);
       setInspectingId(null);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const duplicateMediaItem = useMutation({
     mutationFn: async (item: CanvasItem) => {
       const draft = await getMediaDraft(projectId, item.id);
       const targetItemId = crypto.randomUUID();
-      const result = await duplicateCanvasItem(projectId, item.id, {
+      return duplicateCanvasItem(projectId, item.id, {
         targetItemId,
         expectedSourceVersion: item.version,
         expectedSourceDraftVersion: draft.version,
-        x: item.x + 32,
-        y: item.y + 32,
+        x: item.x + DUPLICATE_ITEM_OFFSET,
+        y: item.y + DUPLICATE_ITEM_OFFSET,
         width: item.width,
         height: item.height,
-        zIndex: Math.min(1000, item.zIndex + 1),
+        zIndex: Math.min(MAX_CANVAS_Z_INDEX, item.zIndex + 1),
       });
-      return result;
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: async (result) => {
       queryClient.setQueryData(["media-draft", projectId, result.item.id], result.draft);
       await Promise.all([
@@ -408,7 +343,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       setSelectedIds([result.item.id]);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const toggleLocked = useMutation({
     mutationFn: (item: CanvasItem) =>
@@ -420,12 +354,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           locked: !item.locked,
         },
       ]),
-    onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSaveState("saved");
-    },
-    onError: setSaveError,
+    ...canvasMutationFeedback,
+    onSuccess: acceptCanvasSnapshot,
   });
   const addTextCard = useMutation({
     mutationFn: async ({ point }: { point: CreationPoint }) => {
@@ -457,7 +387,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       ]);
       return { saved, itemId: pending.itemId };
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
@@ -465,11 +395,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       textProgress.current = null;
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const addImageCard = useMutation({
     mutationFn: async ({ cardTitle, file }: { cardTitle: string; file: File }) => {
-      const audio = file.type.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(file.name);
+      const audio = isAudioFile(file);
       const video = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
       const progress = imageProgress.current?.projectId === projectId &&
         imageProgress.current.file === file && imageProgress.current.title === cardTitle
@@ -494,15 +423,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         type: "PLACE_ARTIFACT",
         itemId: progress.itemId,
         artifactId: progress.artifactId,
-        x: 80 + (index % 3) * 320,
-        y: 80 + Math.floor(index / 3) * 220,
+        x: DEFAULT_CANVAS_ORIGIN + (index % AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.x,
+        y: DEFAULT_CANVAS_ORIGIN + Math.floor(index / AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.y,
         width: audio ? AUDIO_CARD_WIDTH : DEFAULT_CARD_WIDTH,
         height: AUDIO_CARD_HEIGHT,
         zIndex: index,
         locked: false,
       }]);
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: (saved) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       imageProgress.current = null;
@@ -539,7 +468,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       }]);
       return { saved, itemId: pending.itemId };
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
@@ -547,7 +476,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       mediaProgress.current = null;
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const mvProgress = useRef(new Map<string, PreparedMediaNode>());
   const makeMV = useMutation({ mutationFn: async (source: CanvasItem) => {
@@ -589,7 +517,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         width: AGENT_CHAT_WIDTH, height: AGENT_CHAT_HEIGHT, zIndex: current.items.length, locked: false }]);
       return { saved, itemId: progress.itemId };
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
@@ -597,7 +525,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       window.setTimeout(() => { void flow.current?.fitView({ nodes: [{ id: itemId }], padding: 0.15, maxZoom: 1 }); }, MEDIA_FOCUS_DELAY_MS);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const addAgentCard = useMutation({
     mutationFn: async ({ name, instruction }: { name: string; instruction: string }) => {
@@ -610,8 +537,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           type: "PLACE_AGENT",
           itemId,
           agentId: agent.id,
-          x: creationPoint?.x ?? 100 + (index % 3) * 360,
-          y: creationPoint?.y ?? 100 + Math.floor(index / 3) * 360,
+          x: creationPoint?.x ?? AGENT_GRID_ORIGIN + (index % AUTO_PLACEMENT_COLUMNS) * AGENT_GRID_SPACING,
+          y: creationPoint?.y ?? AGENT_GRID_ORIGIN + Math.floor(index / AUTO_PLACEMENT_COLUMNS) * AGENT_GRID_SPACING,
           width: AGENT_CHAT_WIDTH,
           height: AGENT_CHAT_HEIGHT,
           zIndex: index,
@@ -620,7 +547,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       ]);
       return { saved, itemId };
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSelectedIds([itemId]);
@@ -628,7 +555,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       setToolsKind(null);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const editAgent = useMutation({
     mutationFn: async ({ agent, name, instruction }: { agent: Agent; name: string; instruction: string }) => {
@@ -643,12 +569,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       return listCanvasItems(projectId);
     },
-    onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSaveState("saved");
-    },
-    onError: setSaveError,
+    ...canvasMutationFeedback,
+    onSuccess: acceptCanvasSnapshot,
   });
   const bindSelection = useMutation({
     mutationFn: async () => {
@@ -673,12 +595,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       return listCanvasItems(projectId);
     },
-    onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSaveState("saved");
-    },
-    onError: setSaveError,
+    ...canvasMutationFeedback,
+    onSuccess: acceptCanvasSnapshot,
   });
   const clearBindings = useMutation({
     mutationFn: async () => {
@@ -694,12 +612,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       return listCanvasItems(projectId);
     },
-    onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSaveState("saved");
-    },
-    onError: setSaveError,
+    ...canvasMutationFeedback,
+    onSuccess: acceptCanvasSnapshot,
   });
   const connectInput = useMutation({
     mutationFn: async (connection: Connection) => {
@@ -730,7 +644,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
         expectedTargetDraftVersion: targetDraft.version });
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", projectId] }),
@@ -739,7 +653,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       ]);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const removeMediaConnection = useMutation({
     mutationFn: async ({ connection }: Extract<CanvasRelationRemoval, { kind: "mediaConnection" }>) => {
@@ -758,7 +671,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         expectedTargetDraftVersion: targetDraft.version,
       });
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] }),
@@ -766,7 +679,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       ]);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
   const removeInputBinding = useMutation({
     mutationFn: async ({ agent, bindingId }: Extract<CanvasRelationRemoval, { kind: "inputBinding" }>) => {
@@ -779,12 +691,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       return listCanvasItems(projectId);
     },
-    onMutate: () => setSaveState("saving"),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSaveState("saved");
-    },
-    onError: setSaveError,
+    ...canvasMutationFeedback,
+    onSuccess: acceptCanvasSnapshot,
   });
   const alignSelected = useMutation({
     mutationFn: async () => {
@@ -799,20 +707,23 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       return { saved: await applyCanvasCommands(projectId, commands), itemIds: selected.map((item) => item.id) };
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: ({ saved, itemIds }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       itemIds.forEach(clearDraft);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
+  function canvasCenter(): CreationPoint {
+    const rect = canvasElement.current?.getBoundingClientRect();
+    return rect && flow.current
+      ? flow.current.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+      : { x: DEFAULT_CANVAS_ORIGIN, y: DEFAULT_CANVAS_ORIGIN };
+  }
+
   const restoreResource = useMutation({
     mutationFn: async (resource: RestorableResource) => {
-      const rect = canvasElement.current?.getBoundingClientRect();
-      const point = rect && flow.current
-        ? flow.current.screenToFlowPosition({ x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2 }) : { x: 80, y: 80 };
+      const point = canvasCenter();
       const itemId = crypto.randomUUID();
       const placement = {
         itemId, x: point.x, y: point.y,
@@ -826,14 +737,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const saved = await applyCanvasCommands(projectId, [command]);
       return { saved, itemId };
     },
-    onMutate: () => setSaveState("saving"),
+    ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       setSelectedIds([itemId]);
       setResourcesOpen(false);
       setSaveState("saved");
     },
-    onError: setSaveError,
   });
 
   const saveLayoutMutate = saveLayout.mutate;
@@ -1201,10 +1111,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     };
   }, [selectedMediaId]);
 
-  const canBindSelection =
-    selectedItems.filter((item) => item.agent !== null).length === 1 &&
-    selectedItems.some((item) => item.artifact !== null);
   const canClearBindings = selectedItems.filter((item) => item.agent !== null).length === 1;
+  const canBindSelection = canClearBindings && selectedItems.some((item) => item.artifact !== null);
   const projectResources = [
     ...(resources.data?.items ?? []).map((artifact) => ({
       subjectType: "ARTIFACT" as const, subjectId: artifact.id,
@@ -1255,10 +1163,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
         {resourcesOpen ? <>
           <div className="library-tabs"><Button variant="ghost" type="button" aria-pressed={resourceTab === "PROJECT"} onClick={() => setResourceTab("PROJECT")}>{t("项目资源")}</Button><Button variant="ghost" type="button" aria-pressed={resourceTab === "LIBRARY"} onClick={() => setResourceTab("LIBRARY")}>{t("我的资产")}</Button></div>
-          {resourceTab === "LIBRARY" ? <LibraryCanvasPicker projectId={projectId!} position={() => {
-            const rect = canvasElement.current?.getBoundingClientRect();
-            return rect && flow.current ? flow.current.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }) : { x: 80, y: 80 };
-          }} /> : <>
+          {resourceTab === "LIBRARY" ? <LibraryCanvasPicker projectId={projectId} position={canvasCenter} /> : <>
           <label className="mt-3 block text-sm">{t("搜索资源")}<Input value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)}
               placeholder={t("标题或类型")} /></label>
           {resources.isPending ? <p className="mt-3 text-sm">{t("正在读取资源…")}</p> : null}
@@ -1285,8 +1190,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <h2 className="text-base font-semibold">{t("上传图片、视频或音频")}</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("图片支持 PNG、JPEG、WebP，最大 20 MiB/40 MP；视频支持 MP4，最大 500 MiB；音频支持 MP3、WAV、OGG Opus，最大 50 MiB/10 分钟。上传后创建对应媒体节点，可作为精确版本参考。")}</p>
           <form className="mt-4" onSubmit={submitImage}>
-            <label className="text-sm font-medium">{t("素材标题")}<Input maxLength={160} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
-            <label className="mt-3 block text-sm font-medium">{t("图片、视频或音频")}<Input accept="image/png,image/jpeg,image/webp,video/mp4,audio/mpeg,audio/wav,audio/ogg" className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
+            <label className="text-sm font-medium">{t("素材标题")}<Input maxLength={MAX_MEDIA_TITLE_LENGTH} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
+            <label className="mt-3 block text-sm font-medium">{t("图片、视频或音频")}<Input accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.VIDEO},${MEDIA_FILE_ACCEPT.AUDIO}`} className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
             <Button variant="outline" className="mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? t("正在上传并放置…") : t("上传并放到画布")}</Button>
           </form>
           {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}

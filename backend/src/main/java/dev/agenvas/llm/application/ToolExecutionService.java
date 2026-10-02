@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -10,11 +11,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.AgentTurnLeaseGuard;
 import dev.agenvas.task.domain.Task;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
-import java.util.HexFormat;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -30,8 +27,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class ToolExecutionService {
 
-    /** 一个 Run 最多允许完成的工具调用数，避免模型循环无限扩大副作用。 */
-    private static final int MAX_TOOLS_PER_RUN = 40;
     /** {@code create_text} 允许模型提供的字段；所有服务端管理字段均不在此集合中。 */
     private static final Set<String> CREATE_TEXT_FIELDS = Set.of("title", "text", "format");
 
@@ -163,7 +158,8 @@ public class ToolExecutionService {
         JsonNode call = findCall(turn.response(), toolCallId);
         String toolName = call.path("name").asText();
         String arguments = call.path("arguments").asText();
-        String argumentHash = sha256(arguments);
+        // Replay checks use the recorded raw arguments, including their field order and whitespace.
+        String argumentHash = Sha256.hex(arguments);
         ToolExecution existing = ledger.find(context.projectId(), context.runId(),
                 stepIndex, toolCallId).orElse(null);
         if (existing != null) {
@@ -177,7 +173,7 @@ public class ToolExecutionService {
         if (run.status() != AgentRun.Status.RUNNING) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accepting-tool-execution"));
         }
-        if (ledger.countByRun(context.projectId(), context.runId()) >= MAX_TOOLS_PER_RUN) {
+        if (ledger.countByRun(context.projectId(), context.runId()) >= AgentRun.MAX_TOOL_EXECUTIONS) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
         }
         UUID operationId = UUID.randomUUID();
@@ -313,21 +309,6 @@ public class ToolExecutionService {
             throw invalid(ApiMessage.of("api.tool-execution-service.create-text-has-an-invalid", field));
         }
         return value.asText();
-    }
-
-    /**
-     * 对模型保存的原始参数字符串计算摘要，用于核对同一 tool_call_id 的重放载荷。
-     *
-     * @param input 原始参数文本，不在此处改写字段或顺序
-     * @return 小写十六进制 SHA-256 摘要
-     */
-    private String sha256(String input) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
     }
 
     /** 将工具参数或白名单校验失败映射为稳定的 HTTP 400 错误。 */

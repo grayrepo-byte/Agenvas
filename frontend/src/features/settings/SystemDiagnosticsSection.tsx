@@ -2,19 +2,18 @@ import { ArrowsClockwise,CheckCircle,Cpu,Database,HardDrives,Plugs } from "@phos
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link,Navigate } from "react-router";
-import { ApiError,getSystemDiagnostics } from "../../shared/api/client";
+import { HTTP_STATUS,ApiError,getSystemDiagnostics } from "../../shared/api/client";
 import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 
-const UNAUTHORIZED_STATUS = 401;
 
 /** Only the diagnostics tab reads local diagnostic state; it never calls Providers. */
 export function SystemDiagnosticsSection({ enabled }: { enabled: boolean }) {
   useLocale();
   const diagnostics = useQuery({ queryKey: ["settings", "diagnostics"], queryFn: getSystemDiagnostics, enabled, retry: false });
-  if (diagnostics.error instanceof ApiError && diagnostics.error.status === UNAUTHORIZED_STATUS) return <Navigate to="/login" replace />;
+  if (diagnostics.error instanceof ApiError && diagnostics.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   const snapshot = diagnostics.data;
   return <div className="ui-stack">
     <div className="ui-form-actions"><Button variant="outline"  type="button" disabled={diagnostics.isFetching || !enabled}

@@ -1,5 +1,6 @@
 package dev.agenvas.task.application;
 
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
@@ -21,12 +22,8 @@ import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.usage.application.UsageService;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,9 +39,13 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class TaskService {
 
+    private static final int MAX_DEPENDENCIES = 100;
+    private static final int MAX_TASK_KEY_LENGTH = 160;
+    private static final int MAX_ERROR_CODE_LENGTH = 120;
+
     /** 核对任务所属 Run 的可执行状态及取消边界。 */
     private final AgentRunService runs;
-    /** 核对项目所有者、归档状态及导出时的项目版本。 */
+    /** 核对项目所有者及归档状态。 */
     private final ProjectService projects;
     /** 校验媒体目标和固定输入版本，归档生成结果为不可变版本。 */
     private final ArtifactService artifacts;
@@ -56,7 +57,7 @@ public class TaskService {
     private final TaskProperties properties;
     /** 使任务状态事件与对应业务变化在同一项目事务提交。 */
     private final ProjectEventService events;
-    /** 按任务稳定操作键预留、结算或释放媒体与导出用量。 */
+    /** 按任务稳定操作键预留、结算或释放用量。 */
     private final UsageService usage;
     /** 复制固定输入并构造不泄露私有数据的任务事件负载。 */
     private final ObjectMapper objectMapper;
@@ -140,7 +141,7 @@ public class TaskService {
             throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
         }
         List<UUID> dependencies = dependencyIds == null ? List.of() : List.copyOf(dependencyIds);
-        if (dependencies.size() > 100 || dependencies.stream().distinct().count() != dependencies.size()) {
+        if (dependencies.size() > MAX_DEPENDENCIES || dependencies.stream().distinct().count() != dependencies.size()) {
             throw validation(ApiMessage.of("api.task-service.task-dependencies-can-have-up-to-100-and-cannot-be"));
         }
         for (UUID dependencyId : dependencies) {
@@ -159,7 +160,7 @@ public class TaskService {
                 dependencies.isEmpty() ? Task.Status.READY : Task.Status.PENDING,
                 false,
                 input.deepCopy(),
-                sha256(input.toString()),
+                Sha256.hex(input.toString()),
                 null,
                 providerId,
                 null,
@@ -269,54 +270,30 @@ public class TaskService {
     @Transactional
     public List<Task> claimDue(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) {
-            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        }
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDue(
-                workerId, limit, now, now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDue);
     }
 
     /** Claims only version-pinned media work for the unified execution kernel. */
     @Transactional
     public List<Task> claimBoundMedia(String requestedWorkerId, int requestedLimit) {
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueBoundMedia(workerId, limit,
-                now, now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueBoundMedia);
     }
 
     /** Polls only requests previously accepted for version-pinned media work. */
     @Transactional
     public List<Task> claimBoundMediaPolls(String requestedWorkerId, int requestedLimit) {
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueBoundMediaPolls(workerId, limit,
-                now, now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueBoundMediaPolls);
     }
 
     public Optional<MediaCapabilityBinding> mediaBinding(Task task) {
         return tasks.mediaBinding(task.id());
     }
 
-    /** 只认领图片任务，防止 Mock 图片适配器消费尚未实现的视频工作。 */
+    /** 只认领图片任务，避免图片 Worker 消费视频或模型回合。 */
     @Transactional
     public List<Task> claimImagesDue(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) {
-            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        }
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueImages(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueImages);
     }
 
     /** 认领至多一个旧版 ComfyUI 图片任务；跨实例仅靠行租约防止重复领取。 */
@@ -343,50 +320,28 @@ public class TaskService {
     @Transactional
     public List<Task> claimVideosDue(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) {
-            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        }
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueVideos(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueVideos);
     }
 
     /** 只认领已保存原外部请求 ID 的轮询任务；取消后的请求仍可查询并归档晚到结果。 */
     @Transactional
     public List<Task> claimProviderPolls(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueProviderPolls(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueProviderPolls);
     }
 
     /** ComfyUI 图片轮询只取图片任务，不会接管已受理的视频请求。 */
     @Transactional
     public List<Task> claimComfyImagePolls(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyImagePolls(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueComfyImagePolls);
     }
 
     /** ComfyUI 视频轮询只取视频任务，不会接管已受理的图片请求。 */
     @Transactional
     public List<Task> claimComfyVideoPolls(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueComfyVideoPolls(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueComfyVideoPolls);
     }
 
     /** 从已认领任务的数据库记录反查所有者；不接受模型或任务输入中的身份字段。 */
@@ -404,26 +359,29 @@ public class TaskService {
     @Transactional
     public List<Task> claimAgentTurns(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
-        String workerId = validateWorkerId(requestedWorkerId);
-        int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) {
-            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
-        }
-        Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueAgentTurns(workerId, limit, now,
-                now.plus(properties.leaseDuration())), List.of());
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueAgentTurns);
     }
 
     /** Claims only direct text-card model work; other workers never consume this kind. */
     @Transactional
     public List<Task> claimTextGenerations(String requestedWorkerId, int requestedLimit) {
         if (shutdownGate.isClosing()) return List.of();
+        return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueTextGenerations);
+    }
+
+    /** Prepares one bounded lease; the gate still serializes the actual query with shutdown. */
+    private List<Task> claimBatch(String requestedWorkerId, int requestedLimit, BatchClaim claim) {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
         if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
-        return shutdownGate.claimOrEmpty(() -> tasks.claimDueTextGenerations(workerId, limit,
-                now, now.plus(properties.leaseDuration())), List.of());
+        return shutdownGate.claimOrEmpty(() -> claim.execute(workerId, limit, now,
+                now.plus(properties.leaseDuration())), List.of());
+    }
+
+    @FunctionalInterface
+    private interface BatchClaim {
+        List<Task> execute(String workerId, int limit, Instant now, Instant leaseUntil);
     }
 
     /** Saves the complete direct model response before any Artifact version is appended. */
@@ -1151,7 +1109,7 @@ public class TaskService {
     /** 校验并去除步骤键首尾空白，保证持久化幂等键长度为 1 至 160 字符。 */
     private String validateStepKey(String value) {
         String normalized = value == null ? "" : value.trim();
-        if (normalized.isEmpty() || normalized.length() > 160) {
+        if (normalized.isEmpty() || normalized.length() > MAX_TASK_KEY_LENGTH) {
             throw validation(ApiMessage.of("api.task-service.stepkey-must-be-1-to-160-characters"));
         }
         return normalized;
@@ -1160,7 +1118,7 @@ public class TaskService {
     /** 校验并去除 Worker 标识首尾空白，避免空标识参与租约条件更新。 */
     private String validateWorkerId(String value) {
         String normalized = value == null ? "" : value.trim();
-        if (normalized.isEmpty() || normalized.length() > 160) {
+        if (normalized.isEmpty() || normalized.length() > MAX_TASK_KEY_LENGTH) {
             throw validation(ApiMessage.of("api.task-service.workerid-must-be-1-to-160-characters"));
         }
         return normalized;
@@ -1169,20 +1127,10 @@ public class TaskService {
     /** 将缺省失败归为 TASK_FAILED，并限制外部错误码进入持久化记录的长度。 */
     private String validateErrorCode(String errorCode) {
         String normalized = errorCode == null ? "TASK_FAILED" : errorCode.trim();
-        if (normalized.isEmpty() || normalized.length() > 120) {
+        if (normalized.isEmpty() || normalized.length() > MAX_ERROR_CODE_LENGTH) {
             throw validation(ApiMessage.of("api.task-service.task-errorcode-must-be-1-to-120-characters"));
         }
         return normalized;
-    }
-
-    /** 对当前 JSON 文本计算 SHA-256，用于比较同一步骤或命令的原始输入载荷。 */
-    private String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is required by the Java runtime", impossible);
-        }
     }
 
     /** 将任务不存在与越权读取统一映射为不会泄露资源存在性的 404 错误。 */

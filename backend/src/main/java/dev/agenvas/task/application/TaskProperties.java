@@ -12,14 +12,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "agenvas.task")
 public record TaskProperties(Duration leaseDuration, int maxClaimBatch) {
 
+    private static final Duration DEFAULT_LEASE_DURATION = Duration.ofSeconds(30);
+    private static final int DEFAULT_MAX_CLAIM_BATCH = 16;
+    private static final int MAX_CLAIM_BATCH = 100;
+
     /** 缺省租约为 30 秒、批量上限为 16，并拒绝非正租约或超过 100 的批量配置。 */
     public TaskProperties {
-        leaseDuration = leaseDuration == null ? Duration.ofSeconds(30) : leaseDuration;
-        maxClaimBatch = maxClaimBatch == 0 ? 16 : maxClaimBatch;
+        leaseDuration = leaseDuration == null ? DEFAULT_LEASE_DURATION : leaseDuration;
+        maxClaimBatch = maxClaimBatch == 0 ? DEFAULT_MAX_CLAIM_BATCH : maxClaimBatch;
         if (leaseDuration.isNegative()
                 || leaseDuration.isZero()
                 || maxClaimBatch < 1
-                || maxClaimBatch > 100) {
+                || maxClaimBatch > MAX_CLAIM_BATCH) {
             throw new IllegalArgumentException("Invalid task lease or claim batch configuration");
         }
     }
