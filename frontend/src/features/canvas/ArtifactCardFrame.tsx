@@ -5,12 +5,13 @@ import type { CanvasItem } from "../../shared/api/client";
 import { CanvasItemTitleEditor } from "./CanvasItemTitleEditor";
 import "./ArtifactCardFrame.css";
 
-const TOOLBAR_NODE_GAP = 32;
+const TOOLBAR_NODE_GAP = 44;
 
 /** Shared media/content surface and node-anchored toolbar; callers own their content and actions. */
-export function ArtifactCardFrame({ title, kindLabel, selected, locked, toolbar, toolbarLabel,
+export function ArtifactCardFrame({ title, titleIcon, kindLabel, selected, locked, toolbar, toolbarLabel,
   toolbarRaised = false, toolbarVisible = true, editableTitle, className = "", children }: {
   title: string; kindLabel: string; selected: boolean; locked: boolean;
+  titleIcon?: ReactNode;
   toolbar: ReactNode; toolbarLabel?: string;
   toolbarRaised?: boolean;
   toolbarVisible?: boolean;
@@ -28,9 +29,12 @@ export function ArtifactCardFrame({ title, kindLabel, selected, locked, toolbar,
     </NodeToolbar>
     <article className={`artifact-canvas-card ${className}${selected ? " is-selected" : ""}`}
       aria-label={`${title} · ${kindLabel}${locked ? t(" · 已锁定") : ""}`}>
-      {editableTitle
+      <div className="artifact-card-title">
+        {titleIcon ? <span className="artifact-card-title-icon" aria-hidden="true">{titleIcon}</span> : null}
+        {editableTitle
         ? <CanvasItemTitleEditor {...editableTitle} kindLabel={kindLabel} />
         : <span className="artifact-card-caption" title={title}>{title}</span>}
+      </div>
       {children}
     </article>
   </>;

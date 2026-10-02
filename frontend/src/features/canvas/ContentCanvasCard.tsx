@@ -49,7 +49,7 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   const references = artifact.resourceDefaultVersion?.inputReferences.length ?? 0;
   const emptyText = !text.trim();
 
-  return <ArtifactCardFrame title={item.title} kindLabel={label} selected={selected} locked={locked}
+  return <ArtifactCardFrame title={item.title} titleIcon={<Icon size={16} />} kindLabel={label} selected={selected} locked={locked}
     toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
         {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
