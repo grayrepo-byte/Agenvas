@@ -77,7 +77,7 @@ import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageN
 import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
-import { useImageNodeRatios } from "./useImageNodeRatios";
+import { useMediaNodeRatios } from "./useMediaNodeRatios";
 import { canvasItemVersion } from "./versionedArtifact";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
@@ -146,7 +146,7 @@ type CanvasNodeData = {
   onUpdateAgent: (agent: Agent, name: string, instruction: string) => void;
   updatingAgent: boolean;
   updateAgentError: Error | null;
-  imageAspectRatio: number | undefined;
+  mediaAspectRatio: number | undefined;
   dragging: boolean;
   toolbarVisible: boolean;
   /** Connection gesture feedback: this card is under the pointer and will accept, or reject, the line. */
@@ -232,7 +232,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryFn: () => listCanvasConnections(projectId),
     enabled: snapshot.isSuccess,
   });
-  const imageRatios = useImageNodeRatios(canvas.data?.items);
+  const mediaRatios = useMediaNodeRatios(canvas.data?.items);
   const effectiveNodeSize = useCallback((item: CanvasItem, patch?: Partial<LayoutPatch>) => {
     const draft = useCanvasStore.getState().drafts[item.id];
     const storedHeight = patch?.height ?? draft?.height ?? item.height;
@@ -243,8 +243,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return projectImageNodeSize({
       width: Math.max(patch?.width ?? draft?.width ?? item.width, item.agent ? AGENT_CHAT_MIN_WIDTH : 0),
       height: Math.max(compactAudio ? AUDIO_RESULT_CARD_HEIGHT : storedHeight, item.agent ? AGENT_CHAT_MIN_HEIGHT : 0),
-    }, imageRatios[item.id]);
-  }, [imageRatios]);
+    }, mediaRatios[item.id]);
+  }, [mediaRatios]);
   const resources = useQuery({
     queryKey: ["artifacts", projectId],
     queryFn: () => listArtifacts(projectId),
@@ -990,7 +990,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onUpdateAgent: handleUpdateAgent,
               updatingAgent: editAgent.isPending,
               updateAgentError: editAgent.error,
-              imageAspectRatio: imageRatios[item.id],
+              mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
               toolbarVisible: draggingIds.length === 0,
               connectionTarget: connectionTarget?.itemId === item.id
@@ -1013,7 +1013,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleInspect,
       handleDuplicate,
       handleUpdateAgent,
-      imageRatios,
+      mediaRatios,
       projectId,
       selectedIds,
       selecting,
@@ -1499,11 +1499,11 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     toolbarVisible: data.toolbarVisible,
     onInspect: () => data.onInspect(data.item),
     children: <NodeResizer isVisible={selected && data.toolbarVisible && !data.item.locked}
-      {...(data.imageAspectRatio === undefined
+      {...(data.mediaAspectRatio === undefined
         ? { minHeight: MIN_ARTIFACT_CARD_SIZE, minWidth: MIN_ARTIFACT_CARD_SIZE,
           maxWidth: CANVAS_MAX_SIZE, maxHeight: CANVAS_MAX_SIZE }
-        : imageNodeResizeBounds(data.imageAspectRatio))}
-      keepAspectRatio={data.imageAspectRatio !== undefined}
+        : imageNodeResizeBounds(data.mediaAspectRatio))}
+      keepAspectRatio={data.mediaAspectRatio !== undefined}
       onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />,
   };
   return (

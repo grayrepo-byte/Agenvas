@@ -115,7 +115,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
   const isImage = artifact.kind === "IMAGE";
   const isAudio = artifact.kind === "AUDIO";
-  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage ? assetId : null));
+  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage || artifact.kind === "VIDEO" ? assetId : null));
   const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
   const cloudCapabilities = (settings.data?.connections ?? [])
@@ -265,7 +265,9 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
         title={item.title} demo={demo} selected={selected} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
-          {metadata.data ? t("图片尺寸刷新失败，请重试") : t("图片尺寸读取失败，暂按原卡片尺寸显示")}
+          {metadata.data
+            ? isImage ? t("图片尺寸刷新失败，请重试") : t("视频尺寸刷新失败，请重试")
+            : isImage ? t("图片尺寸读取失败，暂按原卡片尺寸显示") : t("视频尺寸读取失败，暂按原卡片尺寸显示")}
           <Button variant="ghost" type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
             {metadata.isFetching ? t("正在重试…") : t("重试尺寸")}</Button></p> : null}</>
         : <div className="media-card-empty">

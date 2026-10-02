@@ -47,6 +47,8 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 describe("MediaCanvasCard", () => {
   beforeEach(() => {
     server.use(
+      http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) =>
+        HttpResponse.json({ id: params.assetId, width: 1920, height: 1080 })),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
         projectId: artifact.projectId, canvasItemId: "item-1", prompt: "", displayMode: "DRAFT",
@@ -652,7 +654,7 @@ describe("MediaCanvasCard", () => {
     });
   });
 
-  it("keeps the full preview available when original dimensions fail and allows retry", async () => {
+  it.each(["IMAGE", "VIDEO"] as const)("keeps the full %s preview available when original dimensions fail and allows retry", async (kind) => {
     let metadataFailed = true;
     server.use(
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
@@ -662,17 +664,18 @@ describe("MediaCanvasCard", () => {
         ? HttpResponse.json({ detail: "Unavailable" }, { status: 503 })
         : HttpResponse.json({ id: "image-asset", width: 2400, height: 1600 })),
     );
-    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+    showCard({ ...artifact, kind, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
       id: "image-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "image-asset" },
       inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
     } });
-    expect(await screen.findByRole("alert")).toHaveTextContent("图片尺寸读取失败");
-    expect(screen.getByRole("img", { name: "湖边 的预览" })).toHaveAttribute("src",
-      "/api/v1/projects/project-1/assets/image-asset/content");
+    expect(await screen.findByRole("alert")).toHaveTextContent(kind === "IMAGE" ? "图片尺寸读取失败" : "视频尺寸读取失败");
+    const previewName = kind === "IMAGE" ? "湖边 的预览" : "湖边 的视频封面";
+    expect(screen.getByRole("img", { name: previewName })).toHaveAttribute("src",
+      `/api/v1/projects/project-1/assets/image-asset/${kind === "IMAGE" ? "content" : "thumbnail"}`);
     metadataFailed = false;
     await clickControl(screen.getByRole("button", { name: "重试尺寸" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
-    expect(screen.getByRole("img", { name: "湖边 的预览" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: previewName })).toBeInTheDocument();
   });
 
   it.each(["RUNNING", "SUBMITTING", "WAITING_PROVIDER"] as const)(

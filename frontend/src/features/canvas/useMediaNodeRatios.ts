@@ -9,33 +9,35 @@ const EMPTY_ITEMS: CanvasItem[] = [];
 const combineDrafts = (results: UseQueryResult<MediaDraft>[]) => results.map((result) => result.data);
 const combineAssets = (results: UseQueryResult<Asset>[]) => results.map((result) => result.data);
 
-/** Explicit draft ratios preview the next frame; AUTO falls back to archived pixel metadata. */
-export function useImageNodeRatios(items: CanvasItem[] = EMPTY_ITEMS): Record<string, number> {
+/** Images preview draft ratios; video results always fit the displayed asset's actual pixels. */
+export function useMediaNodeRatios(items: CanvasItem[] = EMPTY_ITEMS): Record<string, number> {
   const localRatios = useCanvasStore((state) => state.imageRatioDrafts);
-  const images = useMemo(() => items.flatMap((item) => item.artifact?.kind === "IMAGE"
+  const mediaItems = useMemo(() => items.flatMap((item) => item.artifact?.kind === "IMAGE" || item.artifact?.kind === "VIDEO"
     ? [{ item, artifact: item.artifact }] : []), [items]);
-  const drafts = useQueries({ queries: images.map(({ item, artifact }) =>
+  const drafts = useQueries({ queries: mediaItems.map(({ item, artifact }) =>
     mediaDraftQueryOptions(artifact.projectId, item.id)),
     combine: combineDrafts });
-  const displayedImages = useMemo(() => {
-    return images.flatMap(({ item, artifact }, index) => {
+  const displayedMedia = useMemo(() => {
+    return mediaItems.flatMap(({ item, artifact }, index) => {
       const assetId = displayedMediaAssetId(item, drafts[index]);
       return assetId ? [{ itemId: item.id, projectId: artifact.projectId, assetId }] : [];
     });
-  }, [images, drafts]);
-  const uniqueAssets = useMemo(() => [...new Map(displayedImages.map((image) =>
-    [`${image.projectId}:${image.assetId}`, image])).values()], [displayedImages]);
+  }, [mediaItems, drafts]);
+  const uniqueAssets = useMemo(() => [...new Map(displayedMedia.map((media) =>
+    [`${media.projectId}:${media.assetId}`, media])).values()], [displayedMedia]);
   const assets = useQueries({ queries: uniqueAssets.map(({ projectId, assetId }) =>
     assetMetadataQueryOptions(projectId, assetId)), combine: combineAssets });
   return useMemo(() => {
     const ratiosByAsset = new Map(uniqueAssets.map(({ projectId, assetId }, index) =>
       [`${projectId}:${assetId}`, imageAspectRatio(assets[index])]));
-    const assetsByItem = new Map(displayedImages.map(({ itemId, projectId, assetId }) =>
+    const assetsByItem = new Map(displayedMedia.map(({ itemId, projectId, assetId }) =>
       [itemId, ratiosByAsset.get(`${projectId}:${assetId}`)]));
-    return Object.fromEntries(images.flatMap(({ item, artifact }, index) => {
-      const ratio = imageDraftAspectRatio(localRatios[`${artifact.projectId}:${item.id}`]
-        ?? drafts[index]?.parameters.aspectRatio) ?? assetsByItem.get(item.id);
+    return Object.fromEntries(mediaItems.flatMap(({ item, artifact }, index) => {
+      const draftRatio = artifact.kind === "IMAGE"
+        ? imageDraftAspectRatio(localRatios[`${artifact.projectId}:${item.id}`]
+          ?? drafts[index]?.parameters.aspectRatio) : undefined;
+      const ratio = draftRatio ?? assetsByItem.get(item.id);
       return ratio === undefined ? [] : [[item.id, ratio]];
     }));
-  }, [displayedImages, uniqueAssets, assets, images, drafts, localRatios]);
+  }, [displayedMedia, uniqueAssets, assets, mediaItems, drafts, localRatios]);
 }

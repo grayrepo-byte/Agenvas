@@ -42,7 +42,7 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
 }));
 
 const NOW = "2026-09-26T00:00:00Z";
-function imageItem(id = "image-card", assetId = "landscape"): CanvasItem {
+function mediaItem(id = "image-card", assetId = "landscape", kind: "IMAGE" | "VIDEO" = "IMAGE"): CanvasItem {
   const selectedVersion = { id: `${assetId}-version`, versionNo: 1, schemaVersion: 1 as const,
     content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
     createdByKind: "USER" as const, runId: null, createdAt: NOW };
@@ -50,12 +50,12 @@ function imageItem(id = "image-card", assetId = "landscape"): CanvasItem {
     title: "图片",
     width: 225, height: 300, version: 0, zIndex: 0, groupId: null, locked: false,
     selectedVersionId: selectedVersion.id, selectedVersion, agent: null,
-    artifact: { id, projectId: "project-1", kind: "IMAGE", title: "图片", version: 0,
+    artifact: { id, projectId: "project-1", kind, title: "图片", version: 0,
       resourceDefaultVersionId: `${assetId}-version`, createdAt: NOW, updatedAt: NOW,
       resourceDefaultVersion: selectedVersion } };
 }
 
-describe("workspace image dimensions", () => {
+describe("workspace media dimensions", () => {
   let items: CanvasItem[];
   let commands: CanvasCommand[];
   let conflict: boolean;
@@ -66,7 +66,7 @@ describe("workspace image dimensions", () => {
   let draftSaves: SaveMediaDraftRequest[];
 
   beforeEach(() => {
-    items = [imageItem()]; commands = []; conflict = false; draftMode = "RESULT"; metadataReads = 0;
+    items = [mediaItem()]; commands = []; conflict = false; draftMode = "RESULT"; metadataReads = 0;
     saveGate = null;
     parameters = {}; draftSaves = [];
     useCanvasStore.setState({ drafts: {}, imageRatioDrafts: {}, mediaDraftRecoveries: {}, selectedIds: [], saveState: "saved" });
@@ -134,6 +134,29 @@ describe("workspace image dimensions", () => {
     </QueryClientProvider>);
     return { client, ...view };
   }
+
+  it.each([
+    { width: 1920, height: 1080, displayWidth: 300, displayHeight: 168.75 },
+    { width: 1080, height: 1920, displayWidth: 168.75, displayHeight: 300 },
+    { width: 1080, height: 1080, displayWidth: 300, displayHeight: 300 },
+  ])("fits a video result to its archived $width × $height pixels even with a different draft ratio", async (size) => {
+    items = items.map((item) => ({ ...item,
+      artifact: item.artifact ? { ...item.artifact, kind: "VIDEO" } : null }));
+    parameters = { aspectRatio: "1:1" };
+    server.use(http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) =>
+      HttpResponse.json({ id: params.assetId, width: size.width, height: size.height })));
+    const view = showWorkspace();
+    const expected = { width: `${size.displayWidth}px`, height: `${size.displayHeight}px` };
+    await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle(expected));
+    expect(commands).toEqual([]);
+    await clickControl(screen.getByRole("button", { name: "drag image-card" }));
+    await waitFor(() => expect(commands[0]).toMatchObject({ type: "UPDATE_LAYOUT",
+      width: size.displayWidth, height: size.displayHeight }));
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+    view.unmount();
+    showWorkspace();
+    await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle(expected));
+  });
 
   it.each(["canvas background", "关闭编辑区"])("saves a ratio when %s closes the editor before the autosave delay", async (closeButton) => {
     const view = showWorkspace();
@@ -221,7 +244,7 @@ describe("workspace image dimensions", () => {
 
   it("uses saved ratios on draft placeholders after reload without changing other nodes", async () => {
     parameters = { aspectRatio: "16:9" }; draftMode = "DRAFT";
-    items.push(imageItem("second-card"));
+    items.push(mediaItem("second-card"));
     const view = showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "168.75px" }));
     expect(screen.getByTestId("second-card")).toHaveStyle({ width: "225px", height: "300px" });
@@ -232,7 +255,7 @@ describe("workspace image dimensions", () => {
   });
 
   it("previews an empty node immediately, saves its ratio, and keeps it after the editor unmounts", async () => {
-    items = [{ ...imageItem(), selectedVersionId: null, selectedVersion: null }];
+    items = [{ ...mediaItem(), selectedVersionId: null, selectedVersion: null }];
     let finishSave: (() => void) | undefined;
     saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
     const view = showWorkspace(true);
@@ -268,7 +291,8 @@ describe("workspace image dimensions", () => {
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
   });
 
-  it("keeps a failed resize draft and its aspect ratio when CAS rejects the layout", async () => {
+  it.each(["IMAGE", "VIDEO"] as const)("keeps a failed resize draft and its aspect ratio when CAS rejects the layout (%s)", async (kind) => {
+    items = [mediaItem("image-card", "landscape", kind)];
     conflict = true;
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
@@ -279,7 +303,8 @@ describe("workspace image dimensions", () => {
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "500px", height: "25px" });
   });
 
-  it("preserves a successful proportional resize after the server replaces the draft", async () => {
+  it.each(["IMAGE", "VIDEO"] as const)("preserves a successful proportional resize after the server replaces the draft (%s)", async (kind) => {
+    items = [mediaItem("image-card", "landscape", kind)];
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
     await clickControl(screen.getByRole("button", { name: "resize image-card" }));
@@ -288,10 +313,11 @@ describe("workspace image dimensions", () => {
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "500px", height: "25px" });
   });
 
-  it("retains stored dimensions when no image exists or metadata is unavailable", async () => {
-    const empty = imageItem("empty-card");
+  it.each(["IMAGE", "VIDEO"] as const)("retains stored dimensions when no image exists or metadata is unavailable (%s)", async (kind) => {
+    items = [mediaItem("image-card", "landscape", kind)];
+    const empty = mediaItem("empty-card", "landscape", kind);
     empty.artifact = empty.artifact ? { ...empty.artifact, resourceDefaultVersionId: null, resourceDefaultVersion: null } : null;
-    items = [imageItem(), empty];
+    items = [mediaItem("image-card", "landscape", kind), empty];
     server.use(http.get("/api/v1/projects/project-1/assets/:assetId", () => HttpResponse.json({}, { status: 503 })));
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "225px", height: "300px" }));
@@ -299,10 +325,11 @@ describe("workspace image dimensions", () => {
     expect(commands).toEqual([]);
   });
 
-  it("follows result replacement and draft mode without automatic layout saves", async () => {
+  it.each(["IMAGE", "VIDEO"] as const)("follows result replacement and draft mode without automatic layout saves (%s)", async (kind) => {
+    items = [mediaItem("image-card", "landscape", kind)];
     const { client } = showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
-    items = [imageItem("image-card", "portrait")];
+    items = [mediaItem("image-card", "portrait", kind)];
     await act(async () => client.invalidateQueries({ queryKey: ["canvas", "project-1"] }));
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "15px", height: "300px" }));
     draftMode = "DRAFT";
@@ -312,7 +339,7 @@ describe("workspace image dimensions", () => {
   });
 
   it("deduplicates shared assets and saves projected dimensions when aligning images", async () => {
-    items = [imageItem(), { ...imageItem("second-card"), x: 600 }];
+    items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     expect(metadataReads).toBe(1);
@@ -326,7 +353,7 @@ describe("workspace image dimensions", () => {
 
   it("retains alignment positions and projected size if the server rejects the batch", async () => {
     conflict = true;
-    items = [imageItem(), { ...imageItem("second-card"), x: 600 }];
+    items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
@@ -338,7 +365,7 @@ describe("workspace image dimensions", () => {
   it("clears only the submitted alignment drafts when selection changes before saving finishes", async () => {
     let finishSave: (() => void) | undefined;
     saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
-    items = [imageItem(), { ...imageItem("second-card"), x: 600 }];
+    items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
