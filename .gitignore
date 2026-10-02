@@ -85,6 +85,7 @@ fabric.properties
 ### Example user template template
 ### Example user template
 
+docs/evidence
 # IntelliJ project files
 .idea
 *.iml
