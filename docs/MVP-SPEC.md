@@ -26,6 +26,8 @@
 
 **2026-10-01 个人资产库**：用户确认把选中的创作结果保存为角色、场景、道具、其他分类资产，“我的资产”属于账号并跨本人项目复用。分类独立于产物类型，不恢复角色/场景节点或规划链路；功能已实施，专项验收与限制见 #24 证据。方案见 6.14、[资产库设计](superpowers/specs/2026-10-01-personal-asset-library-design.md) 和 [ADR 0026](adr/0026-personal-asset-library.md)。
 
+**2026-10-02 创作 Skill**：按 Issue #27 实施首阶段账号级三页签编辑、不可变版本发布、独立图片参考、Agent 默认与本次选择、固定 Run 资料、媒体审批及来源展示。Skill 只能在 Agent 节点使用；产物节点展示内容与历史来源。详见 6.15 与 [ADR 0030 与实施设计](creative-skills-design.md)。
+
 **本稿采用的技术决策**：Vite 构建的客户端 SPA，而不是 SSR 或服务端渲染框架；Spring MVC 而不是全栈 WebFlux；模块化单体而不是微服务；PostgreSQL 持久化任务而不是第一天引入消息中间件；默认本地文件存储；REST + SSE；一个 Creator Agent 配置，多实例展示，受控串行执行。
 
 **媒体接入假设**：首个真实媒体适配器采用 ComfyUI，接入两份受信任的固定工作流，分别完成生图与图生视频。它只是可替换的推理服务，不是本产品的画布、业务模型或 Agent 内核。LLM 通过 Spring AI 接入一个经过工具调用测试的模型端点。2026-09-25 确认的后续交付为界面配置的媒体能力目录、统一执行内核，以及固定代码实现的 GPT Image 2 图片与火山方舟 Seedance 视频适配器；见[基础规格](superpowers/specs/2026-09-25-media-capability-foundation-design.md)、[固定渠道规格](superpowers/specs/2026-09-25-fixed-media-provider-adapters-design.md)和[ADR 0002](adr/0002-fixed-media-adapters-before-workflow-platforms.md)。RunningHub 类动态脚本接入已撤回，不作为当前实施依据。2026-10-01 用户要求实施 RunningHub 固定 V2 协议与版本化字段契约，见 [ADR 0025](adr/0025-runninghub-versioned-input-contracts.md) 与 6.13；该扩展不恢复动态脚本。
@@ -508,6 +510,20 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 
 详细页面、生命周期、模型、接口与测试范围见 [个人资产库设计](superpowers/specs/2026-10-01-personal-asset-library-design.md)。权威合约已增加保存、列表、上传、导入、参考与管理端点，Java、生成 TS、内容 Schema、V67–V70 与 jOOQ 已同步。`LIBRARY_IMPORT` 来源仅由应用服务建立；同键异参返回 `409 IDEMPOTENCY_CONFLICT`。上传限制：图片 20 MiB / 40 MP，音频 50 MiB / 10 分钟，MP4 视频 50 MiB / 40 MP / 60 秒，按实际解码校验。验收结果和未验证限制见 #24 实施证据（开发记录不随源码公开）。
 
+### 6.15 AI 创作 Skill（2026-10-02，首阶段）
+
+账号级 `/skills` 管理创作方法包，采用 `SKILL.md / 资源附件 / 引用资产` 三页签。草稿自动保存采用 CAS，发布通过持久归档操作创建不可变版本。首阶段支持 UTF-8 Markdown/纯文本资料与个人资产库图片；固定图片拥有独立副本，删除来源资产不破坏发布版本。支持复制发布版本为草稿及复制新 Skill；回收站不供新选择，保留已绑定及历史使用的版本。暂不提供永久删除、公共分享、ZIP 导入或 AI 制造机。
+
+Skill 只能在 Agent 节点选择、试用、读取和运行。Agent 默认绑定固定版本，单次指令可显式沿用、覆盖或不用 Skill；普通产物节点没有执行绑定。素材先经持久操作安装成项目内精确版本，不创建画布卡片、不调用模型。必需输入必须映射到此 Agent 明确绑定的同类型精确版本。最终 Run 创建事务重新核对 Agent/会话、模型配置、项目活动槽位与固定版本，冻结完整正文、文本资料与别名映射。新版本或解绑不改变活动 Run。
+
+`read_skill_resource` 仅读取当前 Run 快照中的登记文本，按 Unicode 码点分页；读取账本记录 hash 与范围。新 Run 固定策略 schemaVersion=3、systemPromptVersion=4、toolPolicyVersion=1 和可用工具集合；模型定义、执行、修复与恢复按同一快照筛选，历史提示词与工具权限保持不变。正文和 `allowed-tools` 不能提升权限。
+
+Agent 通过现有固定媒体批次提案，由用户统一批准后创建 Task。必需 Provider 参考不得漏掉，GUIDE 参考不能被发送给 Provider；最终素材、提示词、参数、费用与 Skill 来源进入审批 hash，批准后的 Task 与不可变结果保留完整固定来源。手工重新生成使用具体媒体草稿，不加载 Skill 或产生新 Skill 来源。当前聊天模型只接收媒体元数据，不能声称已经观察参考图。
+
+V74/V75 增加 Skill、草稿、版本、绑定、发布/安装及幂等操作；文件工作在事务外，短认领与 epoch 校验保护最终提交。安装记录跟踪临时文件，清理与重试有独立状态及文件身份；恢复模式停止 Skill 写入与 Worker。OpenAPI 与生成类型同步部署，项目导出清单升级到版本 5，包含固定资料和精确素材映射，不含私有归档地址或 Provider 配置。详细上限、接口、来源与后续分期见 [实施设计](creative-skills-design.md)。
+
+首阶段交付图片固定参考和文本资料的 Agent 链路；视频/音频固定参考、多模态分析、AI 制作助手和公共复用能力仍在后续范围。文字创作沿用既有 Agent 工具，不新增直接文字节点的 Skill 入口。专项测试与未验证范围见 [实施设计第 10 节](creative-skills-design.md#10-首阶段实现与验证范围) 和开发清单；Mock 生成不证明真实风格迁移效果。
+
 ## 7. 数据模型与持久化约定
 
 ### 7.1 通用约定
@@ -551,8 +567,16 @@ P0 的快捷键撤销只覆盖本地布局与明确支持的编辑命令；跨�
 | `usage_ledger` | id、project_id、run_id、task_id、operation_key、entry_type、quantity_json、estimated_cost、actual_cost、currency、cost_status、created_at |
 | `project_event` | project_id、seq、event_id、type、schema_version、aggregate_id、aggregate_version、payload_json、occurred_at |
 | `idempotency_record` | principal_id、scope、key、request_hash、state、resource_id、response_json、expires_at |
+| `creative_skill` / `skill_draft` | 账号目录、展示元数据、回收站、当前发布版本；独立 CAS 的编辑内容 |
+| `skill_version` | 固定正文、输出类型、输入要求、文本资料、图片绑定及 bundleHash |
+| `agent_skill_binding` | 同项目 Agent 的固定 Skill 发布版本选择，共享 Agent 配置 CAS |
+| `skill_publish_operation` | 幂等发布、冻结草稿、pin/归档检查点、状态、租约、epoch 与清理标记 |
+| `skill_install_operation` / `skill_install_command` | 项目固定版本安装缓存、准备/清理检查点、租约与 epoch；项目级命令键幂等记录 |
+| `skill_binding_command` | Agent 绑定命令键、请求 hash 与已提交响应，不绕过配置 CAS |
 
-AgentProfile 与 Skill 的 P0 定义放在版本化配置文件，不额外做一套可编辑平台。
+AgentProfile 与工具权限继续由应用的版本化配置管理；用户创作 Skill 按 6.15 使用账号目录、可变草稿与不可变发布版本。
+
+2026-10-02 补充：创作 Skill 目录方案随 Issue #27 进入实施，覆盖此前的 Skill 配置文件限制。AgentSkillBinding 表示 Agent 的长期固定发布版本选择；Run 固定本次正文、资料、素材及工具策略，仍由应用控制权限与媒体审批。
 
 ### 7.3 关键唯一约束与索引
 

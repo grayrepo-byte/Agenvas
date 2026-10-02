@@ -29,7 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
-    private static final int MANIFEST_SCHEMA_VERSION = 4;
+    private static final int MANIFEST_SCHEMA_VERSION = 5;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
@@ -47,11 +47,12 @@ public class ProjectExportManifestService {
     private final ObjectMapper mapper;
     /** 标记清单生成时间。 */
     private final Clock clock;
+    private final dev.agenvas.skill.application.SkillRunService skills;
 
     /** 组装项目清单所需的权限、产物、资产和时间服务。 */
     public ProjectExportManifestService(ProjectService projects, ArtifactService artifacts,
             AssetService assets, CanvasService canvas, MediaDraftService mediaDrafts,
-            CanvasConnectionService connections, ObjectMapper mapper, Clock clock) {
+            CanvasConnectionService connections, ObjectMapper mapper, Clock clock, dev.agenvas.skill.application.SkillRunService skills) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.assets = assets;
@@ -60,6 +61,7 @@ public class ProjectExportManifestService {
         this.connections = connections;
         this.mapper = mapper;
         this.clock = clock;
+        this.skills = skills;
     }
 
     /** 在一个可重复读快照中生成清单，保留资产 ID 但不包含 URL 或存储密钥。 */
@@ -85,7 +87,7 @@ public class ProjectExportManifestService {
                 catalog.artifacts().stream().map(artifact -> artifactEntry(
                         artifact, versions.getOrDefault(artifact.id(), List.of()))).toList(),
                 assets.listProjectAssets(ownerId, projectId).stream()
-                        .map(this::assetEntry).toList(), canvasItems, connectionEntries);
+                        .map(this::assetEntry).toList(), canvasItems, connectionEntries, skills.exportProject(ownerId, projectId));
     }
 
     /** 将产物资源库默认指针、归档状态和历史版本摘要组装为清单条目。 */
@@ -169,7 +171,7 @@ public class ProjectExportManifestService {
      */
     public record Manifest(int schemaVersion, Instant generatedAt, long snapshotSeq,
             ProjectEntry project, List<ArtifactEntry> artifacts, List<AssetEntry> assets,
-            List<CanvasItemEntry> canvasItems, List<ConnectionEntry> connections) {}
+            List<CanvasItemEntry> canvasItems, List<ConnectionEntry> connections, List<JsonNode> creativeSkills) {}
 
     /** 不含所有者或凭证的项目身份摘要。
      * @param id 项目 ID

@@ -9,6 +9,7 @@ import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentMediaApproval;
 import dev.agenvas.db.tables.AgentRun;
+import dev.agenvas.db.tables.AgentSkillBinding;
 import dev.agenvas.db.tables.AppUser;
 import dev.agenvas.db.tables.Artifact;
 import dev.agenvas.db.tables.ArtifactVersion;
@@ -26,6 +27,7 @@ import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
 import dev.agenvas.db.tables.ComfyuiConfigVersion;
 import dev.agenvas.db.tables.CreativeDataResetMarker;
+import dev.agenvas.db.tables.CreativeSkill;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LibraryCleanup;
@@ -49,6 +51,12 @@ import dev.agenvas.db.tables.MediaProviderConnectionVersion;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.SkillBindingCommand;
+import dev.agenvas.db.tables.SkillDraft;
+import dev.agenvas.db.tables.SkillInstallCommand;
+import dev.agenvas.db.tables.SkillInstallOperation;
+import dev.agenvas.db.tables.SkillPublishOperation;
+import dev.agenvas.db.tables.SkillVersion;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
 import dev.agenvas.db.tables.StorageProfile;
@@ -96,6 +104,11 @@ public class Tables {
      * Persistent execution lifecycle with immutable input and policy snapshots.
      */
     public static final AgentRun AGENT_RUN = AgentRun.AGENT_RUN;
+
+    /**
+     * Agent-only fixed version selection; no media node execution binding
+     */
+    public static final AgentSkillBinding AGENT_SKILL_BINDING = AgentSkillBinding.AGENT_SKILL_BINDING;
 
     /**
      * The table <code>public.app_user</code>.
@@ -192,6 +205,11 @@ public class Tables {
      * The table <code>public.creative_data_reset_marker</code>.
      */
     public static final CreativeDataResetMarker CREATIVE_DATA_RESET_MARKER = CreativeDataResetMarker.CREATIVE_DATA_RESET_MARKER;
+
+    /**
+     * The table <code>public.creative_skill</code>.
+     */
+    public static final CreativeSkill CREATIVE_SKILL = CreativeSkill.CREATIVE_SKILL;
 
     /**
      * Principal-scoped HTTP command replay record; same key with a different
@@ -314,6 +332,37 @@ public class Tables {
      * remain UNKNOWN.
      */
     public static final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
+
+    /**
+     * The table <code>public.skill_binding_command</code>.
+     */
+    public static final SkillBindingCommand SKILL_BINDING_COMMAND = SkillBindingCommand.SKILL_BINDING_COMMAND;
+
+    /**
+     * The table <code>public.skill_draft</code>.
+     */
+    public static final SkillDraft SKILL_DRAFT = SkillDraft.SKILL_DRAFT;
+
+    /**
+     * The table <code>public.skill_install_command</code>.
+     */
+    public static final SkillInstallCommand SKILL_INSTALL_COMMAND = SkillInstallCommand.SKILL_INSTALL_COMMAND;
+
+    /**
+     * The table <code>public.skill_install_operation</code>.
+     */
+    public static final SkillInstallOperation SKILL_INSTALL_OPERATION = SkillInstallOperation.SKILL_INSTALL_OPERATION;
+
+    /**
+     * Durable fenced local archival; no model or Provider execution
+     */
+    public static final SkillPublishOperation SKILL_PUBLISH_OPERATION = SkillPublishOperation.SKILL_PUBLISH_OPERATION;
+
+    /**
+     * Immutable Skill body, bounded text resources and independently archived
+     * image bindings
+     */
+    public static final SkillVersion SKILL_VERSION = SkillVersion.SKILL_VERSION;
 
     /**
      * The table <code>public.spring_session</code>.

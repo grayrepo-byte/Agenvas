@@ -11,6 +11,7 @@ const SetupPage = lazy(() => import("../features/auth/SetupPage")
   .then((module) => ({ default: module.SetupPage })));
 const LoginPage = lazy(() => import("../features/auth/LoginPage")
   .then((module) => ({ default: module.LoginPage })));
+const SkillsPage = lazy(() => import("../features/skills/SkillsPage").then((module) => ({ default: module.SkillsPage })));
 const LibraryPage = lazy(() => import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const ProjectsPage = lazy(() => import("../features/projects/ProjectsPage")
   .then((module) => ({ default: module.ProjectsPage })));
@@ -43,6 +44,7 @@ export function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/skills" element={<SkillsPage />} />
           <Route path="/settings/llm" element={<LlmSettingsPage />} />
           <Route path="/settings/providers" element={<LlmSettingsPage />} />
           <Route path="/settings/storage" element={<StorageSettingsPage />} />

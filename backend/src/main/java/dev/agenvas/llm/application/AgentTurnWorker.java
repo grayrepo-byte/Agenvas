@@ -167,7 +167,7 @@ public class AgentTurnWorker {
                 // rounds.callLeased 在网络请求两侧提交带租约校验的检查点；这里不持有数据库事务。
                 Future<JsonNode> call = modelExecutor.submit(() -> rounds.callLeased(ownerId,
                         lease.projectId(), lease.runId(), stepIndex, boundedMessages,
-                        registry.modelDefinitions(),
+                        registry.modelDefinitions(run.policySnapshot()),
                         Map.of("projectId", lease.projectId().toString(),
                                 "runId", lease.runId().toString()), lease, workerId));
                 try {

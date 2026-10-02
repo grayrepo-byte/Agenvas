@@ -1,4 +1,4 @@
-import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,SidebarSimple,SignOut,TerminalWindow,UserCircle } from "@phosphor-icons/react";
+import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link,Navigate,useLocation,useNavigate } from "react-router";
@@ -15,6 +15,7 @@ import { Button } from "./primitives/button";
 const NAVIGATION = [
   { to: "/projects", get label() { return t("common.project"); }, icon: FolderSimple },
   { to: "/library", get label() { return t("common.asset"); }, icon: Cube },
+  { to: "/skills", get label() { return t("skills.title"); }, icon: Sparkle },
   { to: "/settings/providers", get label() { return t("settings.providerTitle"); }, icon: PlugsConnected },
   { to: "/settings/media", get label() { return t("ui.pageShell.mediaSettings"); }, icon: FilmStrip },
   { to: "/settings/storage", get label() { return t("settings.storage.title"); }, icon: HardDrives },
@@ -74,7 +75,7 @@ export function PageShell({ title, description, actions, children }: {
         </Button></div>
     </aside>
     <main className="app-page-main" id="page-content" tabIndex={-1}>
-      <header className="app-page-header"><div><p className="app-page-eyebrow">Agenvas / {activePath === "/projects" || activePath === "/library" ? t("ui.pageShell.workspace") : t("ui.pageShell.settings")}</p>
+      <header className="app-page-header"><div><p className="app-page-eyebrow">Agenvas / {activePath === "/projects" || activePath === "/library" || activePath === "/skills" ? t("ui.pageShell.workspace") : t("ui.pageShell.settings")}</p>
         <h1>{title}</h1>{description ? <p className="app-page-description">{description}</p> : null}</div>
         {actions ? <div className="ui-form-actions">{actions}</div> : null}
       </header>

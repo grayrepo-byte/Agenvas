@@ -10,8 +10,10 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.AgentConversation.AgentConversationPath;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
+import dev.agenvas.db.tables.AgentSkillBinding.AgentSkillBindingPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
+import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.records.AgentInstanceRecord;
 
 import java.time.OffsetDateTime;
@@ -236,6 +238,19 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
         return _project;
     }
 
+    private transient AgentSkillBindingPath _agentSkillBinding;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.agent_skill_binding</code> table
+     */
+    public AgentSkillBindingPath agentSkillBinding() {
+        if (_agentSkillBinding == null)
+            _agentSkillBinding = new AgentSkillBindingPath(this, null, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_PROJECT_ID_AGENT_ID_FKEY.getInverseKey());
+
+        return _agentSkillBinding;
+    }
+
     private transient AgentBindingPath _agentBinding;
 
     /**
@@ -273,6 +288,19 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
             _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT.getInverseKey());
 
         return _canvasItem;
+    }
+
+    private transient SkillBindingCommandPath _skillBindingCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.skill_binding_command</code> table
+     */
+    public SkillBindingCommandPath skillBindingCommand() {
+        if (_skillBindingCommand == null)
+            _skillBindingCommand = new SkillBindingCommandPath(this, null, Keys.SKILL_BINDING_COMMAND__SKILL_BINDING_COMMAND_PROJECT_ID_AGENT_ID_FKEY.getInverseKey());
+
+        return _skillBindingCommand;
     }
 
     @Override

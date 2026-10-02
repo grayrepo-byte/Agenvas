@@ -225,6 +225,16 @@ public class AgentInstanceService {
         return require(ownerId, projectId, agentId);
     }
 
+    /** Advances the shared configuration CAS for independent Agent settings in the caller's project transaction. */
+    public AgentInstance touchConfigurationWithinChange(UUID ownerId, UUID projectId, UUID agentId, long expectedVersion) {
+        projects.requireActiveProject(ownerId, projectId);
+        AgentInstance current = agents.findForUpdate(ownerId, projectId, agentId).orElseThrow(this::notFound);
+        if (current.version() != expectedVersion || !agents.update(ownerId, current, expectedVersion, clock.instant())) {
+            throw versionConflict();
+        }
+        return require(ownerId, projectId, agentId);
+    }
+
     /** Adds an exact image version captured by a CanvasItem connection. */
     public AgentInstance addImageBindingWithinChange(UUID ownerId, UUID projectId,
             UUID agentId, long expectedVersion, UUID artifactId, UUID versionId) {

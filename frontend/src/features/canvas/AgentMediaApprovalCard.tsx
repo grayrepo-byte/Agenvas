@@ -5,6 +5,7 @@ import { ApiError, decideRunMediaApproval, type AgentMediaApproval, type AgentMe
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { AgentChatApproval } from "./AgentChatPrimitives";
+import { CreativeSkillSource } from "../skills/CreativeSkillSource";
 import { taskErrorDetail } from "./taskErrorMessages";
 
 const STATUS_LABELS: Record<AgentMediaApproval["status"], () => string> = {
@@ -112,6 +113,7 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
       const inputs = Array.isArray(preview.mediaInputs) ? preview.mediaInputs.map(record) : [];
       return <details key={output.canvasItemId} className="agent-media-approval__output" open={reviewing && approval.outputs.length === 1}>
         <summary><span>{index + 1}. {output.title}</span><small>{KIND_LABELS[output.kind]?.()}</small></summary>
+        <CreativeSkillSource source={preview.creativeSkill} />
         <p className="agent-media-approval__prompt">{text(preview.prompt) || t("agent.approval.promptEmpty")}</p>
         <dl className="agent-media-approval__fields">
           <div><dt>{t("agent.approval.capability")}</dt><dd><span>{text(preview.adapterId)}</span>

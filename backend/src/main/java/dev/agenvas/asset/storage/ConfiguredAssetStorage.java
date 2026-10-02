@@ -223,6 +223,33 @@ public class ConfiguredAssetStorage implements AssetStorage {
         Remote r = remote(key); cloud.delete(r.profile(), remoteKey(r.profile(), r.key()));
         local.discard(".cloud-cache/" + key);
     }
+
+    /** Cleanup uses the pinned receipt directly; recovering an unfinished route would upload it. */
+    @Override public void discardPreparedImage(UUID project, UUID asset) {
+        var route = repository.route(project, asset);
+        if (route.isPresent()) {
+            if (!IMAGE_KIND.equals(route.get().mediaKind())) throw new IllegalStateException("Prepared image route kind mismatch");
+            if (route.get().metadata() != null && route.get().profileId() != null) {
+                Archive receipt = decode(route.get().metadata());
+                String prefix = project + "/" + asset;
+                boolean originalIdentity = AssetStorage.PREPARED_IMAGE_ORIGINAL_SUFFIXES.stream()
+                        .anyMatch(suffix -> receipt.key().equals(prefix + suffix));
+                boolean thumbnailIdentity = receipt.thumbnail() == null
+                        || receipt.thumbnail().equals(prefix + AssetStorage.PREPARED_IMAGE_THUMBNAIL_SUFFIX);
+                if (!IMAGE_KIND.equals(receipt.kind()) || !originalIdentity || !thumbnailIdentity)
+                    throw new IllegalStateException("Prepared image receipt identity mismatch");
+                StorageProfile profile = settings.requireProfile(route.get().profileId());
+                discardPreparedCloudFile(profile, receipt.key());
+                if (receipt.thumbnail() != null) discardPreparedCloudFile(profile, receipt.thumbnail());
+            }
+        }
+        local.discardPreparedImage(project, asset);
+    }
+
+    private void discardPreparedCloudFile(StorageProfile profile, String key) {
+        cloud.delete(profile, remoteKey(profile, key));
+        local.discard(".cloud-cache/" + qualified(profile.id(), key));
+    }
     @Override public <T> T withTaskImageLock(UUID project, UUID asset, Supplier<T> action) {
         return local.withTaskImageLock(project, asset, action);
     }

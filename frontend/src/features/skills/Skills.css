@@ -1,0 +1,12 @@
+.skills-layout { display:grid; grid-template-columns:minmax(220px,300px) minmax(0,1fr); gap:24px; align-items:start; }
+.skills-list { display:flex; flex-direction:column; gap:10px; margin-block:20px; }
+.skills-list button { justify-content:flex-start; white-space:normal; height:auto; min-height:40px; }
+.skills-editor-tabs { margin-block:24px; }
+.skills-editor-tabs [data-slot=field-group] { margin-block:14px; }
+.skills-source-preview { white-space:pre-wrap; overflow-wrap:anywhere; max-height:280px; overflow:auto; padding:16px; background:var(--ui-surface-raised); border:1px solid var(--ui-border); border-radius:10px; }
+.agent-skill-settings { display:flex; flex-direction:column; gap:12px; margin-block:16px; }
+@media(max-width:900px) { .skills-layout { grid-template-columns:minmax(0,1fr); } }
+
+.skills-published-assets { display:flex; flex-wrap:wrap; gap:16px; }
+.skills-published-assets figure { max-width:180px; margin:0; }
+.skills-published-assets img { width:100%; aspect-ratio:1; object-fit:contain; }

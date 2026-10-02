@@ -546,3 +546,32 @@ describe("AgentChatCard", () => {
     expect(screen.queryByRole("button", { name: "返回运行会话" })).not.toBeInTheDocument();
   });
 });
+
+describe("Agent Skill review",()=>{
+  const skillId="skill-example",skillVersionId="skill-version-example";
+  const version={id:skillVersionId,skillId,versionNumber:1,name:"warm-art",description:"Synthetic style guide",bundleHash:"synthetic-bundle",skillMd:"# Creative method",outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[],createdAt:NOW};
+  it("supports explicit no-Skill override and submits only after normal Run confirmation",async()=>{
+    const requests:CreateRunRequest[]=[];const preflights:unknown[]=[];
+    server.use(http.get(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,()=>HttpResponse.json({agentVersion:AGENT_VERSION,skillId,skillVersionId})),
+      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
+      http.post(`${RUNS_URL}/preflight`,async({request})=>{preflights.push(await request.json());return HttpResponse.json(PREFLIGHT);}),
+      http.post(RUNS_URL,async({request})=>{requests.push(await request.json() as CreateRunRequest);return persistRun();}));
+    mountCard();const user=userEvent.setup();await readyComposer();
+    await user.click(screen.getByText("本次 Skill",{selector:"summary"}));await user.click(screen.getByRole("combobox",{name:"本次 Skill"}));await user.click(await screen.findByRole("option",{name:"本次不使用 Skill"}));
+    await user.type(screen.getByRole("textbox",{name:"本次任务"}),"创建一段文字");await user.click(screen.getByRole("button",{name:"发送"}));
+    await screen.findByRole("button",{name:"确认开始"});expect(requests).toHaveLength(0);expect(preflights).toEqual([expect.objectContaining({skillSelection:{mode:"NONE",inputs:[]}})]);
+    await user.click(screen.getByRole("button",{name:"确认开始"}));await waitFor(()=>expect(requests).toHaveLength(1));expect(requests[0]?.skillSelection).toEqual({mode:"NONE",inputs:[]});
+  });
+  it("saves a default binding through its independent endpoint without editing Agent instructions",async()=>{
+    let current={agentVersion:AGENT_VERSION,skillId:null as string|null,skillVersionId:null as string|null};const bindings:unknown[]=[];const onUpdateAgent=vi.fn();
+    server.use(http.get(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,()=>HttpResponse.json(current)),
+      http.get("/api/v1/skills",()=>HttpResponse.json({items:[{id:skillId,title:"温暖手绘",description:"",currentVersionId:skillVersionId,trashed:false,version:1,createdAt:NOW,updatedAt:NOW}],nextCursor:null,total:1})),
+      http.get(`/api/v1/skills/${skillId}/versions`,()=>HttpResponse.json([{id:skillVersionId,skillId,versionNumber:1,name:"warm-art",description:"Synthetic guide",bundleHash:"synthetic",createdAt:NOW}])),
+      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
+      http.put(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,async({request})=>{bindings.push(await request.json());current={agentVersion:AGENT_VERSION+1,skillId,skillVersionId};return HttpResponse.json(current);}));
+    mountCard(null,{onUpdateAgent});const user=userEvent.setup();await readyComposer();await user.click(screen.getByRole("button",{name:"Agent 设置"}));
+    await user.click(screen.getByRole("combobox",{name:"选择 Skill"}));await user.click(await screen.findByRole("option",{name:"温暖手绘"}));
+    const versions=screen.getByRole("combobox",{name:"发布版本"});await waitFor(()=>expect(versions).toBeEnabled());await user.click(versions);await user.click(await screen.findByRole("option",{name:"版本 1"}));
+    await user.click(screen.getByRole("button",{name:"保存默认绑定"}));await waitFor(()=>expect(bindings).toHaveLength(1));expect(bindings[0]).toEqual({expectedAgentVersion:AGENT_VERSION,skillId,skillVersionId});expect(onUpdateAgent).not.toHaveBeenCalled();
+  });
+});

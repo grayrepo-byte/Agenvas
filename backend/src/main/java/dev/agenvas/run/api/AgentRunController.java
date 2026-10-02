@@ -2,6 +2,7 @@ package dev.agenvas.run.api;
 
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.skill.application.SkillRunService;
 import dev.agenvas.run.domain.AgentRun;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -47,6 +48,13 @@ public class AgentRunController {
         return runs.preflight(principal.userId(), projectId, agentId, conversationId);
     }
 
+    @PostMapping("/preflight")
+    public AgentRunService.RunPreflight preview(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId, @Valid @RequestBody PreflightRequest request) {
+        return runs.preflight(principal.userId(), projectId, request.agentId(), request.conversationId(), request.skillSelection());
+    }
+    public record PreflightRequest(@NotNull UUID agentId, UUID conversationId, @Valid SkillRunService.Selection skillSelection) {}
+
     /** 按一个 Agent 的所有者范围返回有界历史页和不透明续页游标。 */
     @GetMapping
     public RunListResponse list(
@@ -79,7 +87,7 @@ public class AgentRunController {
                 request.expectedModelConfigSource(),
                 request.expectedModelConfigVersion(),
                 request.expectedSystemPromptVersion(), request.conversationId(),
-                request.expectedConversationVersion());
+                request.expectedConversationVersion(), request.skillSelection());
         return ResponseEntity.accepted()
                 .header("Idempotency-Replayed", Boolean.toString(result.replayed()))
                 .body(RunResponse.from(result.run()));
@@ -126,7 +134,8 @@ public class AgentRunController {
             @jakarta.validation.constraints.Positive Integer expectedModelConfigVersion,
             @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion,
             UUID conversationId,
-            @jakarta.validation.constraints.PositiveOrZero Long expectedConversationVersion) {}
+            @jakarta.validation.constraints.PositiveOrZero Long expectedConversationVersion,
+            @Valid SkillRunService.Selection skillSelection) {}
 
     /** 列表摘要省略完整上下文、策略细节和模型原始消息。
      * @param id Run UUID

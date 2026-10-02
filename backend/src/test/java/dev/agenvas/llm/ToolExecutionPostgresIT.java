@@ -106,7 +106,7 @@ class ToolExecutionPostgresIT {
                 .isEqualTo(AgentRun.Status.RUNNING);
         TrustedToolContext trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
         List<Message> prompt = List.of(new UserMessage("Create a short text"));
-        List<ToolCallback> definitions = registry.modelDefinitions();
+        List<ToolCallback> definitions = registry.modelDefinitions(run.policySnapshot());
 
         checkpoints.reserve(owner.userId(), project.id(), run.id(), 0, 1, "test-fake",
                 codec.request(prompt, definitions));

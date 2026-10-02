@@ -12,7 +12,7 @@ type Agent,
 type AgentConversation,type AgentConversationList,
 type AgentRun,type AgentRunList,
 type CanvasItem,
-type CreateRunRequest
+type CreateRunRequest,type SkillSelection
 } from "../../shared/api/client";
 import { getFormatLocale,t,useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
@@ -24,6 +24,7 @@ import { AgentChatApproval,AgentChatMessage } from "./AgentChatPrimitives";
 import { AgentRunConversation,RUN_STATUS_LABELS } from "./AgentRunConversation";
 import { CanvasHandle } from "./CanvasHandle";
 import { useCanvasStore } from "./canvasStore";
+import { AgentRunSkillControls,AgentSkillSettings,RunSkillSummary,useAgentSkillSelection } from "../skills/AgentSkillControls";
 
 export const AGENT_CHAT_WIDTH = 460;
 export const AGENT_CHAT_HEIGHT = 600;
@@ -53,7 +54,7 @@ const EMPTY_DRAFT = { instruction: "" };
 type ConversationDraft = typeof EMPTY_DRAFT;
 type RunReview = {
   conversationId: string; instruction: string; selectedIds: string[];
-  agentVersion: number;
+  agentVersion: number; skillSelection?: SkillSelection; skillFingerprint: string;
 };
 
 /** Conversations persist across messages; each submitted message retains its own Run. */
@@ -61,6 +62,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   useLocale();
   const queryClient = useQueryClient();
   const agent = data.item.agent;
+  const skillState = useAgentSkillSelection(data.projectId,agent);
   const [configuration, setConfiguration] = useState(() => agent
     ? { base: agent, name: agent.name, instruction: agent.instruction } : null);
   const configurationDirty = configuration != null &&
@@ -109,12 +111,16 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   if (currentActiveRun) byId.set(currentActiveRun.id, currentActiveRun);
   const displayedRuns = [...byId.values()].sort((left, right) => left.conversationTurn - right.conversationTurn);
   const reviewInstruction = review?.conversationId === conversationId && review.agentVersion === agent?.version
-    && review.instruction === runInstruction.trim() ? review.instruction : null;
+    && review.skillFingerprint === skillState.fingerprint && review.instruction === runInstruction.trim() ? review.instruction : null;
   const reviewSelection = review?.selectedIds ?? [];
-  const preflightKey = (id: string | null) => ["run-preflight", data.projectId, agent?.id, agent?.version, id];
+  const preflightKey = (id: string | null) => {
+    const base = ["run-preflight", data.projectId, agent?.id, agent?.version, id];
+    return skillState.selection.mode === "DEFAULT" && !skillState.binding.data?.skillVersionId
+      ? base : [...base, skillState.fingerprint];
+  };
   const preflight = useQuery({
     queryKey: preflightKey(conversationId),
-    queryFn: () => getRunPreflight(data.projectId, agent!.id, conversationId ?? undefined),
+    queryFn: () => getRunPreflight(data.projectId, agent!.id, conversationId ?? undefined, review?.skillSelection),
     enabled: false,
   });
 
@@ -238,7 +244,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   }
   async function submitRun() {
     if (!agent || data.activeRun || start.isPending || sessionBusy || preflight.isFetching
-      || conversations.isPending || conversations.isError) return;
+      || conversations.isPending || conversations.isError || !skillState.ready) return;
     const instruction = runInstruction.trim();
     if (!instruction) return;
     let targetId = conversationId;
@@ -247,11 +253,13 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       catch { return; }
     }
     setView("chat");
-    setReview({ conversationId: targetId, instruction, agentVersion: agent.version,
+    const skillSelection = skillState.selection.mode === "DEFAULT" && !skillState.binding.data?.skillVersionId
+      ? undefined : skillState.selection;
+    setReview({ conversationId: targetId, instruction, agentVersion: agent.version, skillSelection, skillFingerprint: skillState.fingerprint,
       selectedIds: [...useCanvasStore.getState().selectedIds] });
     try {
       await queryClient.fetchQuery({ queryKey: preflightKey(targetId), staleTime: 0,
-        queryFn: () => getRunPreflight(data.projectId, agent.id, targetId) });
+        queryFn: () => getRunPreflight(data.projectId, agent.id, targetId, skillSelection) });
     } catch { /* The subscribed preflight query renders the failure and retains the draft. */ }
   }
   function confirmRun() {
@@ -259,7 +267,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     if (!agent || !conversationId || !reviewInstruction || !review || !reviewed || preflight.isFetching || preflight.isError
       || !reviewed.modelAvailable || !reviewed.toolCalling || data.activeRun || start.isPending || sessionBusy
       || reviewed.policySnapshot.systemPromptVersion == null || reviewed.conversationId !== conversationId
-      || reviewed.conversationVersion == null || reviewed.agentVersion !== agent.version || reviewed.agentId !== agent.id) return;
+      || reviewed.creativeSkill?.installed === false || reviewed.conversationVersion == null || reviewed.agentVersion !== agent.version || reviewed.agentId !== agent.id) return;
     const input: CreateRunRequest & { conversationId: string } = {
       agentId: agent.id, conversationId, expectedConversationVersion: reviewed.conversationVersion,
       instruction: reviewInstruction, expectedAgentVersion: reviewed.agentVersion,
@@ -267,6 +275,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       expectedModelConfigVersion: reviewed.policySnapshot.modelConfigVersion,
       expectedSystemPromptVersion: reviewed.policySnapshot.systemPromptVersion,
       selectedItemIds: reviewSelection,
+      ...(review.skillSelection ? {skillSelection:review.skillSelection} : {}),
     };
     const fingerprint = JSON.stringify(input);
     if (runIntent.current?.fingerprint !== fingerprint) runIntent.current = { fingerprint, key: crypto.randomUUID() };
@@ -320,6 +329,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
             </p> : null}
             {data.updateAgentError ? <ChatError error={data.updateAgentError} /> : null}
           </form>
+          <AgentSkillSettings projectId={data.projectId} agent={agent} state={skillState} onChanged={()=>{setReview(null);runIntent.current=null;}} />
           <details className="agent-chat-binding-list"><summary>{t("agent.chat.explicitInputs", { "0": agent.bindings.length })}</summary>
             {agent.bindings.length === 0 ? <p>{t("agent.chat.noExtraInputsHint")}</p> : <ul>{agent.bindings.map((binding) =>
               <li key={binding.id}>Artifact {binding.artifactId}<br />Version {binding.selectedVersionId}</li>)}</ul>}
@@ -361,7 +371,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
             <Button variant="ghost" className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
               preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
               !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
-              preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null} onClick={confirmRun} type="button">
+              preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null || preflight.data.creativeSkill?.installed === false} onClick={confirmRun} type="button">
               {start.isPending ? t("agent.chat.starting") : t("agent.chat.confirmStart")}
             </Button>
           </div> : undefined}>
@@ -369,6 +379,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
           {preflight.error ? <ChatError error={preflight.error} /> : null}
           {preflight.data && !preflight.isFetching && !preflight.isError ? (
             <>
+              {preflight.data.creativeSkill ? <RunSkillSummary skill={preflight.data.creativeSkill} /> : null}
               <p className="mt-2 break-words">{t("agent.chat.taskSummary", { "0": reviewInstruction })}</p>
               <p>{t("agent.chat.inheritedContextHint", { "0": preflight.data.conversationTurnCount, "1": preflight.data.inheritedBindingCount })}</p>
               {preflight.data.memoryTruncated ? <p>{t("agent.chat.contextTruncatedHint")}</p> : null}
@@ -403,6 +414,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         </div>
       </div>
       <form aria-label={t("agent.chat.sendTask")} className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
+      <AgentRunSkillControls projectId={data.projectId} agent={agent} state={skillState} onChanged={()=>{setReview(null);runIntent.current=null;}} />
         <Textarea aria-label={t("agent.chat.currentTask")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
           setRunInstruction(event.target.value); setReview(null);
         }} onKeyDown={(event) => {

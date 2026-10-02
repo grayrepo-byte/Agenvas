@@ -59,12 +59,13 @@ public class AgentMediaApprovalService {
     private final ApplicationEventPublisher publisher;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final ToolExecutionRepository toolLedger;
 
     public AgentMediaApprovalService(AgentMediaApprovalRepository approvals, AgentRunService runs,
             ArtifactService artifacts, CanvasService canvas, MediaDraftService drafts,
             MediaCapabilityService capabilities, DirectMediaTaskService mediaTasks,
             ProjectEventService events, ApplicationEventPublisher publisher,
-            ObjectMapper mapper, Clock clock) {
+            ObjectMapper mapper, Clock clock, ToolExecutionRepository toolLedger) {
         this.approvals = approvals;
         this.runs = runs;
         this.artifacts = artifacts;
@@ -76,6 +77,7 @@ public class AgentMediaApprovalService {
         this.publisher = publisher;
         this.mapper = mapper;
         this.clock = clock;
+        this.toolLedger = toolLedger;
     }
 
     /** Tool execution and this proposal share the existing project transaction and call ledger. */
@@ -122,6 +124,8 @@ public class AgentMediaApprovalService {
                         created.stream().map(view -> view.artifact().id()).toList());
                 ObjectNode frozenRequest = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 frozenRequest.put("argumentHash", Sha256.hex(arguments));
+                JsonNode skillSource = freezeSkillSource(run);
+                if (skillSource != null) frozenRequest.set("creativeSkill", skillSource);
                 var normalizedOutputs = frozenRequest.putArray("outputs");
                 ObjectNode targets = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 var targetOutputs = targets.putArray("outputs");
@@ -137,8 +141,8 @@ public class AgentMediaApprovalService {
                             initial.version(), request.prompt(), request.parameters(),
                             request.durationSeconds(), capabilityId, request.videoInputMode(),
                             request.mediaInputs(), List.of());
-                    var preflight = mediaTasks.preflight(context.ownerId(), context.projectId(),
-                            artifactId, item.id(), saved.version());
+                    var preflight = approvedPreflight(context.ownerId(), context.projectId(),
+                            artifactId, item.id(), saved.version(), skillSource);
                     if (preflight.outputCount() != OUTPUTS_PER_REQUEST) throw invalid("single-output");
                     ObjectNode normalized = request.original().deepCopy();
                     normalized.put("capabilityId", capabilityId.toString());
@@ -235,9 +239,9 @@ public class AgentMediaApprovalService {
                     }
                 }
                 for (JsonNode target : approval.targets().path("outputs")) {
-                    var preflight = mediaTasks.preflight(ownerId, projectId,
+                    var preflight = approvedPreflight(ownerId, projectId,
                             uuid(target.path("artifactId")), uuid(target.path("canvasItemId")),
-                            target.path("draftVersion").longValue());
+                            target.path("draftVersion").longValue(), approval.request().get("creativeSkill"));
                     MediaCapabilityBinding frozenBinding = mapper.treeToValue(target.path("binding"),
                             MediaCapabilityBinding.class);
                     if (preflight.outputCount() != OUTPUTS_PER_REQUEST || !frozenBinding.equals(preflight.binding())
@@ -248,10 +252,10 @@ public class AgentMediaApprovalService {
                 List<UUID> taskIds = new ArrayList<>();
                 int index = 0;
                 for (JsonNode target : approval.targets().path("outputs")) {
-                    Task task = mediaTasks.runApproved(ownerId, projectId, runId, approvalId,
+                    Task task = approvedTask(ownerId, projectId, runId, approvalId,
                             uuid(target.path("artifactId")), uuid(target.path("canvasItemId")),
                             target.path("draftVersion").longValue(),
-                            "agent-media:" + approvalId + ":" + index++);
+                            "agent-media:" + approvalId + ":" + index++, approval.request().get("creativeSkill"));
                     taskIds.add(task.id());
                 }
                 update = approval.transition(AgentMediaApproval.Status.APPROVED, taskIds,
@@ -312,8 +316,56 @@ public class AgentMediaApprovalService {
                 inputs.add(new MediaDraftService.SaveMediaInput(versionId, role, INPUT_COLOR));
             }
         }
+        JsonNode skill = run.contextSnapshot().path("creativeSkill");
+        if (skill.isObject()) {
+            boolean outputAllowed = false;
+            for (JsonNode allowed : skill.path("outputKinds")) if (kind.name().equals(allowed.asText())) outputAllowed = true;
+            if (!outputAllowed) throw invalid("skill-output-kind");
+            for (JsonNode reference : skill.path("assets")) {
+                boolean present = inputs.stream().anyMatch(media -> media.versionId().toString().equals(reference.path("artifactVersionId").asText()));
+                if (("GUIDE".equals(reference.path("usage").asText()) && present)
+                        || ("PROVIDER_REFERENCE".equals(reference.path("usage").asText()) && reference.path("required").asBoolean() && !present)) {
+                    throw invalid("skill-reference-input");
+                }
+            }
+            for (JsonNode required : skill.path("inputs")) {
+                if (required.path("required").asBoolean() && "IMAGE".equals(required.path("kind").asText())
+                        && inputs.stream().noneMatch(media -> media.versionId().toString().equals(required.path("artifactVersionId").asText()))) {
+                    throw invalid("skill-subject-input");
+                }
+            }
+        }
         return new OutputRequest(kind, title, prompt, parameters, duration, capabilityId, mode,
                 List.copyOf(inputs), object);
+    }
+
+    private dev.agenvas.task.application.DirectMediaTaskService.MediaPreflight approvedPreflight(UUID owner, UUID project,
+            UUID artifact, UUID card, long draftVersion, JsonNode skill) {
+        return skill == null ? mediaTasks.preflight(owner, project, artifact, card, draftVersion)
+                : mediaTasks.preflightApproved(owner, project, artifact, card, draftVersion, skill);
+    }
+    private Task approvedTask(UUID owner, UUID project, UUID run, UUID approval, UUID artifact, UUID card,
+            long draftVersion, String key, JsonNode skill) {
+        return skill == null ? mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key)
+                : mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key, skill);
+    }
+
+    private JsonNode freezeSkillSource(AgentRun run) {
+        JsonNode source = run.contextSnapshot().get("creativeSkill");
+        if (!(source instanceof ObjectNode)) return null;
+        ObjectNode frozen = (ObjectNode) source.deepCopy();
+        var reads = toolLedger.skillResourceReads(run.projectId(), run.id());
+        Set<String> used = new java.util.HashSet<>();
+        var ranges = frozen.putArray("resourceReads");
+        for (JsonNode read : reads) {
+            used.add(read.path("path").asText());
+            ranges.addObject().put("path", read.path("path").asText())
+                    .put("contentHash", read.path("contentHash").asText())
+                    .put("offset", read.path("offset").asInt()).put("endOffset", read.path("endOffset").asInt()).put("total", read.path("total").asInt());
+        }
+        var resources = frozen.putArray("resources");
+        for (JsonNode resource : source.path("resources")) if (used.contains(resource.path("path").asText())) resources.add(resource.deepCopy());
+        return frozen;
     }
 
     private ObjectNode object(String arguments) {

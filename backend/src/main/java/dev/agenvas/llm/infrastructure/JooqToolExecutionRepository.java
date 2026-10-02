@@ -65,6 +65,17 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
                         record.get(TOOL_EXECUTION.COMPLETED_AT).toInstant()));
     }
 
+    @Override
+    public List<JsonNode> skillResourceReads(UUID projectId, UUID runId) {
+        return dsl.select(TOOL_EXECUTION.RESULT_JSON).from(TOOL_EXECUTION)
+                .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId)).and(TOOL_EXECUTION.RUN_ID.eq(runId))
+                .and(TOOL_EXECUTION.STATUS.eq(ToolExecution.Status.COMPLETED.name()))
+                .and(TOOL_EXECUTION.TOOL_NAME.eq("read_skill_resource"))
+                .orderBy(TOOL_EXECUTION.STEP_INDEX, TOOL_EXECUTION.CREATED_AT, TOOL_EXECUTION.ID)
+                .limit(dev.agenvas.run.domain.AgentRun.MAX_TOOL_EXECUTIONS)
+                .fetch(row -> mapper.readTree(row.get(TOOL_EXECUTION.RESULT_JSON).data()).path("data"));
+    }
+
     /** 按 Run、步骤和 toolCallId 读取去重记录及已完成结果。 */
     @Override
     public Optional<ToolExecution> find(UUID projectId, UUID runId,

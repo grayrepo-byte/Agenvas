@@ -86,8 +86,14 @@ public class ToolRegistry {
                      "versionId":{"type":"string","format":"uuid"},
                      "expectedVersion":{"type":"integer","minimum":0}}}}}}
             """;
+    public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
+        var allowed = RunToolPolicy.allowed(policy);
+        return modelDefinitions().stream().filter(tool -> allowed.contains(
+                tool.getToolDefinition().name())).toList();
+    }
+
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */
-    public List<ToolCallback> modelDefinitions() {
+    private List<ToolCallback> modelDefinitions() {
         return List.of(
                 definition("read_project_summary",
                         "Read the current project's bounded metadata and pinned Run limits",
@@ -111,6 +117,14 @@ public class ToolRegistry {
                         + "Never poll read_task_status for these tasks or claim user authorization. "
                         + "Use one output per request, with generationCount=1; await the server's final tool reply.",
                         PROPOSE_MEDIA_SCHEMA),
+                definition("read_skill_resource", "Read one text resource frozen in this Run's selected Skill; "
+                        + "paths and URLs outside the resource manifest are never accessible. Offsets count Unicode code points.",
+                        """
+                        {"type":"object","additionalProperties":false,"required":["path"],
+                         "properties":{"path":{"type":"string","maxLength":160},
+                         "offset":{"type":"integer","minimum":0},
+                         "limit":{"type":"integer","minimum":1,"maximum":4000}}}
+                        """),
                 definition("create_text", "Create a text artifact in the current project",
                         CREATE_TEXT_SCHEMA),
                 definition("revise_artifact",

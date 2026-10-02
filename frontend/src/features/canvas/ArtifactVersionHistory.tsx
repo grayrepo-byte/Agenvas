@@ -5,6 +5,7 @@ HTTP_STATUS,ApiError,listArtifactVersions,setArtifactResourceDefaultVersion,
 type Artifact
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { CreativeSkillSource } from "../skills/CreativeSkillSource";
 import { Button } from "../../shared/ui/primitives/button";
 
 /** On-demand resource history for text; media nodes intentionally expose no version switching. */
@@ -46,6 +47,7 @@ function TextArtifactVersionHistory({ artifact }: { artifact: Artifact }) {
     {history.data ? <ol className="mt-2 space-y-2">
       {history.data.items.map((version) => <li className="rounded-lg border border-[var(--line)] p-2"
         key={version.id}>
+        <CreativeSkillSource source={version.frozenInput?.creativeSkill} />
         <span>v{version.versionNo}{version.baseVersionId
           ? t("artifacts.versions.parentVersionSuffix", { "0": history.data.items.find((candidate) => candidate.id === version.baseVersionId)?.versionNo ?? "?" })
           : ""} · {version.createdByKind} · {version.createdAt}</span>
