@@ -94,6 +94,7 @@
 .react-flow__node-toolbar.artifact-card-toolbar-raised { z-index: 1003 !important; }
 /* Nested menus retain their own geometry regardless of stylesheet import order. */
 .artifact-card-toolbar :where(button), .artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: 999px; color: #eee; background: transparent; font-size: 13px; white-space: nowrap; cursor: pointer; }
-.artifact-card-toolbar button:hover:not(:disabled), .artifact-card-toolbar button.is-open, .artifact-card-toolbar > a:hover { background: #3a3a3a; }
+.artifact-card-toolbar button:hover:not(:disabled), .artifact-card-toolbar button.is-open,
+.artifact-card-toolbar button[aria-expanded="true"], .artifact-card-toolbar > a:hover { background: #3a3a3a; }
 .artifact-card-toolbar button:disabled { opacity: .48; cursor: not-allowed; }
 .artifact-card-toolbar :is(button, a):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
