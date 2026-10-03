@@ -40,6 +40,7 @@ class ReadToolServiceTest {
         AgentRun run = mock(AgentRun.class);
         JsonNode snapshot = mapper.createObjectNode();
         when(run.contextSnapshot()).thenReturn(snapshot);
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", 5));
         Artifact artifact = mock(Artifact.class);
         ArtifactVersion version = mock(ArtifactVersion.class);
         UUID artifactId = UUID.randomUUID();
@@ -61,11 +62,22 @@ class ReadToolServiceTest {
 
         assertThat(item.path("versionId").asText()).isEqualTo(versionId.toString());
         assertThat(item.path("kind").asText()).isEqualTo(kind.name());
+        assertThat(item.path("imagePreviewRequested").asBoolean()).isEqualTo(kind == Artifact.Kind.IMAGE);
         assertThat(item.path("current").asBoolean()).isFalse();
         assertThat(item.path("content")).isEqualTo(content);
         assertThat(item.path("contentTruncated").asBoolean()).isFalse();
         assertThat(item.has("title")).isFalse();
         assertThat(item.has("expectedVersion")).isFalse();
+    }
+
+    @Test
+    void missingSkillResourceDoesNotClaimTheReadToolsAreUnavailable() {
+        AgentRun run = mock(AgentRun.class);
+        when(run.contextSnapshot()).thenReturn(mapper.createObjectNode());
+        assertThatThrownBy(() -> reader.skillResource(run, UUID.randomUUID(), "{\"path\":\"guide.md\"}"))
+                .isInstanceOf(ApiProblemException.class)
+                .hasMessageContaining("资源")
+                .hasMessageNotContaining("允许列表");
     }
 
     @Test

@@ -312,6 +312,8 @@ public class AgentRunService {
                     snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
                     appendInheritedBindings(snapshot, context.inherited());
                     skills.freezeIntoRun(ownerId, projectId, pinnedAgent, runId, skillSelection, snapshot);
+                    policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
+                            !snapshot.path("creativeSkill").path("resources").isEmpty())));
                     AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
                             instruction, expectedConversationVersion, now);
                     AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
@@ -464,12 +466,16 @@ public class AgentRunService {
                 }).toList());
         context.inherited().forEach(binding -> bindings.add(new PreflightBinding(binding.artifactId(),
                 binding.selectedVersionId(), binding.title(), binding.kind())));
+        var skill = skills.preview(ownerId, projectId, agentId, selection);
+        ObjectNode policy = policySnapshot();
+        policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
+                skill != null && !skill.resources().isEmpty())));
         ChatGateway.ModelDetails model = chatGateway.modelDetails();
         return new RunPreflight(agent.id(), agent.version(), agent.name(),
                 agent.instruction(), List.copyOf(bindings), model.available(), model.providerAdapter(),
-                model.modelId(), model.toolCalling(), policySnapshot(),
+                model.modelId(), model.toolCalling(), policy,
                 conversation == null ? null : conversation.id(), conversation == null ? null : conversation.version(),
-                conversation == null ? 0 : conversation.turnCount(), context.inherited().size(), context.memory().truncated(), skills.preview(ownerId, projectId, agentId, selection));
+                conversation == null ? 0 : conversation.turnCount(), context.inherited().size(), context.memory().truncated(), skill);
     }
 
     /** 运行前预览；不包含凭证、端点或模型私有消息。

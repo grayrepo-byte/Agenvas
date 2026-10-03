@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.RunToolPolicy;
+import dev.agenvas.llm.application.ToolRegistry;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -19,6 +22,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.content.Media;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
@@ -31,6 +39,55 @@ class SpringAiStreamingHttpTest {
     private static final int CONFIG_VERSION = 7;
     private static final long TIMEOUT_SECONDS = 10;
     private static final String MODEL_ID = "synthetic-stream-model";
+
+    @Test
+    void sendsImagePixelsWithReadableToolDefinitionsThroughTheRealAdapter() throws Exception {
+        byte[] png = Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4uoAAAAASUVORK5CYII=");
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicReference<JsonNode> body = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            body.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream output = exchange.getResponseBody()) {
+                chunk(output, "{\"content\":\"Synthetic image received\"}", "stop");
+                event(output, "[DONE]");
+            } finally { exchange.close(); }
+        });
+        server.start();
+        try {
+            OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+                    .apiKey("synthetic-unusable-key").model(MODEL_ID).maxRetries(0)
+                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
+            var policy = mapper.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
+            policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(false)));
+            UserMessage user = UserMessage.builder().text("Inspect the synthetic image")
+                    .media(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png))).build();
+            var readCall = AssistantMessage.builder().content("").toolCalls(List.of(
+                    new AssistantMessage.ToolCall("read-image", "function", "read_artifacts", "{}"))).build();
+            var readReply = ToolResponseMessage.builder().responses(List.of(
+                    new ToolResponseMessage.ToolResponse("read-image", "read_artifacts", "{\"status\":\"SUCCEEDED\"}"))).build();
+            var result = new SpringAiChatGateway(model, CONFIG_VERSION).callStreaming(List.of(
+                    new UserMessage("Synthetic image metadata"), readCall, readReply, user),
+                    new ToolRegistry().modelDefinitions(policy), Map.of(),
+                    new ChatGateway.ConfigIdentity("spring-ai", CONFIG_VERSION), ignored -> {});
+            assertThat(result.response().getResult().getOutput().getText()).isEqualTo("Synthetic image received");
+            assertThat(body.get().path("messages").get(2).path("role").asText()).isEqualTo("tool");
+            assertThat(body.get().path("messages").get(2).path("tool_call_id").asText()).isEqualTo("read-image");
+            JsonNode content = body.get().path("messages").get(3).path("content");
+            assertThat(content.isArray()).isTrue();
+            assertThat(content.get(0).path("text").asText()).isEqualTo("Inspect the synthetic image");
+            assertThat(content.get(1).path("image_url").path("url").asText())
+                    .isEqualTo("data:image/png;base64," + Base64.getEncoder().encodeToString(png));
+            List<String> names = new java.util.ArrayList<>();
+            body.get().path("tools").forEach(tool -> names.add(tool.path("function").path("name").asText()));
+            assertThat(names).contains("read_project_summary", "read_selection", "read_artifacts")
+                    .doesNotContain("read_skill_resource");
+        } finally { server.stop(0); }
+    }
 
     @Test
     void emitsPublicTextBeforeEndOfStreamAndPreservesToolsAndUsageWithoutExecutingTools() throws Exception {

@@ -89,7 +89,17 @@ public class ToolRegistry {
     public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
         var allowed = RunToolPolicy.allowed(policy);
         return modelDefinitions().stream().filter(tool -> allowed.contains(
-                tool.getToolDefinition().name())).toList();
+                tool.getToolDefinition().name())).map(tool -> {
+                    var current = tool.getToolDefinition();
+                    if (!"read_artifacts".equals(current.name())
+                            || policy.path("systemPromptVersion").asInt()
+                                    < InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) return tool;
+                    return definition(current.name(), current.description()
+                            + ". For IMAGE versions, authorized preview attachments follow the committed tool reply. "
+                            + "Only requested images are sent, with at most " + AgentImageInputService.MAX_IMAGES
+                            + " distinct images in the Run context.",
+                            current.inputSchema());
+                }).toList();
     }
 
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */

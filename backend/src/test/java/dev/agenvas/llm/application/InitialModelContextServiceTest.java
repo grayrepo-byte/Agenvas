@@ -18,6 +18,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+import dev.agenvas.artifact.domain.ArtifactVersion;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -26,6 +28,30 @@ import tools.jackson.databind.node.ObjectNode;
 class InitialModelContextServiceTest {
 
     private final JsonMapper mapper = new JsonMapper();
+
+    @Test
+    void currentImageBindingStartsWithMetadataOnlyUntilTheAgentRequestsARead() {
+        UUID artifactId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        ArtifactService artifacts = mock(ArtifactService.class);
+        ArtifactVersion version = mock(ArtifactVersion.class);
+        when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
+        when(artifacts.requireVersion(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(artifactId), org.mockito.ArgumentMatchers.eq(versionId))).thenReturn(version);
+        var bindings = mapper.createArrayNode();
+        bindings.addObject().put("artifactId", artifactId.toString())
+                .put("selectedVersionId", versionId.toString()).put("kind", "IMAGE").put("title", "Synthetic image");
+
+        List<Message> messages = assemble(null, bindings, artifacts,
+                InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        assertThat(messages).filteredOn(UserMessage.class::isInstance)
+                .allSatisfy(message -> {
+                    assertThat(message.getMetadata()).doesNotContainKey(AgentImageInputService.METADATA_KEY);
+                    assertThat(((UserMessage) message).getMedia()).isEmpty();
+                });
+        assertThat(messages).anySatisfy(message -> assertThat(message.getText()).contains(versionId.toString()));
+    }
 
     @Test
     void explicitV1UsesHistoricalRulesAndV2AddsMediaDisclosure() {
@@ -39,7 +65,9 @@ class InitialModelContextServiceTest {
         policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(InitialModelContextService.systemRules(policy))
                 .contains("propose_media_generation").contains("Never poll read_task_status")
-                .contains("no image pixels");
+                .doesNotContain("no image pixels");
+        policy.put("systemPromptVersion", 4);
+        assertThat(InitialModelContextService.systemRules(policy)).contains("no image pixels");
     }
 
     @Test
@@ -48,7 +76,7 @@ class InitialModelContextServiceTest {
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("malformed");
-        policy.put("systemPromptVersion", 5);
+        policy.put("systemPromptVersion", 6);
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");
@@ -130,6 +158,10 @@ class InitialModelContextServiceTest {
     }
 
     private List<Message> assemble(JsonNode memory) {
+        return assemble(memory, mapper.createArrayNode(), mock(ArtifactService.class), 2);
+    }
+
+    private List<Message> assemble(JsonNode memory, JsonNode bindings, ArtifactService artifacts, int promptVersion) {
         UUID ownerId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
@@ -139,14 +171,14 @@ class InitialModelContextServiceTest {
         ObjectNode snapshot = mapper.createObjectNode().put("projectName", "Project")
                 .put("agentName", "Creator").put("agentInstruction", "Create")
                 .put("aspectRatio", "LANDSCAPE_16_9");
-        snapshot.putArray("bindings");
+        snapshot.set("bindings", bindings);
         if (memory != null) snapshot.set("conversationMemory", memory);
         when(run.contextSnapshot()).thenReturn(snapshot);
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", 2));
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", promptVersion));
         when(run.instruction()).thenReturn("新的用户请求");
         MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
         when(capabilities.publishedCandidates()).thenReturn(List.of());
-        return new InitialModelContextService(runs, mock(ArtifactService.class), capabilities)
+        return new InitialModelContextService(runs, artifacts, capabilities)
                 .assemble(ownerId, projectId, runId);
     }
 }

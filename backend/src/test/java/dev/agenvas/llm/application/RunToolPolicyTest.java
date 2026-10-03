@@ -10,6 +10,11 @@ import tools.jackson.databind.json.JsonMapper;
 class RunToolPolicyTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final ToolRegistry registry = new ToolRegistry();
+    @Test void ordinaryReadToolsStayAvailableWithoutSkillResources() {
+        assertThat(RunToolPolicy.current(false)).contains("read_project_summary", "read_selection", "read_artifacts")
+                .doesNotContain("read_skill_resource");
+        assertThat(RunToolPolicy.current(true)).contains("read_skill_resource");
+    }
     @Test void historicalRunsKeepTheirOriginalTools() {
         assertThat(names(mapper.createObjectNode().put("systemPromptVersion",2)))
                 .contains("create_text","read_artifacts")
