@@ -106,8 +106,9 @@
 .media-draft-mode-anchor { flex-shrink: 0; }
 .media-draft-mode-trigger { max-width: 132px; }
 .media-draft-mode-trigger span { overflow: hidden; text-overflow: ellipsis; }
-.media-draft-model-trigger { max-width: 220px; }
-.media-draft-model-trigger span { overflow: hidden; text-overflow: ellipsis; }
+/* The toolbar can shrink the anchor below the model button's width cap. */
+.media-draft-model-trigger { width: 100%; max-width: 220px; }
+.media-draft-model-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .media-draft-popover-anchor { position: relative; }
 .media-draft-cost { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px;
   color: #aaaab0; font-size: 10px; white-space: nowrap; }
