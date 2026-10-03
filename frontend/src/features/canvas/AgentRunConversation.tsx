@@ -54,10 +54,11 @@ function stepIndex(task: Task) {
 }
 
 /** Render persisted public stream text, committed replies, and verifiable actions. */
-export function AgentRunConversation({ projectId, run, active }: {
+export function AgentRunConversation({ projectId, run, active, showFailureNotice = true }: {
   projectId: string;
   run: Pick<AgentRun, "id" | "status" | "instruction" | "createdAt"> & Partial<Pick<AgentRun, "conversationTurn" | "contextSnapshot">>;
   active: boolean;
+  showFailureNotice?: boolean;
 }) {
   useLocale();
   const [sourceOpen,setSourceOpen] = useState(false);
@@ -93,7 +94,7 @@ export function AgentRunConversation({ projectId, run, active }: {
   const waitingApproval = approvals.data?.some((approval) => approval.status === "PENDING");
   const traceTitle = active && RUNNING_STATUSES.has(run.status)
     ? waitingApproval ? t("agent.trace.waitingApproval") : RUN_STATUS_LABELS[run.status]
-    : t("agent.trace.completedWork");
+    : run.status === "FAILED" || run.status === "BLOCKED" ? RUN_STATUS_LABELS[run.status] : t("agent.trace.completedWork");
   const steps = [...new Set([...(actions.data ?? []).map((action) => action.stepIndex), ...traceTasks.map(stepIndex)])]
     .sort((left, right) => left - right);
 
@@ -125,7 +126,7 @@ export function AgentRunConversation({ projectId, run, active }: {
         {reply.text}
         {reply.status === "INTERRUPTED" ? <p className="agent-chat-stream-notice">{t("agent.trace.interrupted")}</p> : null}
       </AgentChatMessage>)}
-    {active && run.status === "BLOCKED" ? <BlockedRunNotice projectId={projectId} runId={run.id} /> : null}
+    {showFailureNotice && (run.status === "BLOCKED" || run.status === "FAILED") ? <BlockedRunNotice projectId={projectId} runId={run.id} status={run.status} /> : null}
     {unknownTasks.map((task) => <UnknownTaskRetryPanel key={task.id} projectId={projectId} taskId={task.id}
       taskVersion={task.version} errorCode={task.errorCode} />)}
     <div className="agent-chat-run-status" role="status">

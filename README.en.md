@@ -64,7 +64,7 @@ ComfyUI uses trusted fixed templates; RunningHub uses administrator-published ta
 1. Create a project and open its canvas. Add cards or upload images, video, and audio through the context menu.
 2. Edit or generate text in a text card. For media, select a model, enter a prompt, and add the references required by its capability.
 3. Check inputs and estimated cost (unknown when pricing is unavailable), then run. Preview and select results, regenerate within the node, or inspect version history.
-4. Add an Agent card for assistance, explicitly bind context, choose a Skill, and enter a task. Review the preflight information before starting. Approve or reject a media proposal as a batch in the conversation.
+4. Add an Agent card for assistance, explicitly bind context, choose a Skill, and enter a task. Send the task to start; the server checks the model, inputs, and pinned versions before accepting it. Approve or reject a media proposal as a batch in the conversation.
 5. Save results to your personal asset library for reuse, or export a project manifest. The manifest contains data and media metadata; a full backup also requires the database and media files.
 
 When a request becomes UNKNOWN, inspect its task and call records first. Explicit retries create separate attempts and may incur duplicate costs. Cancellation stops subsequent local orchestration; it does not guarantee external cancellation or refunds.

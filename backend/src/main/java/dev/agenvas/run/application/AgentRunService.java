@@ -712,7 +712,9 @@ public class AgentRunService {
                     binding.artifactId());
             item.put("kind", selected.artifact().kind().name());
             item.put("title", selected.artifact().title());
-            if (selected.resourceDefaultVersion().id().equals(binding.selectedVersionId())) {
+            // Node-selected media can have archived bytes while the library default is still unset.
+            if (selected.resourceDefaultVersion() != null
+                    && selected.resourceDefaultVersion().id().equals(binding.selectedVersionId())) {
                 item.put("expectedVersion", selected.artifact().version());
             }
         }
@@ -730,7 +732,10 @@ public class AgentRunService {
             reference.put("subjectType", item.subjectType().name());
             reference.put("subjectId", item.subjectId().toString());
             if (selected.artifact() != null) {
-                reference.put("versionId", selected.artifact().resourceDefaultVersion().id().toString());
+                // Freeze the card's result, including a genuinely empty draft, rather than the library default.
+                if (selected.selectedVersion() != null) {
+                    reference.put("versionId", selected.selectedVersion().id().toString());
+                }
                 reference.put("kind", selected.artifact().artifact().kind().name());
             }
         }

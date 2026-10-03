@@ -36,6 +36,9 @@
 .agent-chat-empty p { color: var(--chat-muted); font-size: 12px; max-width: 330px; }
 .agent-chat-empty button { display: inline-flex; align-items: center; gap: 12px; border: 1px solid var(--chat-border); background: #222; border-radius: 9px; padding: 8px 11px; margin-top: 18px; color: #d8d8d8; font-size: 12px; }
 .agent-chat-empty button:hover { background: #303030; }
+.agent-chat-feedback { flex-shrink: 0; margin: 0 9px; font-size: 12px; }
+.agent-chat-feedback:empty { display: none; }
+.agent-chat-feedback > * { margin-bottom: 9px; }
 .agent-chat-composer { flex-shrink: 0; padding: 10px; margin: 0 9px 9px; background: var(--chat-surface); border: 1px solid #333; border-radius: 12px; }
 .agent-chat-card input, .agent-chat-card textarea { color-scheme: dark; color: #efefef; border: 1px solid #414141; background: #242424; border-radius: 8px; font-size: 12px; outline: none; box-shadow: none; }
 .agent-chat-card input { margin-top: 4px; padding: 8px; width: 100%; }
@@ -61,7 +64,7 @@
 .agent-chat-settings label { display: block; margin-top: 12px; color: #cfcfcf; font-size: 12px; }
 .agent-chat-settings textarea { margin-top: 5px; }
 .agent-chat-settings-actions { display: flex; gap: 8px; margin-top: 16px; }
-.agent-chat-binding-list, .agent-chat-review-details { margin-top: 12px; color: #bdbdbd; font-size: 11px; overflow-wrap: anywhere; }
+.agent-chat-binding-list { margin-top: 12px; color: #bdbdbd; font-size: 11px; overflow-wrap: anywhere; }
 .agent-chat-binding-list li { margin-top: 8px; }
 .agent-chat-card summary { cursor: pointer; }
 .agent-chat-card .node-action { color: #e6e6e6; background: #2e2e2e; border: 1px solid #454545; padding: 5px 9px; font-size: 11px; }
