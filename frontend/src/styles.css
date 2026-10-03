@@ -222,9 +222,10 @@ button:disabled {
   user-select: text;
 }
 
-/* The Command root receives focus for arrow-key navigation. Its active row
-   already shows keyboard selection, so it must not get a browser outline. */
+/* cmdk focuses the root on open, then its list when pointer selection changes.
+   The active row already indicates selection; neither container needs an outline. */
 .workspace-create-menu { position: absolute; z-index: 15; outline: none; }
+.workspace-create-menu [cmdk-list] { outline: none; }
 
 .workspace-tool-rail {
   position: absolute;
