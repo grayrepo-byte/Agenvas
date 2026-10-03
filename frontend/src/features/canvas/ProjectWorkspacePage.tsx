@@ -790,6 +790,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    */
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
   const [connectGesture, setConnectGesture] = useState(false);
+  const nodeActionsVisible = draggingIds.length === 0 && !connectGesture;
   const connectionSource = useRef<{ nodeId: string; handleId: string | null } | null>(null);
   const connectionTargetRef = useRef<ConnectionTarget | null>(null);
   const trackConnectionTarget = useCallback((candidate: ConnectionTarget | null) => {
@@ -882,7 +883,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               updateAgentError: editAgent.error,
               mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
-              toolbarVisible: draggingIds.length === 0,
+              toolbarVisible: nodeActionsVisible,
               connectionTarget: connectionTarget?.itemId === item.id
                 ? (connectionTarget.valid ? "valid" : "invalid")
                 : null,
@@ -893,6 +894,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       canvas.data?.items,
       drafts,
       draggingIds,
+      nodeActionsVisible,
       editAgent.isPending,
       editAgent.error,
       effectiveNodeSize,
@@ -938,6 +940,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       for (let index = 0; index < updates.length; index += CANVAS_LAYOUT_BATCH_SIZE) {
         await saveLayout.mutateAsync(updates.slice(index, index + CANVAS_LAYOUT_BATCH_SIZE));
       }
+      // Map insertion order is the arrangement order, independent of the API's item order.
+      return positions.keys().next().value;
+    },
+    onSuccess: (firstItemId) => {
+      const first = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items
+        .find((item) => item.id === firstItemId);
+      if (!first) return;
+      const { width, height } = effectiveNodeSize(first);
+      const instance = flow.current;
+      void instance?.setCenter(first.x + width / 2, first.y + height / 2,
+        { zoom: instance.getZoom() });
     },
   });
   const relationEdges = useMemo(() => displayCanvasRelations(projectedRelations, selectedIds, selectedEdgeIds,
@@ -1352,6 +1365,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         >
           {draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
+              style={{
+                // Keep the editor mounted while connecting so unsaved prompts survive the gesture.
+                display: connectGesture ? "none" : undefined,
+              }}
               className="workspace-media-toolbar nodrag nowheel nopan">
               <div className="workspace-media-editor" aria-label={t("canvas.workspace.selectionEditor")}>
                 <Button variant="ghost" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
@@ -1401,7 +1418,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
           </CommandItem>)}
         </CommandGroup></CommandList></Command> : null}
-        {draggingIds.length === 0 && selectedItems.length > 1 ? <div className="workspace-selection-toolbar nodrag nowheel nopan" role="group" aria-label={t("canvas.workspace.bulkActions")}>
+        {nodeActionsVisible && selectedItems.length > 1 ? <div className="workspace-selection-toolbar nodrag nowheel nopan" role="group" aria-label={t("canvas.workspace.bulkActions")}>
           <span className="workspace-selection-count"><SelectionAll aria-hidden />{t("canvas.selection.count", { "0": selectedItems.length })}</span>
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-5" />
           <div className="workspace-selection-actions">

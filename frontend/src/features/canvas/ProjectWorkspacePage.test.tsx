@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactFlowInstance,ReactFlowProps } from "@xyflow/react";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
@@ -10,6 +11,22 @@ import { changeControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { useCanvasStore } from "./canvasStore";
+
+const viewportProbe = vi.hoisted(() => ({ center: vi.fn<ReactFlowInstance["setCenter"]>(),
+  instance: null as ReactFlowInstance | null }));
+
+// Keep React Flow's real layout and viewport behavior while observing application centering.
+vi.mock("@xyflow/react", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@xyflow/react")>();
+  return { ...real, ReactFlow: (props: ReactFlowProps) => <real.ReactFlow {...props}
+    onInit={(instance) => {
+      viewportProbe.instance = instance;
+      props.onInit?.({ ...instance, setCenter: (...args) => {
+        viewportProbe.center(...args);
+        return instance.setCenter(...args);
+      } });
+    }} /> };
+});
 
 async function openLocalUpload(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText("Reference project");
@@ -61,6 +78,8 @@ function textCard(): CanvasItem {
 
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
+    viewportProbe.center.mockClear();
+    viewportProbe.instance = null;
     useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
     server.use(
       http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
@@ -391,8 +410,12 @@ describe("ProjectWorkspacePage", () => {
   });
 
   it.each([
-    { count: 6, failBatch: 0 }, { count: 6, failBatch: 1 }, { count: 101, failBatch: 2 },
-  ])("arranges $count connected cards and retains unsaved drafts on batch $failBatch failure", async ({ count, failBatch }) => {
+    { count: 6, failBatch: 0, reverseResponse: false },
+    { count: 6, failBatch: 0, reverseResponse: true },
+    { count: 101, failBatch: 0, reverseResponse: false },
+    { count: 6, failBatch: 1, reverseResponse: false },
+    { count: 101, failBatch: 2, reverseResponse: false },
+  ])("arranges $count connected cards and retains unsaved drafts on batch $failBatch failure (reversed: $reverseResponse)", async ({ count, failBatch, reverseResponse }) => {
     let items = Array.from({ length: count }, (_, index): CanvasItem => ({
       ...textCard(), id: `card-${index}`, title: `Note ${index}`, x: count - index, y: count - index,
       version: 7, locked: false,
@@ -402,7 +425,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Arrange project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: reverseResponse ? [...items].reverse() : items })),
       http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items:
         items.slice(1).map((item, index) => ({ id: `edge-${index}`, sourceCanvasItemId: `card-${index}`,
           targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION" })) })),
@@ -427,6 +450,8 @@ describe("ProjectWorkspacePage", () => {
     const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
     fireEvent.contextMenu(pane, { clientX: 300, clientY: 200 });
     await waitFor(() => expect(screen.getByRole("menuitem", { name: "一键整理" })).not.toHaveAttribute("aria-disabled"));
+    await waitFor(() => expect(viewportProbe.instance).not.toBeNull());
+    const initialZoom = viewportProbe.instance?.getZoom();
     await user.click(screen.getByRole("menuitem", { name: "一键整理" }));
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe(failBatch ? "conflict" : "saved"));
     await waitFor(() => expect(batches.length).toBe(Math.ceil(count / 100)));
@@ -442,6 +467,7 @@ describe("ProjectWorkspacePage", () => {
     expect(sixth.x).toBe(first.x);
     expect(sixth.y).toBeGreaterThan(first.y + first.height);
     if (failBatch) {
+      expect(viewportProbe.center).not.toHaveBeenCalled();
       expect(Object.keys(useCanvasStore.getState().drafts)).toHaveLength(failBatch === 2 ? 1 : count);
       expect(await screen.findByText("合成布局冲突")).toBeVisible();
       if (failBatch === 2) {
@@ -449,6 +475,9 @@ describe("ProjectWorkspacePage", () => {
         expect(useCanvasStore.getState().drafts["card-100"]).toBeDefined();
       }
     } else {
+      await waitFor(() => expect(viewportProbe.center).toHaveBeenCalledExactlyOnceWith(
+        first.x + first.width / 2, first.y + first.height / 2, { zoom: initialZoom }));
+      expect(useCanvasStore.getState().selectedIds).toEqual([]);
       expect(useCanvasStore.getState().drafts).toEqual({});
       expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(8);
     }
