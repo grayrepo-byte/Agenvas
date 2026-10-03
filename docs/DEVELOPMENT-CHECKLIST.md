@@ -1203,3 +1203,11 @@ RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用
 - [x] 整合后 8 个相关前端测试文件共 173 项通过，覆盖直接上传三类媒体、取消选择、创建或放置响应不确定/冲突后的显式重试、落点与身份固定、右键菜单及整理，以及模型、Agent、RunningHub 与设置回归。TypeScript、完整前端 lint（主题、四语言及 ESLint）、Vite 生产构建与差异空白检查通过；保留现有分块大小提示。
 
 规格与 ADR 0005 同步。没有新增 API、迁移或依赖。本轮未运行全量测试、后端测试、操作系统文件对话框端到端、真实 Provider 或部署验证；本地选择器触发与取消路径通过组件测试验证。
+
+## 2026-10-03 前端容器构建堆内存修复
+
+- [x] 使用 Node 24.12.0、TypeScript 5.9.3 执行 `node --max-old-space-size=896 node_modules/typescript/bin/tsc --noEmit`，复现 JavaScript heap out of memory，退出码 134；仅类型检查即可触发。将堆上限调整为 1536 MiB 后，同一检查通过，诊断报告内存约 1.16 GiB。
+- [x] 前端 Dockerfile 构建阶段增加 `FRONTEND_BUILD_HEAP_MB`，默认 1536 MiB，通过 `NODE_OPTIONS` 应用于构建工具；中英文 README 同步参数与内存说明。保留严格类型检查，依赖、API 合约及数据库迁移均无变更。
+- [x] 标准前端 Dockerfile 的完整镜像构建通过，使用锁定 Node 24.21.0 与 pnpm 12.5.1，实际完成锁文件安装、OpenAPI 生成、TypeScript 检查和 Vite 生产构建。最终运行镜像的静态入口存在且不含构建阶段 `NODE_OPTIONS`；保留已有 Vite 分块大小提示。验证期间 Docker 内存由约 2 GiB 调整为约 4 GiB，不将此结果视为 2 GiB 环境下并行构建的容量验收。
+
+本次只调整构建配置及说明，没有产品功能变更；未新增模拟构建断言的单元测试，以实际编译和镜像构建验证。全量测试、后端测试、真实 Provider、浏览器端到端及部署更新未运行；没有替换运行中的服务或修改数据库与素材卷。

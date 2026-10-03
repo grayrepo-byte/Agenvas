@@ -19,6 +19,8 @@ cp .env.example .env
 
 For later local rebuilds and updates, run `./deploy/update-local.sh` from the repository root. It pulls the pinned base images, rebuilds local images, updates the Compose containers, and waits for health checks. The script uses the repository's `.env` and retains the database and asset volumes. A failed build leaves running containers in place. Base image digests are pinned, so this command does not upgrade them to newer versions.
 
+Frontend image builds default to a 1536 MiB Node heap so TypeScript checks can finish when a low-memory builder would otherwise allocate too little heap. Override it with `docker compose --env-file .env -f deploy/compose.yaml build --build-arg FRONTEND_BUILD_HEAP_MB=2048 web`; leave additional memory for allocations outside the heap and other concurrent processes. This setting applies only to the build stage. The running Nginx memory limit remains controlled by `AGENVAS_WEB_MEMORY_LIMIT`.
+
 Both example values are intentionally blank; Compose refuses to start until they are set. For an older installation that used the former public defaults, changing only the database password in `.env` will break the connection: rotate the PostgreSQL account password and server configuration together during maintenance, and replace any known example bootstrap secret. Do not put real credentials in Git or logs.
 
 Open <http://127.0.0.1:8088/setup>, enter the bootstrap secret from `.env`, create the administrator, and sign in at `/login`. The setup secret must not be exposed to untrusted visitors. The Compose defaults bind both web and API ports to loopback; do not publish this HTTP-only configuration directly on the internet. Production deployment requires HTTPS, secure cookies, and an explicit security review.

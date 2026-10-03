@@ -43,6 +43,8 @@ cp .env.example .env
 
 以后在仓库根目录运行 `./deploy/update-local.sh`，即可拉取已锁定的基础镜像、重新构建本地镜像、更新 Compose 容器并等待健康检查。脚本使用仓库根目录的 `.env`，保留数据库和素材卷；构建失败时不会替换正在运行的容器。基础镜像固定了 digest，因此此命令不会自动升级到新的基础镜像版本。
 
+前端镜像构建的 Node 堆上限默认为 1536 MiB，避免低内存构建环境自动分配的堆不足以完成 TypeScript 检查。可用 `docker compose --env-file .env -f deploy/compose.yaml build --build-arg FRONTEND_BUILD_HEAP_MB=2048 web` 调整；构建环境还须为堆外内存和其他并行进程留出空间。此参数只影响构建阶段，运行中的 Nginx 内存限制仍由 `AGENVAS_WEB_MEMORY_LIMIT` 控制。
+
 这两项在 `.env.example` 中故意留空；缺失或未填写时 Compose 会拒绝启动。旧部署若使用过早期版本的公开回退值，不能只改 `.env` 中的数据库密码：应在维护窗口同步轮换 PostgreSQL 账户密码与服务端配置，并检查初始化密钥是否仍为已知示例值；不要把实际密钥写进工单、日志或 Git。
 
 部署版默认项目名为 `agenvas`。需要并行运行隔离验收实例时，可设置 `COMPOSE_PROJECT_NAME`、`AGENVAS_API_PORT` 和 `AGENVAS_WEB_PORT`。它们分别控制 Compose 项目/卷命名与仅绑定本机的 API、Web 端口；默认仍是 8080/8088。隔离实例也应使用独立的数据库密码与 bootstrap secret。

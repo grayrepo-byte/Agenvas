@@ -1,5 +1,10 @@
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 
+# TypeScript needs more heap than Node automatically allows in a 2 GiB builder.
+# This setting belongs only to the build stage; the runtime serves static files.
+ARG FRONTEND_BUILD_HEAP_MB=1536
+ENV NODE_OPTIONS="--max-old-space-size=${FRONTEND_BUILD_HEAP_MB}"
+
 RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
 WORKDIR /workspace/frontend
 
