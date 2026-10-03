@@ -1241,3 +1241,50 @@ RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用
 MVP §6.4 与 ADR 0029 的流式对话设计已同步错误呈现规则。
 
 Agent 修复合并 main 复验：合并最新画布连线操作隐藏与整理后视口定位改动，无冲突；前端 7 个文件 153 项定向测试及 TypeScript 检查通过。没有再改后端、接口或数据库；未运行全量测试或真实 Provider 端到端。
+
+### 2026-10-03 Agent 媒体卡片生成状态修复
+
+- [x] 真实 PostgreSQL 回归先复现经批准的 Agent 媒体任务被卡片查询排除（预期一项、实际空数组）。查询改为按目标 CanvasItem 返回图片、视频与音频任务，保留所有者/项目边界、最近任务排序和显式新尝试的原任务排除；不混入同一 Artifact 的其他节点或模型回合，文字直接任务查询保持原作用域。
+- [x] Agent 输出卡片复用既有排队/生成动画及项目 SSE 查询刷新；未批准提案保持占位。编辑区继续阻止占用节点重复运行，只为直接任务开放队列查询、排队取消和 UNKNOWN 重试；Agent UNKNOWN 不再提示可在编辑区直连重试。
+- [x] 后端四个测试类的定向选择共 29 项通过（27 项单元、2 项真实 PostgreSQL），覆盖审批前无任务、三种媒体的 READY/RUNNING/SUBMITTING/WAITING_PROVIDER 状态、取消记录、权限、节点隔离，以及直接任务排队/完成历史查询。命令：`./mvnw -q -Dtest=AgentMediaApprovalPostgresIT#mediaCardsExposeApprovedAgentTasksThroughTheirTaskQuery,DirectMediaGenerationPlacementPostgresIT,ApprovedMediaAcceptanceTest,AgentMediaApprovalServiceTest test`。
+- [x] 前端三个文件共 175 项 Vitest 测试通过：`MediaCanvasCard.test.tsx`、`MediaDraftEditor.test.tsx`、`projectCache.test.ts`，覆盖三类卡片加载效果、已挂载卡片任务刷新、UNKNOWN 与直接任务控制边界、项目事件及快照刷新。TypeScript、改动文件 ESLint、四语言/主题检查和 Vite 构建通过；构建仍有大 chunk 提示。
+- [x] OpenAPI 查询语义、生成 TypeScript、MVP 接口表及 ADR 0029 实施设计已同步。路径、operationId 和响应字段保持原结构；前后端应同时更新以包含 Agent 状态展示及控制入口限制。无数据库迁移、jOOQ 生成源码或依赖版本改动。
+- [ ] 全量测试、浏览器端到端、真实 Provider 调用和部署未运行。回归使用合成状态及明确标注的 Mock；一次扩大到 Mock 视频生成的验证遇到既有 `VideoDuration` 拒绝冻结 Task schema 版本的问题，该生成分支未验证通过，本次未修改渲染器。
+
+
+### 2026-10-03 LLM 日志格式化恢复与 debug 完整内容
+
+- [x] 先复现流式模型协议仅显示 JSON、Completion 未接入的问题；格式化解析同时支持 Chat Completions `choices` 与 schemaVersion=1 的 `generations`，共用 Prompt/Completion 消息浏览、角色筛选、工具参数、搜索、复制与原文切换。未采集 HTTP 请求时 Prompt 保持为空，不伪造 Mock 网络请求；未知格式、超限及部分内容保留原文入口。
+- [x] 按用户确认，普通及流式 LLM debug 保留实际请求/响应、推理字段/标签及 SDK 未映射的 SSE data。仅隐藏认证凭据、已知请求密钥与签名参数，所有 HTTP header 不保存。单次订阅先由有界日志汇总观察原始响应，再向 Runtime/公开 SSE 投影；最终复用已组装工具参数，恢复日志中的原始模型文本与属性。媒体日志及公开模型检查点保持原过滤行为。
+- [x] 后端 11 个测试类共 52 项定向测试通过，包含 2 项真实 PostgreSQL 持久化/权限/no-store/清理验证；其余为单元测试和真实 Spring AI SDK 对合成本机 HTTP 的测试，验证认证隐藏、SSE 完整/未读完、结束后无重试或作用域泄漏、日志限额、指标、工具汇总及 Runtime 过滤。HTTP/SSE 正文仍上限 64 MiB，模型汇总上限 1 MiB，日志失败不改变生成结果。
+- [x] 前端 5 个文件共 45 项定向测试通过，覆盖两种格式、语义响应无请求、原文切换、文本安全渲染、缓存清除、缺失用量、部分状态、列表模态框及四语言切换。TypeScript、完整 lint（主题/四语言/ESLint）、Vite 生产构建与差异空白检查通过；构建仍有大 chunk 提示。
+- [x] 同步 ADR 0020、MVP §24.1、AGENTS 的 debug 例外、OpenAPI 描述、生成 TypeScript 与四语言提示。无接口字段、数据库迁移、jOOQ 或依赖变更；前后端需同时更新。当前差异隐私扫描候选均为合成测试值，无新增截图或实际调用日志。
+- [ ] 全量测试、真实 Provider 调用、浏览器端到端及部署未运行。旧日志已移除的字段不可补录；超限/未读完或无法解析的数据明确标记或省略，异步日志仍为尽力保存。
+
+
+### 2026-10-03 导演 Agent 直接创建、默认提示词与视频图片引用
+
+本节是初版验证记录；单例默认提示词表与接口尚未发布，已由下方统一提示词管理续节替代，相关旧文件已删除。
+
+- [x] 添加菜单与空白处菜单直接创建并放置空闲导演 Agent，移除右侧创建抽屉；无需先输入指令，不自动运行。创建响应丢失时复用同一幂等键，放置失败时复用原实例与卡片身份/位置，界面提供等待和显式重试。
+- [x] 系统设置新增默认提示词管理（`/settings/general?tab=agent-prompts`），管理员维护默认名称和完整创作系统提示词；新实例复制，已有实例保留。分类按需读取、切换保留编辑、失败/未授权/CAS 冲突有明确反馈；刷新不清草稿，使用最新版本需明确选择。卡片设置仍可单独编辑系统提示词。
+- [x] 内置导演工作方法覆盖需求分析、剧情及镜头方案、人物/场景/必要道具图片、镜头图片、图生视频和失败处理；依赖阶段等待成功归档版本，每个媒体批次仍需用户批准。人物/场景/道具沿用普通 IMAGE 类型，未恢复旧规划模型。新 Run 系统规则版本 5 将冻结卡片指令作为创作 SystemMessage；历史版本 1–4 保留原规则及消息角色，服务端工具与审批约束继续强制执行。
+- [x] 视频卡片展示首帧/尾帧/参考图缩略图、角色及精确版本，可打开归档原图。结果取 frozenInput.images，草稿取当前 mediaInputs；更新草稿不替换旧视频来源。缺失预览保持不可用状态，读取失败可重试。
+- [x] 真实 PostgreSQL + 合成模型 + 明确标注 Mock 媒体验证完整图片 → 下一批准视频 → 视频归档 → 原 Run 结束，并检查结果 frozenInput 固定首帧图片版本。先复现 Mock 视频时长解析拒绝 schema 5，再修复为接受混合参考版本 5，继续拒绝未知版本及非整数/超范围时长；覆盖此前生成状态修复中未完成的 Mock 视频验证。
+- [x] 后端 9 个测试类 35 项去重定向测试通过：默认配置 3、初始模型上下文 7、工具策略 3、Agent 1、媒体审批 11、视频时长 2、Run 并发 1、Skill Run 6、Prompt 注入 1；包含真实 PostgreSQL 权限、CSRF、CAS、创建重放、冻结配置、媒体续接及历史策略验证。命令分别为 `./mvnw -q -Dtest=AgentDefaultsPostgresIT,InitialModelContextServiceTest,RunToolPolicyTest,AgentPostgresIT test`、`./mvnw -q -Dtest=AgentMediaApprovalPostgresIT,AgentRunPostgresIT,VideoDurationTest test`（旧版本断言修正后 Run 单列重跑）、`./mvnw -q -Dtest=AgentRunPostgresIT,SkillRunPostgresIT,PromptInjectionPostgresIT test`。
+- [x] 前端 7 个文件 162 项定向 Vitest 测试通过：ProjectWorkspacePage、CanvasPaneMenu、AgentChatCard、MediaCanvasCard、VideoImageReferences、SystemSettingsPage、AgentDefaultPromptSection。覆盖直接创建及两阶段显式重试、设置分类/草稿/CAS/401/403/失败、精确旧图片预览与错误重试；TypeScript、完整 lint（四语言/主题/ESLint）、Vite 生产构建通过。构建仍有既有大 chunk 提示。
+- [x] 新增 V5 默认配置单例与种子提示词，真实隔离 PostgreSQL 执行 Flyway 后重新生成 jOOQ 源码；无依赖升级。OpenAPI、生成 TypeScript、四语言、MVP、CONTEXT、ADR 0010 与 ADR 0029 设计已同步。新增管理员默认配置 GET/PUT、创建接口可省略名称/指令和可选幂等键；前后端与迁移须一起发布。差异空白检查通过，当前差异及新增文本扫描未发现凭据格式或私有本机路径；无新增真实日志或截图。
+- [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 调用及部署未运行。提示词的真实模型遵循程度、视觉一致性与创作质量尚未实测；合成模型证明业务管线和引用持久化，不代表真实生成质量验收。
+
+
+### 2026-10-03 统一提示词管理（替代未发布的导演单例方案）
+
+- [x] 按用户要求将 Agent 与其他功能的提示词统一为多条 PromptDefinition：独立 UUID、唯一稳定 key、AGENT/FUNCTION 用途、名称、说明、正文、内置标记与 CAS 版本。名称/说明/正文可编辑，key/kind 创建后固定；内置消费条目保护删除，自定义条目可按版本删除，旧卡片和在途任务不受删除影响。
+- [x] 用户明确旧导演表尚未同步到应用数据库，授权直接删除旧单例建表文件、服务、Controller、前端管理组件及其接口定义；不保留旧单例兼容接口。直接新增 V5__unified_prompt_management.sql 创建统一表，初始化 agent.director 与 text.generate，不创建旧表、不搬迁数据、不修改已发布 V1–V4。仅在本任务的一次性 PostgreSQL 验证 Flyway 与 jOOQ 生成，未更改用户应用数据库；生成源码同步，生成容器已清理。
+- [x] 管理后台入口 `/settings/general?tab=prompts` 支持搜索、按用途筛选、新建、编辑及显式删除。不同条目及 tab 切换保留各自草稿；重复 key 可修正、保存冲突可保留草稿并明确采用刷新版本；覆盖等待、加载/写入失败、401/403、CAS 与内置删除保护。自定义功能条目不自动创建未知业务功能。
+- [x] 画布添加菜单读取所有 Agent 预设的名称/key，并直接创建所选预设的卡片；创建请求新增可选 promptKey，省略仍使用 agent.director，只接受 AGENT 条目。预设读取失败可重读；创建与放置的显式重试固定原 key/卡片身份。受控工具策略、同项目单活动 Run 和媒体审批保持原边界，不增加多 Agent 并发协调。
+- [x] 文字卡片直接生成接入 text.generate。新 TEXT_GENERATION Task schema 2 固定创作系统提示词正文、key 和 version，Worker 使用冻结输入；历史 schema 1 恢复使用原规则。公开 Task 去掉 systemPrompt 正文，实际 debug 模型内容采集沿用已确认权限与凭据隐藏规则。
+- [x] 后端 4 类 14 项定向测试通过：PromptManagementPostgresIT 5、DirectTextGenerationPostgresIT 1、AgentPostgresIT 1、ApiI18nTest 7。其中 7 项使用真实 PostgreSQL，验证新表/旧单例缺失、多条提示词、鉴权/CSRF/no-store、唯一性、编辑/删除 CAS、功能与 Agent 用途隔离、创建重放、运行冻结及功能提示词实际进入合成模型请求。命令 `./mvnw -q -Dtest=PromptManagementPostgresIT,DirectTextGenerationPostgresIT,AgentPostgresIT,ApiI18nTest test`；删除旧迁移后先清理了本任务旧构建资源，消除重复 V5 残留。
+- [x] 前端 4 文件 64 项定向 Vitest 测试通过：PromptManagementSection、SystemSettingsPage、ProjectWorkspacePage、CanvasPaneMenu。覆盖多条草稿/用途筛选、新建功能/重复标识修正/204 删除、内置保护、多个 Agent 预设与原意图重试。四语言/主题/ESLint、TypeScript 与 Vite 生产构建通过；仍有既有大 chunk 提示。
+- [x] 同步 OpenAPI、生成 TypeScript、四语言界面与 API 错误、MVP、CONTEXT、ADR 0010 与对话设计。接口与建表文件需随前后端一起发布；差异空白与当前差异/新增文本的凭据格式及私有路径扫描通过，无新增真实调用记录或截图。
+- [ ] 全量测试、浏览器端到端、真实 LLM/Provider 与部署未运行。当前实际接入消费入口为 Agent 预设创建和文字卡片生成；其他功能按稳定 key 显式接入，诊断协议及服务端权限/工具规则不作为管理员创作提示词。

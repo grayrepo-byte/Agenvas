@@ -206,7 +206,7 @@ class SkillRunPostgresIT {
         UUID installedVersion = UUID.fromString(frozen.path("assets").path(0).path("artifactVersionId").asText());
         assertThat(artifacts.requireVersion(owner.userId(), scenario.project().id(), installedArtifact, installedVersion)
                 .content().path("sourceType").asText()).isEqualTo("SKILL_IMPORT");
-        assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(4);
+        assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
                 .anySatisfy(message -> assertThat(message.getText()).contains(skill.body()));
 

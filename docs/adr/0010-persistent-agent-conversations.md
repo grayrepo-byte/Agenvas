@@ -20,3 +20,22 @@ V45 为既有每条 Run 各建立一个单轮会话，保留原先互相独立�
 本修订覆盖 ADR 0005 的二次确认呈现及创作 Skill 设计中的运行前确认。后端授权、CAS、同项目单活动 Run、持久 Task、取消、UNKNOWN 与后续媒体批次批准沿用原边界。没有 API 字段或数据库迁移；前端与后端修复应一同发布，旧前端仍可通过原创建接口运行。
 
 同时修复 Run 输入快照把节点媒体结果误当资源库默认版本的问题。绑定的精确媒体版本可以在资源库默认为空时固定；当前选中项使用 CanvasItem 的选用版本，空草稿只固定主体/种类。不会为了运行 Agent 写入或变更资源库默认版本。
+
+
+## 导演 Agent 与统一提示词管理修订（2026-10-03）
+
+用户确认创建 Agent 直接落为画布卡片，删除创建抽屉；默认 Agent 改称「导演 Agent」。需求从卡片对话提交，创建本身不调用模型、不受理媒体任务。后台「提示词管理」统一维护多条 Agent 与功能提示词；选定 Agent 条目后复制名称与正文到新实例；已有实例及活动 Run 保留自己的配置。卡片设置仍可单独编辑名称、系统提示词和输入绑定，使用原 CAS。
+
+默认创作流程为需求分析、剧情与镜头方案、人物/场景/必要道具图片、镜头图片、图生视频与结果整理。人物、场景、道具是普通 IMAGE 产物的标题分类，不恢复已撤回的专门类型或执行计划。每个有依赖的阶段等待前一阶段真实归档版本，视频通过明确的 mediaInputs 绑定精确图片版本；独立媒体可组成固定批次，每批仍需用户批准。提示词不能代替能力校验、授权或真实模型验收。
+
+新 Run 固定系统规则版本 5，将实例冻结的创作系统提示词以 SystemMessage 传给模型，服务端规则仍明确约束权限、工具、预算与审批。历史版本 1–4 保留原规则与消息角色，恢复时不能读取最新默认值。内部 profileKey=creator 保持现有身份，不按显示名改变运行策略。
+
+视频卡片展示图片引用缩略图、角色与版本，并可打开原图；显示结果时从选用版本的 frozenInput 读取，显示草稿时从当前 MediaDraft 读取。之后改草稿或资源默认版本不改写旧视频来源。
+
+用户随后明确要求支持多种 Agent 及其他功能提示词，单例表方案撤回。采用统一 PromptDefinition：UUID 身份、全局唯一且不可变的 key、AGENT/FUNCTION 用途、name、description、content、builtIn、CAS version 与时间。内置条目可编辑但不能删除，以保障既有消费入口；自定义条目可新增和按版本删除。Agent 预设只决定创作名称/指令，不扩展受控工具、审批权限或同项目单活动 Run 边界。
+
+后台管理员使用 GET/POST /api/v1/settings/prompts 及 GET/PUT/DELETE /api/v1/settings/prompts/{id}；修改、删除带 expectedVersion。普通认证用户通过 GET /api/v1/agent-presets 只读取 AGENT 名称及 key，不获得功能正文。画布添加菜单包含全部 Agent 预设，选中即直接创建卡片。创建接口增加可选 promptKey，未指定时使用 agent.director；FUNCTION 或不存在的条目不能用于创建 Agent。请求哈希固定所选 key；重放不重算提示词。已有显式名称/指令创建接口继续可用。
+
+文字卡片直接生成使用内置 text.generate 功能提示词。新 TEXT_GENERATION Task schema 2 在受理时固定 systemPrompt、promptKey 与 promptVersion；Worker 只读该冻结输入，不读最新管理配置。历史 schema 1 Task 保留原固定规则，公开 Task 投影不显示创作系统提示词。增加其他功能条目不会自动获得执行入口，具体消费者须按用途接入；服务端安全规则及模型诊断协议仍在代码中受版本控制。
+
+用户明确说明旧导演单例方案尚未同步到应用数据库，授权直接删除旧表定义及搬迁方案。删除未发布的 V5__director_agent_defaults.sql，直接新增 V5__unified_prompt_management.sql 创建统一表及 agent.director/text.generate 初始条目，不建旧表、不搬迁数据、不修改已发布 V1–V4。jOOQ 从实际隔离 PostgreSQL 重新生成，未执行用户应用数据库更新。没有旧单例接口或客户端兼容层；前后端和建表文件需同时发布。

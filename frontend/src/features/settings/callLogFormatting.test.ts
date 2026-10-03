@@ -5,6 +5,24 @@ import { llmLogView, MAX_FORMATTED_JSON_CHARS, parseDebugBody, prettyJson } from
 const json = (value: unknown) => parseDebugBody({ content: JSON.stringify(value), encoding: "UTF8", truncated: false });
 
 describe("call log formatting", () => {
+  it("formats the persisted streaming model protocol with actual usage and tool arguments", () => {
+    const response = { schemaVersion: 1, metadata: { id: "stream-1", model: "stream-model",
+      usage: { promptTokens: 12, completionTokens: 0, totalTokens: 12 } }, generations: [{
+      assistant: { role: "ASSISTANT", text: "Public answer", toolCalls: [
+        { id: "call-1", name: "readCanvas", arguments: '{"itemId":"synthetic-card"}' },
+      ] }, metadata: { finishReason: "TOOL_CALLS" },
+    }] };
+    const original = JSON.stringify(response);
+    const view = llmLogView(json({ stream: true, messages: [{ role: "user", content: "Synthetic prompt" }] }), json(response));
+    expect(view).toMatchObject({ model: "stream-model", generationId: "stream-1", finishReason: "TOOL_CALLS",
+      streaming: true, usage: { prompt: 12, completion: 0, total: 12, cached: undefined, cost: undefined } });
+    expect(view?.completion[0]).toMatchObject({ role: "assistant", text: "Public answer",
+      toolCalls: [{ id: "call-1", name: "readCanvas", arguments: { itemId: "synthetic-card" } }] });
+    expect(JSON.stringify(response)).toBe(original);
+    expect(llmLogView(parseDebugBody(null), json(response))?.completion).toHaveLength(1);
+    expect(llmLogView(parseDebugBody(null), json({ ...response, schemaVersion: 2 }))).toBeNull();
+  });
+
   it("extracts actual usage, zero values, finish reasons and wire metadata", () => {
     const view = llmLogView(json({ model: "requested", stream: false, messages: [{ role: "user", content: "hi" }] }), json({
       model: "resolved", id: "gen-1", choices: [{ message: { role: "assistant", content: "hello" }, finish_reason: "stop" }],

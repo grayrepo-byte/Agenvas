@@ -70,7 +70,7 @@ public class CallLogService {
         boolean captured = repository.isDebugEnabled();
         AtomicReference<List<Exchange>> exchanges = new AtomicReference<>(List.of());
         AtomicReference<LlmStreamLog> stream = new AtomicReference<>();
-        DebugHttpCapture capture = captured ? DebugHttpCapture.open(exchanges::set) : null;
+        DebugHttpCapture capture = captured ? DebugHttpCapture.openLlm(exchanges::set) : null;
         String previousTrace = MDC.get("traceId");
         MDC.put("traceId", traceId);
         long started = System.nanoTime();
@@ -117,12 +117,15 @@ public class CallLogService {
                 safeIdentifier(descriptor.provider()), safeIdentifier(descriptor.model()), descriptor.mock());
         repository.start(id, safe, traceId, clock.instant());
         // Pin the setting at invocation start. Each request checkpoint precedes network I/O.
-        DebugHttpCapture capture = repository.isDebugEnabled() ? DebugHttpCapture.open(exchanges -> {
+        Consumer<List<Exchange>> checkpoint = exchanges -> {
             try { repository.saveDebug(id, exchanges); }
             catch (RuntimeException failure) {
                 LOGGER.error("Debug call capture write failed callId={} code=CALL_DEBUG_WRITE_FAILED", id);
             }
-        }) : null;
+        };
+        DebugHttpCapture capture = !repository.isDebugEnabled() ? null
+                : descriptor.kind() == CallLog.Kind.LLM ? DebugHttpCapture.openLlm(checkpoint)
+                : DebugHttpCapture.open(checkpoint);
         String previousTrace = MDC.get("traceId");
         MDC.put("traceId", traceId);
         long started = System.nanoTime();

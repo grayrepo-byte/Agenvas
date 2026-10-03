@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render,screen,waitFor } from "@testing-library/react";
+import { fireEvent,render,screen,waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
@@ -11,6 +11,19 @@ import { SystemSettingsPage } from "./SystemSettingsPage";
 
 /** Opening the page reads only the administrator's local diagnostic snapshot. */
 describe("SystemSettingsPage", () => {
+  it("loads default prompts only in its tab and retains its edits across tab changes", async () => {
+    const reads = vi.fn();
+    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/prompts", () => { reads(); return HttpResponse.json({ items: [{ id: "director", key: "agent.director", kind: "AGENT", builtIn: true, name: "导演 Agent", description: "", content: "Synthetic workflow", version: 1, updatedAt: "2026-10-03T00:00:00Z" }] }); }));
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><SystemSettingsPage /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup(); await screen.findByRole("tab", { name: "常规" }); expect(reads).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "提示词管理" }));
+    await screen.findByDisplayValue("Synthetic workflow");
+    fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "My workflow draft" } });
+    await user.click(screen.getByRole("tab", { name: "常规" }));
+    await user.click(screen.getByRole("tab", { name: "提示词管理" }));
+    expect(screen.getByLabelText("提示词正文")).toHaveValue("My workflow draft"); expect(reads).toHaveBeenCalledOnce();
+  });
   it("loads system templates only in its tab and creates a typed administrator template", async () => {
     const reads = vi.fn(); const writes: unknown[] = [];
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),

@@ -141,9 +141,11 @@ public class SpringAiChatGateway implements ChatGateway {
                 StreamBudget budget = new StreamBudget();
                 AtomicReference<Usage> reportedUsage = new AtomicReference<>(new EmptyUsage());
                 Map<String, Object> responseAttributes = new LinkedHashMap<>();
-                var chunks = request.stream().chatResponse().map(PublicAssistantResponse::sanitize).doOnNext(chunk -> {
+                // One subscription: bounded debug capture observes actual model data first.
+                // Runtime/SSE still aggregate only sanitized messages and protocol metadata.
+                var chunks = request.stream().chatResponse().doOnNext(log::chunk)
+                        .map(PublicAssistantResponse::sanitize).doOnNext(chunk -> {
                     budget.accept(chunk);
-                    log.chunk(chunk);
                     Usage usage = chunk.getMetadata().getUsage();
                     if (hasPositiveUsage(usage)) reportedUsage.set(usage);
                     chunk.getMetadata().entrySet().forEach(entry -> responseAttributes.put(entry.getKey(), entry.getValue()));

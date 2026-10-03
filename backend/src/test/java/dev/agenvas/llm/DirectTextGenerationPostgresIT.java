@@ -68,6 +68,7 @@ class DirectTextGenerationPostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private FakeGateway gateway;
     @Autowired private ObjectMapper mapper;
+    @Autowired private dev.agenvas.settings.application.PromptService prompts;
 
     @Test
     void createsNewVersionAndDoesNotSelectLateResultOverManualEdit() {
@@ -86,6 +87,10 @@ class DirectTextGenerationPostgresIT {
                 "direct-text-first").id()).isEqualTo(first.id());
         assertThat(initial.resourceDefaultVersion().content().path("text").asText()).isEmpty();
         assertThat(first.input().path("currentText").asText()).isEmpty();
+        var prompt = prompts.require(dev.agenvas.settings.application.PromptService.TEXT_GENERATION_KEY,
+                dev.agenvas.settings.application.PromptService.Kind.FUNCTION);
+        prompts.update(prompt.id(), prompt.version(), prompt.name(), prompt.description(), "Changed after task acceptance");
+        gateway.expectedSystemPrompt = first.input().path("systemPrompt").asText();
         assertThat(worker.runOnce("text-worker")).isEqualTo(1);
 
         Task firstDone = tasks.get(owner.userId(), project.id(), first.id());
@@ -100,6 +105,7 @@ class DirectTextGenerationPostgresIT {
                 .isEqualTo(ArtifactVersion.CreatedByKind.TASK);
         TaskController.TaskResponse publicTask = TaskController.TaskResponse.from(firstDone);
         assertThat(publicTask.input().has("currentText")).isFalse();
+        assertThat(publicTask.input().has("systemPrompt")).isFalse();
         assertThat(publicTask.output().has("response")).isFalse();
 
         Task stale = direct.run(owner.userId(), project.id(), generated.artifact().id(),
@@ -108,6 +114,7 @@ class DirectTextGenerationPostgresIT {
         ArtifactService.ArtifactView manual = artifacts.revise(owner.userId(), project.id(),
                 generated.artifact().id(), generated.artifact().version(), null,
                 text("Manual edit wins"));
+        gateway.expectedSystemPrompt = stale.input().path("systemPrompt").asText();
         assertThat(worker.runOnce("text-worker")).isEqualTo(1);
 
         Task staleDone = tasks.get(owner.userId(), project.id(), stale.id());
@@ -140,11 +147,13 @@ class DirectTextGenerationPostgresIT {
 
     static class FakeGateway implements ChatGateway {
         private final AtomicInteger calls = new AtomicInteger();
+        private String expectedSystemPrompt;
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
             assertThat(tools).isEmpty();
+            assertThat(messages.getFirst().getText()).isEqualTo(expectedSystemPrompt);
             int call = calls.incrementAndGet();
             AssistantMessage output = new AssistantMessage("Generated text " + call);
             return new Exchange(1, new ChatResponse(List.of(new Generation(output)),

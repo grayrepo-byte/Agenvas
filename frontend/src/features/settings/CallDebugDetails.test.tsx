@@ -61,6 +61,26 @@ const streamMetrics = { schemaVersion: 2, firstChunkMs: 12, firstTextMs: 42, dur
   chunkCount: 3, promptTokens: null, completionTokens: null, totalTokens: null,
   model: "synthetic-model", responseId: "synthetic-response", finishReasons: [], status: "FAILED", errorCode: "CALL_STREAM_FAILED" };
 
+it("formats a streamed LLM completion beside its captured prompt instead of leaving it as a separate JSON dump", async () => {
+  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true,
+    exchanges: [{ method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200,
+      requestBody: { content: JSON.stringify({ model: "synthetic-model", stream: true,
+        messages: [{ role: "user", content: "Create synthetic text" }] }), encoding: "UTF8", truncated: false },
+      responseBody: null }],
+    llmStream: { metrics: { ...streamMetrics, status: "COMPLETED", errorCode: null }, content: {
+      response: JSON.stringify({ schemaVersion: 1, metadata: { id: "synthetic-response", model: "synthetic-model", usage: null },
+        generations: [{ assistant: { role: "ASSISTANT", text: "Synthetic public answer", toolCalls: [], metadata: {} },
+          metadata: { finishReason: "STOP" } }] }), truncated: false,
+    } },
+  })));
+  show();
+  const completion = await screen.findByRole("button", { name: "展开 Completion" });
+  expect(completion).toBeEnabled();
+  expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeEnabled();
+  await userEvent.setup().click(completion);
+  expect(screen.getByRole("dialog", { name: "Completion" })).toHaveTextContent("Synthetic public answer");
+});
+
 it("shows one partial model response and timing without delivery progress or remote rendering", async () => {
   server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [],
     llmStream: { metrics: streamMetrics, content: { response: JSON.stringify({ generations: [{ assistant: { text: '<script>received tail</script> https://example.invalid/image.png' } }] }), truncated: false } } })));
@@ -70,7 +90,7 @@ it("shows one partial model response and timing without delivery progress or rem
   expect(screen.queryByText("首次输出延迟")).not.toBeInTheDocument();
   expect(screen.queryByText("展示输出")).not.toBeInTheDocument();
   expect(screen.queryByText("输出批次数")).not.toBeInTheDocument();
-  expect(screen.getByText("模型响应（JSON）")).toBeInTheDocument();
+  expect(screen.getByText(/模型响应（JSON）/)).toBeInTheDocument();
   expect(screen.getByText(/received tail/)).toBeInTheDocument();
   expect(screen.getByText(/以下内容可能不完整/)).toBeInTheDocument();
   expect(document.querySelector("script, img")).toBeNull();
@@ -90,4 +110,18 @@ it("shows metrics with debug disabled and lets an asynchronously completed log b
   expect(await screen.findByText("首字延迟")).toBeInTheDocument();
   expect(screen.getByText("本次只记录指标。查看模型响应需在调用前开启 debug 模式。")).toBeInTheDocument();
   expect(screen.queryByText("模型响应（JSON）")).not.toBeInTheDocument();
+});
+
+it("switches a semantic-only response to exact captured JSON without inventing a prompt", async () => {
+  const response = '{"schemaVersion":1,"generations":[{"assistant":{"role":"ASSISTANT","text":"<think>synthetic thought</think>Actual answer","toolCalls":[],"metadata":{"reasoningContent":"synthetic reasoning"}}}]}';
+  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [],
+    llmStream: { metrics: { ...streamMetrics, status: "COMPLETED" }, content: { response, truncated: false } } })));
+  show();
+  expect(await screen.findByRole("button", { name: "展开 Completion" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeDisabled();
+  expect(screen.getByText(/实际 LLM 请求与响应内容保留/)).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
+  expect(screen.getByText(response)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "展开 Completion" })).not.toBeInTheDocument();
+  expect(document.querySelector("think")).toBeNull();
 });

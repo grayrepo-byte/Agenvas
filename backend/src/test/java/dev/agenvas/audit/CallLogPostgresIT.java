@@ -300,8 +300,8 @@ class CallLogPostgresIT {
             assertThat(detail.llmStream().metrics().totalTokens()).isEqualTo(5);
             assertThat(detail.llmStream().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             if (enabled) {
-                assertThat(detail.llmStream().content().response()).contains("synthetic output", "REDACTED")
-                        .doesNotContain("sk-unusable-stream-key", "synthetic-token", "synthetic private reasoning");
+                assertThat(detail.llmStream().content().response()).contains("synthetic output", "REDACTED", "synthetic private reasoning")
+                        .doesNotContain("sk-unusable-stream-key", "synthetic-token");
             } else assertThat(detail.llmStream().content()).isNull();
             String path = PATH + "/" + id + "/debug";
             String payload = mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_ADMIN"))))
@@ -485,10 +485,17 @@ class CallLogPostgresIT {
             assertThat(stored).contains("RAW_PROMPT", "RAW_RESPONSE").doesNotContain("sk-debug-secret", "PRIVATE_REASONING");
             assertThat(list(owner, Map.of("projectId", project.id().toString())).toString())
                     .doesNotContain("RAW_PROMPT", "RAW_RESPONSE", "/chat");
+            calls.record(new CallDescriptor(project.id(), null, fixtureRun(project).id(), 0, CallLog.Kind.LLM,
+                    CallLog.Operation.CHAT, "OPENAI", "llm-debug-fixture", false), invoke,
+                    ignored -> CallOutcome.succeeded(null));
+            String llmStored = jdbc.sql("select exchanges_json::text from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id and c.kind='LLM'")
+                    .param("id", project.id()).query(String.class).single();
+            assertThat(llmStored).contains("RAW_PROMPT", "RAW_RESPONSE", "PRIVATE_REASONING")
+                    .doesNotContain("sk-debug-secret", "Authorization");
             calls.updateSettings(false, calls.settings().version());
             calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
             assertThat(jdbc.sql("select count(*) from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
-                    .param("id", project.id()).query(Integer.class).single()).isEqualTo(1);
+                    .param("id", project.id()).query(Integer.class).single()).isEqualTo(2);
             assertThat(calls.debug(owner.userId(), captured).captured()).isTrue();
             assertThat(DebugHttpCapture.enabled()).isFalse();
         } finally { provider.stop(0); }

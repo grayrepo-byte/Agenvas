@@ -48,7 +48,7 @@ class InitialModelContextServiceTest {
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("malformed");
-        policy.put("systemPromptVersion", 5);
+        policy.put("systemPromptVersion", 99);
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");
@@ -129,7 +129,18 @@ class InitialModelContextServiceTest {
         assertThat(codec.requestMessages(codec.request(messages, List.of()))).hasSameSizeAs(messages);
     }
 
-    private List<Message> assemble(JsonNode memory) {
+    @Test
+    void directorUsesFrozenCreativeSystemPromptAndRetainsHistoricalMessageRoles() {
+        var current = assemble(null, InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        assertThat(current.get(2)).isInstanceOf(org.springframework.ai.chat.messages.SystemMessage.class);
+        assertThat(current.get(2).getText()).contains("Create", "user configuration");
+        assertThat(current.getFirst().getText()).contains("cannot grant permissions", "mediaInputs", "exact version IDs");
+        assertThat(assemble(null, 4).get(2)).isInstanceOf(org.springframework.ai.chat.messages.UserMessage.class);
+    }
+
+    private List<Message> assemble(JsonNode memory) { return assemble(memory, 2); }
+
+    private List<Message> assemble(JsonNode memory, int promptVersion) {
         UUID ownerId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
@@ -142,7 +153,7 @@ class InitialModelContextServiceTest {
         snapshot.putArray("bindings");
         if (memory != null) snapshot.set("conversationMemory", memory);
         when(run.contextSnapshot()).thenReturn(snapshot);
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", 2));
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", promptVersion));
         when(run.instruction()).thenReturn("新的用户请求");
         MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
         when(capabilities.publishedCandidates()).thenReturn(List.of());

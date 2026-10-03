@@ -29,6 +29,8 @@ public class AgentInstanceService {
     private static final int CREATOR_PROFILE_VERSION = 1;
     /** 单个 Agent 可绑定的输入产物上限。 */
     private static final int MAX_BINDINGS = 40;
+    private static final int MAX_CREATE_KEY_LENGTH = 200;
+    private static final java.time.Duration CREATE_KEY_RETENTION = java.time.Duration.ofDays(7);
 
     /** 校验项目归属及是否仍可编辑。 */
     private final ProjectService projects;
@@ -42,6 +44,7 @@ public class AgentInstanceService {
     private final ObjectMapper objectMapper;
     /** 为绑定创建时间提供统一时间源。 */
     private final Clock clock;
+    private final dev.agenvas.settings.application.PromptService defaults;
 
     /** 组装 Agent 配置的项目授权、输入版本校验、持久化和事件写入边界。
      * @param projects 校验项目所有者和活动状态
@@ -57,13 +60,15 @@ public class AgentInstanceService {
             AgentInstanceRepository agents,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock,
+            dev.agenvas.settings.application.PromptService defaults) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.agents = agents;
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.defaults = defaults;
     }
 
     /**
@@ -84,13 +89,58 @@ public class AgentInstanceService {
             String requestedName,
             String requestedInstruction,
             List<BindingInput> requestedBindings) {
+        return create(ownerId, projectId, requestedName, requestedInstruction, requestedBindings, null);
+    }
+
+    @Transactional
+    public AgentInstance create(UUID ownerId, UUID projectId, String requestedName, String requestedInstruction,
+            List<BindingInput> requestedBindings, String promptKey) {
         return events.recordChange(ownerId, projectId, () -> {
                     AgentInstance created = createLocked(
-                            ownerId, projectId, requestedName, requestedInstruction, requestedBindings);
+                            ownerId, projectId, requestedName, requestedInstruction, requestedBindings, promptKey);
                     return ProjectEventService.Change.changed(created, agentEvent(created));
                 })
                 .value();
     }
+
+    /** The original request hash excludes resolved defaults, so a later preset edit cannot alter replay. */
+    @Transactional
+    public CreateResult createIdempotent(UUID ownerId, UUID projectId, String name, String instruction,
+            List<BindingInput> bindings, String requestedKey) {
+        return createIdempotent(ownerId, projectId, name, instruction, bindings, requestedKey, null);
+    }
+
+    @Transactional
+    public CreateResult createIdempotent(UUID ownerId, UUID projectId, String name, String instruction,
+            List<BindingInput> bindings, String requestedKey, String promptKey) {
+        if (requestedKey == null) return new CreateResult(create(ownerId, projectId, name, instruction, bindings, promptKey), false);
+        projects.requireActiveProject(ownerId, projectId);
+        String key = requestedKey.trim();
+        if (key.isEmpty() || key.length() > MAX_CREATE_KEY_LENGTH) throw validation(
+                ApiMessage.of("api.artifact-service.idempotency-key-must-be-1-to-200-characters"));
+        String scope = "project:" + projectId + ":create-agent";
+        var request = objectMapper.createObjectNode().put("name", name).put("instruction", instruction);
+        request.set("bindings", objectMapper.valueToTree(bindings));
+        if (promptKey != null) request.put("promptKey", promptKey);
+        String hash = dev.agenvas.shared.crypto.Sha256.hex(objectMapper.writeValueAsString(request));
+        Instant now = clock.instant();
+        if (!agents.reserveCreateKey(ownerId, scope, key, hash, now, now.plus(CREATE_KEY_RETENTION))) {
+            var prior = agents.findCreateKey(ownerId, scope, key).orElseThrow(() -> new ApiProblemException(
+                    HttpStatus.CONFLICT, "IDEMPOTENCY_IN_PROGRESS", ApiMessage.of("api.artifact-service.the-same-request-is-being-processed"),
+                    ApiMessage.of("api.artifact-service.please-try-again-later-with-the-same-idempotency-key"), true));
+            if (!hash.equals(prior.requestHash())) throw new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    ApiMessage.of("api.artifact-service.idempotent-keys-have-been-used-for-different-requests"),
+                    ApiMessage.of("api.artifact-service.please-use-new-idempotency-key-for-different-product-content"), false);
+            require(ownerId, projectId, prior.agentId());
+            return new CreateResult(objectMapper.readValue(prior.responseJson(), AgentInstance.class), true);
+        }
+        AgentInstance created = create(ownerId, projectId, name, instruction, bindings, promptKey);
+        if (!agents.completeCreateKey(ownerId, scope, key, hash, created.id(), objectMapper.writeValueAsString(created), now))
+            throw new IllegalStateException("Agent creation command could not be completed");
+        return new CreateResult(created, false);
+    }
+
+    public record CreateResult(AgentInstance agent, boolean replayed) {}
 
     /** 调用方须持有项目事件锁；检查项目后创建 Agent 和绑定行。 */
     private AgentInstance createLocked(
@@ -98,8 +148,11 @@ public class AgentInstanceService {
             UUID projectId,
             String requestedName,
             String requestedInstruction,
-            List<BindingInput> requestedBindings) {
+            List<BindingInput> requestedBindings, String promptKey) {
         projects.requireActiveProject(ownerId, projectId);
+        var preset = requestedName == null || requestedInstruction == null || promptKey != null
+                ? defaults.require(promptKey == null ? dev.agenvas.settings.application.PromptService.DIRECTOR_KEY : promptKey,
+                        dev.agenvas.settings.application.PromptService.Kind.AGENT) : null;
         Instant now = clock.instant();
         List<AgentInstance.Binding> bindings =
                 validateBindings(ownerId, projectId, requestedBindings, now, Map.of());
@@ -108,8 +161,8 @@ public class AgentInstanceService {
                 projectId,
                 CREATOR_PROFILE_KEY,
                 CREATOR_PROFILE_VERSION,
-                validateName(requestedName),
-                validateInstruction(requestedInstruction),
+                validateName(requestedName == null ? preset.name() : requestedName),
+                validateInstruction(requestedInstruction == null ? preset.content() : requestedInstruction),
                 UUID.randomUUID(),
                 0,
                 now,

@@ -1050,6 +1050,22 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
+  it.each(["READY", "UNKNOWN"] as const)("keeps Agent %s tasks occupied without direct task controls", async (status) => {
+    const queueRequest = vi.fn();
+    setup({ tasks: [{ ...task(status), runId: "agent-run" }], handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/queue`, () => {
+        queueRequest();
+        return HttpResponse.json({}, { status: 400 });
+      }),
+    ] });
+    await screen.findByLabelText("图片提示词");
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeDisabled());
+    expect(screen.queryByRole("button", { name: "取消排队" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(queueRequest).not.toHaveBeenCalled();
+    if (status === "UNKNOWN") expect(screen.getByText("结果未知")).toBeVisible();
+  });
+
   it("cancels queued work and re-enables a subsequent explicit run", async () => {
     const { setTasks } = setup({ tasks: [task("READY")] });
     server.use(http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/cancel-queued`, () => {

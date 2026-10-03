@@ -9,8 +9,12 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import dev.agenvas.audit.domain.CallLog;
+import dev.agenvas.shared.http.DebugHttpCapture;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -30,6 +34,33 @@ class CallLogServiceTest {
     private final CallLogService service = new CallLogService(repository, clock, mock(AsyncCallLogWriter.class));
 
     @AfterEach void clearThread() { MDC.clear(); TransactionSynchronizationManager.clear(); }
+
+    @Test void llmDebugPreservesActualContentAndProviderFieldsWhileRemovingAuthentication() {
+        when(repository.isDebugEnabled()).thenReturn(true);
+        AtomicReference<List<DebugHttpCapture.Exchange>> saved = new AtomicReference<>();
+        doAnswer(invocation -> { saved.set(invocation.getArgument(1)); return null; })
+                .when(repository).saveDebug(any(), any());
+        String result = service.record(descriptor(CallLog.Operation.CHAT), () -> {
+            DebugHttpCapture.registerSecret("synthetic-llm-auth");
+            String request = "{\"messages\":[{\"role\":\"user\",\"content\":\"Literal <think>keep this text</think>\"}],"
+                    + "\"analysis\":\"provider request setting\",\"apiKey\":\"synthetic-llm-auth\"}";
+            int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat",
+                    request.getBytes(StandardCharsets.UTF_8), "application/json");
+            String response = "{\"reasoning_content\":\"synthetic model detail\","
+                    + "\"parts\":[{\"thought\":true,\"text\":\"synthetic thought part\"}],"
+                    + "\"echo\":\"synthetic-llm-auth\",\"output\":\"complete response\"}";
+            try (var body = DebugHttpCapture.responseStream(index, 200, "application/json",
+                    new java.io.ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8)))) {
+                return new String(body.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        }, ignored -> CallLogService.CallOutcome.succeeded(null));
+        assertThat(result).contains("synthetic model detail", "synthetic-llm-auth");
+        assertThat(saved.get().getFirst().requestBody().content())
+                .contains("<think>keep this text</think>", "provider request setting").doesNotContain("synthetic-llm-auth");
+        assertThat(saved.get().getFirst().responseBody().content())
+                .contains("synthetic model detail", "synthetic thought part", "complete response")
+                .doesNotContain("synthetic-llm-auth");
+    }
 
     @Test void restoresParentTraceAndCapturesResponseBeforeAuditPersistence() {
         MDC.put("traceId", "parent-http-trace");

@@ -37,7 +37,7 @@ public class AgentInstanceController {
         this.agents = agents;
     }
 
-    /** 创建 Creator Agent 卡片；只有请求中明确绑定的版本才会进入其输入范围。
+    /** 创建导演 Agent 卡片；只有请求中明确绑定的版本才会进入其输入范围。
      * @param principal 当前认证用户
      * @param projectId 卡片所属项目
      * @param request 卡片名称、指令及明确选择的输入绑定
@@ -47,14 +47,16 @@ public class AgentInstanceController {
     public ResponseEntity<AgentResponse> create(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String key,
             @Valid @RequestBody CreateAgentRequest request) {
-        AgentInstance instance = agents.create(
+        var result = agents.createIdempotent(
                 principal.userId(),
                 projectId,
                 request.name(),
                 request.instruction(),
-                toInputs(request.bindings()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(AgentResponse.from(instance));
+                toInputs(request.bindings()), key, request.promptKey());
+        return ResponseEntity.status(HttpStatus.CREATED).header("Idempotency-Replayed", Boolean.toString(result.replayed()))
+                .body(AgentResponse.from(result.agent()));
     }
 
     /** 列出项目内的 Agent 卡片及各自固定的输入版本。
@@ -127,9 +129,10 @@ public class AgentInstanceController {
      * @param bindings 用户显式选择的输入产物版本列表
      */
     public record CreateAgentRequest(
-            @NotBlank @Size(max = 120) String name,
-            @NotBlank @Size(max = 8000) String instruction,
-            @NotNull @Size(max = 40) List<@Valid AgentBindingRequest> bindings) {}
+            @Size(min = 1, max = 120) String name,
+            @Size(min = 1, max = 8000) String instruction,
+            @NotNull @Size(max = 40) List<@Valid AgentBindingRequest> bindings,
+            @jakarta.validation.constraints.Pattern(regexp = dev.agenvas.settings.application.PromptService.KEY_PATTERN) String promptKey) {}
 
     /**
      * 配置整体替换请求；expectedVersion 用于拒绝覆盖并发编辑。

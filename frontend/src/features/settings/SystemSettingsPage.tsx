@@ -9,18 +9,20 @@ import { PageShell } from "../../shared/ui/PageShell";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { CallLogRetentionSection } from "./CallLogRetentionSection";
 import { DebugModeSection } from "./DebugModeSection";
+import { PromptManagementSection } from "./PromptManagementSection";
 import { PasswordChangeSection } from "./PasswordChangeSection";
 import "./SettingsPages.css";
 import { SystemDiagnosticsSection } from "./SystemDiagnosticsSection";
 import { MediaStyleSettingsSection } from "./MediaStyleSettingsSection";
 import { SystemMediaTemplatesSection } from "../templates/MediaTemplatePicker";
 
-const TABS = ["general", "styles", "security", "logs", "diagnostics", "templates"] as const;
+const TABS = ["general", "prompts", "styles", "security", "logs", "diagnostics", "templates"] as const;
 type SettingsTab = typeof TABS[number];
 const FIRST_TAB = 0;
 function tabLabel(tab: SettingsTab): string {
   switch (tab) {
     case "general": return t("settings.general.general");
+    case "prompts": return t("prompts.title");
     case "styles": return t("styles.title");
     case "security": return t("settings.general.security");
     case "logs": return t("common.callLogs");
@@ -45,6 +47,7 @@ export function SystemSettingsPage() {
     {TABS.map((tab) => <TabsContent key={tab} value={tab} forceMount className="system-settings-panel ui-stack" hidden={selected !== tab}>
       {tab === "general" ? <Panel title={t("settings.general.language")} description={t("settings.general.languageHint")}><LanguageSelect /></Panel> : null}
       {tab === "styles" ? <MediaStyleSettingsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
+      {tab === "prompts" ? <PromptManagementSection enabled={currentUser.isSuccess && selected === tab} /> : null}
       {tab === "security" ? <PasswordChangeSection /> : null}
       {tab === "logs" ? <><CallLogRetentionSection enabled={currentUser.isSuccess && selected === tab} /><DebugModeSection enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "diagnostics" ? <SystemDiagnosticsSection enabled={currentUser.isSuccess && selected === tab} /> : null}

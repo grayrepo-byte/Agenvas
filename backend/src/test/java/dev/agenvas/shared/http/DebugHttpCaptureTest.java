@@ -26,6 +26,24 @@ class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TIMEOUT_SECONDS = 5;
 
+    @Test void llmCaptureKeepsSseFieldsAndMultipartDataEventsButRemovesAuthentication() throws Exception {
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        try (var scope = DebugHttpCapture.openLlm(saved::set)) {
+            DebugHttpCapture.registerSecret("synthetic-sse-auth");
+            int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
+            String events = "event: message\r\ndata: {\"choices\":[{\"delta\":{\"reasoning_content\":\"full model field\"}}],\r\n"
+                    + "data: \"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
+                    + "data: [DONE]\n\n";
+            try (var stream = DebugHttpCapture.responseStream(index, 200, "text/event-stream",
+                    new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
+                assertThat(new String(stream.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(events);
+            }
+        }
+        assertThat(saved.get().getFirst().responseBody().content()).contains("event: message", "full model field", "[DONE]", "REDACTED")
+                .doesNotContain("synthetic-sse-auth", "synthetic-other-auth");
+        assertThat(saved.get().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
+    }
+
     @Test void requestBindingCapturesOnAnUnpropagatedThreadWithoutSendingTheCarrier() throws Exception {
         HttpServer server = bindingServer();
         server.start();

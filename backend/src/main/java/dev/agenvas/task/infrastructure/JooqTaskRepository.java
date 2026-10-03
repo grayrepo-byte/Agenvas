@@ -42,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 /** PostgreSQL 任务队列实现；使用短事务 SKIP LOCKED 认领和 lease_epoch 隔离旧 Worker。 */
 @Repository
 public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation {
+    private static final int RECENT_TARGET_TASK_LIMIT = 50;
 
     @Override
     public List<Task> stopForHistoryCleanup(List<UUID> taskIds, Instant now) {
@@ -380,24 +381,26 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
 
     @Override
     public List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId) {
-        return listDirectForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.ARTIFACT_ID,
-                artifactId);
+        return listForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.ARTIFACT_ID,
+                artifactId, TASK.RUN_ID.isNull());
     }
 
     @Override
-    public List<Task> listDirectForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
-        return listDirectForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID,
-                canvasItemId);
+    public List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        // The target card displays generation activity regardless of the request's entry point.
+        return listForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID,
+                canvasItemId, TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
+                        Task.Kind.VIDEO_GENERATION.name(), Task.Kind.AUDIO_GENERATION.name()));
     }
 
-    private List<Task> listDirectForTarget(UUID ownerId, UUID projectId,
-            Field<UUID> targetField, UUID targetId) {
+    private List<Task> listForTarget(UUID ownerId, UUID projectId,
+            Field<UUID> targetField, UUID targetId, Condition taskScope) {
         return dsl.select(TASK.fields()).from(TASK)
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
                 .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
                 .where(PROJECT.OWNER_ID.eq(ownerId))
                 .and(TASK.PROJECT_ID.eq(projectId))
-                .and(TASK.RUN_ID.isNull())
+                .and(taskScope)
                 .and(targetField.eq(targetId))
                 // 卡片只呈现仍有效的任务：已被「重试」取代的原任务不再决定
                 // 卡片是否可再次运行。
@@ -405,7 +408,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         .from(TASK_MANUAL_REPLACEMENT)
                         .where(TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID.eq(TASK.ID))))
                 .orderBy(TASK.CREATED_AT.desc(), TASK.ID.desc())
-                .limit(50)
+                .limit(RECENT_TARGET_TASK_LIMIT)
                 .fetch(row -> mapTask(row.into(TASK)));
     }
 

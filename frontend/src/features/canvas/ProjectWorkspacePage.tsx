@@ -19,7 +19,7 @@ type ReactFlowInstance,
 type ResizeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { memo,useCallback,useEffect,useMemo,useRef,useState,type FormEvent } from "react";
+import { memo,useCallback,useEffect,useMemo,useRef,useState } from "react";
 import { Link,Navigate,useParams,useLocation } from "react-router";
 import {
 HTTP_STATUS,
@@ -35,6 +35,7 @@ getMediaDraft,
 getProject,
 getProjectSnapshot,
 listAgents,
+listAgentPresets,
 listArtifacts,
 listCanvasConnections,
 listCanvasItems,
@@ -56,7 +57,6 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Input } from "../../shared/ui/primitives/input";
 import { Separator } from "../../shared/ui/primitives/separator";
-import { Textarea } from "../../shared/ui/primitives/textarea";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AGENT_CHAT_HEIGHT,AGENT_CHAT_MIN_HEIGHT,AGENT_CHAT_MIN_WIDTH,AGENT_CHAT_WIDTH,AgentChatCard } from "./AgentChatCard";
 import { CanvasErrorNotice } from "./CanvasErrorNotice";
@@ -88,8 +88,9 @@ import { useMediaNodeRatios } from "./useMediaNodeRatios";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "AGENT";
-type DrawerKind = "AGENT" | "ALIGN";
+type DrawerKind = "ALIGN";
 type CreationPoint = { x: number; y: number };
+type AgentCreationIntent = { point: CreationPoint; promptKey?: string; bindings: Array<{ artifactId: string; selectedVersionId: string }>; createKey: string; itemId: string; zIndex: number; agent?: Agent };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
@@ -119,9 +120,6 @@ const DEFAULT_CARD_WIDTH = 280;
 const DEFAULT_TEXT_CARD_HEIGHT = 180;
 const DEFAULT_TEXT_CARD_TITLE = "canvas.text.defaultTitle";
 const DEFAULT_CANVAS_ORIGIN = 80;
-const AUTO_PLACEMENT_COLUMNS = 3;
-const AGENT_GRID_ORIGIN = 100;
-const AGENT_GRID_SPACING = 360;
 const DEFAULT_MEDIA_CARD_HEIGHT = 300;
 const AUDIO_RESULT_CARD_HEIGHT = 160;
 const DEFAULT_IMAGE_CARD_WIDTH = 225;
@@ -143,7 +141,6 @@ const CREATION_KINDS: ReadonlyArray<{ kind: CreationKind; label: string; icon: I
   { kind: "IMAGE", get label() { return t("common.image"); }, icon: ImageSquare },
   { kind: "AUDIO", get label() { return t("common.audio"); }, icon: MusicNotes },
   { kind: "VIDEO", get label() { return t("common.video"); }, icon: VideoCamera },
-  { kind: "AGENT", label: "Agent", icon: Sparkle },
 ];
 
 type CanvasNodeData = {
@@ -191,8 +188,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const uploadProgress = useRef<UploadIntent | null>(null);
   const textProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; zIndex: number; artifactId?: string } | null>(null);
-  const [agentName, setAgentName] = useState("Creator Agent");
-  const [agentInstruction, setAgentInstruction] = useState("根据明确绑定的输入创作内容。");
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<CanvasNode> | null>(null);
   const canvasElement = useRef<HTMLElement>(null);
@@ -201,7 +196,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
   const [paneMenu, setPaneMenu] = useState<CreationMenu | null>(null);
-  const [creationPoint, setCreationPoint] = useState<CreationPoint | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [resourceTab, setResourceTab] = useState<"PROJECT" | "LIBRARY">("PROJECT");
@@ -228,6 +222,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const displaySettings = useCanvasDisplayPreferences(currentUser.data?.id, projectId);
+  const agentPresets = useQuery({ queryKey: ["agent-presets"], queryFn: listAgentPresets, enabled: currentUser.isSuccess, retry: false });
+  const presets = agentPresets.data?.items ?? [{ key: "agent.director", name: t("agent.defaults.director") }];
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
     queryFn: () => getProjectSnapshot(projectId),
@@ -507,25 +503,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const addAgentCard = useMutation({
-    mutationFn: async ({ name, instruction }: { name: string; instruction: string }) => {
-      const bindings = selectedArtifactBindings(canvas.data?.items ?? [], selectedIds);
-      const agent = await createAgent(projectId, { name, instruction, bindings });
-      const index = canvas.data?.items.length ?? 0;
-      const itemId = crypto.randomUUID();
-      const saved = await applyCanvasCommands(projectId, [
-        {
-          type: "PLACE_AGENT",
-          itemId,
-          agentId: agent.id,
-          x: creationPoint?.x ?? AGENT_GRID_ORIGIN + (index % AUTO_PLACEMENT_COLUMNS) * AGENT_GRID_SPACING,
-          y: creationPoint?.y ?? AGENT_GRID_ORIGIN + Math.floor(index / AUTO_PLACEMENT_COLUMNS) * AGENT_GRID_SPACING,
-          width: AGENT_CHAT_WIDTH,
-          height: AGENT_CHAT_HEIGHT,
-          zIndex: index,
-          locked: false,
-        },
-      ]);
-      return { saved, itemId };
+    mutationFn: async (intent: AgentCreationIntent) => {
+      intent.agent ??= await createAgent(projectId, { bindings: intent.bindings, ...(intent.promptKey ? { promptKey: intent.promptKey } : {}) }, intent.createKey);
+      const saved = await applyCanvasCommands(projectId, [{
+        type: "PLACE_AGENT", itemId: intent.itemId, agentId: intent.agent.id,
+        x: intent.point.x, y: intent.point.y, width: AGENT_CHAT_WIDTH, height: AGENT_CHAT_HEIGHT,
+        zIndex: intent.zIndex, locked: false,
+      }]);
+      return { saved, itemId: intent.itemId };
     },
     ...canvasMutationFeedback,
     onSuccess: ({ saved, itemId }) => {
@@ -1003,11 +988,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds([]);
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
-  function submitAgent(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    addAgentCard.mutate({ name: agentName, instruction: agentInstruction });
-  }
-
   function openCreationMenu(clientX: number, clientY: number) {
     const rect = canvasElement.current?.getBoundingClientRect();
     if (!rect) return;
@@ -1060,19 +1040,21 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [creationMenu, setSelectedIds]);
 
-  function chooseCreationKind(kind: CreationKind, point = creationMenu?.point) {
+  function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, promptKey?: string) {
     if (!point) return;
     setCreationMenu(null);
     setPaneMenu(null);
     setResourcesOpen(false);
-    setCreationPoint(point);
     if (kind === "TEXT") {
       setToolsKind(null);
       if (!addTextCard.isPending) addTextCard.mutate({ point });
     } else if (kind === "IMAGE" || kind === "VIDEO" || kind === "AUDIO") {
       addBlankMedia.mutate({ kind, point });
     } else {
-      setToolsKind(kind);
+      setToolsKind(null);
+      if (!addAgentCard.isPending) addAgentCard.mutate({ point, promptKey,
+        bindings: selectedArtifactBindings(canvas.data?.items ?? [], selectedIds),
+        createKey: crypto.randomUUID(), itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0 });
     }
   }
 
@@ -1222,16 +1204,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
           </>}
         </> : null}
-        {toolsKind === "AGENT" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
-          <h2 className="text-base font-semibold">{t("canvas.workspace.addCreatorAgent")}</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("canvas.workspace.agentBindingHint")}</p>
-          <form className="mt-4" onSubmit={submitAgent}>
-            <label className="text-sm font-medium">{t("common.name")}<Input maxLength={120} required value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
-            <label className="mt-3 block text-sm font-medium">{t("common.instruction")}<Textarea className="mt-2 min-h-24 w-full rounded-xl border border-[var(--line)] bg-white p-3" maxLength={8000} required value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} /></label>
-            <Button variant="default" className="mt-4 w-full" disabled={addAgentCard.isPending} type="submit">{addAgentCard.isPending ? t("common.adding") : t("canvas.workspace.addAgent")}</Button>
-          </form>
-          {addAgentCard.error ? <WorkspaceError error={addAgentCard.error} /> : null}
-        </div> : null}
         {editAgent.error ? <WorkspaceError error={editAgent.error} /> : null}
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-sm font-semibold">{t("canvas.workspace.selectionTools")}</h2>
@@ -1258,6 +1230,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {snapshot.error ? <CanvasErrorNotice error={snapshot.error} title={t("canvas.feedback.loadSnapshot")} message={workspaceErrorMessage(snapshot.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void snapshot.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
+          {agentPresets.error ? <CanvasErrorNotice error={agentPresets.error} title={t("prompts.loadFailed")} message={workspaceErrorMessage(agentPresets.error)}>
+            <Button variant="ghost" size="xs" type="button" onClick={() => void agentPresets.refetch()}>{t("common.retryRead")}</Button>
+          </CanvasErrorNotice> : null}
           {canvas.error ? <CanvasErrorNotice error={canvas.error} title={t("canvas.feedback.loadCanvas")} message={workspaceErrorMessage(canvas.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void canvas.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
@@ -1270,6 +1245,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             title={`${t("canvas.context.upload")} · ${uploadMedia.variables?.title ?? ""}`} message={workspaceErrorMessage(uploadMedia.error)}>
             <Button variant="ghost" size="xs" type="button" disabled={uploadMedia.isPending}
               onClick={() => { if (uploadProgress.current) uploadMedia.mutate(uploadProgress.current); }}>{t("common.retry")}</Button>
+          </CanvasErrorNotice> : null}
+          {addAgentCard.isPending ? <div className="canvas-message" role="status">{t("agent.defaults.creating")}</div> : null}
+          {addAgentCard.error ? <CanvasErrorNotice error={addAgentCard.error} title={t("agent.defaults.createFailed")} message={workspaceErrorMessage(addAgentCard.error)}>
+            <Button variant="ghost" size="xs" type="button" disabled={addAgentCard.isPending}
+              onClick={() => { if (addAgentCard.variables) addAgentCard.mutate(addAgentCard.variables); }}>{t("common.retry")}</Button>
           </CanvasErrorNotice> : null}
           {addTextCard.isPending ? <div className="canvas-message" role="status">{t("canvas.workspace.creatingText")}</div> : null}
           {addTextCard.error ? <CanvasErrorNotice error={addTextCard.error} title={`${t("canvas.feedback.createCard")} · ${ARTIFACT_LABELS.TEXT}`} message={workspaceErrorMessage(addTextCard.error)}>
@@ -1390,7 +1370,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <Controls position="bottom-right" />
         </ReactFlow>
         <CanvasPaneMenu position={paneMenu} onClose={() => setPaneMenu(null)}
-          onAdd={(kind) => chooseCreationKind(kind, paneMenu?.point)} uploading={uploadMedia.isPending} creatingText={addTextCard.isPending}
+          agentPresets={presets} onAdd={(kind, promptKey) => chooseCreationKind(kind, paneMenu?.point, promptKey)} uploading={uploadMedia.isPending} creatingText={addTextCard.isPending} creatingAgent={addAgentCard.isPending}
           onUpload={() => {
             uploadPoint.current = paneMenu?.point ?? canvasCenter();
             setPaneMenu(null);
@@ -1412,9 +1392,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
           <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t("canvas.tools.addCard")}>
-          {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <CommandItem key={kind} value={kind}
-            disabled={kind === "TEXT" && addTextCard.isPending}
-            onSelect={() => chooseCreationKind(kind)}>
+          {[...CREATION_KINDS.map((option) => ({ ...option, promptKey: undefined as string | undefined })),
+            ...presets.map((preset) => ({ kind: "AGENT" as const, label: preset.name, icon: Sparkle, promptKey: preset.key }))]
+            .map(({ kind, label, icon: CreationIcon, promptKey }) => <CommandItem key={promptKey ?? kind} value={promptKey ?? kind}
+            disabled={kind === "TEXT" && addTextCard.isPending || kind === "AGENT" && addAgentCard.isPending}
+            onSelect={() => chooseCreationKind(kind, creationMenu?.point, promptKey)}>
             <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
           </CommandItem>)}
         </CommandGroup></CommandList></Command> : null}

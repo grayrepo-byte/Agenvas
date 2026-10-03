@@ -1,0 +1,18 @@
+.video-card-with-references > .media-card-preview,
+.video-card-with-references > .media-card-empty { height: calc(100% - 76px); }
+.video-image-references {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 76px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--ui-border);
+  border-radius: 0 0 14px 14px;
+  background: var(--ui-surface);
+  color: var(--ui-text-secondary);
+  font-size: 10px;
+}
+.video-image-reference-list { display: flex; gap: 8px; overflow-x: auto; }
+.video-image-reference { display: flex; flex: none; align-items: center; }
+.video-image-reference button { height: 48px; padding: 0; display: flex; gap: 6px; }
+.video-image-reference img { width: 44px; height: 40px; object-fit: cover; border-radius: 6px; }

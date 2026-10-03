@@ -56,8 +56,8 @@ public interface TaskRepository {
     /** Recent direct requests for one stable media Artifact, newest first. */
     List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId);
 
-    /** Recent direct requests for one media CanvasItem, newest first. */
-    List<Task> listDirectForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);
+    /** Recent media requests for one CanvasItem, including approved Agent work, newest first. */
+    List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);
 
     /** All nonterminal direct work, independent of the project's AgentRun slot. */
     List<Task> listActiveDirect(UUID ownerId, UUID projectId);

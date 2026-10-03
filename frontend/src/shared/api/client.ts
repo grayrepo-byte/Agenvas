@@ -540,6 +540,7 @@ export async function runImageOperation(projectId: string, artifactId: string,
   );
 }
 
+/** Card media history includes direct requests and user-approved Agent tasks. */
 export async function listDirectMediaTasks(projectId: string, artifactId: string,
   canvasItemId: string): Promise<Task[]> {
   const query = new URLSearchParams({ canvasItemId });
@@ -651,9 +652,11 @@ export async function listAgents(projectId: string): Promise<AgentList> {
 export async function createAgent(
   projectId: string,
   input: CreateAgentRequest,
+  idempotencyKey?: string,
 ): Promise<Agent> {
   return writeJson<Agent>(`/api/v1/projects/${projectId}/agents`, {
     method: "POST",
+    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
     body: JSON.stringify(input),
   });
 }
@@ -1071,4 +1074,22 @@ export function skillAssetThumbnailUrl(skillId: string, versionId: string, alias
 
 export function getRun(projectId: string, runId: string) {
   return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, t("api.errors.requestFailed"));
+}
+
+export type PromptDefinition = components["schemas"]["PromptDefinition"];
+export type AgentPreset = components["schemas"]["AgentPreset"];
+export function listPrompts() {
+  return readJson<components["schemas"]["PromptList"]>("/api/v1/settings/prompts", t("prompts.loadFailed"));
+}
+export function createPrompt(input: components["schemas"]["CreatePromptRequest"]) {
+  return writeJson<PromptDefinition>("/api/v1/settings/prompts", { method: "POST", body: JSON.stringify(input) });
+}
+export function updatePrompt(id: string, input: components["schemas"]["UpdatePromptRequest"]) {
+  return writeJson<PromptDefinition>(`/api/v1/settings/prompts/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+export function deletePrompt(id: string, expectedVersion: number) {
+  return writeEmpty(`/api/v1/settings/prompts/${id}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
+}
+export function listAgentPresets() {
+  return readJson<components["schemas"]["AgentPresetList"]>("/api/v1/agent-presets", t("prompts.loadFailed"));
 }

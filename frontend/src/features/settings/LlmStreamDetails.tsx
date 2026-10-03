@@ -1,11 +1,11 @@
-import type { CallDebug } from "../../shared/api/client";
+import type { CallDebug, DebugBody } from "../../shared/api/client";
 import { formatNumber, t, useLocale } from "../../shared/i18n";
-import { CallLogText } from "./FormattedCallExchange";
+import { FormattedModelResponse, type CallLogViewMode } from "./FormattedCallExchange";
 
 type StreamLog = NonNullable<CallDebug["llmStream"]>;
 
-/** A single public model response with timing and actual usage metadata. */
-export function LlmStreamDetails({ log }: { log: StreamLog }) {
+/** Debug model contents with timing and actual usage metadata. */
+export function LlmStreamDetails({ log, mode, requestBody }: { log: StreamLog; mode: CallLogViewMode; requestBody: DebugBody | null }) {
   useLocale();
   const { metrics, content } = log;
   const time = (value: number | null) => value === null ? t("common.notRecorded") : `${formatNumber(value)} ms`;
@@ -33,7 +33,7 @@ export function LlmStreamDetails({ log }: { log: StreamLog }) {
     {content ? <>
       <p className="ui-muted">{t("logs.stream.contentHint")}</p>
       {metrics.status !== "COMPLETED" || content.truncated ? <p className="ui-muted">{t("logs.stream.partial")}</p> : null}
-      <CallLogText title={t("logs.stream.response")} content={content.response} json />
+      <FormattedModelResponse content={content} mode={mode} requestBody={requestBody} />
     </> : <p className="ui-muted">{t("logs.stream.noContent")}</p>}
   </div>;
 }

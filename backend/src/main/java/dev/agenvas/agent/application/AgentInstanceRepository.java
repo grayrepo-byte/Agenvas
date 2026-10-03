@@ -8,6 +8,11 @@ import java.util.UUID;
 
 /** Agent 卡片配置及显式输入绑定的所有者范围持久化边界。 */
 public interface AgentInstanceRepository {
+    /** A create command pins defaults once and can recover a lost HTTP response without a duplicate card. */
+    boolean reserveCreateKey(UUID ownerId, String scope, String key, String hash, Instant now, Instant expiresAt);
+    Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key);
+    boolean completeCreateKey(UUID ownerId, String scope, String key, String hash, UUID agentId, String response, Instant now);
+    record CreateKey(String requestHash, UUID agentId, String responseJson) {}
 
     /** 插入单个卡片配置，不授予其隐式读取项目全部素材的权限。 */
     void create(AgentInstance instance);

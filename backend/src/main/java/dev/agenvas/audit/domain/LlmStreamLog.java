@@ -15,6 +15,6 @@ public record LlmStreamLog(Metrics metrics, Content content) {
             finishReasons = List.copyOf(finishReasons);
         }
     }
-    /** response is the application's public model protocol JSON, never raw SSE or private reasoning. */
+    /** Debug model protocol JSON with credentials hidden; raw HTTP/SSE is stored separately. */
     public record Content(String response, boolean truncated) {}
 }

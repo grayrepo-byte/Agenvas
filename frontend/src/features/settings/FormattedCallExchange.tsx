@@ -11,28 +11,51 @@ import { llmLogView,parseDebugBody,prettyJson,RAW_PAGE_CHARS,type LlmLogView,typ
 import "./FormattedCallExchange.css";
 
 type Exchange = CallDebug["exchanges"][number];
-type ViewMode = "formatted" | "raw";
+export type CallLogViewMode = "formatted" | "raw";
 const MESSAGE_PREVIEW_CHARS = 160;
 const FIRST_MESSAGE = 0;
 
-export function FormattedCallExchange({ exchange, mode, llm }: { exchange: Exchange; mode: ViewMode; llm: boolean }) {
+export function FormattedCallExchange({ exchange, mode, llm }: { exchange: Exchange; mode: CallLogViewMode; llm: boolean }) {
+  return <FormattedLogBodies requestBody={exchange.requestBody} responseBody={exchange.responseBody} mode={mode} llm={llm} />;
+}
+
+/** The model summary is separate from the captured HTTP response; it never invents an HTTP exchange. */
+export function FormattedModelResponse({ content, requestBody, mode }: {
+  content: NonNullable<NonNullable<CallDebug["llmStream"]>["content"]>;
+  requestBody: DebugBody | null; mode: CallLogViewMode;
+}) {
   useLocale();
-  const request = useMemo(() => parseDebugBody(exchange.requestBody), [exchange.requestBody]);
-  const response = useMemo(() => parseDebugBody(exchange.responseBody), [exchange.responseBody]);
-  const view = useMemo(() => llm ? llmLogView(request, response) : null, [llm, request, response]);
+  const responseBody = useMemo<DebugBody>(() => ({ content: content.response, encoding: "UTF8", truncated: content.truncated }), [content]);
+  return <FormattedLogBodies requestBody={requestBody} responseBody={responseBody} mode={mode} llm
+    responseTitle={t("logs.stream.response")} streaming />;
+}
+
+function FormattedLogBodies({ requestBody, responseBody, mode, llm, responseTitle, streaming }: {
+  requestBody: DebugBody | null; responseBody: DebugBody | null; mode: CallLogViewMode; llm: boolean;
+  responseTitle?: string; streaming?: boolean;
+}) {
+  useLocale();
+  const request = useMemo(() => parseDebugBody(requestBody), [requestBody]);
+  const response = useMemo(() => parseDebugBody(responseBody), [responseBody]);
+  const view = useMemo(() => {
+    const parsed = llm ? llmLogView(request, response) : null;
+    return parsed && streaming ? { ...parsed, streaming: true } : parsed;
+  }, [llm, request, response, streaming]);
+  const responseLabel = responseTitle ?? t("logs.exchange.responseBody");
   return <>
-    <BodyWarning body={exchange.requestBody} title={t("logs.exchange.requestBody")} />
-    <BodyWarning body={exchange.responseBody} title={t("logs.exchange.responseBody")} />
-    {mode === "formatted" && view ? <LlmExchange view={view} requestBody={exchange.requestBody}
-      responseBody={exchange.responseBody} request={request} response={response} /> : <>
-      <BodyContent title={t("logs.exchange.requestBody")} body={exchange.requestBody} parsed={request} mode={mode} empty={t("logs.exchange.requestBodyMissing")} />
-      <BodyContent title={t("logs.exchange.responseBody")} body={exchange.responseBody} parsed={response} mode={mode} empty={t("logs.exchange.responseNotCollected")} />
+    <BodyWarning body={requestBody} title={t("logs.exchange.requestBody")} />
+    <BodyWarning body={responseBody} title={responseLabel} />
+    {mode === "formatted" && view ? <LlmExchange view={view} requestBody={requestBody}
+      responseBody={responseBody} request={request} response={response} responseTitle={responseLabel} /> : <>
+      <BodyContent title={t("logs.exchange.requestBody")} body={requestBody} parsed={request} mode={mode} empty={t("logs.exchange.requestBodyMissing")} />
+      <BodyContent title={responseLabel} body={responseBody} parsed={response} mode={mode} empty={t("logs.exchange.responseNotCollected")} />
     </>}
   </>;
 }
 
-function LlmExchange({ view, requestBody, responseBody, request, response }: {
+function LlmExchange({ view, requestBody, responseBody, request, response, responseTitle }: {
   view: LlmLogView; requestBody: DebugBody | null; responseBody: DebugBody | null; request: ParsedBody; response: ParsedBody;
+  responseTitle: string;
 }) {
   const [expanded, setExpanded] = useState<"prompt" | "completion" | null>(null);
   const usage = view.usage;
@@ -55,7 +78,7 @@ function LlmExchange({ view, requestBody, responseBody, request, response }: {
     <MessageSection title="Completion" messages={view.completion} tokens={usage.completion} onExpand={() => setExpanded("completion")} />
     <details className="llm-log-section"><summary>{t("logs.exchange.generationData")}<span>JSON</span></summary>
       <BodyContent title={t("logs.exchange.requestBody")} body={requestBody} parsed={request} mode="formatted" empty={t("logs.exchange.requestBodyMissing")} />
-      <BodyContent title={t("logs.exchange.responseBody")} body={responseBody} parsed={response} mode="formatted" empty={t("logs.exchange.responseNotCollected")} />
+      <BodyContent title={responseTitle} body={responseBody} parsed={response} mode="formatted" empty={t("logs.exchange.responseNotCollected")} />
     </details>
     {expanded ? <Dialog title={expanded === "prompt" ? "Prompt" : "Completion"}
       description={t("logs.exchange.searchHint")}
@@ -154,21 +177,12 @@ function MessageContent({ message }: { message: LogMessage }) {
 function BodyWarning({ body, title }: { body: DebugBody | null; title: string }) {
   return body?.truncated ? <p className="ui-muted">{title} · {t("logs.exchange.truncated")} · {t("logs.exchange.truncationHint")}</p> : null;
 }
-function BodyContent({ title, body, parsed, mode, empty }: { title: string; body: DebugBody | null; parsed: ParsedBody; mode: ViewMode; empty: string }) {
+function BodyContent({ title, body, parsed, mode, empty }: { title: string; body: DebugBody | null; parsed: ParsedBody; mode: CallLogViewMode; empty: string }) {
   const content = mode === "formatted" && parsed.status === "json" ? prettyJson(parsed.value) : body?.content ?? empty;
   return <details className="call-log-body" open><summary>{title}{body ? ` · ${body.encoding}` : ""}{body?.truncated ? t("logs.exchange.truncatedSuffix") : ""}</summary>
     {mode === "formatted" && body && parsed.status !== "json" ? <p className="ui-muted">{parsed.status === "large" ? t("logs.exchange.bodyTooLarge") : t("logs.exchange.formatUnsupported")}</p> : null}
     <div className="llm-body-actions"><CopyButton key={mode} content={content} /></div>
     <RawContent key={mode} content={content} />
-  </details>;
-}
-/** Reuses bounded text rendering and copy behavior for semantic stream logs. */
-export function CallLogText({ title, content, json = false }: { title: string; content: string; json?: boolean }) {
-  let shown = content;
-  if (json) { try { shown = prettyJson(JSON.parse(content) as unknown); } catch { /* Show safe source text. */ } }
-  return <details className="call-log-body" open><summary>{title}</summary>
-    <div className="llm-body-actions"><CopyButton content={shown} /></div>
-    <RawContent content={shown} />
   </details>;
 }
 function RawContent({ content }: { content: string }) {

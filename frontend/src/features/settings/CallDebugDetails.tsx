@@ -24,19 +24,20 @@ export function CallDebugDetails({ id, kind }: { id: string; kind?: CallLog["kin
       <Button variant="outline"  type="button" disabled={details.isFetching} onClick={() => void details.refetch()}>{t("logs.details.retry")}</Button>
     </Notice> : null}
     {details.data && !details.isError ? <>
-      {details.data.llmStream ? <LlmStreamDetails log={details.data.llmStream} /> : null}
-      <Button variant="ghost" type="button" disabled={details.isFetching} onClick={() => void details.refetch()}>{t("logs.stream.reload")}</Button>
-      {details.data.captured ? <>
-      <p className="ui-muted">{t("logs.details.privacyHint")}</p>
-      {details.data.exchanges.length === 0 ? <p className="ui-muted">{t("logs.details.requestMissingHint")}</p> : null}
-      {details.data.exchanges.length ? <div className="call-log-view-toggle" role="group" aria-label={t("logs.details.displayMode")}>
+      {details.data.exchanges.length || details.data.llmStream?.content ? <div className="call-log-view-toggle" role="group" aria-label={t("logs.details.displayMode")}>
         <Button variant="outline"  type="button" aria-pressed={mode === "formatted"} onClick={() => setMode("formatted")}>{t("logs.details.formatted")}</Button>
         <Button variant="outline"  type="button" aria-pressed={mode === "raw"} onClick={() => setMode("raw")}>{t("logs.details.raw")}</Button>
       </div> : null}
+      {details.data.llmStream ? <LlmStreamDetails log={details.data.llmStream} mode={mode}
+        requestBody={details.data.exchanges.at(-1)?.requestBody ?? null} /> : null}
+      <Button variant="ghost" type="button" disabled={details.isFetching} onClick={() => void details.refetch()}>{t("logs.stream.reload")}</Button>
+      {details.data.captured ? <>
+      <p className="ui-muted">{t(kind === "LLM" || details.data.llmStream ? "logs.details.llmPrivacyHint" : "logs.details.privacyHint")}</p>
+      {details.data.exchanges.length === 0 ? <p className="ui-muted">{t("logs.details.requestMissingHint")}</p> : null}
       {details.data.exchanges.map((exchange, index) => <div className="call-log-exchange" key={index}>
         <h4>{t("logs.details.requestSummary", { "0": index + 1, "1": exchange.method, "2": exchange.responseStatus === null ? t("logs.details.responseMissing") : `HTTP ${exchange.responseStatus}` })}</h4>
         <p className="call-log-url">{exchange.url}</p>
-        <FormattedCallExchange exchange={exchange} mode={mode} llm={kind === undefined || kind === "LLM"} />
+        <FormattedCallExchange exchange={exchange} mode={mode} llm={!details.data.llmStream?.content && (kind === undefined || kind === "LLM")} />
       </div>)}
     </> : <p className="ui-muted">{t("logs.details.debugDisabledPrefix")}<Link to="/settings/general?tab=logs">{t("common.systemSettings")}</Link>{t("logs.details.enableDebugSuffix")}</p>}
     </> : null}

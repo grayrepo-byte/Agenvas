@@ -30,12 +30,14 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Invocation-local capture, installed once in transports; disabled calls never copy bodies.
- * Headers are never stored. Each checkpoint is sanitized before leaving this scope.
+ * Headers are never stored. Credentials are removed before checkpoints leave this scope.
  */
 public final class DebugHttpCapture implements AutoCloseable {
     private static final int NO_EXCHANGE = -1;
     public static final int MAX_BODY_BYTES = 64 * 1024 * 1024;
     private static final String REDACTED = "[REDACTED]";
+    private static final String SSE_DATA_PREFIX = "data:";
+    private static final String SSE_DONE = "[DONE]";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ThreadLocal<DebugHttpCapture> ACTIVE = new ThreadLocal<>();
     /** Internal SDK carrier, removed by the capture interceptor before any network I/O. */
@@ -48,19 +50,23 @@ public final class DebugHttpCapture implements AutoCloseable {
             "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
     private static final Set<String> PUBLIC_HEADERS = Set.of("accept", "content-type", "content-length",
             "user-agent", "host", "connection", "accept-encoding");
+    private static final Set<String> MODEL_CONTENT_FIELDS = Set.of("reasoning", "reasoningcontent",
+            "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
     private final DebugHttpCapture previous;
     private final Consumer<List<Exchange>> checkpoint;
     private final List<Exchange> exchanges = new ArrayList<>();
     private final Set<String> secrets = new HashSet<>();
     private String requestToken;
     private boolean closed;
+    private final boolean preserveModelContent;
 
     public enum Encoding { UTF8, BASE64, MULTIPART_JSON, OMITTED }
     public record Body(String content, Encoding encoding, boolean truncated) {}
     public record Exchange(String method, String url, Body requestBody, Integer responseStatus,
             Body responseBody) {}
 
-    private DebugHttpCapture(Consumer<List<Exchange>> checkpoint) {
+    private DebugHttpCapture(Consumer<List<Exchange>> checkpoint, boolean preserveModelContent) {
+        this.preserveModelContent = preserveModelContent;
         this.previous = ACTIVE.get();
         this.checkpoint = checkpoint;
         ACTIVE.set(this);
@@ -68,7 +74,11 @@ public final class DebugHttpCapture implements AutoCloseable {
     }
 
     public static DebugHttpCapture open(Consumer<List<Exchange>> checkpoint) {
-        return new DebugHttpCapture(checkpoint);
+        return new DebugHttpCapture(checkpoint, false);
+    }
+    /** Opt-in LLM debugging retains actual model fields while still removing authentication. */
+    public static DebugHttpCapture openLlm(Consumer<List<Exchange>> checkpoint) {
+        return new DebugHttpCapture(checkpoint, true);
     }
     public static boolean enabled() { return ACTIVE.get() != null; }
     /** Transports with path-based authentication register secrets before any checkpoint is published. */
@@ -129,8 +139,10 @@ public final class DebugHttpCapture implements AutoCloseable {
         for (String secret : secrets.stream().sorted((left, right) -> Integer.compare(right.length(), left.length())).toList()) {
             value = value.replace(secret, REDACTED);
         }
+        if (!preserveModelContent) {
+            value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED);
+        }
         return value.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer " + REDACTED)
-                .replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED)
                 .replaceAll("(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(-----END [A-Z ]*PRIVATE KEY-----|$)", REDACTED)
                 .replaceAll("\\bsk-[A-Za-z0-9_-]+", REDACTED)
                 .replaceAll("(?i)([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig|x-amz-[a-z-]+|x-goog-[a-z-]+|x-tos-[a-z-]+|x-oss-[a-z-]+)=)[^&\\s\"<>]+", "$1" + REDACTED)
@@ -140,9 +152,9 @@ public final class DebugHttpCapture implements AutoCloseable {
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
             // Gemini marks a whole content part as thought, rather than naming its text field.
-            if (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText())) return MAPPER.getNodeFactory().textNode(REDACTED);
+            if (!preserveModelContent && (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText()))) return MAPPER.getNodeFactory().textNode(REDACTED);
             for (String name : object.propertyNames()) {
-                if (privateField(name)) object.put(name, REDACTED);
+                if (privateField(name) && !(preserveModelContent && MODEL_CONTENT_FIELDS.contains(normalized(name)))) object.put(name, REDACTED);
                 else object.set(name, scrub(object.get(name)));
             }
         } else if (node.isArray()) {
@@ -164,7 +176,11 @@ public final class DebugHttpCapture implements AutoCloseable {
                 return new Body("[无法安全解析的 JSON 正文已省略]", Encoding.OMITTED, truncated);
             }
         }
-        if (contentType.contains("event-stream")) return new Body("[流式事件正文无法安全脱敏，已省略]", Encoding.OMITTED, truncated);
+        if (contentType.contains("event-stream")) {
+            return preserveModelContent
+                    ? new Body(credentialSafeEvents(new String(bytes, StandardCharsets.UTF_8)), Encoding.UTF8, truncated)
+                    : new Body("[流式事件正文无法安全脱敏，已省略]", Encoding.OMITTED, truncated);
+        }
         if (contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml") || contentType.contains("x-www-form-urlencoded")) {
             String text = safeText(new String(bytes, StandardCharsets.UTF_8));
             text = text.replaceAll("(?i)(api[_-]?key|password|secret|access[_-]?token|authorization|token)([=:\\s]+)[^&\\s<]+", "$1$2" + REDACTED);
@@ -174,6 +190,27 @@ public final class DebugHttpCapture implements AutoCloseable {
         byte[] safeBytes = safeText(new String(bytes, StandardCharsets.ISO_8859_1))
                 .getBytes(StandardCharsets.ISO_8859_1);
         return new Body(Base64.getEncoder().encodeToString(safeBytes), Encoding.BASE64, truncated);
+    }
+
+    /** Retains actual SSE events, including SDK-ignored fields; only event credentials are removed. */
+    private String credentialSafeEvents(String events) {
+        StringBuilder saved = new StringBuilder();
+        for (String frame : events.split("\\r?\\n\\r?\\n", -1)) {
+            if (frame.isEmpty()) continue;
+            List<String> data = new ArrayList<>();
+            for (String line : frame.split("\\r?\\n", -1)) {
+                if (line.startsWith(SSE_DATA_PREFIX)) data.add(line.substring(SSE_DATA_PREFIX.length()).stripLeading());
+                else saved.append(safeText(line)).append('\n');
+            }
+            if (!data.isEmpty()) {
+                String value = String.join("\n", data);
+                String safe = SSE_DONE.equals(value) ? SSE_DONE
+                        : body(value.getBytes(StandardCharsets.UTF_8), "application/json", false).content();
+                saved.append(SSE_DATA_PREFIX).append(' ').append(safe).append('\n');
+            }
+            saved.append('\n');
+        }
+        return saved.toString();
     }
     private String safeUrl(String url) {
         HttpUrl parsed = HttpUrl.get(url);

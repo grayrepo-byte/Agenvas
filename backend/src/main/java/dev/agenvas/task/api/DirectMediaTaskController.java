@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
-/** A deliberate click runs the saved card draft without Agent approval. */
+/** Direct submission controls and target-card media status, including approved Agent requests. */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}")
 public class DirectMediaTaskController {

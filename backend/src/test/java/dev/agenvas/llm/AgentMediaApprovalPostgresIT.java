@@ -161,6 +161,73 @@ class AgentMediaApprovalPostgresIT {
     }
 
     @Test
+    void mediaCardsExposeApprovedAgentTasksThroughTheirTaskQuery() throws Exception {
+        Scenario scenario = propose(outputs("IMAGE", "VIDEO", "AUDIO"));
+        for (var output : scenario.approval().outputs()) {
+            assertThat(cardTasks(scenario, output)).isEmpty();
+        }
+        decide(scenario, "APPROVE", "card-status-approve");
+        for (var output : scenario.approval().outputs()) {
+            assertThat(cardTasks(scenario, output)).singleElement().satisfies(task -> {
+                assertThat(task.path("runId").asText()).isEqualTo(scenario.run().id().toString());
+                assertThat(task.path("status").asText()).isEqualTo("READY");
+                assertThat(task.at("/input/canvasItemId").asText()).isEqualTo(output.canvasItemId().toString());
+            });
+        }
+        var image = scenario.approval().outputs().getFirst();
+        String imageTasksPath = "/api/v1/projects/" + scenario.project().id()
+                + "/artifacts/" + image.artifactId() + "/run";
+        mvc.perform(get(imageTasksPath).param("canvasItemId", image.canvasItemId().toString()))
+                .andExpect(status().isUnauthorized());
+        var outsider = authentication(new UsernamePasswordAuthenticationToken(
+                new AdminPrincipal(UUID.randomUUID(), "synthetic-card-outsider"), null, List.of()));
+        mvc.perform(get(imageTasksPath).with(outsider).param("canvasItemId", image.canvasItemId().toString()))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(imageTasksPath).with(auth)
+                        .param("canvasItemId", scenario.approval().outputs().getLast().canvasItemId().toString()))
+                .andExpect(status().isBadRequest());
+
+        // A second placement of the same Artifact must not inherit the first card's task.
+        UUID siblingId = UUID.randomUUID();
+        mvc.perform(post("/api/v1/projects/" + scenario.project().id() + "/canvas/commands")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\"" + siblingId
+                                + "\",\"artifactId\":\"" + image.artifactId()
+                                + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,"
+                                + "\"zIndex\":0,\"locked\":false}]}"))
+                .andExpect(status().isOk());
+        assertThat(mapper.readTree(mvc.perform(get(imageTasksPath).with(auth)
+                        .param("canvasItemId", siblingId.toString()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString())).isEmpty();
+
+        for (int index = 0; index < scenario.approval().outputs().size(); index++) {
+            Task lease = tasks.claimBoundMedia(MEDIA_WORKER, 1).getFirst();
+            var output = scenario.approval().outputs().stream()
+                    .filter(candidate -> candidate.canvasItemId().toString()
+                            .equals(lease.input().path("canvasItemId").asText())).findFirst().orElseThrow();
+            assertThat(cardTasks(scenario, output).get(0).path("status").asText()).isEqualTo("RUNNING");
+            tasks.beginSubmission(lease, MEDIA_WORKER);
+            assertThat(cardTasks(scenario, output).get(0).path("status").asText()).isEqualTo("SUBMITTING");
+            tasks.waitForProvider(lease, MEDIA_WORKER, "synthetic-card-request-" + index,
+                    Instant.now().plusSeconds(CONCURRENT_WAIT_SECONDS));
+            assertThat(cardTasks(scenario, output).get(0).path("status").asText()).isEqualTo("WAITING_PROVIDER");
+        }
+        runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
+        for (var output : scenario.approval().outputs()) {
+            assertThat(cardTasks(scenario, output)).singleElement().satisfies(task ->
+                    assertThat(task.path("cancelRequested").asBoolean()).isTrue());
+        }
+    }
+
+    private JsonNode cardTasks(Scenario scenario, AgentMediaApprovalService.ApprovalOutput output) throws Exception {
+        String path = "/api/v1/projects/" + scenario.project().id()
+                + "/artifacts/" + output.artifactId() + "/run";
+        return mapper.readTree(mvc.perform(get(path).with(auth)
+                        .param("canvasItemId", output.canvasItemId().toString()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
     void authenticatedBatchApprovalWaitsForAllMediaAndContinuesTheOriginalToolCallExactlyOnce() throws Exception {
         Scenario scenario = propose(outputs("IMAGE", "AUDIO", "VIDEO"));
         assertThat(scenario.approval().outputs()).hasSize(3);
@@ -294,6 +361,38 @@ class AgentMediaApprovalPostgresIT {
         assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isZero();
         assertThat(jdbc.sql("select resource_default_version_id is null from artifact where id=:id")
                 .param("id", artifactId).query(Boolean.class).single()).isTrue();
+    }
+
+    @Test
+    void archivedImageCanFeedTheNextApprovedVideoAndItsResultKeepsTheExactReference() throws Exception {
+        Scenario image = propose(outputs("IMAGE"));
+        gateway.plan(image.run().id()).imageToVideo = true;
+        decide(image, "APPROVE", "director-image-stage");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        Task generatedImage = mediaTasks(image).getFirst();
+        assertThat(generatedImage.status()).isEqualTo(Task.Status.SUCCEEDED);
+        String imageVersion = generatedImage.output().path("artifactVersionId").asText();
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        ApprovalView next = approvals.list(owner.userId(), image.project().id(), image.run().id()).stream()
+                .filter(value -> value.status() == AgentMediaApproval.Status.PENDING).findFirst().orElseThrow();
+        Scenario video = new Scenario(image.project(), image.run(), next);
+        assertThat(next.outputs()).singleElement().satisfies(output -> {
+            assertThat(output.preview().at("/mediaInputs/0/versionId").asText()).isEqualTo(imageVersion);
+            assertThat(output.preview().at("/mediaInputs/0/role").asText()).isEqualTo("START_FRAME");
+        });
+        decide(video, "APPROVE", "director-video-stage");
+        Task accepted = mediaTasks(video).stream().filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION).findFirst().orElseThrow();
+        assertThat(accepted.input().at("/mediaInput/images/0/versionId").asText()).isEqualTo(imageVersion);
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        Task completed = tasks.listByRun(owner.userId(), video.project().id(), video.run().id()).stream()
+                .filter(task -> task.id().equals(accepted.id())).findFirst().orElseThrow();
+        assertThat(completed.status()).as("Mock image-to-video must archive a usable result").isEqualTo(Task.Status.SUCCEEDED);
+        var card = canvas.list(owner.userId(), video.project().id()).stream()
+                .filter(value -> value.item().id().equals(next.outputs().getFirst().canvasItemId())).findFirst().orElseThrow();
+        assertThat(card.selectedVersion().frozenInput().at("/images/0/versionId").asText()).isEqualTo(imageVersion);
+        assertThat(card.selectedVersion().frozenInput().at("/images/0/role").asText()).isEqualTo("START_FRAME");
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(video).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
     }
 
     @Test
@@ -648,6 +747,7 @@ class AgentMediaApprovalPostgresIT {
         private final AtomicInteger calls = new AtomicInteger();
         private volatile JsonNode reply;
         private volatile boolean readGeneratedOutput;
+        private volatile boolean imageToVideo;
         private volatile JsonNode artifactReply;
         private volatile JsonNode placementReply;
         private volatile JsonNode arrangementReply;
@@ -676,6 +776,10 @@ class AgentMediaApprovalPostgresIT {
             }
             assertThat(messages.getLast()).isInstanceOf(ToolResponseMessage.class);
             ToolResponseMessage response = (ToolResponseMessage) messages.getLast();
+            if (plan.imageToVideo && callIndex == 3) {
+                successfulReply(response, "video-stage-" + context.get("runId"), "propose_media_generation");
+                return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("The image and video stages are archived.")))));
+            }
             if (plan.readGeneratedOutput && callIndex == 3) {
                 plan.artifactReply = successfulReply(response, "read-generated-" + context.get("runId"), "read_artifacts");
                 ObjectNode arguments = mapper.createObjectNode().put("group", "AGENT_OUTPUT");
@@ -703,6 +807,16 @@ class AgentMediaApprovalPostgresIT {
                 assertThat(tool.name()).isEqualTo("propose_media_generation");
                 plan.reply = mapper.readTree(tool.responseData());
             });
+            if (plan.imageToVideo) {
+                ObjectNode arguments = mapper.createObjectNode();
+                ObjectNode video = arguments.putArray("outputs").addObject().put("kind", "VIDEO")
+                        .put("title", "Synthetic director shot").put("prompt", "Animate the referenced synthetic image")
+                        .put("durationSeconds", 1).put("videoInputMode", "START_END");
+                video.putObject("parameters");
+                video.putArray("mediaInputs").addObject().put("versionId", plan.reply.at("/mediaApproval/tasks/0/artifactVersionId").asText())
+                        .put("role", "START_FRAME");
+                return toolCall("video-stage-" + context.get("runId"), "propose_media_generation", arguments, "Create the next video from the archived image.");
+            }
             if (plan.readGeneratedOutput) {
                 ObjectNode arguments = mapper.createObjectNode();
                 arguments.putArray("versionIds").add(plan.reply.at("/mediaApproval/tasks/0/artifactVersionId").asText());

@@ -109,11 +109,14 @@ class LlmDebugCaptureStreamingTest {
         AtomicReference<dev.agenvas.audit.domain.LlmStreamLog> log = new AtomicReference<>();
         try (LocalServer server = new LocalServer(ignored -> http.current())) {
             var gateway = gateway(server);
-            try (var scope = DebugHttpCapture.open(http::accept)) {
+            try (var scope = DebugHttpCapture.openLlm(http::accept)) {
                 gateway.callStreaming(List.of(new UserMessage("semantic capture")), List.of(), Map.of(),
                         gateway.configIdentity(), ignored -> {}, true, log::set);
-                assertThat(scope.sanitizeJson(log.get().content().response())).contains("ok").doesNotContain("private stream reasoning");
+                assertThat(scope.sanitizeJson(log.get().content().response())).contains("ok").doesNotContain(API_KEY);
             }
+            assertThat(http.current().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
+            assertThat(http.current().getFirst().responseBody().content()).contains("private stream reasoning", "[DONE]")
+                    .doesNotContain(API_KEY);
             assertThat(log.get().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             assertThat(log.get().metrics().firstTextMs()).isNotNull();
             assertThat(log.get().metrics().totalTokens()).isEqualTo(2);
@@ -259,7 +262,7 @@ class LlmDebugCaptureStreamingTest {
                 ? failed.current() : following.current(), new CountDownLatch(0), new CountDownLatch(0), gate)) {
             var gateway = gateway(server);
             Throwable failure;
-            try (var scope = DebugHttpCapture.open(failed::accept)) {
+            try (var scope = DebugHttpCapture.openLlm(failed::accept)) {
                 failure = catchThrowable(() -> gateway.callStreaming(List.of(new UserMessage(CALLBACK_FAILURE_PROMPT)),
                         List.of(), Map.of(), gateway.configIdentity(), delta -> {
                             gate.callbackInvoked.countDown();
@@ -275,7 +278,9 @@ class LlmDebugCaptureStreamingTest {
             assertOnlyPrompt(failed, CALLBACK_FAILURE_PROMPT, disabledPrompt);
             var cancelled = failed.current().getFirst();
             assertThat(cancelled.responseStatus()).isEqualTo(HTTP_OK);
-            assertThat(cancelled.responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.OMITTED);
+            assertThat(cancelled.responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
+            assertThat(cancelled.responseBody().content()).contains("callback public text")
+                    .doesNotContain(API_KEY, "[DONE]");
             assertThat(cancelled.responseBody().truncated()).isTrue();
             assertThat(DebugHttpCapture.enabled()).isFalse();
             List<DebugHttpCapture.Exchange> completedFailure = failed.current();

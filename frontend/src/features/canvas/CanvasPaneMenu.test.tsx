@@ -11,16 +11,40 @@ function setup(overrides: Partial<React.ComponentProps<typeof CanvasPaneMenu>> =
 }
 
 describe("CanvasPaneMenu", () => {
-  it("opens the four-type cascade with the keyboard and selects a node", async () => {
+  it("opens the five-type cascade with the keyboard and selects a node", async () => {
     const props = setup();
     const user = userEvent.setup();
     const add = screen.getByRole("menuitem", { name: "添加" });
     add.focus();
     await user.keyboard("{ArrowRight}");
     await screen.findByRole("menuitem", { name: "图片" });
-    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(8);
     await user.click(screen.getByRole("menuitem", { name: "音频" }));
     expect(props.onAdd).toHaveBeenCalledWith("AUDIO");
+  });
+
+  it("creates a Director Agent directly", async () => {
+    const props = setup();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("menuitem", { name: "添加" }));
+    await user.keyboard("{ArrowRight}{End}{Enter}");
+    expect(props.onAdd).toHaveBeenCalledWith("AGENT", "agent.director");
+  });
+
+  it("disables Director creation while a request is pending", async () => {
+    const props = setup({ creatingAgent: true });
+    await userEvent.setup().click(screen.getByRole("menuitem", { name: "添加" }));
+    const item = screen.getByRole("menuitem", { name: "导演 Agent" });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(item); expect(props.onAdd).not.toHaveBeenCalled();
+  });
+
+  it("offers every configured Agent preset with its stable key", async () => {
+    const props = setup({ agentPresets: [{ key: "agent.director", name: "导演 Agent" }, { key: "agent.writer", name: "编剧 Agent" }] });
+    const user = userEvent.setup(); await user.click(screen.getByRole("menuitem", { name: "添加" }));
+    expect(screen.getByRole("menuitem", { name: "编剧 Agent" })).toBeVisible();
+    await user.keyboard("{ArrowRight}{End}{Enter}");
+    expect(props.onAdd).toHaveBeenCalledWith("AGENT", "agent.writer");
   });
 
   it("opens the cascade on hover", async () => {

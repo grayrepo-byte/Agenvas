@@ -25,7 +25,7 @@ class CallLogStreamServiceTest {
     private final AsyncCallLogWriter writer = mock(AsyncCallLogWriter.class);
     private final CallLogService service = new CallLogService(repository, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), writer);
 
-    @Test void durableStartPrecedesStreamAndOnlySanitizedFinalSnapshotIsEnqueued() {
+    @Test void durableStartPrecedesStreamAndFullContentWithoutCredentialsIsEnqueued() {
         when(repository.isDebugEnabled()).thenReturn(true);
         MDC.put("traceId", "parent");
         try {
@@ -43,7 +43,8 @@ class CallLogStreamServiceTest {
             assertThat(DebugHttpCapture.enabled()).isFalse();
             var captured = ArgumentCaptor.forClass(LlmStreamLog.class);
             verify(writer).submit(any(), any(), any(), anyLong(), captured.capture(), anyList(), eq(true));
-            assertThat(captured.getValue().content().response()).doesNotContain("sk-synthetic-unusable-secret", "private");
+            assertThat(captured.getValue().content().response()).contains("<think>private</think>")
+                    .doesNotContain("sk-synthetic-unusable-secret");
             verify(repository, never()).finish(any(), any(), any(), anyLong());
         } finally { MDC.clear(); }
     }

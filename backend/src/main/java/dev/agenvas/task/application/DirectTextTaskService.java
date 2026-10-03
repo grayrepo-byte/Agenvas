@@ -23,6 +23,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Accepts one direct text-card prompt as immutable recoverable model work. */
 @Service
 public class DirectTextTaskService {
+    private static final int INPUT_SCHEMA_VERSION = 2;
     private static final int MAX_PROMPT_LENGTH = 20_000;
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
 
@@ -33,10 +34,11 @@ public class DirectTextTaskService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final dev.agenvas.settings.application.PromptService prompts;
 
     public DirectTextTaskService(TaskRepository tasks, ArtifactService artifacts,
             ChatGateway gateway, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock) {
+            ObjectMapper mapper, Clock clock, dev.agenvas.settings.application.PromptService prompts) {
         this.tasks = tasks;
         this.artifacts = artifacts;
         this.gateway = gateway;
@@ -44,6 +46,7 @@ public class DirectTextTaskService {
         this.usage = usage;
         this.mapper = mapper;
         this.clock = clock;
+        this.prompts = prompts;
     }
 
     /** Pins the prompt, selected text version and current model configuration in one Task. */
@@ -89,7 +92,12 @@ public class DirectTextTaskService {
             }
             JsonNode current = target.resourceDefaultVersion().content();
             ObjectNode input = mapper.createObjectNode();
-            input.put("schemaVersion", 1);
+            input.put("schemaVersion", INPUT_SCHEMA_VERSION);
+            var systemPrompt = prompts.require(dev.agenvas.settings.application.PromptService.TEXT_GENERATION_KEY,
+                    dev.agenvas.settings.application.PromptService.Kind.FUNCTION);
+            input.put("systemPrompt", systemPrompt.content());
+            input.put("promptKey", systemPrompt.key());
+            input.put("promptVersion", systemPrompt.version());
             input.put("artifactId", artifactId.toString());
             input.put("expectedArtifactVersion", expectedArtifactVersion);
             input.put("expectedCurrentVersionId", expectedCurrentVersionId.toString());

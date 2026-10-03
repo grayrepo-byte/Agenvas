@@ -88,9 +88,21 @@ public class DirectTextGenerationWorker {
         }
     }
 
+    private static final int LEGACY_INPUT_SCHEMA_VERSION = 1;
+    private static final int FROZEN_PROMPT_INPUT_SCHEMA_VERSION = 2;
+
+    /** Legacy schema 1 tasks retain the original prompt; new tasks never read live settings. */
+    private String frozenSystemPrompt(Task lease) {
+        if (lease.input().path("schemaVersion").asInt() == LEGACY_INPUT_SCHEMA_VERSION) return "You write the finished content of one text card. Follow the user instruction using the current card content as context. Return only the finished card text, without commentary, tool calls, XML wrappers, or Markdown code fences. Keep the response under 20000 characters.";
+        String content = lease.input().path("systemPrompt").asText("");
+        if (lease.input().path("schemaVersion").asInt() != FROZEN_PROMPT_INPUT_SCHEMA_VERSION || content.isBlank())
+            throw new IllegalArgumentException("Text Task lacks its frozen system prompt");
+        return content;
+    }
+
     private JsonNode invokeAndCheckpoint(Task lease, String workerId) {
         List<Message> messages = List.of(
-                new SystemMessage("You write the finished content of one text card. Follow the user instruction using the current card content as context. Return only the finished card text, without commentary, tool calls, XML wrappers, or Markdown code fences. Keep the response under 20000 characters."),
+                new SystemMessage(frozenSystemPrompt(lease)),
                 new UserMessage("Instruction:\n" + lease.input().path("prompt").asText()
                         + "\n\nCurrent card content:\n"
                         + lease.input().path("currentText").asText("")));

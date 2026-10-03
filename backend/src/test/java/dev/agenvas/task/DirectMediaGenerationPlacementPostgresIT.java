@@ -102,6 +102,14 @@ class DirectMediaGenerationPlacementPostgresIT {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 
         assertThat(firstTask.at("/input/canvasItemId").asText()).isEqualTo(sourceItemId);
+        JsonNode queuedTasks = mapper.readTree(mvc.perform(get(runPath).with(auth)
+                        .param("canvasItemId", sourceItemId))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(queuedTasks).singleElement().satisfies(task -> {
+            assertThat(task.path("id").asText()).isEqualTo(firstTask.path("id").asText());
+            assertThat(task.path("runId").isNull()).isTrue();
+            assertThat(task.path("status").asText()).isEqualTo("READY");
+        });
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(1);
         assertThat(connections.list(owner.userId(), project.id())).isEmpty();
 
@@ -129,5 +137,11 @@ class DirectMediaGenerationPlacementPostgresIT {
                 .hasSize(2);
         assertThat(canvas.list(owner.userId(), project.id()).getFirst().selectedVersion().versionNo())
                 .isEqualTo(2);
+        JsonNode completedTasks = mapper.readTree(mvc.perform(get(runPath).with(auth)
+                        .param("canvasItemId", sourceItemId))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(completedTasks).hasSize(2).allSatisfy(task ->
+                assertThat(task.path("status").asText()).isEqualTo("SUCCEEDED"));
+        assertThat(completedTasks.get(0).path("id").asText()).isEqualTo(secondTask.path("id").asText());
     }
 }

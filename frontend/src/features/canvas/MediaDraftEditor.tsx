@@ -199,7 +199,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const queue = useQuery({
     queryKey: ["direct-media-queue", artifact.projectId, latestTask?.id],
     queryFn: () => getDirectMediaQueueStatus(artifact.projectId, latestTask!.id),
-    enabled: latestTask?.status === "READY", refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
+    enabled: latestTask?.status === "READY" && latestTask.runId === null,
+    refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
   });
   const [fields, setFields] = useState<DraftFields | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
@@ -1387,12 +1388,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {latestTask?.status === "READY" ? <div className="media-draft-task-status">
         {queue.data ? <span>{t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })}</span> : null}
         {queue.error ? <span role="alert">{t("media.editor.queuePositionUnavailable")}</span> : null}
-        <Button variant="ghost" className="media-draft-text-action" type="button"
-          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("media.editor.canceling") : t("media.editor.cancelQueue")}</Button>
+        {latestTask.runId === null ? <Button variant="ghost" className="media-draft-text-action" type="button"
+          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("media.editor.canceling") : t("media.editor.cancelQueue")}</Button> : null}
       </div> : null}
       {cancel.error ? <p role="alert">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</p> : null}
-      {latestTask?.status === "UNKNOWN" ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
-        projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} /> : null}
+      {latestTask?.status === "UNKNOWN" ? latestTask.runId === null ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
+        projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
+        : <p role="status">{t("tasks.status.unknown")}</p> : null}
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT
         ? t("media.editor.draftConflict") : error.message}</span>
         <Button variant="ghost" className="media-draft-text-action" onClick={() => void retry()} type="button">

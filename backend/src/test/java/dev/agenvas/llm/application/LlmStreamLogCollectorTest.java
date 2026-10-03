@@ -3,6 +3,7 @@ package dev.agenvas.llm.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import dev.agenvas.audit.domain.LlmStreamLog.EndStatus;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -63,6 +64,34 @@ class LlmStreamLogCollectorTest {
         assertThat(snapshot.content().truncated()).isTrue();
         assertThat(snapshot.content().response()).contains("prefix").hasSizeLessThan(1024 * 1024);
         assertThat(snapshot.metrics().chunkCount()).isEqualTo(2);
+    }
+
+    @Test void debugKeepsActualModelFieldsWhileFirstTextMeasuresOnlyPublicText() {
+        var log = new LlmStreamLogCollector(true, nanos::get);
+        time(5); log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                .content("<think>synthetic thought</think>")
+                .properties(Map.of("reasoningContent", "synthetic reasoning", "channel", "analysis", "isThought", true)).build()))));
+        time(25); log.chunk(chunk("synthetic answer", true));
+        log.complete(chunk("synthetic answer", true));
+        var snapshot = log.snapshot(EndStatus.COMPLETED, null);
+        assertThat(snapshot.metrics().firstChunkMs()).isEqualTo(5L);
+        assertThat(snapshot.metrics().firstTextMs()).isEqualTo(25L);
+        assertThat(snapshot.content().response()).contains("synthetic thought", "synthetic reasoning", "analysis", "synthetic answer");
+    }
+
+    @Test void completionRetainsAssembledToolArgumentsAndRawModelAttributes() {
+        var log = new LlmStreamLogCollector(true, nanos::get);
+        log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("")
+                .properties(Map.of("reasoningContent", "synthetic tool reasoning"))
+                .toolCalls(List.of(new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{\"id\":"))).build()))));
+        var assembled = AssistantMessage.builder().content("").toolCalls(List.of(
+                new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{\"id\":\"synthetic-id\"}"))).build();
+        log.complete(new ChatResponse(List.of(new Generation(assembled,
+                ChatGenerationMetadata.builder().finishReason("tool_calls").build()))));
+        var snapshot = log.snapshot(EndStatus.COMPLETED, null);
+        assertThat(snapshot.content().response()).contains("synthetic tool reasoning", "synthetic-id", "tool_calls");
+        assertThat(new tools.jackson.databind.ObjectMapper().readTree(snapshot.content().response())
+                .path("generations").path(0).path("assistant").path("toolCalls").size()).isEqualTo(1);
     }
 
     private void time(long milliseconds) { nanos.set(milliseconds * 1_000_000); }

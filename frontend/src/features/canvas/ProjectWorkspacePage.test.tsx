@@ -257,6 +257,53 @@ describe("ProjectWorkspacePage", () => {
     expect(runs).toBe(0);
   });
 
+  it.each([["create", "agent.director"], ["place", "agent.director"], ["place", "agent.writer"]] as const)("creates a Director card immediately and retries a failed %s for %s with the original identity", async (failure, promptKey) => {
+    const now = "2026-10-03T00:00:00Z";
+    const agent: Agent = { id: "director", projectId: "project-1", name: promptKey === "agent.writer" ? "编剧 Agent" : "导演 Agent", instruction: "Synthetic director workflow",
+      profileKey: "creator", profileVersion: 1, outputGroupId: "output", version: 0, bindings: [], createdAt: now, updatedAt: now };
+    let items: CanvasItem[] = []; let creates = 0; let placements = 0;
+    const keys: (string | null)[] = []; const commands: CanvasCommand[] = []; const runs = vi.fn();
+    server.use(
+      http.get("/api/v1/agent-presets", () => HttpResponse.json({ items: [{ key: promptKey, name: agent.name }] })),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: creates ? [agent] : [] })),
+      http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
+        creates++; keys.push(request.headers.get("Idempotency-Key"));
+        expect(await request.json()).toEqual({ bindings: [], promptKey });
+        if (failure === "create" && creates === 1) return HttpResponse.error();
+        return HttpResponse.json(agent, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        placements++; const input = await request.json() as { commands: CanvasCommand[] }; const command = input.commands[0]!;
+        commands.push(command); expect(command).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id, x: 235, y: 165 });
+        if (failure === "place" && placements === 1) return HttpResponse.error();
+        if (command.type !== "PLACE_AGENT") throw new Error("Missing Agent placement");
+        items = [{ ...imageCard(), id: command.itemId, subjectType: "AGENT", subjectId: agent.id, title: agent.name,
+          artifact: null, agent, selectedVersion: null, selectedVersionId: null, x: command.x, y: command.y }];
+        return HttpResponse.json({ items });
+      }),
+      http.post("/api/v1/projects/:projectId/runs", () => { runs(); return HttpResponse.json({}); }),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup(); await screen.findByText("Director project");
+    const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+    fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
+    await user.click(screen.getByRole("option", { name: agent.name }));
+    expect(document.querySelector(".workspace-drawer")).toBeNull();
+    await screen.findByText("创建 Agent 失败");
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
+    expect(runs).not.toHaveBeenCalled(); expect(keys[0]).toBeTruthy();
+    if (failure === "create") expect(keys).toEqual([keys[0], keys[0]]);
+    else { expect(creates).toBe(1); expect(commands[1]).toEqual(commands[0]); }
+    expect(document.querySelector(".workspace-drawer")).toBeNull();
+  });
+
   it.each(["doubleClick", "contextMenu"] as const)("creates and selects empty text at the %s menu's canvas position without a drawer", async (gesture) => {
     const original = textCard();
     const blank: CanvasItem = { ...original, title: "新文字", selectedVersionId: null, selectedVersion: null,
@@ -304,7 +351,7 @@ describe("ProjectWorkspacePage", () => {
       expect(screen.getByRole("menuitem", { name: "图片" })).toBeVisible();
       expect(screen.getByRole("menuitem", { name: "视频" })).toBeVisible();
       expect(screen.getByRole("menuitem", { name: "音频" })).toBeVisible();
-      expect(screen.queryByRole("menuitem", { name: "Agent" })).not.toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "导演 Agent" })).toBeVisible();
       // jsdom has no Popper geometry for the pointer corridor between parent and submenu.
       await user.keyboard("{ArrowRight}{ArrowDown}{ArrowDown}{Enter}");
     }

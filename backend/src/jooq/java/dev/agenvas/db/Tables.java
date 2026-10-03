@@ -54,6 +54,7 @@ import dev.agenvas.db.tables.MediaTemplateImportImage;
 import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
+import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
 import dev.agenvas.db.tables.SkillBindingCommand;
 import dev.agenvas.db.tables.SkillDraft;
@@ -330,6 +331,11 @@ public class Tables {
      * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位
      */
     public static final ProjectEvent PROJECT_EVENT = ProjectEvent.PROJECT_EVENT;
+
+    /**
+     * 统一管理 Agent 与功能的创作提示词；消费者按稳定用途标识取用并冻结正文
+     */
+    public static final PromptDefinition PROMPT_DEFINITION = PromptDefinition.PROMPT_DEFINITION;
 
     /**
      * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提

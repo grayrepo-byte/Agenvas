@@ -3,6 +3,7 @@ package dev.agenvas.agent.infrastructure;
 import static dev.agenvas.db.Tables.AGENT_BINDING;
 import static dev.agenvas.db.Tables.AGENT_INSTANCE;
 import static dev.agenvas.db.Tables.PROJECT;
+import static dev.agenvas.db.Tables.IDEMPOTENCY_RECORD;
 
 import dev.agenvas.agent.application.AgentInstanceRepository;
 import dev.agenvas.agent.domain.AgentInstance;
@@ -28,6 +29,34 @@ public class JooqAgentInstanceRepository implements AgentInstanceRepository {
     /** 注入 Agent 仓储使用的 jOOQ 上下文。 */
     public JooqAgentInstanceRepository(DSLContext dsl) {
         this.dsl = dsl;
+    }
+
+    @Override public boolean reserveCreateKey(UUID ownerId, String scope, String key, String hash, Instant now, Instant expiresAt) {
+        return dsl.insertInto(IDEMPOTENCY_RECORD).set(IDEMPOTENCY_RECORD.PRINCIPAL_ID, ownerId)
+                .set(IDEMPOTENCY_RECORD.SCOPE, scope).set(IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY, key)
+                .set(IDEMPOTENCY_RECORD.REQUEST_HASH, hash).set(IDEMPOTENCY_RECORD.STATE, dev.agenvas.shared.idempotency.IdempotencyState.IN_PROGRESS.name())
+                .set(IDEMPOTENCY_RECORD.CREATED_AT, atUtc(now)).set(IDEMPOTENCY_RECORD.UPDATED_AT, atUtc(now))
+                .set(IDEMPOTENCY_RECORD.EXPIRES_AT, atUtc(expiresAt))
+                .onConflict(IDEMPOTENCY_RECORD.PRINCIPAL_ID, IDEMPOTENCY_RECORD.SCOPE, IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY)
+                .doNothing().execute() == 1;
+    }
+
+    @Override public Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key) {
+        return dsl.select(IDEMPOTENCY_RECORD.REQUEST_HASH, IDEMPOTENCY_RECORD.RESOURCE_ID, IDEMPOTENCY_RECORD.RESPONSE_JSON)
+                .from(IDEMPOTENCY_RECORD).where(IDEMPOTENCY_RECORD.PRINCIPAL_ID.eq(ownerId))
+                .and(IDEMPOTENCY_RECORD.SCOPE.eq(scope)).and(IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY.eq(key))
+                .and(IDEMPOTENCY_RECORD.STATE.eq(dev.agenvas.shared.idempotency.IdempotencyState.COMPLETED.name()))
+                .fetchOptional(row -> new CreateKey(row.value1(), row.value2(), row.value3().data()));
+    }
+
+    @Override public boolean completeCreateKey(UUID ownerId, String scope, String key, String hash, UUID agentId, String response, Instant now) {
+        return dsl.update(IDEMPOTENCY_RECORD).set(IDEMPOTENCY_RECORD.RESOURCE_ID, agentId)
+                .set(IDEMPOTENCY_RECORD.RESPONSE_JSON, org.jooq.JSONB.valueOf(response))
+                .set(IDEMPOTENCY_RECORD.STATE, dev.agenvas.shared.idempotency.IdempotencyState.COMPLETED.name())
+                .set(IDEMPOTENCY_RECORD.UPDATED_AT, atUtc(now)).where(IDEMPOTENCY_RECORD.PRINCIPAL_ID.eq(ownerId))
+                .and(IDEMPOTENCY_RECORD.SCOPE.eq(scope)).and(IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY.eq(key))
+                .and(IDEMPOTENCY_RECORD.REQUEST_HASH.eq(hash))
+                .and(IDEMPOTENCY_RECORD.STATE.eq(dev.agenvas.shared.idempotency.IdempotencyState.IN_PROGRESS.name())).execute() == 1;
     }
 
     /** 插入 Agent 配置行；绑定关系由应用服务在同一事务内另行替换。 */

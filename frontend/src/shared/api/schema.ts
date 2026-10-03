@@ -478,6 +478,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取可直接创建的 Agent 提示词名称和用途标识 */
+        get: operations["listAgentPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/prompts": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 统一提示词管理列表（仅管理员） */
+        get: operations["listPrompts"];
+        put?: never;
+        /** 新建独立提示词 */
+        post: operations["createPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/prompts/{id}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 读取提示词条目（仅管理员） */
+        get: operations["getPrompt"];
+        /**
+         * 乐观修改名称、说明和提示词正文（仅管理员）
+         * @description key 与 kind 不可变；已复制的 Agent 和冻结的 Task/Run 不随修改而改变。
+         */
+        put: operations["updatePrompt"];
+        post?: never;
+        /**
+         * 乐观删除自定义提示词（仅管理员）
+         * @description 内置条目返回 PROMPT_IN_USE/409，已有 Agent/Task 保留复制内容。
+         */
+        delete: operations["deletePrompt"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/debug": {
         parameters: {
             query?: never;
@@ -495,7 +569,7 @@ export interface paths {
         get: operations["getDebugSettings"];
         /**
          * 修改系统 debug 模式
-         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
+         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段及已知请求凭证始终隐藏。普通及流式 LLM 保留实际模型内容（含推理字段）及 HTTP/SSE 正文，媒体调用继续移除私有推理。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
          */
         put: operations["updateDebugSettings"];
         post?: never;
@@ -519,8 +593,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 查看本人项目的脱敏原始调用详情
-         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文移除凭证与私有推理。UTF8 为正文文本（JSON 脱敏后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+         * 查看本人项目的 debug 调用详情
+         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文隐藏认证凭据。LLM 保留实际请求与响应内容及推理字段，实际 SSE 正文单独保存于 exchanges，媒体调用继续移除私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（JSON 隐藏凭据后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
          */
         get: operations["getCallDebug"];
         put?: never;
@@ -1597,7 +1671,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 查询此卡片最近的直接媒体任务 */
+        /**
+         * 查询此卡片最近的媒体任务（直接运行与已批准的 Agent 任务）
+         * @description 按目标 CanvasItem 查询，不混入同一 Artifact 的其他节点或 Agent 模型回合；排除已被显式新尝试取代的原任务。Agent 任务仅供状态展示，取消排队、队列查询和 UNKNOWN 新尝试仍仅接受直接任务。
+         */
         get: operations["listDirectMediaTasks"];
         put?: never;
         /** 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task */
@@ -1918,7 +1995,7 @@ export interface paths {
         /** 获取项目中的 Creator Agent 配置 */
         get: operations["listAgents"];
         put?: never;
-        /** 创建一个空闲的 Creator Agent */
+        /** 创建一个空闲的导演 Agent */
         post: operations["createAgent"];
         delete?: never;
         options?: never;
@@ -3313,7 +3390,7 @@ export interface components {
             errorCode: string | null;
         };
         LlmStreamContent: {
-            /** @description 已脱敏的应用模型响应协议 JSON，包含公开文本、工具调用及元数据；失败或取消保留已收到的部分，不是原始 HTTP/SSE。 */
+            /** @description 隐藏认证凭据的应用模型响应协议 JSON（schemaVersion=1），包含实际模型文本、工具调用及元数据（包括推理字段）；至多 1 MiB，失败或取消保留已收到的部分。实际 HTTP/SSE 正文单独保存于 exchanges。 */
             response: string;
             /** @description 日志汇总超限或无法安全序列化，不影响模型调用。 */
             truncated: boolean;
@@ -4332,9 +4409,55 @@ export interface components {
             /** Format: uuid */
             selectedVersionId: string;
         };
-        CreateAgentRequest: {
+        PromptDefinition: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** @enum {string} */
+            kind: "AGENT" | "FUNCTION";
             name: string;
-            instruction: string;
+            description: string;
+            content: string;
+            builtIn: boolean;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PromptList: {
+            items: components["schemas"]["PromptDefinition"][];
+        };
+        CreatePromptRequest: {
+            key: string;
+            /** @enum {string} */
+            kind: "AGENT" | "FUNCTION";
+            name: string;
+            description?: string;
+            content: string;
+        };
+        UpdatePromptRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            description?: string;
+            content: string;
+        };
+        AgentPreset: {
+            key: string;
+            name: string;
+        };
+        AgentPresetList: {
+            items: components["schemas"]["AgentPreset"][];
+        };
+        CreateAgentRequest: {
+            /** @description 选择 AGENT 提示词条目；省略时使用 agent.director，FUNCTION 不能用于创建 Agent。 */
+            promptKey?: string;
+            /** @description 省略时在创建事务内复制当前默认名称。 */
+            name?: string;
+            /** @description 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。 */
+            instruction?: string;
             bindings: components["schemas"]["AgentBindingRequest"][];
         };
         UpdateAgentRequest: {
@@ -4578,7 +4701,7 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New Run policies are schema v3 and pin systemPromptVersion=4 plus their tool allowlist. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
+        /** @description New Run policies are schema v3 and pin systemPromptVersion=5 plus their tool allowlist. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
         RunPolicySnapshot: {
             /** @enum {integer} */
             schemaVersion: 1 | 2 | 3;
@@ -4586,10 +4709,10 @@ export interface components {
             toolPolicyVersion?: 1;
             allowedTools?: string[];
             /**
-             * @description New v3 snapshots pin version 4; historical versions 1/2/3 retain their original rules; absent on historical v1 snapshots.
+             * @description New v3 snapshots pin version 5; historical versions 1/2/3/4 retain their original rules; absent on historical v1 snapshots.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3 | 4;
+            systemPromptVersion?: 1 | 2 | 3 | 4 | 5;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
@@ -6223,6 +6346,190 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAgentPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 仅名称和标识，不含正文及功能提示词；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPresetList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    listPrompts: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 所有 Agent 与功能提示词；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createPrompt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的条目；自定义功能条目须由对应消费功能显式接入 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptDefinition"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getPrompt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 提示词条目；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptDefinition"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePrompt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存结果；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptDefinition"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deletePrompt: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除；Cache-Control no-store */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
     };
@@ -8682,6 +8989,8 @@ export interface operations {
                  * @example ru-RU, en;q=0.8
                  */
                 "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                /** @description 创建卡片使用此键；同键同请求重放首次配置（默认提示词之后变化也不重算），异参返回 409。 */
+                "Idempotency-Key"?: string;
             };
             path: {
                 projectId: components["parameters"]["ProjectId"];
@@ -8694,9 +9003,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 新建的 Agent */
+            /** @description 新建的 Agent，或原创建请求的重放结果 */
             201: {
                 headers: {
+                    /** @description 提供幂等键时标识是否重放首次结果 */
+                    "Idempotency-Replayed"?: boolean;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8706,6 +9017,7 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getAgent: {

@@ -1,6 +1,7 @@
 import type { DebugBody } from "../../shared/api/client";
 
 const JSON_INDENT = 2;
+const MODEL_RESPONSE_SCHEMA_VERSION = 1;
 export const MAX_FORMATTED_JSON_CHARS = 2 * 1024 * 1024;
 export const RAW_PAGE_CHARS = 64 * 1024;
 export type JsonObject = Record<string, unknown>;
@@ -56,37 +57,41 @@ function message(value: unknown, index: number, fallbackRole = "unknown"): LogMe
     return typeof field === "string" ? [field] : [];
   });
   const attachments = parts.filter((part) => typeof part !== "string" && typeof object(part).text !== "string").map(object);
-  const calls = array(raw.tool_calls).map(toolCall);
+  const calls = array(raw.tool_calls ?? raw.toolCalls).map(toolCall);
   if (raw.function_call) calls.push(toolCall({ function: raw.function_call }));
-  return { index, role: text(raw.role) ?? fallbackRole, text: texts.join("\n\n"), toolCalls: calls,
+  return { index, role: text(raw.role)?.toLowerCase() ?? fallbackRole, text: texts.join("\n\n"), toolCalls: calls,
     toolCallId: text(raw.tool_call_id), name: text(raw.name), attachments, raw };
 }
 
-/** Chat Completions wire format used by the configured Spring AI gateway. No inferred token/cost totals. */
+/** Actual Chat Completions bodies and the persisted model-response protocol; no inferred usage or cost. */
 export function llmLogView(requestBody: ParsedBody, responseBody: ParsedBody): LlmLogView | null {
   const request = requestBody.status === "json" ? object(requestBody.value) : {};
   const response = responseBody.status === "json" ? object(responseBody.value) : {};
   const hasPrompt = Array.isArray(request.messages);
   const hasChoices = Array.isArray(response.choices);
-  if (!hasPrompt && !hasChoices) return null;
+  const hasGenerations = response.schemaVersion === MODEL_RESPONSE_SCHEMA_VERSION && Array.isArray(response.generations);
+  if (!hasPrompt && !hasChoices && !hasGenerations) return null;
   const prompt = array(request.messages).map((value, index) => message(value, index));
-  const choices = array(response.choices);
+  const choices = hasChoices ? array(response.choices) : hasGenerations ? array(response.generations) : [];
   const completion = choices.flatMap((value, index) => {
     const choice = object(value);
-    if (choice.message !== null && typeof choice.message === "object") return [message(choice.message, index, "assistant")];
+    const assistant = hasChoices ? choice.message : choice.assistant;
+    if (assistant !== null && typeof assistant === "object") return [message(assistant, index, "assistant")];
     if (typeof choice.text === "string") return [message({ content: choice.text, role: "assistant" }, index)];
     return [];
   });
-  const usage = object(response.usage);
+  const metadata = hasGenerations ? object(response.metadata) : response;
+  const usage = object(metadata.usage);
   const promptDetails = object(usage.prompt_tokens_details ?? usage.input_tokens_details);
   const cost = usage.cost ?? response.cost;
-  return { prompt, completion, request, response, model: text(response.model) ?? text(request.model),
-    generationId: text(response.id), finishReason: [...new Set(choices.flatMap((choice) => {
-      const reason = text(object(choice).finish_reason); return reason ? [reason] : [];
+  return { prompt, completion, request, response, model: text(metadata.model) ?? text(request.model),
+    generationId: text(metadata.id), finishReason: [...new Set(choices.flatMap((choice) => {
+      const entry = object(choice);
+      const reason = text(hasChoices ? entry.finish_reason : object(entry.metadata).finishReason); return reason ? [reason] : [];
     }))].join(", ") || undefined,
     streaming: typeof request.stream === "boolean" ? request.stream : undefined,
-    usage: { prompt: count(usage.prompt_tokens ?? usage.input_tokens),
-      completion: count(usage.completion_tokens ?? usage.output_tokens), total: count(usage.total_tokens),
+    usage: { prompt: count(usage.prompt_tokens ?? usage.input_tokens ?? usage.promptTokens),
+      completion: count(usage.completion_tokens ?? usage.output_tokens ?? usage.completionTokens), total: count(usage.total_tokens ?? usage.totalTokens),
       cached: count(promptDetails.cached_tokens ?? usage.cache_read_input_tokens),
       cost: typeof cost === "string" && /^\d+(\.\d+)?$/.test(cost) ? cost
         : typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? String(cost) : undefined },

@@ -863,7 +863,7 @@ public class DirectMediaTaskService {
         if (!canvasItem.subjectId().equals(artifactId)) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.the-task-list-must-belong-to-the-canvas-card-of"));
         }
-        return tasks.listDirectForCanvasItem(ownerId, projectId, canvasItemId);
+        return tasks.listMediaForCanvasItem(ownerId, projectId, canvasItemId);
     }
 
     @Transactional(readOnly = true)

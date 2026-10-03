@@ -38,7 +38,7 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
     </div>
   </QueryClientProvider>;
   const view = render(card(true));
-  return { onEdit, onCardClick,
+  return { onEdit, onCardClick, client,
     setToolbarState: (selected: boolean, toolbarVisible = true) => view.rerender(card(selected, toolbarVisible)) };
 }
 
@@ -692,6 +692,49 @@ describe("MediaCanvasCard", () => {
       expect(screen.queryByRole("button", { name: "上传图片" })).not.toBeInTheDocument();
       expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     });
+
+  describe.each(["IMAGE", "VIDEO", "AUDIO"] as const)("approved Agent %s cards", (kind) => {
+    it.each(["READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER"] as const)(
+      "shows the shared loading effect for %s", async (status) => {
+        server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", ({ request }) => {
+          expect(new URL(request.url).searchParams.get("canvasItemId")).toBe("item-1");
+          return HttpResponse.json([{ id: "agent-media-task", runId: "agent-run", status, errorCode: null }]);
+        }));
+        showCard({ ...artifact, kind });
+        const loading = await screen.findByRole("status");
+        expect(loading).toHaveClass("canvas-loading-state");
+        expect(loading).toHaveTextContent(status === "READY" ? "排队中" : "正在生成");
+        expect(screen.queryByRole("button", { name: /上传图片|上传音频|生成视频/ })).not.toBeInTheDocument();
+      });
+  });
+
+  it("shows an Agent UNKNOWN result without promising a direct retry in the editor", async () => {
+    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+      { id: "agent-media-task", runId: "agent-run", status: "UNKNOWN", errorCode: "SUBMISSION_UNKNOWN" },
+    ])));
+    showCard();
+    expect(await screen.findByText("结果未知")).toBeInTheDocument();
+    expect(screen.queryByText("可在编辑区重试")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
+  });
+
+  it("starts and stops the loading effect when a mounted Agent card's task query refreshes", async () => {
+    let status: "WAITING_PROVIDER" | "FAILED" | null = null;
+    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json(
+      status ? [{ id: "agent-media-task", runId: "agent-run", status, errorCode: null }] : [])));
+    const { client } = showCard({ ...artifact, kind: "VIDEO" });
+    await waitFor(() => expect(client.getQueryData(["direct-media-tasks", "project-1", "item-1"])).toEqual([]));
+    expect(screen.getByRole("button", { name: "生成视频" })).toBeInTheDocument();
+    status = "WAITING_PROVIDER";
+    await client.invalidateQueries({ queryKey: ["direct-media-tasks", "project-1"] });
+    expect(await screen.findByText("正在生成")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
+    status = "FAILED";
+    await client.invalidateQueries({ queryKey: ["direct-media-tasks", "project-1"] });
+    expect(await screen.findByText("生成失败")).toBeInTheDocument();
+    expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成视频" })).toBeInTheDocument();
+  });
 
   it("shows UNKNOWN as an explicit retry state instead of a running animation", async () => {
     server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([

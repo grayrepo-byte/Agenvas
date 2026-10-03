@@ -114,6 +114,7 @@ public class TaskController {
             if (task.kind() == Task.Kind.TEXT_GENERATION) {
                 ObjectNode safeInput = (ObjectNode) task.input().deepCopy();
                 safeInput.remove("currentText");
+                safeInput.remove("systemPrompt");
                 input = safeInput;
                 // A RUNNING Task may contain the private full-response checkpoint. Only the
                 // terminal public artifact summary is returned to the browser.

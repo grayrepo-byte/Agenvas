@@ -133,7 +133,7 @@ class AgentRunPostgresIT {
         assertThat(preflight.policySnapshot().path("maxModelTurns").asInt()).isEqualTo(12);
         assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(3);
         assertThat(preflight.policySnapshot().path("systemPromptVersion").asInt())
-                .isEqualTo(4);
+                .isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         String reviewedModelSource = preflight.policySnapshot()
                 .path("modelConfigSource").asText();
         int reviewedModelVersion = preflight.policySnapshot()
@@ -160,7 +160,7 @@ class AgentRunPostgresIT {
                         .value(reviewedModelSource))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigVersion")
                         .value(reviewedModelVersion))
-                .andExpect(jsonPath("$.policySnapshot.systemPromptVersion").value(4))
+                .andExpect(jsonPath("$.policySnapshot.systemPromptVersion").value(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION))
                 .andExpect(jsonPath("$.modelAvailable").value(false));
         mvc.perform(get(preflightPath)).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/projects/" + project.id() + "/runs")
@@ -198,7 +198,7 @@ class AgentRunPostgresIT {
         assertThat(run.contextSnapshot().path("bindings").path(0)
                 .path("expectedVersion").longValue()).isEqualTo(0);
         assertThat(run.policySnapshot().get("maxModelTurns").intValue()).isEqualTo(12);
-        assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(4);
+        assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
                 .getFirst().getText()).contains("no image pixels");
 

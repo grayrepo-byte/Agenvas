@@ -731,6 +731,110 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/agent-presets:
+    get:
+      operationId: listAgentPresets
+      summary: 读取可直接创建的 Agent 提示词名称和用途标识
+      tags: [Agents]
+      responses:
+        "200":
+          description: 仅名称和标识，不含正文及功能提示词；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentPresetList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /api/v1/settings/prompts:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: listPrompts
+      summary: 统一提示词管理列表（仅管理员）
+      tags: [Settings]
+      responses:
+        "200":
+          description: 所有 Agent 与功能提示词；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PromptList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      operationId: createPrompt
+      summary: 新建独立提示词
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreatePromptRequest"}
+      responses:
+        "201":
+          description: 已创建的条目；自定义功能条目须由对应消费功能显式接入
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PromptDefinition"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/prompts/{id}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getPrompt
+      summary: 读取提示词条目（仅管理员）
+      tags: [Settings]
+      responses:
+        "200":
+          description: 提示词条目；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PromptDefinition"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: updatePrompt
+      summary: 乐观修改名称、说明和提示词正文（仅管理员）
+      description: key 与 kind 不可变；已复制的 Agent 和冻结的 Task/Run 不随修改而改变。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdatePromptRequest"}
+      responses:
+        "200":
+          description: 保存结果；Cache-Control no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PromptDefinition"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    delete:
+      operationId: deletePrompt
+      summary: 乐观删除自定义提示词（仅管理员）
+      description: 内置条目返回 PROMPT_IN_USE/409，已有 Agent/Task 保留复制内容。
+      tags: [Settings]
+      parameters:
+        - name: expectedVersion
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        "204": {description: 已删除；Cache-Control no-store}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/settings/debug:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -749,7 +853,7 @@ paths:
     put:
       operationId: updateDebugSettings
       summary: 修改系统 debug 模式
-      description: 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段、已知请求凭证和模型私有推理始终移除。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
+      description: 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段及已知请求凭证始终隐藏。普通及流式 LLM 保留实际模型内容（含推理字段）及 HTTP/SSE 正文，媒体调用继续移除私有推理。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
       tags: [Audit]
       requestBody:
         required: true
@@ -777,8 +881,8 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getCallDebug
-      summary: 查看本人项目的脱敏原始调用详情
-      description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文移除凭证与私有推理。UTF8 为正文文本（JSON 脱敏后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+      summary: 查看本人项目的 debug 调用详情
+      description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文隐藏认证凭据。LLM 保留实际请求与响应内容及推理字段，实际 SSE 正文单独保存于 exchanges，媒体调用继续移除私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（JSON 隐藏凭据后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
       tags: [Audit]
       parameters:
         - name: id
@@ -1944,7 +2048,8 @@ paths:
       - {$ref: "#/components/parameters/ArtifactId"}
     get:
       operationId: listDirectMediaTasks
-      summary: 查询此卡片最近的直接媒体任务
+      summary: 查询此卡片最近的媒体任务（直接运行与已批准的 Agent 任务）
+      description: 按目标 CanvasItem 查询，不混入同一 Artifact 的其他节点或 Agent 模型回合；排除已被显式新尝试取代的原任务。Agent 任务仅供状态展示，取消排队、队列查询和 UNKNOWN 新尝试仍仅接受直接任务。
       tags: [Tasks]
       parameters:
         - name: canvasItemId
@@ -2265,8 +2370,14 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: createAgent
-      summary: 创建一个空闲的 Creator Agent
+      summary: 创建一个空闲的导演 Agent
       tags: [Agents]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: 创建卡片使用此键；同键同请求重放首次配置（默认提示词之后变化也不重算），异参返回 409。
+          schema: {type: string, minLength: 1, maxLength: 200}
       requestBody:
         required: true
         content:
@@ -2274,12 +2385,17 @@ paths:
             schema: {$ref: "#/components/schemas/CreateAgentRequest"}
       responses:
         "201":
-          description: 新建的 Agent
+          description: 新建的 Agent，或原创建请求的重放结果
+          headers:
+            Idempotency-Replayed:
+              description: 提供幂等键时标识是否重放首次结果
+              schema: {type: boolean}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Agent"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/agents/{agentId}:
     parameters:
@@ -4365,7 +4481,7 @@ components:
       type: object
       required: [response, truncated]
       properties:
-        response: {type: string, description: 已脱敏的应用模型响应协议 JSON，包含公开文本、工具调用及元数据；失败或取消保留已收到的部分，不是原始 HTTP/SSE。}
+        response: {type: string, description: 隐藏认证凭据的应用模型响应协议 JSON（schemaVersion=1），包含实际模型文本、工具调用及元数据（包括推理字段）；至多 1 MiB，失败或取消保留已收到的部分。实际 HTTP/SSE 正文单独保存于 exchanges。}
         truncated: {type: boolean, description: 日志汇总超限或无法安全序列化，不影响模型调用。}
     CallLogPage:
       type: object
@@ -5579,13 +5695,63 @@ components:
       properties:
         artifactId: {type: string, format: uuid}
         selectedVersionId: {type: string, format: uuid}
+    PromptDefinition:
+      type: object
+      required: [id, key, kind, name, description, content, builtIn, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        key: {type: string, pattern: '^[a-z][a-z0-9._-]{0,119}$', maxLength: 120}
+        kind: {type: string, enum: [AGENT, FUNCTION]}
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 1000}
+        content: {type: string, minLength: 1, maxLength: 8000}
+        builtIn: {type: boolean}
+        version: {type: integer, format: int64, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    PromptList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/PromptDefinition"}}
+    CreatePromptRequest:
+      type: object
+      additionalProperties: false
+      required: [key, kind, name, content]
+      properties:
+        key: {type: string, pattern: '^[a-z][a-z0-9._-]{0,119}$', maxLength: 120}
+        kind: {type: string, enum: [AGENT, FUNCTION]}
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 1000}
+        content: {type: string, minLength: 1, maxLength: 8000}
+    UpdatePromptRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, content]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 1}
+        name: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 1000}
+        content: {type: string, minLength: 1, maxLength: 8000}
+    AgentPreset:
+      type: object
+      required: [key, name]
+      properties:
+        key: {type: string}
+        name: {type: string}
+    AgentPresetList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/AgentPreset"}}
     CreateAgentRequest:
       type: object
       additionalProperties: false
-      required: [name, instruction, bindings]
+      required: [bindings]
       properties:
-        name: {type: string, minLength: 1, maxLength: 120}
-        instruction: {type: string, minLength: 1, maxLength: 8000}
+        promptKey: {type: string, pattern: '^[a-z][a-z0-9._-]{0,119}$', description: 选择 AGENT 提示词条目；省略时使用 agent.director，FUNCTION 不能用于创建 Agent。}
+        name: {type: string, minLength: 1, maxLength: 120, description: 省略时在创建事务内复制当前默认名称。}
+        instruction: {type: string, minLength: 1, maxLength: 8000, description: 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。}
         bindings:
           type: array
           maxItems: 40
@@ -5858,14 +6024,14 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New Run policies are schema v3 and pin systemPromptVersion=4 plus their tool allowlist. Historical v1
+        New Run policies are schema v3 and pin systemPromptVersion=5 plus their tool allowlist. Historical v1
         snapshots lack this field and cannot safely start an uncheckpointed model turn.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
         schemaVersion: {type: integer, enum: [1, 2, 3]}
         toolPolicyVersion: {type: integer, enum: [1]}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4], description: New v3 snapshots pin version 4; historical versions 1/2/3 retain their original rules; absent on historical v1 snapshots.}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5], description: New v3 snapshots pin version 5; historical versions 1/2/3/4 retain their original rules; absent on historical v1 snapshots.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}

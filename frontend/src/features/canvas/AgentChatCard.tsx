@@ -319,7 +319,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
           <p className="agent-chat-eyebrow">{agent.profileKey} · v{agent.profileVersion}</p>
           <form onSubmit={submit}>
             <label>{t("common.name")}<Input value={configuration?.name ?? agent.name} onChange={(event) => setConfiguration((current) => current ? { ...current, name: event.target.value } : current)} maxLength={MAX_AGENT_NAME} name="name" required /></label>
-            <label>{t("common.instruction")}<Textarea value={configuration?.instruction ?? agent.instruction} onChange={(event) => setConfiguration((current) => current ? { ...current, instruction: event.target.value } : current)} maxLength={MAX_INSTRUCTION} name="instruction" required rows={4} /></label>
+            <label>{t("agent.defaults.prompt")}<Textarea value={configuration?.instruction ?? agent.instruction} onChange={(event) => setConfiguration((current) => current ? { ...current, instruction: event.target.value } : current)} maxLength={MAX_INSTRUCTION} name="instruction" required rows={12} /></label>
             <Button size="sm" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("common.saving") : t("common.saveConfig")}</Button>
             {configuration && agent.version !== configuration.base.version ? <p role="status">
               {t("common.versionConflict")}<Button variant="ghost" type="button"

@@ -68,7 +68,17 @@ public class LlmProtocolCodec {
      * @return 受大小上限约束的响应检查点，工具执行必须晚于此值落库
      */
     public ObjectNode response(ChatResponse response) {
-        response = PublicAssistantResponse.sanitize(response);
+        return encodeResponse(PublicAssistantResponse.sanitize(response), false);
+    }
+
+    /** Debug-only model contents; authentication is removed by the invocation's capture scope.
+     * This must never replace the public Runtime checkpoint returned by {@link #response}.
+     */
+    public ObjectNode debugResponse(ChatResponse response) {
+        return encodeResponse(response, true);
+    }
+
+    private ObjectNode encodeResponse(ChatResponse response, boolean preserveModelContent) {
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("schemaVersion", 1);
         ObjectNode metadata = envelope.putObject("metadata");
@@ -86,7 +96,7 @@ public class LlmProtocolCodec {
         ArrayNode generations = envelope.putArray("generations");
         response.getResults().forEach(generation -> {
             ObjectNode item = generations.addObject();
-            item.set("assistant", encodeMessage(generation.getOutput()));
+            item.set("assistant", encodeMessage(generation.getOutput(), preserveModelContent));
             item.set("metadata", mapper.valueToTree(generation.getMetadata()));
         });
         requireBounded(envelope, MAX_RESPONSE_BYTES);
@@ -254,7 +264,11 @@ public class LlmProtocolCodec {
      * @return 含角色、文本、元数据及必要工具关联字段的协议对象
      */
     private ObjectNode encodeMessage(Message message) {
-        if (message instanceof AssistantMessage assistant) message = PublicAssistantResponse.sanitize(assistant);
+        return encodeMessage(message, false);
+    }
+
+    private ObjectNode encodeMessage(Message message, boolean preserveModelContent) {
+        if (!preserveModelContent && message instanceof AssistantMessage assistant) message = PublicAssistantResponse.sanitize(assistant);
         ObjectNode value = mapper.createObjectNode();
         value.put("role", message.getMessageType().name());
         if (message.getText() == null) {

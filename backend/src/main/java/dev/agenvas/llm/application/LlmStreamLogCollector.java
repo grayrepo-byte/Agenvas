@@ -6,6 +6,8 @@ import dev.agenvas.audit.domain.LlmStreamLog.EndStatus;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.LongSupplier;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
@@ -16,7 +18,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import tools.jackson.databind.ObjectMapper;
 
-/** One collector per subscription. Reader, batching and cancellation threads share only this instance. */
+/** One debug collector per subscription, independent of the sanitized public answer stream. */
 public final class LlmStreamLogCollector {
     private static final long NANOS_PER_MILLISECOND = 1_000_000;
     private static final int MAX_CONTENT_BYTES = 1024 * 1024;
@@ -38,6 +40,8 @@ public final class LlmStreamLogCollector {
     private String responseId;
     private String completeResponse;
     private ChatGenerationMetadata generationMetadata = ChatGenerationMetadata.NULL;
+    private final Map<String, Object> assistantAttributes = new LinkedHashMap<>();
+    private final Map<String, Object> responseAttributes = new LinkedHashMap<>();
 
     public LlmStreamLogCollector(boolean captureContent) { this(captureContent, System::nanoTime); }
     LlmStreamLogCollector(boolean captureContent, LongSupplier nanoTime) {
@@ -49,31 +53,56 @@ public final class LlmStreamLogCollector {
     public synchronized void chunk(ChatResponse response) {
         chunks++;
         if (firstChunkMs == null) firstChunkMs = elapsed();
-        String text = PublicAssistantResponse.text(response);
-        if (!text.isEmpty() && firstTextMs == null) firstTextMs = elapsed();
+        String publicText = PublicAssistantResponse.text(PublicAssistantResponse.sanitize(response));
+        if (!publicText.isEmpty() && firstTextMs == null) firstTextMs = elapsed();
         metadata(response);
         if (!captureContent || truncated) return;
         try {
-            int retained = text.getBytes(StandardCharsets.UTF_8).length;
-            if (response.getResult() != null) for (var tool : response.getResult().getOutput().getToolCalls()) {
-                retained = Math.addExact(retained, tool.arguments().getBytes(StandardCharsets.UTF_8).length);
-            }
+            int retained = codec.debugResponse(response).toString().getBytes(StandardCharsets.UTF_8).length;
             contentBytes = Math.addExact(contentBytes, retained);
             if (contentBytes > MAX_CONTENT_BYTES) { truncated = true; return; }
-            received.append(text);
-            // Opaque metadata is included in the complete response. A failed stream keeps the
-            // public text/tool prefix and observed usage, without retaining unbounded metadata frames.
+            received.append(PublicAssistantResponse.text(response));
+            // Keep the received text/tool prefix and observed model attributes within the same
+            // byte budget. Actual HTTP events preserve SDK-ignored fields separately.
             if (response.getResult() != null) {
                 tools.addAll(response.getResult().getOutput().getToolCalls());
                 generationMetadata = response.getResult().getMetadata();
+                assistantAttributes.putAll(response.getResult().getOutput().getMetadata());
             }
+            response.getMetadata().entrySet().forEach(entry -> responseAttributes.put(entry.getKey(), entry.getValue()));
         } catch (RuntimeException failure) { truncated = true; }
     }
 
     public synchronized void complete(ChatResponse response) {
         metadata(response);
-        if (captureContent) {
-            try { completeResponse = codec.response(response).toString(); }
+        if (captureContent && !truncated) {
+            try {
+                // Reuse the SDK's completed tool/generation assembly while restoring the bounded
+                // raw text and attributes that were removed from the public aggregation path.
+                List<Generation> generations = new ArrayList<>(response.getResults());
+                if (!generations.isEmpty() && chunks > 0) {
+                    Generation first = generations.getFirst();
+                    Map<String, Object> attributes = new LinkedHashMap<>(first.getOutput().getMetadata());
+                    attributes.putAll(assistantAttributes);
+                    AssistantMessage assistant = AssistantMessage.builder().content(received.toString())
+                            .toolCalls(first.getOutput().getToolCalls()).media(first.getOutput().getMedia())
+                            .properties(attributes).build();
+                    Map<String, Object> generationAttributes = new LinkedHashMap<>();
+                    first.getMetadata().entrySet().forEach(entry -> generationAttributes.put(entry.getKey(), entry.getValue()));
+                    generationMetadata.entrySet().forEach(entry -> generationAttributes.put(entry.getKey(), entry.getValue()));
+                    var metadata = ChatGenerationMetadata.builder().finishReason(first.getMetadata().getFinishReason())
+                            .contentFilters(first.getMetadata().getContentFilters()).metadata(generationAttributes).build();
+                    generations.set(0, new Generation(assistant, metadata));
+                }
+                Map<String, Object> attributes = new LinkedHashMap<>();
+                response.getMetadata().entrySet().forEach(entry -> attributes.put(entry.getKey(), entry.getValue()));
+                attributes.putAll(responseAttributes);
+                var metadata = ChatResponseMetadata.builder().metadata(attributes)
+                        .id(response.getMetadata().getId()).model(response.getMetadata().getModel())
+                        .usage(response.getMetadata().getUsage()).rateLimit(response.getMetadata().getRateLimit())
+                        .promptMetadata(response.getMetadata().getPromptMetadata()).build();
+                completeResponse = codec.debugResponse(new ChatResponse(generations, metadata)).toString();
+            }
             catch (RuntimeException failure) { truncated = true; }
         }
     }
@@ -96,10 +125,11 @@ public final class LlmStreamLogCollector {
     public synchronized LlmStreamLog snapshot(EndStatus status, String errorCode) {
         String response = completeResponse;
         if (captureContent && response == null) {
-            var assistant = AssistantMessage.builder().content(received.toString()).toolCalls(List.copyOf(tools)).build();
-            var metadata = ChatResponseMetadata.builder().model(model)
+            var assistant = AssistantMessage.builder().content(received.toString()).toolCalls(List.copyOf(tools))
+                    .properties(new LinkedHashMap<>(assistantAttributes)).build();
+            var metadata = ChatResponseMetadata.builder().metadata(new LinkedHashMap<>(responseAttributes)).model(model)
                     .id(responseId).usage(usage).build();
-            try { response = codec.response(new ChatResponse(List.of(new Generation(assistant, generationMetadata)), metadata)).toString(); }
+            try { response = codec.debugResponse(new ChatResponse(List.of(new Generation(assistant, generationMetadata)), metadata)).toString(); }
             catch (RuntimeException failure) { response = "{\"omitted\":\"LOG_CONTENT_LIMIT\"}"; truncated = true; }
         }
         var metrics = new LlmStreamLog.Metrics(LlmStreamLog.SCHEMA_VERSION, firstChunkMs, firstTextMs, elapsed(),
