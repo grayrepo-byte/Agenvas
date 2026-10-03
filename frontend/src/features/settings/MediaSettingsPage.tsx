@@ -24,6 +24,7 @@ import { Select } from "../../shared/ui/Select";
 import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp,googleImageApiLabel } from "./GoogleImageConnectionHelp";
+import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
 import { adapterLabel,adapterMetadata,adapterModel,platformAdapters } from "./mediaAdapterCatalog";
 import "./MediaSettingsPage.css";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
@@ -32,7 +33,6 @@ const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
 const NAME_LIMIT = 160;
-const ORIGIN_LIMIT = 500;
 const comfyImageFields = [{ key: "checkpoint", get label() { return t("settings.mediaSettings.checkpointFile"); } }] as const;
 const comfyVideoFields = [
   { key: "diffusionModel", get label() { return t("settings.mediaSettings.videoModelFile"); } },
@@ -179,19 +179,10 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
   useLocale();
   const helpId = useId();
   return <>
-    {platform === "RUNNINGHUB" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.runningHubApi")}<Input value={origin} onChange={(event) => onOriginChange(event.target.value)} placeholder="https://www.runninghub.ai" /></FieldLabel></Field> : null}
-    {platform === "COMFYUI" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.comfyUrl")}<Input value={origin} onChange={(event) => onOriginChange(event.target.value)}
-        required placeholder="http://127.0.0.1:8188" />
-    </FieldLabel></Field> : null}
-    {platform === "OPENAI" || platform === "GOOGLE" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.baseUrl")}<Input type="url" value={origin} onChange={(event) => onOriginChange(event.target.value)}
-        aria-describedby={platform === "GOOGLE" ? helpId : undefined}
-        maxLength={ORIGIN_LIMIT} placeholder={platform === "GOOGLE" ? "https://generativelanguage.googleapis.com" : "https://api.openai.com/v1"} />
-    </FieldLabel></Field> : null}
+    <MediaConnectionAddressField key={platform} platform={platform} origin={origin} onChange={onOriginChange}
+      describedBy={platform === "GOOGLE" ? helpId : undefined} />
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
-    {platform === "AUTODL" ? <><Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedApiUrl")}<Input value="https://autodl.art/api/v1/comfyui/comfyui_workflow" readOnly /></FieldLabel></Field><p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p></> : null}
-    {platform === "VOLCENGINE" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedApiUrl")}<Input value="https://openspeech.bytedance.com/api/v3/tts/create" readOnly /></FieldLabel></Field> : null}
-    {platform === "ARK" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedApiUrl")}<Input value="https://ark.cn-beijing.volces.com/api/v3" readOnly />
-    </FieldLabel></Field> : null}
+    {platform === "AUTODL" ? <p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p> : null}
     {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" ? <Field><FieldLabel className="ui-field block">
       {creating ? "API Key" : t("settings.mediaSettings.replaceApiKey")}
       <Input type="password" autoComplete="new-password" value={apiKey}

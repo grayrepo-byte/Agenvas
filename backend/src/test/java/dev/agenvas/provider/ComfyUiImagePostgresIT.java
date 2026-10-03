@@ -58,6 +58,7 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiImagePostgresIT {
+    private static final String PROXY_PREFIX = "/proxy/synthetic-key";
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -78,6 +79,7 @@ class ComfyUiImagePostgresIT {
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
+        properties.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @AfterAll
@@ -104,7 +106,7 @@ class ComfyUiImagePostgresIT {
     @Test
     void approvedReferenceImageReachesFixedSamplerThenArchivesOriginalPrompt() throws Exception {
         UUID connection = catalog.createConnection("Comfy fake endpoint",
-                "http://127.0.0.1:" + SERVER.getAddress().getPort()).id();
+                "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX).id();
         UUID capability = catalog.publishCapability(connection, "Fixed image", "COMFY_IMAGE_V1",
                 mapper.readTree("{\"checkpoint\":\"test-model.safetensors\"}")).id();
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
@@ -226,7 +228,7 @@ class ComfyUiImagePostgresIT {
 
         var rotatedConnection = catalog.getConnection(connection);
         catalog.updateConnection(connection, rotatedConnection.version(), rotatedConnection.name(), true,
-                "http://127.0.0.1:" + SERVER.getAddress().getPort(), null);
+                "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX, null);
         // The provider accepted a prompt, but the response was lost before its id was saved.
         // Expiry preserves the committed request key and never submits a second prompt.
         var uncertainCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
@@ -283,13 +285,13 @@ class ComfyUiImagePostgresIT {
     private static HttpServer startServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/upload/image", exchange -> {
+            server.createContext(PROXY_PREFIX + "/upload/image", exchange -> {
                 byte[] body = exchange.getRequestBody().readAllBytes();
                 assertThat(body.length).isGreaterThan(1_000);
                 respond(exchange, 200,
                         "{\"name\":\"uploaded-reference.png\",\"type\":\"input\",\"subfolder\":\"\"}");
             });
-            server.createContext("/prompt", exchange -> {
+            server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 JsonNode body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 SUBMITTED_GRAPH.set(body.path("prompt"));
                 UUID promptId = UUID.fromString(body.path("prompt_id").asText());
@@ -306,9 +308,9 @@ class ComfyUiImagePostgresIT {
                 }
                 respond(exchange, 200, "{\"prompt_id\":\"" + promptId + "\",\"number\":0}");
             });
-            server.createContext("/history/", exchange -> {
+            server.createContext(PROXY_PREFIX + "/history/", exchange -> {
                 if (exchange.getRequestURI().getPath()
-                        .equals("/history/" + SECOND_PROMPT_ID.get())) {
+                        .equals(PROXY_PREFIX + "/history/" + SECOND_PROMPT_ID.get())) {
                     QUERIES.incrementAndGet();
                     respond(exchange, 200, "{\"" + SECOND_PROMPT_ID.get() + "\":{"
                             + "\"prompt\":[0,\"" + SECOND_PROMPT_ID.get()
@@ -320,7 +322,7 @@ class ComfyUiImagePostgresIT {
                     return;
                 }
                 assertThat(exchange.getRequestURI().getPath())
-                        .isEqualTo("/history/" + FIRST_PROMPT_ID.get());
+                        .isEqualTo(PROXY_PREFIX + "/history/" + FIRST_PROMPT_ID.get());
                 if (QUERIES.incrementAndGet() == 1) {
                     respond(exchange, 200, "{}");
                 } else {
@@ -330,7 +332,7 @@ class ComfyUiImagePostgresIT {
                             + "\"type\":\"output\",\"subfolder\":\"\"}]}}}}");
                 }
             });
-            server.createContext("/view", exchange -> {
+            server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 if (DOWNLOADS.incrementAndGet() == 1) {
                     respond(exchange, 200, "not an image");
                 } else {

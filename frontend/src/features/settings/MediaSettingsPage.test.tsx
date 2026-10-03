@@ -51,6 +51,86 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
 }
 
 describe("MediaSettingsPage", () => {
+  it("shows platform-specific address guidance without submitting the connection", async () => {
+    const requests: string[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: mockDefault })),
+      http.post("/api/v1/settings/media-connections", () => { requests.push("create"); return HttpResponse.json(settingsFixture()); }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    const dialog = screen.getByRole("dialog");
+    const platforms = [
+      ["COMFYUI", "代理路径和其中的 Key 直接填入地址", "ComfyUI 地址"],
+      ["OPENAI", "系统不会自动补 /v1", "API Base URL（留空使用官方地址）"],
+      ["GOOGLE", "服务商要求 /v1beta 时需显式填写", "API Base URL（留空使用官方地址）"],
+      ["RUNNINGHUB", "不要添加 /v1、/openapi/v2", "RunningHub API 地址"],
+      ["ARK", "已包含 /api/v3", "固定 API 地址"],
+      ["VOLCENGINE", "固定 TTS 地址", "固定 API 地址"],
+      ["AUTODL", "分组为 ComfyUI 的 Token", "固定 API 地址"],
+    ] as const;
+    for (const [platform, hint, label] of platforms) {
+      await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), platform);
+      expect(within(dialog).getByRole("textbox", { name: label })).toBeInTheDocument();
+      const help = within(dialog).getByRole("button", { name: "地址填写说明" });
+      await user.hover(help);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(hint);
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+    }
+    const help = within(dialog).getByRole("button", { name: "地址填写说明" });
+    await user.pointer([{ keys: "[TouchA>]", target: help }, { keys: "[/TouchA]", target: help }]);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("AutoDL");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(requests).toEqual([]);
+  });
+
+  it("submits a complete remote ComfyUI URL without a separate API key", async () => {
+    const posted: unknown[] = [];
+    const endpoint = "https://comfy.example.com/proxy/synthetic-key";
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: mockDefault })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections", async ({ request }) => {
+        posted.push(await request.json());
+        return HttpResponse.json(settingsFixture({ platform: "COMFYUI", origin: "https://comfy.example.com/[configured-path]", capabilities: [] }));
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "Remote Comfy");
+    await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "COMFYUI");
+    await user.type(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" }), endpoint);
+    expect(within(dialog).queryByLabelText("API Key")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(posted).toEqual([{ name: "Remote Comfy", platform: "COMFYUI", origin: endpoint, apiKey: null }]));
+  });
+
+  it("preserves the saved ComfyUI endpoint when editing its redacted address", async () => {
+    const posted: unknown[] = [];
+    const origin = "https://comfy.example.com/[configured-path]";
+    const fixture = settingsFixture({ platform: "COMFYUI", origin, capabilities: [] });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => {
+        posted.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" })).toHaveValue(origin);
+    await user.click(within(dialog).getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(posted).toEqual([{ expectedVersion: 1, name: "OpenAI", enabled: true, origin, apiKey: null }]));
+  });
+
   it("lets administrators configure a RunningHub HTTPS origin outside the official domains", async () => {
     const posted: unknown[] = [];
     const fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub", origin: "https://custom-api.example.com", capabilities: [] });
@@ -644,7 +724,7 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     await user.type(screen.getByRole("textbox", { name: "连接名称" }), "AutoDL");
     await selectValue(screen.getByRole("combobox", { name: "平台" }), "AUTODL");
-    expect(screen.getByText(/分组为 ComfyUI 的 Token/)).toBeInTheDocument();
+    expect(screen.getByText(/分组为 ComfyUI 的 Token/, { selector: "p.ui-muted" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("API Key"), "fake-autodl-key");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "添加连接" }));
     await waitFor(() => expect(connectionWrites).toEqual([{ name: "AutoDL", platform: "AUTODL", origin: null, apiKey: "fake-autodl-key" }]));

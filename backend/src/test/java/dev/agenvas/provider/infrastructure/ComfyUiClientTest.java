@@ -152,14 +152,67 @@ class ComfyUiClientTest {
     }
 
     @Test
-    void rejectsDnsUserInfoAndNonOriginEndpointsAtConstruction() {
-        for (String endpoint : new String[] {"http://localhost:8188", "http://127.0.0.1:8188/path",
+    void acceptsRemoteHttpsProxyBaseWithoutNetworkAccess() {
+        assertThat(ComfyUiClient.checkedOrigin("https://comfy.example.com/proxy/synthetic-key/"))
+                .isEqualTo(java.net.URI.create("https://comfy.example.com/proxy/synthetic-key"));
+    }
+
+    @Test
+    void rejectsUnsafeSchemesAddressesAndPathsAtConstruction() {
+        for (String endpoint : new String[] {"http://localhost:8188", "http://127.0.0.1:8188/../path",
                 "http://user@127.0.0.1:8188", "http://127.0.0.1:8188?x=1",
                 "http://169.254.169.254:80/metadata", "http://8.8.8.8:8188",
-                "file:///etc/passwd"}) {
+                "file:///etc/passwd", "https://169.254.169.254/proxy/key",
+                "https://comfy.example.com/proxy/%2e%2e", "https://comfy.example.com//proxy",
+                "https://comfy.example.com/proxy/key#fragment"}) {
             assertThatThrownBy(() -> new ComfyUiClient(new ComfyUiProperties(endpoint), mapper))
                     .as(endpoint).isInstanceOf(IllegalArgumentException.class);
         }
+    }
+
+    @Test
+    void retainsProxyPrefixForEveryRouteAndRedactsItsCredentials() throws Exception {
+        String prefix = "/proxy/synthetic-path-key";
+        client = new ComfyUiClient(new ComfyUiProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort() + prefix + "/"), mapper);
+        UUID id = UUID.randomUUID();
+        var routes = new java.util.ArrayList<String>();
+        server.createContext(prefix, exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            routes.add(path);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.getRequestBody().readAllBytes();
+            if (path.endsWith("/upload/image")) respond(exchange, 200,
+                    "{\"name\":\"input.png\",\"type\":\"input\"}");
+            else if (path.endsWith("/prompt")) respond(exchange, 200,
+                    "{\"prompt_id\":\"" + id + "\",\"echo\":\"synthetic-path-key\"}");
+            else if (path.endsWith("/view")) respond(exchange, 200, "output");
+            else respond(exchange, 200, "{}");
+        });
+        var captured = new java.util.concurrent.atomic.AtomicReference<java.util.List<dev.agenvas.shared.http.DebugHttpCapture.Exchange>>();
+        try (var scope = dev.agenvas.shared.http.DebugHttpCapture.open(captured::set)) {
+            assertThat(client.uploadImage(id, new byte[] {1}, "png")).isEqualTo("input.png");
+            assertThat(client.submit(mapper.createObjectNode(), id)).isEqualTo(id);
+            client.history(id);
+            try (var output = client.output("output.png")) { assertThat(output.readAllBytes()).isNotEmpty(); }
+        }
+        assertThat(routes).containsExactly(prefix + "/upload/image", prefix + "/prompt",
+                prefix + "/history/" + id, prefix + "/view");
+        assertThat(captured.get()).hasSize(4);
+        assertThat(captured.get().toString()).doesNotContain("synthetic-path-key");
+    }
+
+    @Test
+    void doesNotRetryAmbiguousSubmissionEvenWithRetryAfterZero() {
+        AtomicInteger submits = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            submits.incrementAndGet();
+            exchange.getResponseHeaders().set("Retry-After", "0");
+            respond(exchange, 503, "ambiguous");
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.TransportFailure.class);
+        assertThat(submits).hasValue(1);
     }
 
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {

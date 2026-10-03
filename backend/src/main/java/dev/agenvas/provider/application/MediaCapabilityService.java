@@ -8,6 +8,7 @@ import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
+import dev.agenvas.provider.infrastructure.ComfyUiEndpoint;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.provider.infrastructure.GoogleNanoBananaClient;
@@ -65,9 +66,17 @@ public class MediaCapabilityService {
         requireAvailablePlatform(origin == null ? MediaPlatform.MOCK : MediaPlatform.COMFYUI);
         UUID id = UUID.randomUUID();
         Instant now = clock.instant();
+        String endpoint = origin == null ? null : validatedOrigin(MediaPlatform.COMFYUI, origin);
+        // Credential-free root URLs retain the environment-bootstrap path without requiring a key.
+        var encrypted = endpoint == null || java.net.URI.create(endpoint).getRawPath().isEmpty()
+                ? null : cipher.encryptMedia(id, 1, endpoint);
         repository.insertConnection(id, normalizedName,
-                origin == null ? MediaPlatform.MOCK : MediaPlatform.COMFYUI, origin,
-                origin == null ? null : Sha256.hex(origin), null, null, null, null, now);
+                endpoint == null ? MediaPlatform.MOCK : MediaPlatform.COMFYUI,
+                endpoint == null ? null : ComfyUiEndpoint.display(endpoint),
+                endpoint == null ? null : Sha256.hex(endpoint),
+                encrypted == null ? null : encrypted.ciphertext(),
+                encrypted == null ? null : encrypted.nonce(),
+                encrypted == null ? null : encrypted.keyVersion(), null, now);
         return repository.connection(id).orElseThrow();
     }
 
@@ -98,9 +107,11 @@ public class MediaCapabilityService {
             }
             return getConnection(previous.entityId());
         }
-        CredentialCipher.Encrypted encrypted = apiKey == null || apiKey.isBlank()
-                ? null : cipher.encryptMedia(id, 1, apiKey);
-        repository.insertConnection(id, normalizedName, normalizedPlatform, normalizedOrigin,
+        String credential = normalizedPlatform == MediaPlatform.COMFYUI ? normalizedOrigin : apiKey;
+        CredentialCipher.Encrypted encrypted = credential == null || credential.isBlank()
+                ? null : cipher.encryptMedia(id, 1, credential);
+        repository.insertConnection(id, normalizedName, normalizedPlatform,
+                displayOrigin(normalizedPlatform, normalizedOrigin),
                 normalizedOrigin == null ? null : Sha256.hex(normalizedOrigin),
                 encrypted == null ? null : encrypted.ciphertext(),
                 encrypted == null ? null : encrypted.nonce(),
@@ -120,9 +131,13 @@ public class MediaCapabilityService {
         }
         ConnectionVersion previous = getConnectionVersion(id, current.currentVersion())
                 .orElseThrow();
-        String normalizedOrigin = validatedOrigin(current.platform(), origin);
+        // Saving the UI's redacted path unchanged preserves the encrypted endpoint.
+        String normalizedOrigin = current.platform() == MediaPlatform.COMFYUI
+                && java.util.Objects.equals(origin, previous.origin())
+                ? comfyEndpoint(previous) : validatedOrigin(current.platform(), origin);
         validateCredential(current.platform(), apiKey, false);
-        boolean newVersion = !java.util.Objects.equals(previous.origin(), normalizedOrigin)
+        String originHash = normalizedOrigin == null ? null : Sha256.hex(normalizedOrigin);
+        boolean newVersion = !java.util.Objects.equals(previous.originSha256(), originHash)
                 || apiKey != null && !apiKey.isBlank();
         int nextVersion = current.currentVersion() + (newVersion ? 1 : 0);
         Instant now = clock.instant();
@@ -131,7 +146,7 @@ public class MediaCapabilityService {
             throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
         }
         if (newVersion) {
-            String versionKey = apiKey;
+            String versionKey = current.platform() == MediaPlatform.COMFYUI ? normalizedOrigin : apiKey;
             if ((versionKey == null || versionKey.isBlank())
                     && previous.credentialCiphertext() != null) {
                 versionKey = cipher.decryptMedia(id, previous.version(),
@@ -140,12 +155,12 @@ public class MediaCapabilityService {
             }
             CredentialCipher.Encrypted encrypted = versionKey == null || versionKey.isBlank()
                     ? null : cipher.encryptMedia(id, nextVersion, versionKey);
-            repository.insertConnectionVersion(id, nextVersion, normalizedOrigin,
+            repository.insertConnectionVersion(id, nextVersion, displayOrigin(current.platform(), normalizedOrigin),
                     normalizedOrigin == null ? null : Sha256.hex(normalizedOrigin),
                     encrypted == null ? null : encrypted.ciphertext(),
                     encrypted == null ? null : encrypted.nonce(),
                     encrypted == null ? null : encrypted.keyVersion(),
-                    encrypted == null ? null : keyMask(versionKey), now);
+                    current.platform() == MediaPlatform.COMFYUI ? null : keyMask(versionKey), now);
         }
         return getConnection(id);
     }
@@ -676,17 +691,21 @@ public class MediaCapabilityService {
             return null;
         }
         try {
-            java.net.URI uri = java.net.URI.create(origin == null ? "" : origin);
-            if (!"http".equals(uri.getScheme()) || !"127.0.0.1".equals(uri.getHost())
-                    || uri.getPort() < 1 || uri.getPort() > 65535
-                    || uri.getRawUserInfo() != null || uri.getRawQuery() != null
-                    || uri.getRawFragment() != null || !"".equals(uri.getRawPath())) {
-                throw invalid(ApiMessage.of("api.media-capability-service.comfyui-only-allows-the-exact-native-127-0-0-1"));
-            }
-            return uri.toASCIIString();
+            return ComfyUiEndpoint.checked(origin).toString();
         } catch (IllegalArgumentException invalidUri) {
             throw invalid(ApiMessage.of("api.media-capability-service.comfyui-address-is-invalid"));
         }
+    }
+
+    private String comfyEndpoint(ConnectionVersion version) {
+        return version.credentialCiphertext() == null ? version.origin()
+                : cipher.decryptMedia(version.connectionId(), version.version(),
+                        new CredentialCipher.Encrypted(version.credentialCiphertext(),
+                                version.credentialNonce(), version.credentialKeyVersion()));
+    }
+
+    private static String displayOrigin(MediaPlatform platform, String origin) {
+        return platform == MediaPlatform.COMFYUI ? ComfyUiEndpoint.display(origin) : origin;
     }
 
     private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
