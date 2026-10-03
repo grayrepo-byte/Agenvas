@@ -48,7 +48,7 @@ function textCard(): CanvasItem {
 
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
-    useCanvasStore.setState({ selectedIds: [] });
+    useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
     server.use(
       http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
         id: params.assetId, width: 1024, height: 1024,
@@ -225,7 +225,7 @@ describe("ProjectWorkspacePage", () => {
     expect(runs).toBe(0);
   });
 
-  it("creates and selects empty text at the menu's canvas position without a drawer", async () => {
+  it.each(["doubleClick", "contextMenu"] as const)("creates and selects empty text at the %s menu's canvas position without a drawer", async (gesture) => {
     const original = textCard();
     const blank: CanvasItem = { ...original, title: "新文字", selectedVersionId: null, selectedVersion: null,
       artifact: { ...original.artifact!, title: "新文字", version: 0,
@@ -263,8 +263,19 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
     await screen.findByText("Text project");
     const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
-    fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
-    await user.click(screen.getByRole("option", { name: "文字" }));
+    if (gesture === "doubleClick") {
+      fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
+      await user.click(screen.getByRole("option", { name: "文字" }));
+    } else {
+      fireEvent.contextMenu(pane, { clientX: 235, clientY: 165 });
+      await user.click(screen.getByRole("menuitem", { name: "添加" }));
+      expect(screen.getByRole("menuitem", { name: "图片" })).toBeVisible();
+      expect(screen.getByRole("menuitem", { name: "视频" })).toBeVisible();
+      expect(screen.getByRole("menuitem", { name: "音频" })).toBeVisible();
+      expect(screen.queryByRole("menuitem", { name: "Agent" })).not.toBeInTheDocument();
+      // jsdom has no Popper geometry for the pointer corridor between parent and submenu.
+      await user.keyboard("{ArrowRight}{ArrowDown}{ArrowDown}{Enter}");
+    }
     expect(await screen.findByRole("article", { name: "新文字 · 文字" })).toHaveClass("is-selected");
     expect(creates).toEqual([{ kind: "TEXT", title: "新文字",
       content: { format: "PLAIN_TEXT", text: "" } }]);
@@ -365,6 +376,70 @@ describe("ProjectWorkspacePage", () => {
     await user.click(screen.getByRole("button", { name: "运行" }));
     await waitFor(() => expect(submittedDraftVersion).toBe(1));
   });
+
+  it.each([
+    { count: 6, failBatch: 0 }, { count: 6, failBatch: 1 }, { count: 101, failBatch: 2 },
+  ])("arranges $count connected cards and retains unsaved drafts on batch $failBatch failure", async ({ count, failBatch }) => {
+    let items = Array.from({ length: count }, (_, index): CanvasItem => ({
+      ...textCard(), id: `card-${index}`, title: `Note ${index}`, x: count - index, y: count - index,
+      version: 7, locked: false,
+    }));
+    const batches: CanvasCommand[][] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Arrange project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items:
+        items.slice(1).map((item, index) => ({ id: `edge-${index}`, sourceCanvasItemId: `card-${index}`,
+          targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION" })) })),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const { commands } = await request.json() as { commands: CanvasCommand[] };
+        batches.push(commands);
+        if (batches.length === failBatch) return HttpResponse.json({ code: "CANVAS_VERSION_CONFLICT", title: "合成布局冲突", detail: "合成布局冲突" },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        items = items.map((item) => {
+          const command = commands.find((candidate) => candidate.itemId === item.id);
+          return command?.type === "UPDATE_LAYOUT" ? { ...item, ...command, version: item.version + 1 } : item;
+        });
+        return HttpResponse.json({ items });
+      }),
+    );
+    const user = userEvent.setup();
+    const client = createQueryClient();
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByText("Arrange project");
+    const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+    fireEvent.contextMenu(pane, { clientX: 300, clientY: 200 });
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "一键整理" })).not.toHaveAttribute("aria-disabled"));
+    await user.click(screen.getByRole("menuitem", { name: "一键整理" }));
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe(failBatch ? "conflict" : "saved"));
+    await waitFor(() => expect(batches.length).toBe(Math.ceil(count / 100)));
+    const commands = batches.flat();
+    const first = commands.find((command) => command.itemId === "card-0");
+    const fifth = commands.find((command) => command.itemId === "card-4");
+    const sixth = commands.find((command) => command.itemId === "card-5");
+    expect(first).toMatchObject({ type: "UPDATE_LAYOUT", expectedVersion: 7, x: 1, y: 1, width: 280, height: 180 });
+    if (!first || first.type !== "UPDATE_LAYOUT" || !fifth || fifth.type !== "UPDATE_LAYOUT" || !sixth || sixth.type !== "UPDATE_LAYOUT")
+      throw new Error("Missing layout commands");
+    expect(fifth.y).toBe(first.y);
+    expect(fifth.x).toBeGreaterThan(first.x);
+    expect(sixth.x).toBe(first.x);
+    expect(sixth.y).toBeGreaterThan(first.y + first.height);
+    if (failBatch) {
+      expect(Object.keys(useCanvasStore.getState().drafts)).toHaveLength(failBatch === 2 ? 1 : count);
+      expect(await screen.findByText("合成布局冲突")).toBeVisible();
+      if (failBatch === 2) {
+        expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items.find((item) => item.id === "card-0")?.version).toBe(8);
+        expect(useCanvasStore.getState().drafts["card-100"]).toBeDefined();
+      }
+    } else {
+      expect(useCanvasStore.getState().drafts).toEqual({});
+      expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(8);
+    }
+  }, 15000);
 
   it("closes the creation menu on an outside click and on Escape without focus inside it", async () => {
     server.use(
@@ -698,7 +773,7 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByLabelText("素材标题")).toHaveValue("");
   });
 
-  it("uploads MP4 through the video archive route and places an exact-version VIDEO card", async () => {
+  it.each(["header", "contextMenu"] as const)("uploads MP4 from %s and places an exact-version VIDEO card", async (entry) => {
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
@@ -721,8 +796,9 @@ describe("ProjectWorkspacePage", () => {
         return HttpResponse.json({ id: artifactId }, { status: 201 });
       }),
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        const body = await request.json() as { commands: Array<{ artifactId: string }> };
+        const body = await request.json() as { commands: Array<{ artifactId: string; x: number; y: number }> };
         expect(body.commands[0]?.artifactId).toBe(artifactId);
+        expect(body.commands[0]).toMatchObject(entry === "contextMenu" ? { x: 235, y: 165 } : { x: 80, y: 80 });
         const selectedVersion = { id: versionId, versionNo: 1, schemaVersion: 1 as const,
           content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
           createdByKind: "USER" as const, runId: null, createdAt: "2026-09-23T00:00:00Z" };
@@ -761,7 +837,14 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "导入素材" }));
+    if (entry === "header") {
+      await user.click(screen.getByRole("button", { name: "导入素材" }));
+    } else {
+      await screen.findByText("Reference project");
+      const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+      fireEvent.contextMenu(pane, { clientX: 235, clientY: 165 });
+      await user.click(screen.getByRole("menuitem", { name: "上传" }));
+    }
     await user.type(screen.getByLabelText("素材标题"), "Uploaded video");
     await user.upload(screen.getByLabelText("图片、视频或音频"),
       new File(["real bytes checked by backend"], "uploaded.mp4", { type: "video/mp4" }));

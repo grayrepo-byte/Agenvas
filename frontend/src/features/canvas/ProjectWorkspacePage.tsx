@@ -61,6 +61,7 @@ import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AGENT_CHAT_HEIGHT,AGENT_CHAT_MIN_HEIGHT,AGENT_CHAT_MIN_WIDTH,AGENT_CHAT_WIDTH,AgentChatCard } from "./AgentChatCard";
 import { CanvasErrorNotice } from "./CanvasErrorNotice";
 import { CanvasHandle } from "./CanvasHandle";
+import { CanvasPaneMenu } from "./CanvasPaneMenu";
 import { CanvasRelationEdge } from "./CanvasRelationEdge";
 import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
 import { CanvasToolMenu } from "./CanvasToolMenu";
@@ -70,6 +71,7 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { displayCanvasRelations } from "./canvasEdgeDisplay";
 import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteraction";
+import { arrangeCanvas,CANVAS_LAYOUT_BATCH_SIZE } from "./arrangeCanvas";
 import {
 agentImageConnection,canvasRelationRemoval,canvasTargetHandleId,inputConnectionUpdate,
 isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
@@ -200,6 +202,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const creationMenuElement = useRef<HTMLDivElement>(null);
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
+  const [paneMenu, setPaneMenu] = useState<CreationMenu | null>(null);
   const [creationPoint, setCreationPoint] = useState<CreationPoint | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -422,8 +425,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         type: "PLACE_ARTIFACT",
         itemId: progress.itemId,
         artifactId: progress.artifactId,
-        x: DEFAULT_CANVAS_ORIGIN + (index % AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.x,
-        y: DEFAULT_CANVAS_ORIGIN + Math.floor(index / AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.y,
+        x: creationPoint?.x ?? DEFAULT_CANVAS_ORIGIN + (index % AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.x,
+        y: creationPoint?.y ?? DEFAULT_CANVAS_ORIGIN + Math.floor(index / AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.y,
         width: audio ? AUDIO_CARD_WIDTH : DEFAULT_CARD_WIDTH,
         height: AUDIO_CARD_HEIGHT,
         zIndex: index,
@@ -937,6 +940,28 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const projectedRelations = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? []),
     [canvas.data?.items, canvasConnections.data?.items]);
+  const organizeCanvas = useMutation({
+    mutationFn: async () => {
+      const items = (canvas.data?.items ?? []).filter((item) => item.artifact || item.agent);
+      const positions = arrangeCanvas(items.map((item) => {
+        const draft = useCanvasStore.getState().drafts[item.id];
+        return { id: item.id, x: draft?.x ?? item.x, y: draft?.y ?? item.y,
+          ...effectiveNodeSize(item, draft), locked: item.locked };
+      }), projectedRelations);
+      const updates = items.flatMap((item) => {
+        const position = positions.get(item.id);
+        if (!position) return [];
+        const patch = { ...position, ...effectiveNodeSize(item) };
+        updateDraft(item.id, patch);
+        return [{ item, patch }];
+      });
+      // Preserve the API's bounded transaction size. Successful batches clear their own drafts;
+      // a later conflict leaves the remaining rows visible and reports the failed save normally.
+      for (let index = 0; index < updates.length; index += CANVAS_LAYOUT_BATCH_SIZE) {
+        await saveLayout.mutateAsync(updates.slice(index, index + CANVAS_LAYOUT_BATCH_SIZE));
+      }
+    },
+  });
   const relationEdges = useMemo(() => displayCanvasRelations(projectedRelations, selectedIds, selectedEdgeIds,
     displaySettings.preferences), [projectedRelations, selectedIds, selectedEdgeIds, displaySettings.preferences]);
   const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
@@ -1008,6 +1033,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       rect.height - CREATION_MENU_HEIGHT - CREATION_MENU_MARGIN));
     creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
+    setPaneMenu(null);
     setCreationMenu({ x, y, point });
   }
 
@@ -1048,10 +1074,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [creationMenu, setSelectedIds]);
 
-  function chooseCreationKind(kind: CreationKind) {
-    const point = creationMenu?.point;
+  function chooseCreationKind(kind: CreationKind, point = creationMenu?.point) {
     if (!point) return;
     setCreationMenu(null);
+    setPaneMenu(null);
     setResourcesOpen(false);
     setCreationPoint(point);
     if (kind === "TEXT") {
@@ -1157,7 +1183,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             setToolsKind(null); setResourcesOpen(true);
           }} type="button">{t("canvas.workspace.resources")}</Button>
           <Button variant="outline"  onClick={() => {
-            setResourcesOpen(false); setToolsKind("UPLOAD");
+            setCreationPoint(null); setResourcesOpen(false); setToolsKind("UPLOAD");
           }} type="button">{t("canvas.workspace.importMedia")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <a className="secondary-button" download={`agenvas-project-${projectId}.json`}
@@ -1324,6 +1350,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 .map((id) => ({ id, type: "select", selected: false })));
             }
           }}
+          onPaneContextMenu={(event) => {
+            event.preventDefault();
+            const rect = canvasElement.current?.getBoundingClientRect();
+            if (!rect) return;
+            const point = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+              ?? { x: event.clientX - rect.left, y: event.clientY - rect.top };
+            setCreationMenu(null);
+            setPaneMenu({ x: event.clientX, y: event.clientY, point });
+          }}
           onNodesChange={handleNodesChange}
           onNodeDoubleClick={(event, node) => {
             if (!selecting || !node.data.item.artifact || (event.target instanceof Element &&
@@ -1364,6 +1399,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <MiniMap pannable zoomable />
           <Controls position="bottom-right" />
         </ReactFlow>
+        <CanvasPaneMenu position={paneMenu} onClose={() => setPaneMenu(null)}
+          onAdd={(kind) => chooseCreationKind(kind, paneMenu?.point)} creatingText={addTextCard.isPending}
+          onUpload={() => {
+            setCreationPoint(paneMenu?.point ?? null);
+            setPaneMenu(null);
+            setResourcesOpen(false);
+            setToolsKind("UPLOAD");
+          }}
+          onArrange={() => { setPaneMenu(null); clearSelection(); organizeCanvas.mutate(); }}
+          arranging={organizeCanvas.isPending || saveLayout.isPending || alignSelected.isPending}
+          canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
+            nodes.some((node) => !node.data.item.locked)} />
         <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
