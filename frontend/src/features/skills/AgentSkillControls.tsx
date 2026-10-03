@@ -121,7 +121,7 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
   const selected=state.version.data;
   const title=skills.data?.pages.flatMap((page)=>page.items).find((skill)=>skill.id===state.selectedSkillId)?.title ?? selected?.name;
   function choose(skillId:string,skillVersionId:string) {state.setSelection({mode:"VERSION",skillId,skillVersionId,inputs:[]});}
-  return <Dialog title={t("skills.choose")} description={t("skills.pickerHint")} className="agent-skill-picker"
+  return <Dialog title={t("skills.choose")} description={t("skills.pickerHint")} className="skills-dialog agent-skill-picker"
     busy={busy} onClose={onClose} onSubmit={(event)=>{event.preventDefault();event.stopPropagation();if(state.ready && selected && !resources.isError)onSelect(state.selection);}}
     footer={<>
       <Button variant="outline" type="button" disabled={busy} onClick={()=>onSelect({mode:"NONE",inputs:[]})}>{t("skills.none")}</Button>
