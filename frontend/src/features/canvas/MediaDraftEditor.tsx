@@ -514,11 +514,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   useEffect(() => {
     if (runningHub || artifact.kind !== "VIDEO" || !fields || !chosenCapability || dirty || save.isPending
         || commitAssetReferences.isPending || removeConnectedInput.isPending || templateBusy) return;
-    const hasImages = fields.mediaInputs.length > 0;
-    const desiredMode = hasImages
+    const hasInputs = fields.mediaInputs.length > 0;
+    // Missing media makes a draft incomplete; it must not overwrite an explicitly chosen mode.
+    // Defaults apply only to an unset mode, or when inputs are added to text-to-video.
+    const desiredMode = hasInputs
       ? fields.videoInputMode === null || fields.videoInputMode === "TEXT"
         ? preferredImageVideoMode(chosenCapability) : fields.videoInputMode
-      : "TEXT";
+      : fields.videoInputMode ?? "TEXT";
     const parameters = normalizedVideoParameters(fields.parameters, chosenCapability);
     if (fields.videoInputMode !== desiredMode
         || JSON.stringify(fields.parameters) !== JSON.stringify(parameters)) {
@@ -767,8 +769,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function fieldsWithReferences(versionIds: string[], baseFields = currentFields) {
     const nextInputs = [...baseFields.mediaInputs];
-    const nextMode = artifact.kind === "VIDEO" && nextInputs.length === 0
-      ? preferredImageVideoMode(chosenCapability) : effectiveMode;
+    const nextMode = modeForAddedReference(baseFields);
     for (const versionId of versionIds) {
       if (nextInputs.some((input) => input.versionId === versionId)) continue;
       const kind = referenceKind(versionId);
@@ -784,6 +785,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     return nextInputs.length === baseFields.mediaInputs.length
       ? baseFields : { ...baseFields, mediaInputs: nextInputs,
         ...(artifact.kind === "VIDEO" ? { videoInputMode: nextMode } : {}) };
+  }
+
+  function modeForAddedReference(baseFields: DraftFields) {
+    if (artifact.kind !== "VIDEO") return effectiveMode;
+    return baseFields.videoInputMode === null || baseFields.videoInputMode === "TEXT"
+      ? preferredImageVideoMode(chosenCapability) : baseFields.videoInputMode;
   }
 
   function appendReferences(versionIds: string[], baseFields = currentFields) {
@@ -1042,7 +1049,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             plan={(entry) => {
               if (!canAddReference(entry.kind, fields.mediaInputs)) return null;
               const audio = entry.kind === "AUDIO";
-              const mode = artifact.kind === "VIDEO" && fields.mediaInputs.length === 0 ? preferredImageVideoMode(chosenCapability) : effectiveMode;
+              const mode = modeForAddedReference(fields);
               const role = audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
               if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
               const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
@@ -1168,9 +1175,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
               : option.needsImage && fields.mediaInputs.length === 0;
             const hasImagesForText = option.value === "TEXT" && fields.mediaInputs.length > 0;
             const unsupported = !chosenCapability?.supportedVideoInputModes.includes(option.value);
-            const disabled = missingImage || hasImagesForText || unsupported;
-            const reason = missingImage ? t("media.editor.requiresImage") : hasImagesForText ? t("media.editor.automaticModeHint")
-              : unsupported ? t("media.editor.unsupportedModel") : option.value === "START_END" && autodlWorkflow ? t("media.editor.startEndRequired") : option.description;
+            const disabled = hasImagesForText || unsupported;
+            const reason = unsupported ? t("media.editor.unsupportedModel") : hasImagesForText ? t("media.editor.automaticModeHint")
+              : missingImage ? t("media.editor.requiresImage") : option.value === "START_END" && autodlWorkflow ? t("media.editor.startEndRequired") : option.description;
             return <DropdownMenuItem className="media-draft-model-option" role="menuitemradio" aria-checked={effectiveMode === option.value} disabled={disabled} title={reason} key={option.value} onSelect={(event) => { event.preventDefault(); chooseVideoMode(option.value); }}>
               <span><strong>{option.label}</strong><small>{reason}</small></span>
               {effectiveMode === option.value ? <Check size={16} /> : null}

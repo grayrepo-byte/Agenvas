@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act,createEvent,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { act,createEvent,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import type { NodeSelectionChange,ReactFlowInstance,ReactFlowProps } from "@xyflow/react";
 import { http,HttpResponse } from "msw";
 import { useLayoutEffect } from "react";
@@ -142,6 +142,38 @@ const selectChange = (id: string, selected: boolean): SelectionChange =>
   ({ id, type: "select", selected });
 
 describe("canvas selection clearing", () => {
+  it("selects all Agent outputs and offers relevant bulk actions with a working close button", async () => {
+    const outputs = items.map((item) => item.artifact ? { ...item, groupId: "group-1" } : item);
+    const commands: CanvasCommand[][] = [];
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: outputs } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: outputs })),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        commands.push((await request.json() as { commands: CanvasCommand[] }).commands);
+        return HttpResponse.json({ items: outputs });
+      }),
+    );
+    await renderInteractiveFlow();
+    fireEvent.click(await screen.findByRole("button", { name: "查看产物 · 2" }));
+    const toolbar = await screen.findByRole("group", { name: "批量操作" });
+    expect(selectedIds()).toEqual(["image-card", "text-card"]);
+    expect(within(toolbar).getByText("2 张卡片已选中")).toBeVisible();
+    expect(within(toolbar).queryByRole("button", { name: "绑定到 Agent" })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "清空 Agent 输入" })).not.toBeInTheDocument();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "左对齐" }));
+    await waitFor(() => expect(commands).toHaveLength(1));
+    expect(commands[0]).toEqual([
+      expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 0 }),
+      expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "text-card", x: 0 }),
+    ]);
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card", "agent-card"]));
+    expect(within(toolbar).getByRole("button", { name: "绑定到 Agent" })).toBeEnabled();
+    expect(within(toolbar).getByRole("button", { name: "清空 Agent 输入" })).toBeEnabled();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "关闭编辑区" }));
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByRole("group", { name: "批量操作" })).not.toBeInTheDocument();
+  });
+
   it("clears the card selection when React Flow reports a select change", async () => {
     await renderFlow();
     useCanvasStore.setState({ selectedIds: ["image-card", "agent-card"] });

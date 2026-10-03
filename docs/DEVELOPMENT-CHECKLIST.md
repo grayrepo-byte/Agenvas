@@ -182,7 +182,17 @@
 
 2026-09-30 图片放大改为模态框：图片节点放大按钮改为页面内原图预览，覆盖等待、失败重试、关闭按钮/Esc/遮罩关闭、焦点限制与恢复、画布快捷键隔离。新增 ImagePreviewDialog 组件及样式，调整 MediaCanvasCard 和按钮样式；同步 MVP 规格与 ADR 0005，无 API 或数据库迁移。定向 MediaCanvasCard 组件测试 56 项、TypeScript 类型检查和修改文件 lint 通过。全量测试、后端测试与真实浏览器视觉验收未运行。
 
+2026-10-03 画布选择与 Agent 按钮样式修正：`styles.css` 将两类选择矩形底色改为透明、抑制添加 Command 容器的原生焦点框并限制操作区域的文本选择；`AgentChatCard.css` 将白色外圈改为主题色，保留回复文本复制并修正历史按钮的自适应高度；`AgentChatCard.tsx` 使用公共 Button 的主次变体及紧凑/图标尺寸。AgentChatCard、CanvasSelectionClearing、ContentCanvasCard、ProjectWorkspacePage 共 82 项定向组件测试、TypeScript、定向 ESLint 和品牌色检查通过。隔离 Chrome 样式预览使用合成内容与公共 Button/Command，验证选中外圈、透明矩形、菜单焦点/方向键、标题不可选及正文/回复/输入可选。该预览未挂载完整项目工作区，不替代用户原始偶发路径的端到端复现；全量测试、后端测试和真实 Provider 调用未运行。无合约或迁移。
+
+2026-10-03 文字编辑退出与卡片详情移除：文字卡片的工具栏在编辑时切换为“退出内容编辑”，与节点内退出按钮和 Esc 共用草稿保护流程；未修改直接返回阅读，未保存输入提供继续编辑、放弃或保存并退出，失败/冲突保留输入，忙碌时禁止退出，格式菜单先消费 Esc。退出/保存图标按钮使用紧凑尺寸。文字、图片、视频、音频工具栏移除卡片详情，工作区删除详情抽屉、状态、回调和专用样式。同步规格与 ADR 0005，无 API、迁移或依赖变更。ContentCanvasCard、MediaCanvasCard、ProjectWorkspacePage、ArtifactVersionEditing、CanvasSelectionClearing 分批验证共 136 项不同的定向测试；新增文字退出与媒体详情移除回归，最终两个卡片文件 78 项通过，格式 Esc 补充后文字卡片 18 项通过。TypeScript、定向 ESLint、主题色/i18n 和 diff 空白检查通过。真实 Chrome 使用合成内容及真实 React Flow/ContentCanvasCard，验证工具栏/节点内按钮边界、双击编辑、Esc、格式菜单、未保存确认与退出；该预览未挂载完整项目工作区，不代表真实项目或 Provider 端到端验收。全量测试、后端测试、真实 Provider 调用未运行。
+
 ### T08 Agent 卡片与输入绑定
+
+2026-10-03 Agent Skill 模态选择：输入框底部右侧显示紧凑入口，目录卡片、搜索、发布版本、精确输入及项目参考准备迁入公共 Dialog；取消保留原选择，清空为 NONE，入口显示所选名称。画布预检和 Run 创建始终携带本次选择，未选择显式发送 NONE，不自动沿用默认绑定；固定版本试用和显式默认选择保留。模态提交阻止向外层任务表单冒泡，选择/清空使旧预检失效。同步四语言文案、MVP 规格、Skill 实施设计与 ADR 0005；无合约、迁移或依赖变更。AgentSkillControls/AgentChatCard 最终 23 项定向测试、ProjectWorkspacePage 23 项定向测试通过，覆盖取消/应用/清空、必需输入、准备状态/完成、失败重试、无 Skill 请求与选择不提交模型；TypeScript、定向 ESLint、语言/品牌色检查与 Vite 生产构建通过（保留大 chunk 提示）。真实 Chrome 使用合成 Agent/Skill 及真实 React Flow/公共模态，验证底部右侧位置、搜索、模态边界、选择不提交任务及默认绑定下 NONE 预检，并检查两张合成界面截图。全量测试、后端测试、真实 Provider 调用及完整项目端到端未运行。
+
+2026-10-03 顶部错误提示修复：新增 CanvasErrorNotice，复用公共深色 Notice/Button；画布顶部提示显示失败操作、关联卡片标题和现存节点定位，单次错误可关闭，新失败仍显示，关闭保留任务状态、草稿与安全重试上下文。快照/画布加载及设置保存提示保留重试，多条提示纵向排列并限制高度；去除相同错误在工具抽屉的重复呈现。涉及 ProjectWorkspacePage、styles.css、四语言文案，同步规格与 ADR 0005，无合约、迁移或依赖变更。用 MSW 合成失败复现缺少来源/关闭的旧行为，新增图片创建重复失败与音频节点 Agent 对话失败的定位/关闭回归；ProjectWorkspacePage/CanvasSelectionClearing 共 52 项定向测试通过，最终工作区 25 项复验通过。TypeScript、定向 ESLint、主题色/i18n（2031 条四语言）、Vite 生产构建通过（保留大 chunk 提示）。隔离真实 Chrome 使用合成内容及公共提示组件，验证多条不重叠、独立关闭、新错误重现及提示组件窄屏布局，并检查合成截图；没有挂载完整工作区，不代表用户原始项目路径的端到端复现。全量测试、后端测试与真实 Provider 调用未运行。
+
+2026-10-03 多选工具栏样式修复：ProjectWorkspacePage 将 Agent 输出全选与一般多选的批量面板改为紧凑圆角操作条，公共 Button/Separator、Phosphor 图标和主题色统一数量/动作/关闭的横向排版；styles.css 删除旧宽幅面板样式。只显示选区适用的绑定/清空操作，等待禁用与原保存/选择行为保留。同步规格与 ADR 0005，无合约、迁移或依赖变更。新增真实 React Flow 组件回归，覆盖 Agent 全部输出选择、相关操作、批量左对齐保存、混合 Agent 选区和关闭；CanvasSelectionClearing/ProjectWorkspacePage 共 53 项定向测试、TypeScript、定向 ESLint、主题色/i18n 检查通过。真实 Chrome 挂载完整工作区组件，API 全部由合成数据拦截，验证输出选区与混合选区按钮、关闭、中文/俄语无覆盖越界，并检查两张合成截图。该浏览器验证不包含真实服务端、模型或媒体 Provider；全量测试、后端测试和本轮生产构建未运行。
 
 依赖：T07。
 
@@ -589,6 +599,8 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 2026-09-28 多参考 Provider 切片：OpenAI GPT Image 2 与 Google Nano Banana 2 已从冻结 Task 读取全部有序图片并分别按官方 `image[]` multipart 与 Gemini `inlineData` parts 提交，能力上限为 4／14；数量、重复版本、冻结顺序、同项目 Artifact 身份、单图与总字节均在网络前校验。ComfyUI 保持单图。本轮复用现有 `maxReferenceImages` 合约与 V55 数据模型，无 OpenAPI、Flyway 或生成 TypeScript 变更；真实多参考 Provider 调用仍未运行。
 
 2026-09-29 视频输入模式与比例增量：底部编辑器用与图片节点一致的圆角深色弹层展示文生视频、全能参考和首尾帧；空图片栏自动保存文生视频并置灰需图模式，加入第一张图片时优先全能参考、移除最后一张时回到文生视频。视频草稿新增 `AUTO / 16:9 / 9:16 / 1:1` 比例，Task 冻结该值；Mock、ComfyUI 与 Seedance 固定适配器读取冻结比例，`AUTO` 仍跟随项目画幅。Mock 能力声明三种模式，现有 ComfyUI/Seedance 首帧适配器继续只声明首尾帧，未伪造真实能力。
+
+2026-10-03 视频模式准备流程修订：替代上段“空图片栏置灰需图模式”的交互。MediaDraftEditor 允许先选择能力支持的全能参考或首尾帧并保存空素材草稿，编辑/重新读取不改回文生视频；从项目资源、设备、画布或个人资产添加第一条参考时沿用已选模式，首尾帧第一张保持 START_FRAME。仅尚未指定模式或当前为 TEXT 时选择默认图片模式；缺少必需素材仍禁止运行，模型不支持的模式仍禁用。四语言提示更新，同步 MVP 规格与 ADR 0014；后端已支持不完整草稿，无后端、合约、迁移或依赖变更。回归覆盖先选模式、保存、提示词编辑、重新读取、随后添加首图并恢复运行条件，以及个人资产引用请求中的固定模式/角色；输入与请求均为合成 Mock。MediaDraftEditor/mediaDraftCapability 共 68 项定向测试、TypeScript、定向 ESLint、主题色/i18n 检查通过。全量测试、后端测试、浏览器与真实 Provider 调用、本轮生产构建未运行。
 
 2026-09-28 资源完整性选择切片：资源库面板已支持名称/版本搜索、历史版本、能力剩余容量内的有序多选和明确确认；确认前不修改图片栏，确认使用单次草稿 CAS。任一候选失效时整批不添加并刷新资源和历史版本。真实 PostgreSQL 测试确认混合有效/失效版本不会推进草稿版本或留下部分输入；该综合条目仍因设备上传端到端验收等剩余项不勾选。
 

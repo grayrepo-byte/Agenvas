@@ -10,3 +10,20 @@
 .skills-published-assets { display:flex; flex-wrap:wrap; gap:16px; }
 .skills-published-assets figure { max-width:180px; margin:0; }
 .skills-published-assets img { width:100%; aspect-ratio:1; object-fit:contain; }
+
+.agent-skill-trigger { max-width: 160px; min-width: 0; color: var(--ui-text-secondary); }
+.agent-skill-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-skill-picker { --ui-dialog-width: 960px; }
+.agent-skill-picker-toolbar { display: flex; align-items: center; gap: var(--ui-space-3); margin-bottom: var(--ui-space-4); }
+.agent-skill-picker-toolbar input { flex: 1; min-width: 0; }
+.agent-skill-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--ui-space-3); }
+.agent-skill-picker-card { height: auto; min-height: 160px; display: flex; flex-direction: column; align-items: flex-start;
+  justify-content: flex-start; gap: var(--ui-space-3); white-space: normal; text-align: left; padding: var(--ui-space-4); }
+.agent-skill-picker-card[aria-pressed=true] { border-color: var(--ui-accent); background: var(--ui-accent-subtle); }
+.agent-skill-picker-card strong { color: var(--ui-text); overflow-wrap: anywhere; }
+.agent-skill-picker-card > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-skill-picker-preview { margin-top: var(--ui-space-4); }
+.agent-skill-picker-preview [data-slot=field-group] { margin-bottom: var(--ui-space-4); }
+.agent-skill-picker-preview > p { margin-block: var(--ui-space-3); color: var(--ui-text-muted); }
+@media (max-width: 560px) { .agent-skill-picker-toolbar { flex-wrap: wrap; } .agent-skill-picker-grid { grid-template-columns: 1fr; } }

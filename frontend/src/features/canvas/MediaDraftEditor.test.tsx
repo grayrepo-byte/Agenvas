@@ -1025,22 +1025,76 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
-  it("defaults an empty video draft to text-to-video and disables image-required modes", async () => {
+  it.each([
+    { mode: "GENERAL_REFERENCE", label: /全能参考/ },
+    { mode: "START_END", label: /首尾帧/ },
+  ] as const)("selects and saves empty $mode video drafts before adding required images", async ({ mode, label }) => {
     const videoSettings: MediaSettings = {
       connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability] }],
       defaults: [{ kind: "VIDEO_GENERATION", capabilityId: versatileVideoCapability.id, version: 0 }],
     };
-    const { saves } = setup({ kind: "VIDEO", settings: videoSettings });
+    const { client, saves } = setup({ kind: "VIDEO", settings: videoSettings,
+      draft: { ...initialDraft, durationSeconds: 5 }, handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+          id: "reference-image", title: "海边灯塔", resourceDefaultVersionId: "image-v1" }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+          HttpResponse.json({ items: [{ id: "image-v1", versionNo: 1, content: { assetId: "asset-image-v1" } }] })),
+      ] });
     const user = userEvent.setup();
 
     await waitFor(() => expect(saves.at(-1)).toMatchObject({
       videoInputMode: "TEXT", parameters: { aspectRatio: "AUTO" }, mediaInputs: [],
     }));
     expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent("文生视频");
+    expect(screen.getByRole("button", { name: "运行" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "选择视频输入模式" }));
     expect(screen.getByRole("menuitemradio", { name: /文生视频/ })).toBeEnabled();
-    expect(screen.getByRole("menuitemradio", { name: /全能参考/ })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByRole("menuitemradio", { name: /首尾帧/ })).toHaveAttribute("aria-disabled", "true");
+    const option = screen.getByRole("menuitemradio", { name: label });
+    expect(option).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(option);
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ videoInputMode: mode, mediaInputs: [] }));
+    expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent(label);
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    fireEvent.input(screen.getByRole("textbox", { name: "视频提示词" }), { target: { textContent: "Updated video prompt" } });
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ videoInputMode: mode, prompt: "Updated video prompt", mediaInputs: [] }));
+    expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent(label);
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await act(async () => { await client.invalidateQueries({ queryKey: ["media-draft", PROJECT_ID, CANVAS_ITEM_ID] }); });
+    expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent(label);
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 海边灯塔 · v1" }));
+    await user.click(screen.getByRole("button", { name: "添加所选图片（1）" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ videoInputMode: mode,
+      mediaInputs: [expect.objectContaining({ versionId: "image-v1", role: mode === "START_END" ? "START_FRAME" : "REFERENCE" })] }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "选择视频输入模式" })).toHaveTextContent(label);
+  });
+
+  it.each(["GENERAL_REFERENCE", "START_END"] as const)("keeps a persisted empty %s draft when choosing the first personal library reference", async (mode) => {
+    const archived = vi.fn();
+    setup({ kind: "VIDEO", settings: {
+      connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: versatileVideoCapability.id, version: 0 }],
+    }, draft: { ...initialDraft, videoInputMode: mode, durationSeconds: 5, parameters: { aspectRatio: "AUTO" } }, handlers: [
+      http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "library-image", name: "资产图片", category: "OTHER", kind: "IMAGE",
+        version: 2, source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }], total: 1, categoryCounts: {} })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/library-references`, async ({ request }) => {
+        archived(await request.json());
+        return HttpResponse.json({ id: "library-command", status: "ARCHIVING" }, { status: 202 });
+      }),
+      http.get("/api/v1/library/commands/library-command", () => HttpResponse.json({ id: "library-command", status: "ARCHIVING" })),
+    ] });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "视频提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    await user.click(await screen.findByRole("button", { name: "用作参考：资产图片" }));
+    await waitFor(() => expect(archived).toHaveBeenCalledOnce());
+    expect(archived).toHaveBeenCalledWith(expect.objectContaining({ entryId: "library-image",
+      role: mode === "START_END" ? "START_FRAME" : "REFERENCE",
+      draft: expect.objectContaining({ videoInputMode: mode, mediaInputs: [] }) }));
   });
 
   it("switches the first image to general reference and persists a video aspect ratio", async () => {

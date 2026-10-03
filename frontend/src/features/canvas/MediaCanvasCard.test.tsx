@@ -28,23 +28,27 @@ function itemFor(shownArtifact: Artifact): CanvasItem {
 }
 
 function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
-  const onInspect = vi.fn();
   const onEdit = vi.fn();
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const card = (selected: boolean, toolbarVisible = true) => <QueryClientProvider client={client}>
     <div onClick={onCardClick}>
       <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected={selected}
-        toolbarVisible={toolbarVisible} locked={false} onEdit={onEdit}
-        onInspect={onInspect}>{null}</MediaCanvasCard>
+        toolbarVisible={toolbarVisible} locked={false} onEdit={onEdit}>{null}</MediaCanvasCard>
     </div>
   </QueryClientProvider>;
   const view = render(card(true));
-  return { onInspect, onEdit, onCardClick,
+  return { onEdit, onCardClick,
     setToolbarState: (selected: boolean, toolbarVisible = true) => view.rerender(card(selected, toolbarVisible)) };
 }
 
 describe("MediaCanvasCard", () => {
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("removes card details from %s toolbars", (kind) => {
+    showCard({ ...artifact, kind });
+    expect(screen.getByLabelText("媒体卡片操作")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "卡片详情" })).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     server.use(
       http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) =>
@@ -208,7 +212,7 @@ describe("MediaCanvasCard", () => {
   });
 
   it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
-    const { onInspect, onCardClick } = showCard();
+    const { onCardClick } = showCard();
     const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
     await clickControl(await screen.findByRole("button", { name: "上传图片" }));
     expect(pickerClick).toHaveBeenCalledOnce();
@@ -221,8 +225,7 @@ describe("MediaCanvasCard", () => {
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus());
-    await clickControl(screen.getByRole("button", { name: "卡片详情" }));
-    expect(onInspect).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "卡片详情" })).not.toBeInTheDocument();
   });
 
   it("submits depth extraction against the exact visible image version", async () => {

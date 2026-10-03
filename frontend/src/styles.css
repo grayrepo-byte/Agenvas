@@ -121,7 +121,7 @@ button:disabled {
   --line: rgba(255, 255, 255, 0.13);
   --accent: var(--ui-accent);
   --xy-edge-stroke-selected: var(--ui-accent);
-  --xy-selection-background-color: var(--ui-accent-subtle);
+  --xy-selection-background-color: transparent;
   --xy-selection-border: 1px solid var(--ui-accent);
   display: flex;
   flex-direction: column;
@@ -181,9 +181,19 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   background: var(--canvas);
+  /* Canvas gestures select cards; only content and editors select browser text. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.workspace-create-menu { position: absolute; z-index: 15; }
+.workspace-canvas :is(input, textarea, [contenteditable="true"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* The Command root receives focus for arrow-key navigation. Its active row
+   already shows keyboard selection, so it must not get a browser outline. */
+.workspace-create-menu { position: absolute; z-index: 15; outline: none; }
 
 .workspace-tool-rail {
   position: absolute;
@@ -250,21 +260,37 @@ button:disabled {
 .workspace-canvas.is-hand-tool .react-flow__node { cursor: grab; }
 .workspace-canvas.is-hand-tool .react-flow__pane.dragging { cursor: grabbing; }
 
-.workspace-bottom-editor {
+.workspace-selection-toolbar {
   position: absolute;
   z-index: 10;
   bottom: 1rem;
   left: 50%;
-  width: min(42rem, calc(100% - 11rem));
-  max-height: 45vh;
-  overflow: auto;
   transform: translateX(-50%);
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  background: #1b1b1e;
-  padding: 0.85rem 1rem;
-  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 999px;
+  background: var(--ui-surface-raised);
+  box-shadow: 0 6px 18px #0005;
 }
+
+.workspace-selection-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  white-space: nowrap;
+}
+.workspace-selection-count svg { width: 16px; height: 16px; }
+.workspace-selection-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
 
 .workspace-media-editor {
   position: relative;
@@ -822,7 +848,6 @@ button:disabled {
   .relight-capability-select { min-width: 0; }
   .relight-capability-select .ui-select { max-width: 250px; }
 }
-.media-inspector { z-index: 21; bottom: auto; max-height: calc(100vh - 110px); }
 .media-card-upload-form { display: flex; flex-direction: column; gap: 20px; padding-top: 20px; font-size: 13px; }
 .media-card-upload-form [role="alert"] { color: #fda4af; line-height: 1.6; }
 .workspace-shell button:focus-visible, .workspace-shell a:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
@@ -890,12 +915,28 @@ button:disabled {
   fill: var(--ink);
 }
 
-.canvas-message {
+.canvas-feedback {
   position: absolute;
   z-index: 5;
   top: 1rem;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(28rem, calc(100% - 2rem));
+  max-height: 40%;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.canvas-feedback > * { pointer-events: auto; }
+.canvas-error-notice .ui-notice { margin: 0; overflow-wrap: anywhere; }
+.canvas-error-notice .ui-notice p { margin: 0; }
+.canvas-error-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-top: 0.4rem; }
+
+.canvas-message {
+  align-self: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #242427;
