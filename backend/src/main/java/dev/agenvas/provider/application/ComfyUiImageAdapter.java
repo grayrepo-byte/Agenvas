@@ -20,6 +20,7 @@ import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.settings.application.CredentialCipher;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.time.Instant;
@@ -36,14 +37,16 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     private final AssetService assets;
     private final ProjectService projects;
     private final ObjectMapper mapper;
+    private final CredentialCipher cipher;
 
     public ComfyUiImageAdapter(JooqMediaCapabilityRepository catalog, ArtifactService artifacts,
-            AssetService assets, ProjectService projects, ObjectMapper mapper) {
+            AssetService assets, ProjectService projects, ObjectMapper mapper, CredentialCipher cipher) {
         this.catalog = catalog;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
         this.mapper = mapper;
+        this.cipher = cipher;
     }
 
     @Override public String adapterId() { return "COMFY_IMAGE_V1"; }
@@ -88,7 +91,12 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     }
 
     private ComfyUiClient client(Snapshot snapshot) {
-        String origin = snapshot.connectionVersion().origin();
+        var version = snapshot.connectionVersion();
+        // Existing local versions have no ciphertext; newly configured full URLs are encrypted.
+        String origin = version.credentialCiphertext() == null ? version.origin()
+                : cipher.decryptMedia(version.connectionId(), version.version(),
+                        new CredentialCipher.Encrypted(version.credentialCiphertext(),
+                                version.credentialNonce(), version.credentialKeyVersion()));
         if (origin == null || snapshot.connectionVersion().originSha256() == null) {
             throw new IllegalStateException("Pinned ComfyUI origin is missing");
         }

@@ -11,6 +11,19 @@ import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { useCanvasStore } from "./canvasStore";
 
+async function openLocalUpload(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByText("Reference project");
+  const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+  fireEvent.contextMenu(pane, { clientX: 235, clientY: 165 });
+  const input = screen.getByLabelText("上传") as HTMLInputElement;
+  const picker = vi.spyOn(input, "click");
+  await user.click(screen.getByRole("menuitem", { name: "上传" }));
+  expect(picker).toHaveBeenCalledOnce();
+  picker.mockRestore();
+  expect(document.querySelector(".workspace-drawer")).toBeNull();
+  return input;
+}
+
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
 /** One persisted image artifact with an archived UPLOAD version. */
@@ -48,7 +61,7 @@ function textCard(): CanvasItem {
 
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
-    useCanvasStore.setState({ selectedIds: [] });
+    useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
     server.use(
       http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
         id: params.assetId, width: 1024, height: 1024,
@@ -225,7 +238,7 @@ describe("ProjectWorkspacePage", () => {
     expect(runs).toBe(0);
   });
 
-  it("creates and selects empty text at the menu's canvas position without a drawer", async () => {
+  it.each(["doubleClick", "contextMenu"] as const)("creates and selects empty text at the %s menu's canvas position without a drawer", async (gesture) => {
     const original = textCard();
     const blank: CanvasItem = { ...original, title: "新文字", selectedVersionId: null, selectedVersion: null,
       artifact: { ...original.artifact!, title: "新文字", version: 0,
@@ -263,8 +276,19 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
     await screen.findByText("Text project");
     const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
-    fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
-    await user.click(screen.getByRole("option", { name: "文字" }));
+    if (gesture === "doubleClick") {
+      fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
+      await user.click(screen.getByRole("option", { name: "文字" }));
+    } else {
+      fireEvent.contextMenu(pane, { clientX: 235, clientY: 165 });
+      await user.click(screen.getByRole("menuitem", { name: "添加" }));
+      expect(screen.getByRole("menuitem", { name: "图片" })).toBeVisible();
+      expect(screen.getByRole("menuitem", { name: "视频" })).toBeVisible();
+      expect(screen.getByRole("menuitem", { name: "音频" })).toBeVisible();
+      expect(screen.queryByRole("menuitem", { name: "Agent" })).not.toBeInTheDocument();
+      // jsdom has no Popper geometry for the pointer corridor between parent and submenu.
+      await user.keyboard("{ArrowRight}{ArrowDown}{ArrowDown}{Enter}");
+    }
     expect(await screen.findByRole("article", { name: "新文字 · 文字" })).toHaveClass("is-selected");
     expect(creates).toEqual([{ kind: "TEXT", title: "新文字",
       content: { format: "PLAIN_TEXT", text: "" } }]);
@@ -365,6 +389,70 @@ describe("ProjectWorkspacePage", () => {
     await user.click(screen.getByRole("button", { name: "运行" }));
     await waitFor(() => expect(submittedDraftVersion).toBe(1));
   });
+
+  it.each([
+    { count: 6, failBatch: 0 }, { count: 6, failBatch: 1 }, { count: 101, failBatch: 2 },
+  ])("arranges $count connected cards and retains unsaved drafts on batch $failBatch failure", async ({ count, failBatch }) => {
+    let items = Array.from({ length: count }, (_, index): CanvasItem => ({
+      ...textCard(), id: `card-${index}`, title: `Note ${index}`, x: count - index, y: count - index,
+      version: 7, locked: false,
+    }));
+    const batches: CanvasCommand[][] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Arrange project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items:
+        items.slice(1).map((item, index) => ({ id: `edge-${index}`, sourceCanvasItemId: `card-${index}`,
+          targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION" })) })),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const { commands } = await request.json() as { commands: CanvasCommand[] };
+        batches.push(commands);
+        if (batches.length === failBatch) return HttpResponse.json({ code: "CANVAS_VERSION_CONFLICT", title: "合成布局冲突", detail: "合成布局冲突" },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        items = items.map((item) => {
+          const command = commands.find((candidate) => candidate.itemId === item.id);
+          return command?.type === "UPDATE_LAYOUT" ? { ...item, ...command, version: item.version + 1 } : item;
+        });
+        return HttpResponse.json({ items });
+      }),
+    );
+    const user = userEvent.setup();
+    const client = createQueryClient();
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByText("Arrange project");
+    const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+    fireEvent.contextMenu(pane, { clientX: 300, clientY: 200 });
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "一键整理" })).not.toHaveAttribute("aria-disabled"));
+    await user.click(screen.getByRole("menuitem", { name: "一键整理" }));
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe(failBatch ? "conflict" : "saved"));
+    await waitFor(() => expect(batches.length).toBe(Math.ceil(count / 100)));
+    const commands = batches.flat();
+    const first = commands.find((command) => command.itemId === "card-0");
+    const fifth = commands.find((command) => command.itemId === "card-4");
+    const sixth = commands.find((command) => command.itemId === "card-5");
+    expect(first).toMatchObject({ type: "UPDATE_LAYOUT", expectedVersion: 7, x: 1, y: 1, width: 280, height: 180 });
+    if (!first || first.type !== "UPDATE_LAYOUT" || !fifth || fifth.type !== "UPDATE_LAYOUT" || !sixth || sixth.type !== "UPDATE_LAYOUT")
+      throw new Error("Missing layout commands");
+    expect(fifth.y).toBe(first.y);
+    expect(fifth.x).toBeGreaterThan(first.x);
+    expect(sixth.x).toBe(first.x);
+    expect(sixth.y).toBeGreaterThan(first.y + first.height);
+    if (failBatch) {
+      expect(Object.keys(useCanvasStore.getState().drafts)).toHaveLength(failBatch === 2 ? 1 : count);
+      expect(await screen.findByText("合成布局冲突")).toBeVisible();
+      if (failBatch === 2) {
+        expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items.find((item) => item.id === "card-0")?.version).toBe(8);
+        expect(useCanvasStore.getState().drafts["card-100"]).toBeDefined();
+      }
+    } else {
+      expect(useCanvasStore.getState().drafts).toEqual({});
+      expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(8);
+    }
+  }, 15000);
 
   it("closes the creation menu on an outside click and on Escape without focus inside it", async () => {
     server.use(
@@ -627,6 +715,273 @@ describe("ProjectWorkspacePage", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it.each([
+    { kind: "IMAGE", endpoint: "assets", filename: "Product reference.webp", mime: "image/webp" },
+    { kind: "AUDIO", endpoint: "assets/audio", filename: "Product reference.mp3", mime: "audio/mpeg" },
+  ] as const)("uploads $kind directly and places an exact-version card", async ({ kind, endpoint, filename, mime }) => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    let uploaded = false;
+    let created = false;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        const body = await request.json() as { kind: string; title: string; content: unknown };
+        expect(body).toMatchObject({ kind, title: "Product reference",
+          content: { sourceType: "UPLOAD", assetId } });
+        created = true;
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: Array<{ artifactId: string }> };
+        expect(body.commands[0]?.artifactId).toBe(artifactId);
+        const selectedVersion = { id: versionId, versionNo: 1, schemaVersion: 1 as const,
+          content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
+          createdByKind: "USER" as const, runId: null, createdAt: "2026-09-23T00:00:00Z" };
+        return HttpResponse.json({ items: [{
+          id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "Product reference",
+          x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          artifact: {
+            id: artifactId, projectId: "project-1", kind,
+            title: "Product reference", resourceDefaultVersionId: versionId, version: 0,
+            createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
+            resourceDefaultVersion: selectedVersion,
+          },
+        }] });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === `/api/v1/projects/project-1/${endpoint}`) {
+        expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-token");
+        expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+        expect(init?.body).toBeInstanceOf(FormData);
+        expect((init?.body as FormData).get("file")).toHaveProperty("name", filename);
+        uploaded = true;
+        return HttpResponse.json({ id: assetId, mediaKind: kind }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const input = await openLocalUpload(user);
+    fireEvent.change(input, { target: { files: [] } });
+    expect(uploaded).toBe(false);
+    expect(created).toBe(false);
+    await user.upload(screen.getByLabelText("上传"),
+      new File(["real bytes checked by backend"], filename, { type: mime }));
+    const preview = kind === "IMAGE" ? await screen.findByAltText("Product reference 的预览")
+      : await screen.findByLabelText("Product reference 的音频");
+    expect(preview).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/content`);
+    expect(preview.closest(".react-flow__node")).toHaveStyle({ visibility: "visible" });
+    expect(uploaded).toBe(true);
+    expect(created).toBe(true);
+    expect(screen.getByLabelText("上传")).toHaveValue("");
+  });
+
+  it("uploads MP4 directly from the local picker and places a VIDEO card at the menu point", async () => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    let uploaded = false;
+    let created = false;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        const body = await request.json() as { kind: string; title: string; content: unknown };
+        expect(body).toMatchObject({ kind: "VIDEO", title: "Uploaded video",
+          content: { sourceType: "UPLOAD", assetId } });
+        created = true;
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: Array<{ artifactId: string; x: number; y: number }> };
+        expect(body.commands[0]?.artifactId).toBe(artifactId);
+        expect(body.commands[0]).toMatchObject({ x: 235, y: 165 });
+        const selectedVersion = { id: versionId, versionNo: 1, schemaVersion: 1 as const,
+          content: { sourceType: "UPLOAD" as const, assetId }, inputReferences: [],
+          createdByKind: "USER" as const, runId: null, createdAt: "2026-09-23T00:00:00Z" };
+        return HttpResponse.json({ items: [{
+          id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
+          title: "Uploaded video",
+          x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          artifact: {
+            id: artifactId, projectId: "project-1", kind: "VIDEO",
+            title: "Uploaded video", resourceDefaultVersionId: versionId, version: 0,
+            createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
+            resourceDefaultVersion: selectedVersion,
+          },
+        }] });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets/video") {
+        expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-token");
+        expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+        expect(init?.body).toBeInstanceOf(FormData);
+        expect((init?.body as FormData).get("file")).toHaveProperty("name", "Uploaded video.mp4");
+        uploaded = true;
+        return HttpResponse.json({ id: assetId, mediaKind: "VIDEO" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await openLocalUpload(user);
+    await user.upload(screen.getByLabelText("上传"),
+      new File(["real bytes checked by backend"], "Uploaded video.mp4", { type: "video/mp4" }));
+    const poster = await screen.findByRole("img", { name: "Uploaded video 的视频封面" });
+    expect(poster).toHaveAttribute("src", `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
+    expect(document.querySelector("video")).toBeNull();
+    expect(uploaded).toBe(true);
+    expect(created).toBe(true);
+    expect(screen.getByLabelText("上传")).toHaveValue("");
+  });
+
+  it("offers explicit retry after a rejected local upload", async () => {
+    let creates = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", () => {
+        creates++;
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets") {
+        return HttpResponse.json({ title: "素材无效", detail: "图片解码失败。",
+          code: "ASSET_INVALID_IMAGE", retryable: false },
+        { status: 422, headers: { "Content-Type": "application/problem+json" } });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await openLocalUpload(user);
+    await user.upload(screen.getByLabelText("上传"),
+      new File(["bad image"], "broken.webp", { type: "image/webp" }));
+    expect(await screen.findByText("图片解码失败。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(creates).toBe(0);
+  });
+
+  it.each(["placementConflict", "artifactUncertain", "placementUncertain"])("reuses confirmed stages and identities after %s", async (stage) => {
+    const assetId = crypto.randomUUID();
+    const artifactId = crypto.randomUUID();
+    let uploads = 0;
+    let artifacts = 0;
+    let placements = 0;
+    let placedItemId: string | undefined;
+    let createKey: string | null = null;
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", ({ params }) =>
+        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
+        const key = request.headers.get("Idempotency-Key");
+        expect(key).toBeTruthy();
+        if (createKey) expect(key).toBe(createKey);
+        createKey = key;
+        artifacts++;
+        if (stage === "artifactUncertain" && artifacts === 1) return HttpResponse.json({
+          title: "保存失败", detail: "请求响应不确定。", code: "UPSTREAM_UNAVAILABLE", retryable: true,
+        }, { status: 503, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ id: artifactId }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        placements++;
+        const body = await request.json() as { commands: Array<{ itemId: string }> };
+        expect(body.commands[0]).toMatchObject({ x: 235, y: 165 });
+        if (placements === 1) placedItemId = body.commands[0]?.itemId;
+        else expect(body.commands[0]?.itemId).toBe(placedItemId);
+        if (stage !== "artifactUncertain" && placements === 1) return HttpResponse.json({ title: "冲突", detail: "画布版本冲突。",
+          code: "CANVAS_CONFLICT", retryable: true },
+        { status: stage === "placementUncertain" ? 503 : 409, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets") {
+        uploads++;
+        return HttpResponse.json({ id: assetId, mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={["/projects/project-1"]}>
+          <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await openLocalUpload(user);
+    await user.upload(screen.getByLabelText("上传"),
+      new File(["bytes"], "retry.webp", { type: "image/webp" }));
+
+    expect(await screen.findByText(stage === "artifactUncertain" ? "请求响应不确定。" : "画布版本冲突。")).toBeInTheDocument();
+    const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
+    fireEvent.contextMenu(pane, { clientX: 600, clientY: 400 });
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(placements).toBe(stage === "artifactUncertain" ? 1 : 2));
+    expect(uploads).toBe(1);
+    expect(artifacts).toBe(stage === "artifactUncertain" ? 2 : 1);
+    expect(screen.getByLabelText("上传")).toHaveValue("");
   });
 
   it.each(["artifact", "placement"])("reuses the text creation intent after an uncertain %s response", async (stage) => {

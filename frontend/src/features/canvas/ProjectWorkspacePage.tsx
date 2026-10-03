@@ -40,6 +40,9 @@ listCanvasConnections,
 listCanvasItems,
 projectExportManifestUrl,
 updateAgent,
+uploadAudioAsset,
+uploadImageAsset,
+uploadVideoAsset,
 type Agent,
 type AgentRun,
 type Artifact,
@@ -47,6 +50,7 @@ type Canvas,
 type CanvasCommand,
 type CanvasItem,
 } from "../../shared/api/client";
+import { isAudioFile,isVideoFile,MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
@@ -57,6 +61,7 @@ import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AGENT_CHAT_HEIGHT,AGENT_CHAT_MIN_HEIGHT,AGENT_CHAT_MIN_WIDTH,AGENT_CHAT_WIDTH,AgentChatCard } from "./AgentChatCard";
 import { CanvasErrorNotice } from "./CanvasErrorNotice";
 import { CanvasHandle } from "./CanvasHandle";
+import { CanvasPaneMenu } from "./CanvasPaneMenu";
 import { CanvasRelationEdge } from "./CanvasRelationEdge";
 import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
 import { CanvasToolMenu } from "./CanvasToolMenu";
@@ -66,6 +71,7 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { displayCanvasRelations } from "./canvasEdgeDisplay";
 import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteraction";
+import { arrangeCanvas,CANVAS_LAYOUT_BATCH_SIZE } from "./arrangeCanvas";
 import {
 agentImageConnection,canvasRelationRemoval,canvasTargetHandleId,inputConnectionUpdate,
 isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
@@ -84,6 +90,8 @@ type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "AGENT";
 type DrawerKind = "AGENT" | "ALIGN";
 type CreationPoint = { x: number; y: number };
+type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
+  zIndex: number; assetId?: string; artifactId?: string };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
 type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
@@ -101,6 +109,7 @@ const MEDIA_FOCUS_DURATION_MS = 360;
 /** Smooth pan/zoom on one path; unlike a zoom flight, it never pulls away from the card first. */
 const mediaFocusEase = (progress: number) => progress * progress * (3 - 2 * progress);
 const MAX_AGENT_TITLE_LENGTH = 120;
+const MAX_ARTIFACT_TITLE_LENGTH = 160;
 const AUDIO_AGENT_INSTRUCTION = "协助用户创作音频提示词、对白与 MV 方案。绑定的音频只提供归档元数据和生成描述，不代表你已听到或分析了声音。不能调用媒体生成；需要生成音频或视频时，请引导用户在对应卡片中运行。";
 const CREATION_MENU_WIDTH = 208;
 /** Match the menu's title, rows, gaps and padding in styles.css so edge clamping stays accurate. */
@@ -177,6 +186,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const focusedTryAgent = useRef<string | null>(null);
   useLocale();
   const queryClient = useQueryClient();
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const uploadPoint = useRef<CreationPoint | null>(null);
+  const uploadProgress = useRef<UploadIntent | null>(null);
   const textProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; zIndex: number; artifactId?: string } | null>(null);
   const [agentName, setAgentName] = useState("Creator Agent");
@@ -188,6 +200,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const creationMenuElement = useRef<HTMLDivElement>(null);
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
+  const [paneMenu, setPaneMenu] = useState<CreationMenu | null>(null);
   const [creationPoint, setCreationPoint] = useState<CreationPoint | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -380,6 +393,37 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       setSelectedIds([itemId]);
       textProgress.current = null;
+      setSaveState("saved");
+    },
+  });
+  // Freeze the file, placement and command identities before uploading. Explicit retries
+  // continue from confirmed stages even if the user moves the viewport or opens another menu.
+  const uploadMedia = useMutation({
+    mutationFn: async (intent: UploadIntent) => {
+      const audio = isAudioFile(intent.file);
+      const video = isVideoFile(intent.file);
+      if (!intent.assetId) {
+        const asset = await (audio ? uploadAudioAsset : video ? uploadVideoAsset : uploadImageAsset)(projectId, intent.file);
+        intent.assetId = asset.id;
+      }
+      if (!intent.artifactId) {
+        const artifact = await createArtifact(projectId, {
+          kind: audio ? "AUDIO" : video ? "VIDEO" : "IMAGE", title: intent.title,
+          content: { sourceType: "UPLOAD", assetId: intent.assetId },
+        }, intent.createKey);
+        intent.artifactId = artifact.id;
+      }
+      return applyCanvasCommands(projectId, [{
+        type: "PLACE_ARTIFACT", itemId: intent.itemId, artifactId: intent.artifactId,
+        ...intent.point, width: audio ? AUDIO_CARD_WIDTH : DEFAULT_CARD_WIDTH,
+        height: AUDIO_CARD_HEIGHT, zIndex: intent.zIndex, locked: false,
+      }]);
+    },
+    ...canvasMutationFeedback,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["canvas", projectId], saved);
+      void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
+      uploadProgress.current = null;
       setSaveState("saved");
     },
   });
@@ -874,6 +918,28 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const projectedRelations = useMemo(() => projectCanvasRelations(canvas.data?.items ?? [], canvasConnections.data?.items ?? []),
     [canvas.data?.items, canvasConnections.data?.items]);
+  const organizeCanvas = useMutation({
+    mutationFn: async () => {
+      const items = (canvas.data?.items ?? []).filter((item) => item.artifact || item.agent);
+      const positions = arrangeCanvas(items.map((item) => {
+        const draft = useCanvasStore.getState().drafts[item.id];
+        return { id: item.id, x: draft?.x ?? item.x, y: draft?.y ?? item.y,
+          ...effectiveNodeSize(item, draft), locked: item.locked };
+      }), projectedRelations);
+      const updates = items.flatMap((item) => {
+        const position = positions.get(item.id);
+        if (!position) return [];
+        const patch = { ...position, ...effectiveNodeSize(item) };
+        updateDraft(item.id, patch);
+        return [{ item, patch }];
+      });
+      // Preserve the API's bounded transaction size. Successful batches clear their own drafts;
+      // a later conflict leaves the remaining rows visible and reports the failed save normally.
+      for (let index = 0; index < updates.length; index += CANVAS_LAYOUT_BATCH_SIZE) {
+        await saveLayout.mutateAsync(updates.slice(index, index + CANVAS_LAYOUT_BATCH_SIZE));
+      }
+    },
+  });
   const relationEdges = useMemo(() => displayCanvasRelations(projectedRelations, selectedIds, selectedEdgeIds,
     displaySettings.preferences), [projectedRelations, selectedIds, selectedEdgeIds, displaySettings.preferences]);
   const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
@@ -940,6 +1006,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       rect.height - CREATION_MENU_HEIGHT - CREATION_MENU_MARGIN));
     creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
+    setPaneMenu(null);
     setCreationMenu({ x, y, point });
   }
 
@@ -980,10 +1047,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [creationMenu, setSelectedIds]);
 
-  function chooseCreationKind(kind: CreationKind) {
-    const point = creationMenu?.point;
+  function chooseCreationKind(kind: CreationKind, point = creationMenu?.point) {
     if (!point) return;
     setCreationMenu(null);
+    setPaneMenu(null);
     setResourcesOpen(false);
     setCreationPoint(point);
     if (kind === "TEXT") {
@@ -1076,6 +1143,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   return (
     <main className="workspace-shell text-[var(--ink)]">
+      <input ref={uploadInput} type="file" hidden aria-label={t("canvas.context.upload")}
+        accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.VIDEO},${MEDIA_FILE_ACCEPT.AUDIO}`}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (!file || !uploadPoint.current || uploadMedia.isPending) return;
+          const intent: UploadIntent = { file, point: uploadPoint.current,
+            title: (file.name.replace(/\.[^.]+$/, "").trim() || file.name).slice(0, MAX_ARTIFACT_TITLE_LENGTH),
+            createKey: crypto.randomUUID(), itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0 };
+          uploadProgress.current = intent;
+          uploadMedia.mutate(intent);
+        }} />
       <header className="workspace-header" data-sync-state={eventStatus}>
         <div className="workspace-header-identity">
           <Button asChild variant="ghost" size="sm"><Link to="/projects">{t("common.project")}</Link></Button>
@@ -1173,6 +1252,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {displaySettings.persistenceError ? <CanvasErrorNotice error={displaySettings.persistenceError} title={t("canvas.feedback.saveSettings")} message={displaySettings.persistenceError}>
             <Button variant="ghost" size="xs" type="button" onClick={displaySettings.retrySave}>{t("canvas.settings.retrySave")}</Button>
           </CanvasErrorNotice> : null}
+          {uploadMedia.isPending ? <div className="canvas-message" role="status">{t("media.upload.uploading")}</div> : null}
+          {uploadMedia.error ? <CanvasErrorNotice error={uploadMedia.error}
+            title={`${t("canvas.context.upload")} · ${uploadMedia.variables?.title ?? ""}`} message={workspaceErrorMessage(uploadMedia.error)}>
+            <Button variant="ghost" size="xs" type="button" disabled={uploadMedia.isPending}
+              onClick={() => { if (uploadProgress.current) uploadMedia.mutate(uploadProgress.current); }}>{t("common.retry")}</Button>
+          </CanvasErrorNotice> : null}
           {addTextCard.isPending ? <div className="canvas-message" role="status">{t("canvas.workspace.creatingText")}</div> : null}
           {addTextCard.error ? <CanvasErrorNotice error={addTextCard.error} title={`${t("canvas.feedback.createCard")} · ${ARTIFACT_LABELS.TEXT}`} message={workspaceErrorMessage(addTextCard.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => { if (addTextCard.variables) addTextCard.mutate(addTextCard.variables); }}>{t("canvas.workspace.retryCreateText")}</Button>
@@ -1238,6 +1323,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 .map((id) => ({ id, type: "select", selected: false })));
             }
           }}
+          onPaneContextMenu={(event) => {
+            event.preventDefault();
+            const rect = canvasElement.current?.getBoundingClientRect();
+            if (!rect) return;
+            const point = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+              ?? { x: event.clientX - rect.left, y: event.clientY - rect.top };
+            setCreationMenu(null);
+            setPaneMenu({ x: event.clientX, y: event.clientY, point });
+          }}
           onNodesChange={handleNodesChange}
           onNodeDoubleClick={(event, node) => {
             if (!selecting || !node.data.item.artifact || (event.target instanceof Element &&
@@ -1278,6 +1372,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <MiniMap pannable zoomable />
           <Controls position="bottom-right" />
         </ReactFlow>
+        <CanvasPaneMenu position={paneMenu} onClose={() => setPaneMenu(null)}
+          onAdd={(kind) => chooseCreationKind(kind, paneMenu?.point)} uploading={uploadMedia.isPending} creatingText={addTextCard.isPending}
+          onUpload={() => {
+            uploadPoint.current = paneMenu?.point ?? canvasCenter();
+            setPaneMenu(null);
+            uploadInput.current?.click();
+          }}
+          onArrange={() => { setPaneMenu(null); clearSelection(); organizeCanvas.mutate(); }}
+          arranging={organizeCanvas.isPending || saveLayout.isPending || alignSelected.isPending}
+          canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
+            nodes.some((node) => !node.data.item.locked)} />
         <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
           const rect = canvasElement.current?.getBoundingClientRect();
           if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
