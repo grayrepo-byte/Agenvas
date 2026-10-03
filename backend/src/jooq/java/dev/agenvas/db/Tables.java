@@ -44,6 +44,7 @@ import dev.agenvas.db.tables.MediaDefault;
 import dev.agenvas.db.tables.MediaDraft;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
+import dev.agenvas.db.tables.MediaRelayObject;
 import dev.agenvas.db.tables.MediaStyle;
 import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.MediaTemplateAttachment;
@@ -278,6 +279,12 @@ public class Tables {
      * 不可变媒体连接地址、精确来源摘要与加密凭据
      */
     public static final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
+
+    /**
+     * Temporary provider input copies registered before upload, retained for
+     * durable cleanup
+     */
+    public static final MediaRelayObject MEDIA_RELAY_OBJECT = MediaRelayObject.MEDIA_RELAY_OBJECT;
 
     /**
      * 媒体生成风格目录及内置风格缩略图

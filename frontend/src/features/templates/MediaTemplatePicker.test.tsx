@@ -83,7 +83,7 @@ describe("media templates", () => {
     server.use(http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [imageTemplate] })), http.post("/api/v1/projects/project/media-templates/my-template/import", () => { importing(); return HttpResponse.json({}); }));
     mount(<MediaTemplatePicker {...context} targetKind="VIDEO" fields={{ ...context.fields, videoInputMode: "TEXT" }} capability={{
       id: "mock", name: "Mock video", enabled: true, version: 0, capabilityVersion: 1, adapterId: "MOCK_VIDEO", kind: "VIDEO_GENERATION", minimumSeconds: 1, maximumSeconds: 10,
-      maxReferenceAudios: 0, maxReferenceImages: 2, supportedVideoInputModes: ["TEXT", "START_END"], defaultVideoInputMode: "TEXT", supportsEndFrame: true,
+      maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 2, supportedVideoInputModes: ["TEXT", "START_END"], defaultVideoInputMode: "TEXT", supportsEndFrame: true,
       supportedImageAspectRatios: [], supportedImageResolutions: [], supportedImageQualities: [], supportsImageMask: false, supportsTransparentBackground: false, mappingSha256: "a".repeat(64), settings: {},
     }} />);
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: /Watercolor/ }));

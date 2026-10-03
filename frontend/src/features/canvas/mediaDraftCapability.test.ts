@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { MediaCapability, RunningHubDefinition } from "../../shared/api/client";
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
-import { planMediaCapabilityChange, type MediaDraftFields } from "./mediaDraftCapability";
+import { inputsForVideoMode, planMediaCapabilityChange, type MediaDraftFields } from "./mediaDraftCapability";
 import { MENTION_MARKER } from "./mediaPrompt";
 
 const image: MediaCapability = {
   id: "image-model", name: "Image", enabled: true, version: 0, capabilityVersion: 1,
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
-  maxReferenceImages: 4, maxReferenceAudios: 0, supportedVideoInputModes: [], defaultVideoInputMode: null,
+  maxReferenceImages: 4, maxReferenceAudios: 0, maxReferenceVideos: 0, supportedVideoInputModes: [], defaultVideoInputMode: null,
   supportsEndFrame: false, supportedImageAspectRatios: ["AUTO", "16:9"],
   supportedImageResolutions: ["1K", "2K"], supportedImageQualities: ["medium", "high"],
   supportsTransparentBackground: true, supportsImageMask: true, mappingSha256: "a".repeat(64), settings: {},
@@ -136,4 +136,14 @@ describe("media capability changes", () => {
     expect(change.fields.durationSeconds).toBe(5);
     expect(change.confirmation).toContain("不兼容参数");
   });
+  it("keeps video roles in general reference mode and removes them from first/last slots", () => {
+    const videoInput = { versionId: "video-version", role: "VIDEO_REFERENCE", color: "#67C7F3" } as const;
+    const before = { ...fields, videoInputMode: "GENERAL_REFERENCE" as const, mediaInputs: [videoInput, imageInput, audioInput] };
+    const general = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: video.id,
+      resolvedCapabilityId: video.id, next: video });
+    expect(general.fields.mediaInputs).toEqual(before.mediaInputs);
+    const frames = inputsForVideoMode(before.mediaInputs, "START_END");
+    expect(frames).toEqual([{ ...imageInput, role: "START_FRAME" }]);
+  });
+
 });

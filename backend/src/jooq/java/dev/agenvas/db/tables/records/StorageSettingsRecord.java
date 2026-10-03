@@ -66,6 +66,22 @@ public class StorageSettingsRecord extends UpdatableRecordImpl<StorageSettingsRe
         return (UUID) get(2);
     }
 
+    /**
+     * Setter for <code>public.storage_settings.relay_profile_id</code>.
+     * Optional media relay destination; independent of the archive default
+     */
+    public void setRelayProfileId(UUID value) {
+        set(3, value);
+    }
+
+    /**
+     * Getter for <code>public.storage_settings.relay_profile_id</code>.
+     * Optional media relay destination; independent of the archive default
+     */
+    public UUID getRelayProfileId() {
+        return (UUID) get(3);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -89,12 +105,13 @@ public class StorageSettingsRecord extends UpdatableRecordImpl<StorageSettingsRe
     /**
      * Create a detached, initialised StorageSettingsRecord
      */
-    public StorageSettingsRecord(Boolean singleton, Integer version, UUID activeProfileId) {
+    public StorageSettingsRecord(Boolean singleton, Integer version, UUID activeProfileId, UUID relayProfileId) {
         super(StorageSettings.STORAGE_SETTINGS);
 
         setSingleton(singleton);
         setVersion(version);
         setActiveProfileId(activeProfileId);
+        setRelayProfileId(relayProfileId);
         resetChangedOnNotNull();
     }
 }

@@ -14,6 +14,7 @@ const IMAGE_RATIOS = ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3",
 const VIDEO_RATIOS = ["AUTO", "16:9", "9:16", "1:1"] as const;
 const RESOLUTIONS = ["1K", "2K", "4K"] as const;
 const COUNTS = [1, 2, 4] as const;
+const SEEDANCE_MAX_REFERENCE_VIDEOS = 3;
 const PRICE_STEP = "0.000001";
 
 /** Shared by publishing and editing; no settings are silently discarded on save. */
@@ -86,6 +87,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
           value={values.maxReferenceImages ?? ""} placeholder={String(adapter.references)}
           onChange={(event) => onChange({ ...values, maxReferenceImages: event.target.value ? Number(event.target.value) : undefined })} />
       </FieldLabel></Field>
+      {adapterId === "ARK_SEEDANCE_2_I2V" ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.maxVideos")}<Input type="number" min={0} max={SEEDANCE_MAX_REFERENCE_VIDEOS} step={1} value={values.maxReferenceVideos ?? ""} placeholder={String(SEEDANCE_MAX_REFERENCE_VIDEOS)} onChange={(event) => onChange({ ...values, maxReferenceVideos: event.target.value ? Number(event.target.value) : undefined })} /></FieldLabel></Field> : null}
       {audio || adapterId === "MOCK_VIDEO" || adapterId === "ARK_SEEDANCE_2_I2V" || (workflow && workflow.audioFields.length > 0) ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.maxAudios")}<Input type="number" min={workflow?.minimumAudios ?? 0} max={workflow?.audioFields.length ?? 3} step={1} value={values.maxReferenceAudios ?? ""} placeholder={String(workflow?.audioFields.length ?? 3)} onChange={(event) => onChange({ ...values, maxReferenceAudios: event.target.value ? Number(event.target.value) : undefined })} /></FieldLabel></Field> : null}
       <p className="ui-muted">{t("settings.capabilities.referenceLimitHint", { "0": image || audio ? "" : t("settings.capabilities.protocolDurationHint", { "0": adapter.minimum, "1": adapter.maximum }), "1": adapter.references })}</p>
     </div> : null}

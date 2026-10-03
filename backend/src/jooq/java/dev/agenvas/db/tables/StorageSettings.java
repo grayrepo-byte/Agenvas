@@ -76,6 +76,12 @@ public class StorageSettings extends TableImpl<StorageSettingsRecord> {
      */
     public final TableField<StorageSettingsRecord, UUID> ACTIVE_PROFILE_ID = createField(DSL.name("active_profile_id"), SQLDataType.UUID, this, "当前写入使用的存储配置；已有资产按原路由读取");
 
+    /**
+     * The column <code>public.storage_settings.relay_profile_id</code>.
+     * Optional media relay destination; independent of the archive default
+     */
+    public final TableField<StorageSettingsRecord, UUID> RELAY_PROFILE_ID = createField(DSL.name("relay_profile_id"), SQLDataType.UUID, this, "Optional media relay destination; independent of the archive default");
+
     private StorageSettings(Name alias, Table<StorageSettingsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -150,20 +156,33 @@ public class StorageSettings extends TableImpl<StorageSettingsRecord> {
 
     @Override
     public List<ForeignKey<StorageSettingsRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_ACTIVE_PROFILE_ID_FKEY);
+        return Arrays.asList(Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_ACTIVE_PROFILE_ID_FKEY, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_RELAY_PROFILE_ID_FKEY);
     }
 
-    private transient StorageProfilePath _storageProfile;
+    private transient StorageProfilePath _storageSettingsActiveProfileIdFkey;
 
     /**
      * Get the implicit join path to the <code>public.storage_profile</code>
-     * table.
+     * table, via the <code>storage_settings_active_profile_id_fkey</code> key.
      */
-    public StorageProfilePath storageProfile() {
-        if (_storageProfile == null)
-            _storageProfile = new StorageProfilePath(this, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_ACTIVE_PROFILE_ID_FKEY, null);
+    public StorageProfilePath storageSettingsActiveProfileIdFkey() {
+        if (_storageSettingsActiveProfileIdFkey == null)
+            _storageSettingsActiveProfileIdFkey = new StorageProfilePath(this, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_ACTIVE_PROFILE_ID_FKEY, null);
 
-        return _storageProfile;
+        return _storageSettingsActiveProfileIdFkey;
+    }
+
+    private transient StorageProfilePath _storageSettingsRelayProfileIdFkey;
+
+    /**
+     * Get the implicit join path to the <code>public.storage_profile</code>
+     * table, via the <code>storage_settings_relay_profile_id_fkey</code> key.
+     */
+    public StorageProfilePath storageSettingsRelayProfileIdFkey() {
+        if (_storageSettingsRelayProfileIdFkey == null)
+            _storageSettingsRelayProfileIdFkey = new StorageProfilePath(this, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_RELAY_PROFILE_ID_FKEY, null);
+
+        return _storageSettingsRelayProfileIdFkey;
     }
 
     @Override

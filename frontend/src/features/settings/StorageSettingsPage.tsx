@@ -3,7 +3,7 @@ import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent } from "react";
 import { Navigate } from "react-router";
 import {
-HTTP_STATUS,ApiError,activateStorageProfile,createStorageProfile,getCurrentUser,getStorageSettings,rotateStorageCredentials,
+HTTP_STATUS,ApiError,activateMediaRelayProfile,activateStorageProfile,createStorageProfile,getCurrentUser,getStorageSettings,rotateStorageCredentials,
 type CreateStorageProfileRequest,type StorageProvider,type StorageSettings
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -97,6 +97,17 @@ export function StorageSettingsPage() {
               </div></div>)}
           </div>
           {snapshot.profiles.length === 0 ? <p className="ui-muted">{t("settings.storage.connectionsEmpty")}</p> : null}
+        </Panel>
+        <Panel title={t("settings.storage.relayTitle")} description={t("settings.storage.relayDescription")}>
+          <Field><FieldLabel>{t("settings.storage.relayConnection")}</FieldLabel>
+            <Select aria-label={t("settings.storage.relayConnection")} disabled={busy} value={snapshot.relayProfileId ?? ""}
+              onChange={(event) => void write(() => activateMediaRelayProfile({ expectedVersion: snapshot.version,
+                profileId: event.target.value || null }), t("settings.storage.relaySaved"))}>
+              <option value="">{t("settings.storage.relayDisabled")}</option>
+              {snapshot.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+            </Select>
+          </Field>
+          <p className="ui-muted">{t("settings.storage.relayPolicy")}</p>
         </Panel>
         {rotation ? <Panel title={t("settings.storage.updateCredentials")} description={t("settings.storage.credentialUpdateHint")}>
           <form className="ui-form" onSubmit={(event) => { event.preventDefault(); void write(() => rotateStorageCredentials(rotation.id,

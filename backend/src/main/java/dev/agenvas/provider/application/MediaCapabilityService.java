@@ -404,6 +404,7 @@ public class MediaCapabilityService {
         target.put("maximumSeconds", policy.maximumSeconds());
         target.put("maxReferenceImages", policy.maxReferenceImages());
         target.put("maxReferenceAudios", policy.maxReferenceAudios());
+        target.put("maxReferenceVideos", policy.maxReferenceVideos());
     }
 
     private static void putModelMetadata(ObjectNode target, String adapterId) {

@@ -217,8 +217,10 @@ public class UsageService {
                                         && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(
                                                 task.errorCode())
                                         && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(task.errorCode())
-                                        && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(
-                                                task.errorCode()))))
+                                        && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(task.errorCode())
+                                        && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(task.errorCode())
+                                        && !"MEDIA_RELAY_REQUIRED".equals(task.errorCode())
+                                        && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(task.errorCode()))))
                 || task.providerRequestId() != null) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");
         }

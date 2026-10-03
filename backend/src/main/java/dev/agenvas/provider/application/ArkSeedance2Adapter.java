@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Single first-frame task on the fixed Seedance 2.0 mapping. */
+/** Fixed Seedance 2.0 task with exact image/audio bytes and signed video references. */
 @Component
 public class ArkSeedance2Adapter implements MediaAdapter {
     private final JooqMediaCapabilityRepository catalog;
@@ -52,11 +52,12 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     private final MediaToolRunner mediaTools;
     private final ObjectMapper mapper;
     private final AudioReferenceLoader audioReferences;
+    private final SeedanceVideoReferenceLoader videoReferences;
 
     public ArkSeedance2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             ArkSeedanceClient client, ArkMediaDownloadPolicy downloads,
-            MediaToolRunner mediaTools, ObjectMapper mapper, AudioReferenceLoader audioReferences) {
+            MediaToolRunner mediaTools, ObjectMapper mapper, AudioReferenceLoader audioReferences, SeedanceVideoReferenceLoader videoReferences) {
         this.catalog = catalog;
         this.cipher = cipher;
         this.artifacts = artifacts;
@@ -67,6 +68,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         this.mediaTools = mediaTools;
         this.mapper = mapper;
         this.audioReferences = audioReferences;
+        this.videoReferences = videoReferences;
     }
 
     @Override public String adapterId() { return "ARK_SEEDANCE_2_I2V"; }
@@ -85,8 +87,13 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         try {
             int seconds = context.lease().input().path("durationSeconds").asInt(-1);
             if (seconds < 4 || seconds > 15) return "PROVIDER_UNSUPPORTED_INPUT";
-            references(context);
+            references(context, false);
+            videoReferences.preflight(context);
             return null;
+        } catch (dev.agenvas.shared.error.ApiProblemException invalid) {
+            return java.util.Set.of("SEEDANCE_VIDEO_REFERENCE_INVALID", "MEDIA_RELAY_REQUIRED",
+                    "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED").contains(invalid.code())
+                    ? invalid.code() : "PROVIDER_UNSUPPORTED_INPUT";
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
         }
@@ -99,7 +106,13 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         String negative = task.input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
-            String id = client.create(key, prompt, references(context),
+            List<ArkSeedanceClient.Reference> references;
+            try { references = references(context, true); }
+            catch (RuntimeException unavailable) {
+                // No Ark create call occurred. A relay PUT failure cannot be a generation UNKNOWN.
+                return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
+            }
+            String id = client.create(key, prompt, references,
                     task.input().path("durationSeconds").asInt(-1), ratio(context), hasAudioReferences(context));
             return new Submission.Accepted(id);
         } catch (ArkSeedanceClient.Rejected rejected) {
@@ -279,12 +292,13 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         return !FrozenMediaInputs.audios(context.lease()).isEmpty();
     }
 
-    private List<ArkSeedanceClient.Reference> references(AttemptContext context) {
+    private List<ArkSeedanceClient.Reference> references(AttemptContext context, boolean submitting) {
         var task = context.lease();
         var images = FrozenMediaInputs.images(task);
+        var videos = FrozenMediaInputs.videos(task);
         var audios = audioReferences.load(context.ownerId(), task, false);
         String mode = task.input().path("mediaInput").path("mode").asText();
-        if (images.size() > 9 || !audios.isEmpty() && (images.isEmpty() || !"GENERAL_REFERENCE".equals(mode)))
+        if (images.size() > 9 || !audios.isEmpty() && (images.isEmpty() && videos.isEmpty() || !"GENERAL_REFERENCE".equals(mode)))
             throw new IllegalArgumentException("Seedance audio requires a visual reference in general mode");
         var result = new java.util.ArrayList<ArkSeedanceClient.Reference>();
         for (var image : images) {
@@ -297,6 +311,9 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             result.add(new ArkSeedanceClient.Reference("image/png", pinnedFrame(context, image), role));
         }
         for (var audio : audios) result.add(new ArkSeedanceClient.Reference(audio.contentType(), audio.bytes(), "reference_audio"));
+        if (!videos.isEmpty() && !"GENERAL_REFERENCE".equals(mode))
+            throw new IllegalArgumentException("Seedance video references require general mode");
+        if (submitting) result.addAll(videoReferences.load(context));
         return List.copyOf(result);
     }
 

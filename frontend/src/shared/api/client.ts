@@ -977,6 +977,11 @@ export async function activateStorageProfile(input: components["schemas"]["Activ
     method: "PUT", body: JSON.stringify(input),
   });
 }
+export async function activateMediaRelayProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
+  return writeJson<StorageSettings>("/api/v1/settings/storage/relay", {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
 export async function rotateStorageCredentials(id: string, input: RotateStorageCredentialsRequest): Promise<StorageSettings> {
   return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}/credentials`, {
     method: "PUT", body: JSON.stringify(input),

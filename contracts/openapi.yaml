@@ -985,6 +985,28 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/settings/storage/relay:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    put:
+      operationId: activateMediaRelayProfile
+      summary: Select the independent temporary media relay; archive location is unchanged
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateStorageProfileRequest' }
+      responses:
+        '200':
+          description: New relay destination
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/settings/storage/profiles/{profileId}/credentials:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -4243,7 +4265,7 @@ components:
           $ref: "#/components/schemas/SaveMediaDraftRequest"
         role:
           type: "string"
-          enum: ["REFERENCE", "START_FRAME", "END_FRAME", "AUDIO_REFERENCE"]
+          enum: ["REFERENCE", "START_FRAME", "END_FRAME", "AUDIO_REFERENCE", "VIDEO_REFERENCE"]
         color:
           type: "string"
           pattern: "^#[0-9A-F]{6}$"
@@ -4425,7 +4447,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, name, enabled, version, capabilityVersion, adapterId, kind,
-        minimumSeconds, maximumSeconds, maxReferenceImages, maxReferenceAudios, supportedVideoInputModes,
+        minimumSeconds, maximumSeconds, maxReferenceImages, maxReferenceAudios, maxReferenceVideos, supportedVideoInputModes,
         defaultVideoInputMode, supportsEndFrame, supportedImageAspectRatios,
         supportedImageResolutions, supportedImageQualities, supportsTransparentBackground,
         supportsImageMask,
@@ -4442,6 +4464,7 @@ components:
         maximumSeconds: {type: integer, minimum: 0}
         maxReferenceImages: {type: integer, minimum: 0}
         maxReferenceAudios: {type: integer, minimum: 0, maximum: 14}
+        maxReferenceVideos: {type: integer, minimum: 0, maximum: 14}
         supportedVideoInputModes:
           type: array
           uniqueItems: true
@@ -4499,6 +4522,7 @@ components:
         maximumSeconds: {type: integer, minimum: 0, maximum: 30}
         maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
         maxReferenceAudios: {type: integer, minimum: 0, maximum: 3}
+        maxReferenceVideos: {type: integer, minimum: 0, maximum: 3}
         pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
         pricingByResolution:
           type: object
@@ -4778,13 +4802,17 @@ components:
         createdAt: { type: string, format: date-time }
     StorageSettings:
       type: object
-      required: [version, activeProfileId, profiles]
+      required: [version, activeProfileId, relayProfileId, profiles]
       properties:
         version: { type: integer, minimum: 0 }
         activeProfileId:
           type: [string, 'null']
           format: uuid
           description: Null selects local storage; existing objects are never relocated
+        relayProfileId:
+          type: [string, 'null']
+          format: uuid
+          description: Independent media relay destination; null disables local video relay. Existing cloud originals are signed directly.
         profiles:
           type: array
           items: { $ref: '#/components/schemas/StorageProfile' }

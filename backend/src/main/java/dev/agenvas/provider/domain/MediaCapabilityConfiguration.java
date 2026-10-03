@@ -16,7 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Versioned administrator defaults, prices and narrower limits within a compiled protocol. */
 public final class MediaCapabilityConfiguration {
     public static final Set<String> FIELDS = Set.of("defaultParameters", "defaultDurationSeconds",
-            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "pricing", "pricingByResolution");
+            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos", "pricing", "pricingByResolution");
     private static final Set<String> PRICE_FIELDS = Set.of("amount", "currency", "unit");
     private static final Set<String> CURRENCIES = Set.of("CNY", "USD");
     private static final String PRICE_PATTERN = "[0-9]{1,10}(\\.[0-9]{1,6})?";
@@ -26,7 +26,7 @@ public final class MediaCapabilityConfiguration {
     public static void normalize(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter,
             JsonNode source, ObjectNode target) {
         var policy = policy(adapter, source);
-        for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios")) {
+        for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos")) {
             if (source.has(field)) target.set(field, source.get(field));
         }
         if (source.has("defaultDurationSeconds")) {
@@ -103,7 +103,8 @@ public final class MediaCapabilityConfiguration {
                 adapter.defaultVideoInputMode(), adapter.supportsEndFrame(),
                 adapter.supportedImageAspectRatios(), adapter.supportedImageResolutions(),
                 adapter.supportedImageQualities(), adapter.supportsTransparentBackground(),
-                adapter.supportsImageMask(), integer(settings, "maxReferenceAudios", adapter.maxReferenceAudios(), 0, adapter.maxReferenceAudios()));
+                adapter.supportsImageMask(), integer(settings, "maxReferenceAudios", adapter.maxReferenceAudios(), 0, adapter.maxReferenceAudios()),
+                integer(settings, "maxReferenceVideos", adapter.maxReferenceVideos(), 0, adapter.maxReferenceVideos()));
     }
 
     private static int integer(JsonNode source, String field, int fallback, int minimum, int maximum) {

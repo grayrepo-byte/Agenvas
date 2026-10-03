@@ -33,7 +33,7 @@
 
 本地 Testcontainers PostgreSQL 仅用于测试且不启用 TLS；Maven Surefire/Failsafe 的测试进程固定 JDBC `sslmode=disable`，避免驱动在 Docker Desktop 端口代理上进行不必要的 SSL 协商。此设置不进入 Spring Boot 生产运行配置，也不改变部署数据库的 TLS 策略。
 
-jOOQ 生成源码（139 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
+jOOQ 生成源码（141 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
 Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置；独立 JVM 的默认 Mock 与开发 Compose 的显式 Mock 加载应用自有确定性 `ChatGateway` 和 `GenerationGateway`。默认部署 Compose 使用 `configured`，管理员配置数据库模型或部署者配置候选聊天适配器的端点、模型与 Key 后才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 
@@ -109,3 +109,7 @@ server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当�
 RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务内核与媒体归档，没有引入 Go SDK、脚本运行时或新依赖。第三方 Go SDK 仅作只读参考，不代表 Provider 协议保证。jOOQ 初始由隔离 PostgreSQL 17.11 执行 V65 后重新生成；合并 main 后保留 AutoDL V65，RunningHub 改为 V66 并重新生成，普通构建继续不连接生成数据库；OpenAPI 生成 TypeScript。动态表单复用现有 React 控件与类型，没有增加前端服务端。
 
 固定 HTTP 协议、输入契约、归档恢复与动态表单经定向测试；准确命令、计数与未验证事项见 RunningHub 证据（开发记录不随源码公开）。没有真实 RunningHub Key 或付费调用，也没有运行全量测试或浏览器端到端。
+
+## 2026-10-03 Seedance 视频参考与签名验证范围
+
+不新增依赖；使用现有 OkHttp 4.12.0、JDK HMAC-SHA256 和固定 FFmpeg/ffprobe。S3/COS 查询签名采用 AWS SigV4，OSS 使用 OSS V4；AWS 官方公开签名向量及独立 Python 计算的 OSS 合成向量通过定向单元测试。真实 PostgreSQL、FFmpeg 和假 HTTP 覆盖独立中继设置、本地上传、云对象免上传、签名脱敏、失败与清理；真实云桶及 Seedance 调用未验证。

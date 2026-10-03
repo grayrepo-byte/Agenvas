@@ -23,6 +23,9 @@ public class StorageSettingsController {
     @PutMapping("/active") public ResponseEntity<StorageSettingsService.Status> activate(@Valid @RequestBody Activate request) {
         return response(settings.activate(request.expectedVersion(), request.profileId()));
     }
+    @PutMapping("/relay") public ResponseEntity<StorageSettingsService.Status> relay(@Valid @RequestBody Activate request) {
+        return response(settings.activateRelay(request.expectedVersion(), request.profileId()));
+    }
     @PutMapping("/profiles/{id}/credentials") public ResponseEntity<StorageSettingsService.Status> rotate(
             @PathVariable UUID id, @Valid @RequestBody Rotate request) {
         return response(settings.rotate(request.expectedVersion(), id, request.accessKeyId(), request.secretAccessKey()));

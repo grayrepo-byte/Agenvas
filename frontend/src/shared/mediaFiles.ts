@@ -10,3 +10,7 @@ const AUDIO_FILE_EXTENSION = /\.(mp3|wav|ogg)$/i;
 export function isAudioFile(file: Pick<File, "type" | "name">): boolean {
   return file.type.startsWith("audio/") || AUDIO_FILE_EXTENSION.test(file.name);
 }
+
+export function isVideoFile(file: File): boolean {
+  return file.type.startsWith("video/") || /\.(mp4|mov)$/i.test(file.name);
+}

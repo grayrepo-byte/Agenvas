@@ -7,6 +7,7 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
+import dev.agenvas.db.tables.MediaRelayObject.MediaRelayObjectPath;
 import dev.agenvas.db.tables.StorageSettings.StorageSettingsPath;
 import dev.agenvas.db.tables.records.StorageProfileRecord;
 
@@ -220,17 +221,45 @@ public class StorageProfile extends TableImpl<StorageProfileRecord> {
         return _assetStorageRoute;
     }
 
-    private transient StorageSettingsPath _storageSettings;
+    private transient MediaRelayObjectPath _mediaRelayObject;
 
     /**
      * Get the implicit to-many join path to the
-     * <code>public.storage_settings</code> table
+     * <code>public.media_relay_object</code> table
      */
-    public StorageSettingsPath storageSettings() {
-        if (_storageSettings == null)
-            _storageSettings = new StorageSettingsPath(this, null, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_ACTIVE_PROFILE_ID_FKEY.getInverseKey());
+    public MediaRelayObjectPath mediaRelayObject() {
+        if (_mediaRelayObject == null)
+            _mediaRelayObject = new MediaRelayObjectPath(this, null, Keys.MEDIA_RELAY_OBJECT__MEDIA_RELAY_OBJECT_PROFILE_ID_FKEY.getInverseKey());
 
-        return _storageSettings;
+        return _mediaRelayObject;
+    }
+
+    private transient StorageSettingsPath _storageSettingsActiveProfileIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.storage_settings</code> table, via the
+     * <code>storage_settings_active_profile_id_fkey</code> key
+     */
+    public StorageSettingsPath storageSettingsActiveProfileIdFkey() {
+        if (_storageSettingsActiveProfileIdFkey == null)
+            _storageSettingsActiveProfileIdFkey = new StorageSettingsPath(this, null, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_ACTIVE_PROFILE_ID_FKEY.getInverseKey());
+
+        return _storageSettingsActiveProfileIdFkey;
+    }
+
+    private transient StorageSettingsPath _storageSettingsRelayProfileIdFkey;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.storage_settings</code> table, via the
+     * <code>storage_settings_relay_profile_id_fkey</code> key
+     */
+    public StorageSettingsPath storageSettingsRelayProfileIdFkey() {
+        if (_storageSettingsRelayProfileIdFkey == null)
+            _storageSettingsRelayProfileIdFkey = new StorageSettingsPath(this, null, Keys.STORAGE_SETTINGS__STORAGE_SETTINGS_RELAY_PROFILE_ID_FKEY.getInverseKey());
+
+        return _storageSettingsRelayProfileIdFkey;
     }
 
     @Override

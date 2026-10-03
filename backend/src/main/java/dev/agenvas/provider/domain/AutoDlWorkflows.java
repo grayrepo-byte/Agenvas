@@ -30,7 +30,7 @@ public final class AutoDlWorkflows {
             return new MediaAdapterRegistry.Declaration(MediaPlatform.AUTODL,
                     Task.Kind.VIDEO_GENERATION, minimumSeconds, maximumSeconds, false,
                     imageFields.size(), Set.of(mode), mode, "START_END".equals(mode),
-                    Set.of(), Set.of(), Set.of(), false, false, audioFields.size());
+                    Set.of(), Set.of(), Set.of(), false, false, audioFields.size(), 0);
         }
         public String resolution(String tier, String ratio) {
             String orientation = switch (ratio) {

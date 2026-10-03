@@ -76,6 +76,15 @@ function agentCard(bindingVersion = "version-a"): CanvasItem {
 }
 
 describe("canvas relation projection", () => {
+  it("connects the selected video version only to a video target", () => {
+    const source = mediaCard("source-video", "default-video", "selected-video");
+    source.artifact!.kind = "VIDEO";
+    const target = mediaCard("target", "target-default", "target-selected");
+    const connection = { source: source.id, target: target.id, sourceHandle: "artifact-output", targetHandle: "artifact-input" };
+    expect(mediaInputConnection([source, target], connection)).toBeNull();
+    target.artifact!.kind = "VIDEO";
+    expect(mediaInputConnection([source, target], connection)).toMatchObject({ sourceVersionId: "selected-video" });
+  });
   it("uses the audio node selection for bindings, connections and detail even when the resource default differs", () => {
     const source = mediaCard("artifact-a", "library-audio-version", "selected-audio-version");
     source.artifact!.kind = "AUDIO";

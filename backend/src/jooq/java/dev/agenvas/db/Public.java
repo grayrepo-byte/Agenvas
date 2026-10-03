@@ -44,6 +44,7 @@ import dev.agenvas.db.tables.MediaDefault;
 import dev.agenvas.db.tables.MediaDraft;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
+import dev.agenvas.db.tables.MediaRelayObject;
 import dev.agenvas.db.tables.MediaStyle;
 import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.MediaTemplateAttachment;
@@ -294,6 +295,12 @@ public class Public extends SchemaImpl {
     public final MediaProviderConnectionVersion MEDIA_PROVIDER_CONNECTION_VERSION = MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION;
 
     /**
+     * Temporary provider input copies registered before upload, retained for
+     * durable cleanup
+     */
+    public final MediaRelayObject MEDIA_RELAY_OBJECT = MediaRelayObject.MEDIA_RELAY_OBJECT;
+
+    /**
      * 媒体生成风格目录及内置风格缩略图
      */
     public final MediaStyle MEDIA_STYLE = MediaStyle.MEDIA_STYLE;
@@ -484,6 +491,7 @@ public class Public extends SchemaImpl {
             MediaDraft.MEDIA_DRAFT,
             MediaProviderConnection.MEDIA_PROVIDER_CONNECTION,
             MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION,
+            MediaRelayObject.MEDIA_RELAY_OBJECT,
             MediaStyle.MEDIA_STYLE,
             MediaTemplate.MEDIA_TEMPLATE,
             MediaTemplateAttachment.MEDIA_TEMPLATE_ATTACHMENT,

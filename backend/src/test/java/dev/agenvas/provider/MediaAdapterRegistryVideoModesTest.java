@@ -19,11 +19,13 @@ class MediaAdapterRegistryVideoModesTest {
     }
 
     @Test
-    void comfyStaysFirstFrameWhileSeedanceSupportsAudioReferences() {
+    void comfyStaysFirstFrameWhileSeedanceSupportsAudioAndVideoReferences() {
         assertThat(registry.declaration("COMFY_VIDEO_V1").supportedVideoInputModes())
                 .containsExactly("START_END");
         assertThat(registry.declaration("ARK_SEEDANCE_2_I2V").supportedVideoInputModes())
                 .containsExactlyInAnyOrder("TEXT", "START_END", "GENERAL_REFERENCE");
         assertThat(registry.declaration("ARK_SEEDANCE_2_I2V").maxReferenceAudios()).isEqualTo(3);
+        assertThat(registry.declaration("ARK_SEEDANCE_2_I2V").maxReferenceVideos()).isEqualTo(3);
+        assertThat(registry.declaration("COMFY_VIDEO_V1").maxReferenceVideos()).isZero();
     }
 }

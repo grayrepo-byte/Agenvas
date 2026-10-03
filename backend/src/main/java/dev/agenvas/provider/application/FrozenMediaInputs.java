@@ -21,6 +21,11 @@ final class FrozenMediaInputs {
         return read(task, "audios");
     }
 
+    static List<Image> videos(Task task) {
+        if (!task.input().path("mediaInput").has("videos")) return List.of();
+        return read(task, "videos");
+    }
+
     private static List<Image> read(Task task, String field) {
         JsonNode images = task.input().path("mediaInput").path(field);
         if (!images.isArray()) {

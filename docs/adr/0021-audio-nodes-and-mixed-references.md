@@ -11,3 +11,5 @@ Seed Audio 固定 `openspeech.bytedance.com/api/v3/tts/create`、`model=seed-aud
 2026-10-02 用户明确模板只支持图片和视频节点，并区分图片模板与视频模板，取代本 ADR 中的音频模板入口决定。音频保留提示词助手、翻译、展开编辑与音色库，移除静态声音模板入口；不会接入新的媒体创作模板系统。见规格 6.15 与 ADR 0026 的模板扩展。
 
 升级采用增量 Flyway V63，保留既有项目和精确引用；部署前备份数据库与文件卷。API 中 `imageInputs` 改为 `mediaInputs`，删除引用路由改为 `/media-draft/media-inputs/{versionId}/remove`，并增加 AUDIO 枚举与音频上传端点；前后端须同版本部署，不提供旧字段兼容层。项目导出清单升级 schemaVersion 4，导入方需理解音频和混合输入。真实 Provider 调用效果与费用以实际验收为准，假 HTTP 服务与 Mock 不证明云端已接通。
+
+2026-10-03 扩展：全能参考增加独立 `VIDEO_REFERENCE` 上限与 `Video N` 编号；Seedance 音频可搭配图片或视频。仅视频参考不改变原有无声输出约定；含音频参考仍保留输出音轨。本地视频使用与归档分开配置的媒体中继，云端视频直接签名原对象。决定与代价见 [ADR 0023 后续决定](0023-per-asset-object-storage.md)及[中继设计](../media-relay-design.md)。

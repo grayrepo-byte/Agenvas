@@ -63,6 +63,43 @@ final class ObjectStorageSigner {
                 + (oss ? (additional.isEmpty() ? "" : ",AdditionalHeaders=" + signedNames) + ",Signature=" : ", SignedHeaders=" + signedNames + ", Signature=") + signature;
         return builder.header("Authorization", authorization).build();
     }
+    /** A GET bearer URL signs only Host, so provider GET/Range requests need no extra headers. */
+    static HttpUrl presignGet(HttpUrl url, StorageProfile profile, String id, String secret,
+            String objectKey, Instant instant, long expiresSeconds) {
+        if (expiresSeconds < 1 || expiresSeconds > java.time.Duration.ofDays(7).toSeconds())
+            throw new IllegalArgumentException("Invalid signed URL lifetime");
+        boolean oss = profile.provider() == StorageProfile.Provider.ALIYUN_OSS;
+        String timestamp = TIMESTAMP.format(instant);
+        String date = timestamp.substring(0, 8);
+        String service = oss ? "oss" : "s3";
+        String terminal = oss ? "aliyun_v4_request" : "aws4_request";
+        String algorithm = oss ? "OSS4-HMAC-SHA256" : "AWS4-HMAC-SHA256";
+        String scope = date + "/" + profile.region() + "/" + service + "/" + terminal;
+        TreeMap<String, String> query = new TreeMap<>();
+        query.put(oss ? "x-oss-signature-version" : "X-Amz-Algorithm", algorithm);
+        query.put(oss ? "x-oss-credential" : "X-Amz-Credential", id + "/" + scope);
+        query.put(oss ? "x-oss-date" : "X-Amz-Date", timestamp);
+        query.put(oss ? "x-oss-expires" : "X-Amz-Expires", Long.toString(expiresSeconds));
+        query.put(oss ? "x-oss-additional-headers" : "X-Amz-SignedHeaders", "host");
+        var builder = url.newBuilder();
+        query.forEach((name, value) -> builder.addEncodedQueryParameter(name, encode(value)));
+        HttpUrl unsigned = builder.build();
+        String path = oss ? "/" + profile.bucket() + "/" + objectKey : url.encodedPath();
+        String canonical = "GET\n" + path + "\n" + unsigned.encodedQuery()
+                + "\nhost:" + host(url) + "\n\nhost\n" + UNSIGNED_PAYLOAD;
+        String toSign = algorithm + "\n" + timestamp + "\n" + scope + "\n"
+                + hash(canonical.getBytes(StandardCharsets.UTF_8));
+        byte[] key = hmac(((oss ? "aliyun_v4" : "AWS4") + secret).getBytes(StandardCharsets.UTF_8), date);
+        key = hmac(key, profile.region()); key = hmac(key, service); key = hmac(key, terminal);
+        return builder.addQueryParameter(oss ? "x-oss-signature" : "X-Amz-Signature",
+                HexFormat.of().formatHex(hmac(key, toSign))).build();
+    }
+
+    private static String encode(String value) {
+        return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+                .replace("*", "%2A").replace("%7E", "~");
+    }
+
     private static String host(HttpUrl url) {
         return url.host() + (url.port() == 443 || url.port() == 80 ? "" : ":" + url.port());
     }

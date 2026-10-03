@@ -81,6 +81,30 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
+    void relayUpgradeDefaultsToDisabledAndPreservesTheArchiveConnection() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("3").load().migrate();
+        UUID profile = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            execute(connection, """
+                    insert into storage_profile(id,name,provider,endpoint,region,bucket,key_prefix,path_style,
+                        credential_version,credential_ciphertext,credential_nonce,credential_key_version,access_key_mask,created_at)
+                    values (?,'Synthetic archive','S3','https://s3.example.com','us-east-1','synthetic-bucket','archive',true,
+                        1,decode('00','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
+                    """, profile);
+            execute(connection, "update storage_settings set active_profile_id=?,version=7 where singleton", profile);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 3);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select active_profile_id::text from storage_settings where singleton")).isEqualTo(profile.toString());
+            assertThat(text(connection, "select (relay_profile_id is null)::text from storage_settings where singleton")).isEqualTo("true");
+            assertThat(count(connection, "select version from storage_settings where singleton")).isEqualTo(7);
+            assertThat(count(connection, "select count(*) from media_relay_object")).isZero();
+            assertThat(text(connection, "select name from storage_profile where id=?", profile)).isEqualTo("Synthetic archive");
+        }
+    }
+
+    @Test
     void streamLogUpgradeRemovesDeliveryFieldsAndPreservesModelResponseAndUsage() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("2").load().migrate();
@@ -98,7 +122,7 @@ class FlywayBaselinePostgresIT {
                     values (?,'[]'::jsonb,jsonb_build_object('response',?::text,'output','synthetic duplicate output','truncated',false))
                     """, call, "{\"text\":\"synthetic model reply\"}");
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 2);
         try (Connection connection = connection()) {
             assertThat(count(connection, "select (llm_stream_metrics_json->>'schemaVersion')::int from call_log where id=?", call)).isEqualTo(2);
             assertThat(count(connection, "select (llm_stream_metrics_json->>'firstTextMs')::int from call_log where id=?", call)).isEqualTo(35);

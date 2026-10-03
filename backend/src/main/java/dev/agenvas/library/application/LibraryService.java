@@ -43,7 +43,7 @@ public class LibraryService {
     private static final int PAGE_SIZE = 30;
     private static final int IMPORT_CARD_SIZE = 320;
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(LibraryService.class);
-    private static final java.util.Set<String> NON_RETRYABLE_CODES = java.util.Set.of("VERSION_CONFLICT", "PROVIDER_UNSUPPORTED_INPUT", "VALIDATION_ERROR", "LIBRARY_REFERENCE_INVALID", "ARTIFACT_ORIGIN_INVALID");
+    private static final java.util.Set<String> NON_RETRYABLE_CODES = java.util.Set.of("VERSION_CONFLICT", "PROVIDER_UNSUPPORTED_INPUT", "VALIDATION_ERROR", "LIBRARY_REFERENCE_INVALID", "ARTIFACT_ORIGIN_INVALID", "SEEDANCE_VIDEO_REFERENCE_INVALID");
     private static final int SCHEMA_VERSION = 1;
     private static final Duration LEASE = Duration.ofMinutes(5);
     private final LibraryRepository repository;
@@ -187,7 +187,7 @@ public class LibraryService {
         String hash = Sha256.hex(mapper.writeValueAsString(List.of("REFERENCE", project, item, entryId, expected, draft, role, color)));
         var replay = replay(owner, key, hash); if (replay != null) return replay;
         LibraryEntry entry = require(owner, entryId); checkEntry(entry, expected);
-        if (entry.kind() != Artifact.Kind.IMAGE && entry.kind() != Artifact.Kind.AUDIO)
+        if (entry.kind() != Artifact.Kind.IMAGE && entry.kind() != Artifact.Kind.AUDIO && entry.kind() != Artifact.Kind.VIDEO)
             throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "LIBRARY_REFERENCE_INVALID", ApiMessage.of("api.library-service.only-image-and-audio-assets-are-available-for-reference"));
         if (drafts.get(owner, project, item).version() != draft.expectedVersion()) throw conflict();
         UUID id = UUID.randomUUID();

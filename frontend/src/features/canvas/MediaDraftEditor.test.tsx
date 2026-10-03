@@ -28,7 +28,7 @@ const initialDraft: MediaDraft = {
 const imageCapability: MediaCapability = {
   id: "image-capability", name: "细节生图", enabled: true, version: 0, capabilityVersion: 1,
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0,
-  maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
+  maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 4, supportedVideoInputModes: [],
   defaultVideoInputMode: null, supportsEndFrame: false,
   supportedImageAspectRatios: ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"],
   supportedImageResolutions: ["1K", "2K", "4K"], supportedImageQualities: ["low", "medium", "high"],
@@ -38,20 +38,20 @@ const imageCapability: MediaCapability = {
 const videoCapability: MediaCapability = {
   ...imageCapability, id: "video-capability", name: "镜头视频", adapterId: "ARK_SEEDANCE_2_I2V",
   kind: "VIDEO_GENERATION", minimumSeconds: 2, maximumSeconds: 10,
-  maxReferenceAudios: 0, maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
+  maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 2, supportedVideoInputModes: ["START_END"],
   defaultVideoInputMode: "START_END", supportsEndFrame: true, supportedImageAspectRatios: [],
   supportedImageResolutions: [], supportedImageQualities: [], supportsTransparentBackground: false,
   supportsImageMask: false, settings: {},
 };
 const versatileVideoCapability: MediaCapability = {
   ...videoCapability, id: "versatile-video-capability", name: "全能视频",
-  maxReferenceAudios: 0, maxReferenceImages: 4,
+  maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 4,
   supportedVideoInputModes: ["TEXT", "START_END", "GENERAL_REFERENCE"],
   defaultVideoInputMode: "TEXT", supportsEndFrame: true,
 };
 const audioCapability: MediaCapability = {
   ...imageCapability, id: "audio-capability", name: "Seed Audio 1.0",
-  kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3,
+  kind: "AUDIO_GENERATION", adapterId: "VOLC_SEED_AUDIO_1", maxReferenceImages: 1, maxReferenceAudios: 3, maxReferenceVideos: 0,
   supportedImageAspectRatios: [], supportedImageResolutions: [], supportedImageQualities: [], settings: {},
 };
 const settings: MediaSettings = {
@@ -332,7 +332,7 @@ describe("MediaDraftEditor", () => {
 
   it("explains required AutoDL mixed references before generation", async () => {
     const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
-      name: "H3 mixed", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 6, maxReferenceAudios: 3,
+      name: "H3 mixed", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 6, maxReferenceAudios: 3, maxReferenceVideos: 0,
       supportedVideoInputModes: ["GENERAL_REFERENCE"], defaultVideoInputMode: "GENERAL_REFERENCE", supportsEndFrame: false,
       settings: { workflowId: "minimax_h3_z0903", videoResolution: "480p" } };
     setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
@@ -403,7 +403,7 @@ describe("MediaDraftEditor", () => {
   });
 
   it("confirms removal of audio when switching mixed references to frames and updates surviving mention roles", async () => {
-    const capability = { ...versatileVideoCapability, adapterId: "MOCK_VIDEO", maxReferenceAudios: 3 };
+    const capability = { ...versatileVideoCapability, adapterId: "MOCK_VIDEO", maxReferenceAudios: 3, maxReferenceVideos: 0 };
     const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
       defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
       draft: { ...initialDraft, parameters: { aspectRatio: "AUTO" }, durationSeconds: 5, videoInputMode: "GENERAL_REFERENCE",
@@ -751,7 +751,7 @@ describe("MediaDraftEditor", () => {
       }
       return interceptedFetch(input, init);
     });
-    const capability = { ...versatileVideoCapability, maxReferenceAudios: 2 };
+    const capability = { ...versatileVideoCapability, maxReferenceAudios: 2, maxReferenceVideos: 0 };
     const { saves } = setup({ kind: audio ? "VIDEO" : "IMAGE", settings: audio ? {
       ...settings, connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
       defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }],
@@ -1367,4 +1367,30 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "选择风格" })).toHaveTextContent("Selected watercolor");
     expect(generate).not.toHaveBeenCalled();
   });
+  it("adds an exact video reference, previews its thumbnail and permits video-only Seedance input", async () => {
+    const capability = { ...versatileVideoCapability, maxReferenceVideos: 3, maxReferenceAudios: 3 };
+    const { saves } = setup({ kind: "VIDEO", settings: {
+      connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }],
+    }, draft: { ...initialDraft, durationSeconds: 5, videoInputMode: "GENERAL_REFERENCE", parameters: { aspectRatio: "AUTO" } }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+        kind: "VIDEO", id: "reference-video", title: "合成视频", resourceDefaultVersionId: "video-v1" }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-video/versions`, () =>
+        HttpResponse.json({ items: [{ id: "video-v1", versionNo: 1, content: { assetId: "asset-video-v1" } }] })),
+    ] });
+    const user = userEvent.setup();
+    const input = await screen.findByLabelText("选择本地图片、视频或音频");
+    expect(input).toHaveAttribute("accept", expect.stringContaining("video/mp4"));
+    await user.click(screen.getByRole("button", { name: "添加参考素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 合成视频 · v1" }));
+    await user.click(screen.getByRole("button", { name: "添加所选素材（1）" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ videoInputMode: "GENERAL_REFERENCE",
+      mediaInputs: [expect.objectContaining({ versionId: "video-v1", role: "VIDEO_REFERENCE" })] }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    const chip = screen.getByRole("listitem", { name: /合成视频 · v1，序号 1/ });
+    expect(chip.querySelector("img")?.getAttribute("src")).toContain("asset-video-v1/thumbnail");
+    expect(screen.getByText(/本地视频参考需要管理员配置/)).toBeVisible();
+  });
+
 });

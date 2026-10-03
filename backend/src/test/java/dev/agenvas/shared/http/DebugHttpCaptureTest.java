@@ -190,13 +190,13 @@ class DebugHttpCaptureTest {
     @Test void credentialsInNestedSignedUrlsAndMislabelledJsonAreRemoved() throws Exception {
         var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
         try (var scope = DebugHttpCapture.open(saved::set)) {
-            String request = "{\"url\":\"https://files.example/image.png?X-Amz-Signature=signed-secret&filename=image.png\"}";
+            String request = "{\"url\":\"https://files.example/image.png?X-Amz-Signature=signed-secret&x-oss-signature=oss-signed-secret&x-oss-credential=private-id&filename=image.png\"}";
             int id = DebugHttpCapture.begin("POST", "http://127.0.0.1:8188/prompt", request.getBytes(), "text/plain");
             String response = "{\"channel\":\"analysis\",\"text\":\"PRIVATE_ANALYSIS\"}";
             try (var input = DebugHttpCapture.responseStream(id, 200, "application/octet-stream",
                     new java.io.ByteArrayInputStream(response.getBytes()))) { input.readAllBytes(); }
             assertThat(MAPPER.writeValueAsString(saved.get())).contains("filename=image.png", "REDACTED")
-                    .doesNotContain("signed-secret", "PRIVATE_ANALYSIS");
+                    .doesNotContain("signed-secret", "oss-signed-secret", "private-id", "PRIVATE_ANALYSIS");
         }
     }
 

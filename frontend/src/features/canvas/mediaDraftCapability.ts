@@ -58,10 +58,10 @@ export function preferredImageVideoMode(capability?: MediaCapability): VideoInpu
 
 export function inputsForVideoMode(inputs: DraftFields["mediaInputs"], mode: VideoInputMode) {
   if (mode === "GENERAL_REFERENCE") {
-    return inputs.map((input) => ({ ...input, role: input.role === "AUDIO_REFERENCE" ? "AUDIO_REFERENCE" as const : "REFERENCE" as const }));
+    return inputs.map((input) => ({ ...input, role: input.role === "AUDIO_REFERENCE" || input.role === "VIDEO_REFERENCE" ? input.role : "REFERENCE" as const }));
   }
   if (mode === "START_END") {
-    return inputs.filter((input) => input.role !== "AUDIO_REFERENCE").slice(0, START_END_FRAME_COUNT).map((input, index) => ({ ...input,
+    return inputs.filter((input) => input.role !== "AUDIO_REFERENCE" && input.role !== "VIDEO_REFERENCE").slice(0, START_END_FRAME_COUNT).map((input, index) => ({ ...input,
       role: index === 0 ? "START_FRAME" as const : "END_FRAME" as const }));
   }
   return [];

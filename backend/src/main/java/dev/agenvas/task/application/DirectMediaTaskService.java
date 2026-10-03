@@ -54,7 +54,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
-    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 4;
+    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 5;
     private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 6;
     private static final int TASK_EVENT_SCHEMA_VERSION = 1;
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
@@ -79,13 +79,14 @@ public class DirectMediaTaskService {
     private final ProjectService projects;
     private final AgentRunService runs;
     private final MediaStyleService styles;
+    private final dev.agenvas.asset.storage.MediaRelayService relay;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
             CanvasService canvas,
             MediaCapabilityService capabilities,
             ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles) {
+            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -100,6 +101,7 @@ public class DirectMediaTaskService {
         this.projects = projects;
         this.runs = runs;
         this.styles = styles;
+        this.relay = relay;
     }
 
     @Transactional
@@ -249,6 +251,14 @@ public class DirectMediaTaskService {
                     imageNode.put("versionId", image.id().toString());
                     imageNode.put("role", imageInput.role().name());
                     imageNode.put("order", group.size() - 1);
+                    if (MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId())
+                            && imageInput.role() == MediaDraft.InputRole.VIDEO_REFERENCE) {
+                        Asset asset = assets.requireReadyMedia(ownerId, projectId,
+                                UUID.fromString(image.content().path("assetId").asText()), Asset.MediaKind.VIDEO);
+                        UUID relayProfile = relay.pinProfile(asset);
+                        if (relayProfile == null) imageNode.putNull("relayProfileId");
+                        else imageNode.put("relayProfileId", relayProfile.toString());
+                    }
                 }
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 if (creativeSkill != null) frozen.set("creativeSkill", creativeSkill.deepCopy());
@@ -884,6 +894,11 @@ public class DirectMediaTaskService {
             dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy, JsonNode parametersJson) {
         long audioCount = draft.mediaInputs().stream().filter(input ->
                 input.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+        long videoCount = draft.mediaInputs().stream().filter(input ->
+                input.role() == MediaDraft.InputRole.VIDEO_REFERENCE).count();
+        if (videoCount > policy.maxReferenceVideos() || videoCount > 0 && (kind != Task.Kind.VIDEO_GENERATION
+                || draft.videoInputMode() != MediaDraft.VideoInputMode.GENERAL_REFERENCE))
+            throw invalid(ApiMessage.of("api.media-relay.video-input-limit", policy.maxReferenceVideos()));
         if (audioCount > policy.maxReferenceAudios()) throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-capability-does-not-support-this-number-of-audio"));
         if (kind == Task.Kind.AUDIO_GENERATION) {
             if (draft.prompt().codePointCount(0, draft.prompt().length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH)
@@ -910,7 +925,7 @@ public class DirectMediaTaskService {
                 input.role() == MediaDraft.InputRole.END_FRAME)) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-does-not-support-end-frames"));
         }
-        if (draft.mediaInputs().size() - audioCount > policy.maxReferenceImages()) {
+        if (draft.mediaInputs().size() - audioCount - videoCount > policy.maxReferenceImages()) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-accepts-at-most-image-inputs", policy.maxReferenceImages()));
         }
     }
@@ -933,21 +948,30 @@ public class DirectMediaTaskService {
         if (!seed && !ark && !autodl) return;
         long autodlTotalBytes = 0;
         long audioDuration = 0;
+        long videoDuration = 0;
+        int videoCount = 0;
         int imageCount = 0;
         int audioCount = 0;
         for (var reference : draft.mediaInputs()) {
             boolean audio = reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE;
+            boolean video = reference.role() == MediaDraft.InputRole.VIDEO_REFERENCE;
             var version = artifacts.requireMediaVersionForTask(ownerId, projectId, reference.versionId(),
-                    audio ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
+                    video ? Artifact.Kind.VIDEO : audio ? Artifact.Kind.AUDIO : Artifact.Kind.IMAGE);
             Asset asset = assets.requireReadyMedia(ownerId, projectId,
                     UUID.fromString(version.content().path("assetId").asText()),
-                    audio ? Asset.MediaKind.AUDIO : Asset.MediaKind.IMAGE);
+                    video ? Asset.MediaKind.VIDEO : audio ? Asset.MediaKind.AUDIO : Asset.MediaKind.IMAGE);
             if (autodl) {
                 autodlTotalBytes += asset.byteSize();
                 if (asset.byteSize() > AutoDlWorkflows.MAX_REFERENCE_BYTES
                         || autodlTotalBytes > AutoDlWorkflows.MAX_TOTAL_REFERENCE_BYTES
                         || audio && !Set.of("audio/mpeg", "audio/wav", "audio/flac").contains(asset.contentType()))
                     throw invalid(ApiMessage.of("api.direct-media-task-service.autodl-reference-assets-are-limited-to-15-mib-each-and"));
+            }
+            if (video) {
+                videoCount++;
+                videoDuration += asset.durationMs();
+                dev.agenvas.provider.domain.SeedanceVideoReferences.validateMetadata(asset);
+                continue;
             }
             if (!audio) {
                 imageCount++;
@@ -966,7 +990,9 @@ public class DirectMediaTaskService {
                     || !Set.of("audio/mpeg", "audio/wav").contains(asset.contentType())))
                 throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-supports-mp3-wav-only-2-15-seconds"));
         }
-        if (ark && audioCount > 0 && (imageCount == 0
+        if (ark && videoDuration > MediaAdapterRegistry.SEEDANCE_MAX_VIDEO_DURATION_MS)
+            throw invalid(ApiMessage.of("api.media-relay.video-duration-limit"));
+        if (ark && audioCount > 0 && (imageCount + videoCount == 0
                 || draft.videoInputMode() != MediaDraft.VideoInputMode.GENERAL_REFERENCE
                 || audioDuration > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS))
             throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-must-be-in-full-reference-mode-with"));

@@ -2042,5 +2042,19 @@
   "skills.trashReadOnly": "This Skill is in trash. Restore it to edit, publish, or try it; historical Runs keep their fixed version.",
   "skills.entry": "Skill",
   "skills.pickerHint": "Choose a creative Skill and published version for this run. No Skill is injected when none is selected.",
-  "skills.use": "Use Skill"
+  "skills.use": "Use Skill",
+  "media.editor.videoReferenceLimits": "Up to {0} images, {1} videos and {2} audio clips",
+  "media.editor.videoRelayHint": "Local video references require a public media relay configured by an administrator. Existing object storage assets use signed links directly.",
+  "settings.storage.relayConnection": "Relay connection",
+  "settings.storage.relayDescription": "Temporarily share local video references with generation services. Independent of default storage; supports private OSS, COS and S3 buckets.",
+  "settings.storage.relayDisabled": "Disable local media relay",
+  "settings.storage.relayPolicy": "Use a public HTTPS endpoint with upload, read and delete permissions. Existing cloud assets are signed directly without another upload. Links last 72 hours; relay copies are removed after 7 days.",
+  "settings.storage.relaySaved": "Relay saved. Default storage is unchanged.",
+  "settings.storage.relayTitle": "Media relay",
+  "tasks.errors.videoPreparationFailed": "Video reference preparation failed. Check the relay connection and permissions. Generation has not been submitted.",
+  "tasks.errors.videoPublicEndpointRequired": "The reference bucket must be reachable over public HTTPS.",
+  "tasks.errors.videoReferenceInvalid": "Video references require MP4, H.264/H.265, 24–60 FPS, 2–15 seconds each and 15 seconds in total.",
+  "settings.capabilities.maxVideos": "Maximum reference videos",
+  "media.editor.chooseLocalAllMedia": "Choose local images, videos or audio",
+  "media.editor.addVideoMediaInput": "Add reference media"
 }

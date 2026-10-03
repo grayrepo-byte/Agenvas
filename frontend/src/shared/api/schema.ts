@@ -761,6 +761,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/storage/relay": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Select the independent temporary media relay; archive location is unchanged */
+        put: operations["activateMediaRelayProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/storage/profiles/{profileId}/credentials": {
         parameters: {
             query?: never;
@@ -3217,7 +3240,7 @@ export interface components {
             expectedVersion: number;
             draft: components["schemas"]["SaveMediaDraftRequest"];
             /** @enum {string} */
-            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE";
+            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE" | "VIDEO_REFERENCE";
             color: string;
             commandKey: string;
         };
@@ -3382,6 +3405,7 @@ export interface components {
             maximumSeconds: number;
             maxReferenceImages: number;
             maxReferenceAudios: number;
+            maxReferenceVideos: number;
             supportedVideoInputModes: components["schemas"]["VideoInputMode"][];
             defaultVideoInputMode: components["schemas"]["VideoInputMode"] | null;
             supportsEndFrame: boolean;
@@ -3424,6 +3448,7 @@ export interface components {
             maximumSeconds?: number;
             maxReferenceImages?: number;
             maxReferenceAudios?: number;
+            maxReferenceVideos?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
             /** @description AutoDL video estimates by a published resolution tier. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost. */
             pricingByResolution?: {
@@ -3663,6 +3688,11 @@ export interface components {
              * @description Null selects local storage; existing objects are never relocated
              */
             activeProfileId: string | null;
+            /**
+             * Format: uuid
+             * @description Independent media relay destination; null disables local video relay. Existing cloud originals are signed directly.
+             */
+            relayProfileId: string | null;
             profiles: components["schemas"]["StorageProfile"][];
         };
         CreateStorageProfileRequest: {
@@ -6593,6 +6623,41 @@ export interface operations {
                     "application/json": components["schemas"]["StorageSettings"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    activateMediaRelayProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description New relay destination */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

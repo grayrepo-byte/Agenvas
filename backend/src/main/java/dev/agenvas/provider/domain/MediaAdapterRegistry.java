@@ -21,6 +21,18 @@ public final class MediaAdapterRegistry {
     public static final int SEEDANCE_MAX_AUDIO_BYTES = 15 * 1024 * 1024;
     public static final int SEEDANCE_MIN_AUDIO_DURATION_MS = 2_000;
     public static final int SEEDANCE_MAX_AUDIO_DURATION_MS = 15_000;
+    public static final int SEEDANCE_MAX_REFERENCE_VIDEOS = 3;
+    public static final long SEEDANCE_MAX_VIDEO_BYTES = 200L * 1024 * 1024;
+    public static final int SEEDANCE_MIN_VIDEO_DURATION_MS = 2_000;
+    public static final int SEEDANCE_MAX_VIDEO_DURATION_MS = 15_000;
+    public static final int SEEDANCE_MIN_VIDEO_SIDE = 300;
+    public static final int SEEDANCE_MAX_VIDEO_SIDE = 6_000;
+    public static final int SEEDANCE_MIN_VIDEO_PIXELS = 407_696;
+    public static final int SEEDANCE_MAX_VIDEO_PIXELS = 8_295_044;
+    public static final int SEEDANCE_MIN_VIDEO_FPS = 24;
+    public static final int SEEDANCE_MAX_VIDEO_FPS = 60;
+    public static final double SEEDANCE_MIN_VIDEO_RATIO = 0.4;
+    public static final double SEEDANCE_MAX_VIDEO_RATIO = 2.5;
     public static final String LOCAL_IMAGE_PROCESSOR = "LOCAL_IMAGE_PROCESSOR";
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
@@ -41,7 +53,7 @@ public final class MediaAdapterRegistry {
             Set<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, Set<String> supportedImageAspectRatios,
             Set<String> supportedImageResolutions, Set<String> supportedImageQualities,
-            boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios) {}
+            boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios, int maxReferenceVideos) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.ofEntries(
             Map.entry(RUNNINGHUB_IMAGE, runningHub(Task.Kind.IMAGE_GENERATION)),
@@ -81,7 +93,7 @@ public final class MediaAdapterRegistry {
                 true, RUNNINGHUB_MAX_INPUTS, kind == Task.Kind.VIDEO_GENERATION
                         ? Set.of("TEXT", "GENERAL_REFERENCE") : Set.of(),
                 kind == Task.Kind.VIDEO_GENERATION ? "TEXT" : null,
-                false, Set.of(), Set.of(), Set.of(), false, false, RUNNINGHUB_MAX_INPUTS);
+                false, Set.of(), Set.of(), Set.of(), false, false, RUNNINGHUB_MAX_INPUTS, RUNNINGHUB_MAX_INPUTS);
     }
 
     private static Declaration image(MediaPlatform platform, boolean originRequired,
@@ -89,7 +101,7 @@ public final class MediaAdapterRegistry {
             Set<String> qualities, boolean transparentBackground, boolean imageMask) {
         return new Declaration(platform, Task.Kind.IMAGE_GENERATION, 0, 0, originRequired,
                 maxReferenceImages, Set.of(), null, false, aspectRatios, resolutions,
-                qualities, transparentBackground, imageMask, 0);
+                qualities, transparentBackground, imageMask, 0, 0);
     }
 
     private static Declaration video(MediaPlatform platform, int minimumSeconds,
@@ -98,12 +110,13 @@ public final class MediaAdapterRegistry {
         return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
                 maximumSeconds, originRequired, maxReferenceImages, inputModes, defaultInputMode,
                 supportsEndFrame, Set.of(), Set.of(), Set.of(), false, false,
-                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK ? 3 : 0);
+                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK ? 3 : 0,
+                platform == MediaPlatform.ARK ? SEEDANCE_MAX_REFERENCE_VIDEOS : 0);
     }
 
     private static Declaration audio(MediaPlatform platform) {
         return new Declaration(platform, Task.Kind.AUDIO_GENERATION, 0, 0, false, 1,
-                Set.of(), null, false, Set.of(), Set.of(), Set.of(), false, false, 3);
+                Set.of(), null, false, Set.of(), Set.of(), Set.of(), false, false, 3, 0);
     }
 
     private final Map<String, MediaAdapter> implementations;

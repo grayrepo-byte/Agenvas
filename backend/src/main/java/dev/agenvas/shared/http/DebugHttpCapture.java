@@ -128,7 +128,7 @@ public final class DebugHttpCapture implements AutoCloseable {
                 .replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED)
                 .replaceAll("(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(-----END [A-Z ]*PRIVATE KEY-----|$)", REDACTED)
                 .replaceAll("\\bsk-[A-Za-z0-9_-]+", REDACTED)
-                .replaceAll("(?i)([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig|x-amz-[a-z-]+|x-goog-[a-z-]+|x-tos-[a-z-]+)=)[^&\\s\"<>]+", "$1" + REDACTED)
+                .replaceAll("(?i)([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig|x-amz-[a-z-]+|x-goog-[a-z-]+|x-tos-[a-z-]+|x-oss-[a-z-]+)=)[^&\\s\"<>]+", "$1" + REDACTED)
                 .replaceAll("(?i)(https?://)[^/\\s@]+@", "$1" + REDACTED + "@");
     }
     private JsonNode scrub(JsonNode node) {

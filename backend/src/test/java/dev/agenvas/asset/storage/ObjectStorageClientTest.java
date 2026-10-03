@@ -66,4 +66,48 @@ class ObjectStorageClientTest {
                 .doesNotContain("test-secret");
         assertThat(aws.header("x-amz-content-sha256")).isEqualTo(ObjectStorageSigner.EMPTY_HASH);
     }
+    @Test void presignedS3GetMatchesThePublishedAwsQuerySignature() {
+        // Public AWS documentation's synthetic access key and secret; never a real credential.
+        var s3 = new StorageProfile(UUID.randomUUID(), "example", StorageProfile.Provider.S3,
+                "https://s3.amazonaws.com", "us-east-1", "examplebucket", "", false, 1, null, "mask", Instant.EPOCH);
+        var signed = ObjectStorageSigner.presignGet(ObjectStorageClient.url(s3, "test.txt"), s3,
+                "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "test.txt",
+                Instant.parse("2013-05-24T00:00:00Z"), 86400);
+        assertThat(signed.queryParameter("X-Amz-Signature"))
+                .isEqualTo("aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404");
+        assertThat(signed.encodedQuery()).contains("%2F20130524%2Fus-east-1%2Fs3%2Faws4_request");
+        assertThat(signed.queryParameter("X-Amz-SignedHeaders")).isEqualTo("host");
+    }
+    @Test void providerInputsRejectPrivateAndProxyFakeIpsWhileArchiveStillSupportsPrivateStorage() throws Exception {
+        for (String ip : new String[] { "127.0.0.1", "10.1.2.3", "169.254.169.254", "198.18.0.1", "fc00::1", "::1", "0.0.0.0" })
+            assertThat(ObjectStorageClient.isPublic(InetAddress.getByName(ip))).isFalse();
+        assertThat(ObjectStorageClient.isPublic(InetAddress.getByName("8.8.8.8"))).isTrue();
+    }
+
+    @Test void ossPresignedGetMatchesIndependentPythonCanonicalCalculation() {
+        var oss = new StorageProfile(UUID.randomUUID(), "example", StorageProfile.Provider.ALIYUN_OSS,
+                "https://oss-cn-hangzhou.aliyuncs.com", "cn-hangzhou", "examplebucket", "", false, 1, null, "mask", Instant.EPOCH);
+        var signed = ObjectStorageSigner.presignGet(ObjectStorageClient.url(oss, "video.mp4"), oss,
+                "example-id", "yourAccessKeySecret", "video.mp4", Instant.parse("2025-04-11T06:41:24Z"), 259200);
+        assertThat(signed.queryParameter("x-oss-signature")).isEqualTo("5163a314f07a7242809e18397ad3cdcd9c803a9ae8b3986f71520528d616bd5a");
+        assertThat(signed.queryParameter("x-oss-additional-headers")).isEqualTo("host");
+        assertThat(signed.queryParameter("x-oss-expires")).isEqualTo("259200");
+        assertThat(signed.queryParameter("X-Amz-Signature")).isNull();
+    }
+    @Test void cosAndPathStyleS3PresignTheirActualHostAndPathAndBoundExpiration() {
+        for (var provider : List.of(StorageProfile.Provider.S3, StorageProfile.Provider.TENCENT_COS)) {
+            var profile = profile(provider, provider == StorageProfile.Provider.S3);
+            var url = ObjectStorageClient.url(profile, "project/video.mp4");
+            var signed = ObjectStorageSigner.presignGet(url, profile, "example-id", "synthetic-secret",
+                    "project/video.mp4", Instant.EPOCH, 259200);
+            assertThat(signed.encodedPath()).isEqualTo(url.encodedPath());
+            assertThat(signed.host()).isEqualTo(url.host());
+            assertThat(signed.queryParameter("X-Amz-Credential")).isEqualTo("example-id/19700101/us-east-1/s3/aws4_request");
+            assertThat(signed.queryParameter("X-Amz-Signature")).matches("[a-f0-9]{64}");
+            for (long expires : new long[] { 0, 604801 })
+                assertThatThrownBy(() -> ObjectStorageSigner.presignGet(url, profile, "example-id", "synthetic-secret",
+                        "project/video.mp4", Instant.EPOCH, expires)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
 }

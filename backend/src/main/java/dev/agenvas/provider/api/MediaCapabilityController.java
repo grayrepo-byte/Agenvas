@@ -133,7 +133,7 @@ public class MediaCapabilityController {
         return new CapabilityView(capability.id(), capability.name(), capability.enabled(),
                 capability.version(), capability.currentVersion(), snapshot.adapterId(),
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
-                declaration.maxReferenceImages(), declaration.maxReferenceAudios(), declaration.supportedVideoInputModes().stream()
+                declaration.maxReferenceImages(), declaration.maxReferenceAudios(), declaration.maxReferenceVideos(), declaration.supportedVideoInputModes().stream()
                         .sorted().toList(), declaration.defaultVideoInputMode(),
                 declaration.supportsEndFrame(),
                 declaration.supportedImageAspectRatios().stream().sorted().toList(),
@@ -163,7 +163,7 @@ public class MediaCapabilityController {
             List<CapabilityView> capabilities) {}
     public record CapabilityView(UUID id, String name, boolean enabled, long version,
             int capabilityVersion, String adapterId, Task.Kind kind,
-            int minimumSeconds, int maximumSeconds, int maxReferenceImages, int maxReferenceAudios,
+            int minimumSeconds, int maximumSeconds, int maxReferenceImages, int maxReferenceAudios, int maxReferenceVideos,
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, List<String> supportedImageAspectRatios,
             List<String> supportedImageResolutions, List<String> supportedImageQualities,

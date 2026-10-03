@@ -10,7 +10,7 @@ import { SmartEditDialog } from "./SmartEditDialog";
 const capability: MediaCapability = {
   id: "model", name: "Image model", enabled: true, version: 0, capabilityVersion: 1,
   adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
-  maxReferenceAudios: 0, maxReferenceImages: 4, supportedVideoInputModes: [], defaultVideoInputMode: null,
+  maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 4, supportedVideoInputModes: [], defaultVideoInputMode: null,
   supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"],
   supportedImageQualities: ["high"], supportsTransparentBackground: true, supportsImageMask: true,
   mappingSha256: "a".repeat(64), settings: {},

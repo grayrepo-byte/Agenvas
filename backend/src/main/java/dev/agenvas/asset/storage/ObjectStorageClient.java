@@ -69,6 +69,32 @@ public class ObjectStorageClient {
         else url.host(p.bucket() + "." + endpoint.host());
         return url.addPathSegments(key).build();
     }
+    /** Archive endpoints may be private; provider input endpoints must resolve entirely to public IPs. */
+    public void requirePublic(StorageProfile profile) {
+        try {
+            List<InetAddress> addresses = Dns.SYSTEM.lookup(url(profile, "probe").host());
+            if (addresses.isEmpty()) throw new UnknownHostException();
+            for (InetAddress address : addresses) if (!isPublic(address))
+                throw new UnknownHostException();
+        } catch (UnknownHostException failure) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED",
+                    ApiMessage.of("api.media-relay.unavailable"), ApiMessage.of("api.media-relay.public-endpoint-required"), false);
+        }
+    }
+    static boolean isPublic(InetAddress address) {
+        byte[] bytes = address.getAddress();
+        return !address.isAnyLocalAddress() && !address.isLoopbackAddress() && !address.isLinkLocalAddress()
+                && !address.isMulticastAddress() && !EndpointAddressRules.allowsSelfHosted(address)
+                && (bytes.length != 4 || (bytes[0] & 0xff) > 0 && (bytes[0] & 0xff) < 224
+                        && (bytes[0] & 0xff) != 127);
+    }
+    public String signedGet(StorageProfile profile, String key, Duration lifetime) {
+        requirePublic(profile);
+        String[] credentials = settings.credentials(profile);
+        return ObjectStorageSigner.presignGet(url(profile, key), profile, credentials[0], credentials[1],
+                key, clock.instant(), lifetime.toSeconds()).toString();
+    }
+
     public void put(StorageProfile p, String key, Path file, String mime, long size, String hash) {
         // Retry an uncertain archive by verifying the identical object; never overwrite differing bytes.
         if (matches(p, key, size, hash)) return;

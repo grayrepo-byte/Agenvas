@@ -62,7 +62,11 @@ public class ArkSeedanceClient {
                 durationSeconds, ratio, false);
     }
 
-    public record Reference(String contentType, byte[] bytes, String role) {}
+    public record Reference(String contentType, byte[] bytes, String role, String url) {
+        public Reference(String contentType, byte[] bytes, String role) { this(contentType, bytes, role, null); }
+        public static Reference video(String signedUrl) { return new Reference("video/mp4", null, "reference_video", signedUrl); }
+        @Override public String toString() { return "Reference[role=" + role + "]"; }
+    }
 
     public String create(String key, String prompt, List<Reference> references,
             int durationSeconds, String ratio, boolean generateAudio) {
@@ -75,10 +79,11 @@ public class ArkSeedanceClient {
         content.addObject().put("type", "text").put("text", prompt);
         for (var reference : references) {
             boolean audio = "reference_audio".equals(reference.role());
-            String type = audio ? "audio_url" : "image_url";
+            boolean video = "reference_video".equals(reference.role());
+            String type = video ? "video_url" : audio ? "audio_url" : "image_url";
             String mime = "audio/mpeg".equals(reference.contentType()) ? "audio/mp3" : reference.contentType();
             var item = content.addObject().put("type", type).put("role", reference.role());
-            item.putObject(type).put("url", "data:" + mime + ";base64,"
+            item.putObject(type).put("url", video ? reference.url() : "data:" + mime + ";base64,"
                     + Base64.getEncoder().encodeToString(reference.bytes()));
         }
         request.put("duration", durationSeconds);
@@ -86,6 +91,7 @@ public class ArkSeedanceClient {
         request.put("resolution", "720p");
         request.put("generate_audio", generateAudio);
         request.put("output_format", "mp4");
+        request.put("execution_expires_after", java.time.Duration.ofHours(48).toSeconds());
         JsonNode response = request(key, "POST", TASKS,
                 request.toString().getBytes(StandardCharsets.UTF_8), true);
         String id = response.path("id").asText();

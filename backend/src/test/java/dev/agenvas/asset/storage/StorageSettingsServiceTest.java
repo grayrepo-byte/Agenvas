@@ -35,4 +35,22 @@ class StorageSettingsServiceTest {
         assertThatThrownBy(() -> cipher.decryptStorage(id, 2, secret)).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> cipher.decryptStorage(UUID.randomUUID(), 1, secret)).isInstanceOf(IllegalStateException.class);
     }
+    @Test void relaySelectionHasIndependentCasAndLeavesTheArchiveSelectorUntouched() {
+        var repository = mock(StorageRepository.class);
+        UUID archive = UUID.randomUUID(), relay = UUID.randomUUID();
+        when(repository.lockVersion()).thenReturn(4);
+        when(repository.profile(relay)).thenReturn(java.util.Optional.of(mock(StorageProfile.class)));
+        when(repository.state()).thenReturn(new StorageRepository.State(5, archive, relay));
+        when(repository.profiles()).thenReturn(java.util.List.of());
+        var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC());
+        var result = service.activateRelay(4, relay);
+        assertThat(result.activeProfileId()).isEqualTo(archive);
+        assertThat(result.relayProfileId()).isEqualTo(relay);
+        verify(repository).advanceRelay(4, relay);
+        verify(repository, never()).advance(anyInt(), any());
+        assertThatThrownBy(() -> service.activateRelay(3, null)).isInstanceOf(ApiProblemException.class)
+                .satisfies(f -> assertThat(((ApiProblemException) f).code()).isEqualTo("STORAGE_VERSION_CONFLICT"));
+        verify(repository, never()).advanceRelay(3, null);
+    }
+
 }

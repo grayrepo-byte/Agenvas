@@ -6,7 +6,7 @@ import { templateApplicationError, templateDraftChanges, templateSeedPrompt } fr
 const capability: MediaCapability = {
   id: "image-cap", name: "Mock images", enabled: true, version: 0, capabilityVersion: 1,
   adapterId: "MOCK_IMAGE", kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
-  maxReferenceAudios: 0, maxReferenceImages: 4, supportedVideoInputModes: [], defaultVideoInputMode: null,
+  maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 4, supportedVideoInputModes: [], defaultVideoInputMode: null,
   supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"],
   supportedImageQualities: [], supportsTransparentBackground: false, supportsImageMask: false,
   mappingSha256: "a".repeat(64), settings: {},

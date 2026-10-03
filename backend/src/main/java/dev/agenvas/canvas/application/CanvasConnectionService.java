@@ -73,7 +73,7 @@ public class CanvasConnectionService {
             Artifact sourceArtifact = artifacts.get(ownerId, projectId,
                     source.subjectId()).artifact();
             if (sourceArtifact.kind() != Artifact.Kind.IMAGE
-                    && (sourceArtifact.kind() != Artifact.Kind.AUDIO
+                    && (!Set.of(Artifact.Kind.AUDIO, Artifact.Kind.VIDEO).contains(sourceArtifact.kind())
                         || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
             }

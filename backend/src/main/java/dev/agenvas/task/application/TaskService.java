@@ -799,7 +799,10 @@ public class TaskService {
                 && !"PROVIDER_UNSUPPORTED_INPUT".equals(errorCode)
                 && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)
                 && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
-                && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)) {
+                && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)
+                && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(errorCode)
+                && !"MEDIA_RELAY_REQUIRED".equals(errorCode)
+                && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(errorCode)) {
             throw validation(ApiMessage.of("api.task-service.unsupported-pre-commit-blocking-reason"));
         }
         Instant now = clock.instant();

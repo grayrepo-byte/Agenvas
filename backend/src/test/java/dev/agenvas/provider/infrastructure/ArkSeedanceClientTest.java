@@ -88,6 +88,22 @@ class ArkSeedanceClientTest {
     }
 
     @Test
+    void sendsVideoAsSignedUrlWithoutBase64AndDoesNotExposeItInDiagnostics() {
+        String signed = "https://store.example.com/reference.mp4?X-Amz-Signature=synthetic";
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+            var body = mapper.readTree(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(body.path("content").path(1).path("type").asText()).isEqualTo("video_url");
+            assertThat(body.path("content").path(1).path("role").asText()).isEqualTo("reference_video");
+            assertThat(body.path("content").path(1).path("video_url").path("url").asText()).isEqualTo(signed);
+            assertThat(body.path("execution_expires_after").asLong()).isEqualTo(172800);
+            respond(exchange, 200, "{\"id\":\"" + TASK_ID + "\"}");
+        });
+        var reference = ArkSeedanceClient.Reference.video(signed);
+        assertThat(reference.toString()).doesNotContain("Signature", "store.example.com");
+        assertThat(client.create("fake-key", "Animate", java.util.List.of(reference), 4, "16:9", false)).isEqualTo(TASK_ID);
+    }
+
+    @Test
     void badDurationsAndLostCreateResponseNeverCauseAutomaticResubmission() {
         byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         assertThatThrownBy(() -> client.create("key", "Move", png, 3, "16:9"))

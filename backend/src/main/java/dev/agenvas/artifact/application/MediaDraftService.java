@@ -337,7 +337,7 @@ public class MediaDraftService {
         ArtifactRepository.VersionTarget target = artifacts
                 .findVersionTarget(projectId, imageVersionId)
                 .orElseThrow(() -> invalid(ApiMessage.of("api.media-draft-service.a-wired-version-of-the-image-does-not-exist-for")));
-        if (target.kind() != Artifact.Kind.IMAGE && target.kind() != Artifact.Kind.AUDIO
+        if (target.kind() != Artifact.Kind.IMAGE && target.kind() != Artifact.Kind.AUDIO && target.kind() != Artifact.Kind.VIDEO
                 || artifactService.get(ownerId, projectId, target.artifactId())
                         .artifact().archivedAt() != null) {
             throw invalid(ApiMessage.of("api.media-draft-service.linked-sources-must-be-exact-versions-of-unarchived-images"));
@@ -365,7 +365,10 @@ public class MediaDraftService {
             if (target.kind() == Artifact.Kind.AUDIO && kind != Artifact.Kind.AUDIO && (kind != Artifact.Kind.VIDEO
                     || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
                 throw invalid(ApiMessage.of("api.media-draft-service.audio-can-only-be-connected-to-video-omni-reference-mode"));
-            MediaDraft.InputRole role = target.kind() == Artifact.Kind.AUDIO
+            if (target.kind() == Artifact.Kind.VIDEO && (kind != Artifact.Kind.VIDEO
+                    || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
+                throw invalid(ApiMessage.of("api.media-relay.video-general-mode-required"));
+            MediaDraft.InputRole role = target.kind() == Artifact.Kind.VIDEO ? MediaDraft.InputRole.VIDEO_REFERENCE : target.kind() == Artifact.Kind.AUDIO
                     ? MediaDraft.InputRole.AUDIO_REFERENCE : nextConnectionRole(kind, before, inputs);
             String color = INPUT_COLORS.stream()
                     .filter(candidate -> inputs.stream().noneMatch(input ->
@@ -538,7 +541,8 @@ public class MediaDraftService {
             return;
         }
         if (mode == MediaDraft.VideoInputMode.GENERAL_REFERENCE) {
-            if (role != MediaDraft.InputRole.REFERENCE && role != MediaDraft.InputRole.AUDIO_REFERENCE) {
+            if (role != MediaDraft.InputRole.REFERENCE && role != MediaDraft.InputRole.AUDIO_REFERENCE
+                    && role != MediaDraft.InputRole.VIDEO_REFERENCE) {
                 throw invalid(ApiMessage.of("api.media-draft-service.universal-reference-mode-can-only-use-picture-or-audio-reference"));
             }
             return;

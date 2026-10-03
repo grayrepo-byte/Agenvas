@@ -55,7 +55,7 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
   const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
-    maxReferenceImages, maxReferenceAudios, pricing } = values;
+    maxReferenceImages, maxReferenceAudios, maxReferenceVideos, pricing } = values;
   return { ...fields, ...(adapterId === AUTODL_ADAPTER ? {
     workflowId: values.workflowDefinition?.id ?? values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
     ...(values.workflowDefinition ? { workflowDefinition: values.workflowDefinition } : {}),
@@ -70,6 +70,7 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
     ...(maximumSeconds !== undefined ? { maximumSeconds } : {}),
     ...(maxReferenceImages !== undefined ? { maxReferenceImages } : {}),
     ...(maxReferenceAudios !== undefined ? { maxReferenceAudios } : {}),
+    ...(maxReferenceVideos !== undefined ? { maxReferenceVideos } : {}),
     ...(pricing?.amount.trim() ? { pricing } : {}) };
 
 }

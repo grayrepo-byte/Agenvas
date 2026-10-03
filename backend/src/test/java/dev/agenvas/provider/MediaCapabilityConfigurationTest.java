@@ -31,6 +31,19 @@ class MediaCapabilityConfigurationTest {
     }
 
     @Test
+    void videoReferencesCanBeDisabledOrNarrowedButCannotExceedProtocol() {
+        var adapter = registry.declaration("ARK_SEEDANCE_2_I2V");
+        for (int limit : new int[] { 0, 1, 3 }) {
+            var settings = normalize("ARK_SEEDANCE_2_I2V", "{\"maxReferenceVideos\":" + limit + "}");
+            assertThat(MediaCapabilityConfiguration.policy(adapter, settings).maxReferenceVideos()).isEqualTo(limit);
+        }
+        for (String json : List.of("{\"maxReferenceVideos\":4}", "{\"maxReferenceVideos\":-1}", "{\"maxReferenceVideos\":1.5}"))
+            assertThatThrownBy(() -> normalize("ARK_SEEDANCE_2_I2V", json)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> normalize("COMFY_VIDEO_V1", "{\"maxReferenceVideos\":1}"))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
     void acceptsVideoDurationRangeAndSecondPrice() {
         var settings = normalize("ARK_SEEDANCE_2_I2V", """
                 {"minimumSeconds":5,"maximumSeconds":10,"defaultDurationSeconds":8,

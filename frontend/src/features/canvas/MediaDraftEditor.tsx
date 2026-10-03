@@ -32,7 +32,7 @@ import type { MediaTemplateImport } from "../../shared/api/client";
 import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
-import { isAudioFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
+import { isAudioFile, isVideoFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { OptionContent } from "../../shared/ui/OptionContent";
 import { Button } from "../../shared/ui/primitives/button";
@@ -67,6 +67,7 @@ const AUTOSAVE_DELAY_MS = 650;
 const REFERENCE_SOURCE_CLOSE_DELAY_MS = 120;
 const MAX_PROMPT_LENGTH = 20000;
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
+const MAX_MEDIA_INPUTS = 14;
 const MAX_RUNNINGHUB_INPUT_BYTES = 30 * 1024 * 1024;
 const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
@@ -235,7 +236,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }, []);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const uploadedKinds = useRef(new Map<string, "IMAGE" | "AUDIO">());
+  const uploadedKinds = useRef(new Map<string, "IMAGE" | "AUDIO" | "VIDEO">());
   const uploadProgress = useRef(new Map<File, UploadProgress>());
   const [uploading, setUploading] = useState(false);
   const [failedUploads, setFailedUploads] = useState<File[]>([]);
@@ -602,17 +603,18 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       : <CanvasLoadingState compact label={recovery?.saving ? t("media.editor.saving") : t("media.editor.draftLoading")} />}
   </div>;
 
+  const videoCapacity = chosenCapability?.maxReferenceVideos ?? 0;
   const imageChoices = imageResources.flatMap((candidate, index) =>
     (imageHistories[index]?.data?.items ?? []).flatMap((version) => {
       const assetId = imageAssetId(version.content);
-      return assetId && (runningHub || candidate.kind === "IMAGE" || candidate.kind === "AUDIO" && artifact.kind !== "IMAGE") ? [{ id: version.id, label: `${candidate.title} · v${version.versionNo}`,
+      return assetId && (runningHub || candidate.kind === "IMAGE" || (candidate.kind === "AUDIO" && artifact.kind !== "IMAGE" || candidate.kind === "VIDEO" && videoCapacity > 0)) ? [{ id: version.id, label: `${candidate.title} · v${version.versionNo}`,
         title: candidate.title, kind: candidate.kind, versionNo: version.versionNo, assetId,
         available: imageHistories[index]?.isSuccess === true,
         current: version.id === candidate.resourceDefaultVersionId }] : [];
     }));
   const canvasChoices = (canvas.data?.items ?? []).flatMap((item) => {
     if (item.id === canvasItemId || item.subjectType !== "ARTIFACT"
-        || !item.artifact || !["IMAGE", "AUDIO"].includes(item.artifact.kind) || !item.selectedVersion) return [];
+        || !item.artifact || !["IMAGE", "AUDIO", ...(videoCapacity > 0 ? ["VIDEO"] : [])].includes(item.artifact.kind) || !item.selectedVersion) return [];
     const assetId = imageAssetId(item.selectedVersion.content);
     return assetId ? [{ canvasItemId: item.id, versionId: item.selectedVersion.id,
       title: item.title, kind: item.artifact.kind, versionNo: item.selectedVersion.versionNo, assetId }] : [];
@@ -624,29 +626,30 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const promptReferences: PromptReference[] = selectedReferences.map(({ input, choice }, index) => ({
     ...input,
     label: input.role === "START_FRAME" ? "Start Frame"
-      : input.role === "END_FRAME" ? "End Frame" : `${input.role === "AUDIO_REFERENCE" ? "Audio" : "Image"} ${fields.mediaInputs.slice(0, index + 1).filter((ref) => ref.role === input.role).length}`,
-    ...(choice && choice.kind === "IMAGE" ? { thumbnailUrl: assetContentUrl(artifact.projectId, choice.assetId) } : {}),
+      : input.role === "END_FRAME" ? "End Frame" : `${input.role === "VIDEO_REFERENCE" ? "Video" : input.role === "AUDIO_REFERENCE" ? "Audio" : "Image"} ${fields.mediaInputs.slice(0, index + 1).filter((ref) => ref.role === input.role).length}`,
+    ...(choice && choice.kind !== "AUDIO" ? { thumbnailUrl: choice.kind === "VIDEO" ? assetThumbnailUrl(artifact.projectId, choice.assetId) : assetContentUrl(artifact.projectId, choice.assetId) } : {}),
   }));
   const imageCapacity = chosenCapability?.maxReferenceImages ?? 0;
   const audioCapacity = chosenCapability?.maxReferenceAudios ?? 0;
   const audioCount = fields.mediaInputs.filter((input) => input.role === "AUDIO_REFERENCE").length;
-  const imageCount = fields.mediaInputs.length - audioCount;
-  const mediaCapacity = imageCapacity + audioCapacity;
-  const referenceLimitReached = imageCount >= imageCapacity && audioCount >= audioCapacity;
+  const videoCount = fields.mediaInputs.filter((input) => input.role === "VIDEO_REFERENCE").length;
+  const imageCount = fields.mediaInputs.length - audioCount - videoCount;
+  const mediaCapacity = imageCapacity + audioCapacity + videoCapacity;
+  const referenceLimitReached = fields.mediaInputs.length >= MAX_MEDIA_INPUTS || imageCount >= imageCapacity && audioCount >= audioCapacity && videoCount >= videoCapacity;
   const allInputsAvailable = selectedReferences.every(({ choice }) => choice?.available);
   const startFrame = fields.mediaInputs.find((input) => input.role === "START_FRAME");
   const endFrame = fields.mediaInputs.find((input) => input.role === "END_FRAME");
   const audioSpeaker = fields.parameters.speaker ?? chosenCapability?.settings.defaultParameters?.speaker ?? "";
   const audioMixValid = imageCount === 0 || audioCount === 0 && !audioSpeaker;
-  const withinCapacity = imageCount <= imageCapacity && audioCount <= audioCapacity;
+  const withinCapacity = fields.mediaInputs.length <= MAX_MEDIA_INPUTS && imageCount <= imageCapacity && audioCount <= audioCapacity && videoCount <= videoCapacity;
   const semanticInputsValid = isAudio ? withinCapacity && audioMixValid
       && audioCount + (audioSpeaker ? 1 : 0) <= audioCapacity && fields.prompt.length <= MAX_AUDIO_PROMPT_LENGTH
-    : artifact.kind === "IMAGE" ? withinCapacity && audioCount === 0
+    : artifact.kind === "IMAGE" ? withinCapacity && audioCount === 0 && videoCount === 0
     : effectiveMode === "TEXT" ? fields.mediaInputs.length === 0
-      : effectiveMode === "START_END" ? Boolean(startFrame) && withinCapacity && audioCount === 0
+      : effectiveMode === "START_END" ? Boolean(startFrame) && withinCapacity && audioCount === 0 && videoCount === 0
         && (chosenCapability?.supportsEndFrame || !endFrame)
       : effectiveMode === "GENERAL_REFERENCE" ? fields.mediaInputs.length > 0 && withinCapacity
-        && (chosenCapability?.adapterId !== "ARK_SEEDANCE_2_I2V" || imageCount > 0) : false;
+        && (chosenCapability?.adapterId !== "ARK_SEEDANCE_2_I2V" || imageCount + videoCount > 0) : false;
   const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
   const duration = fields.durationSeconds ?? chosenCapability?.settings.defaultDurationSeconds ?? null;
   const validDuration = duration != null && Number.isInteger(duration)
@@ -760,8 +763,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function canAddReference(kind: Artifact["kind"] | undefined, inputs: DraftFields["mediaInputs"]) {
     const audio = kind === "AUDIO";
-    const count = inputs.filter((input) => (input.role === "AUDIO_REFERENCE") === audio).length;
-    if (!kind || count >= (audio ? audioCapacity - (isAudio && audioSpeaker ? 1 : 0) : imageCapacity)) return false;
+    const video = kind === "VIDEO";
+    const role = video ? "VIDEO_REFERENCE" : audio ? "AUDIO_REFERENCE" : "REFERENCE";
+    const count = inputs.filter((input) => video || audio ? input.role === role
+      : input.role !== "AUDIO_REFERENCE" && input.role !== "VIDEO_REFERENCE").length;
+    if (!kind || inputs.length >= MAX_MEDIA_INPUTS || count >= (video ? videoCapacity : audio ? audioCapacity - (isAudio && audioSpeaker ? 1 : 0) : imageCapacity)) return false;
+    if ((video || audio && artifact.kind === "VIDEO") && effectiveMode === "START_END") return false;
     if (isAudio && (audio ? inputs.some((input) => input.role !== "AUDIO_REFERENCE")
       : Boolean(audioSpeaker) || inputs.some((input) => input.role === "AUDIO_REFERENCE"))) return false;
     return true;
@@ -775,7 +782,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       const kind = referenceKind(versionId);
       if (!canAddReference(kind, nextInputs)) return baseFields;
       const audio = kind === "AUDIO";
-      const role = audio && (isAudio || nextMode === "GENERAL_REFERENCE") ? "AUDIO_REFERENCE" : nextRole(nextInputs, nextMode);
+      const role = kind === "VIDEO" && nextMode === "GENERAL_REFERENCE" ? "VIDEO_REFERENCE" : audio && (isAudio || nextMode === "GENERAL_REFERENCE") ? "AUDIO_REFERENCE" : nextRole(nextInputs, nextMode);
       if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) continue;
       const used = new Set(nextInputs.map((input) => input.color));
       const color = INPUT_COLORS.find((candidate) => !used.has(candidate))
@@ -835,8 +842,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       return;
     }
     const selectedAudioCount = files.filter(isAudioFile).length;
-    const selectedImageCount = files.length - selectedAudioCount;
-    if (selectedImageCount + imageCount > imageCapacity || selectedAudioCount + audioCount + (isAudio && audioSpeaker ? 1 : 0) > audioCapacity
+    const selectedVideoCount = files.filter(isVideoFile).length;
+    const selectedImageCount = files.length - selectedAudioCount - selectedVideoCount;
+    if (files.length + currentFields.mediaInputs.length > MAX_MEDIA_INPUTS || selectedVideoCount + videoCount > videoCapacity || (selectedVideoCount > 0 || selectedAudioCount > 0 && !isAudio) && effectiveMode === "START_END"
+        || selectedImageCount + imageCount > imageCapacity || selectedAudioCount + audioCount + (isAudio && audioSpeaker ? 1 : 0) > audioCapacity
         || isAudio && selectedImageCount + imageCount > 0 && (selectedAudioCount + audioCount > 0 || Boolean(audioSpeaker))) {
       setUploadError(new Error(t("media.editor.invalidMixedInputs"))); setFailedUploads([]); return;
     }
@@ -848,11 +857,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     for (const file of files) {
       const audio = isAudioFile(file);
       try {
-        const uploadedArtifact = await uploadReferenceArtifact(file, audio ? "AUDIO" : "IMAGE");
+        const uploadedArtifact = await uploadReferenceArtifact(file, isVideoFile(file) ? "VIDEO" : audio ? "AUDIO" : "IMAGE");
         if (!uploadedArtifact.resourceDefaultVersionId) {
           throw new Error(t("media.editor.uploadedVersionUnavailable", { "0": file.name }));
         }
-        uploadedKinds.current.set(uploadedArtifact.resourceDefaultVersionId, uploadedArtifact.kind === "AUDIO" ? "AUDIO" : "IMAGE");
+        uploadedKinds.current.set(uploadedArtifact.resourceDefaultVersionId, uploadedArtifact.kind === "VIDEO" ? "VIDEO" : uploadedArtifact.kind === "AUDIO" ? "AUDIO" : "IMAGE");
         successfulVersions.push(uploadedArtifact.resourceDefaultVersionId);
         uploadProgress.current.delete(file);
       } catch (failure) {
@@ -986,12 +995,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           }, REFERENCE_SOURCE_CLOSE_DELAY_MS);
         }}>
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
-          accept={audioCapacity > 0 ? `${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.AUDIO}` : MEDIA_FILE_ACCEPT.IMAGE} multiple aria-label={audioCapacity > 0 ? t("media.editor.chooseLocalMedia") : t("media.editor.chooseLocalImage")} onChange={handleUploadSelection} />
+          accept={[MEDIA_FILE_ACCEPT.IMAGE, ...(audioCapacity > 0 ? [MEDIA_FILE_ACCEPT.AUDIO] : []), ...(videoCapacity > 0 ? [MEDIA_FILE_ACCEPT.VIDEO] : [])].join(",")} multiple aria-label={videoCapacity > 0 ? t("media.editor.chooseLocalAllMedia") : audioCapacity > 0 ? t("media.editor.chooseLocalMedia") : t("media.editor.chooseLocalImage")} onChange={handleUploadSelection} />
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-reference-add" type="button"
           disabled={!chosenCapability || referenceLimitReached || uploading
             || commitAssetReferences.isPending}
-          aria-label={audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
-          title={uploading ? t("media.editor.assetUploading") : t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity })}
+          aria-label={videoCapacity > 0 ? t("media.editor.addVideoMediaInput") : audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
+          title={uploading ? t("media.editor.assetUploading") : videoCapacity > 0 ? t("media.editor.videoReferenceLimits", { "0": imageCapacity, "1": videoCapacity, "2": audioCapacity }) : t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity })}
           aria-haspopup="menu"
           aria-expanded={referenceSourcesOpen && !popover}
           aria-controls={`${id}-reference-sources`}
@@ -1045,12 +1054,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         {popover === "libraryReferences" && expectedVersion !== null ? <div className="ui-popover-surface media-draft-popover media-draft-library-popover" ref={popoverRef} role="dialog" aria-label={t("media.editor.libraryReferences")}>
           <Button variant="ghost" type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>{t("media.editor.closePicker")}</Button>
           <LibraryReferencePicker projectId={artifact.projectId} itemId={canvasItemId}
-            kinds={audioCapacity > 0 ? ["IMAGE", "AUDIO"] : ["IMAGE"]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
+            kinds={["IMAGE", ...(audioCapacity > 0 ? ["AUDIO" as const] : []), ...(videoCapacity > 0 ? ["VIDEO" as const] : [])]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
             plan={(entry) => {
               if (!canAddReference(entry.kind, fields.mediaInputs)) return null;
               const audio = entry.kind === "AUDIO";
               const mode = modeForAddedReference(fields);
-              const role = audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
+              const role = entry.kind === "VIDEO" ? (mode === "GENERAL_REFERENCE" ? "VIDEO_REFERENCE" as const : null) : audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
               if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
               const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
               return { role, color, videoInputMode: mode };
@@ -1083,8 +1092,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
               aria-checked={alreadyAdded || selected}
               disabled={!choice.available || alreadyAdded || selectionFull || commitAssetReferences.isPending}
               onClick={() => toggleAssetReference(choice.id)}>
-              {/* Reference pixels are shown from the archived original, not the 480px preview. */}
-              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
+              {/* Video references use archived covers; images preserve their existing preview. */}
+              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
               <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? t("media.editor.selectedVersion") : t("media.editor.historicalVersions")}</small></span>
               {alreadyAdded || selected ? <Check size={15} /> : null}
             </button>;
@@ -1113,14 +1122,14 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         </div> : null}
         {popover === "canvasReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
           id={`${id}-canvas-references`} role="dialog" aria-label={audioCapacity > 0 ? t("media.editor.chooseCanvasMedia") : t("media.editor.chooseCanvasImage")}>
-          <p className="media-draft-popover-title">{audioCapacity > 0 ? t("media.editor.canvasMedia") : t("media.editor.otherCanvasImages")}</p>
+          <p className="media-draft-popover-title">{audioCapacity > 0 || videoCapacity > 0 ? t("media.editor.canvasMedia") : t("media.editor.otherCanvasImages")}</p>
           <div className="media-draft-reference-options">
             {canvasChoices.map((choice) => <Button variant="ghost" key={choice.canvasItemId} type="button"
-              className="media-draft-reference-option" aria-label={t("media.editor.useCanvasMedia", { "0": choice.kind === "AUDIO" ? t("common.audio") : t("common.image"), "1": choice.title })}
+              className="media-draft-reference-option" aria-label={t("media.editor.useCanvasMedia", { "0": choice.kind === "VIDEO" ? t("common.video") : choice.kind === "AUDIO" ? t("common.audio") : t("common.image"), "1": choice.title })}
               aria-pressed={fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
               disabled={fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(referenceKind(choice.versionId), fields.mediaInputs)}
               onClick={() => appendReferences([choice.versionId])}>
-              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={assetContentUrl(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
+              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
               <span><strong>{choice.title}</strong><small>{t("media.editor.canvasSelectedVersion", { "0": choice.versionNo })}</small></span>
               {fields.mediaInputs.some((input) => input.versionId === choice.versionId) ? <Check size={15} /> : null}
             </Button>)}
@@ -1136,7 +1145,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         {selectedReferences.map(({ input, choice }, index) => <MediaReferenceThumbnail
           key={input.versionId} index={index} audio={input.role === "AUDIO_REFERENCE"} color={input.color}
           accessibleLabel={choice?.label ?? t("media.editor.numberedImageInput", { "0": index + 1 })}
-          {...(choice && choice.kind === "IMAGE" ? { thumbnailUrl: assetContentUrl(artifact.projectId, choice.assetId) } : {})}
+          {...(choice && choice.kind !== "AUDIO" ? { thumbnailUrl: choice.kind === "VIDEO" ? assetThumbnailUrl(artifact.projectId, choice.assetId) : assetContentUrl(artifact.projectId, choice.assetId) } : {})}
           connected={hasConnectionSource(input.versionId)}
           busy={removeConnectedInput.isPending || commitAssetReferences.isPending || dirty || save.isPending}
           reorderable={effectiveMode !== "START_END"}
@@ -1345,6 +1354,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {!runningHub && artifact.kind === "VIDEO" && duration != null && !validDuration ? <p role="alert">{t("media.editor.durationValidation")}</p> : null}
       {fields.mediaInputs.length > 0 && !historyPending && (!resources.isSuccess || !allInputsAvailable)
         ? <p role="alert">{t("media.editor.fixedVersionUnavailable")}</p> : null}
+      {chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" && videoCount > 0 ? <p className="ui-muted">{t("media.editor.videoRelayHint")}</p> : null}
       {!runningHub && artifact.kind === "VIDEO" && chosenCapability && !semanticInputsValid
         ? <p role="alert">{t("media.editor.invalidVideoInputs")}</p> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")

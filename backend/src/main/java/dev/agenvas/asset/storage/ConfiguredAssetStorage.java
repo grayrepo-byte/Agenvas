@@ -150,6 +150,15 @@ public class ConfiguredAssetStorage implements AssetStorage {
         if (!thumbnail && !key.equals(archive.key())) throw new IllegalStateException("Remote key differs from receipt");
         return new Remote(settings.requireProfile(profileId), key, archive, thumbnail);
     }
+    /** Internal provider input descriptor, validated against the asset's durable archive route. */
+    public record CloudObject(StorageProfile profile, String key) {}
+    public Optional<CloudObject> cloudObject(String objectKey) {
+        if (!objectKey.startsWith(REMOTE_PREFIX)) return Optional.empty();
+        Remote r = remote(objectKey);
+        if (r.thumbnail()) throw new IllegalArgumentException("Provider references must use original bytes");
+        return Optional.of(new CloudObject(r.profile(), remoteKey(r.profile(), r.key())));
+    }
+
     @Override public void verify(String key, long size, String hash) {
         if (!key.startsWith(REMOTE_PREFIX)) { local.verify(key, size, hash); return; }
         Remote r = remote(key);

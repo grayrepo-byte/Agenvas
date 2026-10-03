@@ -30,7 +30,7 @@ public class StorageSettingsService {
     @Transactional(readOnly = true)
     public Status status() {
         var state = repository.state();
-        return new Status(state.version(), state.activeProfileId(), repository.profiles().stream()
+        return new Status(state.version(), state.activeProfileId(), state.relayProfileId(), repository.profiles().stream()
                 .map(p -> new ProfileStatus(p.id(), p.name(), p.provider(), p.endpoint(), p.region(),
                         p.bucket(), p.keyPrefix(), p.pathStyle(), p.accessKeyMask(), p.createdAt())).toList());
     }
@@ -66,6 +66,17 @@ public class StorageSettingsService {
         repository.advance(expectedVersion, profileId);
         return status();
     }
+
+    /** Selecting a relay never changes where new or existing assets are archived. */
+    @Transactional
+    public Status activateRelay(int expectedVersion, UUID profileId) {
+        lock(expectedVersion);
+        if (profileId != null) requireProfile(profileId);
+        repository.advanceRelay(expectedVersion, profileId);
+        return status();
+    }
+
+    public UUID relayProfileId() { return repository.state().relayProfileId(); }
 
     @Transactional
     public Status rotate(int expectedVersion, UUID profileId, String accessKeyId, String secretAccessKey) {
@@ -112,7 +123,7 @@ public class StorageSettingsService {
     static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "STORAGE_CONFIG_INVALID", ApiMessage.of("api.storage-settings-service.invalid-storage-configuration"), detail, false);
     }
-    public record Status(int version, UUID activeProfileId, List<ProfileStatus> profiles) {}
+    public record Status(int version, UUID activeProfileId, UUID relayProfileId, List<ProfileStatus> profiles) {}
     public record ProfileStatus(UUID id, String name, StorageProfile.Provider provider, String endpoint,
             String region, String bucket, String keyPrefix, boolean pathStyle, String accessKeyMask, Instant createdAt) {}
 }

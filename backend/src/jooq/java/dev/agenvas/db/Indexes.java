@@ -26,6 +26,7 @@ import dev.agenvas.db.tables.LibraryCommand;
 import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.MediaRelayObject;
 import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
@@ -93,6 +94,7 @@ public class Indexes {
     public static final Index IX_TOOL_EXECUTION_RUN = Internal.createIndex(DSL.name("ix_tool_execution_run"), ToolExecution.TOOL_EXECUTION, new OrderField[] { ToolExecution.TOOL_EXECUTION.PROJECT_ID, ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STATUS }, false);
     public static final Index IX_USAGE_LEDGER_PROJECT_CREATED = Internal.createIndex(DSL.name("ix_usage_ledger_project_created"), UsageLedger.USAGE_LEDGER, new OrderField[] { UsageLedger.USAGE_LEDGER.PROJECT_ID, UsageLedger.USAGE_LEDGER.CREATED_AT.desc(), UsageLedger.USAGE_LEDGER.ID.desc() }, false);
     public static final Index LIBRARY_CLEANUP_DUE_IDX = Internal.createIndex(DSL.name("library_cleanup_due_idx"), LibraryCleanup.LIBRARY_CLEANUP, new OrderField[] { LibraryCleanup.LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, LibraryCleanup.LIBRARY_CLEANUP.CREATED_AT, LibraryCleanup.LIBRARY_CLEANUP.ID }, false);
+    public static final Index MEDIA_RELAY_OBJECT_EXPIRY_IDX = Internal.createIndex(DSL.name("media_relay_object_expiry_idx"), MediaRelayObject.MEDIA_RELAY_OBJECT, new OrderField[] { MediaRelayObject.MEDIA_RELAY_OBJECT.EXPIRES_AT }, false);
     public static final Index SPRING_SESSION_IX1 = Internal.createIndex(DSL.name("spring_session_ix1"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.SESSION_ID }, true);
     public static final Index SPRING_SESSION_IX2 = Internal.createIndex(DSL.name("spring_session_ix2"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.EXPIRY_TIME }, false);
     public static final Index SPRING_SESSION_IX3 = Internal.createIndex(DSL.name("spring_session_ix3"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.PRINCIPAL_NAME }, false);
