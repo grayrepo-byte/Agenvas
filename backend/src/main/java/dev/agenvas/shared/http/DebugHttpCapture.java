@@ -137,11 +137,12 @@ public final class DebugHttpCapture implements AutoCloseable {
         }
     }
     private String safeText(String value) {
+        // Omit images before credential replacement: a secret occurring in Base64 would insert
+        // [REDACTED], break the image match, and leave the rest of the payload in the log.
+        value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", IMAGE_BYTES_OMITTED);
         for (String secret : secrets.stream().sorted((left, right) -> Integer.compare(right.length(), left.length())).toList()) {
             value = value.replace(secret, REDACTED);
         }
-        // Image payloads swamp readable logs; replace them in every capture scope, including LLM debug.
-        value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", IMAGE_BYTES_OMITTED);
         if (!preserveModelContent) {
             value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED);
         }

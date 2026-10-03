@@ -73,6 +73,8 @@ class LlmDebugCaptureStreamingTest {
                     .media(new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
                             new org.springframework.core.io.ByteArrayResource(image))).build();
             try (var scope = DebugHttpCapture.openLlm(saved::accept)) {
+                // Synthetic credential collision inside the image Base64 must not leave a suffix.
+                DebugHttpCapture.registerSecret("dGhl");
                 var result = streaming
                         ? gateway.callStreaming(List.of(message), List.of(), Map.of(), gateway.configIdentity(), ignored -> {})
                         : gateway.call(List.of(message), List.of(), Map.of(), gateway.configIdentity());
@@ -84,6 +86,8 @@ class LlmDebugCaptureStreamingTest {
             assertThat(received.checkpoint().getFirst().requestBody().content())
                     .contains("Inspect synthetic image", "image_url", "[image bytes omitted]")
                     .doesNotContain(encoded, API_KEY);
+            assertThat(received.checkpoint().getFirst().requestBody().content())
+                    .contains("\"url\":\"[image bytes omitted]\"");
             assertThat(saved.current().getFirst().requestBody().content()).doesNotContain(encoded);
             assertThat(saved.current().getFirst().responseBody().content()).contains("ok");
             if (streaming) {

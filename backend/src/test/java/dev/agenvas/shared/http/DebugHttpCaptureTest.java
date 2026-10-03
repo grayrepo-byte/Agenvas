@@ -30,17 +30,18 @@ class DebugHttpCaptureTest {
         var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
         try (var scope = DebugHttpCapture.openLlm(saved::set)) {
             DebugHttpCapture.registerSecret("synthetic-sse-auth");
+            DebugHttpCapture.registerSecret("QUJD");
             int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
             String events = "event: message\r\ndata: {\"choices\":[{\"delta\":{\"reasoning_content\":\"full model field\"}}],\r\n"
-                    + "data: \"image\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\",\"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
+                    + "data: \"image\":\"data:image/png;base64,c3luQUJDbGF0ZXI=\",\"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
                     + "data: [DONE]\n\n";
             try (var stream = DebugHttpCapture.responseStream(index, 200, "text/event-stream",
                     new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
                 assertThat(new String(stream.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(events);
             }
         }
-        assertThat(saved.get().getFirst().responseBody().content()).contains("event: message", "full model field", "[DONE]", "REDACTED", "[image bytes omitted]")
-                .doesNotContain("synthetic-sse-auth", "synthetic-other-auth", "c3ludGhldGljLWltYWdl");
+        assertThat(saved.get().getFirst().responseBody().content()).contains("event: message", "full model field", "[DONE]", "REDACTED", "\"image\":\"[image bytes omitted]\"")
+                .doesNotContain("synthetic-sse-auth", "synthetic-other-auth", "QUJD", "bGF0ZXI=");
         assertThat(saved.get().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
     }
 
@@ -96,6 +97,26 @@ class DebugHttpCaptureTest {
             String body = capture.sanitizeJson("{\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"Synthetic prompt\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\"}}]}]}");
             assertThat(body).contains("Synthetic prompt", "[image bytes omitted]")
                     .doesNotContain("c3ludGhldGljLWltYWdl", "data:image/png;base64");
+        }
+    }
+
+    @Test void imageBytesAreFullyOmittedWhenTheyContainAKnownCredential() {
+        String encoded = "c3luQUJDbGF0ZXI=";
+        String json = "{\"image_url\":{\"url\":\"data:image/png;base64," + encoded
+                + "\",\"detail\":\"low\"},\"text\":\"Synthetic prompt QUJD\"}";
+        for (boolean llm : List.of(false, true)) {
+            var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var scope = llm ? DebugHttpCapture.openLlm(saved::set) : DebugHttpCapture.open(saved::set)) {
+                DebugHttpCapture.registerSecret("QUJD"); // Synthetic credential also occurs inside the image bytes.
+                DebugHttpCapture.begin("POST", "https://provider.invalid/chat",
+                        json.getBytes(StandardCharsets.UTF_8), "application/json");
+                for (String body : List.of(scope.sanitizeJson(json), saved.get().getFirst().requestBody().content())) {
+                    assertThat(MAPPER.readTree(body).at("/image_url/url").asText())
+                            .isEqualTo("[image bytes omitted]");
+                    assertThat(body).contains("Synthetic prompt [REDACTED]", "low")
+                            .doesNotContain(encoded, "QUJD", "bGF0ZXI=");
+                }
+            }
         }
     }
 

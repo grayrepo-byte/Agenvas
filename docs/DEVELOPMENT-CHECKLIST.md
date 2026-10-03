@@ -1354,3 +1354,10 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 后端 3 类 28 项定向测试通过（DebugHttpCaptureTest 12、LlmDebugCaptureStreamingTest 10、LlmStreamLogCollectorTest 6）。真实 Spring AI SDK 对合成本机 HTTP 验证普通/流式调用：日志发送前已使用占位符，网络收到完整图片及凭据，输出不改变；SSE 中图片字节同样替换，其他字段继续保留。
 - [x] 同步 AGENTS、ADR 0020、规格、流式设计、OpenAPI 描述与生成 TypeScript，以及四语言 debug 说明。前端 SystemSettingsPage 和 CallDebugDetails 共 14 项定向测试、TypeScript、完整 lint 及差异空白检查通过。
 - [ ] 旧日志不回写或清理；无数据库迁移。未运行全量测试、生产构建、浏览器端到端或真实 Provider，未部署。
+
+### 2026-10-03 图片占位符后残留 Base64 修复
+
+- [x] 合成回归复现 `[image bytes omitted][REDACTED]` 后残留图片编码：已知凭据替换先插入占位符，打断图片 data URI 的 Base64 匹配。采集现在先省略图片字节，再隐藏凭据；普通、LLM、语义 JSON 与 SSE 共用该顺序，实际网络内容不改变。
+- [x] 后端 3 类 29 项定向测试最终通过（DebugHttpCaptureTest 13、LlmDebugCaptureStreamingTest 10、LlmStreamLogCollectorTest 6），新增凭据与图片编码碰撞回归，强化普通/流式 Spring AI SDK 对合成本机 HTTP 的完整占位符断言及 SSE 回归。首次最小回归失败，调整顺序后通过；HTTP 验证首次增加 JSON 解析断言时受既有 header 值替换影响失败，改为对已采集字符串中的完整 URL 值断言后该类 10 项重跑通过。
+- [x] 差异空白与新增文本凭据/隐私检查通过；只使用合成素材及不可用测试凭据，无 API、数据库迁移或依赖变化。
+- [ ] 全量测试、真实 Provider、浏览器验收及部署未运行；旧日志不回写或清理，新行为需更新后端后生效。
