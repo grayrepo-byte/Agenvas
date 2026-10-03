@@ -1426,3 +1426,12 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 合并后后端九类 60 项定向测试通过：AgentModelRetryPolicyTest 14、AgentModelRetryPostgresIT 9、AgentTurnFailureCodeTest 2、AgentTurnWorkerPostgresIT 1、AgentMediaApprovalPostgresIT 13、LlmRoundStreamTest 4、LlmProtocolCodecTest 2、CallLogStreamServiceTest 5、LlmDebugCaptureStreamingTest 10。覆盖真实 PostgreSQL 的审批/图片续接与重试边界，以及合成模型和 HTTP 日志集成。
 - [x] 前端六类 100 项定向测试、TypeScript、完整 lint、Vite 生产构建及差异空白检查通过；构建仍有既有大 chunk 提示。暂存文本凭据/隐私检查逐项复核，两处密钥形状命中属于日志单测中的显式合成字符串，不含真实凭据；无截图或二进制加入本次合并。
 - [ ] 未运行全量测试、浏览器端到端、真实 Provider/模型调用或部署；合并复验的模型均为 Mock/合成数据。
+
+### 2026-10-04 Agent 创作提示词与底层协议分离
+
+- [x] 按用户澄清保留程序维护的底层工具、审批、读取与历史上下文协议；提示词管理及卡片设置只控制角色、语言、风格和创作流程。新 Run 固定 systemPromptVersion=7，移除底层的 Creator 身份、回复语言及导演图生视频/连续性要求，创作 SystemMessage 使用冻结正文原文。历史 1–6、检查点恢复、工具续接与模型重试沿用原受理语义；实际权限、预算、CAS、参数与媒体审批检查保持。
+- [x] 四语言卡片字段改称创作系统提示词，管理页说明可编辑范围；内置导演预设已具备所移出的创作流程，不改写用户预设或卡片。无数据库迁移、jOOQ 或依赖变更。
+- [x] 后端定向单元测试 13 项通过（InitialModelContextServiceTest 9、RunToolPolicyTest 4）；新增回归先在旧实现失败，再验证当前协议不夹带角色、语言及导演流程，冻结创作正文保持原文，有历史时仍使用独立底层来源说明，历史消息规则保留。
+- [x] 真实 PostgreSQL 定向集成测试 7 项通过（PromptManagementPostgresIT 5、PromptInjectionPostgresIT 1、AgentMediaApprovalPostgresIT 的精确图片到视频续接 1）；合成恶意卡片系统提示词、文本与图片均不能伪造批准或创建媒体 Task，批准后的 Mock 图片/视频续接保留精确引用和审批边界。恶意卡片场景补充后重新运行注入集成测试通过。
+- [x] 前端 PromptManagementSection、SystemSettingsPage、AgentChatCard 共 48 项通过，TypeScript 与四语言 i18n 检查通过；OpenAPI 增加版本 7 并重新生成 TypeScript，同步 CONTEXT、MVP、ADR 0010 与对话流设计。旧预检版本须重新预检，前后端应同步部署。
+- [ ] 全量测试、完整 lint、生产构建、浏览器端到端、真实模型/Provider 与部署更新未运行。测试使用合成模型与 Mock 媒体，不能证明真实模型遵循分离后的提示词。

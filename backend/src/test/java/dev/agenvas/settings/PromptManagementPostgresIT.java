@@ -172,7 +172,9 @@ class PromptManagementPostgresIT {
         updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Global director", "Changed global workflow");
         var messages = contexts.assemble(owner.userId(), project.id(), run.id());
         assertThat(messages.get(2)).isInstanceOf(org.springframework.ai.chat.messages.SystemMessage.class);
-        assertThat(messages.get(2).getText()).contains("Original card workflow").doesNotContain("Changed card", "Changed global");
+        assertThat(messages.get(2).getText()).isEqualTo("Original card workflow");
+        assertThat(messages.getFirst().getText()).contains("Server-side", "approval checks")
+                .doesNotContain("For image-to-video work", "Preserve narrative and visual continuity");
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
     }
 }

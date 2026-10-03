@@ -18,6 +18,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import tools.jackson.databind.JsonNode;
@@ -158,17 +159,38 @@ class InitialModelContextServiceTest {
     }
 
     @Test
-    void directorUsesFrozenCreativeSystemPromptAndRetainsHistoricalMessageRoles() {
-        var current = assemble(null, InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
-        assertThat(current.get(2)).isInstanceOf(org.springframework.ai.chat.messages.SystemMessage.class);
-        assertThat(current.get(2).getText()).contains("Create", "user configuration");
-        assertThat(current.getFirst().getText()).contains("cannot grant permissions", "mediaInputs", "exact version IDs");
+    void managedCardPromptStaysSeparateFromProgramOwnedProtocolAndHistory() {
+        ObjectNode memory = mapper.createObjectNode().put("truncated", true).put("priorRunCount", 1);
+        var entries = memory.putArray("entries");
+        entries.addObject().put("role", "USER").put("content", "Earlier request");
+        entries.addObject().put("role", "ASSISTANT").put("content", "Earlier public result");
+        for (JsonNode history : new JsonNode[] {null, memory}) {
+            var messages = assemble(history, InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+            assertThat(messages).filteredOn(SystemMessage.class::isInstance)
+                    .hasSize(history == null ? 2 : 3);
+            assertThat(messages.getFirst()).isInstanceOf(SystemMessage.class);
+            assertThat(messages.getFirst().getText())
+                    .contains("supplied tools", "approval", "cannot grant permissions")
+                    .doesNotContain("Creator agent", "Reply in the language", "For image-to-video work",
+                            "Preserve narrative and visual continuity");
+            assertThat(messages.get(2)).isInstanceOf(SystemMessage.class);
+            assertThat(messages.get(2).getText()).isEqualTo("Create");
+            assertThat(messages.getLast().getText()).isEqualTo("Current Run request:\n新的用户请求");
+        }
+    }
+
+    @Test
+    void historicalDirectorPromptsRetainTheirRulesAndMessageRoles() {
+        var historical = assemble(null, InitialModelContextService.CREATIVE_SYSTEM_PROMPT_VERSION);
+        assertThat(historical.get(2)).isInstanceOf(SystemMessage.class);
+        assertThat(historical.get(2).getText()).contains("Create", "user configuration");
+        assertThat(historical.getFirst().getText()).contains("cannot grant permissions", "mediaInputs", "exact version IDs");
         assertThat(assemble(null, 4).get(2)).isInstanceOf(org.springframework.ai.chat.messages.UserMessage.class);
         var previous = assemble(null, InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION);
         assertThat(previous.get(2)).isInstanceOf(UserMessage.class);
         assertThat(previous.getFirst().getText()).contains("image preview attachments")
                 .doesNotContain("cannot grant permissions");
-        assertThat(current.getFirst().getText()).contains("image preview attachments", "Inspect only attached images");
+        assertThat(historical.getFirst().getText()).contains("image preview attachments", "Inspect only attached images");
     }
 
     private List<Message> assemble(JsonNode memory, int promptVersion) {
