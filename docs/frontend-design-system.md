@@ -8,6 +8,7 @@
 | --- | --- |
 | 配色、间距、字号、圆角、控件高度、阴影与动效时长 | `frontend/src/shared/ui/design-tokens.css` |
 | shadcn 基础组件 | `frontend/components.json`、`frontend/src/shared/ui/primitives/` |
+| 多行编辑的字体、行高与滚动条 | `styles.css` 的 `ui-multiline`，消费 `design-tokens.css` 的编辑器与滚动条变量 |
 | 单选表单兼容层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
 | 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/primitives/dropdown-menu.tsx`、`command.tsx` |
 | 页面表单、面板、提示、状态、摘要与图标容器 | `PagePrimitives.tsx`、`PageTheme.css` |
@@ -23,6 +24,10 @@
 登录、项目、设置与画布共同使用主色，包括直接生成、文字保存、Agent 发送/运行、裁剪确认、智能编辑、打光、标注工具、开启的开关、卡片选中和合法连接反馈。关系线颜色也集中配置：输入使用主蓝色，派生使用浅蓝色，引用灰色，Agent 输出绿色。失败/警告/成功提示、实际画笔颜料、遮罩与图片引用身份色继续表达各自语义。
 
 `pnpm lint` 先运行 `scripts/check-theme-colors.mjs`，拒绝公共配置之外业务 CSS 的蓝/紫/洋红品牌色字面值（hex、rgb/rgba、hsl/hsla）以及主色/焦点变量的独立字面值定义，再执行 ESLint。灰度、红色错误与绿/橙状态色不属于该检查的品牌范围；它不扫描 TypeScript 中的画笔/遮罩/引用数据。后续品牌调整只改公共变量。实际检查与浏览器证据见 蓝色主题验证（开发记录不随源码公开）。
+
+## 多行编辑（2026-10-03）
+
+公共 Textarea 与媒体提示词的 contenteditable 共用 `ui-multiline`：默认 14px 常规字重、1.75 行高，细滚动条使用透明轨道，悬停或聚焦时提高滑块对比度，并预留稳定滚动槽以避免换行跳动。专用编辑器可继续使用自身字号与布局。文字与媒体生成提示词均采用上下 8px、左右 12px 留白，聚焦仅显示一层细边框；长文本在编辑区内滚动，底部操作栏保留独立空间。文字卡片正文继续由卡片外层提供焦点提示。
 
 ## 单选控件
 

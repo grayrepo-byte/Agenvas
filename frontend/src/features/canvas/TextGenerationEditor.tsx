@@ -91,14 +91,16 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
       <span className="media-draft-tab-unavailable" aria-disabled="true">Agent</span>
       <span className="media-draft-save-state">{t("text.generation.versioningHint")}</span>
     </div>
-    <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("text.generation.prompt")}</label>
-    <Textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
-      placeholder={t("text.generation.promptPlaceholder")} value={prompt}
-      onChange={(event) => {
-        intent.current = null;
-        run.reset();
-        setPrompt(event.target.value);
-      }} />
+    <div className="media-draft-prompt-shell">
+      <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("text.generation.prompt")}</label>
+      <Textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
+        placeholder={t("text.generation.promptPlaceholder")} value={prompt}
+        onChange={(event) => {
+          intent.current = null;
+          run.reset();
+          setPrompt(event.target.value);
+        }} />
+    </div>
     <div className="media-draft-toolbar">
       <span className="media-draft-toolbar-button text-generation-model" aria-label={t("text.generation.currentModel")}>
         <Cube size={17} /><span>{modelLabel}</span>
