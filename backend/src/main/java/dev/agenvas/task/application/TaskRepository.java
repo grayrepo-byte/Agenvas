@@ -138,6 +138,10 @@ public interface TaskRepository {
             Instant now,
             Instant leaseUntil);
 
+    /** Fenced model-only backoff; releases the lease without allowing any media resubmission. */
+    boolean deferAgentTurnRetry(Task lease, String workerId, JsonNode output,
+            String errorCode, Instant nextActionAt, Instant now);
+
     /** 仅当前未过期租约可写入终态输出或错误码。 */
     boolean finish(
             UUID taskId,

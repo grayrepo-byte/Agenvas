@@ -8,6 +8,7 @@ import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -34,10 +35,11 @@ public class AgentTurnWorker {
     /** 模型调用或任务失败时只记录安全摘要，不输出提示词、模型响应和工具参数。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentTurnWorker.class);
     /** 单次模型请求的等待上限；超时会中断调用并把任务交给持久化失败处理。 */
-    private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.REQUEST;
 
     /** 认领模型回合任务并续租的应用服务。 */
     private final TaskService tasks;
+    private final Clock clock;
     /** 从已认领任务反查可信项目所有者，避免采用模型提供的身份。 */
     private final TaskRepository taskRepository;
     /** 提供任务租约时长，用于计算心跳间隔。 */
@@ -92,7 +94,8 @@ public class AgentTurnWorker {
             InitialModelContextService initialContext, LlmConversationService conversation,
             RepairModelContextService repairContext,
             LlmRoundService rounds, LlmTurnRepository turns, LlmProtocolCodec codec,
-            ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway) {
+            ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway, Clock clock) {
+        this.clock = clock;
         this.tasks = tasks;
         this.taskRepository = taskRepository;
         this.taskProperties = taskProperties;
@@ -157,7 +160,17 @@ public class AgentTurnWorker {
                 }
                 response = turn.response();
             } else {
-                List<Message> messages = lease.input().has("repairFromStep")
+                LlmTurn saved = turns.find(lease.projectId(), lease.runId(), stepIndex).orElse(null);
+                Duration remaining = AgentModelRetryPolicy.remaining(lease, clock.instant());
+                if ((saved == null || saved.status() != LlmTurn.Status.RESPONDED)
+                        && (remaining.isNegative() || remaining.isZero())) {
+                    JsonNode recorded = commits.modelFailed(lease, workerId, AgentModelRetryPolicy.progress(lease)
+                            .path("lastErrorCode").asText());
+                    if (recorded != null) applyResponse(lease, workerId, ownerId, stepIndex, recorded);
+                    return;
+                }
+                List<Message> messages = saved != null ? codec.requestMessages(saved.request())
+                        : lease.input().has("repairFromStep")
                         ? repairContext.assemble(ownerId, lease)
                         : stepIndex == 0
                                 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
@@ -171,37 +184,34 @@ public class AgentTurnWorker {
                         Map.of("projectId", lease.projectId().toString(),
                                 "runId", lease.runId().toString()), lease, workerId));
                 try {
-                    response = call.get(MODEL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+                    Duration wait = remaining.compareTo(MODEL_TIMEOUT) < 0 ? remaining : MODEL_TIMEOUT;
+                    // Replaying a saved response is allowed after the retry deadline, without a request.
+                    response = call.get(saved != null && saved.status() == LlmTurn.Status.RESPONDED
+                            ? MODEL_TIMEOUT.toMillis() : Math.max(1, wait.toMillis()), TimeUnit.MILLISECONDS);
                 } catch (Exception failure) {
                     call.cancel(true);
                     throw failure;
                 }
             }
-            // 完整响应已保存，之后才允许对其中的工具调用产生业务副作用。
-            try {
-                AssistantMessage assistant = codec.selectedAssistant(response);
-                validateCalls(assistant);
-                TrustedToolContext context = new TrustedToolContext(ownerId,
-                        lease.projectId(), lease.runId());
-                executor.executeLeased(context, stepIndex, assistant.getToolCalls(),
-                        lease, workerId);
-            } catch (ApiProblemException invalid) {
-                if (!"TOOL_ARGUMENT_INVALID".equals(invalid.code())) {
-                    throw invalid;
-                }
-                commits.scheduleRepair(lease, workerId, invalid.code(), invalid.getMessage());
-                return;
-            } catch (IllegalArgumentException invalid) {
-                commits.scheduleRepair(lease, workerId, "MODEL_OUTPUT_INVALID",
-                        "Model response or tool call structure is malformed");
-                return;
-            }
-            commits.complete(lease, workerId);
+            applyResponse(lease, workerId, ownerId, stepIndex, response);
         } catch (Exception failure) {
-            LOGGER.error("Agent-turn task {} could not continue: {}", lease.id(),
-                    failure.getClass().getSimpleName());
+            LOGGER.error("Agent-turn task {} could not continue: {} code={}", lease.id(),
+                    failure.getClass().getSimpleName(), failureCode(failure));
             try {
-                commits.block(lease, workerId, failureCode(failure));
+                String retryCode = AgentModelRetryPolicy.retryableCode(failure);
+                if (retryCode != null) {
+                    JsonNode recorded = commits.modelFailed(lease, workerId, retryCode);
+                    // A complete checkpoint can win the timeout race. Continue it immediately,
+                    // without another model request or waiting for this lease to expire.
+                    if (recorded != null) {
+                        try {
+                            applyResponse(lease, workerId, taskRepository.ownerId(lease.id()).orElseThrow(),
+                                    lease.input().path("stepIndex").asInt(-1), recorded);
+                        } catch (RuntimeException processingFailure) {
+                            commits.block(lease, workerId, failureCode(processingFailure));
+                        }
+                    }
+                } else commits.block(lease, workerId, failureCode(failure));
             } catch (RuntimeException changed) {
                 LOGGER.warn("Agent-turn task {} changed before failure could be recorded: {}",
                         lease.id(), changed.getClass().getSimpleName());
@@ -211,11 +221,34 @@ public class AgentTurnWorker {
         }
     }
 
+    /** Only a committed response can enter the tool transaction; replay is idempotent. */
+    private void applyResponse(Task lease, String workerId, UUID ownerId, int stepIndex, JsonNode response) {
+        try {
+            AssistantMessage assistant = codec.selectedAssistant(response);
+            validateCalls(assistant);
+            TrustedToolContext context = new TrustedToolContext(ownerId,
+                    lease.projectId(), lease.runId());
+            executor.executeLeased(context, stepIndex, assistant.getToolCalls(),
+                    lease, workerId);
+        } catch (ApiProblemException invalid) {
+            if (!"TOOL_ARGUMENT_INVALID".equals(invalid.code())) {
+                throw invalid;
+            }
+            commits.scheduleRepair(lease, workerId, invalid.code(), invalid.getMessage());
+            return;
+        } catch (IllegalArgumentException invalid) {
+            commits.scheduleRepair(lease, workerId, "MODEL_OUTPUT_INVALID",
+                    "Model response or tool call structure is malformed");
+            return;
+        }
+        commits.complete(lease, workerId);
+    }
+
     /**
-     * 穿透 Future 包装异常时只保留可安全呈现的配置错误码，其余失败统一归类。
+     * 穿透 Future 包装异常，保留安全配置错误码并区分网络与 Worker 等待超时。
      *
      * @param failure 模型调用或回合处理抛出的异常链
-     * @return 明确的凭证/配置错误码，或通用的 {@code AGENT_TURN_FAILED}
+     * @return 明确的凭证/配置/超时错误码，或通用的 {@code AGENT_TURN_FAILED}
      */
     static String failureCode(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
@@ -225,7 +258,9 @@ public class AgentTurnWorker {
                 return problem.code();
             }
         }
-        return "AGENT_TURN_FAILED";
+        String retryCode = AgentModelRetryPolicy.retryableCode(failure);
+        if (retryCode != null) return retryCode;
+        return LlmCallTimeouts.isTimeout(failure) ? LlmCallTimeouts.ERROR_CODE : "AGENT_TURN_FAILED";
     }
 
     /**

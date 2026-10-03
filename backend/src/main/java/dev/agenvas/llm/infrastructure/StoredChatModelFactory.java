@@ -1,6 +1,7 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.llm.application.LlmCallTimeouts;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
 import dev.agenvas.settings.application.LlmProviderConfig;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -32,7 +33,7 @@ public class StoredChatModelFactory {
                         config.credentialNonce(), config.keyVersion()));
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .baseUrl(config.endpoint()).apiKey(secret).model(config.modelId())
-                .maxRetries(0).build();
+                .maxRetries(0).timeout(LlmCallTimeouts.REQUEST).build();
         SafeLlmTransport transport = new SafeLlmTransport(config.endpoint(), endpoints);
         return SpringAiChatGateway.withDebugCapture(OpenAiChatModel.builder().options(options)
                 .httpClientBuilderCustomizer(builder ->

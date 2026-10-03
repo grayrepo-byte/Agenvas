@@ -551,10 +551,12 @@ public class TaskService {
         events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             JsonNode finalOutput = output;
-            if (current.kind() == Task.Kind.AGENT_TURN && output != null && output.isObject()
-                    && stream(current).isObject()) {
+            if (current.kind() == Task.Kind.AGENT_TURN && output != null && output.isObject()) {
                 ObjectNode combined = (ObjectNode) output.deepCopy();
-                combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
+                if (stream(current).isObject()) combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
+                if (current.output() != null && current.output().has(Task.MODEL_RETRY_PROPERTY)) {
+                    combined.set(Task.MODEL_RETRY_PROPERTY, current.output().get(Task.MODEL_RETRY_PROPERTY).deepCopy());
+                }
                 finalOutput = combined;
             }
             if (current.cancelRequested()) {
@@ -732,6 +734,37 @@ public class TaskService {
                     new ProjectEventService.EventDraft("task.status.changed", 1,
                             lease.id(), updated.version(), payload));
             return ProjectEventService.Change.unchanged(result);
+        }).value();
+    }
+
+    /** Persist model failure feedback and fence the old stream before waiting or abandoning. */
+    @Transactional
+    public Task recordAgentModelFailure(Task lease, String workerId, JsonNode retry,
+            String errorCode, Instant nextActionAt, boolean exhausted) {
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            Instant now = clock.instant();
+            if (!tasks.lockActiveAgentTurnLease(lease.projectId(), lease.runId(), lease.id(),
+                    validateWorkerId(workerId), lease.leaseEpoch(), now)) throw leaseLost();
+            Task before = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            JsonNode interrupted = interruptedAgentOutput(before);
+            ObjectNode output = interrupted == null ? objectMapper.createObjectNode() : (ObjectNode) interrupted;
+            output.put("schemaVersion", 1);
+            output.set(Task.MODEL_RETRY_PROPERTY, retry.deepCopy());
+            boolean changed = exhausted
+                    ? tasks.finish(lease.id(), workerId, lease.leaseEpoch(), Task.Status.FAILED,
+                            output, validateErrorCode(errorCode), now)
+                    : tasks.deferAgentTurnRetry(lease, workerId, output,
+                            validateErrorCode(errorCode), nextActionAt, now);
+            if (!changed) throw leaseLost();
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (stream(before).path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
+                AgentRun run = runs.get(ownerId, lease.projectId(), lease.runId());
+                events.append(ownerId, lease.projectId(), streamEvent("agent.turn.stream.interrupted",
+                        updated, run.version(), stream(updated), null));
+            }
+            events.append(ownerId, lease.projectId(), taskEvent(updated, false));
+            return ProjectEventService.Change.unchanged(updated);
         }).value();
     }
 

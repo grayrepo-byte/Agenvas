@@ -11,6 +11,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 
 /** Outbound redirect, origin, path and DNS checks run before a credential can leave the host. */
 class SafeLlmTransportTest {
+    private static final long SLOW_RESPONSE_SECONDS = 46;
 
     private HttpServer server;
     private final AtomicInteger completions = new AtomicInteger();
@@ -48,6 +51,28 @@ class SafeLlmTransportTest {
     @AfterEach
     void stop() {
         server.stop(0);
+    }
+
+    @Test
+    void waitsForAContinuationResponseBeyondTheOldReadDeadlineWithoutResubmitting() throws Exception {
+        server.removeContext("/v1/chat/completions");
+        server.createContext("/v1/chat/completions", exchange -> {
+            completions.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            try {
+                new CountDownLatch(1).await(SLOW_RESPONSE_SECONDS, TimeUnit.SECONDS);
+                exchange.sendResponseHeaders(200, -1);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally { exchange.close(); }
+        });
+        String base = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        OkHttpClient outer = new OkHttpClient.Builder()
+                .addInterceptor(new SafeLlmTransport(base, localPolicy).interceptor()).build();
+        try (var response = outer.newCall(post(base + "/chat/completions")).execute()) {
+            assertThat(response.code()).isEqualTo(200);
+        }
+        assertThat(completions).hasValue(1);
     }
 
     @Test

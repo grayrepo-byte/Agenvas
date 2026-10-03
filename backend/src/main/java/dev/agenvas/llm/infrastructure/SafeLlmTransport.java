@@ -1,11 +1,11 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.settings.application.LlmEndpointPolicy;
+import dev.agenvas.llm.application.LlmCallTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import okhttp3.Dns;
@@ -64,7 +64,7 @@ final class SafeLlmTransport {
                 throw new UnknownHostException("LLM DNS returned a blocked address");
             }
             return addresses;
-        }, Duration.ofSeconds(10), Duration.ofSeconds(45), Duration.ofSeconds(60));
+        }, LlmCallTimeouts.CONNECT, LlmCallTimeouts.REQUEST, LlmCallTimeouts.REQUEST);
     }
 
     /** 为 Spring AI 安装拦截器，将请求转交给禁用重定向和自动重试的专用客户端。

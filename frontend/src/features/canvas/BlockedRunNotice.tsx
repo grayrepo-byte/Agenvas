@@ -4,7 +4,7 @@ import { listRunTasks } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import "./AgentChatPanels.css";
-import { taskErrorDetail } from "./taskErrorMessages";
+import { taskErrorDetail, taskErrorMessage } from "./taskErrorMessages";
 
 /** Always-visible failure feedback uses durable, safe Task codes rather than model messages. */
 export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
@@ -37,6 +37,8 @@ export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
       {tasks.error ? <p>{t("agent.blocked.reasonUnavailable")}</p> : null}
       {tasks.error ? <Button variant="ghost" className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("common.retryRead")}</Button> : null}
       {tasks.data && explanation !== noticeTitle ? <p>{explanation}</p> : null}
+      {modelFailure?.errorCode === "LLM_RETRY_EXHAUSTED" && modelFailure.output?.modelRetry ?
+        <p>{t("agent.retry.lastError", { "0": taskErrorMessage(modelFailure.output.modelRetry.lastErrorCode) ?? modelFailure.output.modelRetry.lastErrorCode })}</p> : null}
       {archivedMedia ? <p className="text-xs">{t("agent.blocked.archivedProjectCode")}</p> : null}
       {staleMedia ? <p className="text-xs">{t("agent.blocked.staleInputCode")}</p> : null}
       {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">{t("agent.blocked.diagnostic", { "0": modelFailure.errorCode, "1": taskErrorDetail(modelFailure.errorCode) })}</p> : null}
@@ -47,6 +49,10 @@ export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
 /** Stable, allowlisted explanations prevent raw Provider failures from reaching the page. */
 function switchOnFailure(code: string | null | undefined): string {
   switch (code) {
+    case "LLM_RETRY_EXHAUSTED":
+      return t("agent.retry.exhausted");
+    case "LLM_CALL_TIMEOUT":
+      return t("agent.blocked.modelTimeout");
     case "LLM_CONFIG_UNAVAILABLE":
       return t("agent.blocked.modelUnavailable");
     case "CREDENTIAL_KEY_VERSION_MISSING":

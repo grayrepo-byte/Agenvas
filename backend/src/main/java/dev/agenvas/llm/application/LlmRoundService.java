@@ -113,10 +113,10 @@ public class LlmRoundService {
         PublicStreamSink stream = lease == null ? null : new PublicStreamSink(lease, workerId);
         if (lease != null) tasks.startAgentStream(lease, workerId);
         ChatGateway.Exchange exchange = stream == null
-                ? callLogs.record(descriptor, () -> gateway.call(dispatched, tools, trustedContext, selected),
+                ? callLogs.record(descriptor, () -> modelCall(() -> gateway.call(dispatched, tools, trustedContext, selected)),
                         value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()))
-                : callLogs.recordStream(descriptor, (captureContent, log) -> gateway.callStreaming(
-                        dispatched, tools, trustedContext, selected, stream, captureContent, log),
+                : callLogs.recordStream(descriptor, (captureContent, log) -> modelCall(() -> gateway.callStreaming(
+                        dispatched, tools, trustedContext, selected, stream, captureContent, log)),
                         value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");
@@ -127,6 +127,15 @@ public class LlmRoundService {
                 : checkpoints.saveResponseLeased(ownerId, projectId, runId, stepIndex, exchange.configVersion(),
                         response, lease, workerId)).response();
     }
+    private ChatGateway.Exchange modelCall(java.util.function.Supplier<ChatGateway.Exchange> call) {
+        try { return call.get(); }
+        catch (RuntimeException failure) {
+            ModelCallFailure gatewayFailure = new ModelCallFailure(failure);
+            if (AgentModelRetryPolicy.retryableCode(gatewayFailure) != null) throw gatewayFailure;
+            throw failure;
+        }
+    }
+
     /** The gateway delivers timed public batches; each callback completes one fenced short transaction. */
     private final class PublicStreamSink implements Consumer<String> {
         private final Task lease;

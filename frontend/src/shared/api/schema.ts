@@ -4829,16 +4829,20 @@ export interface components {
              * @description AGENT_TURN 执行中的 assistantStream 为持久公开回答进度，结构为
              *     AssistantTurnStream；这不是已提交的工具响应。完整回合提交后
              *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
+             *     modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
              */
-            output?: {
+            output?: ({
+                modelRetry?: components["schemas"]["AgentModelRetry"];
+            } & {
                 [key: string]: unknown;
-            } | null;
+            }) | null;
             providerRequestId?: string | null;
             attemptNo: number;
             /** Format: date-time */
             nextActionAt: string;
             /** Format: int64 */
             version: number;
+            /** @description 稳定安全原因码；Agent 模型临时故障按 modelRetry 有界重试，达到次数/期限为 LLM_RETRY_EXHAUSTED；媒体提交不自动重试。 */
             errorCode?: string | null;
             /** Format: date-time */
             createdAt: string;
@@ -4846,6 +4850,20 @@ export interface components {
             updatedAt: string;
             /** Format: date-time */
             completedAt?: string | null;
+        };
+        /** @description 同一固定模型请求的持久退避信息；首次调用外最多重试 10 次，首次失败起 5 分钟内。成功保留历史投影，终态不会继续重试。 */
+        AgentModelRetry: {
+            /** @constant */
+            schemaVersion: 1;
+            retryCount: number;
+            /** @constant */
+            maxRetries: 10;
+            /** Format: date-time */
+            firstFailureAt: string;
+            /** Format: date-time */
+            deadlineAt: string;
+            /** @enum {string} */
+            lastErrorCode: "LLM_CALL_TIMEOUT" | "LLM_CONNECTION_FAILED" | "LLM_RATE_LIMITED" | "LLM_SERVICE_UNAVAILABLE";
         };
         AssistantTurnStream: {
             /**

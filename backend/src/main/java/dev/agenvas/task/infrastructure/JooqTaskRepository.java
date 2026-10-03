@@ -744,6 +744,27 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     @Override
+    public boolean deferAgentTurnRetry(Task lease, String workerId, JsonNode output,
+            String errorCode, Instant nextActionAt, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.STATUS, Task.Status.READY.name())
+                .set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+                .set(TASK.ERROR_CODE, errorCode)
+                .set(TASK.NEXT_ACTION_AT, utc(nextActionAt))
+                .set(TASK.ATTEMPT_NO, TASK.ATTEMPT_NO.plus(1))
+                .set(TASK.LEASE_OWNER, (String) null)
+                .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
+                .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1))
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(lease.projectId())).and(TASK.RUN_ID.eq(lease.runId()))
+                .and(TASK.KIND.eq(Task.Kind.AGENT_TURN.name()))
+                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.PROVIDER_REQUEST_ID.isNull()).and(TASK.CANCEL_REQUESTED.isFalse())
+                .execute() == 1;
+    }
+
+    @Override
     public boolean updateAgentStream(UUID taskId, String workerId, long leaseEpoch,
             long expectedVersion, JsonNode output, Instant now) {
         return dsl.update(TASK)

@@ -7,6 +7,31 @@ import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
 describe("BlockedRunNotice", () => {
+  it("explains exhausted automatic retries and preserves completed media", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "done-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
+      { id: "exhausted", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_RETRY_EXHAUSTED" },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="exhausted-run" status="FAILED" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/^已达到 10 次重试或 5 分钟期限/)).toHaveTextContent("本次运行已结束");
+    expect(screen.getByRole("alert")).toHaveTextContent("已完成的媒体保留");
+  });
+  it("distinguishes a model response timeout after media succeeded without exposing private data", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "completed-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
+      { id: "timed-out-turn", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_CALL_TIMEOUT",
+        input: { prompt: "private-synthetic-input" } },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="run-timeout" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/^模型响应等待超时/)).toHaveTextContent("已完成的媒体保留");
+    expect(screen.getByRole("alert")).toHaveTextContent("LLM_CALL_TIMEOUT");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("private-synthetic-input");
+  });
+
   it("explains pinned model capability failure without showing private inputs", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
       HttpResponse.json([{ id: "task-1", kind: "AGENT_TURN", status: "FAILED",
