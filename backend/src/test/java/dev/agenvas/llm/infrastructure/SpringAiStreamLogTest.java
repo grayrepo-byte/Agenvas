@@ -23,7 +23,7 @@ import reactor.core.publisher.Flux;
 class SpringAiStreamLogTest {
     private static final long TIMEOUT_SECONDS = 5;
 
-    @Test void completesWithPublicResponseToolsUsageAndOutputFromTheSameSubscription() {
+    @Test void completesWithPublicResponseAndSeparateDebugContentFromTheSameSubscription() {
         var tool = new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{}");
         var response = new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("answer")
                 .properties(Map.of("reasoningContent", "private reasoning")).toolCalls(List.of(tool)).build(),
@@ -36,10 +36,13 @@ class SpringAiStreamLogTest {
         var result = gateway.callStreaming(List.of(new UserMessage("test")), List.of(), Map.of(), gateway.configIdentity(),
                 outputs::append, true, saved::set);
         assertThat(result.response().getResult().getOutput().getText()).isEqualTo("answer");
+        assertThat(result.response().getResult().getOutput().getMetadata()).doesNotContainKey("reasoningContent");
+        assertThat(result.response().getResult().getOutput().getToolCalls()).containsExactly(tool);
         assertThat(outputs.toString()).isEqualTo("answer");
         assertThat(saved.get().metrics().status()).isEqualTo(LlmStreamLog.EndStatus.COMPLETED);
         assertThat(saved.get().metrics().totalTokens()).isEqualTo(6);
-        assertThat(saved.get().content().response()).contains("answer", "synthetic-tool").doesNotContain("private reasoning");
+        // Opt-in debug preserves actual model metadata; the Runtime/public stream stays sanitized.
+        assertThat(saved.get().content().response()).contains("answer", "synthetic-tool", "private reasoning");
     }
 
     @Test void errorPreservesReceivedButUnpublishedPrefixAndWritesOneFailureSnapshot() {

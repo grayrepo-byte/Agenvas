@@ -65,7 +65,7 @@ public class PromptService {
                 .set(PROMPT_DEFINITION.DESCRIPTION, validDescription).set(PROMPT_DEFINITION.CONTENT, validContent)
                 .set(PROMPT_DEFINITION.CREATED_AT, now).set(PROMPT_DEFINITION.UPDATED_AT, now)
                 .onConflict(PROMPT_DEFINITION.KEY).doNothing().execute();
-        if (changed != 1) throw problem(HttpStatus.CONFLICT, "PROMPT_KEY_CONFLICT", "api.prompt.key-conflict");
+        if (changed != 1) throw problem(HttpStatus.CONFLICT, "PROMPT_KEY_CONFLICT", ApiMessage.of("api.prompt.key-conflict"));
         return get(id);
     }
     @Transactional
@@ -85,7 +85,7 @@ public class PromptService {
     @Transactional
     public void delete(UUID id, long expectedVersion) {
         Prompt prior = get(id);
-        if (prior.builtIn()) throw problem(HttpStatus.CONFLICT, "PROMPT_IN_USE", "api.prompt.in-use");
+        if (prior.builtIn()) throw problem(HttpStatus.CONFLICT, "PROMPT_IN_USE", ApiMessage.of("api.prompt.in-use"));
         if (dsl.deleteFrom(PROMPT_DEFINITION).where(PROMPT_DEFINITION.ID.eq(id))
                 .and(PROMPT_DEFINITION.VERSION.eq(expectedVersion)).and(PROMPT_DEFINITION.BUILT_IN.isFalse()).execute() != 1) throw conflict();
     }
@@ -98,10 +98,10 @@ public class PromptService {
         if ((!emptyAllowed && normalized.isEmpty()) || normalized.length() > maximum) throw invalid();
         return normalized;
     }
-    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "PROMPT_NOT_FOUND", "api.prompt.not-found"); }
-    private ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.prompt.invalid"); }
-    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "PROMPT_CONFLICT", "api.prompt.conflict"); }
-    private ApiProblemException problem(HttpStatus status, String code, String message) {
-        return new ApiProblemException(status, code, ApiMessage.of(message), ApiMessage.of(message), false);
+    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "PROMPT_NOT_FOUND", ApiMessage.of("api.prompt.not-found")); }
+    private ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.prompt.invalid")); }
+    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "PROMPT_CONFLICT", ApiMessage.of("api.prompt.conflict")); }
+    private ApiProblemException problem(HttpStatus status, String code, ApiMessage message) {
+        return new ApiProblemException(status, code, message, message, false);
     }
 }
