@@ -3253,6 +3253,47 @@ export interface components {
             id: string;
             captured: boolean;
             exchanges: components["schemas"]["DebugExchange"][];
+            /** @description 流式 LLM 结束后异步保存；指标始终采集，正文仅在调用开始时开启 debug 才保存。历史及尚未写入时为 null。 */
+            llmStream: components["schemas"]["LlmStreamLog"] | null;
+        };
+        LlmStreamLog: {
+            metrics: components["schemas"]["LlmStreamMetrics"];
+            content: components["schemas"]["LlmStreamContent"] | null;
+        };
+        LlmStreamMetrics: {
+            /** @constant */
+            schemaVersion: 2;
+            /**
+             * Format: int64
+             * @description 从流订阅到首个已解析 ChatResponse 片段；不是 HTTP 首字节。
+             */
+            firstChunkMs: number | null;
+            /**
+             * Format: int64
+             * @description 首字延迟，从流订阅到首个非空公开文本增量；仅工具或无文本时为 null。
+             */
+            firstTextMs: number | null;
+            /** Format: int64 */
+            durationMs: number;
+            /** Format: int64 */
+            chunkCount: number;
+            promptTokens: number | null;
+            completionTokens: number | null;
+            /** @description 仅保存实际用量；缺失或全零补值为 null。 */
+            totalTokens: number | null;
+            model: string | null;
+            responseId: string | null;
+            finishReasons: string[];
+            /** @enum {string} */
+            status: "COMPLETED" | "FAILED" | "CANCELED";
+            /** @description 稳定错误分类，不保存异常消息或堆栈。 */
+            errorCode: string | null;
+        };
+        LlmStreamContent: {
+            /** @description 已脱敏的应用模型响应协议 JSON，包含公开文本、工具调用及元数据；失败或取消保留已收到的部分，不是原始 HTTP/SSE。 */
+            response: string;
+            /** @description 日志汇总超限或无法安全序列化，不影响模型调用。 */
+            truncated: boolean;
         };
         CallLogPage: {
             items: components["schemas"]["CallLog"][];

@@ -162,6 +162,15 @@ function BodyContent({ title, body, parsed, mode, empty }: { title: string; body
     <RawContent key={mode} content={content} />
   </details>;
 }
+/** Reuses bounded text rendering and copy behavior for semantic stream logs. */
+export function CallLogText({ title, content, json = false }: { title: string; content: string; json?: boolean }) {
+  let shown = content;
+  if (json) { try { shown = prettyJson(JSON.parse(content) as unknown); } catch { /* Show safe source text. */ } }
+  return <details className="call-log-body" open><summary>{title}</summary>
+    <div className="llm-body-actions"><CopyButton content={shown} /></div>
+    <RawContent content={shown} />
+  </details>;
+}
 function RawContent({ content }: { content: string }) {
   const [limit, setLimit] = useState(RAW_PAGE_CHARS);
   return <><pre>{content.slice(0, limit)}</pre>{content.length > limit ? <Button variant="outline"  type="button" onClick={() => setLimit(limit + RAW_PAGE_CHARS)}>{t("logs.exchange.loadMoreBody", { "0": formatNumber(content.length - limit) })}</Button> : null}</>;

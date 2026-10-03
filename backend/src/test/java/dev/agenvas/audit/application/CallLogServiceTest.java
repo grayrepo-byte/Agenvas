@@ -27,7 +27,7 @@ class CallLogServiceTest {
     private static final Instant START = Instant.parse("2026-09-26T10:00:00Z");
     private final CallLogRepository repository = mock(CallLogRepository.class);
     private final MutableClock clock = new MutableClock();
-    private final CallLogService service = new CallLogService(repository, clock);
+    private final CallLogService service = new CallLogService(repository, clock, mock(AsyncCallLogWriter.class));
 
     @AfterEach void clearThread() { MDC.clear(); TransactionSynchronizationManager.clear(); }
 

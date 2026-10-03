@@ -51,7 +51,7 @@ describe("CallLogsPage", () => {
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("row", { hidden: true })).toHaveLength(2);
     await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
-    await screen.findByText(/本次调用未开启 debug 模式/);
+    await screen.findByText(/本次调用尚无 debug 正文/);
     expect(reads).toHaveBeenCalledTimes(1);
     const dialog = screen.getByRole("dialog", { name: "调用详情" });
     expect(within(table).getAllByRole("row", { hidden: true })).toHaveLength(2);

@@ -1,6 +1,7 @@
 package dev.agenvas.llm.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,29 @@ public interface ChatGateway {
         String text = PublicAssistantResponse.text(safe);
         if (!text.isEmpty()) publicDelta.accept(text);
         return new Exchange(exchange.configVersion(), safe);
+    }
+
+    /** Explicit log callback is captured before asynchronous hops; it receives one immutable terminal snapshot. */
+    default Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
+            Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta,
+            boolean captureContent, Consumer<LlmStreamLog> streamLog) {
+        var log = new LlmStreamLogCollector(captureContent);
+        LlmStreamLog.EndStatus status = LlmStreamLog.EndStatus.FAILED;
+        try {
+            Exchange exchange = call(messages, tools, toolContext, expected);
+            var safe = PublicAssistantResponse.sanitize(exchange.response());
+            log.chunk(safe);
+            String text = PublicAssistantResponse.text(safe);
+            if (!text.isEmpty()) publicDelta.accept(text);
+            log.complete(safe);
+            status = LlmStreamLog.EndStatus.COMPLETED;
+            return new Exchange(exchange.configVersion(), safe);
+        } finally {
+            try { streamLog.accept(log.snapshot(status, status == LlmStreamLog.EndStatus.COMPLETED ? null : "CALL_STREAM_FAILED")); }
+            catch (RuntimeException failure) {
+                org.slf4j.LoggerFactory.getLogger(ChatGateway.class).error("LLM stream snapshot failed code=CALL_STREAM_SNAPSHOT_FAILED");
+            }
+        }
     }
 
     /** 返回有测试依据的能力；未经验证的视觉和原生结构化输出必须保持关闭。 */

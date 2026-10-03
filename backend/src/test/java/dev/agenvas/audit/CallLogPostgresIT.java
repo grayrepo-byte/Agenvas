@@ -264,6 +264,61 @@ class CallLogPostgresIT {
     }
 
     @Test
+    void semanticStreamLogIsAsyncOptInOwnerScopedAndCleansWithItsCall() throws Exception {
+        Project project = newProject("Synthetic stream logging");
+        AgentRun run = fixtureRun(project);
+        var descriptor = new CallDescriptor(project.id(), null, run.id(), 0, CallLog.Kind.LLM,
+                CallLog.Operation.CHAT, "synthetic", "synthetic-model", true);
+        var gateway = new dev.agenvas.llm.infrastructure.SpringAiChatGateway(new org.springframework.ai.chat.model.ChatModel() {
+            @Override public org.springframework.ai.chat.model.ChatResponse call(org.springframework.ai.chat.prompt.Prompt prompt) {
+                throw new AssertionError("Stream only");
+            }
+            @Override public reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse> stream(org.springframework.ai.chat.prompt.Prompt prompt) {
+                var assistant = org.springframework.ai.chat.messages.AssistantMessage.builder()
+                        .content("synthetic output sk-unusable-stream-key https://example.invalid/?token=synthetic-token")
+                        .properties(Map.of("reasoningContent", "synthetic private reasoning")).build();
+                return reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(
+                        List.of(new org.springframework.ai.chat.model.Generation(assistant)),
+                        org.springframework.ai.chat.metadata.ChatResponseMetadata.builder().model("synthetic-model")
+                                .id("synthetic-stream-response").usage(new org.springframework.ai.chat.metadata.DefaultUsage(3, 2, 5)).build()));
+            }
+        }, 1);
+        for (boolean enabled : List.of(false, true)) {
+            calls.updateSettings(enabled, calls.settings().version());
+            calls.recordStream(descriptor, (capture, listener) -> {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                return gateway.callStreaming(List.of(new org.springframework.ai.chat.messages.UserMessage("synthetic input")),
+                        List.of(), Map.of(), gateway.configIdentity(), ignored -> {}, capture, listener);
+            }, value -> CallOutcome.succeeded(value.response().getMetadata().getId()));
+            UUID id = jdbc.sql("select id from call_log where project_id=:id order by started_at desc limit 1")
+                    .param("id", project.id()).query(UUID.class).single();
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                    assertThat(calls.debug(owner.userId(), id).llmStream()).isNotNull());
+            var detail = calls.debug(owner.userId(), id);
+            assertThat(detail.captured()).isEqualTo(enabled);
+            assertThat(detail.llmStream().metrics().firstTextMs()).isNotNull();
+            assertThat(detail.llmStream().metrics().totalTokens()).isEqualTo(5);
+            assertThat(detail.llmStream().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
+            if (enabled) {
+                assertThat(detail.llmStream().content().response()).contains("synthetic output", "REDACTED")
+                        .doesNotContain("sk-unusable-stream-key", "synthetic-token", "synthetic private reasoning");
+            } else assertThat(detail.llmStream().content()).isNull();
+            String path = PATH + "/" + id + "/debug";
+            String payload = mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_ADMIN"))))
+                    .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(payload).doesNotContain("firstOutputMs", "outputBatchCount", "outputChars", "\"output\":");
+            mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(UUID.randomUUID(), "foreign"), "ROLE_ADMIN"))))
+                    .andExpect(status().isNotFound());
+            // A queued writer must never recreate data after history cleanup has deleted its call.
+            jdbc.sql("delete from call_log where id=:id").param("id", id).update();
+            assertThatThrownBy(() -> auditRepository.finishStream(id, CallOutcome.succeeded(null), Instant.now(), 1,
+                    detail.llmStream(), List.of(), enabled)).isInstanceOf(IllegalStateException.class);
+            assertThat(jdbc.sql("select count(*) from call_log_debug where call_id=:id").param("id", id).query(Integer.class).single()).isZero();
+        }
+    }
+
+    @Test
     void recordsCommittedStartBeforeInvocationAndPersistsResponseTiming() throws Exception {
         Project project = newProject("Recorded call");
         Task task = newTask(project, CallLog.Kind.IMAGE);

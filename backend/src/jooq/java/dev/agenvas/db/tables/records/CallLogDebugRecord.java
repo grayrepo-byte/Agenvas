@@ -65,6 +65,22 @@ public class CallLogDebugRecord extends UpdatableRecordImpl<CallLogDebugRecord> 
         return (JSONB) get(2);
     }
 
+    /**
+     * Setter for <code>public.call_log_debug.llm_stream_content_json</code>. 显式
+     * debug 开关开启时汇总的单份脱敏模型公开响应；不保存展示输出、私有推理或原始 SSE
+     */
+    public void setLlmStreamContentJson(JSONB value) {
+        set(3, value);
+    }
+
+    /**
+     * Getter for <code>public.call_log_debug.llm_stream_content_json</code>. 显式
+     * debug 开关开启时汇总的单份脱敏模型公开响应；不保存展示输出、私有推理或原始 SSE
+     */
+    public JSONB getLlmStreamContentJson() {
+        return (JSONB) get(3);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -88,12 +104,13 @@ public class CallLogDebugRecord extends UpdatableRecordImpl<CallLogDebugRecord> 
     /**
      * Create a detached, initialised CallLogDebugRecord
      */
-    public CallLogDebugRecord(UUID callId, Integer schemaVersion, JSONB exchangesJson) {
+    public CallLogDebugRecord(UUID callId, Integer schemaVersion, JSONB exchangesJson, JSONB llmStreamContentJson) {
         super(CallLogDebug.CALL_LOG_DEBUG);
 
         setCallId(callId);
         setSchemaVersion(schemaVersion);
         setExchangesJson(exchangesJson);
+        setLlmStreamContentJson(llmStreamContentJson);
         resetChangedOnNotNull();
     }
 }

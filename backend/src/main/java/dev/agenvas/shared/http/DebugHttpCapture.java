@@ -10,7 +10,11 @@ import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
@@ -34,6 +38,9 @@ public final class DebugHttpCapture implements AutoCloseable {
     private static final String REDACTED = "[REDACTED]";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ThreadLocal<DebugHttpCapture> ACTIVE = new ThreadLocal<>();
+    /** Internal SDK carrier, removed by the capture interceptor before any network I/O. */
+    public static final String CAPTURE_HEADER = "X-Agenvas-Debug-Capture";
+    private static final ConcurrentMap<String, DebugHttpCapture> REQUEST_CAPTURES = new ConcurrentHashMap<>();
     private static final Set<String> PRIVATE_FIELDS = Set.of("authorization", "proxyauthorization",
             "apikey", "key", "secret", "clientsecret", "password", "credential", "credentials",
             "token", "accesstoken", "refreshtoken", "cookie", "setcookie", "headers",
@@ -45,6 +52,8 @@ public final class DebugHttpCapture implements AutoCloseable {
     private final Consumer<List<Exchange>> checkpoint;
     private final List<Exchange> exchanges = new ArrayList<>();
     private final Set<String> secrets = new HashSet<>();
+    private String requestToken;
+    private boolean closed;
 
     public enum Encoding { UTF8, BASE64, MULTIPART_JSON, OMITTED }
     public record Body(String content, Encoding encoding, boolean truncated) {}
@@ -62,7 +71,34 @@ public final class DebugHttpCapture implements AutoCloseable {
         return new DebugHttpCapture(checkpoint);
     }
     public static boolean enabled() { return ACTIVE.get() != null; }
-    @Override public void close() {
+    /** Sanitizes a semantic log with the same credentials learned from this invocation's transport. */
+    public synchronized String sanitizeJson(String json) {
+        return body(json.getBytes(StandardCharsets.UTF_8), "application/json", false).content();
+    }
+
+    /**
+     * Binds this invocation before entering the SDK's asynchronous path. Only use with a transport
+     * that installs {@link #interceptor()}; arbitrary clients must never receive the internal carrier.
+     * The token carries no project, user or audit identity and is unregistered when the scope closes.
+     */
+    public static Map<String, String> requestHeaders() {
+        DebugHttpCapture capture = ACTIVE.get();
+        return capture == null ? Map.of() : capture.bindRequest();
+    }
+
+    private synchronized Map<String, String> bindRequest() {
+        if (closed) return Map.of();
+        if (requestToken == null) {
+            requestToken = UUID.randomUUID().toString();
+            REQUEST_CAPTURES.put(requestToken, this);
+        }
+        return Map.of(CAPTURE_HEADER, requestToken);
+    }
+
+    @Override public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        if (requestToken != null) REQUEST_CAPTURES.remove(requestToken, this);
         if (previous == null) ACTIVE.remove(); else ACTIVE.set(previous);
     }
     private static String normalized(String name) {
@@ -186,21 +222,31 @@ public final class DebugHttpCapture implements AutoCloseable {
 
     public static Interceptor interceptor() {
         return chain -> {
-            DebugHttpCapture capture = ACTIVE.get();
-            if (capture == null) return chain.proceed(chain.request());
             var request = chain.request();
-            for (String name : request.headers().names()) {
-                if (!PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT))) for (String value : request.headers().values(name)) capture.remember(value);
+            String token = request.header(CAPTURE_HEADER);
+            // Even an expired/unknown carrier is stripped, and must not fall back to another
+            // invocation's ThreadLocal on a reused execution thread.
+            DebugHttpCapture capture = token == null ? ACTIVE.get() : REQUEST_CAPTURES.get(token);
+            if (token != null) request = request.newBuilder().removeHeader(CAPTURE_HEADER).build();
+            if (capture == null) return chain.proceed(request);
+            int index;
+            synchronized (capture) {
+                for (String name : request.headers().names()) {
+                    if (!PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT))) for (String value : request.headers().values(name)) capture.remember(value);
+                }
+                Body requestBody;
+                try { requestBody = capture.requestBody(request.body()); }
+                catch (IOException | RuntimeException failure) { requestBody = new Body("[请求正文采集失败]", Encoding.OMITTED, false); }
+                index = capture.begin(request.method(), request.url().toString(), requestBody);
             }
-            Body requestBody;
-            try { requestBody = capture.requestBody(request.body()); }
-            catch (IOException | RuntimeException failure) { requestBody = new Body("[请求正文采集失败]", Encoding.OMITTED, false); }
-            int index = capture.begin(request.method(), request.url().toString(), requestBody);
+            // No capture monitor or database transaction is held while waiting for the Provider.
             var response = chain.proceed(request);
-            for (String name : response.headers().names()) {
-                if (privateField(name)) for (String value : response.headers().values(name)) capture.remember(value);
+            synchronized (capture) {
+                for (String name : response.headers().names()) {
+                    if (privateField(name)) for (String value : response.headers().values(name)) capture.remember(value);
+                }
+                capture.response(index, response.code(), null);
             }
-            capture.response(index, response.code(), null);
             ResponseBody original = response.body();
             if (original == null) return response;
             Collector collector = new Collector(capture, index, response.code(),
@@ -233,12 +279,14 @@ public final class DebugHttpCapture implements AutoCloseable {
     public static int begin(String method, String url, byte[] bytes, String type) {
         DebugHttpCapture capture = ACTIVE.get();
         if (capture == null) return NO_EXCHANGE;
-        return capture.begin(method, url, bytes == null ? null : capture.body(bytes, type, false));
+        synchronized (capture) {
+            return capture.begin(method, url, bytes == null ? null : capture.body(bytes, type, false));
+        }
     }
     public static InputStream responseStream(int index, int status, String type, InputStream stream) {
         DebugHttpCapture capture = ACTIVE.get();
         if (capture == null || index < 0) return stream;
-        capture.response(index, status, null);
+        synchronized (capture) { capture.response(index, status, null); }
         Collector collector = new Collector(capture, index, status, type);
         return new FilterInputStream(stream) {
             @Override public int read() throws IOException {
@@ -270,15 +318,19 @@ public final class DebugHttpCapture implements AutoCloseable {
         private Collector(DebugHttpCapture capture, int index, int status, String type) {
             this.capture = capture; this.index = index; this.status = status; this.type = type;
         }
-        private void add(byte[] value, long count) {
+        private synchronized void add(byte[] value, long count) {
+            if (finished) return;
             total += count;
             int length = Math.min(value.length, Math.max(0, MAX_BODY_BYTES - bytes.size()));
             bytes.write(value, 0, length);
         }
-        private void finish(boolean partial) {
+        // The SDK may close a stream on a cancellation/timer thread while its reader is active.
+        private synchronized void finish(boolean partial) {
             if (finished) return;
             finished = true;
-            capture.response(index, status, capture.body(bytes.toByteArray(), type, partial || total > MAX_BODY_BYTES));
+            synchronized (capture) {
+                capture.response(index, status, capture.body(bytes.toByteArray(), type, partial || total > MAX_BODY_BYTES));
+            }
         }
     }
 }

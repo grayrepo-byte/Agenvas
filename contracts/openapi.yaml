@@ -4293,13 +4293,58 @@ components:
             - {type: "null"}
     CallDebug:
       type: object
-      required: [id, captured, exchanges]
+      required: [id, captured, exchanges, llmStream]
       properties:
         id: {type: string, format: uuid}
         captured: {type: boolean}
         exchanges:
           type: array
           items: {$ref: "#/components/schemas/DebugExchange"}
+        llmStream:
+          description: 流式 LLM 结束后异步保存；指标始终采集，正文仅在调用开始时开启 debug 才保存。历史及尚未写入时为 null。
+          oneOf:
+            - {$ref: "#/components/schemas/LlmStreamLog"}
+            - {type: "null"}
+    LlmStreamLog:
+      type: object
+      required: [metrics, content]
+      properties:
+        metrics: {$ref: "#/components/schemas/LlmStreamMetrics"}
+        content:
+          oneOf:
+            - {$ref: "#/components/schemas/LlmStreamContent"}
+            - {type: "null"}
+    LlmStreamMetrics:
+      type: object
+      required: [schemaVersion, firstChunkMs, firstTextMs, durationMs, chunkCount, promptTokens, completionTokens, totalTokens, model, responseId, finishReasons, status, errorCode]
+      properties:
+        schemaVersion: {type: integer, const: 2}
+        firstChunkMs:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          description: 从流订阅到首个已解析 ChatResponse 片段；不是 HTTP 首字节。
+        firstTextMs:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          description: 首字延迟，从流订阅到首个非空公开文本增量；仅工具或无文本时为 null。
+        durationMs: {type: integer, format: int64, minimum: 0}
+        chunkCount: {type: integer, format: int64, minimum: 0}
+        promptTokens: {type: [integer, "null"], minimum: 0}
+        completionTokens: {type: [integer, "null"], minimum: 0}
+        totalTokens: {type: [integer, "null"], minimum: 0, description: 仅保存实际用量；缺失或全零补值为 null。}
+        model: {type: [string, "null"]}
+        responseId: {type: [string, "null"]}
+        finishReasons: {type: array, items: {type: string}}
+        status: {type: string, enum: [COMPLETED, FAILED, CANCELED]}
+        errorCode: {type: [string, "null"], description: 稳定错误分类，不保存异常消息或堆栈。}
+    LlmStreamContent:
+      type: object
+      required: [response, truncated]
+      properties:
+        response: {type: string, description: 已脱敏的应用模型响应协议 JSON，包含公开文本、工具调用及元数据；失败或取消保留已收到的部分，不是原始 HTTP/SSE。}
+        truncated: {type: boolean, description: 日志汇总超限或无法安全序列化，不影响模型调用。}
     CallLogPage:
       type: object
       required: [items, page, size, totalElements, totalPages]

@@ -22,6 +22,7 @@ import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Index;
 import org.jooq.InverseForeignKey;
+import org.jooq.JSONB;
 import org.jooq.Name;
 import org.jooq.Path;
 import org.jooq.PlainSQL;
@@ -150,6 +151,12 @@ public class CallLog extends TableImpl<CallLogRecord> {
      */
     public final TableField<CallLogRecord, Boolean> MOCK = createField(DSL.name("mock"), SQLDataType.BOOLEAN.nullable(false), this, "明确标记演示调用，不证明真实 Provider 已接通");
 
+    /**
+     * The column <code>public.call_log.llm_stream_metrics_json</code>.
+     * 流式模型调用的首片段、首字、总耗时、实际用量与结束状态；不含前端进度或正文
+     */
+    public final TableField<CallLogRecord, JSONB> LLM_STREAM_METRICS_JSON = createField(DSL.name("llm_stream_metrics_json"), SQLDataType.JSONB, this, "流式模型调用的首片段、首字、总耗时、实际用量与结束状态；不含前端进度或正文");
+
     private CallLog(Name alias, Table<CallLogRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -251,6 +258,7 @@ public class CallLog extends TableImpl<CallLogRecord> {
             Internal.createCheck(this, DSL.name("call_log_check1"), "(((((status)::text = 'RUNNING'::text) AND (responded_at IS NULL) AND (duration_ms IS NULL)) OR (((status)::text <> 'RUNNING'::text) AND (responded_at IS NOT NULL) AND (duration_ms IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("call_log_duration_ms_check"), "((duration_ms >= 0))", true),
             Internal.createCheck(this, DSL.name("call_log_kind_check"), "(((kind)::text = ANY ((ARRAY['LLM'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying, 'AUDIO'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("call_log_llm_stream_metrics_check"), "(((llm_stream_metrics_json IS NULL) OR ((jsonb_typeof(llm_stream_metrics_json) = 'object'::text) AND (llm_stream_metrics_json ? 'schemaVersion'::text) AND ((llm_stream_metrics_json ->> 'schemaVersion'::text) = '2'::text))))", true),
             Internal.createCheck(this, DSL.name("call_log_operation_check"), "(((operation)::text = ANY ((ARRAY['CHAT'::character varying, 'SUBMIT'::character varying, 'POLL'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_status_check"), "(((status)::text = ANY ((ARRAY['RUNNING'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'UNKNOWN'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_trace_id_check"), "((trace_id ~ '^[0-9a-f]{32}$'::text))", true),

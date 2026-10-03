@@ -76,6 +76,12 @@ public class CallLogDebug extends TableImpl<CallLogDebugRecord> {
      */
     public final TableField<CallLogDebugRecord, JSONB> EXCHANGES_JSON = createField(DSL.name("exchanges_json"), SQLDataType.JSONB.nullable(false), this, "已脱敏调用交换正文数组");
 
+    /**
+     * The column <code>public.call_log_debug.llm_stream_content_json</code>. 显式
+     * debug 开关开启时汇总的单份脱敏模型公开响应；不保存展示输出、私有推理或原始 SSE
+     */
+    public final TableField<CallLogDebugRecord, JSONB> LLM_STREAM_CONTENT_JSON = createField(DSL.name("llm_stream_content_json"), SQLDataType.JSONB, this, "显式 debug 开关开启时汇总的单份脱敏模型公开响应；不保存展示输出、私有推理或原始 SSE");
+
     private CallLogDebug(Name alias, Table<CallLogDebugRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -169,6 +175,7 @@ public class CallLogDebug extends TableImpl<CallLogDebugRecord> {
     public List<Check<CallLogDebugRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("call_log_debug_exchanges_json_check"), "((jsonb_typeof(exchanges_json) = 'array'::text))", true),
+            Internal.createCheck(this, DSL.name("call_log_debug_llm_stream_content_check"), "(((llm_stream_content_json IS NULL) OR (jsonb_typeof(llm_stream_content_json) = 'object'::text)))", true),
             Internal.createCheck(this, DSL.name("call_log_debug_schema_version_check"), "((schema_version = 1))", true)
         );
     }

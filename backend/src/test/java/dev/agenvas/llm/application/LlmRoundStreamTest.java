@@ -53,9 +53,12 @@ class LlmRoundStreamTest {
                 .thenReturn(turn(LlmTurn.Status.REQUESTED, null));
         when(checkpoints.saveResponseLeased(eq(owner), eq(project), eq(runId), eq(0), eq(3), any(), eq(lease), eq("worker")))
                 .thenReturn(turn(LlmTurn.Status.RESPONDED, response));
-        when(logs.record(any(), any(), any())).thenAnswer(call -> ((Supplier<?>) call.getArgument(1)).get());
+        when(logs.recordStream(any(), any(), any())).thenAnswer(call -> {
+            java.util.function.BiFunction<Boolean, Consumer<dev.agenvas.audit.domain.LlmStreamLog>, ?> invocation = call.getArgument(1);
+            return invocation.apply(false, ignored -> {});
+        });
         when(tasks.appendAgentStream(eq(lease), eq("worker"), anyLong(), anyString())).thenAnswer(call -> (long) call.getArgument(2) + 1);
-        when(gateway.callStreaming(anyList(), anyList(), anyMap(), any(), any())).thenAnswer(call -> {
+        when(gateway.callStreaming(anyList(), anyList(), anyMap(), any(), any(), anyBoolean(), any())).thenAnswer(call -> {
             Consumer<String> delta = call.getArgument(4);
             delta.accept("first ");
             // First batch must already be committed before the Provider has a complete response.
@@ -72,7 +75,7 @@ class LlmRoundStreamTest {
         var order = inOrder(tasks, gateway, checkpoints);
         order.verify(checkpoints).reserveLeased(eq(owner), eq(project), eq(runId), eq(0), eq(3), eq("mock"), any(), eq(lease), eq("worker"));
         order.verify(tasks).startAgentStream(lease, "worker");
-        order.verify(gateway).callStreaming(anyList(), anyList(), anyMap(), eq(new ChatGateway.ConfigIdentity("mock", 3)), any());
+        order.verify(gateway).callStreaming(anyList(), anyList(), anyMap(), eq(new ChatGateway.ConfigIdentity("mock", 3)), any(), eq(false), any());
         order.verify(tasks).appendAgentStream(lease, "worker", 0, "first ");
         order.verify(tasks).appendAgentStream(lease, "worker", 1, "second");
         order.verify(checkpoints).saveResponseLeased(eq(owner), eq(project), eq(runId), eq(0), eq(3), any(), eq(lease), eq("worker"));
@@ -84,7 +87,7 @@ class LlmRoundStreamTest {
         when(checkpoints.reserveLeased(eq(owner), eq(project), eq(runId), eq(0), eq(3), eq("mock"), any(), eq(lease), eq("worker")))
                 .thenReturn(turn(LlmTurn.Status.RESPONDED, response));
         assertThat(call()).isEqualTo(response);
-        verify(gateway, never()).callStreaming(anyList(), anyList(), anyMap(), any(), any());
+        verify(gateway, never()).callStreaming(anyList(), anyList(), anyMap(), any(), any(), anyBoolean(), any());
         verifyNoInteractions(tasks, logs);
     }
 
@@ -94,10 +97,10 @@ class LlmRoundStreamTest {
             Consumer<String> delta = invocation.getArgument(4);
             delta.accept("first ");
             throw new IllegalStateException("Stream transport size limit");
-        }).when(gateway).callStreaming(anyList(), anyList(), anyMap(), any(), any());
+        }).when(gateway).callStreaming(anyList(), anyList(), anyMap(), any(), any(), anyBoolean(), any());
         assertThatThrownBy(this::call).isInstanceOf(IllegalStateException.class).hasMessageContaining("transport size limit");
         verify(tasks).appendAgentStream(lease, "worker", 0, "first ");
-        verify(gateway).callStreaming(anyList(), anyList(), anyMap(), any(), any());
+        verify(gateway).callStreaming(anyList(), anyList(), anyMap(), any(), any(), anyBoolean(), any());
         verify(gateway, never()).call(anyList(), anyList(), anyMap(), any());
         verify(checkpoints, never()).saveResponseLeased(any(), any(), any(), anyInt(), anyInt(), any(), any(), anyString());
     }

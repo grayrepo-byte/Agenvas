@@ -9,6 +9,7 @@ import dev.agenvas.db.tables.CallLog;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.jooq.JSONB;
 import org.jooq.Record1;
 import org.jooq.impl.UpdatableRecordImpl;
 
@@ -265,6 +266,22 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
         return (Boolean) get(16);
     }
 
+    /**
+     * Setter for <code>public.call_log.llm_stream_metrics_json</code>.
+     * 流式模型调用的首片段、首字、总耗时、实际用量与结束状态；不含前端进度或正文
+     */
+    public void setLlmStreamMetricsJson(JSONB value) {
+        set(17, value);
+    }
+
+    /**
+     * Getter for <code>public.call_log.llm_stream_metrics_json</code>.
+     * 流式模型调用的首片段、首字、总耗时、实际用量与结束状态；不含前端进度或正文
+     */
+    public JSONB getLlmStreamMetricsJson() {
+        return (JSONB) get(17);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -288,7 +305,7 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
     /**
      * Create a detached, initialised CallLogRecord
      */
-    public CallLogRecord(UUID id, UUID projectId, UUID taskId, UUID runId, Integer stepIndex, String kind, String operation, String status, String provider, String model, String traceId, String providerRequestId, String errorCode, OffsetDateTime startedAt, OffsetDateTime respondedAt, Long durationMs, Boolean mock) {
+    public CallLogRecord(UUID id, UUID projectId, UUID taskId, UUID runId, Integer stepIndex, String kind, String operation, String status, String provider, String model, String traceId, String providerRequestId, String errorCode, OffsetDateTime startedAt, OffsetDateTime respondedAt, Long durationMs, Boolean mock, JSONB llmStreamMetricsJson) {
         super(CallLog.CALL_LOG);
 
         setId(id);
@@ -308,6 +325,7 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
         setRespondedAt(respondedAt);
         setDurationMs(durationMs);
         setMock(mock);
+        setLlmStreamMetricsJson(llmStreamMetricsJson);
         resetChangedOnNotNull();
     }
 }

@@ -1,6 +1,7 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.LlmProperties;
 import dev.agenvas.settings.application.LlmProviderConfig;
 import dev.agenvas.settings.application.LlmProviderConfigRepository;
@@ -61,6 +62,14 @@ public class ConfiguredChatGateway implements ChatGateway {
         LlmProviderConfig config = pinnedConfig(expected);
         SpringAiChatGateway pinned = requireConfigured(config);
         return pinned.callStreaming(messages, tools, toolContext, pinned.configIdentity(), publicDelta);
+    }
+
+    @Override
+    public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
+            Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta,
+            boolean captureContent, Consumer<LlmStreamLog> streamLog) {
+        SpringAiChatGateway pinned = requireConfigured(pinnedConfig(expected));
+        return pinned.callStreaming(messages, tools, toolContext, pinned.configIdentity(), publicDelta, captureContent, streamLog);
     }
 
     /** 数据库配置能力只按其固定历史版本报告；缺失配置或其他来源走接口默认核验。 */

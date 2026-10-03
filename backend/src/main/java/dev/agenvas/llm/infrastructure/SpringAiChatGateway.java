@@ -1,8 +1,11 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.LlmStreamLogCollector;
+import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.PublicAssistantResponse;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.shared.http.DebugHttpCapture;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -20,7 +23,11 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.SignalType;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -41,9 +48,20 @@ public class SpringAiChatGateway implements ChatGateway {
     private final ChatModel model;
     /** 本次请求固定使用的 LLM 配置版本。 */
     private final int configVersion;
+    /** Enabled only when the model's transport removes the internal capture header. */
+    private final boolean captureHttp;
 
     /** 创建禁用自动工具循环的客户端，并拒绝无效配置版本。 */
     public SpringAiChatGateway(ChatModel model, int configVersion) {
+        this(model, configVersion, false);
+    }
+
+    /** The supplied OpenAI model must install DebugHttpCapture.interceptor() in its transport. */
+    static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion) {
+        return new SpringAiChatGateway(model, configVersion, true);
+    }
+
+    private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp) {
         if (configVersion < 1) {
             throw new IllegalArgumentException("LLM configVersion must be positive");
         }
@@ -53,6 +71,16 @@ public class SpringAiChatGateway implements ChatGateway {
                         ChatClientAttributes.TOOL_CALLING_ADVISOR_AUTO_REGISTER.getKey(), false))
                 .build();
         this.configVersion = configVersion;
+        this.captureHttp = captureHttp;
+    }
+
+    private ChatClient.ChatClientRequestSpec prompt() {
+        var request = client.prompt();
+        if (captureHttp) {
+            Map<String, String> headers = DebugHttpCapture.requestHeaders();
+            if (!headers.isEmpty()) request.options(OpenAiChatOptions.builder().customHeaders(headers));
+        }
+        return request;
     }
 
     /** 提交一个有界消息回合并返回模型原始响应，不在此处执行工具调用。 */
@@ -66,7 +94,7 @@ public class SpringAiChatGateway implements ChatGateway {
         if (!tools.isEmpty() && !(model.getOptions() instanceof ToolCallingChatOptions)) {
             throw new IllegalStateException("Configured ChatModel does not support tool calling");
         }
-        ChatResponse response = client.prompt()
+        ChatResponse response = prompt()
                 .messages(List.copyOf(messages))
                 .tools(tools.toArray(ToolCallback[]::new))
                 .toolContext(Map.copyOf(toolContext))
@@ -82,49 +110,96 @@ public class SpringAiChatGateway implements ChatGateway {
     @Override
     public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta) {
+        return callStreaming(messages, tools, toolContext, expected, publicDelta, false, ignored -> {});
+    }
+
+    @Override
+    public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
+            Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta,
+            boolean captureContent, Consumer<LlmStreamLog> streamLog) {
         if (!configIdentity().equals(expected)) {
             throw new IllegalStateException("ChatGateway configuration changed before model stream");
         }
         if (messages == null || messages.isEmpty() || messages.size() > 80
-                || tools == null || toolContext == null || publicDelta == null) {
+                || tools == null || toolContext == null || publicDelta == null || streamLog == null) {
             throw new IllegalArgumentException("Invalid bounded ChatGateway stream");
         }
         if (!tools.isEmpty() && !(model.getOptions() instanceof ToolCallingChatOptions)) {
             throw new IllegalStateException("Configured ChatModel does not support tool calling");
         }
-        StreamBudget budget = new StreamBudget();
-        AtomicReference<Usage> reportedUsage = new AtomicReference<>(new EmptyUsage());
-        Map<String, Object> responseAttributes = new LinkedHashMap<>();
-        var chunks = client.prompt().messages(List.copyOf(messages))
-                .tools(tools.toArray(ToolCallback[]::new)).toolContext(Map.copyOf(toolContext))
-                .stream().chatResponse().map(PublicAssistantResponse::sanitize).doOnNext(chunk -> {
-                    // Bound our own aggregator before it retains text, tool arguments or metadata.
-                    // The stored-model transport separately bounds raw bytes before the SDK's buffers.
+        AtomicReference<LlmStreamLogCollector> collector = new AtomicReference<>();
+        AtomicReference<SignalType> terminal = new AtomicReference<>();
+        AtomicReference<ChatResponse> result = new AtomicReference<>();
+        Throwable failure = null;
+        // Bind HTTP capture on the caller before defer/SDK scheduling, never inside a common-pool continuation.
+        var request = prompt().messages(List.copyOf(messages)).tools(tools.toArray(ToolCallback[]::new))
+                .toolContext(Map.copyOf(toolContext));
+        try {
+            Flux.defer(() -> {
+                LlmStreamLogCollector log = new LlmStreamLogCollector(captureContent);
+                collector.set(log);
+                StreamBudget budget = new StreamBudget();
+                AtomicReference<Usage> reportedUsage = new AtomicReference<>(new EmptyUsage());
+                Map<String, Object> responseAttributes = new LinkedHashMap<>();
+                var chunks = request.stream().chatResponse().map(PublicAssistantResponse::sanitize).doOnNext(chunk -> {
                     budget.accept(chunk);
+                    log.chunk(chunk);
                     Usage usage = chunk.getMetadata().getUsage();
-                    // OpenAI's stream mapper synthesizes all-zero Usage when no usage frame exists.
-                    // Treat even an explicitly reported all-zero value as unknown conservatively.
                     if (hasPositiveUsage(usage)) reportedUsage.set(usage);
                     chunk.getMetadata().entrySet().forEach(entry -> responseAttributes.put(entry.getKey(), entry.getValue()));
                 });
-        AtomicReference<ChatResponse> completed = new AtomicReference<>();
-        new MessageAggregator().aggregate(chunks, completed::set)
-                .bufferTimeout(MAX_PUBLIC_BATCH_CHUNKS, PUBLIC_BATCH_INTERVAL).doOnNext(batch -> {
-                    StringBuilder text = new StringBuilder();
-                    batch.forEach(chunk -> text.append(PublicAssistantResponse.text(chunk)));
-                    if (!text.isEmpty()) publicDelta.accept(text.toString());
-                }).blockLast();
-        if (completed.get() == null || completed.get().getResult() == null) {
-            throw new IllegalStateException("LLM stream returned no complete assistant response");
+                AtomicReference<ChatResponse> completed = new AtomicReference<>();
+                return new MessageAggregator().aggregate(chunks, completed::set)
+                        .bufferTimeout(MAX_PUBLIC_BATCH_CHUNKS, PUBLIC_BATCH_INTERVAL).doOnNext(batch -> {
+                            StringBuilder text = new StringBuilder();
+                            batch.forEach(chunk -> text.append(PublicAssistantResponse.text(chunk)));
+                            if (!text.isEmpty()) {
+                                String delta = text.toString();
+                                publicDelta.accept(delta);
+                            }
+                        }).doOnComplete(() -> {
+                            if (completed.get() == null || completed.get().getResult() == null) {
+                                throw new IllegalStateException("LLM stream returned no complete assistant response");
+                            }
+                            ChatResponse aggregated = completed.get();
+                            ChatResponseMetadata metadata = ChatResponseMetadata.builder().metadata(responseAttributes)
+                                    .id(aggregated.getMetadata().getId()).model(aggregated.getMetadata().getModel())
+                                    .usage(reportedUsage.get()).rateLimit(aggregated.getMetadata().getRateLimit())
+                                    .promptMetadata(aggregated.getMetadata().getPromptMetadata()).build();
+                            ChatResponse response = PublicAssistantResponse.sanitize(new ChatResponse(aggregated.getResults(), metadata));
+                            result.set(response);
+                            log.complete(response);
+                        }).doFinally(terminal::set);
+            }).blockLast();
+            return new Exchange(configVersion, result.get());
+        } catch (RuntimeException | Error error) {
+            failure = error;
+            throw error;
+        } finally {
+            // doFinally can run after blockLast wakes. The method boundary owns exactly one snapshot,
+            // after callbacks finish; an interrupted block is classified independently of that race.
+            LlmStreamLogCollector log = collector.get();
+            if (log != null) {
+                LlmStreamLog.EndStatus status = failure == null ? LlmStreamLog.EndStatus.COMPLETED
+                        : isCancellation(failure) || terminal.get() == SignalType.CANCEL
+                        ? LlmStreamLog.EndStatus.CANCELED : LlmStreamLog.EndStatus.FAILED;
+                try { streamLog.accept(log.snapshot(status, failure == null ? null :
+                        status == LlmStreamLog.EndStatus.CANCELED ? "CALL_STREAM_CANCELED" : "CALL_STREAM_FAILED")); }
+                catch (RuntimeException logFailure) {
+                    // Semantic logging must never replace the model result or its original failure.
+                    org.slf4j.LoggerFactory.getLogger(SpringAiChatGateway.class)
+                            .error("LLM stream snapshot failed code=CALL_STREAM_SNAPSHOT_FAILED");
+                }
+            }
         }
-        ChatResponse result = completed.get();
-        // The framework aggregator supplies zero-token usage when none was reported and omits
-        // arbitrary response metadata. Preserve actual provider usage and opaque protocol fields.
-        ChatResponseMetadata metadata = ChatResponseMetadata.builder().metadata(responseAttributes)
-                .id(result.getMetadata().getId()).model(result.getMetadata().getModel())
-                .usage(reportedUsage.get()).rateLimit(result.getMetadata().getRateLimit())
-                .promptMetadata(result.getMetadata().getPromptMetadata()).build();
-        return new Exchange(configVersion, PublicAssistantResponse.sanitize(new ChatResponse(result.getResults(), metadata)));
+    }
+
+    private boolean isCancellation(Throwable failure) {
+        if (Thread.currentThread().isInterrupted()) return true;
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof InterruptedException || cause instanceof java.util.concurrent.CancellationException) return true;
+        }
+        return false;
     }
 
     private boolean hasPositiveUsage(Usage usage) {

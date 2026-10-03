@@ -8,6 +8,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.Dns;
@@ -21,6 +24,86 @@ import tools.jackson.databind.ObjectMapper;
 /** Fake HTTP only: raw wire content, credential removal, and no capture outside a call scope. */
 class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final int TIMEOUT_SECONDS = 5;
+
+    @Test void requestBindingCapturesOnAnUnpropagatedThreadWithoutSendingTheCarrier() throws Exception {
+        HttpServer server = bindingServer();
+        server.start();
+        try {
+            var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var scope = DebugHttpCapture.open(saved::set)) {
+                var headers = DebugHttpCapture.requestHeaders();
+                assertThat(headers).containsKey(DebugHttpCapture.CAPTURE_HEADER);
+                CompletableFuture.runAsync(() -> {
+                    assertThat(DebugHttpCapture.enabled()).isFalse();
+                    executeBoundRequest(server, headers);
+                }).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                assertThat(saved.get()).hasSize(1);
+                assertThat(saved.get().getFirst().requestBody().content()).contains("bound request");
+                assertThat(saved.get().getFirst().responseBody().content()).contains("ok");
+            }
+            assertThat(DebugHttpCapture.requestHeaders()).isEmpty();
+        } finally { server.stop(0); }
+    }
+
+    @Test void expiredAndUnknownBindingsAreRemovedWithoutFallingBackToAnotherScope() throws Exception {
+        HttpServer server = bindingServer();
+        server.start();
+        try {
+            var original = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            Map<String, String> expired;
+            try (var scope = DebugHttpCapture.open(original::set)) {
+                expired = DebugHttpCapture.requestHeaders();
+            }
+            var unrelated = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var scope = DebugHttpCapture.open(unrelated::set)) {
+                executeBoundRequest(server, expired);
+                executeBoundRequest(server, Map.of(DebugHttpCapture.CAPTURE_HEADER, "synthetic-unknown-token"));
+            }
+            assertThat(original.get()).isEmpty();
+            assertThat(unrelated.get()).isEmpty();
+        } finally { server.stop(0); }
+    }
+
+    @Test void nestedScopeRestoresTheOuterBindingAndRepeatedCloseDoesNotClearIt() {
+        try (var outer = DebugHttpCapture.open(ignored -> {})) {
+            var headers = DebugHttpCapture.requestHeaders();
+            var inner = DebugHttpCapture.open(ignored -> {});
+            assertThat(DebugHttpCapture.requestHeaders()).isNotEqualTo(headers);
+            inner.close();
+            assertThat(DebugHttpCapture.requestHeaders()).isEqualTo(headers);
+            inner.close();
+            assertThat(DebugHttpCapture.requestHeaders()).isEqualTo(headers);
+        }
+        assertThat(DebugHttpCapture.requestHeaders()).isEmpty();
+    }
+
+    private static HttpServer bindingServer() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/generate", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst(DebugHttpCapture.CAPTURE_HEADER)).isNull();
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            byte[] response = "{\"output\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        return server;
+    }
+
+    private static void executeBoundRequest(HttpServer server, Map<String, String> headers) {
+        var client = PinnedHttpClients.pinned(Dns.SYSTEM, Duration.ofSeconds(2), Duration.ofSeconds(2),
+                Duration.ofSeconds(TIMEOUT_SECONDS));
+        var request = new Request.Builder().url("http://127.0.0.1:" + server.getAddress().getPort() + "/generate")
+                .post(RequestBody.create("{\"prompt\":\"bound request\"}", MediaType.get("application/json")));
+        headers.forEach(request::header);
+        try (var response = client.newCall(request.build()).execute()) {
+            assertThat(response.body().string()).contains("ok");
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Synthetic HTTP request failed", failure);
+        }
+    }
 
     @Test void capturesRealFailedResponseWithoutHeadersCredentialsOrPrivateReasoning() throws Exception {
         var attempts = new AtomicInteger();

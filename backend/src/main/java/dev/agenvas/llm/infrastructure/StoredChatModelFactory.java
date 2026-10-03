@@ -34,7 +34,7 @@ public class StoredChatModelFactory {
                 .baseUrl(config.endpoint()).apiKey(secret).model(config.modelId())
                 .maxRetries(0).build();
         SafeLlmTransport transport = new SafeLlmTransport(config.endpoint(), endpoints);
-        return new SpringAiChatGateway(OpenAiChatModel.builder().options(options)
+        return SpringAiChatGateway.withDebugCapture(OpenAiChatModel.builder().options(options)
                 .httpClientBuilderCustomizer(builder ->
                         builder.interceptor(transport.interceptor()))
                 .build(), config.version());

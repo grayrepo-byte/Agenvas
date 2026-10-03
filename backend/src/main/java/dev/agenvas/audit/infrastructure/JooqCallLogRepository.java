@@ -10,6 +10,7 @@ import java.time.temporal.ChronoUnit;
 import static dev.agenvas.db.Tables.PROJECT;
 import dev.agenvas.audit.domain.DebugSettings;
 import dev.agenvas.audit.domain.CallDebug;
+import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.shared.http.DebugHttpCapture.Exchange;
 import java.util.Optional;
 import org.jooq.JSONB;
@@ -170,15 +171,38 @@ public class JooqCallLogRepository implements CallLogRepository {
                 .doUpdate().set(CALL_LOG_DEBUG.EXCHANGES_JSON, json).execute();
     }
     @Override public Optional<CallDebug> debug(UUID ownerId, UUID id) {
-        return dsl.select(CALL_LOG.ID, CALL_LOG_DEBUG.EXCHANGES_JSON).from(CALL_LOG)
+        return dsl.select(CALL_LOG.ID, CALL_LOG.LLM_STREAM_METRICS_JSON,
+                        CALL_LOG_DEBUG.EXCHANGES_JSON, CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON).from(CALL_LOG)
                 .join(PROJECT).on(PROJECT.ID.eq(CALL_LOG.PROJECT_ID))
                 .leftJoin(CALL_LOG_DEBUG).on(CALL_LOG_DEBUG.CALL_ID.eq(CALL_LOG.ID))
                 .where(CALL_LOG.ID.eq(id)).and(PROJECT.OWNER_ID.eq(ownerId)).fetchOptional(row -> {
                     JSONB json = row.get(CALL_LOG_DEBUG.EXCHANGES_JSON);
                     List<Exchange> exchanges = json == null ? List.of() : List.of(
                             mapper.readValue(json.data(), Exchange[].class));
-                    return new CallDebug(id, json != null, exchanges);
+                    JSONB metrics = row.get(CALL_LOG.LLM_STREAM_METRICS_JSON);
+                    JSONB content = row.get(CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON);
+                    LlmStreamLog log = metrics == null ? null : new LlmStreamLog(
+                            mapper.readValue(metrics.data(), LlmStreamLog.Metrics.class),
+                            content == null ? null : mapper.readValue(content.data(), LlmStreamLog.Content.class));
+                    return new CallDebug(id, json != null, exchanges, log);
                 });
+    }
+
+    private static final int STREAM_WRITE_TIMEOUT_SECONDS = 10;
+
+    @Override @Transactional(timeout = STREAM_WRITE_TIMEOUT_SECONDS)
+    public void finishStream(UUID id, CallLogService.CallOutcome outcome, Instant respondedAt, long durationMs,
+            LlmStreamLog log, List<Exchange> exchanges, boolean captured) {
+        // The guarded update locks the existing call. Cleanup cannot resurrect a deleted debug row.
+        finish(id, outcome, respondedAt, durationMs);
+        if (log != null) dsl.update(CALL_LOG).set(CALL_LOG.LLM_STREAM_METRICS_JSON,
+                JSONB.valueOf(mapper.writeValueAsString(log.metrics()))).where(CALL_LOG.ID.eq(id)).execute();
+        if (captured) {
+            saveDebug(id, exchanges);
+            if (log != null && log.content() != null) dsl.update(CALL_LOG_DEBUG)
+                    .set(CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON, JSONB.valueOf(mapper.writeValueAsString(log.content())))
+                    .where(CALL_LOG_DEBUG.CALL_ID.eq(id)).execute();
+        }
     }
 
     @Override

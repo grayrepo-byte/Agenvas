@@ -81,6 +81,38 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
+    void streamLogUpgradeRemovesDeliveryFieldsAndPreservesModelResponseAndUsage() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("2").load().migrate();
+        UUID call = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            execute(connection, """
+                    insert into call_log(id,project_id,task_id,kind,operation,status,trace_id,mock,
+                        started_at,responded_at,duration_ms,llm_stream_metrics_json)
+                    values (?,?,?,'LLM','CHAT','SUCCEEDED',?,true,now(),now(),100,
+                        '{"schemaVersion":1,"firstTextMs":35,"durationMs":100,"totalTokens":6,
+                          "firstOutputMs":60,"outputBatchCount":2,"outputChars":12}'::jsonb)
+                    """, call, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID().toString().replace("-", ""));
+            execute(connection, """
+                    insert into call_log_debug(call_id,exchanges_json,llm_stream_content_json)
+                    values (?,'[]'::jsonb,jsonb_build_object('response',?::text,'output','synthetic duplicate output','truncated',false))
+                    """, call, "{\"text\":\"synthetic model reply\"}");
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(count(connection, "select (llm_stream_metrics_json->>'schemaVersion')::int from call_log where id=?", call)).isEqualTo(2);
+            assertThat(count(connection, "select (llm_stream_metrics_json->>'firstTextMs')::int from call_log where id=?", call)).isEqualTo(35);
+            assertThat(count(connection, "select (llm_stream_metrics_json->>'totalTokens')::int from call_log where id=?", call)).isEqualTo(6);
+            assertThat(count(connection, """
+                    select count(*) from call_log where id=? and jsonb_exists_any(llm_stream_metrics_json, array['firstOutputMs','outputBatchCount','outputChars'])
+                    """, call)).isZero();
+            assertThat(text(connection, "select llm_stream_content_json->>'response' from call_log_debug where call_id=?", call))
+                    .isEqualTo("{\"text\":\"synthetic model reply\"}");
+            assertThat(count(connection, "select count(*) from call_log_debug where call_id=? and jsonb_exists(llm_stream_content_json, 'output')", call)).isZero();
+        }
+    }
+
+    @Test
     void seedsInstallationSettingsMockMediaAndLocalImageProcessing() throws Exception {
         flyway.migrate();
         try (Connection connection = connection()) {

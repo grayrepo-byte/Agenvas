@@ -6,6 +6,7 @@ import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
+import { LlmStreamDetails } from "./LlmStreamDetails";
 import { FormattedCallExchange } from "./FormattedCallExchange";
 
 
@@ -22,7 +23,10 @@ export function CallDebugDetails({ id, kind }: { id: string; kind?: CallLog["kin
     {details.isError ? <Notice tone="danger" title={forbidden ? t("logs.details.forbidden") : t("logs.details.loadFailed")}>
       <Button variant="outline"  type="button" disabled={details.isFetching} onClick={() => void details.refetch()}>{t("logs.details.retry")}</Button>
     </Notice> : null}
-    {details.data && !details.isError ? details.data.captured ? <>
+    {details.data && !details.isError ? <>
+      {details.data.llmStream ? <LlmStreamDetails log={details.data.llmStream} /> : null}
+      <Button variant="ghost" type="button" disabled={details.isFetching} onClick={() => void details.refetch()}>{t("logs.stream.reload")}</Button>
+      {details.data.captured ? <>
       <p className="ui-muted">{t("logs.details.privacyHint")}</p>
       {details.data.exchanges.length === 0 ? <p className="ui-muted">{t("logs.details.requestMissingHint")}</p> : null}
       {details.data.exchanges.length ? <div className="call-log-view-toggle" role="group" aria-label={t("logs.details.displayMode")}>
@@ -34,6 +38,7 @@ export function CallDebugDetails({ id, kind }: { id: string; kind?: CallLog["kin
         <p className="call-log-url">{exchange.url}</p>
         <FormattedCallExchange exchange={exchange} mode={mode} llm={kind === undefined || kind === "LLM"} />
       </div>)}
-    </> : <p className="ui-muted">{t("logs.details.debugDisabledPrefix")}<Link to="/settings/general?tab=logs">{t("common.systemSettings")}</Link>{t("logs.details.enableDebugSuffix")}</p> : null}
+    </> : <p className="ui-muted">{t("logs.details.debugDisabledPrefix")}<Link to="/settings/general?tab=logs">{t("common.systemSettings")}</Link>{t("logs.details.enableDebugSuffix")}</p>}
+    </> : null}
   </section>;
 }

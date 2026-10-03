@@ -39,7 +39,7 @@ describe("CallDebugDetails", () => {
 
   it("explains absent capture and does not invent a Mock request", async () => {
     const { unmount } = show();
-    expect(await screen.findByText(/本次调用未开启 debug 模式/)).toBeInTheDocument();
+    expect(await screen.findByText(/本次调用尚无 debug 正文/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "系统设置" })).toHaveAttribute("href", "/settings/general?tab=logs");
     unmount();
     server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [] })));
@@ -55,4 +55,39 @@ describe("CallDebugDetails", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "重试读取正文" }));
     expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
   });
+});
+
+const streamMetrics = { schemaVersion: 2, firstChunkMs: 12, firstTextMs: 42, durationMs: 300,
+  chunkCount: 3, promptTokens: null, completionTokens: null, totalTokens: null,
+  model: "synthetic-model", responseId: "synthetic-response", finishReasons: [], status: "FAILED", errorCode: "CALL_STREAM_FAILED" };
+
+it("shows one partial model response and timing without delivery progress or remote rendering", async () => {
+  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [],
+    llmStream: { metrics: streamMetrics, content: { response: JSON.stringify({ generations: [{ assistant: { text: '<script>received tail</script> https://example.invalid/image.png' } }] }), truncated: false } } })));
+  const { unmount, client } = show();
+  expect(await screen.findByText("首字延迟")).toBeInTheDocument();
+  expect(screen.getByText("42 ms")).toBeInTheDocument();
+  expect(screen.queryByText("首次输出延迟")).not.toBeInTheDocument();
+  expect(screen.queryByText("展示输出")).not.toBeInTheDocument();
+  expect(screen.queryByText("输出批次数")).not.toBeInTheDocument();
+  expect(screen.getByText("模型响应（JSON）")).toBeInTheDocument();
+  expect(screen.getByText(/received tail/)).toBeInTheDocument();
+  expect(screen.getByText(/以下内容可能不完整/)).toBeInTheDocument();
+  expect(document.querySelector("script, img")).toBeNull();
+  unmount();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(client.getQueryData(["call-debug", "log"])).toBeUndefined();
+});
+
+it("shows metrics with debug disabled and lets an asynchronously completed log be reloaded", async () => {
+  let saved = false;
+  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: false, exchanges: [],
+    llmStream: saved ? { metrics: streamMetrics, content: null } : null })));
+  show();
+  expect(await screen.findByText(/本次调用尚无 debug 正文/)).toBeInTheDocument();
+  saved = true;
+  await userEvent.setup().click(screen.getByRole("button", { name: "重新读取日志" }));
+  expect(await screen.findByText("首字延迟")).toBeInTheDocument();
+  expect(screen.getByText("本次只记录指标。查看模型响应需在调用前开启 debug 模式。")).toBeInTheDocument();
+  expect(screen.queryByText("模型响应（JSON）")).not.toBeInTheDocument();
 });

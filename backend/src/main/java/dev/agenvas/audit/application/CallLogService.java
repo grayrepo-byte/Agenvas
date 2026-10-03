@@ -4,12 +4,18 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.audit.domain.CallLog;
 import dev.agenvas.audit.domain.DebugSettings;
 import dev.agenvas.audit.domain.CallDebug;
+import dev.agenvas.audit.domain.LlmStreamLog;
+import dev.agenvas.shared.http.DebugHttpCapture.Exchange;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import dev.agenvas.audit.domain.CallLogPage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -30,10 +36,12 @@ public class CallLogService {
     private static final Logger LOGGER = LoggerFactory.getLogger(CallLogService.class);
     private final CallLogRepository repository;
     private final Clock clock;
+    private final AsyncCallLogWriter streamWriter;
 
-    public CallLogService(CallLogRepository repository, Clock clock) {
+    public CallLogService(CallLogRepository repository, Clock clock, AsyncCallLogWriter streamWriter) {
         this.repository = repository;
         this.clock = clock;
+        this.streamWriter = streamWriter;
     }
 
     public record CallDescriptor(UUID projectId, UUID taskId, UUID runId, Integer stepIndex,
@@ -46,6 +54,55 @@ public class CallLogService {
     }
     public record Filter(UUID projectId, CallLog.Kind kind, CallLog.Status status, String traceId,
             Instant from, Instant to, int page, int size) {}
+
+    /** Start is durable before dispatch; all streaming completion/debug writes leave the reader thread. */
+    public <T> T recordStream(CallDescriptor descriptor,
+            BiFunction<Boolean, Consumer<LlmStreamLog>, T> invocation, Function<T, CallOutcome> outcome) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Provider calls must not hold a database transaction");
+        }
+        UUID id = UUID.randomUUID();
+        String traceId = UUID.randomUUID().toString().replace("-", "");
+        CallDescriptor safe = new CallDescriptor(descriptor.projectId(), descriptor.taskId(), descriptor.runId(),
+                descriptor.stepIndex(), descriptor.kind(), descriptor.operation(), safeIdentifier(descriptor.provider()),
+                safeIdentifier(descriptor.model()), descriptor.mock());
+        repository.start(id, safe, traceId, clock.instant());
+        boolean captured = repository.isDebugEnabled();
+        AtomicReference<List<Exchange>> exchanges = new AtomicReference<>(List.of());
+        AtomicReference<LlmStreamLog> stream = new AtomicReference<>();
+        DebugHttpCapture capture = captured ? DebugHttpCapture.open(exchanges::set) : null;
+        String previousTrace = MDC.get("traceId");
+        MDC.put("traceId", traceId);
+        long started = System.nanoTime();
+        CallOutcome finished = new CallOutcome(CallLog.Status.FAILED, null, "CALL_TECHNICAL_FAILURE");
+        try {
+            T result = invocation.apply(captured, stream::set);
+            CallOutcome value = outcome.apply(result);
+            finished = new CallOutcome(value.status(), safeRequestId(value.providerRequestId()), safeErrorCode(value.errorCode()));
+            return result;
+        } catch (RuntimeException | Error failure) {
+            finished = new CallOutcome(CallLog.Status.FAILED, null,
+                    failure instanceof ApiProblemException problem ? safeErrorCode(problem.code()) : "CALL_TECHNICAL_FAILURE");
+            throw failure;
+        } finally {
+            Instant respondedAt = clock.instant();
+            long durationMs = elapsed(started);
+            try {
+                LlmStreamLog log = stream.get();
+                if (log != null && log.content() != null && capture != null) {
+                    var content = log.content();
+                    log = new LlmStreamLog(log.metrics(), new LlmStreamLog.Content(
+                            capture.sanitizeJson(content.response()), content.truncated()));
+                } else if (log != null) log = new LlmStreamLog(log.metrics(), null);
+                streamWriter.submit(id, finished, respondedAt, durationMs, log, exchanges.get(), captured);
+            } catch (RuntimeException loggingFailure) {
+                LOGGER.error("LLM stream log snapshot failed callId={} code=CALL_STREAM_SNAPSHOT_FAILED", id);
+            } finally {
+                if (capture != null) capture.close();
+                if (previousTrace == null) MDC.remove("traceId"); else MDC.put("traceId", previousTrace);
+            }
+        }
+    }
 
     /** A new trace belongs to this network call, while a caller's HTTP trace is restored afterward. */
     public <T> T record(CallDescriptor descriptor, Supplier<T> invocation,

@@ -108,10 +108,12 @@ public class LlmRoundService {
                 mock ? "mock" : model.providerAdapter(), model.modelId(), mock);
         PublicStreamSink stream = lease == null ? null : new PublicStreamSink(lease, workerId);
         if (lease != null) tasks.startAgentStream(lease, workerId);
-        ChatGateway.Exchange exchange = callLogs.record(descriptor, () -> {
-            return stream == null ? gateway.call(messages, tools, trustedContext, selected)
-                    : gateway.callStreaming(messages, tools, trustedContext, selected, stream);
-        }, ignored -> CallLogService.CallOutcome.succeeded(null));
+        ChatGateway.Exchange exchange = stream == null
+                ? callLogs.record(descriptor, () -> gateway.call(messages, tools, trustedContext, selected),
+                        value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()))
+                : callLogs.recordStream(descriptor, (captureContent, log) -> gateway.callStreaming(
+                        messages, tools, trustedContext, selected, stream, captureContent, log),
+                        value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");
         }
