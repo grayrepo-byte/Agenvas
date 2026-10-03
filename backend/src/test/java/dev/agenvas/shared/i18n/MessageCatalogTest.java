@@ -67,7 +67,9 @@ class MessageCatalogTest {
         assertThat(Files.readString(Path.of("src/main/java/dev/agenvas/identity/api/AuthenticationController.java")))
                 .contains("{validation.username-pattern}");
         referenced.add("validation.username-pattern");
-        assertThat(referenced).containsAll(source.stringPropertyNames());
+        assertThat(source.stringPropertyNames().stream()
+                .filter(key -> !referenced.contains(key)).sorted().toList())
+                .as("Message catalog keys without production references").isEmpty();
     }
 
     private Properties load(String language) throws Exception {
