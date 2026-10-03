@@ -9,6 +9,7 @@ import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight
 import { server } from "../../test/server";
 import { AgentChatCard, type AgentChatCardData } from "./AgentChatCard";
 import { useCanvasStore } from "./canvasStore";
+import { projectCacheCallbacks } from "./projectCache";
 import { runAssistantStreamKey, type AssistantTurnStream } from "./agentRunStream";
 
 const PROJECT_ID = "project-1";
@@ -156,7 +157,8 @@ describe("AgentChatCard", () => {
     expect(observation.targets).toEqual(new Set([transcript, body]));
     const composer = screen.getByRole("form", { name: "发送新任务" });
     expect(body).not.toContainElement(composer);
-    expect(body.nextElementSibling).toBe(composer);
+    expect(body.nextElementSibling).toHaveClass("agent-chat-feedback");
+    expect(body.nextElementSibling?.nextElementSibling).toBe(composer);
 
     const updateReply = (text: string, height: number) => {
       act(() => {
@@ -188,7 +190,7 @@ describe("AgentChatCard", () => {
     expect(observation.targets.size).toBe(0);
   });
 
-  it("checks a new message before creating a run and sends only after the reviewed confirmation", async () => {
+  it("preflights and starts a run with one send, without an extra confirmation", async () => {
     let checks = 0;
     const requests: CreateRunRequest[] = [];
     server.use(
@@ -210,14 +212,10 @@ describe("AgentChatCard", () => {
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const confirmation = await screen.findByRole("button", { name: "确认开始" });
-    expect(confirmation).toBeEnabled();
-    expect(checks).toBe(1);
-    expect(requests).toHaveLength(0);
-    expect(screen.getByRole("article", { name: "待发送" })).toHaveTextContent(TASK_TEXT);
-    await user.click(confirmation);
-
     await waitFor(() => expect(requests).toHaveLength(1));
+    expect(checks).toBe(1);
+    expect(screen.queryByRole("region", { name: "运行前确认" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
     expect(requests[0]).toEqual({ agentId: AGENT_ID, conversationId: CONVERSATION_ID, expectedConversationVersion: 0, instruction: TASK_TEXT,
       expectedAgentVersion: AGENT_VERSION, expectedModelConfigSource: "mock",
       expectedModelConfigVersion: 7, expectedSystemPromptVersion: 2,
@@ -226,7 +224,151 @@ describe("AgentChatCard", () => {
     expect(screen.queryByRole("article", { name: "待发送" })).not.toBeInTheDocument();
   });
 
-  it("preserves ordinary and composing Enter input while Ctrl+Enter opens the preflight review", async () => {
+  it.each([
+    { label: "missing model", preview: { modelAvailable: false }, message: "未配置 ChatModel，无法启动运行" },
+    { label: "unsupported tools", preview: { toolCalling: false }, message: "当前模型未确认支持工具调用，无法运行。" },
+    { label: "missing policy version", preview: { policySnapshot: { ...PREFLIGHT.policySnapshot, systemPromptVersion: null } }, message: "运行配置已变化，请重新发送。" },
+  ])("preserves the draft and blocks creation for $label", async ({ preview, message }) => {
+    let creations = 0;
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json({ ...PREFLIGHT, ...preview })),
+      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+    );
+    mountCard();
+    const user = userEvent.setup();
+    await user.type(await readyComposer(), TASK_TEXT);
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(creations).toBe(0);
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(TASK_TEXT);
+  });
+
+  it("blocks duplicate submissions and abandons a draft changed during preflight", async () => {
+    let checks = 0;
+    let creations = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, async () => { checks++; await gate; return HttpResponse.json(PREFLIGHT); }),
+      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+    );
+    mountCard();
+    const user = userEvent.setup();
+    const input = await readyComposer();
+    await user.type(input, TASK_TEXT);
+    const form = screen.getByRole("form", { name: "发送新任务" });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await waitFor(() => expect(checks).toBe(1));
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await user.clear(input);
+    await user.type(input, "改为新的任务");
+    if (!release) throw new Error("Missing preflight gate");
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+    expect(creations).toBe(0);
+    expect(input).toHaveValue("改为新的任务");
+  });
+
+  it("replays the exact create request after a lost response without preflighting an occupied slot", async () => {
+    let checks = 0;
+    const requests: unknown[] = [];
+    const keys: (string | null)[] = [];
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
+      http.post(RUNS_URL, async ({ request }) => {
+        requests.push(await request.json());
+        keys.push(request.headers.get("Idempotency-Key"));
+        const saved = persistRun();
+        return requests.length === 1 ? new HttpResponse(null, { status: 503 }) : saved;
+      }),
+    );
+    mountCard();
+    const user = userEvent.setup();
+    await user.type(await readyComposer(), TASK_TEXT);
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByRole("alert");
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(checks).toBe(1);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(requests[1]).toEqual(requests[0]);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
+    expect(storedRuns).toHaveLength(1);
+  });
+
+  it("exposes startup errors outside the scrolling transcript and retains the draft", async () => {
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json(PREFLIGHT)),
+      http.post(RUNS_URL, () => HttpResponse.json({ code: "INTERNAL_ERROR", detail: "服务端暂时无法完成请求。", retryable: true },
+        { status: 500, headers: { "Content-Type": "application/problem+json" } })),
+    );
+    mountCard();
+    const user = userEvent.setup();
+    await user.type(await readyComposer(), TASK_TEXT);
+    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const body = card.querySelector<HTMLElement>(".agent-chat-body");
+    if (!body) throw new Error("Missing scrolling transcript");
+    body.scrollTop = 100;
+    fireEvent.scroll(body);
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent("服务端暂时无法完成请求。");
+    expect(body).not.toContainElement(error);
+    expect(card).toContainElement(error);
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(TASK_TEXT);
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+  });
+
+  it("pins a runtime failure above the composer when the transcript is scrolled away", async () => {
+    const failed = run({ status: "FAILED" });
+    storedRuns = [failed];
+    server.use(http.get(`${RUNS_URL}/${failed.id}/tasks`, () => HttpResponse.json([{
+      id: "failed-turn", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_TURN_FAILED",
+      input: {}, output: {}, attemptNo: 1,
+    }])));
+    mountCard();
+    await readyComposer();
+    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const body = card.querySelector<HTMLElement>(".agent-chat-body");
+    if (!body) throw new Error("Missing scrolling transcript");
+    body.scrollTop = 100;
+    fireEvent.scroll(body);
+    const error = await screen.findByRole("alert");
+    await waitFor(() => expect(error).toHaveTextContent("模型回合未能完成"));
+    expect(body).not.toContainElement(error);
+    expect(card).toContainElement(error);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByText("任务失败", { selector: ".agent-chat-heading > span" })).toBeInTheDocument();
+  });
+
+  it("shows asynchronous failure from a project status event without reloading the card", async () => {
+    const current = run({ status: "RUNNING" });
+    storedRuns = [current];
+    let failed = false;
+    server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () => HttpResponse.json([{
+      id: "changing-turn", kind: "AGENT_TURN", status: failed ? "FAILED" : "RUNNING",
+      errorCode: failed ? "AGENT_TURN_FAILED" : null, input: {}, output: {}, attemptNo: 1,
+    }])));
+    const client = mountCard();
+    await screen.findByRole("article", { name: "你" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    failed = true;
+    storedRuns = [{ ...current, status: "BLOCKED", version: current.version + 1 }];
+    act(() => projectCacheCallbacks(client, PROJECT_ID).onChange({
+      projectId: PROJECT_ID, seq: 1, eventId: "event-failed-run", type: "agent.run.changed", schemaVersion: 1,
+      aggregateId: current.id, aggregateVersion: current.version + 1,
+      payload: { runId: current.id, status: "BLOCKED" }, occurredAt: NOW,
+    }));
+    const error = await screen.findByRole("alert");
+    await waitFor(() => expect(error).toHaveTextContent("模型回合未能完成"));
+    expect(error.closest(".agent-chat-body")).toBeNull();
+    expect(screen.getByText("需要处理", { selector: ".agent-chat-heading > span" })).toBeInTheDocument();
+  });
+
+  it("preserves ordinary and composing Enter input while Ctrl+Enter submits directly", async () => {
     let checks = 0;
     let creations = 0;
     server.use(
@@ -245,9 +387,8 @@ describe("AgentChatCard", () => {
     expect(creations).toBe(0);
 
     fireEvent.keyDown(input, { key: "Enter", code: "Enter", ctrlKey: true, isComposing: false });
-    expect(await screen.findByRole("button", { name: "确认开始" })).toBeEnabled();
+    await waitFor(() => expect(creations).toBe(1));
     expect(checks).toBe(1);
-    expect(creations).toBe(0);
   });
 
   it("blocks sending and keyboard submission while a different Agent owns the active run", async () => {
@@ -297,7 +438,7 @@ describe("AgentChatCard", () => {
     expect(screen.queryByText(/独立任务/)).not.toBeInTheDocument();
   });
 
-  it("cannot confirm cached preflight data after checking a revised message fails", async () => {
+  it("retains the draft and never creates a run when a fresh preflight fails", async () => {
     let checks = 0;
     let creations = 0;
     server.use(
@@ -309,24 +450,22 @@ describe("AgentChatCard", () => {
       }),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    const client = mountCard();
+    mountCard();
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    expect(await screen.findByRole("button", { name: "确认开始" })).toBeEnabled();
+    await waitFor(() => expect(creations).toBe(1));
+    await waitFor(() => expect(input).toHaveValue(""));
 
     await user.clear(input);
     await user.type(input, "改为规划夜景镜头。");
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("运行前配置当前不可用。");
-    expect(client.getQueriesData({queryKey:["run-preflight", PROJECT_ID, AGENT_ID, AGENT_VERSION, CONVERSATION_ID]}).map(([,data])=>data)).toContainEqual(PREFLIGHT);
-    const review = screen.getByRole("region", { name: "运行前确认" });
-    expect(within(review).queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
-    expect(within(review).queryByText(/mock-storyboard-v1/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "运行前确认" })).not.toBeInTheDocument();
     expect(input).toHaveValue("改为规划夜景镜头。");
     expect(checks).toBe(2);
-    expect(creations).toBe(0);
+    expect(creations).toBe(1);
   });
 
   it("preserves a new composer draft when the preceding run finishes submitting", async () => {
@@ -346,7 +485,6 @@ describe("AgentChatCard", () => {
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    await user.click(await screen.findByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(creations).toBe(1));
 
     const nextDraft = "下一次任务改为拍摄雨中的街道。";
@@ -396,10 +534,6 @@ describe("AgentChatCard", () => {
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    await screen.findByRole("button", { name: "确认开始" });
-    expect(operations).toEqual(["create-conversation", "preflight"]);
-    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(TASK_TEXT);
-    await user.click(screen.getByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(operations).toEqual(["create-conversation", "preflight", "create-run"]));
   });
 
@@ -422,9 +556,6 @@ describe("AgentChatCard", () => {
     expect(await screen.findByRole("article", { name: "你" })).toHaveTextContent(first.instruction);
     await user.type(await readyComposer(), "把刚才的场景改成黄昏。");
     await user.click(screen.getByRole("button", { name: "发送" }));
-    expect(await screen.findByText(/本会话已有 1 轮消息，将继承 2 个精确素材绑定/)).toBeInTheDocument();
-    expect(screen.getByText("保留早期背景和最近交流，部分历史未纳入本轮；完整记录仍可查看。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(screen.getAllByRole("article", { name: "你" })).toHaveLength(2));
     cleanup();
     mountCard();
@@ -435,10 +566,11 @@ describe("AgentChatCard", () => {
     expect(screen.getByText("当前创作会话")).toBeInTheDocument();
   });
 
-  it("does not restore an obsolete confirmation when the first conversation is created after the draft changes", async () => {
+  it("does not submit an obsolete message when the first conversation is created after the draft changes", async () => {
     storedConversations = []; currentConversationId = null;
     let creating = false;
     let checked = false;
+    const requests: CreateRunRequest[] = [];
     let releaseCreation: (() => void) | undefined;
     const creationGate = new Promise<void>((resolve) => { releaseCreation = resolve; });
     server.use(
@@ -448,6 +580,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/preflight`, () => {
         checked = true; return HttpResponse.json({ ...PREFLIGHT, conversationId: "conversation-new" });
       }),
+      http.post(RUNS_URL, async ({ request }) => { const body = await request.json() as CreateRunRequest; requests.push(body); return persistRun(run({ conversationId: "conversation-new", instruction: body.instruction })); }),
     );
     mountCard();
     const user = userEvent.setup();
@@ -465,8 +598,8 @@ describe("AgentChatCard", () => {
     expect(screen.queryByRole("article", { name: "待发送" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "发送" }));
-    expect(await screen.findByRole("button", { name: "确认开始" })).toBeEnabled();
-    expect(screen.getByRole("article", { name: "待发送" })).toHaveTextContent("等待期间改成新的想法");
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]?.instruction).toBe("等待期间改成新的想法");
   });
 
   it("keeps the old conversation and draft after creation failure, then preserves them when a new conversation opens", async () => {
@@ -518,7 +651,6 @@ describe("AgentChatCard", () => {
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
-    await user.click(await screen.findByRole("button", { name: "确认开始" }));
     await waitFor(() => expect(started).toBe(true));
     await user.click(screen.getByRole("button", { name: "新建会话" }));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
@@ -547,7 +679,7 @@ describe("AgentChatCard", () => {
   });
 });
 
-describe("Agent Skill review",()=>{
+describe("Agent Skill submission",()=>{
   const skillId="skill-example",skillVersionId="skill-version-example";
   const version={id:skillVersionId,skillId,versionNumber:1,name:"warm-art",description:"Synthetic style guide",bundleHash:"synthetic-bundle",skillMd:"# Creative method",outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[],createdAt:NOW};
   it("does not inject a saved default Skill without an explicit choice",async()=>{
@@ -561,10 +693,10 @@ describe("Agent Skill review",()=>{
     expect(trigger.closest(".agent-chat-composer-actions")).not.toBeNull();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.type(screen.getByRole("textbox",{name:"本次任务"}),"创建一段文字");await user.click(screen.getByRole("button",{name:"发送"}));
-    await screen.findByRole("button",{name:"确认开始"});expect(requests).toHaveLength(0);expect(preflights).toEqual([expect.objectContaining({skillSelection:{mode:"NONE",inputs:[]}})]);
-    await user.click(screen.getByRole("button",{name:"确认开始"}));await waitFor(()=>expect(requests).toHaveLength(1));expect(requests[0]?.skillSelection).toEqual({mode:"NONE",inputs:[]});
+    await waitFor(()=>expect(requests).toHaveLength(1));expect(preflights).toEqual([expect.objectContaining({skillSelection:{mode:"NONE",inputs:[]}})]);
+    await waitFor(()=>expect(requests).toHaveLength(1));expect(requests[0]?.skillSelection).toEqual({mode:"NONE",inputs:[]});
   });
-  it("selects through the modal without submitting the composer and invalidates review when cleared",async()=>{
+  it("selects through the modal without submitting and sends the explicit selection",async()=>{
     const preflights:Array<{skillSelection:unknown}>=[];const requests:CreateRunRequest[]=[];
     server.use(
       http.get("/api/v1/skills",()=>HttpResponse.json({items:[{id:skillId,title:"温暖手绘",description:"Synthetic guide",currentVersionId:skillVersionId,trashed:false}],nextCursor:null,total:1})),
@@ -581,15 +713,16 @@ describe("Agent Skill review",()=>{
     await user.click(within(dialog).getByRole("button",{name:"使用 Skill"}));
     expect(preflights).toHaveLength(0);expect(requests).toHaveLength(0);
     await user.click(screen.getByRole("button",{name:"发送"}));
-    await screen.findByRole("button",{name:"确认开始"});
+    await waitFor(()=>expect(requests).toHaveLength(1));
+    await waitFor(()=>expect(screen.getByRole("textbox",{name:"本次任务"})).toHaveValue(""));
     expect(preflights[0]?.skillSelection).toEqual({mode:"VERSION",skillId,skillVersionId,inputs:[]});
-    expect(screen.getByRole("region",{name:"固定 Skill 与资料"})).toHaveTextContent("温暖手绘");
+    expect(requests[0]?.skillSelection).toEqual({mode:"VERSION",skillId,skillVersionId,inputs:[]});
     await user.click(screen.getByRole("button",{name:"选择 Skill"}));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button",{name:"本次不使用 Skill"}));
     expect(screen.queryByRole("button",{name:"确认开始"})).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox",{name:"本次任务"}),"新的文字任务");
     await user.click(screen.getByRole("button",{name:"发送"}));
-    await user.click(await screen.findByRole("button",{name:"确认开始"}));
-    await waitFor(()=>expect(requests).toHaveLength(1));expect(requests[0]?.skillSelection).toEqual({mode:"NONE",inputs:[]});
+    await waitFor(()=>expect(requests).toHaveLength(2));expect(requests[1]?.skillSelection).toEqual({mode:"NONE",inputs:[]});
   });
   it("saves a default binding through its independent endpoint without editing Agent instructions",async()=>{
     let current={agentVersion:AGENT_VERSION,skillId:null as string|null,skillVersionId:null as string|null};const bindings:unknown[]=[];const onUpdateAgent=vi.fn();

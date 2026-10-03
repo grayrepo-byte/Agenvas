@@ -6,17 +6,17 @@ import { Button } from "../../shared/ui/primitives/button";
 import "./AgentChatPanels.css";
 import { taskErrorDetail } from "./taskErrorMessages";
 
-/** Explains a durable BLOCKED Run using only safe Task codes, never model messages. */
-export function BlockedRunNotice({ projectId, runId }: {
-  projectId: string; runId: string;
+/** Always-visible failure feedback uses durable, safe Task codes rather than model messages. */
+export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
+  projectId: string; runId: string; status?: "BLOCKED" | "FAILED";
 }) {
   useLocale();
   const tasks = useQuery({
-    queryKey: ["run-tasks", projectId, runId],
+    queryKey: ["run-history-tasks", projectId, runId],
     queryFn: () => listRunTasks(projectId, runId),
   });
   const modelFailure = tasks.data?.filter((task) => task.kind === "AGENT_TURN" &&
-    task.status === "FAILED" && task.errorCode).at(-1);
+    (task.status === "FAILED" || task.status === "BLOCKED") && task.errorCode).at(-1);
   const staleMedia = tasks.data?.find((task) =>
     (task.kind === "IMAGE_GENERATION" || task.kind === "VIDEO_GENERATION") &&
     task.status === "BLOCKED" && task.errorCode === "TASK_INPUT_STALE");
@@ -26,17 +26,21 @@ export function BlockedRunNotice({ projectId, runId }: {
   const explanation = archivedMedia ?
     t("agent.blocked.archivedProjectHint") : staleMedia ?
     t("agent.blocked.staleInputHint") :
-    switchOnFailure(modelFailure?.errorCode);
+    modelFailure ? switchOnFailure(modelFailure.errorCode) : status === "FAILED" ? t("agent.run.failedHint") : t("agent.blocked.unknownTaskHint");
 
-  return <section aria-label={t("agent.blocked.title")} className="agent-chat-panel agent-chat-blocked">
-    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("agent.blocked.retryPolicyHint")}</p>
-    {tasks.isPending ? <p>{t("agent.blocked.reasonLoading")}</p> : null}
-    {tasks.error ? <p role="alert">{t("agent.blocked.reasonUnavailable")}</p> : null}
-    {tasks.error ? <Button variant="ghost" className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("common.retryRead")}</Button> : null}
-    {tasks.data ? <p>{explanation}</p> : null}
-    {archivedMedia ? <p className="text-xs">{t("agent.blocked.archivedProjectCode")}</p> : null}
-    {staleMedia ? <p className="text-xs">{t("agent.blocked.staleInputCode")}</p> : null}
-    {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">{t("agent.blocked.diagnostic", { "0": modelFailure.errorCode, "1": taskErrorDetail(modelFailure.errorCode) })}</p> : null}
+  const noticeTitle = status === "FAILED" ? t("agent.run.failedHint") : t("agent.blocked.retryPolicyHint");
+
+  return <section aria-label={status === "FAILED" ? t("agent.run.taskFailed") : t("agent.blocked.title")} className="agent-chat-panel agent-chat-blocked">
+    <div role="alert">
+      <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{noticeTitle}</p>
+      {tasks.isPending ? <p>{t("agent.blocked.reasonLoading")}</p> : null}
+      {tasks.error ? <p>{t("agent.blocked.reasonUnavailable")}</p> : null}
+      {tasks.error ? <Button variant="ghost" className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("common.retryRead")}</Button> : null}
+      {tasks.data && explanation !== noticeTitle ? <p>{explanation}</p> : null}
+      {archivedMedia ? <p className="text-xs">{t("agent.blocked.archivedProjectCode")}</p> : null}
+      {staleMedia ? <p className="text-xs">{t("agent.blocked.staleInputCode")}</p> : null}
+      {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">{t("agent.blocked.diagnostic", { "0": modelFailure.errorCode, "1": taskErrorDetail(modelFailure.errorCode) })}</p> : null}
+    </div>
   </section>;
 }
 

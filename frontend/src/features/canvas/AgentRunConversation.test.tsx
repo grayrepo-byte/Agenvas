@@ -82,6 +82,17 @@ describe("AgentRunConversation", () => {
     expect(screen.queryByText("正在输出")).not.toBeInTheDocument();
   });
 
+  it.each(["FAILED", "BLOCKED"] as const)("exposes %s failure feedback even for a historical run", async (status) => {
+    mockConversation([task({ status: "FAILED", errorCode: "LLM_CONFIG_UNAVAILABLE",
+      output: { rawResponse: "PRIVATE_PROVIDER_FAILURE" } })]);
+    mountConversation(status, false);
+    const error = await screen.findByRole("alert");
+    await waitFor(() => expect(error).toHaveTextContent("固定的模型配置或工具调用能力不可用"));
+    expect(error.closest(".agent-execution-trace")).toBeNull();
+    expect(error).not.toHaveTextContent("PRIVATE_PROVIDER_FAILURE");
+    expect(screen.queryByText("执行记录")).not.toBeInTheDocument();
+  });
+
   it("keeps an interrupted public stream visible and identifies the interruption", async () => {
     mockConversation([task({ status: "FAILED", input: { stepIndex: 0 }, output: {
       assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "中断前收到的内容", status: "INTERRUPTED" },
