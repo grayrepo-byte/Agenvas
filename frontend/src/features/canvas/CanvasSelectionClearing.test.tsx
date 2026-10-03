@@ -100,7 +100,7 @@ beforeEach(() => {
   focusProbe.center.mockClear();
   focusProbe.viewport.mockClear();
   focusProbe.zoom = 1;
-  useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
+  useCanvasStore.setState({ selectedIds: [], drafts: {}, mediaDraftRecoveries: {}, saveState: "saved" });
   server.use(
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
     http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () => HttpResponse.json([])),
@@ -230,6 +230,61 @@ async function renderInteractiveFlow() {
   await renderFlow();
   await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
 }
+
+describe("connection gesture overlays", () => {
+  function startConnection() {
+    act(() => flowProps.onConnectStart?.(new MouseEvent("mousedown"), {
+      nodeId: "image-card", handleId: "artifact-output", handleType: "source",
+    }));
+  }
+
+  function endConnection() {
+    act(() => flowProps.onConnectEnd?.(new MouseEvent("mouseup"), {
+      isValid: null, from: null, fromHandle: null, fromPosition: null, fromNode: null,
+      to: null, toHandle: null, toPosition: null, toNode: null, pointer: null,
+    }));
+  }
+
+  it.each([
+    ["image-card", "媒体卡片操作"],
+    ["text-card", "文字卡片操作"],
+  ])("hides %s actions while connecting and restores the editor without losing input", async (id, label) => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement(id));
+    expect(await screen.findByLabelText(label)).toBeVisible();
+    const editor = await screen.findByLabelText("所选卡片编辑区");
+    const prompt = await within(editor).findByRole("textbox");
+    if (prompt instanceof HTMLTextAreaElement) fireEvent.change(prompt, { target: { value: "未保存的提示词" } });
+    else {
+      prompt.textContent = "未保存的提示词";
+      fireEvent.input(prompt);
+    }
+    startConnection();
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    expect(editor).toBeInTheDocument();
+    expect(editor).not.toBeVisible();
+    expect(selectedIds()).toEqual([id]);
+    endConnection();
+    expect(await screen.findByLabelText(label)).toBeVisible();
+    expect(screen.getByLabelText("所选卡片编辑区")).toBe(editor);
+    expect(editor).toBeVisible();
+    expect(within(editor).getByRole("textbox")).toBe(prompt);
+    if (prompt instanceof HTMLTextAreaElement) expect(prompt).toHaveValue("未保存的提示词");
+    else expect(prompt).toHaveTextContent("未保存的提示词");
+  });
+
+  it("hides and restores bulk actions without changing the selection", async () => {
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card"]));
+    expect(await screen.findByRole("group", { name: "批量操作" })).toBeVisible();
+    startConnection();
+    expect(screen.queryByRole("group", { name: "批量操作" })).not.toBeInTheDocument();
+    expect(selectedIds()).toEqual(["image-card", "text-card"]);
+    endConnection();
+    expect(await screen.findByRole("group", { name: "批量操作" })).toBeVisible();
+    expect(selectedIds()).toEqual(["image-card", "text-card"]);
+  });
+});
 
 describe("media selection focus", () => {
   async function openMedia() {
