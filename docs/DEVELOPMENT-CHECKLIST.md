@@ -194,6 +194,8 @@
 
 2026-10-03 画布选择与 Agent 按钮样式修正：`styles.css` 将两类选择矩形底色改为透明、抑制添加 Command 容器的原生焦点框并限制操作区域的文本选择；`AgentChatCard.css` 将白色外圈改为主题色，保留回复文本复制并修正历史按钮的自适应高度；`AgentChatCard.tsx` 使用公共 Button 的主次变体及紧凑/图标尺寸。AgentChatCard、CanvasSelectionClearing、ContentCanvasCard、ProjectWorkspacePage 共 82 项定向组件测试、TypeScript、定向 ESLint 和品牌色检查通过。隔离 Chrome 样式预览使用合成内容与公共 Button/Command，验证选中外圈、透明矩形、菜单焦点/方向键、标题不可选及正文/回复/输入可选。该预览未挂载完整项目工作区，不替代用户原始偶发路径的端到端复现；全量测试、后端测试和真实 Provider 调用未运行。无合约或迁移。
 
+2026-10-03 添加菜单悬停焦点框补修：Chrome 隔离复现确认 cmdk 在鼠标移入选项时将焦点从 Command 根容器转到内部列表；原有根容器样式未覆盖列表的浏览器默认 `outline: auto 1px`。`styles.css` 仅对画布添加菜单内的列表取消外框，保留当前选项高亮及键盘导航。工作区测试补充双击打开、悬停图片、列表获得焦点、方向键切换并按 Enter 创建文字的路径，37 项定向组件测试通过。真实 Command 与项目样式的 Chrome 隔离复现修复前失败、修复后通过，连续 10 次打开、60 次悬停及键盘选择无外框；TypeScript、定向 ESLint、主题色和 diff 空白检查通过。临时复现文件已清理。浏览器未挂载完整项目工作区，全量测试、后端测试、生产构建与真实 Provider 调用未运行。无产品决策、合约、迁移或依赖变更。
+
 2026-10-03 文字编辑退出与卡片详情移除：文字卡片的工具栏在编辑时切换为“退出内容编辑”，与节点内退出按钮和 Esc 共用草稿保护流程；未修改直接返回阅读，未保存输入提供继续编辑、放弃或保存并退出，失败/冲突保留输入，忙碌时禁止退出，格式菜单先消费 Esc。退出/保存图标按钮使用紧凑尺寸。文字、图片、视频、音频工具栏移除卡片详情，工作区删除详情抽屉、状态、回调和专用样式。同步规格与 ADR 0005，无 API、迁移或依赖变更。ContentCanvasCard、MediaCanvasCard、ProjectWorkspacePage、ArtifactVersionEditing、CanvasSelectionClearing 分批验证共 136 项不同的定向测试；新增文字退出与媒体详情移除回归，最终两个卡片文件 78 项通过，格式 Esc 补充后文字卡片 18 项通过。TypeScript、定向 ESLint、主题色/i18n 和 diff 空白检查通过。真实 Chrome 使用合成内容及真实 React Flow/ContentCanvasCard，验证工具栏/节点内按钮边界、双击编辑、Esc、格式菜单、未保存确认与退出；该预览未挂载完整项目工作区，不代表真实项目或 Provider 端到端验收。全量测试、后端测试、真实 Provider 调用未运行。
 
 ### T08 Agent 卡片与输入绑定

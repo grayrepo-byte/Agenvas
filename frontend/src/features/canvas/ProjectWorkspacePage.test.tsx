@@ -344,7 +344,14 @@ describe("ProjectWorkspacePage", () => {
     const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
     if (gesture === "doubleClick") {
       fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
-      await user.click(screen.getByRole("option", { name: "文字" }));
+      const list = screen.getByRole("listbox", { name: "添加卡片" });
+      await user.hover(screen.getByRole("option", { name: "图片" }));
+      // cmdk transfers focus to its list when pointer selection changes.
+      await waitFor(() => expect(list).toHaveFocus());
+      expect(screen.getByRole("option", { name: "图片" })).toHaveAttribute("aria-selected", "true");
+      await user.keyboard("{ArrowUp}");
+      expect(screen.getByRole("option", { name: "文字" })).toHaveAttribute("aria-selected", "true");
+      await user.keyboard("{Enter}");
     } else {
       fireEvent.contextMenu(pane, { clientX: 235, clientY: 165 });
       await user.click(screen.getByRole("menuitem", { name: "添加" }));
