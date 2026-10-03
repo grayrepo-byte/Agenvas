@@ -7,12 +7,14 @@ import dev.agenvas.task.application.AgentTurnLeaseGuard;
 import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** 在同一项目变更事务中提交模型回合的 Run 状态、任务结果和后续调度决定。 */
@@ -21,6 +23,7 @@ public class AgentTurnCommitService {
 
     /** 反查任务所有者，并核验回合任务的持久化状态。 */
     private final TaskRepository taskRepository;
+    private final Clock clock;
     /** 带租约 fencing 的任务完成、失败与下一回合创建入口。 */
     private final TaskService tasks;
     /** 使用 Run 的预期版本推进状态和步骤游标。 */
@@ -54,7 +57,8 @@ public class AgentTurnCommitService {
             AgentRunService runs, AgentTurnLeaseGuard leaseGuard,
             ProjectEventService events, ObjectMapper mapper,
             LlmTurnRepository turns, ToolExecutionRepository toolExecutions,
-            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes) {
+            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock) {
+        this.clock = clock;
         this.taskRepository = taskRepository;
         this.tasks = tasks;
         this.runs = runs;
@@ -244,6 +248,34 @@ public class AgentTurnCommitService {
                     run.version(), AgentRun.Status.BLOCKED);
             return ProjectEventService.Change.unchanged(null);
         });
+    }
+
+    /** Retry only an unresponded model request, never replaying committed tool/media effects. */
+    @Transactional
+    public JsonNode modelFailed(Task lease, String workerId, String errorCode) {
+        UUID ownerId = ownerId(lease);
+        return events.<JsonNode>recordChange(ownerId, lease.projectId(), () -> {
+            leaseGuard.requireActive(lease, workerId);
+            AgentRun run = runs.get(ownerId, lease.projectId(), lease.runId());
+            int step = requireStep(lease, run);
+            if (run.status() != AgentRun.Status.RUNNING) {
+                throw new IllegalStateException("Run cannot handle this model failure");
+            }
+            LlmTurn recorded = turns.find(lease.projectId(), lease.runId(), step).orElse(null);
+            if (recorded != null && recorded.status() == LlmTurn.Status.RESPONDED) {
+                return ProjectEventService.Change.unchanged(recorded.response());
+            }
+            Task current = taskRepository.findById(lease.id()).orElseThrow();
+            AgentModelRetryPolicy.Decision decision = AgentModelRetryPolicy.afterFailure(
+                    current, errorCode, clock.instant(), mapper);
+            tasks.recordAgentModelFailure(lease, workerId, decision.progress(),
+                    decision.exhausted() ? AgentModelRetryPolicy.EXHAUSTED_CODE : errorCode,
+                    decision.nextActionAt(), decision.exhausted());
+            if (decision.exhausted()) {
+                runs.transition(ownerId, lease.projectId(), lease.runId(), run.version(), AgentRun.Status.FAILED);
+            }
+            return ProjectEventService.Change.unchanged(null);
+        }).value();
     }
 
     /**

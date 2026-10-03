@@ -35,7 +35,7 @@ class CallLogServiceTest {
 
     @AfterEach void clearThread() { MDC.clear(); TransactionSynchronizationManager.clear(); }
 
-    @Test void llmDebugPreservesActualContentAndProviderFieldsWhileRemovingAuthentication() {
+    @Test void llmDebugPreservesActualBodyContentAndProviderFields() {
         when(repository.isDebugEnabled()).thenReturn(true);
         AtomicReference<List<DebugHttpCapture.Exchange>> saved = new AtomicReference<>();
         doAnswer(invocation -> { saved.set(invocation.getArgument(1)); return null; })
@@ -56,10 +56,11 @@ class CallLogServiceTest {
         }, ignored -> CallLogService.CallOutcome.succeeded(null));
         assertThat(result).contains("synthetic model detail", "synthetic-llm-auth");
         assertThat(saved.get().getFirst().requestBody().content())
-                .contains("<think>keep this text</think>", "provider request setting").doesNotContain("synthetic-llm-auth");
+                .contains("<think>keep this text</think>", "provider request setting", "synthetic-llm-auth")
+                .doesNotContain("[REDACTED]");
         assertThat(saved.get().getFirst().responseBody().content())
-                .contains("synthetic model detail", "synthetic thought part", "complete response")
-                .doesNotContain("synthetic-llm-auth");
+                .contains("synthetic model detail", "synthetic thought part", "complete response", "synthetic-llm-auth")
+                .doesNotContain("[REDACTED]");
     }
 
     @Test void restoresParentTraceAndCapturesResponseBeforeAuditPersistence() {

@@ -30,7 +30,7 @@ public class StoredChatModelFactory {
 
     /** 只在构造模型客户端时解密凭据，并对运行和诊断请求应用相同出站限制。 */
     public SpringAiChatGateway create(LlmProviderConfig config) {
-        return create(config, LlmCallTimeouts.MODEL_REQUEST, LlmCallTimeouts.TRANSPORT_READ);
+        return create(config, LlmCallTimeouts.REQUEST, LlmCallTimeouts.TRANSPORT_READ);
     }
 
     /** SDK and transport share the total deadline; silent reads have an independent limit. */

@@ -295,6 +295,34 @@ class AgentMediaApprovalPostgresIT {
     }
 
     @Test
+    void continuationTimeoutRetriesOnlyTheModelAndKeepsTheApprovedImage() throws Exception {
+        Scenario scenario = propose(outputs("IMAGE"));
+        decide(scenario, "APPROVE", "retry-model-after-image");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        Task generated = mediaTasks(scenario).getFirst();
+        assertThat(generated.status()).isEqualTo(Task.Status.SUCCEEDED);
+        gateway.plan(scenario.run().id()).failNextCall = true;
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        Task waiting = tasks.listByRun(owner.userId(), scenario.project().id(), scenario.run().id()).stream()
+                .filter(task -> task.kind() == Task.Kind.AGENT_TURN && task.status() == Task.Status.READY)
+                .findFirst().orElseThrow();
+        assertThat(waiting.errorCode()).isEqualTo("LLM_CALL_TIMEOUT");
+        assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.RUNNING);
+        // Advance only this retry's due time in the fixture; do not wait or alter media ledgers.
+        jdbc.sql("update task set next_action_at=created_at where id=:id")
+                .param("id", waiting.id()).update();
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(mediaTasks(scenario)).singleElement().satisfies(task -> {
+            assertThat(task.id()).isEqualTo(generated.id());
+            assertThat(task.attemptNo()).isEqualTo(1);
+            assertThat(task.output()).isEqualTo(generated.output());
+        });
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isZero();
+        assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.SUCCEEDED);
+    }
+
+    @Test
     void approvedGeneratedMediaCanBeReadByTheResumedAgent() throws Exception {
         Scenario scenario = propose(outputs("IMAGE"));
         Plan plan = gateway.plan(scenario.run().id());
@@ -804,6 +832,7 @@ class AgentMediaApprovalPostgresIT {
         private final AtomicInteger calls = new AtomicInteger();
         private volatile JsonNode reply;
         private volatile boolean readGeneratedOutput;
+        private volatile boolean failNextCall;
         private volatile boolean imageToVideo;
         private volatile JsonNode artifactReply;
         private volatile JsonNode placementReply;
@@ -824,6 +853,10 @@ class AgentMediaApprovalPostgresIT {
             Plan plan = plans.get(UUID.fromString((String) context.get("runId")));
             assertThat(plan).isNotNull();
             assertThat(tools).anySatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("propose_media_generation"));
+            if (plan.failNextCall) {
+                plan.failNextCall = false;
+                throw new java.io.UncheckedIOException(new java.net.SocketTimeoutException("synthetic model timeout"));
+            }
             int callIndex = plan.calls.incrementAndGet();
             if (callIndex == 1) {
                 AssistantMessage proposal = AssistantMessage.builder().content("")

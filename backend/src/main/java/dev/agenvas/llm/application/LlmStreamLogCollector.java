@@ -21,7 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 /** One debug collector per subscription, independent of the sanitized public answer stream. */
 public final class LlmStreamLogCollector {
     private static final long NANOS_PER_MILLISECOND = 1_000_000;
-    private static final int MAX_CONTENT_BYTES = 1024 * 1024;
     private static final int MAX_FINISH_REASONS = 16;
     private final boolean captureContent;
     private final LongSupplier nanoTime;
@@ -60,10 +59,10 @@ public final class LlmStreamLogCollector {
         try {
             int retained = codec.debugResponse(response).toString().getBytes(StandardCharsets.UTF_8).length;
             contentBytes = Math.addExact(contentBytes, retained);
-            if (contentBytes > MAX_CONTENT_BYTES) { truncated = true; return; }
+            if (contentBytes > LlmStreamLog.MAX_CONTENT_BYTES) { truncated = true; return; }
             received.append(PublicAssistantResponse.text(response));
             // Keep the received text/tool prefix and observed model attributes within the same
-            // byte budget. Actual HTTP events preserve SDK-ignored fields separately.
+            // byte budget. The audit service prefers the assembled HTTP response when available.
             if (response.getResult() != null) {
                 tools.addAll(response.getResult().getOutput().getToolCalls());
                 generationMetadata = response.getResult().getMetadata();

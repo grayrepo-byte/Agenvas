@@ -66,7 +66,7 @@ it("formats a streamed LLM completion beside its captured prompt instead of leav
     exchanges: [{ method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200,
       requestBody: { content: JSON.stringify({ model: "synthetic-model", stream: true,
         messages: [{ role: "user", content: "Create synthetic text" }] }), encoding: "UTF8", truncated: false },
-      responseBody: null }],
+      responseBody: { content: 'data: {"legacyFragment":"Synthetic legacy SSE"}\n\ndata: [DONE]\n\n', encoding: "UTF8", truncated: false } }],
     llmStream: { metrics: { ...streamMetrics, status: "COMPLETED", errorCode: null }, content: {
       response: JSON.stringify({ schemaVersion: 1, metadata: { id: "synthetic-response", model: "synthetic-model", usage: null },
         generations: [{ assistant: { role: "ASSISTANT", text: "Synthetic public answer", toolCalls: [], metadata: {} },
@@ -79,6 +79,10 @@ it("formats a streamed LLM completion beside its captured prompt instead of leav
   expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeEnabled();
   await userEvent.setup().click(completion);
   expect(screen.getByRole("dialog", { name: "Completion" })).toHaveTextContent("Synthetic public answer");
+  await userEvent.setup().keyboard("{Escape}");
+  await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
+  expect(screen.queryByText(/Synthetic legacy SSE/)).not.toBeInTheDocument();
+  expect(screen.getAllByText(/模型响应（JSON）/)).toHaveLength(1);
 });
 
 it("shows one partial model response and timing without delivery progress or remote rendering", async () => {
@@ -119,7 +123,7 @@ it("switches a semantic-only response to exact captured JSON without inventing a
   show();
   expect(await screen.findByRole("button", { name: "展开 Completion" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeDisabled();
-  expect(screen.getByText(/实际 LLM 请求与响应内容保留/)).toBeInTheDocument();
+  expect(screen.getByText(/实际 LLM 请求与响应正文保留/)).toHaveTextContent(/仅省略结构化图片字段字节/);
   await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
   expect(screen.getByText(response)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "展开 Completion" })).not.toBeInTheDocument();

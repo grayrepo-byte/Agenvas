@@ -131,6 +131,71 @@ afterEach(() => {
 });
 
 describe("AgentChatCard", () => {
+  it("uses a newer blocked Run summary while the project snapshot still says running", async () => {
+    const current = run({ status: "RUNNING" });
+    storedRuns = [{ ...current, status: "BLOCKED", updatedAt: "2026-09-26T10:00:01Z" }];
+    mountCard(current);
+    expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
+    expect(screen.getByText("需要处理", { selector: ".agent-chat-heading > span" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
+  });
+
+  it("does not regress a newer running snapshot to an older blocked summary", async () => {
+    const current = run({ status: "RUNNING", updatedAt: "2026-09-26T10:00:01Z" });
+    storedRuns = [run({ status: "BLOCKED" })];
+    mountCard(current);
+    await readyComposer();
+    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "结束本次运行" })).not.toBeInTheDocument();
+  });
+
+  it("shows a blocked run as needing an explicit end action instead of an executing stop button", async () => {
+    const blocked = run({ status: "BLOCKED" });
+    storedRuns = [blocked];
+    let cancellations = 0;
+    server.use(http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => {
+      cancellations++;
+      const canceled = { ...blocked, status: "CANCELED" as const, version: blocked.version + 1 };
+      storedRuns = [canceled];
+      return HttpResponse.json(canceled);
+    }));
+    mountCard(blocked);
+    const user = userEvent.setup();
+    await user.type(await readyComposer(), "继续使用已完成图片创作");
+    expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "停止本次运行" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "结束本次运行" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+    expect(cancellations).toBe(1);
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("继续使用已完成图片创作");
+  });
+
+  it("pins pending approval navigation outside scrolling content and clears it after a decision", async () => {
+    const active = run({ status: "WAITING_TASKS" });
+    storedRuns = [active];
+    const pending = { id: "approval-1", projectId: PROJECT_ID, runId: active.id,
+      operationId: "operation-1", status: "PENDING", version: 0, taskIds: [], result: null,
+      createdAt: NOW, expiresAt: "2026-09-27T10:00:00Z", executionDeadline: null,
+      outputs: [{ kind: "IMAGE", title: "合成图片", artifactId: "image-1", canvasItemId: "image-item-1",
+        draftVersion: 0, preview: { prompt: "合成图片", priceUnknown: true } }] };
+    server.use(http.get(`${RUNS_URL}/${active.id}/media-approvals`, () => HttpResponse.json([pending])));
+    const client = mountCard(active);
+    const review = await screen.findByRole("button", { name: "查看待审批 · 1 项" });
+    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const body = card.querySelector<HTMLElement>(".agent-chat-body");
+    if (!body) throw new Error("Missing scrolling transcript");
+    expect(body).not.toContainElement(review);
+    expect(card.querySelector(".agent-chat-heading")).toHaveTextContent("等待你的批准");
+    const scrollTo = vi.fn();
+    body.scrollTo = scrollTo;
+    await userEvent.setup().click(review);
+    expect(scrollTo).toHaveBeenCalled();
+    expect(document.activeElement).toHaveAttribute("data-media-approval-id", pending.id);
+    act(() => client.setQueryData(["run-media-approvals", PROJECT_ID, active.id], [{ ...pending, status: "APPROVED" }]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "查看待审批 · 1 项" })).not.toBeInTheDocument());
+  });
+
   it("follows growing streamed content only while the user remains at the bottom, with the composer outside scrolling content", async () => {
     const observations: { callback: ResizeObserverCallback; observer: ResizeObserver; targets: Set<Element> }[] = [];
     class ControlledResizeObserver implements ResizeObserver {
@@ -736,4 +801,44 @@ describe("Agent Skill submission",()=>{
     const versions=screen.getByRole("combobox",{name:"发布版本"});await waitFor(()=>expect(versions).toBeEnabled());await user.click(versions);await user.click(await screen.findByRole("option",{name:"版本 1"}));
     await user.click(screen.getByRole("button",{name:"保存默认绑定"}));await waitFor(()=>expect(bindings).toHaveLength(1));expect(bindings[0]).toEqual({expectedAgentVersion:AGENT_VERSION,skillId,skillVersionId});expect(onUpdateAgent).not.toHaveBeenCalled();
   });
+});
+
+
+it("pins retry feedback and restores send after exhausted retries despite a stale snapshot", async () => {
+  const current = run({ status: "RUNNING" });
+  storedRuns = [current];
+  server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () => HttpResponse.json([{
+    id: "model-retry-task", kind: "AGENT_TURN", status: "READY", nextActionAt: "2026-10-04T01:00:04Z",
+    attemptNo: 2, input: { schemaVersion: 1, stepIndex: 1 },
+    output: { modelRetry: { schemaVersion: 1, retryCount: 1, maxRetries: 10,
+      firstFailureAt: "2026-10-04T01:00:00Z", deadlineAt: "2026-10-04T01:05:00Z", lastErrorCode: "LLM_CALL_TIMEOUT" } },
+  }])));
+  const client = mountCard(current);
+  expect(await screen.findByText(/^下次重试：/)).toBeInTheDocument();
+  expect(screen.getByText(/^下次重试：/).closest(".agent-chat-feedback")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+  storedRuns = [run({ status: "FAILED", updatedAt: "2026-10-04T01:05:00Z" })];
+  server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () => HttpResponse.json([{
+    id: "model-retry-task", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_RETRY_EXHAUSTED",
+    input: { schemaVersion: 1, stepIndex: 1 },
+  }])));
+  await client.invalidateQueries({ queryKey: ["conversation-runs", PROJECT_ID] });
+  await client.invalidateQueries({ queryKey: ["run-history-tasks", PROJECT_ID] });
+  expect(await screen.findByRole("button", { name: "发送" })).toBeInTheDocument();
+  expect(screen.queryByText(/^下次重试：/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
+  expect((await screen.findAllByText(/^已达到 10 次重试或 5 分钟期限/)).some((element) =>
+    element.closest(".agent-chat-feedback"))).toBe(true);
+});
+
+
+it("reports a failed active task read in the fixed feedback area", async () => {
+  const current = run({ status: "RUNNING" });
+  storedRuns = [current];
+  server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
+    HttpResponse.json({ code: "SYNTHETIC_READ_FAILED" }, { status: 503 })));
+  mountCard(current);
+  const message = await screen.findByText("运行状态读取失败，可重新读取。");
+  expect(message.closest(".agent-chat-feedback")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
 });

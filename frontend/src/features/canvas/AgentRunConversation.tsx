@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getRun, listRunActions, listRunMediaApprovals, listRunTasks,
-  type AgentRun, type Task } from "../../shared/api/client";
+  type AgentMediaApproval, type AgentRun, type Task } from "../../shared/api/client";
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
@@ -81,14 +81,17 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   const approvedTaskIds = new Set((approvals.data ?? []).flatMap((approval) => approval.taskIds));
   const unknownTasks = visibleTasks.filter((task) => task.status === "UNKNOWN"
     && typeof task.input.agentApprovalId !== "string" && !approvedTaskIds.has(task.id));
-  const replies = new Map<string, { step: number; text: string; status: "STREAMING" | "COMPLETED" | "INTERRUPTED" }>();
+  const replies = new Map<string, { step: number; time: string; text: string; status: "STREAMING" | "COMPLETED" | "INTERRUPTED" }>();
   for (const task of turns) {
     const reply = task.output?.assistantText;
-    if (typeof reply === "string" && reply.trim()) replies.set(task.id, { step: stepIndex(task), text: reply, status: "COMPLETED" });
+    if (typeof reply === "string" && reply.trim()) replies.set(task.id, { step: stepIndex(task),
+      time: task.createdAt, text: reply, status: "COMPLETED" });
   }
   for (const stream of streams) {
     if (!turns.some((task) => task.id === stream.taskId) && stream.text.trim()) {
-      replies.set(stream.taskId, { step: stream.stepIndex, text: stream.text, status: stream.status });
+      replies.set(stream.taskId, { step: stream.stepIndex,
+        time: visibleTasks.find((task) => task.id === stream.taskId)?.createdAt ?? run.createdAt,
+        text: stream.text, status: stream.status });
     }
   }
   const traceCount = (actions.data?.length ?? 0) + traceTasks.length;
@@ -98,6 +101,18 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
     : run.status === "FAILED" || run.status === "BLOCKED" ? RUN_STATUS_LABELS[run.status] : t("agent.trace.completedWork");
   const steps = [...new Set([...(actions.data ?? []).map((action) => action.stepIndex), ...traceTasks.map(stepIndex)])]
     .sort((left, right) => left - right);
+  // Model tasks are created before their proposals; completion happens after tools
+  // execute. Creation times keep replies/approvals in place across stream completion
+  // and later decisions, rather than moving the proposing reply below its approval.
+  type Entry = { kind: "reply"; id: string; time: string; reply: NonNullable<ReturnType<typeof replies.get>> }
+    | { kind: "approval"; id: string; time: string; approval: AgentMediaApproval };
+  const entries: Entry[] = [
+    ...[...replies.entries()].sort((left, right) => left[1].step - right[1].step)
+      .map(([id, reply]): Entry => ({ kind: "reply", id, time: reply.time, reply })),
+    ...(approvals.data ?? []).map((approval): Entry => ({ kind: "approval", id: approval.id,
+      time: approval.createdAt, approval })),
+  ];
+  entries.sort((left, right) => Date.parse(left.time) - Date.parse(right.time));
 
   return <section aria-label={t("agent.run.title")} className="agent-run-conversation">
     <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString(getFormatLocale())}</time>{run.conversationTurn ? t("agent.run.roundSuffix", { "0": run.conversationTurn }) : ""}</p>
@@ -120,18 +135,21 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
     </AgentExecutionTrace> : null}
     {approvals.error ? <div className="agent-chat-error" role="alert">{t("agent.approval.loadFailed")}
       <Button variant="ghost" size="sm" type="button" onClick={() => void approvals.refetch()}>{t("common.retry")}</Button></div> : null}
-    {(approvals.data ?? []).map((approval) => <AgentMediaApprovalCard key={approval.id}
-      projectId={projectId} runId={run.id} approval={approval} disabled={!active || run.status !== "WAITING_TASKS"} />)}
-    {[...replies.entries()].sort((left, right) => left[1].step - right[1].step).map(([id, reply]) =>
-      <AgentChatMessage key={id} role="assistant" streaming={reply.status === "STREAMING"}>
-        <AgentMarkdown text={reply.text} />
-        {reply.status === "INTERRUPTED" ? <p className="agent-chat-stream-notice">{t("agent.trace.interrupted")}</p> : null}
+    {entries.map((entry) => entry.kind === "approval"
+      ? <div key={`approval:${entry.id}`} data-media-approval-id={entry.id} tabIndex={-1}>
+        <AgentMediaApprovalCard projectId={projectId} runId={run.id} approval={entry.approval}
+          disabled={!active || run.status !== "WAITING_TASKS"} />
+      </div>
+      : <AgentChatMessage key={`reply:${entry.id}`} role="assistant" streaming={entry.reply.status === "STREAMING"}>
+        <AgentMarkdown text={entry.reply.text} />
+        {entry.reply.status === "INTERRUPTED" ? <p className="agent-chat-stream-notice">{t("agent.trace.interrupted")}</p> : null}
       </AgentChatMessage>)}
     {showFailureNotice && (run.status === "BLOCKED" || run.status === "FAILED") ? <BlockedRunNotice projectId={projectId} runId={run.id} status={run.status} /> : null}
     {unknownTasks.map((task) => <UnknownTaskRetryPanel key={task.id} projectId={projectId} taskId={task.id}
       taskVersion={task.version} errorCode={task.errorCode} />)}
     <div className="agent-chat-run-status" role="status">
-      {active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}
+      {active && waitingApproval && run.status === "WAITING_TASKS" ? t("agent.trace.waitingApproval")
+        : active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}
       {run.status === "CANCELED" || run.status === "CANCEL_REQUESTED" ? <p>{t("agent.run.cancelHint")}</p> : null}
     </div>
   </section>;

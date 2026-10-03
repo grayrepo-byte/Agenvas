@@ -1372,6 +1372,61 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 同步 MVP、ADR 0028 与 ADR 0029 设计修订。无 API 字段、数据库迁移、jOOQ 或依赖版本变更；前后端需一起更新才能看到 Agent 新提案连线。旧提案和旧结果不会自动补建连线或重新提交生成。
 - [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 调用与部署未运行。
 
+### 2026-10-04 LLM 正文保留与结构化图片省略
+
+- [x] 用户明确只保护 HTTP header/Cookie 的权限认证，LLM 请求与响应正文除图片字节外不脱敏。移除 LLM 正文的敏感字段名过滤、已知 header 值替换和正则替换；普通与流式 HTTP/SSE、语义汇总统一保留原字段、工具 Schema、参数、数字、布尔值和模型文本。所有 HTTP header（含 Authorization、Cookie、Set-Cookie）不保存；独立请求地址和非 LLM 调用沿用既有过滤。
+- [x] 图片省略按 JSON 的 image_url 字段识别，支持字符串和对象 url 形式，将图片 data URI 整值改为占位符；普通文本中的 data URI 示例、远程 URL 与工具参数定义保留。采集读取副本，不修改实际请求或响应。
+- [x] 新回归先复现普通/流式日志参数损坏和无效 JSON；修复后后端 5 类 41 项单元/合成 HTTP 测试、1 项真实 PostgreSQL 异步日志保存验证通过，均无失败/错误/跳过。真实 Spring AI SDK 对合成本机 HTTP 比较请求与日志的完整 JSON（含实际工具 Schema），唯一允许差异是图片字段；验证网络仍收到完整图片、认证和 Cookie，日志不保存 header。未调用真实 Provider。
+- [x] 同步 AGENTS、ADR 0020、MVP §24.1、OpenAPI 描述与重新生成的 TypeScript，以及四语言说明。前端两个文件共 14 项定向测试最终通过；日志详情初次旧文案断言失败，更新后该文件 7 项重跑通过。TypeScript、四语言检查、修改测试文件 ESLint、差异空白及新增文本凭据/隐私检查通过。
+- [ ] 无 API 字段、数据库迁移或依赖变化。全量测试、生产构建、浏览器验收及真实 Provider 未运行；未部署，旧日志不回写或补录。
+
+### 2026-10-04 流式响应单份保存与展示
+
+- [x] 用户要求响应也保留实际内容且只显示一份。SSE data 顺序合并为单个响应 JSON，按 choice/tool index 拼接文本、推理、函数名和参数；保留实际 Usage、结束原因、响应 ID 与 Provider 附加字段，不持久化逐条 data 或 [DONE]。仍只省略结构化图片字节，不做正文凭据替换；实际网络流不改变。
+- [x] 异步日志完成时优先保存 HTTP 聚合响应，无 HTTP 时使用 SDK 汇总。最终只存 llmStream.content.response，exchanges 保留请求、地址与状态，responseBody 为 null。单份响应上限 1 MiB，超限回退有界 SDK 前缀并标记不完整，末尾无法解析的事件保留已解析前缀并标记不完整；失败/取消不重发模型。前端有汇总时隐藏重复 HTTP 响应，历史双份数据不回写，缺失内容不补造。
+- [x] 先复现 SSE 逐条输出及界面重复响应，修复后 6 类 46 项后端定向测试通过（45 项单元/合成 HTTP + 1 项真实 PostgreSQL）。覆盖文本/推理/工具拼接、未知字段、参数原值、单份异步保存、SDK 回退、内容上限、错误/取消、权限、no-store 与清理。集成夹具首次漏加 StandardCharsets 导入导致测试编译失败，补齐后重跑通过；新增逻辑不引入新编译告警。
+- [x] 前端调用详情、格式化及系统设置共 20 项定向测试通过，覆盖原始模式与 Completion 弹窗均只有一份响应、旧 SSE 不重复展示。TypeScript、修改文件 ESLint、四语言检查、OpenAPI 类型重新生成、差异空白及新增文本/文件凭据与隐私检查通过；同步 AGENTS、MVP、ADR 0020、合约与四语言说明。
+- [ ] 没有 API 字段、数据库迁移或依赖变化。全量测试、生产构建、浏览器验收及真实 Provider 未运行；未部署。
+
+### 2026-10-03 Agent 审批入口与对话顺序修复
+
+- [x] 回归先复现审批卡固定置于全部回复前、输入区缺少审批入口；公开回复与审批按模型 Task / 审批创建时间穿插展示。模型完成时间发生在工具执行之后，不作为排序依据；审批状态变更后保持原位置。
+- [x] 当前 Run 的 PENDING 批次在卡片标题与对话底部显示等待批准，输入框上方固定提供输出数量与查看入口；点击滚动并聚焦原审批卡，使用布局坐标适应画布缩放。批准后提醒消失，历史/停止 Run 不提示继续审批；读取失败可重读，共用原审批缓存及项目 SSE。
+- [x] 前端三个文件共 48 项定向 Vitest 测试通过：`AgentRunConversation.test.tsx`、`AgentChatCard.test.tsx`、`AgentMediaApprovalCard.test.tsx`。覆盖提出回复/审批/后续回复的顺序、固定入口不在滚动正文内、定位聚焦、决策后移除入口及原有审批、流式和滚动回归。TypeScript、完整前端 lint（四语言/主题/ESLint）、Vite 构建与差异空白检查通过，构建仍有既有大 chunk 提示。
+- [x] 同步 MVP §8.3 与 ADR 0029 实施设计；本次仅改前端展示、四语言文案和回归测试，无 API、数据库迁移或依赖变更。
+- [ ] 全量测试、浏览器端到端、真实模型/Provider 调用和部署更新未运行。单元验证使用明确的合成接口数据，未进行真实生成。
+
+
+### 2026-10-04 图片成功后 Agent 续接超时与阻断按钮修复
+
+- [x] 受控本机 HTTP 回归先复现响应头延迟 46 秒时遭旧 45 秒读取上限截断；统一 Worker、配置模型 SDK 与安全传输到规格既定的 90 秒请求上限，保留 10 秒连接上限、端点/DNS 校验、响应大小限制和禁止自动重试。修复后同一测试成功且只收到一次请求。
+- [x] Agent 网络与 Worker 等待超时穿透异步异常包装后写入 `LLM_CALL_TIMEOUT`，日志只记录安全原因码；前端显示明确超时说明及已完成媒体保留。既有已阻断任务不重新提交或续接，也不改写原错误记录。
+- [x] BLOCKED 保留项目活动槽位，输入区改为可见的“结束本次运行”与保留图片说明，复用原取消 API。会话摘要与快照按服务端 updatedAt 合并，较新 BLOCKED/终态不被旧活动 Run 投影覆盖；结束响应后恢复发送并保留输入草稿，较旧摘要也不能覆盖新快照。
+- [x] 后端三个单元/合成 HTTP 测试类 9 项通过：`SafeLlmTransportTest`、`AgentTurnFailureCodeTest`、`SafeLlmStreamingLimitHttpTest`。三个真实 PostgreSQL 类 13 项通过：`AgentTurnWorkerPostgresIT`、`AgentMediaApprovalPostgresIT`、`DirectTextGenerationPostgresIT`，覆盖媒体审批成功后的模型续接、持久任务、取消、失败和重复通知边界。数据库测试日志仅置于仓库外私有临时目录并已清理。
+- [x] 前端六个定向 Vitest 文件 97 项通过：`AgentChatCard.test.tsx`、`AgentRunConversation.test.tsx`、`AgentMediaApprovalCard.test.tsx`、`BlockedRunNotice.test.tsx`、`taskErrorMessages.test.ts`、`projectCache.test.ts`。TypeScript、完整 lint、Vite 构建与差异空白检查通过；构建仍有既有大 chunk 提示。
+- [x] 同步 MVP §8.6、ADR 0029 实施设计及 OpenAPI Task.errorCode 的说明，重新生成 TypeScript；接口结构不变，新增安全原因码为兼容扩展，旧客户端可按原字符串回退显示。无数据库迁移、jOOQ 或依赖变更，应同步部署前后端以显示新说明与阻断操作。
+- [ ] 全量测试、浏览器端到端、真实 Provider/模型复调和部署更新未运行。只读诊断显示媒体成功后模型回合约 46 秒零分片失败，符合旧读取期限；旧记录仅含通用技术错误，未保留底层异常，不能据合成回归声称本次真实上游已经恢复或稳定。
+
+
+### 2026-10-04 Agent 模型临时故障有界自动重试
+
+- [x] 按用户决定将未完成模型请求的超时、断连和 HTTP 408/429/5xx 改为持久退避；初次调用外最多重试 10 次，首次失败起等待与调用合计最多 5 分钟，先达到的上限生效。间隔为 2、4、8、16 秒后封顶 30 秒；SDK 不再额外重试。配置、鉴权、参数、协议/输出、工具及持久化失败不自动重试。
+- [x] 复用原模型 Task、步骤、配置与冻结请求检查点；READY 保存 nextActionAt 和安全 modelRetry 投影，释放租约并递增 epoch。停止、重启后到期、迟到流、响应落库与超时竞态均受持久状态约束；完整响应已保存时立即继续该响应，不再次调用模型。新尝试不拼接旧回答前缀。
+- [x] 耗尽次数或期限后 Task/Run FAILED、释放项目活动槽并恢复发送；已成功媒体与工具账本保留，媒体审批、生成提交和 UNKNOWN 不自动重提。历史 BLOCKED/FAILED 不自动复活。
+- [x] 前端在输入框上方固定显示最近错误、重试次数、下次允许重试时间和截止时间，认领后显示正在重试；读取错误可重读。共用现有 Task Query、项目 SSE 与快照，不新增轮询或 token 驱动的整卡更新；结束后撤下等待提醒并显示耗尽原因。
+- [x] 后端七类共 44 项定向测试通过：AgentModelRetryPolicyTest 14、AgentModelRetryPostgresIT 9、AgentTurnFailureCodeTest 2、AgentTurnWorkerPostgresIT 1、AgentMediaApprovalPostgresIT 12、LlmRoundStreamTest 4、LlmProtocolCodecTest 2。真实 PostgreSQL 覆盖提前不可认领、恢复、10 次/5 分钟上限、进行中请求截断、停止、旧 epoch 拒绝、已提交工具不重复、响应检查点竞态；已成功图片后的模型超时恢复保留原媒体 Task、尝试数和结果，媒体 Worker 不再次提交。
+- [x] 前端六个 Vitest 文件 100 项通过：AgentChatCard、AgentModelRetryNotice、BlockedRunNotice、AgentRunConversation、projectCache、taskErrorMessages。覆盖固定提醒、安全原因、等待/执行/终态切换、读取失败、旧快照下耗尽后恢复发送和现有 SSE/流式/会话回归；TypeScript、完整 lint、生产构建及差异空白检查通过，构建有既有大 chunk 提示。
+- [x] 同步 MVP §8.6/12.6、ADR 0029 实施设计及 OpenAPI AgentModelRetry/Task.output，重新生成 TypeScript。可选 JSON 字段扩展，无新端点、数据库迁移、jOOQ 或依赖变更；应同步部署前后端观察重试。
+- [ ] 未运行全量测试、浏览器端到端、真实模型/Provider 重试或部署更新。模型故障均为明确合成数据，真实 PostgreSQL 与 Mock 媒体验证不代表真实供应商服务已恢复。
+
+
+### 2026-10-04 Agent 审批与模型重试合并 main 复验
+
+- [x] 保留 main 最新的 Agent 媒体引用连线、编辑样式及单份 debug 响应实现，合入审批可见性、模型超时及有界自动重试；两处文档冲突保留双方验收记录，并以 main 最新媒体引用规则配合新增重试决定。OpenAPI 类型重新生成后无额外差异。
+- [x] 合并后后端九类 60 项定向测试通过：AgentModelRetryPolicyTest 14、AgentModelRetryPostgresIT 9、AgentTurnFailureCodeTest 2、AgentTurnWorkerPostgresIT 1、AgentMediaApprovalPostgresIT 13、LlmRoundStreamTest 4、LlmProtocolCodecTest 2、CallLogStreamServiceTest 5、LlmDebugCaptureStreamingTest 10。覆盖真实 PostgreSQL 的审批/图片续接与重试边界，以及合成模型和 HTTP 日志集成。
+- [x] 前端六类 100 项定向测试、TypeScript、完整 lint、Vite 生产构建及差异空白检查通过；构建仍有既有大 chunk 提示。暂存文本凭据/隐私检查逐项复核，两处密钥形状命中属于日志单测中的显式合成字符串，不含真实凭据；无截图或二进制加入本次合并。
+- [ ] 未运行全量测试、浏览器端到端、真实 Provider/模型调用或部署；合并复验的模型均为 Mock/合成数据。
+
 ### 2026-10-04 Agent 模型等待与媒体跨轮引用修复
 
 - [x] 按用户最终决定，AgentRun 不设置累计执行或自然时长上限，撤回旧规格的整体期限计划。单次模型调用仍有限：SDK、Agent/文字 Worker 等待与模型 HTTP 整次调用统一为 600 秒；实际安全传输读取为 180 秒，连接为 10 秒。持续流片段不延长整次调用期限，不自动重发；媒体审批与执行批次保留各自期限。

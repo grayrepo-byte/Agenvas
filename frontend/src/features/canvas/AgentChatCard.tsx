@@ -1,12 +1,12 @@
 import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@phosphor-icons/react";
-import { useInfiniteQuery,useMutation,useQueryClient,type InfiniteData } from "@tanstack/react-query";
+import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from "@tanstack/react-query";
 import { NodeResizer,type ResizeParams } from "@xyflow/react";
 import { useEffect,useRef,useState,type FormEvent } from "react";
 import {
 ApiError,cancelRun,
 createAgentConversation,
 createRun,getRunPreflight,listAgentConversations,
-listConversationRuns,
+listConversationRuns,listRunMediaApprovals, listRunTasks,
 selectAgentConversation,
 type Agent,
 type AgentConversation,type AgentConversationList,
@@ -22,6 +22,7 @@ import { Textarea } from "../../shared/ui/primitives/textarea";
 import "./AgentChatCard.css";
 import { AgentRunConversation,RUN_STATUS_LABELS } from "./AgentRunConversation";
 import { CanvasHandle } from "./CanvasHandle";
+import { AgentModelRetryNotice } from "./AgentModelRetryNotice";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { useCanvasStore } from "./canvasStore";
 import { AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection } from "../skills/AgentSkillControls";
@@ -33,6 +34,7 @@ export const AGENT_CHAT_MIN_HEIGHT = 420;
 const MAX_AGENT_NAME = 120;
 const MAX_INSTRUCTION = 8000;
 const BOTTOM_FOLLOW_THRESHOLD_PX = 24;
+const TERMINAL_RUN_STATUSES: ReadonlySet<AgentRun["status"]> = new Set(["CANCELED", "FAILED", "SUCCEEDED"]);
 
 export type AgentChatCardData = {
   item: CanvasItem;
@@ -94,8 +96,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   const runInstruction = draft.instruction;
   const sessions = conversations.data?.pages.flatMap((page) => page.items) ?? [];
   const currentConversation = sessions.find((session) => session.id === conversationId);
-  const ownRun = data.activeRun?.agentInstanceId === agent?.id ? data.activeRun : null;
-  const currentActiveRun = ownRun?.conversationId === conversationId ? ownRun : null;
+  const snapshotOwnRun = data.activeRun?.agentInstanceId === agent?.id ? data.activeRun : null;
   const runsKey = ["conversation-runs", data.projectId, agent?.id, conversationId];
   const runs = useInfiniteQuery({
     queryKey: runsKey,
@@ -105,15 +106,37 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     enabled: Boolean(agent && conversationId),
   });
   const byId = new Map((runs.data?.pages.flatMap((page) => page.items) ?? []).map((run) => [run.id, run]));
-  if (currentActiveRun) byId.set(currentActiveRun.id, currentActiveRun);
+  const listedOwnRun = snapshotOwnRun ? byId.get(snapshotOwnRun.id) : undefined;
+  // A Run list or decision response may arrive before the refreshed project snapshot.
+  // Run summaries expose updatedAt rather than version; retain the latest server timestamp.
+  const resolvedOwnRun = listedOwnRun && snapshotOwnRun
+    && Date.parse(listedOwnRun.updatedAt) >= Date.parse(snapshotOwnRun.updatedAt)
+    ? listedOwnRun : snapshotOwnRun;
+  const resolvedProjectRun = resolvedOwnRun ?? data.activeRun;
+  const projectActiveRun = resolvedProjectRun && !TERMINAL_RUN_STATUSES.has(resolvedProjectRun.status)
+    ? resolvedProjectRun : null;
+  const ownRun = projectActiveRun?.agentInstanceId === agent?.id ? projectActiveRun : null;
+  const currentActiveRun = ownRun?.conversationId === conversationId ? ownRun : null;
+  if (resolvedOwnRun?.conversationId === conversationId) byId.set(resolvedOwnRun.id, resolvedOwnRun);
+  const approvals = useQuery({ queryKey: ["run-media-approvals", data.projectId, ownRun?.id],
+    queryFn: () => listRunMediaApprovals(data.projectId, ownRun!.id),
+    enabled: ownRun?.status === "WAITING_TASKS" });
+  const pendingApprovals = ownRun?.status === "WAITING_TASKS"
+    ? (approvals.data ?? []).filter((approval) => approval.status === "PENDING") : [];
   const displayedRuns = [...byId.values()].sort((left, right) => left.conversationTurn - right.conversationTurn);
   const latestRun = displayedRuns.at(-1);
+  const activeTasks = useQuery({ queryKey: ["run-history-tasks", data.projectId, currentActiveRun?.id],
+    queryFn: () => listRunTasks(data.projectId, currentActiveRun!.id),
+    enabled: currentActiveRun?.status === "RUNNING" || currentActiveRun?.status === "QUEUED" });
+  const retryTask = currentActiveRun?.status === "RUNNING" ? activeTasks.data?.find((task) =>
+    task.kind === "AGENT_TURN" && task.output?.modelRetry?.schemaVersion === 1
+    && (task.status === "READY" || task.status === "RUNNING")) : undefined;
   const failedRun = !preparing && (latestRun?.status === "BLOCKED" || latestRun?.status === "FAILED") ? latestRun : null;
   // Recheck editable state after asynchronous preparation; never submit a revised draft or Skill.
   const currentSubmission = useRef({ conversationId, instruction: runInstruction.trim(), agentVersion: agent?.version,
-    skillFingerprint: skillState.fingerprint, activeRun: data.activeRun });
+    skillFingerprint: skillState.fingerprint, activeRun: projectActiveRun });
   currentSubmission.current = { conversationId, instruction: runInstruction.trim(), agentVersion: agent?.version,
-    skillFingerprint: skillState.fingerprint, activeRun: data.activeRun };
+    skillFingerprint: skillState.fingerprint, activeRun: projectActiveRun };
 
   function setRunInstruction(instruction: string) {
     setDrafts((previous) => ({ ...previous, [draftKey]: { ...previous[draftKey] ?? EMPTY_DRAFT, instruction } }));
@@ -227,7 +250,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     if (configuration) data.onUpdateAgent(configuration.base, configuration.name, configuration.instruction);
   }
   async function submitRun() {
-    if (!agent || data.activeRun || submissionLock.current || start.isPending || sessionBusy
+    if (!agent || projectActiveRun || submissionLock.current || start.isPending || sessionBusy
       || conversations.isPending || conversations.isError || !skillState.ready) return;
     const instruction = runInstruction.trim();
     if (!instruction) return;
@@ -279,6 +302,16 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       setPreparing(false);
     }
   }
+  function reviewApproval(id: string) {
+    const body = bodyRef.current;
+    const target = [...body?.querySelectorAll<HTMLElement>("[data-media-approval-id]") ?? []]
+      .find((element) => element.dataset.mediaApprovalId === id);
+    if (!body || !target) return;
+    followingBottom.current = false;
+    // The positioned scroll container provides layout coordinates, unaffected by canvas zoom.
+    body.scrollTo({ top: target.offsetTop, behavior: "smooth" });
+    target.focus({ preventScroll: true });
+  }
   return <>
     <CanvasHandle id="agent-input" />
     <CanvasHandle id="agent-output" />
@@ -288,7 +321,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       <header className="agent-chat-header">
         <span className="agent-chat-avatar"><Sparkle weight="fill" size={18} /></span>
         <div className="agent-chat-heading"><h3>{agent.name}</h3>
-          <span>{ownRun ? RUN_STATUS_LABELS[ownRun.status] : data.activeRun ? t("agent.chat.otherAgentRunning") : preparing ? t("agent.chat.starting") : failedRun ? RUN_STATUS_LABELS[failedRun.status] : t("agent.chat.ready")}</span>
+          <span>{pendingApprovals.length ? t("agent.trace.waitingApproval") : retryTask ? t(retryTask.status === "READY" ? "agent.retry.waiting" : "agent.retry.running") : ownRun ? RUN_STATUS_LABELS[ownRun.status] : projectActiveRun ? t("agent.chat.otherAgentRunning") : preparing ? t("agent.chat.starting") : failedRun ? RUN_STATUS_LABELS[failedRun.status] : t("agent.chat.ready")}</span>
         </div>
         <Button variant="ghost" size="sm" aria-label={t("agent.chat.chat")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
           onClick={() => setView("chat")} type="button">{t("agent.chat.conversation")}</Button>
@@ -365,6 +398,22 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         </div>
       </div>
       <div className="agent-chat-feedback nodrag nowheel nopan">
+        {view === "chat" && retryTask ? <AgentModelRetryNotice task={retryTask} /> : null}
+        {view === "chat" && currentActiveRun?.status === "RUNNING" && activeTasks.isError ?
+          <div className="agent-chat-error" role="alert">{t("agent.retry.stateUnavailable")}
+            <Button variant="ghost" size="sm" type="button" onClick={() => void activeTasks.refetch()}>{t("common.retryRead")}</Button>
+          </div> : null}
+        {view === "chat" && currentActiveRun && pendingApprovals.length ? <div className="agent-chat-pending-approval" role="status">
+          <span>{t("agent.trace.waitingApproval")}</span>
+          <Button variant="outline" size="sm" type="button" onClick={() => {
+            const approval = pendingApprovals[0];
+            if (approval) reviewApproval(approval.id);
+          }}>{t("agent.approval.viewPending", { "0": pendingApprovals.reduce((count, approval) => count + approval.outputs.length, 0) })}</Button>
+        </div> : null}
+        {view === "chat" && currentActiveRun?.status === "WAITING_TASKS" && approvals.isError ? <div className="agent-chat-error" role="alert">
+          {t("agent.approval.loadFailed")}<Button variant="ghost" size="sm" type="button"
+            onClick={() => void approvals.refetch()}>{t("common.retry")}</Button>
+        </div> : null}
         {failedRun && (failedRun.status === "FAILED" || failedRun.status === "BLOCKED") ?
           <BlockedRunNotice projectId={data.projectId} runId={failedRun.id} status={failedRun.status} /> : null}
         {preparing ? <p role="status">{start.isPending ? t("agent.chat.starting") : t("agent.chat.preflightLoading")}</p> : null}
@@ -374,6 +423,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         {stop.error && displayedRuns.some((run) => run.id === stop.variables) ? <ChatError error={stop.error} /> : null}
       </div>
       <form aria-label={t("agent.chat.sendTask")} className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
+        {currentActiveRun?.status === "BLOCKED" ? <p className="agent-chat-run-status">{t("agent.chat.endBlockedHint")}</p> : null}
         <Textarea aria-label={t("agent.chat.currentTask")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
           setRunInstruction(event.target.value);
         }} onKeyDown={(event) => {
@@ -386,9 +436,12 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
           <div className="agent-chat-composer-actions">
             <AgentRunSkillControls projectId={data.projectId} agent={agent} state={skillState} onChanged={()=>{runIntent.current=null;}} />
           </div>
-          {currentActiveRun ? <Button variant="secondary" size="icon-sm" aria-label={t("agent.chat.stop")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
+          {currentActiveRun?.status === "BLOCKED" ? <Button variant="outline" size="sm"
+            disabled={stop.isPending} onClick={() => stop.mutate(currentActiveRun.id)}
+            title={t("agent.chat.endBlockedHint")} type="button">{stop.isPending ? t("agent.chat.endingRun") : t("agent.chat.endRun")}</Button>
+            : currentActiveRun ? <Button variant="secondary" size="icon-sm" aria-label={t("agent.chat.stop")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
             onClick={() => stop.mutate(currentActiveRun.id)} title={t("agent.chat.stopOrchestration")} type="button"><Square weight="fill" size={14} /></Button>
-            : <Button size="icon-sm" aria-label={t("agent.chat.send")} className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preparing || sessionBusy || conversations.isPending || conversations.isError || !skillState.ready || !runInstruction.trim()}
+            : <Button size="icon-sm" aria-label={t("agent.chat.send")} className="agent-chat-send" disabled={Boolean(projectActiveRun) || start.isPending || preparing || sessionBusy || conversations.isPending || conversations.isError || !skillState.ready || !runInstruction.trim()}
               title={t("agent.chat.sendAndStart")} type="submit"><ArrowUp size={20} weight="bold" /></Button>}
         </div>
       </form>

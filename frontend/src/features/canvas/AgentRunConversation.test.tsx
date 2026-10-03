@@ -54,6 +54,29 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("places media approvals after the reply that proposed them and before later replies", async () => {
+    mockConversation([
+      task({ id: "proposal-turn", completedAt: "2026-09-26T00:01:01Z",
+        output: { stepIndex: 0, assistantText: "准备生成参考图片。" } }),
+      task({ id: "result-turn", createdAt: "2026-09-26T00:02:00Z", completedAt: "2026-09-26T00:03:00Z",
+        output: { stepIndex: 1, assistantText: "图片已完成。" } }),
+    ]);
+    server.use(http.get(`${RUN_URL}/media-approvals`, () => HttpResponse.json([{
+      id: "approval-1", projectId: PROJECT_ID, runId: RUN_ID, operationId: "operation-1",
+      status: "SUCCEEDED", version: 2, outputs: [{ kind: "IMAGE", title: "合成图片", artifactId: "image-1",
+        canvasItemId: "image-item-1", draftVersion: 0, preview: { prompt: "合成图片", priceUnknown: true } }],
+      taskIds: [], result: null,
+      createdAt: "2026-09-26T00:01:00Z", expiresAt: "2026-09-27T00:01:00Z", executionDeadline: null,
+    }])));
+    mountConversation();
+    const approval = (await screen.findByText("批准媒体生成 · 1 项")).closest("section");
+    const before = await screen.findByText("准备生成参考图片。");
+    const after = await screen.findByText("图片已完成。");
+    if (!approval) throw new Error("Missing approval card");
+    expect(before.compareDocumentPosition(approval) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(approval.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("formats historical assistant Markdown while keeping the user instruction literal", async () => {
     mockConversation([task({ output: { assistantText: "**结果**\n\n- 视频已完成\n\n版本 `synthetic-version`" } })]);
     const client = createQueryClient();

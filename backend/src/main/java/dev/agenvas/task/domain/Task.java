@@ -16,15 +16,15 @@ import tools.jackson.databind.JsonNode;
  * @param cancelRequested 是否已请求停止本系统后续编排，不表示外部请求已取消
  * @param input 创建时固定的 JSON 输入，Worker 不读取之后的用户草稿
  * @param inputHash 固定输入的摘要，用于识别同键异参
- * @param output 已确认的执行结果；未完成时为空
+ * @param output 已确认的结果或持久执行进度；Agent 回合可保存公开回答与重试信息
  * @param providerRequestId Provider 已确认受理的原请求 ID，轮询只能使用该值
- * @param attemptNo 同一业务步骤的尝试序号
+ * @param attemptNo 同一业务步骤的尝试序号；Agent 退避时指向下一个安排的尝试
  * @param nextActionAt 下次允许认领或查询原请求的时间
  * @param leaseOwner 当前 Worker 标识；没有活动租约时为空
  * @param leaseUntil 当前租约的到期时间
  * @param leaseEpoch 每次接管递增的 fencing epoch，旧 Worker 不得凭旧值回写
  * @param version 任务行的乐观锁版本
- * @param errorCode 失败或阻断时的稳定错误码
+ * @param errorCode 失败、阻断或退避等待时的稳定错误码
  * @param createdAt 创建时间
  * @param updatedAt 最近一次状态变化时间
  * @param completedAt 进入终态的时间；非终态时为空
@@ -52,6 +52,7 @@ public record Task(
         Instant updatedAt,
         Instant completedAt) {
 
+    public static final String MODEL_RETRY_PROPERTY = "modelRetry";
     public static final String APPROVAL_INPUT_PROPERTY = "agentApprovalId";
 
     /** Only the approval application entry point attaches this server-created identity. */
