@@ -18,6 +18,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.domain.AgentMediaApproval;
@@ -61,6 +62,7 @@ class AgentMediaApprovalServiceTest {
     private final AgentRunService runs = mock(AgentRunService.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final CanvasService canvas = mock(CanvasService.class);
+    private final CanvasConnectionService connections = mock(CanvasConnectionService.class);
     private final MediaDraftService drafts = mock(MediaDraftService.class);
     private final MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
     private final DirectMediaTaskService mediaTasks = mock(DirectMediaTaskService.class);
@@ -70,7 +72,7 @@ class AgentMediaApprovalServiceTest {
             1, UUID.randomUUID(), 1, "mock-image", "synthetic-mapping");
     private final AgentMediaApprovalService service = new AgentMediaApprovalService(approvals,
             runs, artifacts, canvas, drafts, capabilities, mediaTasks, events, publisher,
-            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class));
+            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class), connections);
 
     @BeforeEach
     void lockedProjectMutationExecutes() {
@@ -150,12 +152,33 @@ class AgentMediaApprovalServiceTest {
         when(drafts.save(eq(ownerId), eq(projectId), eq(canvasItemId), eq(0L), eq("Animate"),
                 any(), eq(5), eq(binding.capabilityId()), eq(MediaDraft.VideoInputMode.START_END),
                 anyList(), anyList(), eq(null))).thenReturn(saved);
-        when(mediaTasks.preflight(ownerId, projectId, artifactId, canvasItemId, 1))
+        when(mediaTasks.preflight(ownerId, projectId, artifactId, canvasItemId, 3))
                 .thenReturn(new DirectMediaTaskService.MediaPreflight(Task.Kind.VIDEO_GENERATION,
                         binding, "video-frozen-hash", 1, mapper.createObjectNode()));
         when(approvals.insert(any())).thenReturn(true);
         UUID startFrame = UUID.randomUUID();
         UUID endFrame = UUID.randomUUID();
+        UUID startArtifact = UUID.randomUUID();
+        UUID endArtifact = UUID.randomUUID();
+        UUID startCardId = UUID.randomUUID();
+        UUID endCardId = UUID.randomUUID();
+        when(saved.mediaInputs()).thenReturn(List.of(
+                new MediaDraft.MediaInput(startFrame, startArtifact, MediaDraft.InputRole.START_FRAME, 0, "#7C3AED", List.of()),
+                new MediaDraft.MediaInput(endFrame, endArtifact, MediaDraft.InputRole.END_FRAME, 1, "#7C3AED", List.of())));
+        CanvasItem startCard = mock(CanvasItem.class);
+        CanvasItem endCard = mock(CanvasItem.class);
+        when(startCard.id()).thenReturn(startCardId);
+        when(endCard.id()).thenReturn(endCardId);
+        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, run.agentInstanceId(), startArtifact, startFrame)).thenReturn(startCard);
+        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, run.agentInstanceId(), endArtifact, endFrame)).thenReturn(endCard);
+        MediaDraft firstConnected = mock(MediaDraft.class);
+        MediaDraft finalConnected = mock(MediaDraft.class);
+        when(firstConnected.version()).thenReturn(2L);
+        when(finalConnected.version()).thenReturn(3L);
+        when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId, startFrame, 1))
+                .thenReturn(new CanvasConnectionService.ConnectionResult(null, firstConnected, null));
+        when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId, endFrame, 2))
+                .thenReturn(new CanvasConnectionService.ConnectionResult(null, finalConnected, null));
         String arguments = "{\"outputs\":[{\"kind\":\"VIDEO\",\"title\":\"Video\",\"prompt\":\"Animate\","
                 + "\"durationSeconds\":5,\"videoInputMode\":\"START_END\",\"mediaInputs\":["
                 + "{\"versionId\":\"" + startFrame + "\",\"role\":\"START_FRAME\"},"
@@ -172,6 +195,11 @@ class AgentMediaApprovalServiceTest {
                                 "#7C3AED")), List.of(), null);
         ArgumentCaptor<AgentMediaApproval> captured = ArgumentCaptor.forClass(AgentMediaApproval.class);
         verify(approvals).insert(captured.capture());
+        assertThat(captured.getValue().targets().at("/outputs/0/draftVersion").asLong()).isEqualTo(3);
+        var ordered = inOrder(connections, mediaTasks);
+        ordered.verify(connections).connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId, startFrame, 1);
+        ordered.verify(connections).connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId, endFrame, 2);
+        ordered.verify(mediaTasks).preflight(ownerId, projectId, artifactId, canvasItemId, 3);
         assertThat(captured.getValue().request().path("outputs").get(0)
                 .path("videoInputMode").asText()).isEqualTo("START_END");
     }

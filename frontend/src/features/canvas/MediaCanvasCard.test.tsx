@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import { http,HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach,describe,expect,it,vi } from "vitest";
@@ -771,6 +771,29 @@ describe("MediaCanvasCard", () => {
     showCard();
     expect(await screen.findByText("已取消")).toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
+  });
+
+  it("keeps image references off the video card in both draft and result mode", async () => {
+    const reference = { artifactId: "image-reference", versionId: "reference-version", role: "START_FRAME", order: 0 };
+    const videoArtifact: Artifact = { ...artifact, kind: "VIDEO", resourceDefaultVersionId: "video-version",
+      resourceDefaultVersion: { id: "video-version", versionNo: 1, schemaVersion: 1,
+        content: { sourceType: "UPLOAD", assetId: "video-asset" }, frozenInput: { images: [reference] }, inputReferences: [],
+        createdByKind: "AGENT", runId: "run", createdAt: artifact.createdAt } };
+    server.use(http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
+      projectId: artifact.projectId, canvasItemId: "item-1", prompt: "Animate reference", displayMode: "DRAFT",
+      parameters: {}, videoInputMode: "START_END", mediaInputs: [{ ...reference, color: "#7C3AED", sources: [] }],
+      mentions: [], durationSeconds: 5, capabilityId: null, version: 1,
+    })));
+    const { client } = showCard(videoArtifact);
+    await waitFor(() => expect(client.getQueryState(["media-draft", "project-1", "item-1"])?.status).toBe("success"));
+    expect(screen.queryByRole("region", { name: "图片引用" })).not.toBeInTheDocument();
+    expect(document.querySelector(".video-card-with-references")).toBeNull();
+    act(() => client.setQueryData(["media-draft", "project-1", "item-1"], {
+      projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 2,
+    }));
+    await screen.findByRole("button", { name: "播放视频" });
+    expect(screen.queryByRole("region", { name: "图片引用" })).not.toBeInTheDocument();
+    expect(document.querySelector(".video-card-with-references")).toBeNull();
   });
 
   it("opens video generation from an empty surface without offering unsupported upload", async () => {
