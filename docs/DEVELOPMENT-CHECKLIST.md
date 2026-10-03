@@ -1313,7 +1313,7 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 添加菜单与空白处菜单直接创建并放置空闲导演 Agent，移除右侧创建抽屉；无需先输入指令，不自动运行。创建响应丢失时复用同一幂等键，放置失败时复用原实例与卡片身份/位置，界面提供等待和显式重试。
 - [x] 系统设置新增默认提示词管理（`/settings/general?tab=agent-prompts`），管理员维护默认名称和完整创作系统提示词；新实例复制，已有实例保留。分类按需读取、切换保留编辑、失败/未授权/CAS 冲突有明确反馈；刷新不清草稿，使用最新版本需明确选择。卡片设置仍可单独编辑系统提示词。
 - [x] 内置导演工作方法覆盖需求分析、剧情及镜头方案、人物/场景/必要道具图片、镜头图片、图生视频和失败处理；依赖阶段等待成功归档版本，每个媒体批次仍需用户批准。人物/场景/道具沿用普通 IMAGE 类型，未恢复旧规划模型。新 Run 系统规则版本 5 将冻结卡片指令作为创作 SystemMessage；历史版本 1–4 保留原规则及消息角色，服务端工具与审批约束继续强制执行。
-- [x] 视频卡片展示首帧/尾帧/参考图缩略图、角色及精确版本，可打开归档原图。结果取 frozenInput.images，草稿取当前 mediaInputs；更新草稿不替换旧视频来源。缺失预览保持不可用状态，读取失败可重试。
+- [x] 初版视频卡片展示首帧/尾帧/参考图缩略图、角色及精确版本，可打开归档原图；已由下方“媒体引用连线与卡片展示收敛”修订移除卡片底部展示。结果取 frozenInput.images，草稿取当前 mediaInputs；更新草稿不替换旧视频来源。缺失预览保持不可用状态，读取失败可重试。
 - [x] 真实 PostgreSQL + 合成模型 + 明确标注 Mock 媒体验证完整图片 → 下一批准视频 → 视频归档 → 原 Run 结束，并检查结果 frozenInput 固定首帧图片版本。先复现 Mock 视频时长解析拒绝 schema 5，再修复为接受混合参考版本 5，继续拒绝未知版本及非整数/超范围时长；覆盖此前生成状态修复中未完成的 Mock 视频验证。
 - [x] 后端 9 个测试类 35 项去重定向测试通过：默认配置 3、初始模型上下文 7、工具策略 3、Agent 1、媒体审批 11、视频时长 2、Run 并发 1、Skill Run 6、Prompt 注入 1；包含真实 PostgreSQL 权限、CSRF、CAS、创建重放、冻结配置、媒体续接及历史策略验证。命令分别为 `./mvnw -q -Dtest=AgentDefaultsPostgresIT,InitialModelContextServiceTest,RunToolPolicyTest,AgentPostgresIT test`、`./mvnw -q -Dtest=AgentMediaApprovalPostgresIT,AgentRunPostgresIT,VideoDurationTest test`（旧版本断言修正后 Run 单列重跑）、`./mvnw -q -Dtest=AgentRunPostgresIT,SkillRunPostgresIT,PromptInjectionPostgresIT test`。
 - [x] 前端 7 个文件 162 项定向 Vitest 测试通过：ProjectWorkspacePage、CanvasPaneMenu、AgentChatCard、MediaCanvasCard、VideoImageReferences、SystemSettingsPage、AgentDefaultPromptSection。覆盖直接创建及两阶段显式重试、设置分类/草稿/CAS/401/403/失败、精确旧图片预览与错误重试；TypeScript、完整 lint（四语言/主题/ESLint）、Vite 生产构建通过。构建仍有既有大 chunk 提示。
@@ -1350,3 +1350,13 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 后端 3 类 28 项定向测试通过（DebugHttpCaptureTest 12、LlmDebugCaptureStreamingTest 10、LlmStreamLogCollectorTest 6）。真实 Spring AI SDK 对合成本机 HTTP 验证普通/流式调用：日志发送前已使用占位符，网络收到完整图片及凭据，输出不改变；SSE 中图片字节同样替换，其他字段继续保留。
 - [x] 同步 AGENTS、ADR 0020、规格、流式设计、OpenAPI 描述与生成 TypeScript，以及四语言 debug 说明。前端 SystemSettingsPage 和 CallDebugDetails 共 14 项定向测试、TypeScript、完整 lint 及差异空白检查通过。
 - [ ] 旧日志不回写或清理；无数据库迁移。未运行全量测试、生产构建、浏览器端到端或真实 Provider，未部署。
+
+
+### 2026-10-03 媒体引用连线与卡片展示收敛
+
+- [x] 删除视频卡片底部引用缩略图区、预览缩高样式、独立版本查询组件和对应四语言文案；媒体编辑栏继续展示当前草稿引用，结果 frozenInput 保持不可变输入审计。
+- [x] Agent 媒体提案使用持久 MEDIA_INPUT 连线，复用手动连线的鉴权、精确版本、环路拒绝、CAS、项目事件和删除规则；保留输入角色与顺序，提案只保留连线来源。匹配版本的来源卡片直接复用，无匹配时放置独立来源卡片，不修改已有卡片选择或资源默认版本。连接完成后再冻结审批草稿版本；创建节点、草稿、连线与审批保持同事务。
+- [x] 后端定向单元测试 18 项、AgentMediaApprovalPostgresIT 12 项、CanvasMediaContextPostgresIT 1 项通过。真实 PostgreSQL + 合成模型 + Mock 媒体覆盖来源卡片复用/补建、引用只有连线来源、图片至视频完整续接、断线清空草稿引用、旧审批拒绝、生成结果冻结输入不变和普通手动来源行为回归。
+- [x] 前端四个文件合计 149 项定向 Vitest 测试通过，覆盖卡片草稿/结果均无底部引用区、编辑栏引用和连线删除。首次新增测试等待了不存在的提示词展示，修正为等待查询完成；并发构建时另一既有交互测试出现 5 秒超时，单独重跑 MediaCanvasCard 的 75 项全部通过。TypeScript、完整 lint（主题/四语言/ESLint）、Vite 构建与差异空白检查通过；构建保留既有大于 500 kB 的分块提示。当前差异凭据/隐私格式扫描无候选，没有新增实际截图、日志或用户媒体。
+- [x] 同步 MVP、ADR 0028 与 ADR 0029 设计修订。无 API 字段、数据库迁移、jOOQ 或依赖版本变更；前后端需一起更新才能看到 Agent 新提案连线。旧提案和旧结果不会自动补建连线或重新提交生成。
+- [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 调用与部署未运行。

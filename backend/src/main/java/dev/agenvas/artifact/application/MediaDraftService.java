@@ -333,6 +333,14 @@ public class MediaDraftService {
     /** Adds one connection source without duplicating an already selected exact version. */
     public MediaDraft addConnectionInputWithinChange(UUID ownerId, UUID projectId,
             UUID canvasItemId, long expectedVersion, UUID imageVersionId, UUID connectionId) {
+        return addConnectionInputWithinChange(ownerId, projectId, canvasItemId,
+                expectedVersion, imageVersionId, connectionId, false);
+    }
+
+    /** Proposal inputs become connection-only so deleting the line also removes the reference. */
+    public MediaDraft addConnectionInputWithinChange(UUID ownerId, UUID projectId,
+            UUID canvasItemId, long expectedVersion, UUID imageVersionId, UUID connectionId,
+            boolean replaceManualSource) {
         Artifact.Kind kind = requireMediaCanvas(ownerId, projectId, canvasItemId).kind();
         ArtifactRepository.VersionTarget target = artifacts
                 .findVersionTarget(projectId, imageVersionId)
@@ -352,7 +360,9 @@ public class MediaDraftService {
                 .findFirst().orElse(-1);
         if (existingIndex >= 0) {
             MediaDraft.MediaInput existing = inputs.get(existingIndex);
-            List<MediaDraft.InputSource> sources = new ArrayList<>(existing.sources());
+            List<MediaDraft.InputSource> sources = new ArrayList<>(existing.sources().stream()
+                    .filter(source -> !replaceManualSource || source.type() != MediaDraft.SourceType.MANUAL)
+                    .toList());
             sources.add(new MediaDraft.InputSource(UUID.randomUUID(),
                     MediaDraft.SourceType.CONNECTION, connectionId));
             inputs.set(existingIndex, new MediaDraft.MediaInput(existing.versionId(),
