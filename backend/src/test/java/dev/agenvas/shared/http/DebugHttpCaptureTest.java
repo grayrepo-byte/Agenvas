@@ -32,15 +32,15 @@ class DebugHttpCaptureTest {
             DebugHttpCapture.registerSecret("synthetic-sse-auth");
             int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
             String events = "event: message\r\ndata: {\"choices\":[{\"delta\":{\"reasoning_content\":\"full model field\"}}],\r\n"
-                    + "data: \"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
+                    + "data: \"image\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\",\"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
                     + "data: [DONE]\n\n";
             try (var stream = DebugHttpCapture.responseStream(index, 200, "text/event-stream",
                     new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
                 assertThat(new String(stream.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(events);
             }
         }
-        assertThat(saved.get().getFirst().responseBody().content()).contains("event: message", "full model field", "[DONE]", "REDACTED")
-                .doesNotContain("synthetic-sse-auth", "synthetic-other-auth");
+        assertThat(saved.get().getFirst().responseBody().content()).contains("event: message", "full model field", "[DONE]", "REDACTED", "[image bytes omitted]")
+                .doesNotContain("synthetic-sse-auth", "synthetic-other-auth", "c3ludGhldGljLWltYWdl");
         assertThat(saved.get().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
     }
 
@@ -83,11 +83,11 @@ class DebugHttpCaptureTest {
         } finally { server.stop(0); }
     }
 
-    @Test void llmDebugKeepsActualImageRequestContent() {
+    @Test void llmDebugReplacesImageBytesButKeepsModelContent() {
         try (var capture = DebugHttpCapture.openLlm(ignored -> {})) {
-            String body = capture.sanitizeJson("{\"messages\":[{\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\"}}]}]}");
-            assertThat(body).contains("data:image/png;base64,c3ludGhldGljLWltYWdl")
-                    .doesNotContain("[image bytes omitted]");
+            String body = capture.sanitizeJson("{\"reasoning_content\":\"Actual model field\",\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"Synthetic prompt\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\",\"detail\":\"low\"}}]}]}");
+            assertThat(body).contains("[image bytes omitted]", "Synthetic prompt", "Actual model field", "image_url", "low")
+                    .doesNotContain("c3ludGhldGljLWltYWdl", "data:image/png;base64");
         }
     }
 

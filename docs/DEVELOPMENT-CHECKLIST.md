@@ -1340,3 +1340,11 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 后端 16 类共 94 项去重定向测试通过，包含真实 PostgreSQL、合成模型及明确标注 Mock 媒体。首次运行 93 项成功、媒体续接夹具一项失败；调整夹具后单独重跑 AgentMediaApprovalPostgresIT 全部 11 项通过。其他 83 项不重复执行。覆盖 PromptManagement、DirectTextGeneration、AgentImageInputs、AgentRun、SkillRun、AgentMediaApproval，以及 InitialModelContext、RunToolPolicy、AgentImageInput、ReadToolService、DebugHttpCapture、LlmStreamLogCollector、LlmDebugCaptureStreaming、CallLogService、CallLogStreamService、VideoDuration。
 - [x] 差异空白检查通过，新增内容凭据/私有路径扫描仅命中明确不可用的合成测试字符串，经逐项复核；无新增真实调用记录或截图。
 - [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 和部署未运行；只合并本地 Git，不更新用户应用数据库或运行服务。
+
+
+### 2026-10-03 LLM debug 图片字节占位符澄清
+
+- [x] 用户明确无需记录图片字节，替代上一合并复验中的图片正文保留决定。普通及流式 LLM debug 在采集保存前将图片 data URI 替换为 `[image bytes omitted]`，保留消息结构、图片字段与参数，以及其余实际文本、推理字段和工具调用；凭据隐藏及 HTTP header 不采集保持。
+- [x] 后端 3 类 28 项定向测试通过（DebugHttpCaptureTest 12、LlmDebugCaptureStreamingTest 10、LlmStreamLogCollectorTest 6）。真实 Spring AI SDK 对合成本机 HTTP 验证普通/流式调用：日志发送前已使用占位符，网络收到完整图片及凭据，输出不改变；SSE 中图片字节同样替换，其他字段继续保留。
+- [x] 同步 AGENTS、ADR 0020、规格、流式设计、OpenAPI 描述与生成 TypeScript，以及四语言 debug 说明。前端 SystemSettingsPage 和 CallDebugDetails 共 14 项定向测试、TypeScript、完整 lint 及差异空白检查通过。
+- [ ] 旧日志不回写或清理；无数据库迁移。未运行全量测试、生产构建、浏览器端到端或真实 Provider，未部署。

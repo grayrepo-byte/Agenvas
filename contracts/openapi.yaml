@@ -882,7 +882,7 @@ paths:
     get:
       operationId: getCallDebug
       summary: 查看本人项目的 debug 调用详情
-      description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文隐藏认证凭据。LLM 保留实际请求与响应内容及推理字段，实际 SSE 正文单独保存于 exchanges，媒体调用继续移除私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（JSON 隐藏凭据后序列化），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+      description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文隐藏认证凭据。LLM 保留实际请求与响应内容及推理字段，实际 SSE 正文单独保存于 exchanges，媒体调用继续移除私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（JSON 隐藏凭据后序列化，图片 data URI 字节替换为 [image bytes omitted] 占位符，其余实际 LLM 内容保留），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
       tags: [Audit]
       parameters:
         - name: id

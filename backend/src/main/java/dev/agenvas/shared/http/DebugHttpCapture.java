@@ -36,6 +36,7 @@ public final class DebugHttpCapture implements AutoCloseable {
     private static final int NO_EXCHANGE = -1;
     public static final int MAX_BODY_BYTES = 64 * 1024 * 1024;
     private static final String REDACTED = "[REDACTED]";
+    private static final String IMAGE_BYTES_OMITTED = "[image bytes omitted]";
     private static final String SSE_DATA_PREFIX = "data:";
     private static final String SSE_DONE = "[DONE]";
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -139,8 +140,9 @@ public final class DebugHttpCapture implements AutoCloseable {
         for (String secret : secrets.stream().sorted((left, right) -> Integer.compare(right.length(), left.length())).toList()) {
             value = value.replace(secret, REDACTED);
         }
+        // Image payloads swamp readable logs; replace them in every capture scope, including LLM debug.
+        value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", IMAGE_BYTES_OMITTED);
         if (!preserveModelContent) {
-            value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", "[image bytes omitted]");
             value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED);
         }
         return value.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer " + REDACTED)

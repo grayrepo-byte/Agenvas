@@ -54,6 +54,45 @@ class LlmDebugCaptureStreamingTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
+    void blockingVisionDebugUsesPlaceholderWithoutChangingTheActualRequest() throws Exception {
+        assertVisionRequestUsesPlaceholder(false);
+    }
+
+    @Test
+    void streamingVisionDebugUsesPlaceholderWithoutChangingTheActualRequest() throws Exception {
+        assertVisionRequestUsesPlaceholder(true);
+    }
+
+    private void assertVisionRequestUsesPlaceholder(boolean streaming) throws Exception {
+        byte[] image = "synthetic-image".getBytes(StandardCharsets.UTF_8);
+        String encoded = java.util.Base64.getEncoder().encodeToString(image);
+        CaptureLog saved = new CaptureLog();
+        try (LocalServer server = new LocalServer(ignored -> saved.current())) {
+            var gateway = gateway(server);
+            var message = UserMessage.builder().text("Inspect synthetic image")
+                    .media(new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
+                            new org.springframework.core.io.ByteArrayResource(image))).build();
+            try (var scope = DebugHttpCapture.openLlm(saved::accept)) {
+                var result = streaming
+                        ? gateway.callStreaming(List.of(message), List.of(), Map.of(), gateway.configIdentity(), ignored -> {})
+                        : gateway.call(List.of(message), List.of(), Map.of(), gateway.configIdentity());
+                assertThat(result.response().getResult().getOutput().getText()).isEqualTo("ok");
+            }
+            Received received = server.received().getFirst();
+            assertThat(received.body()).contains("data:image/png;base64," + encoded, "Inspect synthetic image");
+            assertThat(received.authorization()).isEqualTo("Bearer " + API_KEY);
+            assertThat(received.checkpoint().getFirst().requestBody().content())
+                    .contains("Inspect synthetic image", "image_url", "[image bytes omitted]")
+                    .doesNotContain(encoded, API_KEY);
+            assertThat(saved.current().getFirst().requestBody().content()).doesNotContain(encoded);
+            assertThat(saved.current().getFirst().responseBody().content()).contains("ok");
+            if (streaming) {
+                assertThat(saved.current().getFirst().responseBody().content()).contains("private stream reasoning", "[DONE]");
+            }
+        }
+    }
+
+    @Test
     void capturesRequestForBlockingCallBeforeItReachesTheServer() throws Exception {
         CaptureLog saved = new CaptureLog();
         try (LocalServer server = new LocalServer(ignored -> saved.current())) {
