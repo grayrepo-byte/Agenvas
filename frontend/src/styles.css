@@ -114,6 +114,7 @@ button:disabled {
 
 .workspace-shell {
   isolation: isolate; /* Keep React Flow toolbars below body-portaled UI primitives. */
+  --workspace-header-height: 2.75rem;
   --canvas: #141414;
   --panel: #202020;
   --ink: #f4f4f5;
@@ -141,14 +142,44 @@ button:disabled {
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
-  padding: 0.75rem 1.25rem;
-  backdrop-filter: blur(16px);
+  min-height: var(--workspace-header-height);
+  gap: 0.75rem;
+  padding: 0.375rem 0.75rem;
+}
+
+.workspace-header-identity,
+.workspace-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.workspace-header-identity { min-width: 0; }
+.workspace-header-actions { flex-shrink: 0; }
+.workspace-header-identity > a { flex-shrink: 0; }
+.workspace-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.workspace-sync-status {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 600px) {
+  .workspace-header { flex-wrap: wrap; gap: 0.25rem 0.5rem; }
+  .workspace-header-identity { flex: 1; }
+  .workspace-header-actions { flex-wrap: wrap; }
 }
 
 .workspace-drawer {
   position: absolute;
   z-index: 20;
-  top: 5rem;
+  top: calc(var(--workspace-header-height) + 0.75rem);
   right: 1rem;
   bottom: 1rem;
   width: min(24rem, calc(100vw - 2rem));

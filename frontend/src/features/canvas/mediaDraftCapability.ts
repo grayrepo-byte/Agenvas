@@ -56,6 +56,12 @@ export function preferredImageVideoMode(capability?: MediaCapability): VideoInpu
   return "GENERAL_REFERENCE";
 }
 
+/** Empty drafts prefer text only when the selected capability actually supports it. */
+export function preferredVideoMode(capability: MediaCapability | undefined, hasInputs: boolean): VideoInputMode {
+  if (!hasInputs && (!capability || capability.supportedVideoInputModes.includes("TEXT"))) return "TEXT";
+  return preferredImageVideoMode(capability);
+}
+
 export function inputsForVideoMode(inputs: DraftFields["mediaInputs"], mode: VideoInputMode) {
   if (mode === "GENERAL_REFERENCE") {
     return inputs.map((input) => ({ ...input, role: input.role === "AUDIO_REFERENCE" || input.role === "VIDEO_REFERENCE" ? input.role : "REFERENCE" as const }));
@@ -100,7 +106,8 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
       parameters: nextDefinition ? { dynamicValues: compatible } : {},
       mediaInputs: retained, ...promptForMediaInputs(fields, retained),
       durationSeconds: nextDefinition?.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
-      ...(kind === "VIDEO" ? { videoInputMode: retained.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) }, confirmation };
+      ...(kind === "VIDEO" ? { videoInputMode: nextDefinition
+        ? retained.length ? "GENERAL_REFERENCE" : "TEXT" : preferredVideoMode(next, false) } : {}) }, confirmation };
   }
   if (kind === "IMAGE") {
     const parameters = normalizedImageParameters(fields.parameters, next);
@@ -111,10 +118,9 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
   }
   if (kind !== "VIDEO") return { fields: { capabilityId }, confirmation: null };
 
-  const videoInputMode = fields.mediaInputs.length > 0
-    && (!fields.videoInputMode || fields.videoInputMode === "TEXT"
-      || !next?.supportedVideoInputModes.includes(fields.videoInputMode))
-    ? preferredImageVideoMode(next) : fields.videoInputMode;
+  const videoInputMode = !fields.videoInputMode || !next?.supportedVideoInputModes.includes(fields.videoInputMode)
+    || fields.mediaInputs.length > 0 && fields.videoInputMode === "TEXT"
+    ? preferredVideoMode(next, fields.mediaInputs.length > 0) : fields.videoInputMode;
   const mediaInputs = videoInputMode ? inputsForVideoMode(fields.mediaInputs, videoInputMode) : fields.mediaInputs;
   const parameters = normalizedVideoParameters(fields.parameters, next);
   const previousResolution = fields.parameters.videoResolution;

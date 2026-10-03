@@ -239,3 +239,7 @@
   .media-draft-reference-remove { transition: none; }
   .media-draft-popover, .media-draft-reference-chip { animation: none; }
 }
+
+.media-draft-submit-tip { width: min(360px, calc(100vw - var(--ui-space-8))); max-height: 60dvh; overflow-y: auto; border-radius: var(--ui-radius-lg); box-shadow: var(--ui-menu-shadow); }
+.media-draft-submit-tip-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-2); width: 100%; }
+.media-draft-submit-tip ul { margin-top: var(--ui-space-2); padding-left: var(--ui-space-4); list-style: disc; }

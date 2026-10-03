@@ -856,7 +856,7 @@ try {
       .some((node) => node.querySelector("h3")?.textContent === "M1 scene"
         && node.textContent.includes("Offline revision four")
         && node.textContent.includes("v4")), "fresh snapshot after expired cursor", 20000);
-    await waitFor(() => document.body.textContent.includes("实时同步"),
+    await waitFor(() => document.querySelector(".workspace-header")?.dataset.syncState === "live",
       "live SSE after snapshot recovery", 20000);
     await reviseFromOutsideReact("Post-recovery revision five");
     await waitFor(() => [...document.querySelectorAll(".react-flow__node")]

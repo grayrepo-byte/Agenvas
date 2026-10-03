@@ -1,3 +1,4 @@
+import { Popover as PopoverPrimitive } from "radix-ui";
 import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
 import { FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
 import { Switch } from "../../shared/ui/primitives/switch";
@@ -35,6 +36,7 @@ import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { isAudioFile, isVideoFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { OptionContent } from "../../shared/ui/OptionContent";
+import { Alert,AlertDescription } from "../../shared/ui/primitives/alert";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
@@ -56,7 +58,7 @@ import { taskErrorDetail } from "./taskErrorMessages";
 import { VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
   GENERATION_COUNT_OPTIONS, normalizedImageParameters, normalizedVideoParameters,
-  preferredImageVideoMode, inputsForVideoMode, planMediaCapabilityChange,
+  preferredImageVideoMode, preferredVideoMode, inputsForVideoMode, planMediaCapabilityChange,
   type MediaDraftFields as DraftFields } from "./mediaDraftCapability";
 import { PromptMentionEditor, type PromptReference } from "./PromptMentionEditor";
 import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
@@ -227,8 +229,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const [templateBusy, setTemplateBusy] = useState(false);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [referenceSourcesOpen, setReferenceSourcesOpen] = useState(false);
+  const referenceSourcesHoverOpened = useRef(false);
+  const [submissionTipOpen, setSubmissionTipOpen] = useState(false);
   const referenceSourcesCloseTimer = useRef<number | null>(null);
-  const suppressReferenceSourceFocusOpen = useRef(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const focusModelMenu = useCallback((element: HTMLDivElement | null) => {
     popoverRef.current = element;
@@ -278,9 +281,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     if (!referenceSourcesOpen || popover) return;
     function closeAndRestoreFocus() {
       setReferenceSourcesOpen(false);
-      suppressReferenceSourceFocusOpen.current = true;
       triggerRef.current?.focus();
-      suppressReferenceSourceFocusOpen.current = false;
     }
     function onPointerDown(event: PointerEvent) {
       if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
@@ -321,9 +322,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         event.stopPropagation();
         if (popover === "libraryReferences" && libraryBusy) return;
         setPopover(null);
-        suppressReferenceSourceFocusOpen.current = true;
         triggerRef.current?.focus();
-        suppressReferenceSourceFocusOpen.current = false;
       }
     }
     document.addEventListener("pointerdown", onPointerDown);
@@ -371,9 +370,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       setAssetSelectionError(null);
       setPopover(null);
       queryClient.setQueryData(key, saved);
-      suppressReferenceSourceFocusOpen.current = true;
       triggerRef.current?.focus();
-      suppressReferenceSourceFocusOpen.current = false;
     },
     onError: async (failure) => {
       setAssetSelection([]);
@@ -411,6 +408,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         next = { ...latest,
           mediaInputs: latest.mediaInputs.filter((input) => input.versionId !== context.versionId),
           ...removePromptReferences(latest.prompt, latest.mentions, context.versionId) };
+      }
+      if (artifact.kind === "VIDEO" && !runningHub && next.mediaInputs.length === 0
+          && context?.fieldsAtStart?.mediaInputs.length && next.videoInputMode === "TEXT"
+          && chosenCapability && !chosenCapability.supportedVideoInputModes.includes("TEXT")) {
+        next = { ...next, videoInputMode: preferredVideoMode(chosenCapability, false) };
+        changedWhileRemoving = true;
       }
       fieldsRef.current = next;
       setFields(next);
@@ -513,25 +516,27 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     removeConnectedInput.isPending, libraryBusy, templateBusy, popover, error]);
 
   useEffect(() => {
-    if (runningHub || artifact.kind !== "VIDEO" || !fields || !chosenCapability || dirty || save.isPending
+    if (!fields || !chosenCapability || dirty || save.isPending || error || run.isPending || runIntent.current
         || commitAssetReferences.isPending || removeConnectedInput.isPending || templateBusy) return;
-    const hasInputs = fields.mediaInputs.length > 0;
-    // Missing media makes a draft incomplete; it must not overwrite an explicitly chosen mode.
-    // Defaults apply only to an unset mode, or when inputs are added to text-to-video.
-    const desiredMode = hasInputs
-      ? fields.videoInputMode === null || fields.videoInputMode === "TEXT"
-        ? preferredImageVideoMode(chosenCapability) : fields.videoInputMode
-      : fields.videoInputMode ?? "TEXT";
-    const parameters = normalizedVideoParameters(fields.parameters, chosenCapability);
-    if (fields.videoInputMode !== desiredMode
-        || JSON.stringify(fields.parameters) !== JSON.stringify(parameters)) {
-      edit({ videoInputMode: desiredMode,
-        mediaInputs: inputsForVideoMode(fields.mediaInputs, desiredMode), parameters });
+    const changes: Partial<DraftFields> = {};
+    if (!runningHub && artifact.kind === "VIDEO") {
+      const hasInputs = fields.mediaInputs.length > 0;
+      const useDefault = fields.videoInputMode === null || fields.videoInputMode === "TEXT"
+        && (hasInputs || !chosenCapability.supportedVideoInputModes.includes("TEXT"));
+      const desiredMode = useDefault ? preferredVideoMode(chosenCapability, hasInputs) : fields.videoInputMode;
+      const parameters = normalizedVideoParameters(fields.parameters, chosenCapability);
+      if (desiredMode && fields.videoInputMode !== desiredMode) {
+        changes.videoInputMode = desiredMode;
+        changes.mediaInputs = inputsForVideoMode(fields.mediaInputs, desiredMode);
+      }
+      if (JSON.stringify(fields.parameters) !== JSON.stringify(parameters)) changes.parameters = parameters;
     }
+    if (Object.keys(changes).length > 0) edit(changes);
   }, [artifact.kind, chosenCapability, runningHub, commitAssetReferences.isPending, dirty, fields,
-    removeConnectedInput.isPending, save.isPending, templateBusy]);
+    removeConnectedInput.isPending, save.isPending, templateBusy, error, run.isPending]);
 
   function edit(changes: Partial<DraftFields>) {
+    setSubmissionTipOpen(false);
     runIntent.current = null;
     if (!run.isPending) run.reset();
     setFields((current) => {
@@ -585,9 +590,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     setPopover((current) => current === next ? null : next);
   }
 
-  function chooseCapability(capabilityId: string | null) {
+  function chooseCapability(capabilityId: string) {
     if (!fields) return;
-    const resolvedCapabilityId = capabilityId ?? defaultCapabilityId ?? undefined;
+    const resolvedCapabilityId = capabilityId;
     const next = availableCapabilities.find((candidate) => candidate.id === resolvedCapabilityId);
     const change = planMediaCapabilityChange({ kind: artifact.kind, fields, capabilityId,
       resolvedCapabilityId, previous: chosenCapability, next });
@@ -683,12 +688,30 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const supportsStyle = !isAudio && (!runningHub || runningHub.fields.some((field) => field.source === "PROMPT"));
   const selectedStyle = styles.data?.find((style) => style.id === fields.styleId);
   const styleAvailable = !fields.styleId || supportsStyle && styles.isSuccess && Boolean(selectedStyle?.enabled);
-  const canRun = !dirty && !save.isPending && !commitAssetReferences.isPending
-    && !error && !run.isPending && !templateBusy
+  const historyPending = resources.isPending || imageHistories.some((history) => history.isPending);
+  const validationMessages: string[] = [];
+  if (runningHub) {
+    validationMessages.push(...dynamicErrors);
+    if (fields.mediaInputs.length > INPUT_COLORS.length || fields.mediaInputs.some((input) => !dynamicUsedVersions.has(input.versionId))) validationMessages.push(t("media.editor.unassignedSlots"));
+  } else {
+    if (!fields.prompt.trim()) validationMessages.push(t("media.editor.promptRequired"));
+    if (artifact.kind === "IMAGE" && !semanticInputsValid) validationMessages.push(t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity }));
+    if (!imageParametersSupported) validationMessages.push(t("media.editor.imageParametersUnsupported"));
+    if (artifact.kind === "VIDEO" && !videoModeSupported) validationMessages.push(t("media.editor.unsupportedModeHint", { "0": VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label }));
+    if (autodlWorkflow && !autodlInputsValid) validationMessages.push(t("media.editor.workflowLimitsHint", { "0": autodlWorkflow.minimumImages, "1": autodlWorkflow.minimumAudios, "2": autodlWorkflow.mode === "START_END" ? t("media.editor.startEndRequiredHint") : "", "3": autodlWorkflow.promptLimit }));
+    if (!autodlTierValid) validationMessages.push(t("media.editor.unsupportedResolution"));
+    if (autodlWorkflow && !autodlRatioValid) validationMessages.push(t("media.editor.workflowAspectRatioUnsupported"));
+    if (isAudio && !semanticInputsValid) validationMessages.push(t("media.editor.audioInputLimitsHint"));
+    if (artifact.kind === "VIDEO" && !validDuration) validationMessages.push(t("media.editor.durationValidation"));
+    if (artifact.kind === "VIDEO" && !semanticInputsValid) validationMessages.push(t("media.editor.invalidVideoInputs"));
+  }
+  if (fields.mediaInputs.length > 0 && !historyPending && (!resources.isSuccess || !allInputsAvailable)) validationMessages.push(t("media.editor.fixedVersionUnavailable"));
+  // Draft validation is shown on submit; operational locks still disable the button.
+  const canSubmit = !dirty && !save.isPending && !commitAssetReferences.isPending
+    && !removeConnectedInput.isPending && !libraryBusy
+    && !error && !run.isPending && !templateBusy && !uploading
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
-    && !occupied && styleAvailable && (runningHub ? dynamicErrors.length === 0 && fields.mediaInputs.length <= INPUT_COLORS.length && fields.mediaInputs.every((input) => dynamicUsedVersions.has(input.versionId)) && allInputsAvailable
-      : fields.prompt.trim().length > 0 && semanticInputsValid && autodlInputsValid && autodlRatioValid && autodlTierValid && allInputsAvailable && imageParametersSupported && videoModeSupported
-        && (artifact.kind !== "VIDEO" || validDuration));
+    && !occupied && styleAvailable && !historyPending;
   const dimensionLabel = artifact.kind === "IMAGE"
     ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
     : `${ASPECT_RATIO_LABELS[videoParameters.aspectRatio]}${autodlWorkflow ? ` · ${autodlTier}` : ""}`;
@@ -697,7 +720,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ? QUALITY_LABELS[imageParameters.quality] : t("media.editor.modelDefault")
     : chosenCapability?.settings.quality ? t("media.editor.qualityLabel", { "0": QUALITY_LABELS[chosenCapability.settings.quality] }) : t("media.editor.defaultQuality");
   const historyError = imageHistories.find((history) => history.error)?.error;
-  const historyPending = resources.isPending || imageHistories.some((history) => history.isPending);
   const normalizedAssetSearch = assetSearch.trim().toLocaleLowerCase();
   const filteredImageChoices = normalizedAssetSearch
     ? imageChoices.filter((choice) => choice.label.toLocaleLowerCase().includes(normalizedAssetSearch))
@@ -893,7 +915,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     }
     const nextPrompt = removePromptReferences(currentFields.prompt, currentFields.mentions, versionId);
     const remaining = currentFields.mediaInputs.filter((input) => input.versionId !== versionId);
-    const nextMode = artifact.kind === "VIDEO" && remaining.length === 0 ? "TEXT" : effectiveMode;
+    const nextMode = artifact.kind === "VIDEO" && remaining.length === 0 ? preferredVideoMode(chosenCapability, false) : effectiveMode;
     edit({ mediaInputs: remaining,
       ...(artifact.kind === "VIDEO" ? { videoInputMode: nextMode } : {}), ...nextPrompt });
   }
@@ -986,6 +1008,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           if (popover) return;
           if (event.currentTarget.querySelector("button")?.hasAttribute("disabled")) return;
           triggerRef.current = event.currentTarget.querySelector("button");
+          if (!referenceSourcesOpen) referenceSourcesHoverOpened.current = true;
           setReferenceSourcesOpen(true);
         }}
         onPointerLeave={() => {
@@ -1006,17 +1029,21 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           aria-controls={`${id}-reference-sources`}
           onFocus={(event) => {
             triggerRef.current = event.currentTarget;
-            if (suppressReferenceSourceFocusOpen.current) return;
-            setReferenceSourcesOpen(true);
           }}
           onKeyDown={(event) => { if (event.key === "Escape") setReferenceSourcesOpen(false); }}
+          onPointerDown={(event) => event.preventDefault()}
           onClick={(event) => {
             triggerRef.current = event.currentTarget;
-            setReferenceSourcesOpen(true);
+            setReferenceSourcesOpen(!referenceSourcesOpen || referenceSourcesHoverOpened.current);
+            referenceSourcesHoverOpened.current = false;
           }}>
           <Plus size={20} />
         </Button></DropdownMenuTrigger>
-        {referenceSourcesOpen && !popover ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-reference-sources"
+        {referenceSourcesOpen && !popover ? <DropdownMenuContent onCloseAutoFocus={(event) => event.preventDefault()}
+          // The trigger handles its own click toggle; dismissing on its pointerdown would reopen on click.
+          onPointerDownOutside={(event) => {
+            if (event.detail.originalEvent.target instanceof Node && triggerRef.current?.contains(event.detail.originalEvent.target)) event.preventDefault();
+          }} aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-reference-sources"
           onPointerEnter={() => {
             if (referenceSourcesCloseTimer.current !== null) window.clearTimeout(referenceSourcesCloseTimer.current);
             referenceSourcesCloseTimer.current = null;
@@ -1204,15 +1231,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         {popover === "models" ? <DropdownMenuContent aria-labelledby={undefined} side="top" align="start" onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-models p-3" ref={focusModelMenu}
           id={`${id}-models`} role="menu" aria-label={t("media.editor.model")}><DropdownMenuGroup>
           <p className="media-draft-popover-title">{artifact.kind === "IMAGE" ? t("media.editor.imageModel") : isAudio ? t("media.editor.audioModel") : t("media.editor.videoModel")}</p>
-          <DropdownMenuItem variant="rich" className="media-draft-model-option" role="menuitemradio" aria-checked={!fields.capabilityId} onSelect={(event) => { event.preventDefault(); chooseCapability(null); }}>
-            <OptionContent icon={<Cube />} title={t("media.editor.projectDefaultCapability")}
-              description={defaultCapabilityId ? t("media.editor.followDefaultModel") : t("media.editor.defaultModelMissing")} />
-            {!fields.capabilityId ? <Check size={16} /> : null}
-          </DropdownMenuItem>
-          {availableCapabilities.map((capability) => <DropdownMenuItem variant="rich" className="media-draft-model-option" role="menuitemradio" aria-checked={fields.capabilityId === capability.id} key={capability.id} onSelect={(event) => { event.preventDefault(); chooseCapability(capability.id); }}>
+          {availableCapabilities.map((capability) => <DropdownMenuItem variant="rich" className="media-draft-model-option" role="menuitemradio" aria-checked={chosenCapability?.id === capability.id} key={capability.id} onSelect={(event) => { event.preventDefault(); chooseCapability(capability.id); }}>
             <OptionContent {...mediaModelDetails(capability, capability.connectionName)} title={capability.name}
               note={capability.mock ? t("media.editor.mock") : undefined} />
-            {fields.capabilityId === capability.id ? <Check size={16} /> : null}
+            {chosenCapability?.id === capability.id ? <Check size={16} /> : null}
           </DropdownMenuItem>)}
           {settings.isPending ? <p role="status">{t("media.editor.availableModelsLoading")}</p> : null}
           {settings.error ? <div role="alert">{t("media.editor.modelsFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("media.editor.retryModels")}</Button></div> : null}
@@ -1319,9 +1341,24 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         }} onClose={() => setPopover(null)} /> : null}
       </div> : null}
       <span className="media-draft-cost" title={t("media.editor.estimateHint")}><Coins size={16} /><span>{estimatedMediaCost(chosenCapability, runningHub ? 1 : imageParameters.generationCount, isAudio && !runningHub ? 120 : duration, autodlTier)}</span></span>
-      <Button variant="ghost" className="media-draft-run" type="button" disabled={!canRun}
-        aria-label={run.isPending ? t("media.editor.submittingRun") : t("media.editor.run")} title={occupied ? t("media.editor.activeTaskHint") : t("media.editor.run")}
-        onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>
+      <PopoverPrimitive.Root open={submissionTipOpen} onOpenChange={setSubmissionTipOpen}>
+        <PopoverPrimitive.Anchor asChild><Button variant="ghost" className="media-draft-run" type="button" disabled={!canSubmit}
+          aria-label={run.isPending ? t("media.editor.submittingRun") : t("media.editor.run")}
+          title={occupied ? t("media.editor.activeTaskHint") : t("media.editor.run")}
+          onClick={() => {
+            if (!canSubmit) return;
+            if (validationMessages.length > 0) { setSubmissionTipOpen(true); return; }
+            setSubmissionTipOpen(false); run.mutate();
+          }}><ArrowUp size={21} weight="bold" /></Button></PopoverPrimitive.Anchor>
+        <PopoverPrimitive.Portal><PopoverPrimitive.Content side="top" align="end" sideOffset={10}
+          className="media-draft-submit-tip z-[var(--ui-z-popup)] nodrag nowheel nopan" aria-label={t("media.editor.checkInputs")}
+          onOpenAutoFocus={(event) => event.preventDefault()} onCloseAutoFocus={(event) => event.preventDefault()}>
+          <Alert role="status"><AlertDescription><div className="media-draft-submit-tip-heading"><strong>{t("media.editor.checkInputs")}</strong>
+            <PopoverPrimitive.Close asChild><Button variant="ghost" size="icon-xs" type="button" aria-label={t("common.close")}><X /></Button></PopoverPrimitive.Close></div>
+            <ul>{validationMessages.map((message) => <li key={message}>{message}</li>)}</ul>
+          </AlertDescription></Alert>
+        </PopoverPrimitive.Content></PopoverPrimitive.Portal>
+      </PopoverPrimitive.Root>
     </div>
     <div className="media-draft-feedback">
       {fields.styleId && !supportsStyle ? <p role="alert">{t("styles.promptRequired")}</p> : null}
@@ -1330,7 +1367,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         onClick={() => void styles.refetch()}>{t("common.retry")}</Button></div> : null}
       {fields.styleId && styles.isSuccess && !selectedStyle?.enabled ? <p role="alert">{t("styles.unavailableHint")}</p> : null}
       {runningHub ? <>
-        {dynamicErrors.map((message) => <p role="status" key={message}>{message}</p>)}
         {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("media.editor.unassignedSlots")}<Button variant="ghost" type="button" disabled={dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("media.editor.removeUnusedReferences")}</Button></p>)}
         {runningHub.retainSeconds ? <p>{t("media.editor.instanceRetentionCostHint", { "0": runningHub.retainSeconds })}</p> : null}
       </> : null}
@@ -1344,19 +1380,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {directTasks.error ? <div role="alert">{t("media.editor.taskStatusFailed", { "0": directTasks.error.message })}<Button variant="ghost" className="media-draft-text-action" type="button" onClick={() => void directTasks.refetch()}>{t("media.editor.retryTaskCheck")}</Button></div> : null}
       {settings.isSuccess && fields.capabilityId && !chosenCapability ? <p role="status">{t("media.editor.modelUnavailableHint")}</p> : null}
       {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <p role="status">{t("media.editor.defaultModelMissingHint")}</p> : null}
-      {!runningHub && artifact.kind === "VIDEO" && chosenCapability && effectiveMode && !videoModeSupported
-        ? <p role="alert">{t("media.editor.unsupportedModeHint", { "0": VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label })}</p> : null}
       {settings.error ? <div role="alert">{t("media.editor.modelSettingsFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("media.editor.retryModels")}</Button></div> : null}
-      {autodlWorkflow && !autodlInputsValid ? <p role="alert">{t("media.editor.workflowLimitsHint", { "0": autodlWorkflow.minimumImages, "1": autodlWorkflow.minimumAudios, "2": autodlWorkflow.mode === "START_END" ? t("media.editor.startEndRequiredHint") : "", "3": autodlWorkflow.promptLimit })}</p> : null}
-      {!autodlTierValid ? <p role="alert">{t("media.editor.unsupportedResolution")}</p> : null}
-      {autodlWorkflow && !autodlRatioValid ? <p role="alert">{t("media.editor.workflowAspectRatioUnsupported")}</p> : null}
-      {!runningHub && isAudio && !semanticInputsValid ? <p role="alert">{t("media.editor.audioInputLimitsHint")}</p> : null}
-      {!runningHub && artifact.kind === "VIDEO" && duration != null && !validDuration ? <p role="alert">{t("media.editor.durationValidation")}</p> : null}
-      {fields.mediaInputs.length > 0 && !historyPending && (!resources.isSuccess || !allInputsAvailable)
-        ? <p role="alert">{t("media.editor.fixedVersionUnavailable")}</p> : null}
       {chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" && videoCount > 0 ? <p className="ui-muted">{t("media.editor.videoRelayHint")}</p> : null}
-      {!runningHub && artifact.kind === "VIDEO" && chosenCapability && !semanticInputsValid
-        ? <p role="alert">{t("media.editor.invalidVideoInputs")}</p> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
         ? <p role="alert">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode) })}</p> : null}
       {latestTask?.status === "READY" ? <div className="media-draft-task-status">

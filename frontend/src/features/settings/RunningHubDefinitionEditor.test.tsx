@@ -26,6 +26,7 @@ function mount() {
     </>;
   }
   render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
+  fireEvent.click(within(screen.getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
 }
 
 function currentDefinition() {
@@ -39,7 +40,7 @@ const scalarInputs = [
 ];
 
 function inputFor(label: string) {
-  const scope = label === "默认值" ? within(screen.getByRole("group", { name: "强度" })) : screen;
+  const scope = label === "默认值" ? within(screen.getByRole("row", { name: "强度" })) : screen;
   return scope.getByRole("textbox", { name: label });
 }
 
@@ -89,5 +90,36 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(getValue(currentDefinition())).toEqual(originalValue);
       expect(input).toHaveProperty("validationMessage", error);
     }
+  });
+});
+
+
+describe("RunningHubDefinitionEditor mapping table", () => {
+  it("edits each row independently and preserves other mappings when one is removed", () => {
+    mount();
+    const table = screen.getByRole("table", { name: "参数绑定" });
+    const strength = within(table).getByRole("row", { name: "强度" });
+    fireEvent.change(within(strength).getByRole("textbox", { name: "节点 ID" }), { target: { value: "42" } });
+    fireEvent.change(within(strength).getByRole("textbox", { name: "节点字段" }), { target: { value: "scale" } });
+    fireEvent.change(within(strength).getByRole("textbox", { name: "显示名称" }), { target: { value: "采样强度" } });
+    expect(currentDefinition().fields[1]).toMatchObject({ nodeId: "42", fieldName: "scale", label: "采样强度", defaultValue: 0 });
+    expect(currentDefinition().fields[0]).toEqual(initialDefinition.fields[0]);
+    fireEvent.click(within(strength).getByRole("button", { name: "移除此候选字段 · 采样强度" }));
+    expect(currentDefinition().fields).toEqual([initialDefinition.fields[0]]);
+    expect(currentDefinition().outputs).toEqual(initialDefinition.outputs);
+    expect(currentDefinition().fixedBindings).toEqual(initialDefinition.fixedBindings);
+  });
+
+  it("expands hidden settings when form validation targets an invalid condition", () => {
+    mount();
+    const input = screen.getByRole("textbox", { name: "条件值（JSON 标量）" });
+    fireEvent.change(input, { target: { value: "invalid" } });
+    fireEvent.blur(input);
+    const row = screen.getByRole("row", { name: "强度" });
+    fireEvent.click(within(row).getByRole("button", { name: "更多设置" }));
+    expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
+    fireEvent.invalid(input);
+    expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
+    expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
   });
 });

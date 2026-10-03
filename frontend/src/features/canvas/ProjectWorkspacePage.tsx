@@ -40,9 +40,6 @@ listCanvasConnections,
 listCanvasItems,
 projectExportManifestUrl,
 updateAgent,
-uploadAudioAsset,
-uploadImageAsset,
-uploadVideoAsset,
 type Agent,
 type AgentRun,
 type Artifact,
@@ -51,7 +48,6 @@ type CanvasCommand,
 type CanvasItem,
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
-import { isAudioFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Input } from "../../shared/ui/primitives/input";
@@ -86,7 +82,7 @@ import { useMediaNodeRatios } from "./useMediaNodeRatios";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "AGENT";
-type DrawerKind = "AGENT" | "UPLOAD" | "ALIGN";
+type DrawerKind = "AGENT" | "ALIGN";
 type CreationPoint = { x: number; y: number };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
 type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
@@ -105,7 +101,6 @@ const MEDIA_FOCUS_DURATION_MS = 360;
 /** Smooth pan/zoom on one path; unlike a zoom flight, it never pulls away from the card first. */
 const mediaFocusEase = (progress: number) => progress * progress * (3 - 2 * progress);
 const MAX_AGENT_TITLE_LENGTH = 120;
-const MAX_MEDIA_TITLE_LENGTH = 160;
 const AUDIO_AGENT_INSTRUCTION = "协助用户创作音频提示词、对白与 MV 方案。绑定的音频只提供归档元数据和生成描述，不代表你已听到或分析了声音。不能调用媒体生成；需要生成音频或视频时，请引导用户在对应卡片中运行。";
 const CREATION_MENU_WIDTH = 208;
 /** Match the menu's title, rows, gaps and padding in styles.css so edge clamping stays accurate. */
@@ -116,7 +111,6 @@ const DEFAULT_TEXT_CARD_HEIGHT = 180;
 const DEFAULT_TEXT_CARD_TITLE = "canvas.text.defaultTitle";
 const DEFAULT_CANVAS_ORIGIN = 80;
 const AUTO_PLACEMENT_COLUMNS = 3;
-const UPLOAD_GRID_SPACING = { x: 320, y: 220 };
 const AGENT_GRID_ORIGIN = 100;
 const AGENT_GRID_SPACING = 360;
 const DEFAULT_MEDIA_CARD_HEIGHT = 300;
@@ -185,12 +179,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const textProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; zIndex: number; artifactId?: string } | null>(null);
-  const [imageTitle, setImageTitle] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const imageInput = useRef<HTMLInputElement>(null);
-  const imageProgress = useRef<{ projectId: string; file: File; title: string;
-    assetId?: string; artifactId?: string; itemId?: string; createKey?: string } | null>(null);
-  const [imagePartialStage, setImagePartialStage] = useState<"asset" | "artifact" | null>(null);
   const [agentName, setAgentName] = useState("Creator Agent");
   const [agentInstruction, setAgentInstruction] = useState("根据明确绑定的输入创作内容。");
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
@@ -393,57 +381,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       setSelectedIds([itemId]);
       textProgress.current = null;
       setSaveState("saved");
-    },
-  });
-  const addImageCard = useMutation({
-    mutationFn: async ({ cardTitle, file }: { cardTitle: string; file: File }) => {
-      const audio = isAudioFile(file);
-      const video = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
-      const progress = imageProgress.current?.projectId === projectId &&
-        imageProgress.current.file === file && imageProgress.current.title === cardTitle
-        ? imageProgress.current : { projectId, file, title: cardTitle };
-      imageProgress.current = progress;
-      if (!progress.assetId) {
-        const asset = await (audio ? uploadAudioAsset : video ? uploadVideoAsset : uploadImageAsset)(projectId, file);
-        progress.assetId = asset.id;
-      }
-      if (!progress.artifactId) {
-        progress.createKey ??= crypto.randomUUID();
-        const artifact = await createArtifact(projectId, {
-          kind: audio ? "AUDIO" : video ? "VIDEO" : "IMAGE",
-          title: cardTitle,
-          content: { sourceType: "UPLOAD", assetId: progress.assetId },
-        }, progress.createKey);
-        progress.artifactId = artifact.id;
-      }
-      progress.itemId ??= crypto.randomUUID();
-      const index = canvas.data?.items.length ?? 0;
-      return applyCanvasCommands(projectId, [{
-        type: "PLACE_ARTIFACT",
-        itemId: progress.itemId,
-        artifactId: progress.artifactId,
-        x: DEFAULT_CANVAS_ORIGIN + (index % AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.x,
-        y: DEFAULT_CANVAS_ORIGIN + Math.floor(index / AUTO_PLACEMENT_COLUMNS) * UPLOAD_GRID_SPACING.y,
-        width: audio ? AUDIO_CARD_WIDTH : DEFAULT_CARD_WIDTH,
-        height: AUDIO_CARD_HEIGHT,
-        zIndex: index,
-        locked: false,
-      }]);
-    },
-    ...canvasMutationFeedback,
-    onSuccess: (saved) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      imageProgress.current = null;
-      setImagePartialStage(null);
-      setImageTitle("");
-      setImageFile(null);
-      if (imageInput.current) imageInput.current.value = "";
-      setSaveState("saved");
-    },
-    onError: (error) => {
-      setImagePartialStage(imageProgress.current?.artifactId ? "artifact"
-        : imageProgress.current?.assetId ? "asset" : null);
-      setSaveError(error);
     },
   });
   const addBlankMedia = useMutation({
@@ -992,11 +929,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     addAgentCard.mutate({ name: agentName, instruction: agentInstruction });
   }
 
-  function submitImage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (imageFile) addImageCard.mutate({ cardTitle: imageTitle, file: imageFile });
-  }
-
   function openCreationMenu(clientX: number, clientY: number) {
     const rect = canvasElement.current?.getBoundingClientRect();
     if (!rect) return;
@@ -1144,29 +1076,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   return (
     <main className="workspace-shell text-[var(--ink)]">
-      <header className="workspace-header">
-        <div className="flex items-center gap-4">
-          <Link className="secondary-button" to="/projects">{t("common.project")}</Link>
-          <div>
-            <p className="text-xs text-[var(--muted)]">{t("canvas.workspace.title")}</p>
-            <h1 className="text-lg font-semibold">{project.data?.name ?? t("common.projectLoading")}</h1>
-          </div>
+      <header className="workspace-header" data-sync-state={eventStatus}>
+        <div className="workspace-header-identity">
+          <Button asChild variant="ghost" size="sm"><Link to="/projects">{t("common.project")}</Link></Button>
+          <h1 className="workspace-project-name" title={project.data?.name}>{project.data?.name ?? t("common.projectLoading")}</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline"  onClick={() => {
+        <div className="workspace-header-actions">
+          <Button variant="ghost" size="sm" onClick={() => {
             setToolsKind(null); setResourcesOpen(true);
           }} type="button">{t("canvas.workspace.resources")}</Button>
-          <Button variant="outline"  onClick={() => {
-            setResourcesOpen(false); setToolsKind("UPLOAD");
-          }} type="button">{t("canvas.workspace.importMedia")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
-          <a className="secondary-button" download={`agenvas-project-${projectId}.json`}
-            href={projectExportManifestUrl(projectId)}>{t("canvas.workspace.exportManifest")}</a>
-          <span className="text-xs text-[var(--muted)]" role="status">
-            {eventStatus === "live" ? t("canvas.workspace.liveSync") :
-              eventStatus === "failed" ? t("canvas.workspace.syncRetrying") :
-                eventStatus === "recovering" ? t("canvas.workspace.snapshotRestoring") : t("canvas.workspace.streamConnecting")}
-          </span>
+          <Button asChild variant="ghost" size="sm">
+            <a download={`agenvas-project-${projectId}.json`}
+              href={projectExportManifestUrl(projectId)}>{t("canvas.workspace.exportManifest")}</a>
+          </Button>
+          {eventStatus !== "live" ? <span className="workspace-sync-status" role="status">
+            {eventStatus === "failed" ? t("canvas.workspace.syncRetrying") :
+              eventStatus === "recovering" ? t("canvas.workspace.snapshotRestoring") : t("canvas.workspace.streamConnecting")}
+          </span> : null}
           <SaveBadge state={saveState} />
         </div>
       </header>
@@ -1203,19 +1130,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
           </>}
         </> : null}
-        {toolsKind === "UPLOAD" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
-          <h2 className="text-base font-semibold">{t("canvas.workspace.uploadMedia")}</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("canvas.workspace.uploadLimitsHint")}</p>
-          <form className="mt-4" onSubmit={submitImage}>
-            <label className="text-sm font-medium">{t("canvas.workspace.assetTitle")}<Input maxLength={MAX_MEDIA_TITLE_LENGTH} required value={imageTitle} onChange={(event) => { setImageTitle(event.target.value); setImagePartialStage(null); }} /></label>
-            <label className="mt-3 block text-sm font-medium">{t("canvas.workspace.mediaKinds")}<Input accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.VIDEO},${MEDIA_FILE_ACCEPT.AUDIO}`} className="mt-2 block w-full" ref={imageInput} required type="file" onChange={(event) => { setImageFile(event.target.files?.[0] ?? null); setImagePartialStage(null); }} /></label>
-            <Button variant="outline" className="mt-4 w-full" disabled={!imageFile || addImageCard.isPending} type="submit">{addImageCard.isPending ? t("canvas.workspace.uploading") : t("canvas.workspace.uploadAndPlace")}</Button>
-          </form>
-          {addImageCard.error ? <WorkspaceError error={addImageCard.error} /> : null}
-          {imagePartialStage ? <p className="mt-2 text-xs text-amber-900" role="status">{t("canvas.workspace.uncertainCreationHint", { "0": imagePartialStage === "artifact"
-            ? t("canvas.workspace.placementIncompleteHint")
-            : t("canvas.workspace.artifactCreationIncompleteHint") })}</p> : null}
-        </div> : null}
         {toolsKind === "AGENT" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
           <h2 className="text-base font-semibold">{t("canvas.workspace.addCreatorAgent")}</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("canvas.workspace.agentBindingHint")}</p>

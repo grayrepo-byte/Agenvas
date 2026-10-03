@@ -33,6 +33,14 @@ const dynamic: MediaCapability = { ...video, id: "runninghub", adapterId: "RUNNI
   settings: { runningHub: definition } };
 
 describe("media capability changes", () => {
+  it.each(["GENERAL_REFERENCE", "START_END"] as const)("selects supported %s for an empty draft when switching from a text model", (mode) => {
+    const next: MediaCapability = { ...video, id: "image-only-video", supportedVideoInputModes: [mode], defaultVideoInputMode: mode };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, videoInputMode: "TEXT" },
+      capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
+    expect(change.fields).toMatchObject({ capabilityId: next.id, videoInputMode: mode, mediaInputs: [] });
+    expect(change.confirmation).toBeNull();
+  });
+
   it("keeps the implicit default selection and compatible image parameters without prompting", () => {
     const parameters = { aspectRatio: "16:9", resolution: "2K", quality: "high", transparentBackground: true, generationCount: 4 } as const;
     expect(planMediaCapabilityChange({ kind: "IMAGE", fields: { ...fields, parameters }, capabilityId: null,
@@ -125,6 +133,13 @@ describe("media capability changes", () => {
     expect(change.fields).toEqual({ capabilityId: video.id, parameters: {}, mediaInputs: [],
       prompt: "Use ", mentions: [], durationSeconds: null, videoInputMode: "TEXT" });
     expect(change.confirmation).toContain("frame");
+  });
+
+  it.each(["GENERAL_REFERENCE", "START_END"] as const)("uses supported %s immediately when leaving RunningHub for an image-only model", (mode) => {
+    const next: MediaCapability = { ...video, supportedVideoInputModes: [mode], defaultVideoInputMode: mode };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput] },
+      capabilityId: next.id, resolvedCapabilityId: next.id, previous: dynamic, next });
+    expect(change.fields).toMatchObject({ videoInputMode: mode, mediaInputs: [] });
   });
 
   it("keeps duration only when the next dynamic contract explicitly sources it", () => {

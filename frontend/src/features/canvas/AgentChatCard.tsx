@@ -420,14 +420,14 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
             event.preventDefault(); event.currentTarget.form?.requestSubmit();
           }
         }} placeholder={t("agent.chat.instructionPlaceholder")} required value={runInstruction} rows={2} />
-        <div className="agent-chat-composer-footer"><span>{data.activeRun && !ownRun ? t("agent.chat.waitForOtherAgent") : t("agent.chat.contextShortcutHint")}</span>
+        <div className="agent-chat-composer-footer">
           <div className="agent-chat-composer-actions">
             <AgentRunSkillControls projectId={data.projectId} agent={agent} state={skillState} onChanged={()=>{setReview(null);runIntent.current=null;}} />
-            {currentActiveRun ? <Button variant="secondary" size="icon-sm" aria-label={t("agent.chat.stop")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
+          </div>
+          {currentActiveRun ? <Button variant="secondary" size="icon-sm" aria-label={t("agent.chat.stop")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
             onClick={() => stop.mutate(currentActiveRun.id)} title={t("agent.chat.stopOrchestration")} type="button"><Square weight="fill" size={14} /></Button>
             : <Button size="icon-sm" aria-label={t("agent.chat.send")} className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !runInstruction.trim()}
               title={t("agent.chat.confirmInputs")} type="submit"><ArrowUp size={20} weight="bold" /></Button>}
-          </div>
         </div>
       </form>
     </article>

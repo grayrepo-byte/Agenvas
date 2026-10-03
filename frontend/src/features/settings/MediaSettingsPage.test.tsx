@@ -94,6 +94,7 @@ describe("MediaSettingsPage", () => {
     mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("runninghub-capability-dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "背景应用");
     await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
