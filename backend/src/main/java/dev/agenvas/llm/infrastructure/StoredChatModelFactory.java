@@ -1,8 +1,11 @@
 package dev.agenvas.llm.infrastructure;
 
+import dev.agenvas.llm.application.LlmCallTimeouts;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
 import dev.agenvas.settings.application.LlmProviderConfig;
+import java.time.Duration;
+import okhttp3.Dns;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
@@ -27,13 +30,19 @@ public class StoredChatModelFactory {
 
     /** 只在构造模型客户端时解密凭据，并对运行和诊断请求应用相同出站限制。 */
     public SpringAiChatGateway create(LlmProviderConfig config) {
+        return create(config, LlmCallTimeouts.MODEL_REQUEST, LlmCallTimeouts.TRANSPORT_READ);
+    }
+
+    /** SDK and transport share the total deadline; silent reads have an independent limit. */
+    SpringAiChatGateway create(LlmProviderConfig config, Duration modelTimeout, Duration readTimeout) {
         String secret = cipher.decrypt(config.id(), config.version(),
                 new CredentialCipher.Encrypted(config.credentialCiphertext(),
                         config.credentialNonce(), config.keyVersion()));
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .baseUrl(config.endpoint()).apiKey(secret).model(config.modelId())
-                .maxRetries(0).build();
-        SafeLlmTransport transport = new SafeLlmTransport(config.endpoint(), endpoints);
+                .timeout(modelTimeout).maxRetries(0).build();
+        SafeLlmTransport transport = new SafeLlmTransport(config.endpoint(), endpoints, Dns.SYSTEM,
+                readTimeout, modelTimeout);
         return SpringAiChatGateway.withDebugCapture(OpenAiChatModel.builder().options(options)
                 .httpClientBuilderCustomizer(builder ->
                         builder.interceptor(transport.interceptor()))

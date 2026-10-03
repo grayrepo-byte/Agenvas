@@ -490,20 +490,23 @@ public class ArtifactService {
     /**
      * 将同会话已终结 Run 的当前选用输出投影为下一轮的精确输入。
      * 调用方须先按会话筛选历史 Run；此方法不接受来自模型或客户端的 Run 集合。
-     * 之后任何人工修订都会由既有版本/CAS 校验拒绝，历史文字本身不授予修改权。
+     * 媒体选用版本由画布应用边界提供，不跟随资源默认版本；文字仍固定默认版本和 CAS。
+     * 文字后续人工修订仍由既有版本/CAS 校验检查；历史消息本身不授予修改权。
      */
     @Transactional(readOnly = true)
     public List<ConversationInput> conversationInputs(UUID ownerId, UUID projectId,
-            List<UUID> authorizedPriorRunIds) {
+            List<UUID> authorizedPriorRunIds, List<UUID> selectedMediaVersionIds,
+            Set<UUID> explicitlyBoundArtifactIds) {
         projects.get(ownerId, projectId);
         return artifacts.listSelectedRunOutputs(ownerId, projectId,
-                authorizedPriorRunIds, MAX_CONVERSATION_INPUTS).stream()
-                .map(artifact -> new ConversationInput(artifact.id(), artifact.resourceDefaultVersionId(),
-                        artifact.kind(), artifact.title(), artifact.version()))
+                authorizedPriorRunIds, selectedMediaVersionIds, explicitlyBoundArtifactIds,
+                MAX_CONVERSATION_INPUTS).stream()
+                .map(output -> new ConversationInput(output.artifactId(), output.selectedVersionId(),
+                        output.kind(), output.title(), output.expectedVersion()))
                 .toList();
     }
 
-    /** 会话继承的不可变版本及冻结时的 CAS 版本；不包含媒体字节。 */
+    /** 会话继承的不可变版本及文字冻结时的 CAS；媒体不提供产物修订 CAS，也不包含字节。 */
     public record ConversationInput(UUID artifactId, UUID selectedVersionId,
             Artifact.Kind kind, String title, Long expectedVersion) {}
 

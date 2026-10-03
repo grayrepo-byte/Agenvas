@@ -28,7 +28,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class DirectTextGenerationWorker {
     private static final int MAX_OUTPUT_LENGTH = 20_000;
-    private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.MODEL_REQUEST;
 
     private final TaskService tasks;
     private final TaskProperties taskProperties;

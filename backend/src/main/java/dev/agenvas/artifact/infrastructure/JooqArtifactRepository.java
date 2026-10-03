@@ -401,24 +401,35 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     /** 人工新版本和其他会话版本不再自动继承，避免会话记忆扩大修改权限。 */
     @Override
-    public List<Artifact> listSelectedRunOutputs(UUID ownerId, UUID projectId,
-            List<UUID> authorizedRunIds, int limit) {
+    public List<SelectedRunOutput> listSelectedRunOutputs(UUID ownerId, UUID projectId,
+            List<UUID> authorizedRunIds, List<UUID> selectedMediaVersionIds,
+            Set<UUID> explicitlyBoundArtifactIds, int limit) {
         if (authorizedRunIds.isEmpty()) return List.of();
-        return dsl.select(ARTIFACT.fields())
+        return dsl.select(ARTIFACT.ID, ARTIFACT_VERSION.ID, ARTIFACT.KIND, ARTIFACT.TITLE, ARTIFACT.VERSION)
                 .from(ARTIFACT)
                 .join(PROJECT).on(PROJECT.ID.eq(ARTIFACT.PROJECT_ID))
                 .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.PROJECT_ID.eq(ARTIFACT.PROJECT_ID)
-                        .and(ARTIFACT_VERSION.ARTIFACT_ID.eq(ARTIFACT.ID))
-                        .and(ARTIFACT_VERSION.ID.eq(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID)))
+                        .and(ARTIFACT_VERSION.ARTIFACT_ID.eq(ARTIFACT.ID)))
                 .where(ARTIFACT.PROJECT_ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
                 .and(ARTIFACT.ARCHIVED_AT.isNull())
+                // Explicit inputs must not consume the bounded inherited-output window.
+                .and(ARTIFACT.ID.notIn(explicitlyBoundArtifactIds))
                 .and(ARTIFACT_VERSION.CREATED_BY_KIND.ne(
                         ArtifactVersion.CreatedByKind.USER.name()))
                 .and(ARTIFACT_VERSION.RUN_ID.in(authorizedRunIds))
+                // Canvas supplies trusted exact selections; the resource default is independent for media.
+                .and(ARTIFACT.KIND.eq(Artifact.Kind.TEXT.name())
+                        .and(ARTIFACT_VERSION.ID.eq(ARTIFACT.RESOURCE_DEFAULT_VERSION_ID))
+                        .or(ARTIFACT.KIND.ne(Artifact.Kind.TEXT.name())
+                                .and(ARTIFACT_VERSION.ID.in(selectedMediaVersionIds))))
                 .orderBy(ARTIFACT_VERSION.CREATED_AT.desc(), ARTIFACT_VERSION.ID.desc())
                 .limit(limit)
-                .fetch(row -> mapArtifact(row.into(ARTIFACT)));
+                .fetch(row -> {
+                    Artifact.Kind kind = Artifact.Kind.valueOf(row.value3());
+                    return new SelectedRunOutput(row.value1(), row.value2(), kind, row.value4(),
+                            kind == Artifact.Kind.TEXT ? row.value5() : null);
+                });
     }
 
     /** 为导出清单按产物和版本顺序读取项目正文；调用方负责白名单脱敏。 */

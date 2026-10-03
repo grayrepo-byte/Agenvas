@@ -34,7 +34,7 @@ public class AgentTurnWorker {
     /** 模型调用或任务失败时只记录安全摘要，不输出提示词、模型响应和工具参数。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentTurnWorker.class);
     /** 单次模型请求的等待上限；超时会中断调用并把任务交给持久化失败处理。 */
-    private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.MODEL_REQUEST;
 
     /** 认领模型回合任务并续租的应用服务。 */
     private final TaskService tasks;

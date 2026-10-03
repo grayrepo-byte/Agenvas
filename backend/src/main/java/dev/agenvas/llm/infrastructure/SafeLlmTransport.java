@@ -1,5 +1,6 @@
 package dev.agenvas.llm.infrastructure;
 
+import dev.agenvas.llm.application.LlmCallTimeouts;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
@@ -25,6 +26,7 @@ final class SafeLlmTransport {
 
     /** The protocol checkpoint remains capped at 1 MiB; repeated SSE envelopes get fixed wire overhead. */
     static final long MAX_STREAM_RESPONSE_BYTES = 4L * 1024 * 1024;
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     /** 准入策略检查通过的配置端点，作为请求校验的来源。 */
     private final HttpUrl base;
@@ -47,6 +49,12 @@ final class SafeLlmTransport {
      * @param resolver 域名解析器；测试可注入混合或变化地址
      */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver) {
+        this(endpoint, policy, resolver, LlmCallTimeouts.TRANSPORT_READ, LlmCallTimeouts.MODEL_REQUEST);
+    }
+
+    /** Separate whole-call and silent-read deadlines; HTTP tests can shorten either limit. */
+    SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver,
+            Duration readTimeout, Duration modelTimeout) {
         this.base = HttpUrl.get(endpoint);
         String path = base.encodedPath().replaceAll("/+$", "");
         this.completionPath = path + "/chat/completions";
@@ -64,7 +72,7 @@ final class SafeLlmTransport {
                 throw new UnknownHostException("LLM DNS returned a blocked address");
             }
             return addresses;
-        }, Duration.ofSeconds(10), Duration.ofSeconds(45), Duration.ofSeconds(60));
+        }, CONNECT_TIMEOUT, readTimeout, modelTimeout);
     }
 
     /** 为 Spring AI 安装拦截器，将请求转交给禁用重定向和自动重试的专用客户端。

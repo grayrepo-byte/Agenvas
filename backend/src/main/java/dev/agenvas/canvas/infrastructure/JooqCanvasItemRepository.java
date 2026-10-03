@@ -42,6 +42,18 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
     }
 
     @Override
+    public List<UUID> selectedMediaVersionIds(UUID ownerId, UUID projectId) {
+        return dsl.selectDistinct(CANVAS_ITEM.SELECTED_VERSION_ID)
+                .from(CANVAS_ITEM)
+                .join(PROJECT).on(PROJECT.ID.eq(CANVAS_ITEM.PROJECT_ID))
+                .where(CANVAS_ITEM.PROJECT_ID.eq(projectId))
+                .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(CANVAS_ITEM.SUBJECT_TYPE.eq(CanvasItem.SubjectType.ARTIFACT.name()))
+                .and(CANVAS_ITEM.SELECTED_VERSION_ID.isNotNull())
+                .fetch(CANVAS_ITEM.SELECTED_VERSION_ID);
+    }
+
+    @Override
     public Optional<CanvasItem> find(UUID ownerId, UUID projectId, UUID itemId) {
         return dsl.select(CANVAS_ITEM.fields())
                 .from(CANVAS_ITEM)

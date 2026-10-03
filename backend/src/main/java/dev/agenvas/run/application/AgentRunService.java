@@ -8,6 +8,7 @@ import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
@@ -662,13 +663,14 @@ public class AgentRunService {
         ConversationMemoryReader.ConversationMemory memory = memoryReader.read(projectId, priorIds);
         Set<UUID> explicit = agent.bindings().stream().map(AgentInstance.Binding::artifactId)
                 .collect(java.util.stream.Collectors.toSet());
-        List<ArtifactService.ConversationInput> outputs = artifacts.conversationInputs(ownerId, projectId, priorIds);
-        List<ArtifactService.ConversationInput> available = outputs.stream()
-                .filter(binding -> !explicit.contains(binding.artifactId())).toList();
+        List<UUID> selectedMediaVersions = priorIds.isEmpty() ? List.of()
+                : canvas.selectedMediaVersionIds(ownerId, projectId);
+        List<ArtifactService.ConversationInput> outputs = artifacts.conversationInputs(ownerId, projectId,
+                priorIds, selectedMediaVersions, explicit);
         int remaining = Math.max(0, MAX_CONTEXT_BINDINGS - agent.bindings().size());
-        List<ArtifactService.ConversationInput> inherited = available.stream().limit(remaining).toList();
+        List<ArtifactService.ConversationInput> inherited = outputs.stream().limit(remaining).toList();
         memory = new ConversationMemoryReader.ConversationMemory(memory.entries(),
-                memory.truncated() || priorCount > priorIds.size() || inherited.size() < available.size()
+                memory.truncated() || priorCount > priorIds.size() || inherited.size() < outputs.size()
                         || outputs.size() == MAX_CONTEXT_BINDINGS,
                 (int) Math.min(Integer.MAX_VALUE, priorCount));
         return new ConversationInputs(memory, inherited);
@@ -732,9 +734,11 @@ public class AgentRunService {
             reference.put("subjectType", item.subjectType().name());
             reference.put("subjectId", item.subjectId().toString());
             if (selected.artifact() != null) {
-                // Freeze the card's result, including a genuinely empty draft, rather than the library default.
-                if (selected.selectedVersion() != null) {
-                    reference.put("versionId", selected.selectedVersion().id().toString());
+                // Text owns its current Artifact version; media owns the node's exact selection, including an empty draft.
+                ArtifactVersion selectedVersion = selected.artifact().artifact().kind() == Artifact.Kind.TEXT
+                        ? selected.artifact().resourceDefaultVersion() : selected.selectedVersion();
+                if (selectedVersion != null) {
+                    reference.put("versionId", selectedVersion.id().toString());
                 }
                 reference.put("kind", selected.artifact().artifact().kind().name());
             }

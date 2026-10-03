@@ -12,6 +12,9 @@ public interface CanvasItemRepository {
     /** 按确定的 z 顺序列出已保存布局。 */
     List<CanvasItem> list(UUID ownerId, UUID projectId);
 
+    /** Project-scoped exact media selections, deduplicated without loading card bodies. */
+    List<UUID> selectedMediaVersionIds(UUID ownerId, UUID projectId);
+
     /** 读取一张已鉴权画布卡片，不取得写锁。 */
     Optional<CanvasItem> find(UUID ownerId, UUID projectId, UUID itemId);
 

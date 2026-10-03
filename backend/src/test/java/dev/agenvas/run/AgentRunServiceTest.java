@@ -32,7 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 class AgentRunServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-03T00:00:00Z");
 
-    @Test void createsRunFromBoundNodeResultsAndEmptySelectionWithoutALibraryDefault() {
+    @Test void freezesMediaNodeResultsTextVersionsAndEmptyDraftSelections() {
         UUID owner = UUID.randomUUID(), projectId = UUID.randomUUID(), agentId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID(), versionId = UUID.randomUUID();
         UUID imageNodeId = UUID.randomUUID(), emptyNodeId = UUID.randomUUID();
@@ -84,16 +84,29 @@ class AgentRunServiceTest {
         when(emptyNode.id()).thenReturn(emptyNodeId);
         when(emptyNode.subjectId()).thenReturn(UUID.randomUUID());
         when(emptyNode.subjectType()).thenReturn(CanvasItem.SubjectType.ARTIFACT);
+        UUID textNodeId = UUID.randomUUID(), textVersionId = UUID.randomUUID();
+        var textNode = mock(CanvasItem.class);
+        when(textNode.id()).thenReturn(textNodeId);
+        when(textNode.subjectId()).thenReturn(UUID.randomUUID());
+        when(textNode.subjectType()).thenReturn(CanvasItem.SubjectType.ARTIFACT);
+        var text = mock(Artifact.class);
+        when(text.kind()).thenReturn(Artifact.Kind.TEXT);
+        var textVersion = mock(ArtifactVersion.class);
+        when(textVersion.id()).thenReturn(textVersionId);
+        var textView = new ArtifactService.ArtifactView(text, textVersion);
         when(canvas.list(owner, projectId)).thenReturn(List.of(new CanvasService.CanvasEntry(imageNode, view, result, null),
-                new CanvasService.CanvasEntry(emptyNode, view, null, null)));
+                new CanvasService.CanvasEntry(emptyNode, view, null, null),
+                new CanvasService.CanvasEntry(textNode, textView, null, null)));
 
         var run = service.create(owner, projectId, agentId, "Use image", "synthetic-request", null,
-                List.of(imageNodeId, emptyNodeId)).run();
+                List.of(imageNodeId, emptyNodeId, textNodeId)).run();
         assertThat(run.contextSnapshot().at("/bindings/0/selectedVersionId").asText()).isEqualTo(versionId.toString());
         assertThat(run.contextSnapshot().at("/bindings/0").has("expectedVersion")).isFalse();
         assertThat(run.contextSnapshot().at("/selection/0/versionId").asText()).isEqualTo(versionId.toString());
         assertThat(run.contextSnapshot().at("/selection/1/kind").asText()).isEqualTo("IMAGE");
         assertThat(run.contextSnapshot().at("/selection/1").has("versionId")).isFalse();
+        assertThat(run.contextSnapshot().at("/selection/2/kind").asText()).isEqualTo("TEXT");
+        assertThat(run.contextSnapshot().at("/selection/2/versionId").asText()).isEqualTo(textVersionId.toString());
         verify(rows).create(run);
         verify(tasks).createInitialTurn(projectId, run.id(), NOW);
         verify(artifacts, never()).setResourceDefaultVersion(any(), any(), any(), any(), anyLong());

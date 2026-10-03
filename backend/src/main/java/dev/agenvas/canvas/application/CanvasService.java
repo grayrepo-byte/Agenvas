@@ -116,6 +116,13 @@ public class CanvasService {
                 .toList();
     }
 
+    /** Reads only the trusted node selections needed to freeze continuation inputs. */
+    @Transactional(readOnly = true)
+    public List<UUID> selectedMediaVersionIds(UUID ownerId, UUID projectId) {
+        projects.get(ownerId, projectId);
+        return canvasItems.selectedMediaVersionIds(ownerId, projectId);
+    }
+
     /** Creates an independent media work branch from one fully persisted source card. */
     @Transactional
     public DuplicateResult duplicate(UUID ownerId, UUID projectId, UUID sourceItemId,
