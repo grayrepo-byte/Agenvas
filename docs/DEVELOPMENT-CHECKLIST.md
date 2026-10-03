@@ -1239,3 +1239,5 @@ RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用
 - [ ] 全量测试、真实模型/Provider 调用和真实浏览器端到端未运行。
 
 MVP §6.4 与 ADR 0029 的流式对话设计已同步错误呈现规则。
+
+Agent 修复合并 main 复验：合并最新画布连线操作隐藏与整理后视口定位改动，无冲突；前端 7 个文件 153 项定向测试及 TypeScript 检查通过。没有再改后端、接口或数据库；未运行全量测试或真实 Provider 端到端。
