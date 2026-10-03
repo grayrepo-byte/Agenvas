@@ -17,6 +17,12 @@ public final class RunToolPolicy {
 
     private RunToolPolicy() {}
 
+    /** A Skill resource tool is useful only when this Run freezes readable resource paths. */
+    public static List<String> current(boolean hasSkillResources) {
+        return hasSkillResources ? CURRENT : CURRENT.stream()
+                .filter(name -> !"read_skill_resource".equals(name)).toList();
+    }
+
     public static List<String> allowed(JsonNode policy) {
         if (!policy.has("toolPolicyVersion")) {
             int prompt = policy.path("systemPromptVersion").asInt(1);

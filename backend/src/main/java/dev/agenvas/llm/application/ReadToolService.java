@@ -3,6 +3,7 @@ package dev.agenvas.llm.application;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
@@ -118,7 +119,7 @@ public class ReadToolService {
                 return output;
             }
         }
-        throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
+        throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
     }
 
     /** 返回 Run 创建时记录的界面选择供理解意图；该快照不能作为写入授权。 */
@@ -163,6 +164,12 @@ public class ReadToolService {
             item.put("artifactId", version.artifactId().toString());
             item.put("versionId", version.id().toString());
             item.put("kind", view.artifact().kind().name());
+            if (view.artifact().kind() == Artifact.Kind.IMAGE
+                    && run.policySnapshot().path("systemPromptVersion").asInt()
+                            >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
+                // The committed result requests a preview; file reads happen after this transaction.
+                item.put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
+            }
             // 已归档的媒体可由节点选用，而资源库默认版本仍为空；读取不改变这两个独立选择。
             boolean current = view.resourceDefaultVersion() != null
                     && view.resourceDefaultVersion().id().equals(versionId);

@@ -23,8 +23,10 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class LlmRoundService {
 
-    /** 使用 Run 钉住的配置调用模型，且关闭自动工具执行。 */
+    /** 将检查点中的精确图片引用转换为发送时的受控预览，不持久化图片字节。 */
+    private final AgentImageInputService images;
     private final TaskService tasks;
+    /** 使用 Run 钉住的配置调用模型，且关闭自动工具执行。 */
     private final ChatGateway gateway;
     private final CallLogService callLogs;
     /** 将模型可见消息与完整响应转换为版本化持久化协议。 */
@@ -42,7 +44,8 @@ public class LlmRoundService {
      */
     public LlmRoundService(ChatGateway gateway,
             LlmProtocolCodec codec, LlmTurnCheckpointService checkpoints,
-            AgentRunRepository runs, CallLogService callLogs, TaskService tasks) {
+            AgentRunRepository runs, CallLogService callLogs, TaskService tasks, AgentImageInputService images) {
+        this.images = images;
         this.tasks = tasks;
         this.callLogs = callLogs;
         this.gateway = gateway;
@@ -101,6 +104,7 @@ public class LlmRoundService {
         if (turn.status() == LlmTurn.Status.RESPONDED) {
             return turn.response();
         }
+        List<Message> dispatched = images.hydrate(ownerId, projectId, runId, run.contextSnapshot(), messages);
         ChatGateway.ModelDetails model = gateway.modelDetailsFor(selected);
         boolean mock = "mock".equals(selected.source());
         CallLogService.CallDescriptor descriptor = new CallLogService.CallDescriptor(
@@ -109,10 +113,10 @@ public class LlmRoundService {
         PublicStreamSink stream = lease == null ? null : new PublicStreamSink(lease, workerId);
         if (lease != null) tasks.startAgentStream(lease, workerId);
         ChatGateway.Exchange exchange = stream == null
-                ? callLogs.record(descriptor, () -> gateway.call(messages, tools, trustedContext, selected),
+                ? callLogs.record(descriptor, () -> gateway.call(dispatched, tools, trustedContext, selected),
                         value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()))
                 : callLogs.recordStream(descriptor, (captureContent, log) -> gateway.callStreaming(
-                        messages, tools, trustedContext, selected, stream, captureContent, log),
+                        dispatched, tools, trustedContext, selected, stream, captureContent, log),
                         value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");

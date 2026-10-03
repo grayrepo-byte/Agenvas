@@ -388,7 +388,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
               <details className="agent-chat-review-details"><summary>{t("agent.chat.inputLimits")}</summary>
               <p className="mt-1">{t("agent.chat.configSnapshotHint", { "0": preflight.data.policySnapshot.modelConfigSource, "1": preflight.data.policySnapshot.modelConfigVersion, "2": preflight.data.policySnapshot.systemPromptVersion ?? t("common.unknown") })}</p>
               <p className="mt-1">{t("agent.chat.bindingPreviewHint", { "0": preflight.data.bindings.length })}</p>
-              <p className="mt-1">{t("agent.chat.textOnlyModelHint")}</p>
+              <p className="mt-1">{t("agent.chat.mediaInputHint")}</p>
               <p className="mt-1 break-all">{t("agent.chat.selectionHint", { "0": reviewSelection.length, "1": reviewSelection.length ? `（${reviewSelection.join("、")}）` : "" })}</p>
               {preflight.data.bindings.map((binding) => (
                 <p className="mt-1 break-all" key={binding.selectedVersionId}>

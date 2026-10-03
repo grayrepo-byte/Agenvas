@@ -1,153 +1,139 @@
-# Agenvas
+<p align="center">
+  <img src="frontend/src/assets/brand/agenvas-square.png" alt="Agenvas Logo" width="160" />
+</p>
 
-[English](README.en.md)
+<h1 align="center">Agenvas</h1>
 
-Agenvas 是一个可自托管的 AI 创作画布。用户直接在文字、图片、视频和音频卡片上创作，Agent 在明确的权限、审批、版本和恢复边界内读取上下文、编辑文字并编排画布。
+<p align="center">可自托管的 AI 创作画布，让文字、图片、视频、音频与 Agent 在同一个工作空间中协作。</p>
 
-当前仓库已实现 Vite/React 前端、Spring Boot 模块化单体、PostgreSQL/Flyway、权威 OpenAPI、一次性管理员初始化、数据库会话、CSRF、项目与不可变内容版本、持久画布、Agent、租约与 fencing epoch 任务、事务事件及可补发 SSE。媒体由用户逐卡片发起生成；Agent 的媒体提案须经用户批准后复用同一任务管线。仓库尚未发布，真实 Provider 与生产发布门禁的逐项状态以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
+<p align="center"><a href="README.en.md">English</a> · <a href="#使用方法">使用方法</a> · <a href="LICENSE">ELv2</a></p>
 
-## 已实现的最小纵向切片
+## 功能
 
-浏览器 `/setup` → CSRF 与 bootstrap secret 校验 → PostgreSQL 管理员创建 → `/login` → Spring Session JDBC。
+- **画布创作**：创建文字、图片、视频、音频和 Agent 卡片，支持拖拽、框选、连线、缩放、锁定与一键整理；右键可直接上传本地媒体并创建节点。
+- **直接生成**：在卡片中编辑提示词、选择模型、添加参考素材并运行。支持排队、取消、历史版本切换与重新生成；图片编辑和后处理创建独立派生节点。
+- **Agent 协作**：读取明确绑定的上下文、创建和修改文字、摆放卡片；支持持续会话、创作 Skill、公开回答流和执行记录。Agent 提出的媒体生成批次须由用户批准后执行。
+- **素材复用**：项目资源、跨本人项目复用的个人资产库、图片/视频提示词模板、媒体风格，以及图片、视频、音频参考输入。
+- **图片处理**：画笔标注、裁剪、旋转、镜像、放大和深度提取；智能编辑、扩图、重打光等 AI 操作使用配置的媒体能力。
+- **模型与存储配置**：管理员管理 LLM、媒体连接、已发布能力和默认模型；支持本地文件及 OSS/COS/S3 存储，可独立配置视频参考的媒体中继。
+- **运行与恢复**：持久化任务、调用日志、用量记录、断线事件补发和项目导出清单。结果未知（UNKNOWN）时由用户显式重试，系统不自动重复提交生成请求。
+- **界面语言**：中文、英文、俄文和日文共用同一套界面。
 
-- 空库由 Flyway 创建身份、初始化互斥锁与 Spring Session 基线表；20 路并发初始化集成测试只产生一个管理员。
-- 前端 API 类型由 `contracts/openapi.yaml` 生成。
-- Mock 媒体模式醒目标识；成功、失败和 UNKNOWN fixture 可重复。
-- 未授权 API 默认返回 ProblemDetail；写请求需要 CSRF；登录会话在服务重启后仍可恢复。
-- 登录后可创建、分页浏览、重命名和归档自己的项目；写操作使用乐观版本避免静默覆盖。
-- 文字、图片、视频和音频四类 Artifact 使用严格内容 Schema；修订只追加不可变版本，输入引用固定到同项目的明确历史版本。
-- 项目工作区支持卡片放置、框选、拖拽、缩放、锁定、左对齐和适配视图；布局结束后原子保存，失败草稿保留在 Zustand。
-- Creator Agent 是画布上的持久化卡片，可编辑名称/指令、明确绑定或清空选中 ArtifactVersion，并显示独立输出范围；创建卡片不会隐式读取全项目或启动模型。用户输入本次任务后先查看服务端返回的模型状态、精确输入和调用限额，再显式确认运行；配置变化会要求重新检查。停止入口及按 Agent 分页的运行记录、审批与任务摘要已接入。
-- Run 创建固定输入与策略快照；同项目活动槽位由 PostgreSQL 行锁串行仲裁，同幂等键精确重放，同键异参冲突，终态释放槽位。
-- Task 及其固定输入、目标和媒体能力绑定持久化在数据库中；Worker 通过 `SKIP LOCKED` 竞争有期限的租约，旧 epoch 不能回写，网络处理在事务外执行，等待 Provider 时释放线程与租约。
-- UNKNOWN 任务可按需查看持久提交账本的请求键、attempt 状态与已知 Provider 请求 ID。请求键不证明外部已受理，系统不会自动重提；用户显式重试会创建独立的新尝试。已确认受理的任务仅查询保存的原请求 ID，并使用任务固定的连接版本归档结果。
-- 画布侧栏可上传 PNG/JPEG/WebP 参考图：私有 Asset 按实际解码、20 MiB/40 MP 限制和 SHA-256 校验，媒体字节完成归档校验后才登记 Asset；用户上传分支创建真实 IMAGE Artifact 卡片，不伪造生成 Task ID，可选中后绑定为 Agent 精确版本输入。生成视频归档使用 FFprobe/FFmpeg 验证 MP4 与首帧、500 MiB 上限，保存封面；任务键 MP4 归档可恢复。IMAGE/VIDEO/AUDIO 版本只引用同项目真实 Asset。按项目鉴权的原文件 GET/HEAD 支持单段 Range，卡片加载原图、缩略图留给后续列表界面。图片原图、缩略图与 MP4 写入中途失败已有注入测试；真实物理磁盘耗尽及真实 Provider 仍未验证。
-- 用户在媒体卡片上保存草稿、选择能力并点击运行；受理时冻结节点、草稿与参考版本。统一媒体管线管理提交账本、排队、取消、UNKNOWN、原请求轮询与结果归档。重新生成追加节点版本；编辑及后处理创建独立派生节点。
-- Mock 图片、视频和音频由同一管线生成可读取的合成媒体，图面及元数据明确标为演示素材。Agent 保存模型响应和工具调用后再执行工具；文字工具复用应用服务，媒体提案固定批次、统一批准后才发起生成。
-- Artifact、Canvas、Agent 与 Run 命令写入项目序号事件；事件失败会回滚对应命令。项目快照在同一 PostgreSQL `REPEATABLE READ` 事务中读取画布、Agent、活动 Run/Task 与事件水位。
-- 一个项目由一个服务端事件轮询通道补发 SSE，客户端按序号去重并在缺口或过期时重取快照；每个连接的待发送队列与全局连接数都设有上限。
-- 启动服务不需要模型 Key、GPU 或作者账户；默认部署须先配置真实模型才能生成，开发版 Mock 可脱离外部模型运行。
+已有媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、Seed Audio、ComfyUI 固定模板，以及 RunningHub 固定 V2 协议的工作流/AI 应用。各模型可用的输入、参数与操作由管理员发布的能力决定；适配器实现不等于所有官方端点或模型均已实测。
 
-## 快速启动（默认部署版）
+当前为开发版本，面向单管理员自托管使用。已有部分图片中转端点的真实生成记录，完整真实 LLM/图片/视频链路、其他 Provider 兼容性与生产发布门禁尚未全部验收。实际检查范围以[开发清单](docs/DEVELOPMENT-CHECKLIST.md)为准。
 
-需要 Docker Desktop 或兼容的 Docker Engine/Compose。
+## 使用方法
+
+### 1. 启动服务
+
+准备 Docker Engine / Docker Desktop 与 Docker Compose，在仓库根目录执行：
 
 ```sh
 cp .env.example .env
-# 编辑 .env，为数据库密码和一次性初始化密钥设置随机值。
-# 保存云凭证前，另设置 AGENVAS_CREDENTIAL_MASTER_KEY。
+```
+
+编辑 `.env`，填写以下配置：
+
+| 配置 | 用途 |
+| --- | --- |
+| `AGENVAS_DB_PASSWORD` | 独立随机数据库密码，必填 |
+| `AGENVAS_BOOTSTRAP_SECRET` | 一次性管理员初始化密钥，至少 24 字符，必填 |
+| `AGENVAS_CREDENTIAL_MASTER_KEY` | 32 字节随机密钥的 Base64 编码；保存模型 API Key、云存储凭证或完整 ComfyUI 地址前需要设置 |
+
+真实凭据只保存在本地 `.env` 或服务端配置中；加密主密钥与数据库备份分开保管。
+
+```sh
 ./deploy/update-local.sh
 ```
 
-`deploy/compose.yaml` 是部署版，默认文字与媒体均使用 `configured`，不启用 Mock。启动后由管理员在设置页配置真实 LLM、媒体连接与已发布能力；没有真实媒体配置时能力目录为空，不能用预置 Mock 发起新生成。保存云凭证需要设置 `AGENVAS_CREDENTIAL_MASTER_KEY`（32 字节随机密钥的 Base64 编码），并与数据库备份分开保管。切换模式不删除既有配置、历史结果或固定任务；已受理任务仍按原配置恢复核对。部署版不代表生产发布门禁已经验收。
+脚本构建镜像、更新容器并等待健康检查，保留数据库与素材卷。默认部署使用真实模型配置模式；启动与登录本身不需要 GPU 或模型 Key。
 
-以后在仓库根目录运行 `./deploy/update-local.sh`，即可拉取已锁定的基础镜像、重新构建本地镜像、更新 Compose 容器并等待健康检查。脚本使用仓库根目录的 `.env`，保留数据库和素材卷；构建失败时不会替换正在运行的容器。基础镜像固定了 digest，因此此命令不会自动升级到新的基础镜像版本。
+打开 [初始化页面](http://127.0.0.1:8088/setup)，输入初始化密钥并创建管理员，再到 [登录页面](http://127.0.0.1:8088/login) 登录。
 
-前端镜像构建的 Node 堆上限默认为 1536 MiB，避免低内存构建环境自动分配的堆不足以完成 TypeScript 检查。可用 `docker compose --env-file .env -f deploy/compose.yaml build --build-arg FRONTEND_BUILD_HEAP_MB=2048 web` 调整；构建环境还须为堆外内存和其他并行进程留出空间。此参数只影响构建阶段，运行中的 Nginx 内存限制仍由 `AGENVAS_WEB_MEMORY_LIMIT` 控制。
+### 2. 配置模型
 
-这两项在 `.env.example` 中故意留空；缺失或未填写时 Compose 会拒绝启动。旧部署若使用过早期版本的公开回退值，不能只改 `.env` 中的数据库密码：应在维护窗口同步轮换 PostgreSQL 账户密码与服务端配置，并检查初始化密钥是否仍为已知示例值；不要把实际密钥写进工单、日志或 Git。
+- **文字与 Agent**：在设置的“模型配置”中添加 OpenAI 兼容端点、模型 ID 和 API Key。Agent 使用前须由管理员运行工具调用诊断；页面会提示可能发生的调用费用。
+- **图片、视频与音频**：在“媒体配置”中创建连接、发布能力，并设置各类默认模型。未配置真实能力时，默认部署的媒体能力目录为空。
+- **视频参考中继**：本地部署使用 Seedance 视频参考时，在“存储设置 → 媒体中继”选择可公网访问的 OSS/COS/S3 连接，默认存储仍可保持本地。步骤与限制见[媒体中继说明](docs/media-relay-design.md)。
 
-部署版默认项目名为 `agenvas`。需要并行运行隔离验收实例时，可设置 `COMPOSE_PROJECT_NAME`、`AGENVAS_API_PORT` 和 `AGENVAS_WEB_PORT`。它们分别控制 Compose 项目/卷命名与仅绑定本机的 API、Web 端口；默认仍是 8080/8088。隔离实例也应使用独立的数据库密码与 bootstrap secret。
+ComfyUI 使用受信固定模板；RunningHub 使用管理员发布的目标与参数契约。模型凭证在服务端加密保存，配置轮换不会改变已受理任务固定的连接版本。
 
-PostgreSQL 端口同样仅绑定本机映射，默认 5432，可用 `AGENVAS_DB_PORT` 改（宿主机已占用 5432 时必须改，否则 Compose 启动会报端口冲突）。它只为用本地客户端连库排查而存在：server 走 Compose 内部网络访问数据库，不经过这个映射。
+### 3. 在画布中创作
 
-Compose 默认限制 PostgreSQL/server/web 分别使用 768 MiB/1 CPU、1536 MiB/2 CPU、256 MiB/0.5 CPU，并为各服务的 JSON 日志保留最多 3 个 10 MiB 文件。可在 `.env` 中用 `AGENVAS_*_MEMORY_LIMIT`、`AGENVAS_*_CPUS` 按实际机器容量调整；内存上限不是容量性能已验收的证明。server 停机等待最多 45 秒，应用优雅停机阶段为 30 秒；已提交的外部请求仍须按 Provider attempt 核对，不会因为等待期结束就安全重试。
+1. 创建项目，进入画布，通过右键菜单添加卡片或上传图片、视频、音频。
+2. 在文字卡片中编辑内容或使用模型生成；在媒体卡片中选择模型、填写提示词，并按能力要求添加参考素材。
+3. 检查输入与预计费用（未配置价格时显示未知），点击运行。完成后预览、选用结果，或在节点内重新生成并查看历史版本。
+4. 需要 Agent 协助时，添加 Agent 卡片，明确绑定上下文、选择 Skill 并输入任务；核对运行前信息后开始。媒体提案在对话中统一批准或拒绝。
+5. 将结果保存到“我的资产”以便复用，或导出项目清单。项目清单包含数据与素材元数据，完整备份还须保存数据库及媒体文件。
 
-打开 <http://127.0.0.1:8088/setup>，输入 `.env` 中的 `AGENVAS_BOOTSTRAP_SECRET` 创建管理员，然后在 `/login` 登录。也可以检查反代后的 API：
+生成请求结果未知时，先查看任务和调用记录；显式重试会创建独立尝试，可能产生重复费用。取消只停止本系统的后续编排，不保证外部服务停止或退款。
 
-```sh
-curl http://127.0.0.1:8088/api/v1/auth/setup-status
-```
+### 更新、停止与备份
 
-初始化前的预期响应：
-
-```json
-{"setupRequired":true}
-```
-
-停止服务：
+更新仓库代码后，在根目录再次运行 `./deploy/update-local.sh`。基础镜像固定 digest，脚本不会自动升级基础镜像版本。
 
 ```sh
+# 停止默认部署，保留数据库与素材卷
 docker compose --env-file .env -f deploy/compose.yaml down
 ```
 
-该命令保留数据库和资产卷；如需清除测试数据，应明确使用 Compose 的卷删除选项，并确认没有需要保留的内容。
+- 默认 Web/API/数据库端口为 `8088` / `8080` / `5432`，仅绑定本机；可通过 `AGENVAS_WEB_PORT`、`AGENVAS_API_PORT`、`AGENVAS_DB_PORT` 修改，隔离实例使用独立 `COMPOSE_PROJECT_NAME`。
+- 对外部署需配置 HTTPS、反向代理与安全 Cookie（`AGENVAS_SECURE_COOKIES=true`）。资源上限见 `.env.example`；前端构建堆默认 1536 MiB，可通过 Docker 构建参数 `FRONTEND_BUILD_HEAP_MB` 调整。
+- 升级前备份数据库、媒体、配置及当前/历史加密密钥。旧 V1–V77 开发库不能直接升级到重建后的 V1 基线；恢复需匹配原版本并先启用恢复模式。具体流程见[备份与恢复说明](docs/operations/backup-restore.md)。
+- 系统日志位于设置页，仅管理员可访问；保留本次后端进程的有界输出，重启后清空。
 
 ## 本地开发
 
-容器开发版使用 `deploy/compose.dev.yaml`，复用部署版三服务、健康检查与安全约束，并显式启用文字/媒体 Mock：
+技术栈：Vite、React、TypeScript、React Flow、TanStack Query、Zustand；后端为 Java 21、Spring Boot、Spring AI、jOOQ、PostgreSQL、Flyway。前端为静态 SPA，业务 API 与 SSE 由 Spring Boot 提供。
+
+工具链使用 JDK 21、Node 24 LTS（24.12+）与 pnpm 12.5.1，完整版本见[依赖基线](docs/dependency-baseline.md)。
+
+### 容器开发环境（Mock）
+
+填写 `.env` 中的数据库密码与初始化密钥后，可启动独立开发环境：
 
 ```sh
-# .env 同样必须填写数据库密码与初始化密钥。
 docker compose --env-file .env -f deploy/compose.dev.yaml up -d --build
-# 停止开发版并保留其数据卷
+# 停止开发版，保留其数据卷
 docker compose --env-file .env -f deploy/compose.dev.yaml down
 ```
 
-未设置 `COMPOSE_PROJECT_NAME` 时，开发版项目名为 `agenvas-dev`，数据库和资产卷按项目名与部署版隔离。两版默认端口相同；并行运行时须用不同 env 文件或环境变量设置 `AGENVAS_API_PORT`、`AGENVAS_WEB_PORT` 和 `AGENVAS_DB_PORT`，并避免复用项目名。
+开发版显式启用文字与媒体 Mock，无需外部模型账户。图片、视频及音频为合成演示素材，音频是提示音，不代表真实模型生成效果。打开地址与初始化流程同上。
 
-前端要求 Node 24 LTS 与 pnpm 12.5.1：
+默认部署与开发版的 Compose 项目名分别为 `agenvas`、`agenvas-dev`，数据卷隔离，默认端口相同。并行运行时需分别设置项目名和端口。
+
+### 源码调试
 
 ```sh
+# 前端：在一个终端中运行
 cd frontend
 corepack pnpm install --frozen-lockfile
 corepack pnpm api:generate
-corepack pnpm typecheck
-corepack pnpm lint
-corepack pnpm test
-corepack pnpm build
-# 本地页面服务仍使用 5173，并把 /api 代理到 localhost:8080
 corepack pnpm dev
 ```
 
-后端要求 JDK 21；运行时需要 PostgreSQL：
-
 ```sh
+# 后端：在另一个终端中运行，先配置环境变量与 PostgreSQL
 cd backend
-./mvnw verify
 ./mvnw spring-boot:run
 ```
 
-本地 Vite 开发服务只负责页面，并把 `/api` 代理到 `http://localhost:8080`；生产构建输出静态文件，不运行 Node 服务端。默认数据库连接为 `jdbc:postgresql://localhost:5432/agenvas`，可通过 `AGENVAS_DB_URL`、`AGENVAS_DB_USER` 和 `AGENVAS_DB_PASSWORD` 覆盖；启动后端还必须提供至少 24 字符的 `AGENVAS_BOOTSTRAP_SECRET`。默认 `AGENVAS_LLM_MODE=mock` 运行无外部账户的确定性演示流程；演示视频还需要本机 FFmpeg/FFprobe（自动尝试 `/usr/bin`、Homebrew 路径，可用 `AGENVAS_MEDIA_TOOLS_FFMPEG` 和 `AGENVAS_MEDIA_TOOLS_FFPROBE` 指定绝对路径）。候选真实聊天接入需由部署者同时设置 `AGENVAS_LLM_MODE=configured`、`AGENVAS_LLM_CHAT_ADAPTER=openai`、`AGENVAS_LLM_MODEL`、`AGENVAS_LLM_API_KEY`，可选 `AGENVAS_LLM_BASE_URL`（默认官方 HTTPS 地址）及递增的 `AGENVAS_LLM_CONFIG_VERSION`。具体端点完成真实工具请求→回填→下一轮响应测试后，才设置 `AGENVAS_LLM_TOOL_CALLING_VERIFIED=true` 允许 Agent 运行；默认 false 会阻止把仅有适配器支持误报为模型能力。凭证仅进入服务端运行环境，不要写入仓库或前端配置；端点安全与发布门禁仍需实际验证。
-
-管理员可在“模型配置”页保存 OpenAI 兼容端点、模型 ID 和 API Key。保存功能需要服务端设置 `AGENVAS_CREDENTIAL_MASTER_KEY`（32 字节随机密钥的 Base64 编码，独立于数据库备份保管）；未设置时配置写入返回 503，Mock 模式仍可运行。密钥在数据库中以 AES-256-GCM 加密并保留配置旧版本，API 只返回掩码。切换到 `AGENVAS_LLM_MODE=configured` 后，活动数据库配置优先于上面的环境变量候选适配器；保存后 Agent Run 仍会阻断，直到管理员在设置页明确确认最多两次可能计费请求，并完成“工具请求 → 服务端回填 → 下一轮响应”的诊断。只有当前配置版本通过诊断才开放 Tool Calling；这不证明视觉、输出质量或任何尚未实测的真实 Provider 能力。已创建 Run 固定配置来源与版本，轮换后不会静默改用新模型继续执行。数据库模型请求固定到管理员配置的主机/端口和 Chat Completions 路径，逐次校验 DNS 结果且不跟随重定向。不要将主密钥或 API Key 写入 Git、浏览器存储或日志。若明确需要本机测试端点，可设置 `AGENVAS_LLM_ALLOW_LOOPBACK_HTTP=true`，仅允许精确的 `http://127.0.0.1` 地址；默认不允许本机例外或 HTTP。
-
-Google Nano Banana 2 图片能力可在“媒体配置”页创建：配置服务端 `AGENVAS_CREDENTIAL_MASTER_KEY`，由管理员添加 Google 连接、填写 API Key、发布 `GOOGLE_NANO_BANANA_2` 能力，再在图片节点选择能力并运行。支持最多 14 张冻结参考图；中转站可配置模型名及 API Base URL。Google 连接保留 `/v1`、`/v1beta` 等 API 前缀，裸主机默认 `/v1`。连接表及新建/编辑表单显示当前接口格式，并提供版本后缀说明和 grsai 示例；中转站模型名在能力配置中单独填写。请填写带版本后缀的 API Base URL，不要粘贴完整的 `models/…:generateContent` 或供应商自定义的 `/v1/draw/nano-banana` 路径。2026-09-30 已在 grsai 的 `/v1beta` 上实测 `nano-banana-2-lite` 文字生图和单图编辑，并完成任务/版本/Asset 归档；Google 官方及完整版 Nano Banana 2 尚未实测。Key 仅在管理员页面提交并加密保存。见真实调用证据（开发记录不随源码公开）及 [ADR 0004](docs/adr/0004-google-nano-banana-2-fixed-adapter.md)。
-
-默认部署 Compose 使用 `configured`；开发 Compose 显式使用 Mock。管理员在“媒体配置”页创建连接并发布固定能力，分别设置图片、视频和音频默认模型。媒体由用户在卡片上直接运行，任务冻结连接、能力、草稿和精确参考版本；Key 只在服务端加密保存。图片支持 GPT Image 2 / Nano Banana 的固定协议。火山方舟 Seedance 2 支持纯文本、首尾帧及全能参考（最多 9 图 / 3 视频 / 3 音频，音频必须搭配视觉参考）；含音频参考时保留输出音轨，旧的单首帧请求继续生成无声 MP4。结果只从审核过的方舟域下载，禁止生成自动重试。Seed Audio 1.0 音频连接使用固定火山语音接口，提供提示词、参考音频/图片、音色库与声音参数；上传/播放/下载和节点内重新生成也可在 Mock 下独立运行。Mock 音频是演示提示音，不是语音合成；生成音色试听会新建可审计音频任务并计入用量。真实 Seed Audio / Seedance 调用本轮未运行，协议与归档通过本地假 HTTP 和 PostgreSQL 定向验证，见 音频验收（开发记录不随源码公开）。ComfyUI 仍仅接受固定模板与模型文件名，不允许上传任意工作流；本机地址限制为精确的 `http://127.0.0.1:<端口>`，跨容器需显式地址白名单。
-
-Seedance 视频参考使用签名 URL：本地部署无需开放公网服务地址，在“存储设置 → 媒体中继”单独选择可公网访问的 OSS/COS/S3 连接即可，默认存储仍可保持本地。私有桶需要可签名读取及上传/删除权限；已有云端素材按原桶直接签名，避免再次上传。参考视频仅支持 MP4、2–15 秒、24–60 FPS，最多 3 段且合计 15 秒；临时中继副本保留 7 天后清理。配置步骤与限制见 [媒体中继](docs/media-relay-design.md)。本轮使用假 HTTP 验证协议，没有执行真实云桶或 Seedance 调用。
-
-媒体连接、能力与默认值仅通过管理员媒体目录管理，已移除旧 ComfyUI 环境装配、一次性配置导入和独立旧调度器。`AGENVAS_PROVIDER_MODE` 只选择 `mock` 或 `configured`；真实 ComfyUI 连接仍使用目录中发布的固定模板。任务冻结连接和能力版本，配置轮换不会改变已受理请求的查询来源。旧开发库与新 V1 的边界见[备份与恢复说明](docs/operations/backup-restore.md)。
-
-轮换部署主密钥时，先分别备份数据库与旧主密钥，再生成新的 32 字节随机 Base64 值：把 `AGENVAS_CREDENTIAL_KEY_VERSION` 增加 1，令 `AGENVAS_CREDENTIAL_MASTER_KEY` 指向新值，并把旧值以 `旧版本号=旧Base64` 加入 `AGENVAS_CREDENTIAL_PREVIOUS_KEYS`（多把旧密钥用逗号分隔，例如仅描述格式的 `1=<旧值>,2=<更早值>`）。重启后新配置用新密钥加密，已保存版本仍用其原 keyVersion 解密；在旧 Run、未知任务及备份可能引用旧版本期间不得移除旧密钥。缺失历史密钥会明确返回 `CREDENTIAL_KEY_VERSION_MISSING`，不会改用新密钥尝试解密。数据库中已验证的旧 LLM 配置可供固定该版本的 Run 继续使用；环境变量来源没有历史版本存储，变更后旧 Run 仍明确阻断。此流程尚未完成跨备份恢复演练，不得宣称密钥轮换具备生产发布验收。
-
-## 仓库结构
+后端直跑需提供 `AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD` 与 `AGENVAS_BOOTSTRAP_SECRET`；仓库根目录 `.env` 不会由 Spring Boot 自动加载。源码运行默认使用 Mock，媒体处理需要本机 FFmpeg/FFprobe；可通过 `AGENVAS_MEDIA_TOOLS_FFMPEG`、`AGENVAS_MEDIA_TOOLS_FFPROBE` 指定路径，深度提取另见[本地图片处理配置](docs/local-image-processing.md)。Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 ```text
-frontend/       Vite + React + TypeScript SPA
-backend/        Java 21 / Spring Boot 4 模块化单体
-contracts/      权威 OpenAPI 与后续事件/Artifact Schema
-configs/        版本化 Agent、Skill 与受信媒体工作流配置
-deploy/         Compose、Nginx 和容器构建
-docs/           MVP 规格、依赖基线与开发验收清单
+frontend/       前端页面与画布交互
+backend/        业务 API、Agent Runtime 与任务处理
+contracts/      权威 OpenAPI 与内容 Schema
+configs/        Agent、Skill 与受信媒体工作流配置
+deploy/         Compose、Nginx 与容器构建
+docs/           产品规格、设计、依赖与验收记录
 ```
 
-核心规格见 [MVP-SPEC.md](docs/MVP-SPEC.md)，执行顺序见 [DEVELOPMENT-CHECKLIST.md](docs/DEVELOPMENT-CHECKLIST.md)，实际验证版本见 [dependency-baseline.md](docs/dependency-baseline.md)。贡献前请同时阅读 [AGENTS.md](AGENTS.md)。
+贡献前阅读 [AGENTS.md](AGENTS.md)、[MVP 规格](docs/MVP-SPEC.md)和[开发清单](docs/DEVELOPMENT-CHECKLIST.md)。安全报告与当前支持范围见 [SECURITY.md](SECURITY.md)。
 
-备份恢复必须使用与备份兼容的镜像，并先以 `AGENVAS_RECOVERY_MODE=true` 启动；该模式不执行 Flyway 迁移，并暂停项目写入和后台调度。旧 V1–V77 数据库须使用对应旧版本恢复，不能核对后直接切到新 V1；新基线版本使用独立空库和素材卷。操作顺序与演练边界见[备份与恢复说明](docs/operations/backup-restore.md)。
+## 许可证
 
-## 当前限制
+Agenvas 主项目采用 [Elastic License 2.0（ELv2）](LICENSE)，允许在协议条件下使用、复制、修改和分发源码，包括自托管使用。
 
-- 已实现单管理员身份闭环，但尚未提供账户找回、多管理员或团队能力。
-- 已有 Run 创建、读取和取消 API、受控模型回合、工具账本、公开执行记录与对话内媒体审批。项目可导出脱敏 JSON/素材元数据清单；清单不是媒体字节备份，也不是视频拼接导出。角色、场景、镜头、执行计划、关键帧审批和局部镜头重做已从产品范围移除。
-- grsai 中转站的 `gpt-image-2.5` 有真实文字生图成功记录；`nano-banana-2-lite` 已实测文字生图与单图编辑。GPT 最新一轮超时 UNKNOWN，不承诺稳定性；LLM/ComfyUI/Seedance 真实调用及 OpenAI/Google 官方端点仍未验证。本地假 HTTP 与演示素材不能作为真实 Provider 证据。
-- 尚未发布的 V1–V77 开发迁移已重建为 [V1__initial_schema.sql](backend/src/main/resources/db/migration/V1__initial_schema.sql)，含当前 67 张业务表、28 条必需初始化数据及数据库对象注释，不包含用户数据或凭据。旧开发重置/媒体导入标记、旧 ComfyUI 配置版本表、任务依赖与多余字段已清理。新 V1 仅用于空库，后续从 V2 开始只增不改；旧库保留与恢复边界见 [ADR 0012 补充](docs/adr/0012-jooq-persistence.md#2026-10-02-未发布基线重建)。
-
-项目目标许可为 Apache-2.0；正式许可证、NOTICE 与第三方/模型许可证清单在 M6/T30 发布门禁完成前仍属于待办事项。安全报告边界见 [SECURITY.md](SECURITY.md)，当前支持范围与升级限制见 [0.1.0 发行说明草案](docs/release-notes/0.1.0-mvp-draft.md)。
-
-### 查看系统日志
-
-登录后从侧栏进入“系统日志”（`/settings/logs`），可按 stdout / stderr 和关键词筛选，自动刷新或暂停，并跟随最新输出。只对管理员开放，不会发起模型调用。
-
-页面保留本次后端 Java 进程最近 2000 行，每行最多 8192 字节，换行后显示；重启会清空。它不包含 stdin、子进程、数据库或 Nginx 的输出。需查看其他服务或重启前记录时，使用部署控制台（如 `docker compose logs`）。采集保持原始控制台输出，对网页缓存中的常见凭据与 URL 查询参数脱敏；应用仍须遵守不输出密钥、完整 Prompt 或模型私有推理的规则。
+ELv2 限制向第三方提供可访问软件实质性功能的托管或管理服务，禁止规避许可证密钥功能以及移除许可、版权等声明。它属于源码可用许可证，不是 OSI 批准的开源许可证；具体权利与限制以 [LICENSE](LICENSE) 和 [Elastic 官方条款](https://www.elastic.co/licensing/elastic-license)为准。

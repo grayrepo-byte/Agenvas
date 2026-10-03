@@ -4578,7 +4578,7 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New Run policies are schema v3 and pin systemPromptVersion=4 plus their tool allowlist. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
+        /** @description New Run policies are schema v3 and pin systemPromptVersion=5 plus their context-appropriate tool allowlist. IMAGE previews are sent only after committed read_artifacts requests, never automatically at Run start; Skill resource reading is exposed only when frozen resources exist. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
         RunPolicySnapshot: {
             /** @enum {integer} */
             schemaVersion: 1 | 2 | 3;
@@ -4586,10 +4586,10 @@ export interface components {
             toolPolicyVersion?: 1;
             allowedTools?: string[];
             /**
-             * @description New v3 snapshots pin version 4; historical versions 1/2/3 retain their original rules; absent on historical v1 snapshots.
+             * @description New v3 snapshots pin version 5; historical versions 1/2/3/4 retain their original rules; absent on historical v1 snapshots.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3 | 4;
+            systemPromptVersion?: 1 | 2 | 3 | 4 | 5;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
