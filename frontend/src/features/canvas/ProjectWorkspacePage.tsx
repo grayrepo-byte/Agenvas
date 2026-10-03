@@ -71,7 +71,7 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { displayCanvasRelations } from "./canvasEdgeDisplay";
 import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteraction";
-import { arrangeCanvas,CANVAS_LAYOUT_BATCH_SIZE } from "./arrangeCanvas";
+import { arrangeCanvas,CANVAS_ARRANGE_GAP,CANVAS_LAYOUT_BATCH_SIZE } from "./arrangeCanvas";
 import {
 agentImageConnection,canvasRelationRemoval,canvasTargetHandleId,inputConnectionUpdate,
 isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
@@ -678,9 +678,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     mutationFn: async () => {
       const selected = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
       const layoutDrafts = useCanvasStore.getState().drafts;
-      const targetX = Math.min(...selected.map((item) => layoutDrafts[item.id]?.x ?? item.x));
-      const commands: CanvasCommand[] = selected.map((item) => {
-        const layout = { x: targetX, y: layoutDrafts[item.id]?.y ?? item.y, ...effectiveNodeSize(item) };
+      const layouts = selected.map((item) => ({ item, layout: {
+        x: layoutDrafts[item.id]?.x ?? item.x, y: layoutDrafts[item.id]?.y ?? item.y,
+        ...effectiveNodeSize(item),
+      } })).sort((a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x || a.item.id.localeCompare(b.item.id));
+      const targetX = Math.min(...layouts.map(({ layout }) => layout.x));
+      let nextY = Math.min(...layouts.map(({ layout }) => layout.y));
+      const commands: CanvasCommand[] = layouts.map(({ item, layout: current }) => {
+        // Keep existing vertical space; push overlapping cards down in spatial order.
+        // Use projected heights so portrait media and resized cards remain clear.
+        const layout = { ...current, x: targetX, y: Math.max(current.y, nextY) };
+        nextY = layout.y + layout.height + CANVAS_ARRANGE_GAP.y;
         updateDraft(item.id, layout);
         return { type: "UPDATE_LAYOUT", itemId: item.id, expectedVersion: item.version,
           ...layout, ...persistableNodeSize(layout), zIndex: item.zIndex, groupId: item.groupId };
