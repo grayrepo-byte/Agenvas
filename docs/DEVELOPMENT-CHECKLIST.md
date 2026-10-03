@@ -1427,9 +1427,18 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 前端六类 100 项定向测试、TypeScript、完整 lint、Vite 生产构建及差异空白检查通过；构建仍有既有大 chunk 提示。暂存文本凭据/隐私检查逐项复核，两处密钥形状命中属于日志单测中的显式合成字符串，不含真实凭据；无截图或二进制加入本次合并。
 - [ ] 未运行全量测试、浏览器端到端、真实 Provider/模型调用或部署；合并复验的模型均为 Mock/合成数据。
 
+### 2026-10-04 Agent 创作提示词与底层协议分离
+
+- [x] 按用户澄清保留程序维护的底层工具、审批、读取与历史上下文协议；提示词管理及卡片设置只控制角色、语言、风格和创作流程。新 Run 固定 systemPromptVersion=7，移除底层的 Creator 身份、回复语言及导演图生视频/连续性要求，创作 SystemMessage 使用冻结正文原文。历史 1–6、检查点恢复、工具续接与模型重试沿用原受理语义；实际权限、预算、CAS、参数与媒体审批检查保持。
+- [x] 四语言卡片字段改称创作系统提示词，管理页说明可编辑范围；内置导演预设已具备所移出的创作流程，不改写用户预设或卡片。无数据库迁移、jOOQ 或依赖变更。
+- [x] 后端定向单元测试 13 项通过（InitialModelContextServiceTest 9、RunToolPolicyTest 4）；新增回归先在旧实现失败，再验证当前协议不夹带角色、语言及导演流程，冻结创作正文保持原文，有历史时仍使用独立底层来源说明，历史消息规则保留。
+- [x] 真实 PostgreSQL 定向集成测试 7 项通过（PromptManagementPostgresIT 5、PromptInjectionPostgresIT 1、AgentMediaApprovalPostgresIT 的精确图片到视频续接 1）；合成恶意卡片系统提示词、文本与图片均不能伪造批准或创建媒体 Task，批准后的 Mock 图片/视频续接保留精确引用和审批边界。恶意卡片场景补充后重新运行注入集成测试通过。
+- [x] 前端 PromptManagementSection、SystemSettingsPage、AgentChatCard 共 48 项通过，TypeScript 与四语言 i18n 检查通过；OpenAPI 增加版本 7 并重新生成 TypeScript，同步 CONTEXT、MVP、ADR 0010 与对话流设计。旧预检版本须重新预检，前后端应同步部署。
+- [ ] 全量测试、完整 lint、生产构建、浏览器端到端、真实模型/Provider 与部署更新未运行。测试使用合成模型与 Mock 媒体，不能证明真实模型遵循分离后的提示词。
+
 ### 2026-10-04 Agent 模型等待与媒体跨轮引用修复
 
-- [x] 按用户最终决定，AgentRun 不设置累计执行或自然时长上限，撤回旧规格的整体期限计划。单次模型调用仍有限：SDK、Agent/文字 Worker 等待与模型 HTTP 整次调用统一为 600 秒；实际安全传输读取为 180 秒，连接为 10 秒。持续流片段不延长整次调用期限，不自动重发；媒体审批与执行批次保留各自期限。
+- [x] 按用户最终决定，AgentRun 不设置累计执行或自然时长上限，撤回旧规格的整体期限计划。单次模型调用仍有限：SDK、Agent/文字 Worker 等待与模型 HTTP 整次调用统一为 600 秒；实际安全传输读取为 180 秒，连接为 10 秒。持续流片段不延长整次调用期限，SDK 与传输层不自动重发；合并 main 后沿用业务 Runtime 的单回合技术恢复窗口，重试等待受剩余恢复期限约束。媒体审批与执行批次保留各自期限。
 - [x] 同会话后续任务按当前 CanvasItem 选用版本继承图片、视频与音频，即使资源默认版本为空；文字仍用资源默认版本与修订 CAS。不同节点的不同版本可分别继承，同版本去重，不修改资源默认或节点选择。Canvas 与 Artifact 各自通过应用边界投影/鉴权，排除人工、其他 Agent/会话/项目及已归档资源；显式绑定在 SQL 限额前排除，避免其多版本挤掉其他合法输入。
 - [x] 修复文字选择快照缺少精确版本的既存读取问题；媒体选择仍按节点结果固定，空草稿不回退到资源默认版本。新任务重新冻结输入，旧失败 Run 和已冻结审批不回写。
 - [x] 超时专项最终去重 36 项通过：最新配置 `LlmCallTimeoutHttpTest,LlmWorkerTimeoutTest,SafeLlmTransportTest` 的 10 项通过，另此前流式大小边界、Spring AI HTTP、debug、租约 fencing、回合与失败码的 26 项通过。真实 Spring AI SDK 对合成本机 HTTP 验证普通/流式、debug 开关、总期限与读取静默期限独立生效以及不自动重发；时间边界使用缩短的测试期限。
@@ -1437,3 +1446,11 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 同步 MVP §8.5/8.6/31 与 ADR 0010。无 API、数据库迁移、jOOQ 生成源码或依赖变更。
 - [x] 后端镜像编译打包通过，复用相关定向测试结果，构建跳过全量测试；仅更新本地后端服务。容器健康及 readiness HTTP 200、网页反代未授权 API HTTP 401 验证通过，运行 JAR 中本次 12 个生产类与已测试编译类字节一致。当前差异及新增文本的凭据/私有路径格式扫描无候选，差异空白检查通过；无新增真实调用日志、截图或用户媒体。
 - [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 调用和真实 180/600 秒长时等待未运行。
+
+### 2026-10-04 模型等待与跨轮引用合并 main 复验
+
+- [x] 整合 main 的审批入口、持久模型退避、单份 debug 响应及创作提示词/底层协议分离；Java 冲突统一使用 REQUEST=600 秒、TRANSPORT_READ=180 秒、CONNECT=10 秒，保留超时分类、响应检查点竞态、取消与租约 fencing。SDK/传输无隐藏重试，业务单回合恢复保留独立期限，整个 AgentRun 不设时长上限。跨轮媒体精确引用、显式绑定优先和文字选择快照修复保留；两次清单冲突保留双方验收记录。
+- [x] 后端定向去重 109 项通过：第一次合并复验 93 项覆盖真实 PostgreSQL 的技术重试、已提交响应/工具恢复、媒体会话继承与读取，以及合成 Spring AI HTTP、46 秒慢响应、debug、流式与安全传输。main 新增提示词提交后只增量复验 16 项：InitialModelContextServiceTest 9、PromptInjectionPostgresIT 1、PromptManagementPostgresIT 5、AgentRunPostgresIT 1；Java 编译通过，无失败、错误或跳过。
+- [x] 前端 AgentChatCard、AgentRunConversation、AgentModelRetryNotice、BlockedRunNotice、projectCache、taskErrorMessages 六个文件 100 项定向测试通过；TypeScript、12 个改动 TS/TSX 文件 ESLint、主题与四语言检查通过。新增版本 7 的合约与生成 TypeScript 同步，临时重新生成后字节一致；第二次合并仅增量复验类型、合约与语言，不重复已通过的组件测试。
+- [x] 差异空白与冲突标记检查通过；暂存文本凭据/私有路径检查的三处密钥形状命中已逐项确认是日志测试中的明确不可用合成字符串，无新增实际调用记录、截图或用户媒体。没有数据库迁移、jOOQ 生成源码或依赖变更。
+- [ ] 本轮未运行全量测试、生产构建、浏览器端到端或真实 Provider 调用，也未重新部署合并后的版本；前一节的本地部署记录仅对应合并前修复。
