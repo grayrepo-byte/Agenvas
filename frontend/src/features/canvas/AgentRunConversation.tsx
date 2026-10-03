@@ -7,6 +7,7 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import { Button } from "../../shared/ui/primitives/button";
 import { AgentChatMessage, AgentChatTaskRow, AgentExecutionTrace } from "./AgentChatPrimitives";
 import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
+import { AgentMarkdown } from "./AgentMarkdown";
 import { useRunAssistantStream } from "./agentRunStream";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
@@ -109,7 +110,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
       projectId={projectId} runId={run.id} approval={approval} disabled={!active || run.status !== "WAITING_TASKS"} />)}
     {[...replies.entries()].sort((left, right) => left[1].step - right[1].step).map(([id, reply]) =>
       <AgentChatMessage key={id} role="assistant" streaming={reply.status === "STREAMING"}>
-        {reply.text}
+        <AgentMarkdown text={reply.text} />
         {reply.status === "INTERRUPTED" ? <p className="agent-chat-stream-notice">{t("agent.trace.interrupted")}</p> : null}
       </AgentChatMessage>)}
     {showFailureNotice && (run.status === "BLOCKED" || run.status === "FAILED") ? <BlockedRunNotice projectId={projectId} runId={run.id} status={run.status} /> : null}

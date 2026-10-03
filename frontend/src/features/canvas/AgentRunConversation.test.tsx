@@ -54,14 +54,29 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("formats historical assistant Markdown while keeping the user instruction literal", async () => {
+    mockConversation([task({ output: { assistantText: "**结果**\n\n- 视频已完成\n\n版本 `synthetic-version`" } })]);
+    const client = createQueryClient();
+    render(<QueryClientProvider client={client}>
+      <AgentRunConversation projectId={PROJECT_ID} active={false}
+        run={{ id: RUN_ID, status: "SUCCEEDED", instruction: "**保留用户原文**", createdAt: NOW }} />
+    </QueryClientProvider>);
+    expect((await screen.findByText("结果")).tagName).toBe("STRONG");
+    const reply = screen.getByRole("article", { name: "Agent" });
+    expect(within(reply).getByRole("listitem")).toHaveTextContent("视频已完成");
+    expect(within(reply).getByText("synthetic-version").tagName).toBe("CODE");
+    expect(screen.getByRole("article", { name: "你" })).toHaveTextContent("**保留用户原文**");
+  });
+
   it("renders persisted public streaming text and replaces it with one committed final reply", async () => {
     const streaming = task({ status: "RUNNING", input: { stepIndex: 0 }, output: {
-      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "收到的公开片段", status: "STREAMING" },
+      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**收到的公开片段**", status: "STREAMING" },
       reasoning: "PRIVATE_STREAM_REASONING",
     } });
     mockConversation([streaming]);
     const client = mountConversation("RUNNING", true);
     expect(await screen.findByText("收到的公开片段")).toBeInTheDocument();
+    expect(screen.getByText("收到的公开片段").tagName).toBe("STRONG");
     expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "true");
     expect(screen.getByText("正在输出")).toBeInTheDocument();
     expect(screen.queryByText("PRIVATE_STREAM_REASONING")).not.toBeInTheDocument();
@@ -72,10 +87,11 @@ describe("AgentRunConversation", () => {
         text: "收到的公开片段以及后续内容", status: "COMPLETED",
       }]);
       client.setQueryData(["run-history-tasks", PROJECT_ID, RUN_ID], [
-        { ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "持久化最终回复" } },
+        { ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "## 持久化最终回复" } },
       ]);
     });
     expect(await screen.findByText("持久化最终回复")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "持久化最终回复", level: 2 })).toBeInTheDocument();
     expect(screen.getAllByRole("article", { name: "Agent" })).toHaveLength(1);
     expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
     expect(screen.queryByText(/收到的公开片段/)).not.toBeInTheDocument();
@@ -95,10 +111,11 @@ describe("AgentRunConversation", () => {
 
   it("keeps an interrupted public stream visible and identifies the interruption", async () => {
     mockConversation([task({ status: "FAILED", input: { stepIndex: 0 }, output: {
-      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "中断前收到的内容", status: "INTERRUPTED" },
+      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**中断前收到的内容**", status: "INTERRUPTED" },
     } })]);
     mountConversation("FAILED");
     expect(await screen.findByText("中断前收到的内容")).toBeInTheDocument();
+    expect(screen.getByText("中断前收到的内容").tagName).toBe("STRONG");
     expect(screen.getByText("输出已中断，已保留收到的内容。")).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
   });

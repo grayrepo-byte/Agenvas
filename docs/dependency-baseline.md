@@ -49,6 +49,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 精确解析结果与完整传递依赖见 `frontend/pnpm-lock.yaml` 和 Maven effective dependency tree；生成的 API 类型来自 `contracts/openapi.yaml`。
 
+2026-10-03 Agent 回答展示新增精确版本：[`react-markdown` 10.1.0](https://github.com/remarkjs/react-markdown)、[`remark-gfm` 4.0.1](https://github.com/remarkjs/remark-gfm)、[`remark-breaks` 4.0.0](https://github.com/remarkjs/remark-breaks)。使用同步 React 渲染、GFM 语法与普通换行插件；React peer 范围为 >=18，与当前 React 19 基线兼容。禁用原始 HTML，并使用应用自己的安全链接转换与不自动加载图片的组件。验证范围为 Markdown 与 Agent 对话/流式相关前端测试、TypeScript、lint 和 Vite 构建，不涉及后端或真实 Provider。
+
 ## 容器镜像
 
 | 用途 | 精确镜像 | 多架构 digest |

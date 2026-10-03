@@ -35,7 +35,7 @@
 .agent-chat-tool-chip > svg { flex: none; }
 .agent-chat-stream-label { color: var(--ui-text-subtle); font-size: 10px; margin-left: 3px; }
 .agent-chat-stream-notice { margin: 8px 0 0; color: var(--ui-text-muted); font-size: 11px; }
-.agent-chat-message--assistant .agent-chat-message__body { white-space: pre-wrap; }
+.agent-chat-message--assistant .agent-chat-message__body { white-space: normal; }
 .agent-media-approval { --agent-chat-ink: var(--ui-text); --agent-chat-muted: var(--ui-text-muted); --agent-chat-surface: var(--ui-surface); --agent-chat-field: var(--ui-surface-raised); --agent-chat-line: var(--ui-border); box-shadow: none; }
 .agent-media-approval .agent-chat-approval__heading { padding: 12px 12px 0; }
 .agent-media-approval .agent-chat-approval__content { padding: 10px 12px 12px; }
