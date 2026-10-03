@@ -202,6 +202,8 @@
 
 2026-10-03 多选工具栏样式修复：ProjectWorkspacePage 将 Agent 输出全选与一般多选的批量面板改为紧凑圆角操作条，公共 Button/Separator、Phosphor 图标和主题色统一数量/动作/关闭的横向排版；styles.css 删除旧宽幅面板样式。只显示选区适用的绑定/清空操作，等待禁用与原保存/选择行为保留。同步规格与 ADR 0005，无合约、迁移或依赖变更。新增真实 React Flow 组件回归，覆盖 Agent 全部输出选择、相关操作、批量左对齐保存、混合 Agent 选区和关闭；CanvasSelectionClearing/ProjectWorkspacePage 共 53 项定向测试、TypeScript、定向 ESLint、主题色/i18n 检查通过。真实 Chrome 挂载完整工作区组件，API 全部由合成数据拦截，验证输出选区与混合选区按钮、关闭、中文/俄语无覆盖越界，并检查两张合成截图。该浏览器验证不包含真实服务端、模型或媒体 Provider；全量测试、后端测试和本轮生产构建未运行。
 
+2026-10-03 多选左对齐避让修复：在工作区布局保存路径用两张同一行的合成图片复现旧行为（相同横纵坐标导致重叠）。ProjectWorkspacePage 改为按当前纵坐标、横坐标与 ID 稳定排序，统一到最左侧并按实际投影高度及现有整理间距向下避让，保留足够的原纵向间距。使用本地位置/尺寸草稿，未选节点不移动，批量 CAS 与冲突草稿保留不变。ProjectWorkspaceImageLayout 新增不同尺寸图片/视频、同一行、部分重叠、既有间距及待保存草稿回归，并修正冲突断言；同步规格与 ADR 0005，无合约、迁移或依赖变更。ProjectWorkspaceImageLayout、CanvasSelectionClearing、ProjectWorkspacePage 共 92 项定向测试、TypeScript 与修改文件 ESLint 通过。测试使用 MSW 合成 API，真实浏览器验收、全量测试、后端测试、生产构建与真实 Provider 调用未运行。
+
 依赖：T07。
 
 交付：Creator Profile、AgentInstance、AgentBinding、输出区域。
