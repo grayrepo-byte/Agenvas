@@ -202,6 +202,8 @@
 
 2026-10-03 多选工具栏样式修复：ProjectWorkspacePage 将 Agent 输出全选与一般多选的批量面板改为紧凑圆角操作条，公共 Button/Separator、Phosphor 图标和主题色统一数量/动作/关闭的横向排版；styles.css 删除旧宽幅面板样式。只显示选区适用的绑定/清空操作，等待禁用与原保存/选择行为保留。同步规格与 ADR 0005，无合约、迁移或依赖变更。新增真实 React Flow 组件回归，覆盖 Agent 全部输出选择、相关操作、批量左对齐保存、混合 Agent 选区和关闭；CanvasSelectionClearing/ProjectWorkspacePage 共 53 项定向测试、TypeScript、定向 ESLint、主题色/i18n 检查通过。真实 Chrome 挂载完整工作区组件，API 全部由合成数据拦截，验证输出选区与混合选区按钮、关闭、中文/俄语无覆盖越界，并检查两张合成截图。该浏览器验证不包含真实服务端、模型或媒体 Provider；全量测试、后端测试和本轮生产构建未运行。
 
+2026-10-03 多选左对齐避让修复：在工作区布局保存路径用两张同一行的合成图片复现旧行为（相同横纵坐标导致重叠）。ProjectWorkspacePage 改为按当前纵坐标、横坐标与 ID 稳定排序，统一到最左侧并按实际投影高度及现有整理间距向下避让，保留足够的原纵向间距。使用本地位置/尺寸草稿，未选节点不移动，批量 CAS 与冲突草稿保留不变。ProjectWorkspaceImageLayout 新增不同尺寸图片/视频、同一行、部分重叠、既有间距及待保存草稿回归，并修正冲突断言；同步规格与 ADR 0005，无合约、迁移或依赖变更。ProjectWorkspaceImageLayout、CanvasSelectionClearing、ProjectWorkspacePage 共 92 项定向测试、TypeScript 与修改文件 ESLint 通过。测试使用 MSW 合成 API，真实浏览器验收、全量测试、后端测试、生产构建与真实 Provider 调用未运行。
+
 依赖：T07。
 
 交付：Creator Profile、AgentInstance、AgentBinding、输出区域。
@@ -547,7 +549,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 依赖：T29。
 
-进展：新增 `SECURITY.md`，明确开发版尚无受支持发布，并仅在仓库启用 GitHub 私密漏洞报告时使用该入口；私密渠道当前无法核实，仍是发布阻断。`docs/release-notes/0.1.0-mvp-draft.md` 汇总 Mock 支持范围、候选 Provider 限制、升级恢复边界与待验门禁，不作为正式发行。CI 已配置镜像级 CycloneDX SBOM/许可证清单工件生成，但项目许可证决定、NOTICE、模型/FFmpeg 许可审查和具体发行工件尚未完成。
+进展：新增 `SECURITY.md`，明确开发版尚无受支持发布，并仅在仓库启用 GitHub 私密漏洞报告时使用该入口；私密渠道当前无法核实，仍是发布阻断。`docs/release-notes/0.1.0-mvp-draft.md` 汇总 Mock 支持范围、候选 Provider 限制、升级恢复边界与待验门禁，不作为正式发行。CI 已配置镜像级 CycloneDX SBOM/许可证清单工件生成，2026-10-03 按用户决定采用 ELv2，根目录加入官方完整 LICENSE，中英文 README 与规格第 29 节/ADR 0032 已同步；NOTICE、模型/FFmpeg 与第三方许可审查、具体发行工件仍未完成。
 
 - [ ] README/README.en、CONTRIBUTING、SECURITY、LICENSE、NOTICE、SBOM 完整。
 - [ ] 媒体模板、模型权重、Custom Node 与 FFmpeg 构建许可分别核验。
@@ -1242,6 +1244,46 @@ MVP §6.4 与 ADR 0029 的流式对话设计已同步错误呈现规则。
 
 Agent 修复合并 main 复验：合并最新画布连线操作隐藏与整理后视口定位改动，无冲突；前端 7 个文件 153 项定向测试及 TypeScript 检查通过。没有再改后端、接口或数据库；未运行全量测试或真实 Provider 端到端。
 
+### 2026-10-03 Agent 回答 Markdown 展示
+
+- [x] 历史终稿、实时累计回答和中断前缀共用 AgentMarkdown；支持标题、强调、嵌套列表、引用、行内/块代码、GFM 表格、任务列表与删除线，保留普通换行。用户指令仍显示原文；终稿替换、中断提示与唯一 SSE 不变。
+- [x] 使用固定 react-markdown/remark-gfm/remark-breaks 依赖，原始 HTML 不执行；限制链接协议并隔离外链，图片以文本链接显示，不自动加载。长代码和表格在局部滚动，沿用主题 token。
+- [x] 4 个相关测试文件 51 项通过，覆盖历史/流式/中断回答、终稿替换、未闭合 Markdown、GFM、HTML/危险链接/远程图片、既有卡片交互与流恢复；TypeScript、完整 lint（主题、四语言、ESLint）和 Vite 生产构建通过，保留既有分块大小提示。
+- [x] 合成 Mock 浏览器检查 360px/520px 卡片：标题、强调、列表、引用、表格与普通换行正常；正文 scrollWidth 等于 clientWidth，长代码只在代码块横向滚动。临时预览已清理，用户截图没有加入仓库。
+
+MVP §14.6、ADR 0029 与依赖基线同步。不改后端、API 合约或数据库迁移；全量测试、真实模型/Provider 与实际部署未运行。
+
+Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读图及精简执行记录；任务清单与对话测试的追加冲突保留双方内容。整合后 5 个前端文件共 81 项定向测试、TypeScript、完整 lint 和 Vite 生产构建通过，差异空白及新增内容凭据/隐私模式检查无命中；保留现有分块大小提示。本轮仅更新本地 Git，未运行后端/全量测试、真实 Provider 或部署。
+
+## 2026-10-03 Agent 执行记录去除重复模型回合
+
+- [x] 定向组件测试先复现每个模型回合重复显示“AI 回复 / 第 1 次尝试”、虚增操作计数；普通模型回合现只由公开回复和运行状态展示，执行区保留真实工具动作、生成任务以及异常、停止或再次尝试的模型调用。
+- [x] 首次尝试不展示次数；实际再次尝试显示真实编号，错误原因、停止请求、UNKNOWN 与原有恢复入口保留。操作计数与步骤均按可见记录生成，四语言文案同步。
+- [x] AgentRunConversation、AgentChatCard、agentRunStream 共 39 项定向组件/流缓存测试通过；TypeScript、修改文件 ESLint、四语言和主题检查及差异空白检查通过。
+
+同步规格 8.4 与 ADR 0029 的界面说明。无 API、后端、数据库迁移或依赖变更；全量测试、生产构建、浏览器视觉验收及真实 Provider 调用未运行，未部署。
+
+## 2026-10-03 Agent 读取工具与图片输入修复
+
+本条记录最初自动附带绑定图片的修复；首次发送时机与全量绑定预检由下一条用户确认的按需读取决定取代，当前语义以规格和下一条为准。
+
+- [x] 修正未登记 Skill 资源被误报为 Runtime 工具未开放的问题；新 Run 只有冻结文本资源存在时才发布该工具，普通项目、选择和素材读取仍可用。保留原子工具批次及持久执行账本规则。
+- [x] 新 Run 固定 systemPromptVersion=5，跟随当前用户语言；绑定图片发送固定版本预览，后续工具/修复回合重建精确引用再发送，同版本别名去重。旧 1..4 版提示词与历史工具策略保留，不给视频或音频发送样本。
+- [x] 图片预检、受理和发送前校验最多 8 张、单图 2 MiB、合计 8 MiB；字节加载在数据库事务外，精确版本和项目资产重新鉴权，读取失败不静默降级。请求检查点仅保存图片引用，调试 HTTP 采集移除图片 data URI 字节。
+- [x] 13 个后端定向测试类共 56 项通过：包含 9 项真实 PostgreSQL + 假模型的创建、Skill、读取及图片续接测试，合成 HTTP 验证真实 Spring AI 请求内的图片字节和工具定义，其余覆盖越界拒绝、关闭文件流、事务边界、历史提示词、检查点重放、调试脱敏及后端语言目录。前端 AgentRunConversation、AgentChatCard 和 agentRunStream 共 39 项通过；TypeScript、完整前端 lint、OpenAPI 类型生成及差异空白检查通过。
+
+同步规格 6.10、6.17、8.5、13.3、流式设计、依赖验证范围及 OpenAPI/生成 TypeScript；提示词版本枚举增加 5，前后端应同批升级。没有数据库迁移或依赖调整。全量测试、生产构建、浏览器端到端和真实 Provider/视觉理解效果未验证；未更新运行中的服务，历史已保存回复不追溯改写。
+
+## 2026-10-03 Agent 图片改为工具按需读取
+
+- [x] 首次模型请求只列出绑定图片的元数据和精确版本，不自动附图、不因未读取图片的预览大小阻止 Run 受理。Agent 调用 `read_artifacts` 后，只有整个工具批次提交成功，下一模型请求才附上所请求版本的预览。
+- [x] 读取账本登记 `imagePreviewRequested`，续接依据已提交结果追加图片引用消息；未请求、其他读取工具或被拒绝/回滚的批次不触发图片加载。相同版本重复读取及别名不重复追加附件，已读取图片进入后续回合上下文；可读取范围仍限绑定或本 Run 产生的版本，发送前重新鉴权并验证预览大小。
+- [x] 11 个后端定向测试类共 41 项通过，含 5 项真实 PostgreSQL + 假模型回归；其中图片测试绑定两张合成图片，验证首次无图、整批拒绝后的修复仍无图、成功读取后只附请求的一张、重复读取保持一个附件。合成 Spring AI HTTP 请求验证 tool reply 后的图片编码和原调用 ID；其余覆盖引用恢复、越权、身份不匹配、事务外读取及历史策略。AgentChatCard 18 项组件测试、TypeScript、完整前端 lint、OpenAPI 类型生成及差异空白检查通过。
+
+同步规格 6.10、8.5、9.2、ADR 0029 补充决定、依赖验证范围、合约说明及四语言提示；使用当前未部署的 systemPromptVersion=5，历史 1..4 行为保留。没有新增工具、HTTP 端点、数据库迁移或依赖。全量测试、生产构建、浏览器端到端和真实 Provider 视觉调用未运行，运行服务未更新。
+
+2026-10-03 本次合并 main 复验：保留 main 的发送即运行、FAILED/BLOCKED 固定反馈、空资源默认版本媒体输入修复与左对齐防重叠，整合按需读取图片和执行记录去重。英文及中文 README 同步直接发送流程，规格 8.5 改为发送时自动预检。前端 7 个文件 123 项、后端 9 个类 38 项定向测试，以及 TypeScript、完整前端 lint 和差异空白检查通过。合并未运行全量测试、生产构建、真实模型/Provider、浏览器端到端或部署更新；仅更新本地 Git。
+
 ### 2026-10-03 Agent 媒体卡片生成状态修复
 
 - [x] 真实 PostgreSQL 回归先复现经批准的 Agent 媒体任务被卡片查询排除（预期一项、实际空数组）。查询改为按目标 CanvasItem 返回图片、视频与音频任务，保留所有者/项目边界、最近任务排序和显式新尝试的原任务排除；不混入同一 Artifact 的其他节点或模型回合，文字直接任务查询保持原作用域。
@@ -1288,3 +1330,13 @@ Agent 修复合并 main 复验：合并最新画布连线操作隐藏与整理�
 - [x] 前端 4 文件 64 项定向 Vitest 测试通过：PromptManagementSection、SystemSettingsPage、ProjectWorkspacePage、CanvasPaneMenu。覆盖多条草稿/用途筛选、新建功能/重复标识修正/204 删除、内置保护、多个 Agent 预设与原意图重试。四语言/主题/ESLint、TypeScript 与 Vite 生产构建通过；仍有既有大 chunk 提示。
 - [x] 同步 OpenAPI、生成 TypeScript、四语言界面与 API 错误、MVP、CONTEXT、ADR 0010 与对话设计。接口与建表文件需随前后端一起发布；差异空白与当前差异/新增文本的凭据格式及私有路径扫描通过，无新增真实调用记录或截图。
 - [ ] 全量测试、浏览器端到端、真实 LLM/Provider 与部署未运行。当前实际接入消费入口为 Agent 预设创建和文字卡片生成；其他功能按稳定 key 显式接入，诊断协议及服务端权限/工具规则不作为管理员创作提示词。
+
+
+### 2026-10-03 统一提示词与导演 Agent 合并 main 复验
+
+- [x] 保留 main 的 Agent 回答 Markdown、按需读取图片及 Skill 界面改动；解决上下文规则、合约、语言目录和任务清单冲突。新 Run 使用 systemPromptVersion=6，将导演创作系统提示词与按需读图规则组合；历史 1–5 的规则和消息角色保持。Flyway 仍为统一提示词 V5，不修改 main 已有 V1–V4。
+- [x] 完整 LLM debug 继续保存实际模型内容与图片请求正文，仅隐藏认证凭据；非 LLM 采集保持图片字节省略，业务检查点只保存图片引用。修正合成媒体测试夹具对最后消息角色的旧假定，并验证读图后实际收到一张预览、后续放置/整理不重复附图。
+- [x] 前端 12 个文件 287 项定向 Vitest 测试、TypeScript、完整 lint（主题/四语言/ESLint）与 Vite 生产构建通过，保留既有分块大小提示。覆盖直接创建、多 Agent 预设、统一提示词编辑、生成状态、视频图片引用、LLM 日志及 main 的图片布局/Markdown 会话交互。合约生成 TypeScript 已重新生成，依赖按合并后的锁文件安装。
+- [x] 后端 16 类共 94 项去重定向测试通过，包含真实 PostgreSQL、合成模型及明确标注 Mock 媒体。首次运行 93 项成功、媒体续接夹具一项失败；调整夹具后单独重跑 AgentMediaApprovalPostgresIT 全部 11 项通过。其他 83 项不重复执行。覆盖 PromptManagement、DirectTextGeneration、AgentImageInputs、AgentRun、SkillRun、AgentMediaApproval，以及 InitialModelContext、RunToolPolicy、AgentImageInput、ReadToolService、DebugHttpCapture、LlmStreamLogCollector、LlmDebugCaptureStreaming、CallLogService、CallLogStreamService、VideoDuration。
+- [x] 差异空白检查通过，新增内容凭据/私有路径扫描仅命中明确不可用的合成测试字符串，经逐项复核；无新增真实调用记录或截图。
+- [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 和部署未运行；只合并本地 Git，不更新用户应用数据库或运行服务。

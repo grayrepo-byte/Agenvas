@@ -48,20 +48,62 @@ function mountConversation(status: AgentRun["status"] = "SUCCEEDED", active = fa
 }
 
 function taskSummary(label: string, index = 0) {
-  const summary = screen.getAllByText(label)[index]?.closest("summary");
+  const summary = screen.getAllByText(label)[index]?.closest(".agent-chat-task")?.querySelector<HTMLElement>(".agent-chat-task__headline");
   if (!summary) throw new Error(`Missing task summary: ${label}`);
   return within(summary);
 }
 
 describe("AgentRunConversation", () => {
+  it("formats historical assistant Markdown while keeping the user instruction literal", async () => {
+    mockConversation([task({ output: { assistantText: "**结果**\n\n- 视频已完成\n\n版本 `synthetic-version`" } })]);
+    const client = createQueryClient();
+    render(<QueryClientProvider client={client}>
+      <AgentRunConversation projectId={PROJECT_ID} active={false}
+        run={{ id: RUN_ID, status: "SUCCEEDED", instruction: "**保留用户原文**", createdAt: NOW }} />
+    </QueryClientProvider>);
+    expect((await screen.findByText("结果")).tagName).toBe("STRONG");
+    const reply = screen.getByRole("article", { name: "Agent" });
+    expect(within(reply).getByRole("listitem")).toHaveTextContent("视频已完成");
+    expect(within(reply).getByText("synthetic-version").tagName).toBe("CODE");
+    expect(screen.getByRole("article", { name: "你" })).toHaveTextContent("**保留用户原文**");
+  });
+
+  it("does not turn normal model rounds into repetitive operation rows", async () => {
+    mockConversation([
+      task({ id: "first-model-round", output: { stepIndex: 0, assistantText: "我会先查看参考素材。" } }),
+      task({ id: "next-model-round", status: "RUNNING", input: { stepIndex: 1 } }),
+    ]);
+    mountConversation("RUNNING", true);
+
+    expect(await screen.findByText("我会先查看参考素材。")).toBeInTheDocument();
+    expect(screen.queryAllByText("AI 回复")).toHaveLength(0);
+    expect(screen.queryByText(/第 1 次尝试/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/项操作/)).not.toBeInTheDocument();
+  });
+
+  it("shows actual actions and media states without first-attempt filler", async () => {
+    mockConversation([
+      task({ id: "model-round", output: { stepIndex: 0 } }),
+      task({ id: "media-task", kind: "IMAGE_GENERATION", status: "WAITING_PROVIDER", input: { stepIndex: 0 } }),
+    ], [action({ summary: "已读取参考图片" })]);
+    mountConversation("WAITING_TASKS", true);
+
+    expect(await screen.findByText("已读取参考图片")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("2 项操作")).toBeInTheDocument());
+    expect(taskSummary("生成图片").getByText("运行中")).toBeInTheDocument();
+    expect(screen.queryAllByText("AI 回复")).toHaveLength(0);
+    expect(screen.queryByText(/第 1 次尝试/)).not.toBeInTheDocument();
+  });
+
   it("renders persisted public streaming text and replaces it with one committed final reply", async () => {
     const streaming = task({ status: "RUNNING", input: { stepIndex: 0 }, output: {
-      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "收到的公开片段", status: "STREAMING" },
+      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**收到的公开片段**", status: "STREAMING" },
       reasoning: "PRIVATE_STREAM_REASONING",
     } });
     mockConversation([streaming]);
     const client = mountConversation("RUNNING", true);
     expect(await screen.findByText("收到的公开片段")).toBeInTheDocument();
+    expect(screen.getByText("收到的公开片段").tagName).toBe("STRONG");
     expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "true");
     expect(screen.getByText("正在输出")).toBeInTheDocument();
     expect(screen.queryByText("PRIVATE_STREAM_REASONING")).not.toBeInTheDocument();
@@ -72,10 +114,11 @@ describe("AgentRunConversation", () => {
         text: "收到的公开片段以及后续内容", status: "COMPLETED",
       }]);
       client.setQueryData(["run-history-tasks", PROJECT_ID, RUN_ID], [
-        { ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "持久化最终回复" } },
+        { ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "## 持久化最终回复" } },
       ]);
     });
     expect(await screen.findByText("持久化最终回复")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "持久化最终回复", level: 2 })).toBeInTheDocument();
     expect(screen.getAllByRole("article", { name: "Agent" })).toHaveLength(1);
     expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
     expect(screen.queryByText(/收到的公开片段/)).not.toBeInTheDocument();
@@ -95,10 +138,11 @@ describe("AgentRunConversation", () => {
 
   it("keeps an interrupted public stream visible and identifies the interruption", async () => {
     mockConversation([task({ status: "FAILED", input: { stepIndex: 0 }, output: {
-      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "中断前收到的内容", status: "INTERRUPTED" },
+      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**中断前收到的内容**", status: "INTERRUPTED" },
     } })]);
     mountConversation("FAILED");
     expect(await screen.findByText("中断前收到的内容")).toBeInTheDocument();
+    expect(screen.getByText("中断前收到的内容").tagName).toBe("STRONG");
     expect(screen.getByText("输出已中断，已保留收到的内容。")).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
   });
@@ -121,7 +165,7 @@ describe("AgentRunConversation", () => {
     expect(replies).toHaveLength(2);
     expect(replies[0]).toHaveTextContent("我会先整理镜头说明。");
     expect(replies[1]).toHaveTextContent("镜头草稿已保存。");
-    expect(screen.getAllByText("AI 回复")).toHaveLength(3);
+    expect(screen.queryByText("模型调用")).not.toBeInTheDocument();
     for (const hidden of ["PRIVATE_TASK_INPUT", "PRIVATE_RAW_RESPONSE", "PRIVATE_OUTPUT_METADATA",
       "PRIVATE_REASONING", "UNCOMMITTED_ASSISTANT_TEXT", "assistantText", "stepIndex", "agent-turn-1"]) {
       expect(conversation).not.toHaveTextContent(hidden);
@@ -140,6 +184,21 @@ describe("AgentRunConversation", () => {
     expect(screen.getByRole("article", { name: "你" })).toHaveTextContent(USER_INSTRUCTION);
     expect(screen.queryByRole("article", { name: "Agent" })).not.toBeInTheDocument();
     expect(screen.getByText("任务完成")).toBeInTheDocument();
+  });
+
+  it("keeps retry attempts, model failures, and cancellation details visible", async () => {
+    mockConversation([
+      task({ id: "retry-round", attemptNo: 2, status: "RUNNING", input: { stepIndex: 0 } }),
+      task({ id: "blocked-round", status: "BLOCKED", errorCode: "PROVIDER_CALL_TIMEOUT", input: { stepIndex: 1 } }),
+      task({ id: "stopping-round", status: "RUNNING", cancelRequested: true, input: { stepIndex: 2 } }),
+    ]);
+    mountConversation("CANCEL_REQUESTED", true);
+
+    expect(await screen.findByText("第 2 次尝试")).toBeInTheDocument();
+    expect(screen.getByText("调用超时，结果未知")).toBeInTheDocument();
+    expect(screen.getByText("已请求停止后续编排")).toBeInTheDocument();
+    expect(taskSummary("模型调用", 1).getByText("失败")).toBeInTheDocument();
+    expect(screen.queryByText(/第 1 次尝试/)).not.toBeInTheDocument();
   });
 
   it("shows committed action summaries without leaking tool arguments or results", async () => {
@@ -176,7 +235,7 @@ describe("AgentRunConversation", () => {
     mountConversation("CANCELED");
 
     expect(await screen.findAllByText("生成图片")).toHaveLength(2);
-    expect(taskSummary("AI 回复").getByText("失败")).toBeInTheDocument();
+    expect(taskSummary("模型调用").getByText("失败")).toBeInTheDocument();
     expect(screen.getByText(/MODEL_TURN_LIMIT_REACHED/)).toBeInTheDocument();
     expect(taskSummary("生成图片").getByText("失败")).toBeInTheDocument();
     expect(taskSummary("生成视频").getByText("已取消")).toBeInTheDocument();

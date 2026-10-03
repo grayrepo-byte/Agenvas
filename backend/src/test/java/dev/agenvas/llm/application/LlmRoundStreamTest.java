@@ -37,14 +37,16 @@ class LlmRoundStreamTest {
     private final AgentRunRepository runs = mock(AgentRunRepository.class);
     private final CallLogService logs = mock(CallLogService.class);
     private final TaskService tasks = mock(TaskService.class);
+    private final AgentImageInputService images = mock(AgentImageInputService.class);
     private final Task lease = mock(Task.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
-    private final LlmRoundService service = new LlmRoundService(gateway, codec, checkpoints, runs, logs, tasks);
+    private final LlmRoundService service = new LlmRoundService(gateway, codec, checkpoints, runs, logs, tasks, images);
     private final JsonNode response = codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("first second")))));
 
     @BeforeEach
     void setup() {
+        when(images.hydrate(any(), any(), any(), any(), anyList())).thenAnswer(call -> call.getArgument(4));
         AgentRun run = mock(AgentRun.class);
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("modelConfigSource", "mock").put("modelConfigVersion", 3));
         when(runs.find(owner, project, runId)).thenReturn(Optional.of(run));
@@ -88,7 +90,7 @@ class LlmRoundStreamTest {
                 .thenReturn(turn(LlmTurn.Status.RESPONDED, response));
         assertThat(call()).isEqualTo(response);
         verify(gateway, never()).callStreaming(anyList(), anyList(), anyMap(), any(), any(), anyBoolean(), any());
-        verifyNoInteractions(tasks, logs);
+        verifyNoInteractions(tasks, logs, images);
     }
 
     @Test

@@ -1,0 +1,41 @@
+.agent-markdown {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+.agent-markdown > :first-child { margin-top: 0; }
+.agent-markdown > :last-child { margin-bottom: 0; }
+.agent-markdown p, .agent-markdown ul, .agent-markdown ol,
+.agent-markdown blockquote, .agent-markdown pre, .agent-markdown__table { margin: 0.75em 0; }
+.agent-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 1em 0 0.5em; font-weight: 600; line-height: 1.4; }
+.agent-markdown h1 { font-size: 1.4em; }
+.agent-markdown h2 { font-size: 1.25em; }
+.agent-markdown h3 { font-size: 1.1em; }
+.agent-markdown :is(h4, h5, h6) { font-size: 1em; }
+.agent-markdown strong { font-weight: 600; }
+.agent-markdown em { font-style: italic; }
+.agent-markdown ul, .agent-markdown ol { padding-left: 1.6em; }
+.agent-markdown ul { list-style-type: disc; }
+.agent-markdown ol { list-style-type: decimal; }
+.agent-markdown li + li { margin-top: 0.3em; }
+.agent-markdown li > :is(ul, ol) { margin: 0.3em 0; }
+.agent-markdown li > p { margin: 0.3em 0; }
+.agent-markdown blockquote { border-left: 3px solid var(--ui-border-strong); padding-left: 0.9em; color: var(--ui-text-muted); }
+.agent-markdown blockquote > :first-child { margin-top: 0; }
+.agent-markdown blockquote > :last-child { margin-bottom: 0; }
+.agent-markdown a { color: var(--ui-accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.agent-markdown code { padding: 0.15em 0.35em; border-radius: 4px; background: var(--ui-surface-raised); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92em; }
+.agent-markdown pre { max-width: 100%; overflow-x: auto; padding: 10px 12px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-field); white-space: pre; overflow-wrap: normal; }
+.agent-markdown pre code { padding: 0; border-radius: 0; background: transparent; }
+.agent-markdown__table { max-width: 100%; overflow-x: auto; }
+.agent-markdown table { width: 100%; border-collapse: collapse; font-size: 0.92em; }
+.agent-markdown th, .agent-markdown td { min-width: 7em; border: 1px solid var(--ui-border); padding: 6px 9px; text-align: left; vertical-align: top; }
+.agent-markdown th { background: var(--ui-surface-raised); font-weight: 600; }
+.agent-markdown hr { margin: 1em 0; border: 0; border-top: 1px solid var(--ui-border); }
+.agent-markdown .contains-task-list { padding-left: 0; list-style: none; }
+.agent-markdown .task-list-item { list-style: none; }
+.agent-markdown .task-list-item > input { width: auto; margin: 0 0.5em 0 0; accent-color: var(--ui-accent); }
+.agent-markdown :is(a, pre, .agent-markdown__table):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }

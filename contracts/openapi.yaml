@@ -6024,14 +6024,14 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New Run policies are schema v3 and pin systemPromptVersion=5 plus their tool allowlist. Historical v1
+        New Run policies are schema v3 and pin systemPromptVersion=6 plus their context-appropriate tool allowlist. IMAGE previews are sent only after committed read_artifacts requests, never automatically at Run start; Skill resource reading is exposed only when frozen resources exist. Historical v1
         snapshots lack this field and cannot safely start an uncheckpointed model turn.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
         schemaVersion: {type: integer, enum: [1, 2, 3]}
         toolPolicyVersion: {type: integer, enum: [1]}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5], description: New v3 snapshots pin version 5; historical versions 1/2/3/4 retain their original rules; absent on historical v1 snapshots.}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6], description: New v3 snapshots pin version 6; historical versions 1/2/3/4/5 retain their original rules and creative message roles; absent on historical v1 snapshots.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}

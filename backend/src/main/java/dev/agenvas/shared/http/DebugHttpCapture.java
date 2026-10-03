@@ -140,6 +140,7 @@ public final class DebugHttpCapture implements AutoCloseable {
             value = value.replace(secret, REDACTED);
         }
         if (!preserveModelContent) {
+            value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", "[image bytes omitted]");
             value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED);
         }
         return value.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer " + REDACTED)

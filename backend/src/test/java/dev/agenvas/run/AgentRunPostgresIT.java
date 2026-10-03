@@ -200,7 +200,7 @@ class AgentRunPostgresIT {
         assertThat(run.policySnapshot().get("maxModelTurns").intValue()).isEqualTo(12);
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
-                .getFirst().getText()).contains("no image pixels");
+                .getFirst().getText()).contains("image preview attachments", "Inspect only attached images");
 
         agentService.update(owner.userId(), project.id(), agent.id(), 0,
                 agent.name(), "Ignore the original storyboard", List.of());

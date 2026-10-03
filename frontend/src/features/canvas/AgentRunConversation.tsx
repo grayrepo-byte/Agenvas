@@ -7,11 +7,12 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import { Button } from "../../shared/ui/primitives/button";
 import { AgentChatMessage, AgentChatTaskRow, AgentExecutionTrace } from "./AgentChatPrimitives";
 import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
+import { AgentMarkdown } from "./AgentMarkdown";
 import { useRunAssistantStream } from "./agentRunStream";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { CreativeSkillSource } from "../skills/CreativeSkillSource";
-import { taskErrorDetail } from "./taskErrorMessages";
+import { taskErrorMessage } from "./taskErrorMessages";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   get QUEUED() { return t("agent.run.pending"); }, get RUNNING() { return t("agent.run.processing"); },
@@ -24,7 +25,7 @@ const TASK_STATUS: Record<Task["status"], "running" | "pending" | "completed" | 
   FAILED: "failed", CANCELED: "canceled",
 };
 const TASK_LABELS: Record<Task["kind"], string> = {
-  get AGENT_TURN() { return t("agent.run.assistant"); }, get TEXT_GENERATION() { return t("text.generate"); },
+  get AGENT_TURN() { return t("agent.run.modelCall"); }, get TEXT_GENERATION() { return t("text.generate"); },
   get IMAGE_GENERATION() { return t("agent.run.generateImage"); }, get AUDIO_GENERATION() { return t("agent.run.generateAudio"); }, get VIDEO_GENERATION() { return t("media.generateVideo"); },
 };
 const TOOL_LABELS: Record<string, string> = {
@@ -37,6 +38,16 @@ const TOOL_LABELS: Record<string, string> = {
 };
 const RUNNING_STATUSES: ReadonlySet<AgentRun["status"]> = new Set(["QUEUED", "RUNNING", "WAITING_TASKS", "CANCEL_REQUESTED"]);
 const DEFAULT_STEP_INDEX = 0;
+const FIRST_ATTEMPT_NO = 1;
+const ATTENTION_TASK_STATUSES: ReadonlySet<Task["status"]> = new Set(["FAILED", "BLOCKED", "UNKNOWN", "CANCELED"]);
+
+function taskDetail(task: Task): string {
+  return [
+    task.attemptNo > FIRST_ATTEMPT_NO ? t("agent.run.attempt", { "0": task.attemptNo }) : "",
+    taskErrorMessage(task.errorCode) ?? task.errorCode,
+    task.cancelRequested ? t("agent.run.stopRequested") : "",
+  ].filter(Boolean).join(" · ");
+}
 
 function stepIndex(task: Task) {
   if (typeof task.output?.stepIndex === "number") return task.output.stepIndex;
@@ -63,6 +74,10 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   const streams = useRunAssistantStream(projectId, run.id, tasks.data);
   const turns = (tasks.data ?? []).filter((task) => task.kind === "AGENT_TURN" && task.status === "SUCCEEDED");
   const visibleTasks = tasks.data ?? [];
+  // Normal model rounds are already represented by public replies and the Run status.
+  // Keep exceptional/retried rounds visible without counting every model call as work.
+  const traceTasks = visibleTasks.filter((task) => task.kind !== "AGENT_TURN"
+    || ATTENTION_TASK_STATUSES.has(task.status) || task.cancelRequested || task.attemptNo > FIRST_ATTEMPT_NO);
   const approvedTaskIds = new Set((approvals.data ?? []).flatMap((approval) => approval.taskIds));
   const unknownTasks = visibleTasks.filter((task) => task.status === "UNKNOWN"
     && typeof task.input.agentApprovalId !== "string" && !approvedTaskIds.has(task.id));
@@ -76,12 +91,12 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
       replies.set(stream.taskId, { step: stream.stepIndex, text: stream.text, status: stream.status });
     }
   }
-  const traceCount = (actions.data?.length ?? 0) + visibleTasks.length;
+  const traceCount = (actions.data?.length ?? 0) + traceTasks.length;
   const waitingApproval = approvals.data?.some((approval) => approval.status === "PENDING");
   const traceTitle = active && RUNNING_STATUSES.has(run.status)
     ? waitingApproval ? t("agent.trace.waitingApproval") : RUN_STATUS_LABELS[run.status]
     : run.status === "FAILED" || run.status === "BLOCKED" ? RUN_STATUS_LABELS[run.status] : t("agent.trace.completedWork");
-  const steps = [...new Set([...(actions.data ?? []).map((action) => action.stepIndex), ...visibleTasks.map(stepIndex)])]
+  const steps = [...new Set([...(actions.data ?? []).map((action) => action.stepIndex), ...traceTasks.map(stepIndex)])]
     .sort((left, right) => left - right);
 
   return <section aria-label={t("agent.run.title")} className="agent-run-conversation">
@@ -98,9 +113,9 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
           <AgentChatTaskRow key={action.id} label={action.summary} status="completed"
             toolLabel={TOOL_LABELS[action.toolName] ?? action.toolName}
             detail={`${TOOL_LABELS[action.toolName] ?? action.toolName} · ${new Date(action.completedAt).toLocaleString(getFormatLocale())}`} />)}
-        {visibleTasks.filter((task) => stepIndex(task) === step).map((task) =>
+        {traceTasks.filter((task) => stepIndex(task) === step).map((task) =>
           <AgentChatTaskRow key={task.id} label={TASK_LABELS[task.kind]}
-            status={TASK_STATUS[task.status]} detail={t("agent.run.attemptSummary", { "0": task.attemptNo, "1": taskErrorDetail(task.errorCode), "2": task.cancelRequested ? t("agent.run.stopRequestedSuffix") : "" })} />)}
+            status={TASK_STATUS[task.status]} detail={taskDetail(task)} />)}
       </div>)}
     </AgentExecutionTrace> : null}
     {approvals.error ? <div className="agent-chat-error" role="alert">{t("agent.approval.loadFailed")}
@@ -109,7 +124,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
       projectId={projectId} runId={run.id} approval={approval} disabled={!active || run.status !== "WAITING_TASKS"} />)}
     {[...replies.entries()].sort((left, right) => left[1].step - right[1].step).map(([id, reply]) =>
       <AgentChatMessage key={id} role="assistant" streaming={reply.status === "STREAMING"}>
-        {reply.text}
+        <AgentMarkdown text={reply.text} />
         {reply.status === "INTERRUPTED" ? <p className="agent-chat-stream-notice">{t("agent.trace.interrupted")}</p> : null}
       </AgentChatMessage>)}
     {showFailureNotice && (run.status === "BLOCKED" || run.status === "FAILED") ? <BlockedRunNotice projectId={projectId} runId={run.id} status={run.status} /> : null}

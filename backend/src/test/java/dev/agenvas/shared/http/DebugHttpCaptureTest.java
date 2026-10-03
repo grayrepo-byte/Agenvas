@@ -83,6 +83,22 @@ class DebugHttpCaptureTest {
         } finally { server.stop(0); }
     }
 
+    @Test void llmDebugKeepsActualImageRequestContent() {
+        try (var capture = DebugHttpCapture.openLlm(ignored -> {})) {
+            String body = capture.sanitizeJson("{\"messages\":[{\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\"}}]}]}");
+            assertThat(body).contains("data:image/png;base64,c3ludGhldGljLWltYWdl")
+                    .doesNotContain("[image bytes omitted]");
+        }
+    }
+
+    @Test void imageAttachmentsAreOmittedFromDebugJsonWithoutRemovingThePrompt() {
+        try (var capture = DebugHttpCapture.open(ignored -> {})) {
+            String body = capture.sanitizeJson("{\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"Synthetic prompt\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\"}}]}]}");
+            assertThat(body).contains("Synthetic prompt", "[image bytes omitted]")
+                    .doesNotContain("c3ludGhldGljLWltYWdl", "data:image/png;base64");
+        }
+    }
+
     @Test void nestedScopeRestoresTheOuterBindingAndRepeatedCloseDoesNotClearIt() {
         try (var outer = DebugHttpCapture.open(ignored -> {})) {
             var headers = DebugHttpCapture.requestHeaders();

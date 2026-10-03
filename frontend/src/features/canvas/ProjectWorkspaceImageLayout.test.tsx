@@ -9,6 +9,7 @@ import type { CanvasCommand,CanvasItem,ImageGenerationParameters,SaveMediaDraftR
 import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { useCanvasStore } from "./canvasStore";
+import { CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
@@ -347,6 +348,8 @@ describe("workspace media dimensions", () => {
     await clickControl(screen.getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(commands).toHaveLength(2));
     for (const command of commands) expect(command).toMatchObject({ x: 10, width: 300, height: 80 });
+    expect(commands[0]).toMatchObject({ y: 30 });
+    expect(commands[1]).toMatchObject({ y: 30 + 15 + CANVAS_ARRANGE_GAP.y });
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
     expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" });
   });
@@ -359,7 +362,52 @@ describe("workspace media dimensions", () => {
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
     await clickControl(screen.getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
-    expect(useCanvasStore.getState().drafts["second-card"]).toEqual({ x: 10, y: 30, width: 300, height: 15 });
+    expect(useCanvasStore.getState().drafts["second-card"]).toEqual({ x: 10,
+      y: 30 + 15 + CANVAS_ARRANGE_GAP.y, width: 300, height: 15 });
+  });
+
+  it.each([
+    { name: "one row", secondY: 30, thirdY: 30 },
+    { name: "overlapping rows", secondY: 35, thirdY: 45 },
+    { name: "already separated rows", secondY: 500, thirdY: 1000 },
+  ])("left aligns $name in spatial order without overlapping mixed media sizes", async ({ secondY, thirdY }) => {
+    const first = { ...mediaItem("first-card"), x: -100 };
+    const second = { ...mediaItem("second-card", "portrait", "VIDEO"), x: 400, y: secondY };
+    const third = { ...mediaItem("third-card"), x: 800, y: thirdY };
+    const unselected = { ...mediaItem("unselected-card"), x: 1200 };
+    // Snapshot and selection order must not determine the final visual order.
+    items = [third, unselected, second, first];
+    showWorkspace();
+    await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "15px", height: "300px" }));
+    act(() => useCanvasStore.getState().setSelectedIds([third.id, first.id, second.id]));
+    await clickControl(screen.getByRole("button", { name: "左对齐" }));
+    await waitFor(() => expect(commands).toHaveLength(3));
+    const expectedSecondY = Math.max(secondY, first.y + 15 + CANVAS_ARRANGE_GAP.y);
+    const expectedThirdY = Math.max(thirdY, expectedSecondY + 300 + CANVAS_ARRANGE_GAP.y);
+    expect(commands).toEqual([
+      expect.objectContaining({ itemId: first.id, x: -100, y: first.y }),
+      expect.objectContaining({ itemId: second.id, x: -100, y: expectedSecondY }),
+      expect.objectContaining({ itemId: third.id, x: -100, y: expectedThirdY }),
+    ]);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+    expect(items.find((item) => item.id === unselected.id)).toEqual(unselected);
+  });
+
+  it("uses pending position and size drafts when resolving left alignment overlap", async () => {
+    items = [mediaItem(), { ...mediaItem("second-card", "portrait"), x: 600 }];
+    showWorkspace();
+    await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "15px", height: "300px" }));
+    act(() => {
+      useCanvasStore.getState().updateDraft("second-card", { x: -20, y: 10, width: 25, height: 500 });
+      useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]);
+    });
+    await clickControl(screen.getByRole("button", { name: "左对齐" }));
+    await waitFor(() => expect(commands).toHaveLength(2));
+    expect(commands).toEqual([
+      expect.objectContaining({ itemId: "second-card", x: -20, y: 10, height: 500, expectedVersion: 0 }),
+      expect.objectContaining({ itemId: "image-card", x: -20, y: 10 + 500 + CANVAS_ARRANGE_GAP.y, expectedVersion: 0 }),
+    ]);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
   });
 
   it("clears only the submitted alignment drafts when selection changes before saving finishes", async () => {

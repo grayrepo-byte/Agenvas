@@ -49,8 +49,8 @@ export function SkillsPage() {
     openSkill(skill); setNewTitle(""); void client.invalidateQueries({queryKey:["skills"]});
   }});
   return <PageShell title={t("skills.title")} description={t("skills.description")}>
-    <div className="skills-layout"><Panel title={t("skills.title")}>
-      <ToggleGroup type="single" variant="outline" value={trash ? "trash":"active"} onValueChange={(value)=>{if(value)setTrash(value==="trash");}} aria-label={t("skills.title")}><ToggleGroupItem value="active">{t("skills.active")}</ToggleGroupItem><ToggleGroupItem value="trash">{t("skills.trash")}</ToggleGroupItem></ToggleGroup>
+    <div className="skills-layout"><Panel title={t("skills.title")} className="skills-sidebar">
+      <ToggleGroup type="single" variant="outline" size="sm" value={trash ? "trash":"active"} onValueChange={(value)=>{if(value)setTrash(value==="trash");}} aria-label={t("skills.title")}><ToggleGroupItem value="active">{t("skills.active")}</ToggleGroupItem><ToggleGroupItem value="trash">{t("skills.trash")}</ToggleGroupItem></ToggleGroup>
       <FieldGroup><Field><FieldLabel htmlFor="skill-search">{t("skills.search")}</FieldLabel><Input id="skill-search" value={query} onChange={(event)=>setQuery(event.target.value)} /></Field>
         {!trash ? <Field><FieldLabel htmlFor="skill-create-name">{t("skills.name")}</FieldLabel><Input id="skill-create-name" maxLength={MAX_TITLE_LENGTH} value={newTitle} onChange={(event)=>setNewTitle(event.target.value)} />
           <Button disabled={!newTitle.trim() || create.isPending} onClick={()=>create.mutate()}><Plus data-icon="inline-start" />{t("skills.new")}</Button></Field> : null}</FieldGroup>
@@ -182,7 +182,7 @@ function TrySkillDialog({version,onClose}:{version:SkillVersion;onClose:()=>void
   const [agentId,setAgentId] = useState("");
   const projects = useInfiniteQuery({queryKey:["projects","skill-try"],initialPageParam:undefined as string | undefined,queryFn:({pageParam})=>listProjects({cursor:pageParam}),getNextPageParam:(page)=>page.nextCursor??undefined});
   const canvas = useQuery({queryKey:["canvas",projectId],queryFn:()=>listCanvasItems(projectId),enabled:Boolean(projectId)});
-  return <Dialog title={t("skills.try")} description={t("skills.tryHint")} onClose={onClose} onSubmit={(event)=>{
+  return <Dialog title={t("skills.try")} description={t("skills.tryHint")} className="skills-dialog skills-try-dialog" onClose={onClose} onSubmit={(event)=>{
     event.preventDefault();if (!projectId || !agentId)return;
     const params=new URLSearchParams({agentId,skillId:version.skillId,skillVersionId:version.id});navigate(`/projects/${projectId}?${params}`);
   }} footer={<Button type="submit" disabled={!projectId || !agentId}>{t("skills.openAgent")}</Button>}>

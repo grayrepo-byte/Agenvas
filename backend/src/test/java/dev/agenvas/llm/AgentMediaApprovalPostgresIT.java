@@ -774,8 +774,20 @@ class AgentMediaApprovalPostgresIT {
                                 "propose_media_generation", plan.arguments))).build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(proposal))));
             }
-            assertThat(messages.getLast()).isInstanceOf(ToolResponseMessage.class);
-            ToolResponseMessage response = (ToolResponseMessage) messages.getLast();
+            ToolResponseMessage response = messages.stream().filter(ToolResponseMessage.class::isInstance)
+                    .map(ToolResponseMessage.class::cast).toList().getLast();
+            var previewMessages = messages.stream().filter(org.springframework.ai.chat.messages.UserMessage.class::isInstance)
+                    .map(org.springframework.ai.chat.messages.UserMessage.class::cast)
+                    .filter(message -> !message.getMedia().isEmpty()).toList();
+            if (plan.readGeneratedOutput && callIndex >= 3) {
+                assertThat(previewMessages).singleElement().satisfies(message -> assertThat(message.getMedia()).hasSize(1));
+                if (callIndex == 3) {
+                    assertThat(messages.getLast()).isSameAs(previewMessages.getFirst());
+                    assertThat(messages.indexOf(previewMessages.getFirst())).isGreaterThan(messages.indexOf(response));
+                }
+            } else {
+                assertThat(previewMessages).isEmpty();
+            }
             if (plan.imageToVideo && callIndex == 3) {
                 successfulReply(response, "video-stage-" + context.get("runId"), "propose_media_generation");
                 return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("The image and video stages are archived.")))));

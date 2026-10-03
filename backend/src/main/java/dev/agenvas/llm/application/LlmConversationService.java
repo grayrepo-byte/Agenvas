@@ -25,6 +25,7 @@ public class LlmConversationService {
     /** 恢复版本化请求消息和按原顺序排列的工具回复。 */
     private final LlmProtocolCodec codec;
     private final AgentMediaOutcomeService mediaOutcomes;
+    private final AgentImageInputService images;
 
     /** 注入 Run 权限、完整模型回合和工具账本读取边界。
      * @param runs 验证调用者可访问该 Run
@@ -33,12 +34,14 @@ public class LlmConversationService {
      * @param codec 将应用协议消息还原为 Spring AI 消息
      */
     public LlmConversationService(AgentRunRepository runs, LlmTurnRepository turns,
-            ToolExecutionRepository tools, LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes) {
+            ToolExecutionRepository tools, LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes,
+            AgentImageInputService images) {
         this.runs = runs;
         this.turns = turns;
         this.tools = tools;
         this.codec = codec;
         this.mediaOutcomes = mediaOutcomes;
+        this.images = images;
     }
 
     /**
@@ -57,7 +60,7 @@ public class LlmConversationService {
         if (priorStepIndex < 0 || priorStepIndex >= 12) {
             throw new IllegalArgumentException("Model step is outside the Run limit");
         }
-        runs.find(ownerId, projectId, runId)
+        var run = runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new IllegalArgumentException("Run is not accessible"));
         LlmTurn turn = turns.find(projectId, runId, priorStepIndex)
                 .orElseThrow(() -> new IllegalStateException("Model turn checkpoint is missing"));
@@ -84,6 +87,10 @@ public class LlmConversationService {
         }
         history.add(assistant);
         history.add(codec.toolResults(assistant, results));
+        if (run.policySnapshot().path("systemPromptVersion").asInt()
+                >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
+            images.appendReadPreviews(history, assistant, results);
+        }
         if (history.size() > 80) {
             throw new IllegalStateException("Model history exceeds the message limit");
         }
