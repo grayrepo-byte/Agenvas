@@ -194,6 +194,8 @@
 
 2026-10-03 画布选择与 Agent 按钮样式修正：`styles.css` 将两类选择矩形底色改为透明、抑制添加 Command 容器的原生焦点框并限制操作区域的文本选择；`AgentChatCard.css` 将白色外圈改为主题色，保留回复文本复制并修正历史按钮的自适应高度；`AgentChatCard.tsx` 使用公共 Button 的主次变体及紧凑/图标尺寸。AgentChatCard、CanvasSelectionClearing、ContentCanvasCard、ProjectWorkspacePage 共 82 项定向组件测试、TypeScript、定向 ESLint 和品牌色检查通过。隔离 Chrome 样式预览使用合成内容与公共 Button/Command，验证选中外圈、透明矩形、菜单焦点/方向键、标题不可选及正文/回复/输入可选。该预览未挂载完整项目工作区，不替代用户原始偶发路径的端到端复现；全量测试、后端测试和真实 Provider 调用未运行。无合约或迁移。
 
+2026-10-03 添加菜单悬停焦点框补修：Chrome 隔离复现确认 cmdk 在鼠标移入选项时将焦点从 Command 根容器转到内部列表；原有根容器样式未覆盖列表的浏览器默认 `outline: auto 1px`。`styles.css` 仅对画布添加菜单内的列表取消外框，保留当前选项高亮及键盘导航。工作区测试补充双击打开、悬停图片、列表获得焦点、方向键切换并按 Enter 创建文字的路径，37 项定向组件测试通过。真实 Command 与项目样式的 Chrome 隔离复现修复前失败、修复后通过，连续 10 次打开、60 次悬停及键盘选择无外框；TypeScript、定向 ESLint、主题色和 diff 空白检查通过。临时复现文件已清理。浏览器未挂载完整项目工作区，全量测试、后端测试、生产构建与真实 Provider 调用未运行。无产品决策、合约、迁移或依赖变更。
+
 2026-10-03 文字编辑退出与卡片详情移除：文字卡片的工具栏在编辑时切换为“退出内容编辑”，与节点内退出按钮和 Esc 共用草稿保护流程；未修改直接返回阅读，未保存输入提供继续编辑、放弃或保存并退出，失败/冲突保留输入，忙碌时禁止退出，格式菜单先消费 Esc。退出/保存图标按钮使用紧凑尺寸。文字、图片、视频、音频工具栏移除卡片详情，工作区删除详情抽屉、状态、回调和专用样式。同步规格与 ADR 0005，无 API、迁移或依赖变更。ContentCanvasCard、MediaCanvasCard、ProjectWorkspacePage、ArtifactVersionEditing、CanvasSelectionClearing 分批验证共 136 项不同的定向测试；新增文字退出与媒体详情移除回归，最终两个卡片文件 78 项通过，格式 Esc 补充后文字卡片 18 项通过。TypeScript、定向 ESLint、主题色/i18n 和 diff 空白检查通过。真实 Chrome 使用合成内容及真实 React Flow/ContentCanvasCard，验证工具栏/节点内按钮边界、双击编辑、Esc、格式菜单、未保存确认与退出；该预览未挂载完整项目工作区，不代表真实项目或 Provider 端到端验收。全量测试、后端测试、真实 Provider 调用未运行。
 
 ### T08 Agent 卡片与输入绑定
@@ -271,6 +273,8 @@
 依赖：T07、T11。
 
 交付：单项目事件连接、历史补发、心跳、游标失效处理。
+
+2026-10-03 SSE 到期修复：保留现有 5 分钟连接上限，超时回调正常完成异步响应并回收订阅，避免 `AsyncRequestTimeoutException` 进入通用错误处理器后向 `text/event-stream` 写入 ProblemDetail 的连锁 ERROR/WARN。6 项定向单元测试通过，包含发送前后超时、无错误日志与完成/停机重复回收；`ProjectEventStreamPostgresIT` 1 项真实 PostgreSQL＋HTTP 测试通过，验证重复关闭连接、连接数回收、Last-Event-ID 补发、鉴权与游标过期。无 API 合约或数据库迁移；未运行全量测试、真实 Provider 调用或线上部署验证，未等待真实 5 分钟定时器（超时由 MVC 测试确定性触发）。
 
 补验：浏览器黄金路径曾发现媒体归档后事件流重连与缓存陈旧；现固定项目初始订阅水位、补齐 `asset.ready` 游标处理，并在恢复快照时刷新用量及未包含在快照中的运行历史、任务等缓存。单连接、事件序列和缺口恢复缓存回归已增加；浏览器服务端进程中断重连见 开发记录（不随源码公开）。隔离 Chrome 验收现还覆盖断线时清理事件、旧游标 409、快照恢复和后续直播事件，见 开发记录（不随源码公开）；未等待真实保留期或压测长期抖动。
 
@@ -1313,7 +1317,7 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 添加菜单与空白处菜单直接创建并放置空闲导演 Agent，移除右侧创建抽屉；无需先输入指令，不自动运行。创建响应丢失时复用同一幂等键，放置失败时复用原实例与卡片身份/位置，界面提供等待和显式重试。
 - [x] 系统设置新增默认提示词管理（`/settings/general?tab=agent-prompts`），管理员维护默认名称和完整创作系统提示词；新实例复制，已有实例保留。分类按需读取、切换保留编辑、失败/未授权/CAS 冲突有明确反馈；刷新不清草稿，使用最新版本需明确选择。卡片设置仍可单独编辑系统提示词。
 - [x] 内置导演工作方法覆盖需求分析、剧情及镜头方案、人物/场景/必要道具图片、镜头图片、图生视频和失败处理；依赖阶段等待成功归档版本，每个媒体批次仍需用户批准。人物/场景/道具沿用普通 IMAGE 类型，未恢复旧规划模型。新 Run 系统规则版本 5 将冻结卡片指令作为创作 SystemMessage；历史版本 1–4 保留原规则及消息角色，服务端工具与审批约束继续强制执行。
-- [x] 视频卡片展示首帧/尾帧/参考图缩略图、角色及精确版本，可打开归档原图。结果取 frozenInput.images，草稿取当前 mediaInputs；更新草稿不替换旧视频来源。缺失预览保持不可用状态，读取失败可重试。
+- [x] 初版视频卡片展示首帧/尾帧/参考图缩略图、角色及精确版本，可打开归档原图；已由下方“媒体引用连线与卡片展示收敛”修订移除卡片底部展示。结果取 frozenInput.images，草稿取当前 mediaInputs；更新草稿不替换旧视频来源。缺失预览保持不可用状态，读取失败可重试。
 - [x] 真实 PostgreSQL + 合成模型 + 明确标注 Mock 媒体验证完整图片 → 下一批准视频 → 视频归档 → 原 Run 结束，并检查结果 frozenInput 固定首帧图片版本。先复现 Mock 视频时长解析拒绝 schema 5，再修复为接受混合参考版本 5，继续拒绝未知版本及非整数/超范围时长；覆盖此前生成状态修复中未完成的 Mock 视频验证。
 - [x] 后端 9 个测试类 35 项去重定向测试通过：默认配置 3、初始模型上下文 7、工具策略 3、Agent 1、媒体审批 11、视频时长 2、Run 并发 1、Skill Run 6、Prompt 注入 1；包含真实 PostgreSQL 权限、CSRF、CAS、创建重放、冻结配置、媒体续接及历史策略验证。命令分别为 `./mvnw -q -Dtest=AgentDefaultsPostgresIT,InitialModelContextServiceTest,RunToolPolicyTest,AgentPostgresIT test`、`./mvnw -q -Dtest=AgentMediaApprovalPostgresIT,AgentRunPostgresIT,VideoDurationTest test`（旧版本断言修正后 Run 单列重跑）、`./mvnw -q -Dtest=AgentRunPostgresIT,SkillRunPostgresIT,PromptInjectionPostgresIT test`。
 - [x] 前端 7 个文件 162 项定向 Vitest 测试通过：ProjectWorkspacePage、CanvasPaneMenu、AgentChatCard、MediaCanvasCard、VideoImageReferences、SystemSettingsPage、AgentDefaultPromptSection。覆盖直接创建及两阶段显式重试、设置分类/草稿/CAS/401/403/失败、精确旧图片预览与错误重试；TypeScript、完整 lint（四语言/主题/ESLint）、Vite 生产构建通过。构建仍有既有大 chunk 提示。
@@ -1351,6 +1355,38 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 同步 AGENTS、ADR 0020、规格、流式设计、OpenAPI 描述与生成 TypeScript，以及四语言 debug 说明。前端 SystemSettingsPage 和 CallDebugDetails 共 14 项定向测试、TypeScript、完整 lint 及差异空白检查通过。
 - [ ] 旧日志不回写或清理；无数据库迁移。未运行全量测试、生产构建、浏览器端到端或真实 Provider，未部署。
 
+### 2026-10-03 图片占位符后残留 Base64 修复
+
+- [x] 合成回归复现 `[image bytes omitted][REDACTED]` 后残留图片编码：已知凭据替换先插入占位符，打断图片 data URI 的 Base64 匹配。采集现在先省略图片字节，再隐藏凭据；普通、LLM、语义 JSON 与 SSE 共用该顺序，实际网络内容不改变。
+- [x] 后端 3 类 29 项定向测试最终通过（DebugHttpCaptureTest 13、LlmDebugCaptureStreamingTest 10、LlmStreamLogCollectorTest 6），新增凭据与图片编码碰撞回归，强化普通/流式 Spring AI SDK 对合成本机 HTTP 的完整占位符断言及 SSE 回归。首次最小回归失败，调整顺序后通过；HTTP 验证首次增加 JSON 解析断言时受既有 header 值替换影响失败，改为对已采集字符串中的完整 URL 值断言后该类 10 项重跑通过。
+- [x] 差异空白与新增文本凭据/隐私检查通过；只使用合成素材及不可用测试凭据，无 API、数据库迁移或依赖变化。
+- [x] 同步最新 main 后保留媒体引用连线记录，解决开发清单追加冲突；后端编译及上述 3 类 29 项定向测试重新通过，差异空白检查通过。
+- [ ] 全量测试、真实 Provider、浏览器验收及部署未运行；旧日志不回写或清理，新行为需更新后端后生效。
+
+### 2026-10-03 媒体引用连线与卡片展示收敛
+
+- [x] 删除视频卡片底部引用缩略图区、预览缩高样式、独立版本查询组件和对应四语言文案；媒体编辑栏继续展示当前草稿引用，结果 frozenInput 保持不可变输入审计。
+- [x] Agent 媒体提案使用持久 MEDIA_INPUT 连线，复用手动连线的鉴权、精确版本、环路拒绝、CAS、项目事件和删除规则；保留输入角色与顺序，提案只保留连线来源。匹配版本的来源卡片直接复用，无匹配时放置独立来源卡片，不修改已有卡片选择或资源默认版本。连接完成后再冻结审批草稿版本；创建节点、草稿、连线与审批保持同事务。
+- [x] 后端定向单元测试 18 项、AgentMediaApprovalPostgresIT 12 项、CanvasMediaContextPostgresIT 1 项通过。真实 PostgreSQL + 合成模型 + Mock 媒体覆盖来源卡片复用/补建、引用只有连线来源、图片至视频完整续接、断线清空草稿引用、旧审批拒绝、生成结果冻结输入不变和普通手动来源行为回归。
+- [x] 前端四个文件合计 149 项定向 Vitest 测试通过，覆盖卡片草稿/结果均无底部引用区、编辑栏引用和连线删除。首次新增测试等待了不存在的提示词展示，修正为等待查询完成；并发构建时另一既有交互测试出现 5 秒超时，单独重跑 MediaCanvasCard 的 75 项全部通过。TypeScript、完整 lint（主题/四语言/ESLint）、Vite 构建与差异空白检查通过；构建保留既有大于 500 kB 的分块提示。当前差异凭据/隐私格式扫描无候选，没有新增实际截图、日志或用户媒体。
+- [x] 同步 MVP、ADR 0028 与 ADR 0029 设计修订。无 API 字段、数据库迁移、jOOQ 或依赖版本变更；前后端需一起更新才能看到 Agent 新提案连线。旧提案和旧结果不会自动补建连线或重新提交生成。
+- [ ] 全量测试、浏览器端到端、真实 LLM/媒体 Provider 调用与部署未运行。
+
+### 2026-10-04 LLM 正文保留与结构化图片省略
+
+- [x] 用户明确只保护 HTTP header/Cookie 的权限认证，LLM 请求与响应正文除图片字节外不脱敏。移除 LLM 正文的敏感字段名过滤、已知 header 值替换和正则替换；普通与流式 HTTP/SSE、语义汇总统一保留原字段、工具 Schema、参数、数字、布尔值和模型文本。所有 HTTP header（含 Authorization、Cookie、Set-Cookie）不保存；独立请求地址和非 LLM 调用沿用既有过滤。
+- [x] 图片省略按 JSON 的 image_url 字段识别，支持字符串和对象 url 形式，将图片 data URI 整值改为占位符；普通文本中的 data URI 示例、远程 URL 与工具参数定义保留。采集读取副本，不修改实际请求或响应。
+- [x] 新回归先复现普通/流式日志参数损坏和无效 JSON；修复后后端 5 类 41 项单元/合成 HTTP 测试、1 项真实 PostgreSQL 异步日志保存验证通过，均无失败/错误/跳过。真实 Spring AI SDK 对合成本机 HTTP 比较请求与日志的完整 JSON（含实际工具 Schema），唯一允许差异是图片字段；验证网络仍收到完整图片、认证和 Cookie，日志不保存 header。未调用真实 Provider。
+- [x] 同步 AGENTS、ADR 0020、MVP §24.1、OpenAPI 描述与重新生成的 TypeScript，以及四语言说明。前端两个文件共 14 项定向测试最终通过；日志详情初次旧文案断言失败，更新后该文件 7 项重跑通过。TypeScript、四语言检查、修改测试文件 ESLint、差异空白及新增文本凭据/隐私检查通过。
+- [ ] 无 API 字段、数据库迁移或依赖变化。全量测试、生产构建、浏览器验收及真实 Provider 未运行；未部署，旧日志不回写或补录。
+
+### 2026-10-04 流式响应单份保存与展示
+
+- [x] 用户要求响应也保留实际内容且只显示一份。SSE data 顺序合并为单个响应 JSON，按 choice/tool index 拼接文本、推理、函数名和参数；保留实际 Usage、结束原因、响应 ID 与 Provider 附加字段，不持久化逐条 data 或 [DONE]。仍只省略结构化图片字节，不做正文凭据替换；实际网络流不改变。
+- [x] 异步日志完成时优先保存 HTTP 聚合响应，无 HTTP 时使用 SDK 汇总。最终只存 llmStream.content.response，exchanges 保留请求、地址与状态，responseBody 为 null。单份响应上限 1 MiB，超限回退有界 SDK 前缀并标记不完整，末尾无法解析的事件保留已解析前缀并标记不完整；失败/取消不重发模型。前端有汇总时隐藏重复 HTTP 响应，历史双份数据不回写，缺失内容不补造。
+- [x] 先复现 SSE 逐条输出及界面重复响应，修复后 6 类 46 项后端定向测试通过（45 项单元/合成 HTTP + 1 项真实 PostgreSQL）。覆盖文本/推理/工具拼接、未知字段、参数原值、单份异步保存、SDK 回退、内容上限、错误/取消、权限、no-store 与清理。集成夹具首次漏加 StandardCharsets 导入导致测试编译失败，补齐后重跑通过；新增逻辑不引入新编译告警。
+- [x] 前端调用详情、格式化及系统设置共 20 项定向测试通过，覆盖原始模式与 Completion 弹窗均只有一份响应、旧 SSE 不重复展示。TypeScript、修改文件 ESLint、四语言检查、OpenAPI 类型重新生成、差异空白及新增文本/文件凭据与隐私检查通过；同步 AGENTS、MVP、ADR 0020、合约与四语言说明。
+- [ ] 没有 API 字段、数据库迁移或依赖变化。全量测试、生产构建、浏览器验收及真实 Provider 未运行；未部署。
 
 ### 2026-10-03 Agent 审批入口与对话顺序修复
 
@@ -1382,3 +1418,11 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 前端六个 Vitest 文件 100 项通过：AgentChatCard、AgentModelRetryNotice、BlockedRunNotice、AgentRunConversation、projectCache、taskErrorMessages。覆盖固定提醒、安全原因、等待/执行/终态切换、读取失败、旧快照下耗尽后恢复发送和现有 SSE/流式/会话回归；TypeScript、完整 lint、生产构建及差异空白检查通过，构建有既有大 chunk 提示。
 - [x] 同步 MVP §8.6/12.6、ADR 0029 实施设计及 OpenAPI AgentModelRetry/Task.output，重新生成 TypeScript。可选 JSON 字段扩展，无新端点、数据库迁移、jOOQ 或依赖变更；应同步部署前后端观察重试。
 - [ ] 未运行全量测试、浏览器端到端、真实模型/Provider 重试或部署更新。模型故障均为明确合成数据，真实 PostgreSQL 与 Mock 媒体验证不代表真实供应商服务已恢复。
+
+
+### 2026-10-04 Agent 审批与模型重试合并 main 复验
+
+- [x] 保留 main 最新的 Agent 媒体引用连线、编辑样式及单份 debug 响应实现，合入审批可见性、模型超时及有界自动重试；两处文档冲突保留双方验收记录，并以 main 最新媒体引用规则配合新增重试决定。OpenAPI 类型重新生成后无额外差异。
+- [x] 合并后后端九类 60 项定向测试通过：AgentModelRetryPolicyTest 14、AgentModelRetryPostgresIT 9、AgentTurnFailureCodeTest 2、AgentTurnWorkerPostgresIT 1、AgentMediaApprovalPostgresIT 13、LlmRoundStreamTest 4、LlmProtocolCodecTest 2、CallLogStreamServiceTest 5、LlmDebugCaptureStreamingTest 10。覆盖真实 PostgreSQL 的审批/图片续接与重试边界，以及合成模型和 HTTP 日志集成。
+- [x] 前端六类 100 项定向测试、TypeScript、完整 lint、Vite 生产构建及差异空白检查通过；构建仍有既有大 chunk 提示。暂存文本凭据/隐私检查逐项复核，两处密钥形状命中属于日志单测中的显式合成字符串，不含真实凭据；无截图或二进制加入本次合并。
+- [ ] 未运行全量测试、浏览器端到端、真实 Provider/模型调用或部署；合并复验的模型均为 Mock/合成数据。

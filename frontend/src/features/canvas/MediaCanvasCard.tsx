@@ -33,7 +33,6 @@ import { Select } from "../../shared/ui/Select";
 import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
-import { VideoImageReferences, videoImageReferences } from "./VideoImageReferences";
 import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { CropPanel } from "./CropPanel";
@@ -118,7 +117,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
   const isImage = artifact.kind === "IMAGE";
   const isAudio = artifact.kind === "AUDIO";
-  const imageReferences = artifact.kind === "VIDEO" ? videoImageReferences(item, draft.data, showDraft) : [];
   const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage || artifact.kind === "VIDEO" ? assetId : null));
   const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
@@ -175,7 +173,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
 
   return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("common.image") : isAudio ? t("common.audio") : t("common.video")}
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
-    className={isAudio && assetId ? "audio-canvas-card" : imageReferences.length ? "video-card-with-references" : undefined}
+    className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
     toolbarRaised={menuOpen || operationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
@@ -292,7 +290,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           {draft.error ? <p className="media-card-error" role="alert">{t("media.card.draftLoadFailed")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("common.retry")}</Button></p> : null}
           {tasks.error ? <p className="media-card-error" role="alert">{t("media.card.statusUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("media.card.retryStatus")}</Button></p> : null}
         </div>}
-    {imageReferences.length ? <VideoImageReferences projectId={artifact.projectId} references={imageReferences} /> : null}
   </ArtifactCardFrame>;
 }
 

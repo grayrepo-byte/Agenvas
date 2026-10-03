@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.RunToolPolicy;
+import dev.agenvas.llm.application.ToolRegistry;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
 import dev.agenvas.settings.application.LlmEndpointProperties;
 import dev.agenvas.shared.http.DebugHttpCapture;
@@ -46,6 +48,8 @@ class LlmDebugCaptureStreamingTest {
     private static final String SSE_CONTENT_TYPE = "text/event-stream";
     private static final String DEFAULT_HEADER = "X-Test-Synthetic-Capture";
     private static final String DEFAULT_HEADER_VALUE = "synthetic-default-header";
+    private static final String REQUEST_COOKIE = "session=synthetic-http-cookie";
+    private static final String RESPONSE_COOKIE = "session=synthetic-response-cookie";
     private static final double DEFAULT_TEMPERATURE = 0.25;
     private static final String CALLBACK_FAILURE_PROMPT = "callback failure stream";
     private static final String CALLBACK_FAILURE_MESSAGE = "synthetic public delta callback failure";
@@ -72,22 +76,39 @@ class LlmDebugCaptureStreamingTest {
             var message = UserMessage.builder().text("Inspect synthetic image")
                     .media(new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
                             new org.springframework.core.io.ByteArrayResource(image))).build();
+            var policy = MAPPER.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
+            policy.set("allowedTools", MAPPER.valueToTree(RunToolPolicy.current(false)));
+            var tools = new ToolRegistry().modelDefinitions(policy);
             try (var scope = DebugHttpCapture.openLlm(saved::accept)) {
+                // Synthetic credential collision inside the image Base64 must not leave a suffix.
+                DebugHttpCapture.registerSecret("dGhl");
                 var result = streaming
-                        ? gateway.callStreaming(List.of(message), List.of(), Map.of(), gateway.configIdentity(), ignored -> {})
-                        : gateway.call(List.of(message), List.of(), Map.of(), gateway.configIdentity());
+                        ? gateway.callStreaming(List.of(message), tools, Map.of(), gateway.configIdentity(), ignored -> {})
+                        : gateway.call(List.of(message), tools, Map.of(), gateway.configIdentity());
                 assertThat(result.response().getResult().getOutput().getText()).isEqualTo("ok");
             }
             Received received = server.received().getFirst();
             assertThat(received.body()).contains("data:image/png;base64," + encoded, "Inspect synthetic image");
+            assertThat(received.body()).doesNotContain("[REDACTED]", "[image bytes omitted]");
             assertThat(received.authorization()).isEqualTo("Bearer " + API_KEY);
+            assertThat(received.cookie()).isEqualTo(REQUEST_COOKIE);
             assertThat(received.checkpoint().getFirst().requestBody().content())
                     .contains("Inspect synthetic image", "image_url", "[image bytes omitted]")
                     .doesNotContain(encoded, API_KEY);
+            var wire = MAPPER.readTree(received.body());
+            assertThat(wire.path("tools").isArray()).isTrue();
+            assertThat(wire.path("tools").size()).isPositive();
+            ((tools.jackson.databind.node.ObjectNode) wire.at("/messages/0/content/1/image_url"))
+                    .put("url", "[image bytes omitted]");
+            assertThat(MAPPER.readTree(received.checkpoint().getFirst().requestBody().content())).isEqualTo(wire);
+            assertThat(MAPPER.readTree(saved.current().getFirst().requestBody().content())).isEqualTo(wire);
             assertThat(saved.current().getFirst().requestBody().content()).doesNotContain(encoded);
             assertThat(saved.current().getFirst().responseBody().content()).contains("ok");
+            assertThat(MAPPER.writeValueAsString(saved.current())).doesNotContain(API_KEY, REQUEST_COOKIE, RESPONSE_COOKIE,
+                    DEFAULT_HEADER_VALUE, "Set-Cookie", "Authorization");
             if (streaming) {
-                assertThat(saved.current().getFirst().responseBody().content()).contains("private stream reasoning", "[DONE]");
+                assertThat(saved.current().getFirst().responseBody().content()).contains("private stream reasoning")
+                        .doesNotContain("data:", "[DONE]");
             }
         }
     }
@@ -154,8 +175,8 @@ class LlmDebugCaptureStreamingTest {
                 assertThat(scope.sanitizeJson(log.get().content().response())).contains("ok").doesNotContain(API_KEY);
             }
             assertThat(http.current().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
-            assertThat(http.current().getFirst().responseBody().content()).contains("private stream reasoning", "[DONE]")
-                    .doesNotContain(API_KEY);
+            assertThat(http.current().getFirst().responseBody().content()).contains("private stream reasoning")
+                    .doesNotContain(API_KEY, "data:", "[DONE]");
             assertThat(log.get().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             assertThat(log.get().metrics().firstTextMs()).isNotNull();
             assertThat(log.get().metrics().totalTokens()).isEqualTo(2);
@@ -379,7 +400,7 @@ class LlmDebugCaptureStreamingTest {
     private static OpenAiChatOptions options(LocalServer server) {
         return OpenAiChatOptions.builder()
                 .baseUrl("http://127.0.0.1:" + server.port() + "/v1").apiKey(API_KEY).model(MODEL_ID).maxRetries(0)
-                .temperature(DEFAULT_TEMPERATURE).customHeaders(Map.of(DEFAULT_HEADER, DEFAULT_HEADER_VALUE))
+                .temperature(DEFAULT_TEMPERATURE).customHeaders(Map.of(DEFAULT_HEADER, DEFAULT_HEADER_VALUE, "Cookie", REQUEST_COOKIE))
                 .timeout(Duration.ofSeconds(SDK_TIMEOUT_SECONDS)).build();
     }
 
@@ -402,7 +423,7 @@ class LlmDebugCaptureStreamingTest {
         private List<DebugHttpCapture.Exchange> current() { return saved.get(); }
     }
 
-    private record Received(String body, String authorization, String captureMarker, String defaultHeader,
+    private record Received(String body, String authorization, String cookie, String captureMarker, String defaultHeader,
             List<DebugHttpCapture.Exchange> checkpoint) {}
 
     private static final class CallbackStreamGate {
@@ -448,8 +469,10 @@ class LlmDebugCaptureStreamingTest {
             try {
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 received.add(new Received(body, exchange.getRequestHeaders().getFirst("Authorization"),
+                        exchange.getRequestHeaders().getFirst("Cookie"),
                         exchange.getRequestHeaders().getFirst(DebugHttpCapture.CAPTURE_HEADER),
                         exchange.getRequestHeaders().getFirst(DEFAULT_HEADER), checkpoint.apply(body)));
+                exchange.getResponseHeaders().set("Set-Cookie", RESPONSE_COOKIE);
                 arrived.countDown();
                 if (callbackGate != null && body.contains(CALLBACK_FAILURE_PROMPT)) {
                     unfinishedStream(exchange);

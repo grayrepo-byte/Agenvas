@@ -15,11 +15,11 @@ export type CallLogViewMode = "formatted" | "raw";
 const MESSAGE_PREVIEW_CHARS = 160;
 const FIRST_MESSAGE = 0;
 
-export function FormattedCallExchange({ exchange, mode, llm }: { exchange: Exchange; mode: CallLogViewMode; llm: boolean }) {
-  return <FormattedLogBodies requestBody={exchange.requestBody} responseBody={exchange.responseBody} mode={mode} llm={llm} />;
+export function FormattedCallExchange({ exchange, mode, llm, hideResponse = false }: { exchange: Exchange; mode: CallLogViewMode; llm: boolean; hideResponse?: boolean }) {
+  return <FormattedLogBodies requestBody={exchange.requestBody} responseBody={exchange.responseBody} mode={mode} llm={llm} hideResponse={hideResponse} />;
 }
 
-/** The model summary is separate from the captured HTTP response; it never invents an HTTP exchange. */
+/** Displays the single saved stream response without inventing an HTTP exchange. */
 export function FormattedModelResponse({ content, requestBody, mode }: {
   content: NonNullable<NonNullable<CallDebug["llmStream"]>["content"]>;
   requestBody: DebugBody | null; mode: CallLogViewMode;
@@ -30,25 +30,25 @@ export function FormattedModelResponse({ content, requestBody, mode }: {
     responseTitle={t("logs.stream.response")} streaming />;
 }
 
-function FormattedLogBodies({ requestBody, responseBody, mode, llm, responseTitle, streaming }: {
+function FormattedLogBodies({ requestBody, responseBody, mode, llm, responseTitle, streaming, hideResponse = false }: {
   requestBody: DebugBody | null; responseBody: DebugBody | null; mode: CallLogViewMode; llm: boolean;
-  responseTitle?: string; streaming?: boolean;
+  responseTitle?: string; streaming?: boolean; hideResponse?: boolean;
 }) {
   useLocale();
   const request = useMemo(() => parseDebugBody(requestBody), [requestBody]);
   const response = useMemo(() => parseDebugBody(responseBody), [responseBody]);
   const view = useMemo(() => {
-    const parsed = llm ? llmLogView(request, response) : null;
+    const parsed = llm && !hideResponse ? llmLogView(request, response) : null;
     return parsed && streaming ? { ...parsed, streaming: true } : parsed;
-  }, [llm, request, response, streaming]);
+  }, [llm, request, response, streaming, hideResponse]);
   const responseLabel = responseTitle ?? t("logs.exchange.responseBody");
   return <>
     <BodyWarning body={requestBody} title={t("logs.exchange.requestBody")} />
-    <BodyWarning body={responseBody} title={responseLabel} />
+    {!hideResponse ? <BodyWarning body={responseBody} title={responseLabel} /> : null}
     {mode === "formatted" && view ? <LlmExchange view={view} requestBody={requestBody}
       responseBody={responseBody} request={request} response={response} responseTitle={responseLabel} /> : <>
       <BodyContent title={t("logs.exchange.requestBody")} body={requestBody} parsed={request} mode={mode} empty={t("logs.exchange.requestBodyMissing")} />
-      <BodyContent title={responseLabel} body={responseBody} parsed={response} mode={mode} empty={t("logs.exchange.responseNotCollected")} />
+      {!hideResponse ? <BodyContent title={responseLabel} body={responseBody} parsed={response} mode={mode} empty={t("logs.exchange.responseNotCollected")} /> : null}
     </>}
   </>;
 }

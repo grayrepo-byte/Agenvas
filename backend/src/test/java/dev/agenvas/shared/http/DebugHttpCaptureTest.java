@@ -26,22 +26,76 @@ class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TIMEOUT_SECONDS = 5;
 
-    @Test void llmCaptureKeepsSseFieldsAndMultipartDataEventsButRemovesAuthentication() throws Exception {
+    @Test void llmStreamResponseJoinsTextReasoningAndToolsAndKeepsUsageAndUnknownFields() throws Exception {
+        String events = """
+                data: {"id":"synthetic-response","object":"chat.completion.chunk","model":"synthetic-model","choices":[{"index":0,"delta":{"role":"assistant","content":"first ","reasoning_content":"think ","tool_calls":[{"index":0,"id":"synthetic-call","type":"function","function":{"name":"re","arguments":"{\\"id\\":"}}]}}],"ula_metrics":{"ttft_ms":120}}
+
+                data: {"id":"synthetic-response","choices":[{"index":0,"delta":{"content":"second","reasoning_content":"more","tool_calls":[{"index":0,"function":{"name":"ad","arguments":"\\"synthetic-id\\"}"}}]},"finish_reason":"tool_calls"}],"ula_metrics":{"tps":20}}
+
+                data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}
+
+                data: [DONE]
+
+                """;
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        try (var scope = DebugHttpCapture.openLlm(saved::set)) {
+            DebugHttpCapture.registerSecret("2");
+            int id = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
+            try (var stream = DebugHttpCapture.responseStream(id, 200, "text/event-stream",
+                    new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
+                assertThat(new String(stream.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(events);
+            }
+        }
+        var body = saved.get().getFirst().responseBody();
+        var response = MAPPER.readTree(body.content());
+        assertThat(response.at("/choices/0/message/content").asText()).isEqualTo("first second");
+        assertThat(response.at("/choices/0/message/reasoning_content").asText()).isEqualTo("think more");
+        assertThat(response.at("/choices/0/message/tool_calls/0/function/arguments").asText()).isEqualTo("{\"id\":\"synthetic-id\"}");
+        assertThat(response.at("/choices/0/message/tool_calls/0/function/name").asText()).isEqualTo("read");
+        assertThat(response.at("/choices/0/finish_reason").asText()).isEqualTo("tool_calls");
+        assertThat(response.at("/usage/total_tokens").asInt()).isEqualTo(15);
+        assertThat(response.at("/ula_metrics/ttft_ms").asInt()).isEqualTo(120);
+        assertThat(response.at("/ula_metrics/tps").asInt()).isEqualTo(20);
+        assertThat(response.path("object").asText()).isEqualTo("chat.completion");
+        assertThat(body.truncated()).isFalse();
+        assertThat(body.content()).doesNotContain("data:", "[DONE]", "[REDACTED]");
+    }
+
+    @Test void llmCaptureKeepsSseFieldsAndMultipartDataEventsExceptImageBytes() throws Exception {
         var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
         try (var scope = DebugHttpCapture.openLlm(saved::set)) {
             DebugHttpCapture.registerSecret("synthetic-sse-auth");
+            DebugHttpCapture.registerSecret("QUJD");
             int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
             String events = "event: message\r\ndata: {\"choices\":[{\"delta\":{\"reasoning_content\":\"full model field\"}}],\r\n"
-                    + "data: \"image\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\",\"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
+                    + "data: \"image_url\":\"data:image/png;base64,c3luQUJDbGF0ZXI=\",\"apiKey\":\"synthetic-sse-auth\",\"nested\":{\"authorization\":\"Bearer synthetic-other-auth\"}}\r\n\r\n"
                     + "data: [DONE]\n\n";
             try (var stream = DebugHttpCapture.responseStream(index, 200, "text/event-stream",
                     new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
                 assertThat(new String(stream.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(events);
             }
         }
-        assertThat(saved.get().getFirst().responseBody().content()).contains("event: message", "full model field", "[DONE]", "REDACTED", "[image bytes omitted]")
-                .doesNotContain("synthetic-sse-auth", "synthetic-other-auth", "c3ludGhldGljLWltYWdl");
+        String response = saved.get().getFirst().responseBody().content();
+        assertThat(response).contains("full model field", "synthetic-sse-auth", "synthetic-other-auth",
+                "\"image_url\":\"[image bytes omitted]\"")
+                .doesNotContain("data:", "[DONE]", "[REDACTED]", "QUJD", "bGF0ZXI=");
+        assertThat(MAPPER.readTree(response).at("/choices/0/message/reasoning_content").asText()).isEqualTo("full model field");
         assertThat(saved.get().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
+    }
+
+    @Test void interruptedSseKeepsOneParsedResponseAndMarksTheIncompleteEvent() throws Exception {
+        String events = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"received prefix\"}}]}\n\n"
+                + "data: {\"choices\":[{\"delta\":{\"content\":\"unfinished";
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        try (var scope = DebugHttpCapture.openLlm(saved::set)) {
+            int id = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
+            try (var body = DebugHttpCapture.responseStream(id, 200, "text/event-stream",
+                    new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) { body.readAllBytes(); }
+        }
+        var response = saved.get().getFirst().responseBody();
+        assertThat(MAPPER.readTree(response.content()).at("/choices/0/message/content").asText()).isEqualTo("received prefix");
+        assertThat(response.truncated()).isTrue();
+        assertThat(response.content()).doesNotContain("data:", "unfinished");
     }
 
     @Test void requestBindingCapturesOnAnUnpropagatedThreadWithoutSendingTheCarrier() throws Exception {
@@ -91,11 +145,81 @@ class DebugHttpCaptureTest {
         }
     }
 
+    @Test void llmDebugPreservesBodyFieldsNumbersAndTextEvenWhenTheyMatchHeaders() {
+        String json = """
+                {"model":"synthetic-2-model","stream":true,"temperature":0.25,
+                 "max_tokens":20000,"apiKey":"synthetic-unusable-body-key","token":"business-token",
+                 "reasoning_content":"Bearer synthetic-unusable-body-key",
+                 "text":"data:image/png;base64,c3ludGhldGljLWltYWdl",
+                 "tools":[{"function":{"parameters":{"type":"object","additionalProperties":false,
+                   "properties":{"title":{"type":"string","maxLength":120},
+                     "text":{"type":"string","maxLength":20000},
+                     "key":{"type":"string"},"token":{"type":"string"}}}}}]}
+                """;
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        try (var capture = DebugHttpCapture.openLlm(saved::set)) {
+            for (String value : List.of("2", "true", "false", "synthetic-unusable-body-key")) {
+                DebugHttpCapture.registerSecret(value);
+            }
+            DebugHttpCapture.begin("POST", "https://provider.invalid/chat",
+                    json.getBytes(StandardCharsets.UTF_8), "application/json");
+            assertThat(MAPPER.readTree(capture.sanitizeJson(json))).isEqualTo(MAPPER.readTree(json));
+            assertThat(MAPPER.readTree(saved.get().getFirst().requestBody().content())).isEqualTo(MAPPER.readTree(json));
+        }
+    }
+
+    @Test void llmDebugOmitsOnlyStructuredImageDataAndPreservesRemoteUrlsAndPlainBodies() throws Exception {
+        String json = """
+                {"content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJD","detail":"low"}},
+                  {"type":"input_image","image_url":"data:image/jpeg;base64,QUJD"},
+                  {"type":"image_url","image_url":{"url":"https://example.invalid/image?token=synthetic-token"}},
+                  {"type":"text","text":"data:image/png;base64,QUJD"}],
+                 "tools":[{"parameters":{"properties":{"image_url":{"type":"string"}}}}]}
+                """;
+        var expected = MAPPER.readTree(json);
+        ((tools.jackson.databind.node.ObjectNode) expected.at("/content/0/image_url")).put("url", "[image bytes omitted]");
+        ((tools.jackson.databind.node.ObjectNode) expected.at("/content/1")).put("image_url", "[image bytes omitted]");
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        try (var scope = DebugHttpCapture.openLlm(saved::set)) {
+            DebugHttpCapture.registerSecret("QUJD");
+            assertThat(MAPPER.readTree(scope.sanitizeJson(json))).isEqualTo(expected);
+            String text = "token=synthetic-token Bearer synthetic-auth 20000 true";
+            int id = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", text.getBytes(StandardCharsets.UTF_8), "text/plain");
+            try (var stream = DebugHttpCapture.responseStream(id, 200, "text/plain",
+                    new java.io.ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)))) {
+                assertThat(new String(stream.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(text);
+            }
+            assertThat(saved.get().getFirst().requestBody().content()).isEqualTo(text);
+            assertThat(saved.get().getFirst().responseBody().content()).isEqualTo(text);
+        }
+    }
+
     @Test void imageAttachmentsAreOmittedFromDebugJsonWithoutRemovingThePrompt() {
         try (var capture = DebugHttpCapture.open(ignored -> {})) {
             String body = capture.sanitizeJson("{\"messages\":[{\"content\":[{\"type\":\"text\",\"text\":\"Synthetic prompt\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,c3ludGhldGljLWltYWdl\"}}]}]}");
             assertThat(body).contains("Synthetic prompt", "[image bytes omitted]")
                     .doesNotContain("c3ludGhldGljLWltYWdl", "data:image/png;base64");
+        }
+    }
+
+    @Test void imageBytesAreFullyOmittedWhenTheyContainAKnownCredential() {
+        String encoded = "c3luQUJDbGF0ZXI=";
+        String json = "{\"image_url\":{\"url\":\"data:image/png;base64," + encoded
+                + "\",\"detail\":\"low\"},\"text\":\"Synthetic prompt QUJD\"}";
+        for (boolean llm : List.of(false, true)) {
+            var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var scope = llm ? DebugHttpCapture.openLlm(saved::set) : DebugHttpCapture.open(saved::set)) {
+                DebugHttpCapture.registerSecret("QUJD"); // Synthetic credential also occurs inside the image bytes.
+                DebugHttpCapture.begin("POST", "https://provider.invalid/chat",
+                        json.getBytes(StandardCharsets.UTF_8), "application/json");
+                for (String body : List.of(scope.sanitizeJson(json), saved.get().getFirst().requestBody().content())) {
+                    assertThat(MAPPER.readTree(body).at("/image_url/url").asText())
+                            .isEqualTo("[image bytes omitted]");
+                    assertThat(body).contains(llm ? "Synthetic prompt QUJD" : "Synthetic prompt [REDACTED]", "low")
+                            .doesNotContain(encoded, "bGF0ZXI=");
+                    if (!llm) assertThat(body).doesNotContain("QUJD");
+                }
+            }
         }
     }
 

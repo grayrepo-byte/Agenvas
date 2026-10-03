@@ -171,7 +171,7 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
 
   return <div className="media-draft-prompt-shell">
     <label className="media-draft-prompt-label" htmlFor={id}>{label}</label>
-    <div ref={editorRef} id={id} className="media-draft-prompt" role="textbox"
+    <div ref={editorRef} id={id} className="media-draft-prompt ui-multiline" role="textbox"
       aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
       data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
     {menu ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("media.mentions.imageReferences")}

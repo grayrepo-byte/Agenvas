@@ -14,6 +14,9 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasConnectionService;
+import dev.agenvas.canvas.domain.CanvasConnection;
+import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.event.application.ProjectEventRecorded;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.identity.application.AdminPrincipal;
@@ -132,6 +135,7 @@ class AgentMediaApprovalPostgresIT {
     @Autowired private MediaDraftService drafts;
     @Autowired private MediaCapabilityService capabilities;
     @Autowired private CanvasService canvas;
+    @Autowired private CanvasConnectionService connections;
     @Autowired private AssetService assets;
     @Autowired private MockImageAdapter mockImages;
     @Autowired private ProjectEventService events;
@@ -408,6 +412,21 @@ class AgentMediaApprovalPostgresIT {
             assertThat(output.preview().at("/mediaInputs/0/versionId").asText()).isEqualTo(imageVersion);
             assertThat(output.preview().at("/mediaInputs/0/role").asText()).isEqualTo("START_FRAME");
         });
+        UUID videoCardId = next.outputs().getFirst().canvasItemId();
+        var line = connections.list(owner.userId(), video.project().id()).stream()
+                .filter(value -> value.targetCanvasItemId().equals(videoCardId)).findFirst().orElseThrow();
+        assertThat(line.relationType()).isEqualTo(CanvasConnection.RelationType.MEDIA_INPUT);
+        assertThat(line.sourceCanvasItemId()).isEqualTo(image.approval().outputs().getFirst().canvasItemId());
+        assertThat(line.sourceArtifactVersionId().toString()).isEqualTo(imageVersion);
+        var preparedDraft = drafts.get(owner.userId(), video.project().id(), videoCardId);
+        assertThat(preparedDraft.version()).isEqualTo(next.outputs().getFirst().draftVersion());
+        assertThat(preparedDraft.mediaInputs()).singleElement().satisfies(input -> {
+            assertThat(input.role()).isEqualTo(MediaDraft.InputRole.START_FRAME);
+            assertThat(input.sources()).singleElement().satisfies(source -> {
+                assertThat(source.type()).isEqualTo(MediaDraft.SourceType.CONNECTION);
+                assertThat(source.connectionId()).isEqualTo(line.id());
+            });
+        });
         decide(video, "APPROVE", "director-video-stage");
         Task accepted = mediaTasks(video).stream().filter(task -> task.kind() == Task.Kind.VIDEO_GENERATION).findFirst().orElseThrow();
         assertThat(accepted.input().at("/mediaInput/images/0/versionId").asText()).isEqualTo(imageVersion);
@@ -421,6 +440,44 @@ class AgentMediaApprovalPostgresIT {
         assertThat(card.selectedVersion().frozenInput().at("/images/0/role").asText()).isEqualTo("START_FRAME");
         assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
         assertThat(currentRun(video).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        connections.disconnect(owner.userId(), video.project().id(), line.id(), preparedDraft.version(), null);
+        assertThat(drafts.get(owner.userId(), video.project().id(), videoCardId).mediaInputs()).isEmpty();
+        assertThat(connections.list(owner.userId(), video.project().id())).noneMatch(value -> value.id().equals(line.id()));
+        assertThat(canvas.list(owner.userId(), video.project().id()).stream()
+                .filter(value -> value.item().id().equals(videoCardId)).findFirst().orElseThrow()
+                .selectedVersion().frozenInput().at("/images/0/versionId").asText()).isEqualTo(imageVersion);
+    }
+
+    @Test
+    void missingReferenceCardIsPlacedAtTheExactVersionAndDisconnectInvalidatesApproval() throws Exception {
+        Scenario image = propose(outputs("IMAGE"));
+        gateway.plan(image.run().id()).imageToVideo = true;
+        decide(image, "APPROVE", "missing-source-image-stage");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        String imageVersion = mediaTasks(image).getFirst().output().path("artifactVersionId").asText();
+        UUID originalCardId = image.approval().outputs().getFirst().canvasItemId();
+        var original = canvas.list(owner.userId(), image.project().id()).stream()
+                .filter(value -> value.item().id().equals(originalCardId)).findFirst().orElseThrow().item();
+        canvas.apply(owner.userId(), image.project().id(), List.of(new CanvasService.Remove(original.id(), original.version())));
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        ApprovalView next = approvals.list(owner.userId(), image.project().id(), image.run().id()).stream()
+                .filter(value -> value.status() == AgentMediaApproval.Status.PENDING).findFirst().orElseThrow();
+        UUID targetId = next.outputs().getFirst().canvasItemId();
+        var line = connections.list(owner.userId(), image.project().id()).stream()
+                .filter(value -> value.targetCanvasItemId().equals(targetId)).findFirst().orElseThrow();
+        assertThat(line.sourceCanvasItemId()).isNotEqualTo(originalCardId);
+        var source = canvas.list(owner.userId(), image.project().id()).stream()
+                .filter(value -> value.item().id().equals(line.sourceCanvasItemId())).findFirst().orElseThrow();
+        assertThat(source.item().selectedVersionId().toString()).isEqualTo(imageVersion);
+        assertThat(source.artifact().artifact().resourceDefaultVersionId()).isNull();
+        connections.disconnect(owner.userId(), image.project().id(), line.id(), next.outputs().getFirst().draftVersion(), null);
+        assertThat(drafts.get(owner.userId(), image.project().id(), targetId).mediaInputs()).isEmpty();
+        mvc.perform(post(decisionPath(new Scenario(image.project(), image.run(), next))).with(auth).with(csrf())
+                .header("Idempotency-Key", "removed-reference-approval").contentType("application/json")
+                .content(mapper.createObjectNode().put("expectedVersion", next.version()).put("decision", "APPROVE").toString()))
+                .andExpect(status().isConflict());
+        assertThat(tasks.listByRun(owner.userId(), image.project().id(), image.run().id()))
+                .noneMatch(task -> task.kind() == Task.Kind.VIDEO_GENERATION);
     }
 
     @Test

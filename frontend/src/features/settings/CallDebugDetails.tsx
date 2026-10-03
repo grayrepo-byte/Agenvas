@@ -37,7 +37,8 @@ export function CallDebugDetails({ id, kind }: { id: string; kind?: CallLog["kin
       {details.data.exchanges.map((exchange, index) => <div className="call-log-exchange" key={index}>
         <h4>{t("logs.details.requestSummary", { "0": index + 1, "1": exchange.method, "2": exchange.responseStatus === null ? t("logs.details.responseMissing") : `HTTP ${exchange.responseStatus}` })}</h4>
         <p className="call-log-url">{exchange.url}</p>
-        <FormattedCallExchange exchange={exchange} mode={mode} llm={!details.data.llmStream?.content && (kind === undefined || kind === "LLM")} />
+        <FormattedCallExchange exchange={exchange} mode={mode} hideResponse={Boolean(details.data.llmStream?.content)}
+          llm={!details.data.llmStream?.content && (kind === undefined || kind === "LLM")} />
       </div>)}
     </> : <p className="ui-muted">{t("logs.details.debugDisabledPrefix")}<Link to="/settings/general?tab=logs">{t("common.systemSettings")}</Link>{t("logs.details.enableDebugSuffix")}</p>}
     </> : null}

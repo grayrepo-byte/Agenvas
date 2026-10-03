@@ -5,6 +5,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.domain.AgentMediaApproval;
@@ -52,6 +53,7 @@ public class AgentMediaApprovalService {
     private final AgentRunService runs;
     private final ArtifactService artifacts;
     private final CanvasService canvas;
+    private final CanvasConnectionService connections;
     private final MediaDraftService drafts;
     private final MediaCapabilityService capabilities;
     private final DirectMediaTaskService mediaTasks;
@@ -65,11 +67,13 @@ public class AgentMediaApprovalService {
             ArtifactService artifacts, CanvasService canvas, MediaDraftService drafts,
             MediaCapabilityService capabilities, DirectMediaTaskService mediaTasks,
             ProjectEventService events, ApplicationEventPublisher publisher,
-            ObjectMapper mapper, Clock clock, ToolExecutionRepository toolLedger) {
+            ObjectMapper mapper, Clock clock, ToolExecutionRepository toolLedger,
+            CanvasConnectionService connections) {
         this.approvals = approvals;
         this.runs = runs;
         this.artifacts = artifacts;
         this.canvas = canvas;
+        this.connections = connections;
         this.drafts = drafts;
         this.capabilities = capabilities;
         this.mediaTasks = mediaTasks;
@@ -141,6 +145,12 @@ public class AgentMediaApprovalService {
                             initial.version(), request.prompt(), request.parameters(),
                             request.durationSeconds(), capabilityId, request.videoInputMode(),
                             request.mediaInputs(), List.of(), null);
+                    for (MediaDraft.MediaInput reference : saved.mediaInputs()) {
+                        CanvasItem source = canvas.ensureMediaReferenceWithinChange(context.ownerId(),
+                                context.projectId(), run.agentInstanceId(), reference.artifactId(), reference.versionId());
+                        saved = connections.connectPreparedMediaInputWithinChange(context.ownerId(),
+                                context.projectId(), source.id(), item.id(), reference.versionId(), saved.version()).draft();
+                    }
                     var preflight = approvedPreflight(context.ownerId(), context.projectId(),
                             artifactId, item.id(), saved.version(), skillSource);
                     if (preflight.outputCount() != OUTPUTS_PER_REQUEST) throw invalid("single-output");

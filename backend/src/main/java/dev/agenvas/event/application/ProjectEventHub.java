@@ -166,7 +166,9 @@ public class ProjectEventHub {
         Subscriber subscriber =
                 new Subscriber(projectId, afterSequence, emitter, heartbeatInterval);
         emitter.onCompletion(() -> close(subscriber, false));
-        emitter.onTimeout(() -> close(subscriber, false));
+        // 到达连接存活上限时正常完成 DeferredResult，阻止 MVC 把超时交给 JSON 错误处理器。
+        // 发送失败和容器错误仍只清理订阅，不能再次完成已不可写的响应。
+        emitter.onTimeout(() -> close(subscriber));
         emitter.onError(error -> close(subscriber, false));
         channels.compute(projectId, (ignored, current) -> {
             ProjectChannel channel = current == null ? new ProjectChannel(ownerId) : current;

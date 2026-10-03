@@ -408,6 +408,24 @@ public class CanvasService {
         return placed;
     }
 
+    /** Reuses a visible exact-version source; otherwise places a separate card without changing existing selections. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem ensureMediaReferenceWithinChange(UUID ownerId, UUID projectId,
+            UUID agentId, UUID artifactId, UUID versionId) {
+        projects.requireActiveProject(ownerId, projectId);
+        ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
+        CanvasItem existing = canvasItems.list(ownerId, projectId).stream()
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                        && item.subjectId().equals(artifactId)
+                        && versionId.equals(item.selectedVersionId()))
+                .findFirst().orElse(null);
+        if (existing != null) return existing;
+        CanvasItem placed = placeGeneratedArtifactWithinChange(ownerId, projectId, agentId, artifactId);
+        if (versionId.equals(placed.selectedVersionId())) return placed;
+        canvasItems.addMediaVersion(projectId, placed.id(), versionId, version.createdAt());
+        return selectMediaVersion(ownerId, projectId, placed.id(), versionId, placed.version()).item();
+    }
+
     /** 在 Agent 输出分组内放置 1 至 6 个互异产物；已存在的卡片复用，避免重复展示。 */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public OutputPlacements placeArtifactsInAgentOutputWithinChange(UUID ownerId,

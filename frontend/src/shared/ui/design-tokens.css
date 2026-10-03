@@ -16,6 +16,11 @@
   --ui-text-secondary: #c9c9cf;
   --ui-text-muted: #9b9ba3;
   --ui-text-subtle: #777780;
+  --ui-scrollbar-size: 8px;
+  --ui-scrollbar-thumb: var(--ui-border-strong);
+  --ui-scrollbar-thumb-hover: var(--ui-text-subtle);
+  --ui-editor-text-size: 14px;
+  --ui-editor-line-height: 1.75;
   /* Reference button's dominant fill: RGB(61, 154, 255). */
   --ui-accent: #3d9aff;
   --ui-accent-foreground: #fff;

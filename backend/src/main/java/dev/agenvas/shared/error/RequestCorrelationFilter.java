@@ -45,7 +45,7 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             returned = true;
         } finally {
-            LOGGER.info("HTTP request handled method={} status={} async={} durationMs={}",
+            LOGGER.debug("HTTP request handled method={} status={} async={} durationMs={}",
                     request.getMethod(), returned ? response.getStatus() : 500,
                     request.isAsyncStarted(),
                     Math.max(0, (System.nanoTime() - started) / 1_000_000));

@@ -569,7 +569,7 @@ export interface paths {
         get: operations["getDebugSettings"];
         /**
          * 修改系统 debug 模式
-         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header 均不保存，正文中的鉴权字段及已知请求凭证始终隐藏。普通及流式 LLM 保留实际模型内容（含推理字段）及 HTTP/SSE 正文，媒体调用继续移除私有推理。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
+         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。所有 header（含 Authorization、Cookie、Set-Cookie）均不保存。普通及流式 LLM 的请求、响应及 HTTP/SSE 正文仅按结构化 image_url 字段省略图片字节，其余字段、工具 Schema、参数和模型文本原样保留，不对正文进行凭据或正则替换。独立请求地址隐藏认证信息，媒体调用继续过滤凭据与私有推理。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
          */
         put: operations["updateDebugSettings"];
         post?: never;
@@ -594,7 +594,7 @@ export interface paths {
         };
         /**
          * 查看本人项目的 debug 调用详情
-         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header 均省略；正文隐藏认证凭据。LLM 保留实际请求与响应内容及推理字段，实际 SSE 正文单独保存于 exchanges，媒体调用继续移除私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（JSON 隐藏凭据后序列化，图片 data URI 字节替换为 [image bytes omitted] 占位符，其余实际 LLM 内容保留），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。所有 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求和 HTTP 状态，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
          */
         get: operations["getCallDebug"];
         put?: never;
@@ -3390,7 +3390,7 @@ export interface components {
             errorCode: string | null;
         };
         LlmStreamContent: {
-            /** @description 隐藏认证凭据的应用模型响应协议 JSON（schemaVersion=1），包含实际模型文本、工具调用及元数据（包括推理字段）；至多 1 MiB，失败或取消保留已收到的部分。实际 HTTP/SSE 正文单独保存于 exchanges。 */
+            /** @description 单份模型响应 JSON（有 HTTP 时为聚合的 Chat Completions 响应，否则为 schemaVersion=1 的模型协议），仅省略结构化图片字节；包含实际模型文本、工具调用及元数据（包括推理字段），不做凭据或正则替换；至多 1 MiB，失败或取消保留已收到的部分。流式 HTTP/SSE 响应按分片顺序聚合，只保存这一份响应；exchanges.responseBody 为 null。无 HTTP 采集时使用 SDK 模型汇总；超限或未完整解析标记 truncated。 */
             response: string;
             /** @description 日志汇总超限或无法安全序列化，不影响模型调用。 */
             truncated: boolean;
