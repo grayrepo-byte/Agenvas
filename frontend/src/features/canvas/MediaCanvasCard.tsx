@@ -87,10 +87,10 @@ const EXTENSIONS = [
 ] as const;
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
-export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit, onInspect,
+export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit,
   onDuplicate, onMakeMV, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; toolbarVisible?: boolean; locked: boolean; onEdit: () => void;
-  onInspect: () => void; onDuplicate?: () => void;
+  onDuplicate?: () => void;
   onMakeMV?: () => void; children: ReactNode;
 }) {
   useLocale();
@@ -245,7 +245,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
         <MediaVersionPicker projectId={artifact.projectId} item={item} />
         {onDuplicate ? <Button variant="ghost" type="button" onClick={onDuplicate} title={t("media.card.copyHint")}>
           <CopySimple size={17} />{t("common.copy")}</Button> : null}
-        <Button variant="ghost" type="button" onClick={onInspect} aria-label={t("common.cardDetails")}><SlidersHorizontal size={17} /></Button>
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download
           aria-label={isImage ? t("media.card.downloadImage") : isAudio ? t("media.card.downloadAudio") : t("media.card.downloadVideo")}><DownloadSimple size={19} /></a> : null}
     </>}>

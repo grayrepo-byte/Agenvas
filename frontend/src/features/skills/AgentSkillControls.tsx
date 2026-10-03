@@ -1,10 +1,13 @@
-import { useInfiniteQuery,useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { BookOpen,CaretDown } from "@phosphor-icons/react";
+import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
 import { getAgentSkillBinding,getSkillInstallation,getSkillVersion,installAgentSkill,listArtifacts,listSkills,listSkillVersions,saveAgentSkillBinding,
   type Agent,type SkillInstallation,type SkillSelection } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { Dialog } from "../../shared/ui/Dialog";
+import { Input } from "../../shared/ui/primitives/input";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice } from "../../shared/ui/PagePrimitives";
+import { EmptyState,Notice,Panel } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldGroup,FieldLabel } from "../../shared/ui/primitives/field";
@@ -16,11 +19,11 @@ const pendingInstallation = (installation?:SkillInstallation)=>installation?.sta
 function initialSelection(agentId:string):SkillSelection {
   const params=new URLSearchParams(window.location.search);
   const skillId=params.get("skillId"),skillVersionId=params.get("skillVersionId");
-  return params.get("agentId")===agentId && skillId && skillVersionId ? {mode:"VERSION",skillId,skillVersionId,inputs:[]} : {mode:"DEFAULT",inputs:[]};
+  return params.get("agentId")===agentId && skillId && skillVersionId ? {mode:"VERSION",skillId,skillVersionId,inputs:[]} : {mode:"NONE",inputs:[]};
 }
-export function useAgentSkillSelection(projectId:string,agent:Agent | null | undefined) {
+export function useAgentSkillSelection(projectId:string,agent:Agent | null | undefined,initial?:SkillSelection) {
   const client=useQueryClient();
-  const [selection,setSelection]=useState<SkillSelection>(()=>initialSelection(agent?.id??""));
+  const [selection,setSelection]=useState<SkillSelection>(()=>initial??initialSelection(agent?.id??""));
   const binding=useQuery({queryKey:["agent-skill-binding",projectId,agent?.id,agent?.version],queryFn:()=>getAgentSkillBinding(projectId,agent!.id),enabled:Boolean(agent)});
   const selectedSkillId=selection.mode==="VERSION" ? selection.skillId : selection.mode==="DEFAULT" ? binding.data?.skillId : null;
   const selectedVersionId=selection.mode==="VERSION" ? selection.skillVersionId : selection.mode==="DEFAULT" ? binding.data?.skillVersionId : null;
@@ -81,24 +84,97 @@ export function AgentSkillSettings({projectId,agent,state,onChanged}:{projectId:
     }} /> : null}
   </section>;
 }
+/** The composer keeps only a compact entry; cancelled modal changes never alter a Run. */
 export function AgentRunSkillControls({projectId,agent,state,onChanged}:{projectId:string;agent:Agent;state:AgentSkillState;onChanged:()=>void}) {
+  useLocale();
+  const client=useQueryClient();
+  const [open,setOpen]=useState(false);
+  const catalog=client.getQueryData<InfiniteData<Awaited<ReturnType<typeof listSkills>>>>(["skills","published-picker"]);
+  const name=catalog?.pages.flatMap((page)=>page.items).find((skill)=>skill.id===state.selectedSkillId)?.title ?? state.version.data?.name;
+  return <>
+    <Button variant="ghost" size="xs" className="agent-skill-trigger" type="button"
+      aria-label={t("skills.choose")} aria-haspopup="dialog" aria-expanded={open} title={name??t("skills.choose")}
+      onClick={()=>setOpen(true)}>
+      <BookOpen data-icon="inline-start" />
+      <span>{state.selectedVersionId && name ? name : t("skills.entry")}</span><CaretDown data-icon="inline-end" />
+    </Button>
+    {open ? <AgentSkillPickerDialog projectId={projectId} agent={agent} selection={state.selection}
+      onClose={()=>setOpen(false)} onSelect={(selection)=>{
+        state.setSelection(selection);onChanged();setOpen(false);
+      }} /> : null}
+  </>;
+}
+
+function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{projectId:string;agent:Agent;
+  selection:SkillSelection;onClose:()=>void;onSelect:(selection:SkillSelection)=>void}) {
+  useLocale();
+  const state=useAgentSkillSelection(projectId,agent,selection);
+  const [search,setSearch]=useState("");
+  const skills=useInfiniteQuery({queryKey:["skills","published-picker"],initialPageParam:undefined as string | undefined,
+    queryFn:({pageParam})=>listSkills("",pageParam),getNextPageParam:(page)=>page.nextCursor??undefined});
+  const versions=useQuery({queryKey:["skill-versions",state.selectedSkillId],queryFn:()=>listSkillVersions(state.selectedSkillId!),enabled:Boolean(state.selectedSkillId)});
   const resources=useQuery({queryKey:["artifacts",projectId],queryFn:()=>listArtifacts(projectId),enabled:state.inputSlots.length>0});
-  function change(selection:SkillSelection) {state.setSelection(selection);onChanged();}
-  return <details className="agent-skill-settings nodrag nowheel nopan"><summary>{t("skills.selection")}</summary>
-    <FieldGroup><Field><FieldLabel>{t("skills.selection")}</FieldLabel><Select aria-label={t("skills.selection")} value={state.selection.mode} onChange={(event)=>change({mode:event.target.value==="NONE" ? "NONE":event.target.value==="VERSION" ? "VERSION":"DEFAULT",inputs:[]})}><option value="DEFAULT">{t("skills.defaultMode")}</option><option value="NONE">{t("skills.none")}</option><option value="VERSION">{t("skills.versionMode")}</option></Select></Field></FieldGroup>
-    {state.selection.mode==="VERSION" ? <SkillVersionPicker skillId={state.selection.skillId} versionId={state.selection.skillVersionId} onChange={(skillId,skillVersionId)=>change({mode:"VERSION",skillId,skillVersionId,inputs:[]})} /> : null}
-    {state.version.isFetching ? <LoadingState label={t("common.loading")} compact /> : null}
-    {state.version.data ? <><p>{state.version.data.name} · {t("skills.version",{"0":state.version.data.versionNumber})}</p><p>{t("skills.modelOnly")}</p><details><summary>{t("skills.body")}</summary><pre className="skills-source-preview">{state.version.data.skillMd}</pre></details>
-      <FieldGroup>{state.inputSlots.map((slot)=><Field key={slot.alias}><FieldLabel>{slot.alias}{slot.required ? ` · ${t("skills.required")}`:""}</FieldLabel><Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} value={state.selection.inputs?.find((input)=>input.alias===slot.alias)?.artifactVersionId??""} onChange={(event)=>{
-        const inputs=(state.selection.inputs??[]).filter((input)=>input.alias!==slot.alias);
-        if(event.target.value)inputs.push({alias:slot.alias,artifactVersionId:event.target.value});change({...state.selection,inputs});
-      }}><option value="">{t("skills.inputVersion")}</option>{agent.bindings.filter((binding)=>resources.data?.items.some((artifact)=>artifact.id===binding.artifactId && artifact.kind===slot.kind)).map((binding)=><option key={binding.selectedVersionId} value={binding.selectedVersionId}>{resources.data?.items.find((artifact)=>artifact.id===binding.artifactId)?.title} · {binding.selectedVersionId}</option>)}</Select></Field>)}</FieldGroup>
-      <Button variant="outline" type="button" disabled={state.install.isPending || pendingInstallation(state.progress??undefined)} onClick={()=>state.install.mutate()}>{t("skills.install")}</Button>
-    </> : null}
-    {state.progress && state.progress.skillVersionId===state.selectedVersionId ? <Notice tone={state.progress.status==="FAILED" ? "danger":"info"}>{pendingInstallation(state.progress) ? t("skills.installing"):state.progress.status==="SUCCEEDED" ? t("skills.installed"):state.progress.errorDetail??state.progress.errorCode}</Notice> : null}
-    {state.binding.error || state.version.error || state.install.error || state.installation.error || resources.error ? <SkillError error={(state.binding.error??state.version.error??state.install.error??state.installation.error??resources.error)!} onRefresh={()=>{void state.binding.refetch();if(state.selectedVersionId)void state.version.refetch();if(state.progress)void state.installation.refetch();}} /> : null}
-    {state.missingInputs ? <p role="status">{t("skills.missingInput")}</p> : null}
-  </details>;
+  const items=(skills.data?.pages.flatMap((page)=>page.items)??[]).filter((skill)=>skill.currentVersionId && !skill.trashed
+    && `${skill.title}\n${skill.description}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const currentProgress=state.progress?.skillVersionId===state.selectedVersionId ? state.progress : null;
+  const busy=state.install.isPending || pendingInstallation(currentProgress??undefined);
+  const selected=state.version.data;
+  const title=skills.data?.pages.flatMap((page)=>page.items).find((skill)=>skill.id===state.selectedSkillId)?.title ?? selected?.name;
+  function choose(skillId:string,skillVersionId:string) {state.setSelection({mode:"VERSION",skillId,skillVersionId,inputs:[]});}
+  return <Dialog title={t("skills.choose")} description={t("skills.pickerHint")} className="agent-skill-picker"
+    busy={busy} onClose={onClose} onSubmit={(event)=>{event.preventDefault();event.stopPropagation();if(state.ready && selected && !resources.isError)onSelect(state.selection);}}
+    footer={<>
+      <Button variant="outline" type="button" disabled={busy} onClick={()=>onSelect({mode:"NONE",inputs:[]})}>{t("skills.none")}</Button>
+      <Button variant="outline" type="button" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
+      <Button type="submit" disabled={busy || !state.ready || !selected || resources.isError}>{t("skills.use")}</Button>
+    </>}>
+    <div className="agent-skill-picker-toolbar">
+      <Input type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search}
+        disabled={busy} onChange={(event)=>setSearch(event.target.value)} />
+      {state.binding.data?.skillId && state.binding.data.skillVersionId ? <Button variant="outline" type="button" disabled={busy}
+        onClick={()=>choose(state.binding.data!.skillId!,state.binding.data!.skillVersionId!)}>{t("skills.defaultMode")}</Button> : null}
+    </div>
+    {skills.isPending ? <LoadingState compact label={t("common.loading")} /> : null}
+    {skills.isSuccess && !items.length ? <EmptyState icon={<BookOpen />} title={t("skills.empty")} description={t("skills.emptyHint")} /> : null}
+    <div className="agent-skill-picker-grid">
+      {items.map((skill)=><Button key={skill.id} variant="outline" type="button" className="agent-skill-picker-card"
+        aria-label={skill.title} aria-pressed={state.selectedSkillId===skill.id} disabled={busy}
+        onClick={()=>choose(skill.id,skill.currentVersionId!)}>
+        <BookOpen data-icon="inline-start" /><strong>{skill.title}</strong><span>{skill.description}</span>
+      </Button>)}
+    </div>
+    {skills.hasNextPage ? <Button variant="outline" type="button" disabled={busy || skills.isFetchingNextPage}
+      onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
+    {state.version.isFetching ? <LoadingState compact label={t("common.loading")} /> : null}
+    {selected ? <Panel title={title??selected.name} description={selected.description} className="agent-skill-picker-preview">
+      <FieldGroup><Field><FieldLabel>{t("skills.versions")}</FieldLabel>
+        <Select aria-label={t("skills.versions")} value={state.selectedVersionId??""} disabled={busy || versions.isFetching}
+          onChange={(event)=>choose(state.selectedSkillId!,event.target.value)}>
+          {/* A retained default binding can refer to a trashed Skill outside the new-choice list. */}
+          {!versions.data?.some((version)=>version.id===selected.id) ? <option value={selected.id}>{t("skills.version",{"0":selected.versionNumber})}</option> : null}
+          {versions.data?.map((version)=><option key={version.id} value={version.id}>{t("skills.version",{"0":version.versionNumber})}</option>)}
+        </Select></Field>
+        {state.inputSlots.map((slot)=><Field key={slot.alias}><FieldLabel>{slot.alias}{slot.required ? ` · ${t("skills.required")}`:""}</FieldLabel>
+          <Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} disabled={busy || resources.isFetching}
+            value={state.selection.inputs?.find((input)=>input.alias===slot.alias)?.artifactVersionId??""} onChange={(event)=>{
+              const inputs=(state.selection.inputs??[]).filter((input)=>input.alias!==slot.alias);
+              if(event.target.value)inputs.push({alias:slot.alias,artifactVersionId:event.target.value});state.setSelection({...state.selection,inputs});
+            }}><option value="">{t("skills.inputVersion")}</option>
+            {agent.bindings.filter((binding)=>resources.data?.items.some((artifact)=>artifact.id===binding.artifactId && artifact.kind===slot.kind))
+              .map((binding)=><option key={binding.selectedVersionId} value={binding.selectedVersionId}>{resources.data?.items.find((artifact)=>artifact.id===binding.artifactId)?.title}</option>)}
+          </Select></Field>)}
+      </FieldGroup>
+      <details><summary>{t("skills.body")}</summary><pre className="skills-source-preview">{selected.skillMd}</pre></details>
+      <p>{t("skills.modelOnly")}</p>
+      <Button variant="outline" type="button" disabled={busy} onClick={()=>state.install.mutate()}>{t("skills.install")}</Button>
+      {currentProgress ? <Notice tone={currentProgress.status==="FAILED" ? "danger":"info"}>{pendingInstallation(currentProgress) ? t("skills.installing"):currentProgress.status==="SUCCEEDED" ? t("skills.installed"):currentProgress.errorDetail??currentProgress.errorCode}</Notice> : null}
+      {state.missingInputs ? <p role="status">{t("skills.missingInput")}</p> : null}
+    </Panel> : null}
+    {skills.error || versions.error || state.version.error || state.install.error || state.installation.error || resources.error ?
+      <SkillError error={(skills.error??versions.error??state.version.error??state.install.error??state.installation.error??resources.error)!}
+        onRefresh={()=>{void skills.refetch();if(state.selectedSkillId)void versions.refetch();if(state.selectedVersionId)void state.version.refetch();
+          if(state.progress)void state.installation.refetch();if(state.inputSlots.length)void resources.refetch();}} /> : null}
+  </Dialog>;
 }
 export function RunSkillSummary({skill}:{skill:NonNullable<import("../../shared/api/client").RunPreflight["creativeSkill"]>}) {
   return <section aria-label={t("skills.preflight")}><p>{skill.title} · {t("skills.version",{"0":skill.versionNumber})}</p><p>{skill.installed ? t("skills.installed"):t("skills.installing")}</p><ul>{skill.resources.map((resource)=><li key={resource.path}><details><summary>{resource.path} · {resource.contentHash}</summary><pre className="skills-source-preview">{resource.content}</pre></details></li>)}{skill.assets.map((asset)=><li key={asset.alias}>{asset.alias} · {asset.purpose} · {asset.usage==="GUIDE" ? t("skills.guide"):t("skills.reference")}</li>)}</ul><p>{t("skills.fees")}</p></section>;

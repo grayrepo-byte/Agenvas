@@ -1,5 +1,5 @@
 import { ArrowUp,LockSimple,X } from "@phosphor-icons/react";
-import { useEffect, useState, type FormEvent, type RefObject } from "react";
+import { useEffect, useImperativeHandle, useState, type FormEvent, type RefObject } from "react";
 import {
 ApiError,reviseArtifact,
 type ReviseArtifactRequest
@@ -22,14 +22,16 @@ type TextFields = {
 };
 
 export type TextEditingState = { artifact: VersionedArtifact; dirty: boolean; busy: boolean };
+export type TextCanvasEditorHandle = { requestExit: () => void };
 
 /** Keeps text editing and immutable-version selection inside the text node itself. */
-export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, editorRef, onEditingStateChange }: {
+export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, editorRef, ref, onEditingStateChange }: {
   artifact: VersionedArtifact;
   canvasItemId?: string;
   locked: boolean;
   onDone: () => void;
   editorRef?: RefObject<HTMLTextAreaElement | null>;
+  ref?: RefObject<TextCanvasEditorHandle | null>;
   onEditingStateChange?: (state: TextEditingState) => void;
 }) {
   useLocale();
@@ -41,6 +43,13 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
   });
   const valid = Boolean(fields.text.trim());
   const [confirmExit, setConfirmExit] = useState(false);
+  // Toolbar, footer and Escape must all preserve dirty drafts before leaving.
+  function requestExit() {
+    if (status.busy) return;
+    if (status.dirty) setConfirmExit(true);
+    else onDone();
+  }
+  useImperativeHandle(ref, () => ({ requestExit }));
   // Keep the toolbar's version selector pinned to the same base as this draft.
   useEffect(() => {
     onEditingStateChange?.({ artifact: base, dirty: status.dirty, busy: status.busy });
@@ -66,7 +75,13 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
       content: { format: fields.format, text: fields.text.trim() } });
   }
 
-  return <><form className="text-card-editor nodrag nowheel nopan" onSubmit={submit}>
+  return <><form className="text-card-editor nodrag nowheel nopan" onSubmit={submit}
+    onKeyDown={(event) => {
+      if (event.key !== "Escape" || event.defaultPrevented || confirmExit || event.nativeEvent.isComposing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestExit();
+    }}>
     <div className="content-card-body text-card-editor-body">
       {status.newerAvailable || status.conflict ? <div className="text-card-notice">
         <span>{t("common.versionConflict")}</span>
@@ -92,9 +107,9 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
       </Select>
       <span className="text-card-count">{fields.text.length}/{MAX_TEXT_LENGTH}</span>
       {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("canvas.card.locked")} /> : null}
-      <Button variant="ghost" aria-label={t("text.editor.exit")} className="text-card-done" disabled={status.busy}
-        onClick={() => status.dirty ? setConfirmExit(true) : onDone()} title={t("text.editor.exit")} type="button"><X size={14} /></Button>
-      <Button variant="ghost" aria-label={t("text.editor.saveVersion")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
+      <Button variant="ghost" size="icon-xs" aria-label={t("text.editor.exit")} className="text-card-done" disabled={status.busy}
+        onClick={requestExit} title={t("text.editor.exit")} type="button"><X size={14} /></Button>
+      <Button size="icon-xs" aria-label={t("text.editor.saveVersion")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
         title={status.saving ? t("common.saving") : t("text.editor.saveVersion")} type="submit"><ArrowUp size={15} weight="bold" /></Button>
     </footer>
   </form>

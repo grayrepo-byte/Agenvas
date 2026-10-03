@@ -39,30 +39,87 @@ function itemFor(value: Artifact): CanvasItem {
 }
 
 function showCard(value: Artifact, selected = true, locked = false) {
-  const onInspect = vi.fn();
   const onCanvasDoubleClick = vi.fn();
   const client = createQueryClient();
   const card = (next: Artifact) => <QueryClientProvider client={client}>
     <div onDoubleClick={onCanvasDoubleClick}>
-      <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}
-        onInspect={onInspect}><span data-testid="resize-control" /></ContentCanvasCard>
+      <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}><span data-testid="resize-control" /></ContentCanvasCard>
     </div>
   </QueryClientProvider>;
   const result = render(card(value));
-  return { ...result, onInspect, onCanvasDoubleClick, rerenderArtifact: (next: Artifact) => result.rerender(card(next)) };
+  return { ...result, onCanvasDoubleClick, rerenderArtifact: (next: Artifact) => result.rerender(card(next)) };
 }
 
 describe("ContentCanvasCard", () => {
+  it("exits clean text editing from the toolbar", async () => {
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
+    const user = userEvent.setup();
+    const toolbar = screen.getByLabelText("文字卡片操作");
+    await user.click(within(toolbar).getByRole("button", { name: "编辑内容" }));
+    await user.click(within(toolbar).getByRole("button", { name: "退出内容编辑" }));
+    expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "文字正文" })).toHaveTextContent("已有正文");
+  });
+
+  it("exits on Escape and protects a dirty draft before leaving", async () => {
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    await user.click(screen.getByRole("combobox", { name: "文字格式" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("已有正文");
+    await user.click(screen.getByRole("textbox", { name: "内容" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    await user.type(screen.getByRole("textbox", { name: "内容" }), "，草稿");
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("已有正文，草稿");
+    await user.click(within(screen.getByLabelText("文字卡片操作")).getByRole("button", { name: "退出内容编辑" }));
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "文字正文" })).toHaveTextContent("已有正文");
+  });
+
   it("keeps unsaved text when closing editing and lets the user cancel leaving", async () => {
     showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "编辑内容" }));
     await user.type(screen.getByRole("textbox", { name: "内容" }), "，未保存输入");
-    await user.click(screen.getByRole("button", { name: "退出内容编辑" }));
+    await user.click(within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", { name: "退出内容编辑" }));
     expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("已有正文，未保存输入");
   });
+  it("saves a dirty draft as a new version before exiting", async () => {
+    const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "原正文" });
+    let revision: unknown;
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request }) => {
+        revision = await request.json();
+        return HttpResponse.json({ ...value, version: 4, resourceDefaultVersionId: "version-3",
+          resourceDefaultVersion: { ...value.resourceDefaultVersion!, id: "version-3", versionNo: 3,
+            content: { format: "PLAIN_TEXT", text: "保存后的正文" } } }, { status: 201 });
+      }),
+    );
+    showCard(value);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "编辑内容" }));
+    const editor = screen.getByRole("textbox", { name: "内容" });
+    await user.clear(editor);
+    await user.type(editor, "保存后的正文");
+    await user.click(within(screen.getByLabelText("文字卡片操作")).getByRole("button", { name: "退出内容编辑" }));
+    await user.click(screen.getByRole("button", { name: "保存并退出" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
+      content: { format: "PLAIN_TEXT", text: "保存后的正文" } });
+  });
+
   it("retains the text and pinned CAS version when save-and-exit conflicts", async () => {
     let revision: unknown;
     server.use(
@@ -77,7 +134,7 @@ describe("ContentCanvasCard", () => {
     await user.click(screen.getByRole("button", { name: "编辑内容" }));
     await user.type(screen.getByRole("textbox", { name: "内容" }), "，保留草稿");
     expect(screen.getByRole("status")).toHaveTextContent("有未保存的修改");
-    await user.click(screen.getByRole("button", { name: "退出内容编辑" }));
+    await user.click(within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", { name: "退出内容编辑" }));
     await user.click(screen.getByRole("button", { name: "保存并退出" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("内容有冲突，修改未保存");
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("原正文，保留草稿");
@@ -86,14 +143,14 @@ describe("ContentCanvasCard", () => {
       content: { format: "PLAIN_TEXT", text: "原正文，保留草稿" } });
   });
 
-  it("places the version in the toolbar without a text tag and focuses content on every edit click", async () => {
+  it("keeps the version in the toolbar and shows an exit action during editing", async () => {
     showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
     const toolbar = screen.getByLabelText("文字卡片操作");
     const version = within(toolbar).getByRole("button", { name: "版本 v2" });
     const versionStyle = getComputedStyle(version);
-    const detailsStyle = getComputedStyle(within(toolbar).getByRole("button", { name: "卡片详情" }));
+    const editStyle = getComputedStyle(within(toolbar).getByRole("button", { name: "编辑内容" }));
     for (const property of ["height", "padding", "background-color", "color", "font-size", "border-radius"]) {
-      expect(versionStyle.getPropertyValue(property)).toBe(detailsStyle.getPropertyValue(property));
+      expect(versionStyle.getPropertyValue(property)).toBe(editStyle.getPropertyValue(property));
     }
     expect(screen.getByRole("article").querySelector(".content-card-chip")).toBeNull();
     const user = userEvent.setup();
@@ -101,8 +158,7 @@ describe("ContentCanvasCard", () => {
     const editor = screen.getByRole("textbox", { name: "内容" });
     expect(editor).toHaveFocus();
     await user.type(editor, "，本地输入");
-    await user.click(within(toolbar).getByRole("button", { name: "卡片详情" }));
-    await user.click(within(toolbar).getByRole("button", { name: "编辑内容" }));
+    expect(within(toolbar).getByRole("button", { name: "退出内容编辑" })).toBeEnabled();
     expect(editor).toHaveFocus();
     expect(editor).toHaveValue("已有正文，本地输入");
     expect(within(toolbar).getByRole("button", { name: /v2/ })).toBeInTheDocument();
@@ -144,7 +200,7 @@ describe("ContentCanvasCard", () => {
   });
 
   it.each([true, false])("edits on content double-click when selected=%s and focuses the existing text", async (selected) => {
-    const { onCanvasDoubleClick, onInspect } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "双击编辑正文" }), selected);
+    const { onCanvasDoubleClick } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "双击编辑正文" }), selected);
     const user = userEvent.setup();
     await user.click(screen.getByText("双击编辑正文"));
     expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
@@ -153,11 +209,10 @@ describe("ContentCanvasCard", () => {
     expect(editor).toHaveValue("双击编辑正文");
     expect(editor).toHaveFocus();
     expect(onCanvasDoubleClick).not.toHaveBeenCalled();
-    expect(onInspect).not.toHaveBeenCalled();
     await user.type(editor, "，未保存");
     await user.dblClick(editor);
     expect(editor).toHaveValue("双击编辑正文，未保存");
-    await user.click(screen.getByRole("button", { name: "退出内容编辑" }));
+    await user.click(within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", { name: "退出内容编辑" }));
     expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
   });
 
@@ -189,12 +244,11 @@ describe("ContentCanvasCard", () => {
     expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
   });
 
-  it("uses the toolbar action for direct output editing and keeps details available", async () => {
-    const { onInspect } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "正文" }), true, true);
+  it("edits locked text without offering card details", async () => {
+    showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "正文" }), true, true);
     await clickControl(screen.getByRole("button", { name: "编辑内容" }));
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("正文");
-    await clickControl(screen.getByRole("button", { name: "卡片详情" }));
-    expect(onInspect).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "卡片详情" })).not.toBeInTheDocument();
     expect(screen.getByRole("article")).toHaveClass("is-selected");
     expect(screen.getByRole("article")).toHaveAccessibleName("创作内容 · 文字 · 已锁定");
     expect(screen.queryByRole("button", { name: /生成|改写|删除/ })).not.toBeInTheDocument();

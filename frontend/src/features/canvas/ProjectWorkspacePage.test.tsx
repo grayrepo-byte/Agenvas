@@ -112,6 +112,61 @@ describe("ProjectWorkspacePage", () => {
     );
   });
 
+  it("dismisses a failed media creation notice and shows a later failure again", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Feedback project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", () => {
+        attempts++;
+        return HttpResponse.json({ code: "ARTIFACT_CREATE_FAILED", title: "合成创建错误", detail: "合成创建错误", retryable: false }, { status: 422, headers: { "Content-Type": "application/problem+json" } });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByText("Feedback project");
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await user.click(screen.getByRole("button", { name: "添加卡片" }));
+      await user.click(screen.getByRole("option", { name: "图片" }));
+      const notice = (await screen.findByText("合成创建错误")).closest('[role="alert"]') as HTMLElement;
+      expect(within(notice).getByText("创建卡片 · 图片")).toBeVisible();
+      await user.click(within(notice).getByRole("button", { name: "关闭提示" }));
+      expect(screen.queryByText("合成创建错误")).not.toBeInTheDocument();
+      expect(attempts).toBe(attempt);
+    }
+  });
+
+  it("names and locates the audio node responsible for a failed Agent conversation", async () => {
+    const source = imageCard();
+    const audio: CanvasItem = { ...source, id: "audio-card", title: "Voice", artifact: { ...source.artifact!, kind: "AUDIO", title: "Voice" } };
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Feedback project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [audio] })),
+      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
+      http.post("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ code: "AGENT_CREATE_FAILED", title: "合成对话错误", detail: "合成对话错误", retryable: false }, { status: 422, headers: { "Content-Type": "application/problem+json" } })),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("article", { name: "Voice · 音频" }));
+    await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
+    const notice = (await screen.findByText("合成对话错误")).closest('[role="alert"]') as HTMLElement;
+    expect(within(notice).getByText("Agent 对话 · Voice")).toBeVisible();
+    fireEvent.click(screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!);
+    await user.click(within(notice).getByRole("button", { name: "定位节点" }));
+    expect(useCanvasStore.getState().selectedIds).toEqual([audio.id]);
+    await user.click(within(notice).getByRole("button", { name: "关闭提示" }));
+    expect(screen.queryByText("合成对话错误")).not.toBeInTheDocument();
+  });
+
   it("opens an idle audio conversation bound to the exact selected version and reuses it", async () => {
     const source = imageCard();
     const audio: CanvasItem = { ...source, id: "audio-card", title: "Voice",
@@ -1142,8 +1197,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" }),
       ),
-      http.get("/api/v1/projects/:projectId/runs/preflight", ({ request }) => {
-        expect(new URL(request.url).searchParams.get("agentId")).toBe(agentId);
+      http.post("/api/v1/projects/:projectId/runs/preflight", async ({ request }) => {
+        expect(await request.json()).toMatchObject({agentId,skillSelection:{mode:"NONE",inputs:[]}});
         return HttpResponse.json({
           agentId, agentVersion: updated ? 1 : 0, agentName: updated ? "Agent Beta" : "Agent Alpha",
           conversationId: `conversation-${agentId}`, conversationVersion: 0,

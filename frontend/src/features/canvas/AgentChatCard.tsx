@@ -54,7 +54,7 @@ const EMPTY_DRAFT = { instruction: "" };
 type ConversationDraft = typeof EMPTY_DRAFT;
 type RunReview = {
   conversationId: string; instruction: string; selectedIds: string[];
-  agentVersion: number; skillSelection?: SkillSelection; skillFingerprint: string;
+  agentVersion: number; skillSelection: SkillSelection; skillFingerprint: string;
 };
 
 /** Conversations persist across messages; each submitted message retains its own Run. */
@@ -115,12 +115,11 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
   const reviewSelection = review?.selectedIds ?? [];
   const preflightKey = (id: string | null) => {
     const base = ["run-preflight", data.projectId, agent?.id, agent?.version, id];
-    return skillState.selection.mode === "DEFAULT" && !skillState.binding.data?.skillVersionId
-      ? base : [...base, skillState.fingerprint];
+    return [...base, skillState.fingerprint];
   };
   const preflight = useQuery({
     queryKey: preflightKey(conversationId),
-    queryFn: () => getRunPreflight(data.projectId, agent!.id, conversationId ?? undefined, review?.skillSelection),
+    queryFn: () => getRunPreflight(data.projectId, agent!.id, conversationId ?? undefined, review?.skillSelection ?? skillState.selection),
     enabled: false,
   });
 
@@ -253,8 +252,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       catch { return; }
     }
     setView("chat");
-    const skillSelection = skillState.selection.mode === "DEFAULT" && !skillState.binding.data?.skillVersionId
-      ? undefined : skillState.selection;
+    const skillSelection = skillState.selection;
     setReview({ conversationId: targetId, instruction, agentVersion: agent.version, skillSelection, skillFingerprint: skillState.fingerprint,
       selectedIds: [...useCanvasStore.getState().selectedIds] });
     try {
@@ -275,7 +273,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       expectedModelConfigVersion: reviewed.policySnapshot.modelConfigVersion,
       expectedSystemPromptVersion: reviewed.policySnapshot.systemPromptVersion,
       selectedItemIds: reviewSelection,
-      ...(review.skillSelection ? {skillSelection:review.skillSelection} : {}),
+      skillSelection: review.skillSelection,
     };
     const fingerprint = JSON.stringify(input);
     if (runIntent.current?.fingerprint !== fingerprint) runIntent.current = { fingerprint, key: crypto.randomUUID() };
@@ -292,18 +290,18 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         <div className="agent-chat-heading"><h3>{agent.name}</h3>
           <span>{ownRun ? RUN_STATUS_LABELS[ownRun.status] : data.activeRun ? t("agent.chat.otherAgentRunning") : t("agent.chat.ready")}</span>
         </div>
-        <Button variant="ghost" aria-label={t("agent.chat.chat")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
+        <Button variant="ghost" size="sm" aria-label={t("agent.chat.chat")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
           onClick={() => setView("chat")} type="button">{t("agent.chat.conversation")}</Button>
-        <Button variant="ghost" aria-label={t("agent.chat.sessions")} aria-pressed={view === "history"} className="agent-chat-icon nodrag"
+        <Button variant="ghost" size="icon-sm" aria-label={t("agent.chat.sessions")} aria-pressed={view === "history"} className="agent-chat-icon nodrag"
           onClick={() => setView(view === "history" ? "chat" : "history")} title={t("agent.chat.sessions")} type="button"><ClockCounterClockwise size={18} /></Button>
-        <Button variant="ghost" aria-label={t("agent.chat.createSession")} className="agent-chat-icon nodrag" disabled={sessionBusy || conversations.isPending}
+        <Button variant="ghost" size="icon-sm" aria-label={t("agent.chat.createSession")} className="agent-chat-icon nodrag" disabled={sessionBusy || conversations.isPending}
           onClick={() => createConversation.mutate({ transferDraft: false })} title={t("agent.chat.createSession")} type="button"><Plus size={18} /></Button>
-        <Button variant="ghost" aria-label={t("agent.chat.settings")} aria-pressed={view === "settings"} className="agent-chat-icon nodrag"
+        <Button variant="ghost" size="icon-sm" aria-label={t("agent.chat.settings")} aria-pressed={view === "settings"} className="agent-chat-icon nodrag"
           onClick={() => setView(view === "settings" ? "chat" : "settings")} type="button"><GearSix size={18} /></Button>
       </header>
       <div className="agent-chat-context nodrag">
-        <Button variant="ghost" onClick={() => setView("settings")} type="button">{t("agent.chat.bindingCount", { "0": agent.bindings.length })}</Button>
-        <Button variant="ghost" disabled={!data.outputCount} onClick={(event) => { event.stopPropagation(); data.onShowOutputs(agent); }} type="button"><ArrowSquareOut size={13} />{t("agent.chat.viewArtifacts", { "0": data.outputCount ? ` · ${data.outputCount}` : "" })}</Button>
+        <Button variant="ghost" size="xs" onClick={() => setView("settings")} type="button">{t("agent.chat.bindingCount", { "0": agent.bindings.length })}</Button>
+        <Button variant="ghost" size="xs" disabled={!data.outputCount} onClick={(event) => { event.stopPropagation(); data.onShowOutputs(agent); }} type="button"><ArrowSquareOut size={13} />{t("agent.chat.viewArtifacts", { "0": data.outputCount ? ` · ${data.outputCount}` : "" })}</Button>
       </div>
       <div className="agent-chat-session-heading"><span>{currentConversation?.title || (conversationId ? t("agent.chat.currentSession") : t("agent.chat.newSession"))}</span>
         {createConversation.isPending ? <span>{t("agent.chat.creatingSession")}</span> : <small>{t("agent.chat.persistedMessagesHint")}</small>}
@@ -322,7 +320,7 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
           <form onSubmit={submit}>
             <label>{t("common.name")}<Input value={configuration?.name ?? agent.name} onChange={(event) => setConfiguration((current) => current ? { ...current, name: event.target.value } : current)} maxLength={MAX_AGENT_NAME} name="name" required /></label>
             <label>{t("common.instruction")}<Textarea value={configuration?.instruction ?? agent.instruction} onChange={(event) => setConfiguration((current) => current ? { ...current, instruction: event.target.value } : current)} maxLength={MAX_INSTRUCTION} name="instruction" required rows={4} /></label>
-            <Button variant="ghost" className="node-action" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("common.saving") : t("common.saveConfig")}</Button>
+            <Button size="sm" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("common.saving") : t("common.saveConfig")}</Button>
             {configuration && agent.version !== configuration.base.version ? <p role="status">
               {t("common.versionConflict")}<Button variant="ghost" type="button"
                 onClick={() => setConfiguration({ base: agent, name: agent.name, instruction: agent.instruction })}>{t("common.refreshVersion")}</Button>
@@ -335,26 +333,26 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
               <li key={binding.id}>Artifact {binding.artifactId}<br />Version {binding.selectedVersionId}</li>)}</ul>}
           </details>
           <div className="agent-chat-settings-actions">
-            <Button variant="ghost" className="node-action" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? t("canvas.card.unlock") : t("canvas.card.lock")}</Button>
-            <Button variant="ghost" className="node-action node-action-danger" onClick={() => data.onRemove(data.item)} type="button">{t("canvas.card.remove")}</Button>
+            <Button variant="outline" size="sm" onClick={() => data.onToggleLocked(data.item)} type="button">{data.item.locked ? t("canvas.card.unlock") : t("canvas.card.lock")}</Button>
+            <Button variant="outline" size="sm" className="node-action-danger" onClick={() => data.onRemove(data.item)} type="button">{t("canvas.card.remove")}</Button>
           </div>
         </section> : view === "history" ? <section aria-label={t("agent.chat.sessions")} className="agent-chat-history">
           <h4>{t("agent.chat.sessions")}</h4><p>{t("agent.chat.sessionContextHint")}</p>
           {conversations.isPending ? <CanvasLoadingState compact label={t("agent.chat.sessionLoading")} /> : null}
-          {conversations.error ? <><ChatError error={conversations.error} /><Button variant="ghost" className="node-action" onClick={() => void conversations.refetch()} type="button">{t("agent.chat.retrySessions")}</Button></> : null}
+          {conversations.error ? <><ChatError error={conversations.error} /><Button variant="outline" size="sm" onClick={() => void conversations.refetch()} type="button">{t("agent.chat.retrySessions")}</Button></> : null}
           {conversations.isSuccess && !sessions.length ? <p>{t("agent.chat.sessionsEmpty")}</p> : null}
           {sessions.map((session) => <Button variant="ghost" className="agent-chat-history-item" key={session.id}
             aria-current={session.id === conversationId ? "true" : undefined} disabled={sessionBusy}
             onClick={() => selectConversation.mutate(session.id)} type="button">
             <span>{session.title || t("agent.chat.newSession")}</span><small>{t("agent.chat.conversationSummary", { "0": session.turnCount, "1": new Date(session.updatedAt).toLocaleString(getFormatLocale()), "2": session.id === conversationId ? t("agent.chat.currentSessionSuffix") : "" })}</small>
           </Button>)}
-          {conversations.hasNextPage ? <Button variant="ghost" className="node-action" disabled={conversations.isFetchingNextPage}
+          {conversations.hasNextPage ? <Button variant="outline" size="sm" disabled={conversations.isFetchingNextPage}
             onClick={() => void conversations.fetchNextPage()} type="button">{conversations.isFetchingNextPage ? t("common.loading") : t("agent.chat.moreSessions")}</Button> : null}
         </section> : <>
           {conversations.isPending ? <CanvasLoadingState compact label={t("agent.chat.restoringSession")} /> : null}
-          {conversations.error ? <><ChatError error={conversations.error} /><Button variant="ghost" className="node-action" onClick={() => void conversations.refetch()} type="button">{t("agent.chat.retrySessions")}</Button></> : null}
+          {conversations.error ? <><ChatError error={conversations.error} /><Button variant="outline" size="sm" onClick={() => void conversations.refetch()} type="button">{t("agent.chat.retrySessions")}</Button></> : null}
           {conversationId && runs.isPending ? <CanvasLoadingState compact label={t("agent.chat.conversationLoading")} /> : null}
-          {conversationId && runs.error ? <><ChatError error={runs.error} /><Button variant="ghost" className="node-action" onClick={() => void runs.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></> : null}
+          {conversationId && runs.error ? <><ChatError error={runs.error} /><Button variant="outline" size="sm" onClick={() => void runs.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></> : null}
           {runs.hasNextPage ? <Button variant="ghost" className="agent-chat-earlier" disabled={runs.isFetchingNextPage}
             onClick={() => void runs.fetchNextPage()} type="button">{runs.isFetchingNextPage ? t("common.loading") : t("agent.chat.loadEarlier")}</Button> : null}
           {!displayedRuns.length && !reviewInstruction && conversations.isSuccess && (!conversationId || runs.isSuccess) ? <div className="agent-chat-empty">
@@ -367,8 +365,8 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
       {reviewInstruction !== null ? (
         <AgentChatApproval title={t("agent.chat.preflightTitle")} description={t("agent.chat.preflightHint")} className="agent-chat-panel"
           footer={preflight.data && !preflight.isFetching && !preflight.isError ? <div className="agent-chat-panel-actions">
-            <Button variant="ghost" className="agent-chat-panel-secondary" disabled={start.isPending} onClick={() => setReview(null)} type="button">{t("agent.chat.editAgain")}</Button>
-            <Button variant="ghost" className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
+            <Button variant="outline" size="sm" className="agent-chat-panel-secondary" disabled={start.isPending} onClick={() => setReview(null)} type="button">{t("agent.chat.editAgain")}</Button>
+            <Button size="sm" className="agent-chat-panel-primary" disabled={Boolean(data.activeRun) || start.isPending ||
               preflight.data.agentVersion !== agent.version || !preflight.data.modelAvailable ||
               !preflight.data.toolCalling || preflight.data.policySnapshot.systemPromptVersion == null ||
               preflight.data.conversationId !== conversationId || preflight.data.conversationVersion == null || preflight.data.creativeSkill?.installed === false} onClick={confirmRun} type="button">
@@ -414,7 +412,6 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
         </div>
       </div>
       <form aria-label={t("agent.chat.sendTask")} className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
-      <AgentRunSkillControls projectId={data.projectId} agent={agent} state={skillState} onChanged={()=>{setReview(null);runIntent.current=null;}} />
         <Textarea aria-label={t("agent.chat.currentTask")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
           setRunInstruction(event.target.value); setReview(null);
         }} onKeyDown={(event) => {
@@ -424,10 +421,13 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
           }
         }} placeholder={t("agent.chat.instructionPlaceholder")} required value={runInstruction} rows={2} />
         <div className="agent-chat-composer-footer"><span>{data.activeRun && !ownRun ? t("agent.chat.waitForOtherAgent") : t("agent.chat.contextShortcutHint")}</span>
-          {currentActiveRun ? <Button variant="ghost" aria-label={t("agent.chat.stop")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
+          <div className="agent-chat-composer-actions">
+            <AgentRunSkillControls projectId={data.projectId} agent={agent} state={skillState} onChanged={()=>{setReview(null);runIntent.current=null;}} />
+            {currentActiveRun ? <Button variant="secondary" size="icon-sm" aria-label={t("agent.chat.stop")} className="agent-chat-send agent-chat-stop" disabled={stop.isPending || currentActiveRun.status === "CANCEL_REQUESTED"}
             onClick={() => stop.mutate(currentActiveRun.id)} title={t("agent.chat.stopOrchestration")} type="button"><Square weight="fill" size={14} /></Button>
-            : <Button variant="ghost" aria-label={t("agent.chat.send")} className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !runInstruction.trim()}
+            : <Button size="icon-sm" aria-label={t("agent.chat.send")} className="agent-chat-send" disabled={Boolean(data.activeRun) || start.isPending || preflight.isFetching || sessionBusy || conversations.isPending || conversations.isError || !runInstruction.trim()}
               title={t("agent.chat.confirmInputs")} type="submit"><ArrowUp size={20} weight="bold" /></Button>}
+          </div>
         </div>
       </form>
     </article>

@@ -1,6 +1,6 @@
 import {
 LinkSimple,LockSimple,PencilSimple,
-SlidersHorizontal,Stack,TextT
+Stack,TextT,X
 } from "@phosphor-icons/react";
 import type { MouseEvent,ReactNode } from "react";
 import { useEffect,useRef,useState } from "react";
@@ -11,7 +11,7 @@ import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText as readText } from "./artifactContent";
 import "./ContentCanvasCard.css";
-import { TextCanvasEditor,type TextEditingState } from "./TextCanvasEditor";
+import { TextCanvasEditor,type TextCanvasEditorHandle,type TextEditingState } from "./TextCanvasEditor";
 import { TextVersionPicker } from "./TextVersionPicker";
 import { hasCurrentVersion } from "./versionedArtifact";
 
@@ -27,7 +27,6 @@ type ContentCanvasCardProps = {
   selected: boolean;
   toolbarVisible?: boolean;
   locked: boolean;
-  onInspect: () => void;
   children: ReactNode;
 };
 
@@ -35,11 +34,12 @@ type ContentCanvasCardProps = {
 const TEXT_PRESENTATION = { get label() { return t("common.text"); }, icon: TextT };
 
 /** Text edits in place; the persisted content is shown as written. */
-export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, locked, onInspect,
+export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, locked,
   children }: ContentCanvasCardProps) {
   useLocale();
   const [editingText, setEditingText] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorControlsRef = useRef<TextCanvasEditorHandle>(null);
   const [editingState, setEditingState] = useState<TextEditingState | null>(null);
   useEffect(() => { if (editingText) editorRef.current?.focus(); }, [editingText]);
   const content = artifact.resourceDefaultVersion?.content;
@@ -65,15 +65,19 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
             disabled={editingText && Boolean(editingState?.dirty || editingState?.busy)} />
           : <span className="text-card-count"><Stack size={12} aria-hidden />
             {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("text.card.noVersion")}</span>}
-        <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact)}
+        <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact) || Boolean(editingState?.busy)}
           aria-pressed={editingText} className={editingText ? "is-open" : undefined}
-          onClick={beginEditing}>
-          <PencilSimple size={17} aria-hidden />{t("text.card.edit")}</Button>
-        <Button variant="ghost" type="button" onClick={onInspect}><SlidersHorizontal size={17} aria-hidden />{t("common.cardDetails")}</Button>
+          onClick={(event) => {
+            if (editingText) editorControlsRef.current?.requestExit();
+            else beginEditing(event);
+          }}>
+          {editingText ? <X size={17} aria-hidden /> : <PencilSimple size={17} aria-hidden />}
+          {editingText ? t("text.editor.exit") : t("text.card.edit")}</Button>
       </>}>
       {children}
       {hasCurrentVersion(artifact) && editingText
         ? <TextCanvasEditor artifact={artifact} canvasItemId={item.id} locked={locked}
+          ref={editorControlsRef}
           editorRef={editorRef} onEditingStateChange={setEditingState}
           onDone={() => { setEditingText(false); setEditingState(null); }} /> : <>
       <div className="content-card-bar">
