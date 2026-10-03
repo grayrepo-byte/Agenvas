@@ -58,6 +58,7 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiVideoPostgresIT {
+    private static final String PROXY_PREFIX = "/proxy/synthetic-key";
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -79,6 +80,7 @@ class ComfyUiVideoPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
+        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @AfterAll
@@ -107,7 +109,7 @@ class ComfyUiVideoPostgresIT {
     void approvedSelectedKeyframeReachesFixedWanGraphAndOriginalPromptArchivesMp4()
             throws Exception {
         UUID connection = catalog.createConnection("Comfy image and video",
-                "http://127.0.0.1:" + SERVER.getAddress().getPort()).id();
+                "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX).id();
         UUID imageCapability = catalog.publishCapability(connection, "Fixed image",
                 "COMFY_IMAGE_V1",
                 mapper.readTree("{\"checkpoint\":\"test-image.safetensors\"}")).id();
@@ -252,7 +254,7 @@ class ComfyUiVideoPostgresIT {
     private static HttpServer server() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/upload/image", exchange -> {
+            server.createContext(PROXY_PREFIX + "/upload/image", exchange -> {
                 byte[] body = exchange.getRequestBody().readAllBytes();
                 assertThat(body.length).isGreaterThan(1_000);
                 int uploadNumber = UPLOADS.incrementAndGet();
@@ -262,7 +264,7 @@ class ComfyUiVideoPostgresIT {
                 reply(exchange, 200, ("{\"name\":\"" + name
                         + "\",\"type\":\"input\",\"subfolder\":\"\"}").getBytes(StandardCharsets.UTF_8));
             });
-            server.createContext("/prompt", exchange -> {
+            server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 JsonNode body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 JsonNode graph = body.path("prompt");
                 UUID id = UUID.fromString(body.path("prompt_id").asText());
@@ -279,9 +281,9 @@ class ComfyUiVideoPostgresIT {
                 reply(exchange, 200, ("{\"prompt_id\":\"" + id + "\"}")
                         .getBytes(StandardCharsets.UTF_8));
             });
-            server.createContext("/history/", exchange -> {
+            server.createContext(PROXY_PREFIX + "/history/", exchange -> {
                 boolean video = exchange.getRequestURI().getPath()
-                        .equals("/history/" + VIDEO_PROMPT.get());
+                        .equals(PROXY_PREFIX + "/history/" + VIDEO_PROMPT.get());
                 UUID id = video ? VIDEO_PROMPT.get() : IMAGE_PROMPT.get();
                 if (video && VIDEO_POLLS.incrementAndGet() == 1) {
                     reply(exchange, 200, "{}".getBytes(StandardCharsets.UTF_8));
@@ -294,7 +296,7 @@ class ComfyUiVideoPostgresIT {
                         + "\"status_str\":\"success\"},\"outputs\":{" + output + "}}}")
                         .getBytes(StandardCharsets.UTF_8));
             });
-            server.createContext("/view", exchange -> {
+            server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 boolean video = exchange.getRequestURI().getQuery().contains("result.mp4");
                 reply(exchange, 200, video ? VIDEO_BYTES.get() : png());
             });

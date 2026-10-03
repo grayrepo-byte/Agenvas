@@ -71,6 +71,11 @@ public final class DebugHttpCapture implements AutoCloseable {
         return new DebugHttpCapture(checkpoint);
     }
     public static boolean enabled() { return ACTIVE.get() != null; }
+    /** Transports with path-based authentication register secrets before any checkpoint is published. */
+    public static void registerSecret(String secret) {
+        DebugHttpCapture capture = ACTIVE.get();
+        if (capture != null) synchronized (capture) { capture.remember(secret); }
+    }
     /** Sanitizes a semantic log with the same credentials learned from this invocation's transport. */
     public synchronized String sanitizeJson(String json) {
         return body(json.getBytes(StandardCharsets.UTF_8), "application/json", false).content();
@@ -275,7 +280,7 @@ public final class DebugHttpCapture implements AutoCloseable {
         };
     }
 
-    /** ComfyUI uses the JDK client; it joins the same invocation scope and redaction policy. */
+    /** Non-OkHttp transports can join the same invocation scope and redaction policy. */
     public static int begin(String method, String url, byte[] bytes, String type) {
         DebugHttpCapture capture = ACTIVE.get();
         if (capture == null) return NO_EXCHANGE;

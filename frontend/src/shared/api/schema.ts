@@ -3382,7 +3382,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI local origin, RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
+            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -3580,7 +3580,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB";
-            /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };
@@ -3589,7 +3589,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required local COMFYUI origin, optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             apiKey?: string | null;
         };

@@ -980,6 +980,10 @@ Provider 层：只有对方明确支持且实测验证幂等时才复用其幂�
 
 使用两份管理员安装的固定工作流模板：`image-v1` 与 `image-to-video-v1`。映射允许的输入字段，如 prompt、seed、referenceImage、width/height、duration 参数；模板本身和允许的节点类型版本化。
 
+管理员可为 ComfyUI 配置本地或远程 HTTPS 基地址；本地 HTTP 接受精确私网 IPv4 或 `127.0.0.1` 与端口。地址可包含代理前缀和路径凭据，使用一个完整地址字段，不按 RunningHub 专属格式拆分。上传、提交、历史查询及下载均在同一地址前缀下拼接固定路由。禁止 userinfo、查询参数、片段、编码路径及目录穿越；每次 DNS 解析遵循既有自托管地址策略，拒绝云元数据与非路由目标，禁止重定向与提交自动重试。
+
+管理员在线保存的完整 ComfyUI 地址使用现有媒体凭据列加密，并以完整规范化地址计算版本指纹；API 与连接列表只显示主机及 `/[configured-path]`。原样保存脱敏地址保留原配置，替换时重新填写完整地址，任务仍固定历史版本。既有无凭据本地根地址继续可读；有路径的环境配置也须设置部署主密钥。调试日志移除地址路径片段及上游回显中的对应值。此支持针对标准 ComfyUI HTTP 协议，不替代 RunningHub V2 适配器；真实 RunningHub 代理及 GPU 生成尚未验证。
+
 image-v1 必须验证参考图确实映射到图像条件输入；仅把参考图描述写进 Prompt 不算支持参考图生成。视频模板的帧数/帧率与 `durationSeconds` 映射由适配器完成，按能力取值，不由模型猜测参数单位。
 
 普通用户与 Agent 不能上传任意可执行工作流、安装 Custom Node 或修改服务器文件路径。
@@ -1021,6 +1025,8 @@ Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不
 图片能力同时声明支持的比例、分辨率、画质与透明背景。OpenAI GPT Image 2 映射全部产品比例、1K/2K/4K、低/中/高画质和透明背景；Google Nano Banana 2 映射全部产品比例及 1K/2K/4K，但不伪造画质覆盖或透明背景；固定 ComfyUI 模板只声明模板已映射的 `AUTO / 1:1 / 9:16 / 16:9` 与 1K。固定模型的生成数量由应用层拆为独立 Task，不依赖 Provider 的批量返回语义。RunningHub 的单任务多结果按 6.13 归档，不重复提交同一生成。
 
 OpenAI 图片连接可由管理员配置自定义 HTTPS API Base URL，留空使用官方 `/v1`；地址属于连接版本，已批准任务固定历史版本。服务端拒绝私网 DNS 目标与重定向。自定义公开网关的真实生成尚未运行。
+
+添加与编辑媒体连接时，地址标签旁提供帮助图标，支持悬停、键盘聚焦与触屏点击查看填写说明。OpenAI 自定义地址须包含服务商所需的版本前缀，不自动补 `/v1`；Nano Banana 裸主机默认 `/v1`，`/v1beta` 须显式填写。ComfyUI 提示直接填写完整本地或远程地址，保留代理路径及路径凭据，无需额外 `/v1` 或 `/prompt`，RunningHub 提示只填根地址，方舟、火山语音与 AutoDL 提示固定地址无需追加后缀。说明不改写用户输入，不自动探测或发起生成，既有 Nano Banana 详细协议说明继续保留。
 
 后续固定渠道增加 Google Nano Banana 2 图片生成与有序多参考生成，使用 Gemini `generateContent` 和默认模型 `gemini-3.1-flash-image`；当前产品上限为 14 张，并复用上述版本、任务与 UNKNOWN 边界。Google 真实调用状态单独记录，详见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)。
 
@@ -1284,7 +1290,7 @@ Key 从前端经 HTTPS 单次提交后，只在服务器加密保存。使用带
 
 Provider endpoint 只能由管理员配置，模型不能传入任意 endpoint。连接云接口默认只允许 HTTPS 和明确的主机/端口；重定向、DNS 解析结果和下载目标要逐次检查。[S17]
 
-本地 ComfyUI 是明确允许的例外：管理员配置精确的服务地址/端口和受信任网段；媒体结果下载仍只能回到该固定服务的受控接口。不能因此对任何用户 URL 放开整个内网。
+ComfyUI 允许管理员配置本地精确 HTTP IP/端口或远程 HTTPS 地址及代理前缀，沿用自托管私网与代理 fake-ip 策略；拒绝云元数据、非路由地址和域名解析到回环。媒体结果下载仍只能回到固定服务前缀的受控接口。普通用户与模型不能配置任意 URL。
 
 P0 不提供任意 URL 导入。访问云元数据地址、环回/内网绕过、DNS rebinding、跨主机重定向均属于安全测试。
 
@@ -1603,7 +1609,7 @@ UNKNOWN 任务新出现、数据库连接池饱和、事件明显积压、磁盘
 
 本地开发：前端 Vite（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；独立 JVM 保留 Mock 默认。容器开发使用 `deploy/compose.dev.yaml`，通过 `extends` 复用部署版服务并显式启用文字/媒体 Mock。
 
-自托管：`deploy/compose.yaml` 为默认部署版，Docker Compose 三服务；文字和媒体使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。保存云凭证还须设置服务端 `AGENVAS_CREDENTIAL_MASTER_KEY`。部署和开发版均要求数据库密码与 bootstrap secret；默认项目名分别为 `agenvas`、`agenvas-dev`，卷按项目名隔离，两版默认端口相同，并行运行须显式配置不同端口。`deploy/update-local.sh` 继续更新默认部署版；配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
+自托管：`deploy/compose.yaml` 为默认部署版，Docker Compose 三服务；文字和媒体使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。保存云凭证或完整 ComfyUI 地址还须设置服务端 `AGENVAS_CREDENTIAL_MASTER_KEY`。部署和开发版均要求数据库密码与 bootstrap secret；默认项目名分别为 `agenvas`、`agenvas-dev`，卷按项目名隔离，两版默认端口相同，并行运行须显式配置不同端口。`deploy/update-local.sh` 继续更新默认部署版；配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
 
 Nginx 统一域名处理前端与 `/api`，避免生产跨域鉴权复杂度。SSE 反代禁缓冲。所有镜像锁版本与 digest，不使用 latest。
 

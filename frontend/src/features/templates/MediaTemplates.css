@@ -1,7 +1,7 @@
 .media-template-picker { --ui-dialog-width: 1040px; }
 .media-template-form { --ui-dialog-width: 680px; }
 .media-template-catalog { display: flex; flex-direction: column; gap: var(--ui-space-5); }
-.media-template-toolbar { display: flex; align-items: center; gap: var(--ui-space-3); flex-wrap: wrap; }
+.media-template-toolbar { display: flex; align-items: flex-end; gap: var(--ui-space-3); flex-wrap: wrap; }
 .media-template-toolbar > input { flex: 1; min-width: 180px; }
 .media-template-toolbar > [data-slot=field] { width: auto; min-width: 160px; }
 .media-template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: var(--ui-space-3); }

@@ -54,6 +54,7 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiVideoDisabledPostgresIT {
+    private static final String PROXY_PREFIX = "/proxy/synthetic-key";
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -71,6 +72,7 @@ class ComfyUiVideoDisabledPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
+        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @AfterAll
@@ -105,7 +107,7 @@ class ComfyUiVideoDisabledPostgresIT {
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Pinned source image", imageContent);
         UUID connection = catalog.createConnection("Disabled fake ComfyUI",
-                "http://127.0.0.1:" + SERVER.getAddress().getPort()).id();
+                "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX).id();
         UUID capability = catalog.publishCapability(connection, "Fixed video", "COMFY_VIDEO_V1",
                 mapper.readTree("{\"diffusionModel\":\"test-wan.safetensors\","
                         + "\"textEncoder\":\"test-text.safetensors\",\"vae\":\"test-vae.safetensors\","
@@ -181,7 +183,7 @@ class ComfyUiVideoDisabledPostgresIT {
     private static HttpServer startServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/history", exchange -> {
+            server.createContext(PROXY_PREFIX + "/history", exchange -> {
                 int query = HISTORY_GETS.incrementAndGet();
                 String response = query == 1 ? "{}" : "{\"" + ORIGINAL_ID.get()
                         + "\":{\"status\":{\"completed\":true,\"status_str\":\"success\"},"
@@ -194,12 +196,12 @@ class ComfyUiVideoDisabledPostgresIT {
                     output.write(body);
                 }
             });
-            server.createContext("/prompt", exchange -> {
+            server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 SUBMISSIONS.incrementAndGet();
                 exchange.sendResponseHeaders(500, -1);
                 exchange.close();
             });
-            server.createContext("/view", exchange -> {
+            server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 DOWNLOADS.incrementAndGet();
                 byte[] body = VIDEO_BYTES.get();
                 exchange.sendResponseHeaders(200, body.length);

@@ -27,6 +27,8 @@
 .media-api-help dd { margin: 0; color: var(--ui-text-muted); }
 .media-api-help code { overflow-wrap: anywhere; }
 .media-model-help { grid-column: 1 / -1; margin: 0; font-size: var(--ui-text-sm); line-height: 1.7; }
+.media-connection-address-tooltip { max-width: min(360px, calc(100vw - var(--ui-space-8))); white-space: normal; overflow-wrap: anywhere; line-height: 1.7; }
+.media-connection-address-tooltip p { margin: 0; }
 .ui-dialog.app-page.autodl-capability-dialog { --ui-dialog-width: 1040px; max-height: calc(100dvh - var(--ui-space-8)); }
 .autodl-workflow-fields { grid-column: 1 / -1; min-width: 0; padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
 .autodl-workflow-fields > *, .autodl-workflow-definition [data-slot="field"] { min-width: 0; }

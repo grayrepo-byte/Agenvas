@@ -1,17 +1,19 @@
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useId,useState } from "react";
 import { Link,Navigate } from "react-router";
 import { HTTP_STATUS,ApiError,getDebugSettings,updateDebugSettings } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
-import { Checkbox } from "../../shared/ui/primitives/checkbox";
+import { Field,FieldGroup,FieldLabel } from "../../shared/ui/primitives/field";
+import { Switch } from "../../shared/ui/primitives/switch";
 
 const SETTINGS_KEY = ["settings", "debug"] as const;
 
 export function DebugModeSection({ enabled }: { enabled: boolean }) {
   useLocale();
+  const switchId = useId();
   const client = useQueryClient();
   const settings = useQuery({ queryKey: SETTINGS_KEY, queryFn: getDebugSettings, enabled, retry: false });
   const [draft, setDraft] = useState<boolean | null>(null);
@@ -24,6 +26,7 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
   const forbidden = error instanceof ApiError && error.status === HTTP_STATUS.FORBIDDEN;
   const conflict = error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT;
   const checked = draft ?? settings.data?.debugMode ?? false;
+  const disabled = !settings.data || settings.isError || forbidden || save.isPending;
 
   return <Panel title={t("settings.debug.title")} description={t("settings.debug.defaultHint")}
     actions={<StatusBadge tone={settings.data?.debugMode ? "warning" : "neutral"}>{settings.data ? settings.data.debugMode ? t("settings.debug.enabledState") : t("settings.debug.disabledState") : t("settings.debug.unread")}</StatusBadge>}>
@@ -38,8 +41,13 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
         {!forbidden ? <Button variant="outline"  type="button" disabled={settings.isFetching || save.isPending}
           onClick={() => { save.reset(); void settings.refetch(); }}>{t("settings.shared.refresh")}</Button> : null}
       </Notice> : null}
-      <label className="ui-checkbox"><Checkbox  checked={checked} disabled={!settings.data || settings.isError || forbidden || save.isPending}
-        onCheckedChange={(event) => { setDraft(event === true); save.reset(); }} />{t("settings.debug.enable")}</label>
+      <FieldGroup>
+        <Field orientation="horizontal" className="w-fit" data-disabled={disabled}>
+          <Switch id={switchId} checked={checked} disabled={disabled}
+            onCheckedChange={(value) => { setDraft(value); save.reset(); }} />
+          <FieldLabel htmlFor={switchId}>{t("settings.debug.enable")}</FieldLabel>
+        </Field>
+      </FieldGroup>
       {save.isSuccess && draft === null ? <p role="status">{t("settings.debug.saved", { "0": settings.data?.debugMode ? t("common.enabled") : t("common.close") })}</p> : null}
       <div className="ui-form-actions">
         <Link className="secondary-button" to="/settings/calls">{t("settings.debug.viewLogs")}</Link>
