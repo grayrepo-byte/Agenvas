@@ -1,9 +1,14 @@
 .media-draft-editor {
   --draft-text: #eeeeef;
   --draft-muted: #858589;
+  --draft-min-height: 275px;
+  --draft-max-height: 420px;
+  --draft-viewport-gap: 32px;
+  --draft-prompt-height: 113px;
   position: relative;
   display: flex;
-  min-height: 275px;
+  min-height: min(var(--draft-min-height), calc(100dvh - var(--draft-viewport-gap)));
+  max-height: min(var(--draft-max-height), calc(100dvh - var(--draft-viewport-gap)));
   flex-direction: column;
   border: 1px solid #343436;
   border-radius: 20px;
@@ -16,6 +21,7 @@
 }
 
 .media-draft-initial { justify-content: center; align-items: center; }
+.media-draft-header, .media-draft-reference-row, .media-draft-toolbar { flex-shrink: 0; }
 .media-draft-header { display: flex; align-items: center; gap: 18px; min-height: 20px; padding: 0 2px; }
 .media-draft-tab { color: var(--ui-text-muted); background: transparent; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
 .media-draft-tab:hover, .media-draft-tab:focus-visible { color: var(--ui-text); }
@@ -69,12 +75,16 @@
 .media-draft-reference-remove:hover:enabled { background: #d92e48; }
 .media-draft-reference-remove:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: 1px; }
 .media-draft-prompt-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.media-draft-prompt-shell { position: relative; min-height: 113px; flex: 1; margin: 9px 0 8px; }
+/* A content-based flex basis grows with every line and leaves nothing for the editor to scroll. */
+.media-draft-prompt-shell { position: relative; min-height: 0; flex: 1 1 var(--draft-prompt-height); margin: 9px 0 8px; }
 .media-draft-editor .media-draft-prompt {
-  width: 100%; min-height: 113px; height: 100%; overflow-y: auto; border: 0; border-radius: 0;
+  width: 100%; min-height: var(--draft-prompt-height); height: 100%; overflow-y: auto;
+  overscroll-behavior-y: contain; border: 0; border-radius: 0;
   background: transparent; color: #dedee1; box-shadow: none; outline: none;
   padding: 0 2px; font-size: 15px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere;
 }
+.media-draft-prompt-shell .media-draft-prompt { min-height: 0; }
+.media-draft-editor > .runninghub-form { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 .media-draft-prompt:empty::before { color: #727277; content: attr(data-placeholder); pointer-events: none; }
 .media-draft-inline-mention { display: inline-flex; align-items: center; gap: 4px; min-height: 24px;
   margin: 0 2px; padding: 1px 7px 1px 3px; border: 1px solid color-mix(in srgb, var(--reference-color) 58%, #36363a);
