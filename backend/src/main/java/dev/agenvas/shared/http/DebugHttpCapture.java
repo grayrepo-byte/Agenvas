@@ -30,15 +30,17 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Invocation-local capture, installed once in transports; disabled calls never copy bodies.
- * Headers are never stored. Credentials are removed before checkpoints leave this scope.
+ * Headers are never stored. LLM bodies retain content except structured image bytes;
+ * media bodies retain their credential/reasoning filtering policy.
  */
 public final class DebugHttpCapture implements AutoCloseable {
     private static final int NO_EXCHANGE = -1;
     public static final int MAX_BODY_BYTES = 64 * 1024 * 1024;
     private static final String REDACTED = "[REDACTED]";
     private static final String IMAGE_BYTES_OMITTED = "[image bytes omitted]";
-    private static final String SSE_DATA_PREFIX = "data:";
-    private static final String SSE_DONE = "[DONE]";
+    private static final String IMAGE_URL_FIELD = "image_url";
+    private static final String URL_FIELD = "url";
+    private static final String IMAGE_DATA_URI_PREFIX = "data:image/";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ThreadLocal<DebugHttpCapture> ACTIVE = new ThreadLocal<>();
     /** Internal SDK carrier, removed by the capture interceptor before any network I/O. */
@@ -51,8 +53,6 @@ public final class DebugHttpCapture implements AutoCloseable {
             "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
     private static final Set<String> PUBLIC_HEADERS = Set.of("accept", "content-type", "content-length",
             "user-agent", "host", "connection", "accept-encoding");
-    private static final Set<String> MODEL_CONTENT_FIELDS = Set.of("reasoning", "reasoningcontent",
-            "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
     private final DebugHttpCapture previous;
     private final Consumer<List<Exchange>> checkpoint;
     private final List<Exchange> exchanges = new ArrayList<>();
@@ -77,7 +77,7 @@ public final class DebugHttpCapture implements AutoCloseable {
     public static DebugHttpCapture open(Consumer<List<Exchange>> checkpoint) {
         return new DebugHttpCapture(checkpoint, false);
     }
-    /** Opt-in LLM debugging retains actual model fields while still removing authentication. */
+    /** Opt-in LLM debugging preserves bodies; authentication headers are never collected. */
     public static DebugHttpCapture openLlm(Consumer<List<Exchange>> checkpoint) {
         return new DebugHttpCapture(checkpoint, true);
     }
@@ -87,7 +87,7 @@ public final class DebugHttpCapture implements AutoCloseable {
         DebugHttpCapture capture = ACTIVE.get();
         if (capture != null) synchronized (capture) { capture.remember(secret); }
     }
-    /** Sanitizes a semantic log with the same credentials learned from this invocation's transport. */
+    /** Applies the invocation's body policy to a semantic log, independently of network I/O. */
     public synchronized String sanitizeJson(String json) {
         return body(json.getBytes(StandardCharsets.UTF_8), "application/json", false).content();
     }
@@ -158,7 +158,7 @@ public final class DebugHttpCapture implements AutoCloseable {
             // Gemini marks a whole content part as thought, rather than naming its text field.
             if (!preserveModelContent && (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText()))) return MAPPER.getNodeFactory().textNode(REDACTED);
             for (String name : object.propertyNames()) {
-                if (privateField(name) && !(preserveModelContent && MODEL_CONTENT_FIELDS.contains(normalized(name)))) object.put(name, REDACTED);
+                if (privateField(name)) object.put(name, REDACTED);
                 else object.set(name, scrub(object.get(name)));
             }
         } else if (node.isArray()) {
@@ -167,6 +167,31 @@ public final class DebugHttpCapture implements AutoCloseable {
         } else if (node.isTextual()) return MAPPER.getNodeFactory().textNode(safeText(node.asText()));
         return node;
     }
+
+    /** Only structured image URL values are omitted; text, tool schemas and scalar types stay intact. */
+    private JsonNode omitLlmImages(JsonNode node) {
+        if (node.isObject()) {
+            ObjectNode object = (ObjectNode) node;
+            JsonNode image = object.get(IMAGE_URL_FIELD);
+            if (image != null && image.isTextual() && imageDataUri(image.asText())) {
+                object.put(IMAGE_URL_FIELD, IMAGE_BYTES_OMITTED);
+            } else if (image != null && image.isObject() && image.path(URL_FIELD).isTextual()
+                    && imageDataUri(image.path(URL_FIELD).asText())) {
+                ((ObjectNode) image).put(URL_FIELD, IMAGE_BYTES_OMITTED);
+            }
+            for (String name : object.propertyNames()) object.set(name, omitLlmImages(object.get(name)));
+        } else if (node.isArray()) {
+            var array = (tools.jackson.databind.node.ArrayNode) node;
+            for (int index = 0; index < array.size(); index++) array.set(index, omitLlmImages(array.get(index)));
+        }
+        return node;
+    }
+
+    private static boolean imageDataUri(String value) {
+        return value.regionMatches(true, 0, IMAGE_DATA_URI_PREFIX, 0, IMAGE_DATA_URI_PREFIX.length())
+                && value.indexOf(',') >= 0;
+    }
+
     private Body body(byte[] bytes, String type, boolean truncated) {
         String contentType = type == null ? "" : type.toLowerCase(Locale.ROOT);
         int first = 0;
@@ -174,16 +199,24 @@ public final class DebugHttpCapture implements AutoCloseable {
         boolean looksLikeJson = first < bytes.length && (bytes[first] == '{' || bytes[first] == '[');
         if (contentType.contains("json") || looksLikeJson) {
             try {
-                return new Body(safeText(scrub(MAPPER.readTree(bytes)).toString()), Encoding.UTF8, truncated);
+                JsonNode json = MAPPER.readTree(bytes);
+                String content = preserveModelContent ? omitLlmImages(json).toString() : safeText(scrub(json).toString());
+                return new Body(content, Encoding.UTF8, truncated);
             } catch (RuntimeException invalidJson) {
-                // Partial JSON cannot be reliably stripped of reasoning/credential fields.
+                // Partial JSON cannot be safely traversed for the configured image/credential policy.
                 return new Body("[无法安全解析的 JSON 正文已省略]", Encoding.OMITTED, truncated);
             }
         }
         if (contentType.contains("event-stream")) {
-            return preserveModelContent
-                    ? new Body(credentialSafeEvents(new String(bytes, StandardCharsets.UTF_8)), Encoding.UTF8, truncated)
-                    : new Body("[流式事件正文无法安全脱敏，已省略]", Encoding.OMITTED, truncated);
+            if (!preserveModelContent) return new Body("[流式事件正文无法安全脱敏，已省略]", Encoding.OMITTED, truncated);
+            var response = LlmSseResponse.aggregate(new String(bytes, StandardCharsets.UTF_8));
+            return body(response.content().getBytes(StandardCharsets.UTF_8), "application/json", truncated || response.partial());
+        }
+        if (preserveModelContent) {
+            boolean text = contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml")
+                    || contentType.contains("x-www-form-urlencoded");
+            return new Body(text ? new String(bytes, StandardCharsets.UTF_8) : Base64.getEncoder().encodeToString(bytes),
+                    text ? Encoding.UTF8 : Encoding.BASE64, truncated);
         }
         if (contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml") || contentType.contains("x-www-form-urlencoded")) {
             String text = safeText(new String(bytes, StandardCharsets.UTF_8));
@@ -196,26 +229,6 @@ public final class DebugHttpCapture implements AutoCloseable {
         return new Body(Base64.getEncoder().encodeToString(safeBytes), Encoding.BASE64, truncated);
     }
 
-    /** Retains actual SSE events, including SDK-ignored fields; only event credentials are removed. */
-    private String credentialSafeEvents(String events) {
-        StringBuilder saved = new StringBuilder();
-        for (String frame : events.split("\\r?\\n\\r?\\n", -1)) {
-            if (frame.isEmpty()) continue;
-            List<String> data = new ArrayList<>();
-            for (String line : frame.split("\\r?\\n", -1)) {
-                if (line.startsWith(SSE_DATA_PREFIX)) data.add(line.substring(SSE_DATA_PREFIX.length()).stripLeading());
-                else saved.append(safeText(line)).append('\n');
-            }
-            if (!data.isEmpty()) {
-                String value = String.join("\n", data);
-                String safe = SSE_DONE.equals(value) ? SSE_DONE
-                        : body(value.getBytes(StandardCharsets.UTF_8), "application/json", false).content();
-                saved.append(SSE_DATA_PREFIX).append(' ').append(safe).append('\n');
-            }
-            saved.append('\n');
-        }
-        return saved.toString();
-    }
     private String safeUrl(String url) {
         HttpUrl parsed = HttpUrl.get(url);
         HttpUrl.Builder builder = parsed.newBuilder().username("").password("").fragment(null);
@@ -229,7 +242,9 @@ public final class DebugHttpCapture implements AutoCloseable {
     }
     private int begin(String method, String url, Body request) {
         String safeAddress = safeUrl(url);
-        Body safeRequest = request == null ? null : new Body(safeText(request.content()), request.encoding(), request.truncated());
+        // The body has already been processed; never run text replacement over serialized LLM JSON.
+        Body safeRequest = request == null || preserveModelContent ? request
+                : new Body(safeText(request.content()), request.encoding(), request.truncated());
         exchanges.add(new Exchange(method, safeAddress, safeRequest, null, null));
         publish();
         return exchanges.size() - 1;
@@ -250,8 +265,9 @@ public final class DebugHttpCapture implements AutoCloseable {
                 // Only the standard field/file descriptor is kept, never arbitrary part headers.
                 String disposition = part.headers() == null ? null : part.headers().get("Content-Disposition");
                 Body value = requestBody(part.body());
-                String safeDisposition = safeText(disposition == null ? "" : disposition);
-                boolean sensitive = safeDisposition.matches("(?i).*name=\"(api[_-]?key|token|password|secret|authorization)\".*");
+                String safeDisposition = disposition == null ? "" : preserveModelContent ? disposition : safeText(disposition);
+                boolean sensitive = !preserveModelContent
+                        && safeDisposition.matches("(?i).*name=\"(api[_-]?key|token|password|secret|authorization)\".*");
                 parts.addObject().put("field", safeDisposition).put("content", sensitive ? REDACTED : value.content())
                         .put("encoding", value.encoding().name()).put("truncated", value.truncated());
             }
@@ -278,7 +294,8 @@ public final class DebugHttpCapture implements AutoCloseable {
             int index;
             synchronized (capture) {
                 for (String name : request.headers().names()) {
-                    if (!PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT))) for (String value : request.headers().values(name)) capture.remember(value);
+                    if (!capture.preserveModelContent && !PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+                        for (String value : request.headers().values(name)) capture.remember(value);
                 }
                 Body requestBody;
                 try { requestBody = capture.requestBody(request.body()); }
@@ -289,7 +306,8 @@ public final class DebugHttpCapture implements AutoCloseable {
             var response = chain.proceed(request);
             synchronized (capture) {
                 for (String name : response.headers().names()) {
-                    if (privateField(name)) for (String value : response.headers().values(name)) capture.remember(value);
+                    if (!capture.preserveModelContent && privateField(name))
+                        for (String value : response.headers().values(name)) capture.remember(value);
                 }
                 capture.response(index, response.code(), null);
             }

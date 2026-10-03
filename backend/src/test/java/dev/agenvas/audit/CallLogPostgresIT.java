@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import dev.agenvas.shared.http.DebugHttpCapture;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import com.sun.net.httpserver.HttpServer;
 import okhttp3.Request;
@@ -287,6 +288,15 @@ class CallLogPostgresIT {
             calls.updateSettings(enabled, calls.settings().version());
             calls.recordStream(descriptor, (capture, listener) -> {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                if (capture) {
+                    int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", "{}".getBytes(StandardCharsets.UTF_8), "application/json");
+                    String events = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"synthetic output sk-unusable-stream-key https://example.invalid/?token=synthetic-token\","
+                            + "\"reasoning_content\":\"synthetic private reasoning\"}}]}\n\ndata: [DONE]\n\n";
+                    try (var body = DebugHttpCapture.responseStream(index, 200, "text/event-stream",
+                            new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
+                        body.readAllBytes();
+                    } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                }
                 return gateway.callStreaming(List.of(new org.springframework.ai.chat.messages.UserMessage("synthetic input")),
                         List.of(), Map.of(), gateway.configIdentity(), ignored -> {}, capture, listener);
             }, value -> CallOutcome.succeeded(value.response().getMetadata().getId()));
@@ -300,8 +310,13 @@ class CallLogPostgresIT {
             assertThat(detail.llmStream().metrics().totalTokens()).isEqualTo(5);
             assertThat(detail.llmStream().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             if (enabled) {
-                assertThat(detail.llmStream().content().response()).contains("synthetic output", "REDACTED", "synthetic private reasoning")
-                        .doesNotContain("sk-unusable-stream-key", "synthetic-token");
+                assertThat(detail.llmStream().content().response())
+                        .contains("synthetic output", "synthetic private reasoning", "sk-unusable-stream-key", "synthetic-token")
+                        .doesNotContain("[REDACTED]", "data:", "[DONE]");
+                assertThat(detail.exchanges()).hasSize(1);
+                assertThat(detail.exchanges().getFirst().responseBody()).isNull();
+                assertThat(new tools.jackson.databind.ObjectMapper().readTree(detail.llmStream().content().response())
+                        .at("/choices/0/message/reasoning_content").asText()).isEqualTo("synthetic private reasoning");
             } else assertThat(detail.llmStream().content()).isNull();
             String path = PATH + "/" + id + "/debug";
             String payload = mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_ADMIN"))))

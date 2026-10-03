@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Metadata stays separate from opt-in, credential-safe debug bodies. */
+/** Metadata stays separate from opt-in debug bodies; HTTP headers are never stored. */
 public interface CallLogRepository {
     void start(UUID id, CallLogService.CallDescriptor descriptor, String traceId, Instant startedAt);
     void finish(UUID id, CallLogService.CallOutcome outcome, Instant respondedAt, long durationMs);

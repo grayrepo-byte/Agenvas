@@ -89,12 +89,20 @@ public class CallLogService {
             long durationMs = elapsed(started);
             try {
                 LlmStreamLog log = stream.get();
+                List<Exchange> savedExchanges = exchanges.get();
                 if (log != null && log.content() != null && capture != null) {
                     var content = log.content();
+                    var http = savedExchanges.isEmpty() ? null : savedExchanges.getLast().responseBody();
+                    boolean useHttp = http != null && http.encoding() == DebugHttpCapture.Encoding.UTF8
+                            && http.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= LlmStreamLog.MAX_CONTENT_BYTES;
                     log = new LlmStreamLog(log.metrics(), new LlmStreamLog.Content(
-                            capture.sanitizeJson(content.response()), content.truncated()));
+                            useHttp ? http.content() : capture.sanitizeJson(content.response()),
+                            useHttp ? http.truncated() : content.truncated() || http != null));
+                    // Persist one response body. Exchanges retain request, address and HTTP status only.
+                    savedExchanges = savedExchanges.stream().map(exchange -> new Exchange(exchange.method(), exchange.url(),
+                            exchange.requestBody(), exchange.responseStatus(), null)).toList();
                 } else if (log != null) log = new LlmStreamLog(log.metrics(), null);
-                streamWriter.submit(id, finished, respondedAt, durationMs, log, exchanges.get(), captured);
+                streamWriter.submit(id, finished, respondedAt, durationMs, log, savedExchanges, captured);
             } catch (RuntimeException loggingFailure) {
                 LOGGER.error("LLM stream log snapshot failed callId={} code=CALL_STREAM_SNAPSHOT_FAILED", id);
             } finally {
