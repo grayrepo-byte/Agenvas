@@ -58,6 +58,20 @@ The database password and credential encryption key are configured automatically
 | `AGENVAS_DB_PASSWORD` | 32 random bytes encoded as a 64-character hexadecimal password | `database-password` |
 | `AGENVAS_CREDENTIAL_MASTER_KEY` | 32 random bytes encoded as Base64 | `credential-master-key` |
 
+To view the database password, run this command from the directory containing the Compose file while the PostgreSQL container is running:
+
+```sh
+docker compose exec -u 0 postgres cat /run/agenvas/credentials/installation/database-password
+```
+
+The service name is `postgres`. If you started with `-f` or `-p`, use the same options when reading the password. For example, for a source build:
+
+```sh
+docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/credentials/installation/database-password
+```
+
+If you see `no configuration file provided: not found`, switch to the directory containing the Compose file or use `-f` to specify its correct path.
+
 Values are never written into Compose, Git, or startup logs. Encrypt and escrow `credentials-data` separately when backing up. Avoid `down -v`, which deletes data and secrets. Existing databases must restore this volume or import the original database password and encryption key through a private Compose configuration outside the repository. See [backup and restore](docs/operations/backup-restore.md).
 
 ### 3. Configure models and create
