@@ -430,7 +430,7 @@ describe("MediaDraftEditor", () => {
       settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
         defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] } });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "选择人物图" }));
+    await user.click(await screen.findByRole("button", { name: "添加参考素材" }));
     const menu = screen.getByRole("menu", { name: "图片来源" });
     expect(menu).toHaveClass("media-draft-reference-sources");
     for (const name of ["从设备上传", "从资源库选择", "从画布选择", "从我的资产选择"]) {
@@ -463,7 +463,7 @@ describe("MediaDraftEditor", () => {
         })) })),
       ] });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "选择工作流素材" }));
+    await user.click(await screen.findByRole("button", { name: "添加参考素材" }));
     await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
     for (const other of sources.filter((source) => source.kind !== kind)) {
       expect(screen.queryByRole("button", { name: `选择 ${other.title} · v2` })).not.toBeInTheDocument();
@@ -478,6 +478,43 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ input: `${kind}-v1` }));
     expect(saves.at(-1)?.mediaInputs).toEqual([expect.objectContaining({ versionId: `${kind}-v1`,
       role: kind === "IMAGE" ? "REFERENCE" : kind === "VIDEO" ? "VIDEO_REFERENCE" : "AUDIO_REFERENCE" })]);
+  });
+
+  it("adds mixed workflow resources through one entry without filling earlier optional image slots", async () => {
+    const kinds = ["IMAGE", "VIDEO", "AUDIO"] as const;
+    const capability: MediaCapability = { ...imageCapability, id: "mixed-workflow-add", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "synthetic-mixed",
+        usePersonalQueue: false, addMetadata: false,
+        fields: kinds.map((kind) => ({ key: kind, label: kind, type: kind, nodeId: kind, fieldName: "input", required: false, advanced: false })),
+        outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    const sources = kinds.map((kind) => ({ ...artifact, id: `mixed-${kind}`, kind, title: `合成${kind}`, resourceDefaultVersionId: `${kind}-v1` }));
+    const { saves } = setup({ draft: { ...initialDraft, capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
+      handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: sources })),
+        ...sources.map((source) => http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${source.id}/versions`, () => HttpResponse.json({ items: [{
+          id: `${source.kind}-v1`, versionNo: 1, content: { assetId: `${source.kind}-asset` },
+        }] }))),
+        http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: sources.map((source) => ({
+          id: `mixed-canvas-${source.kind}`, subjectType: "ARTIFACT", title: source.title, artifact: source,
+          selectedVersion: { id: `${source.kind}-v1`, versionNo: 1, content: { assetId: `${source.kind}-asset` } },
+        })) })),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加参考素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    await user.click(await screen.findByRole("button", { name: "选择 合成AUDIO · v1" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ AUDIO: "AUDIO-v1" }));
+    expect(screen.queryByRole("button", { name: "选择IMAGE" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择AUDIO" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "添加参考素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从画布选择" }));
+    const picker = screen.getByRole("dialog", { name: "从画布选择媒体" });
+    expect(within(picker).queryByRole("button", { name: /合成AUDIO/ })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole("button", { name: "使用画布视频 合成VIDEO" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ AUDIO: "AUDIO-v1", VIDEO: "VIDEO-v1" }));
+    expect(saves.at(-1)?.mediaInputs.map((input) => input.role)).toEqual(["AUDIO_REFERENCE", "VIDEO_REFERENCE"]);
   });
 
   it.each(["RUNNINGHUB_VIDEO", "COMFY_VIDEO_V1"])("imports a personal asset into the named %s slot without a video-mode confirmation", async (adapterId) => {
@@ -500,12 +537,12 @@ describe("MediaDraftEditor", () => {
         http.get("/api/v1/library/commands/library-workflow-command", () => HttpResponse.json({ id: "library-workflow-command", status: "ARCHIVING" })),
       ] });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "选择人物图" }));
+    await user.click(await screen.findByRole("button", { name: "添加参考素材" }));
     await user.click(screen.getByRole("menuitem", { name: "从我的资产选择" }));
     await user.click(await screen.findByRole("button", { name: "用作参考：合成人物" }));
     await waitFor(() => expect(submitted).toEqual(expect.objectContaining({ slotKey: "hero", entryId: "library-hero" })));
     expect(screen.queryByRole("button", { name: "确认切换并添加" })).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "选择人物图" })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "添加参考素材" })).toBeDisabled());
   });
 
   it("keeps personal-asset transfer disabled until uploads into other named slots finish", async () => {
@@ -526,14 +563,16 @@ describe("MediaDraftEditor", () => {
       }
       return interceptedFetch(input, init);
     });
-    setup({ draft: { ...initialDraft, capabilityId: capability.id },
+    setup({ draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: { detail: "detail-v1" } },
+      mediaInputs: [{ versionId: "detail-v1", artifactId: "detail-image", role: "REFERENCE", order: 0, color: "#F15CAF",
+        sources: [{ id: "detail-manual", type: "MANUAL", connectionId: null }] }] },
       settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
         defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
       handlers: [http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ ...artifact, id: "pending-upload", resourceDefaultVersionId: "pending-upload-version" })),
       ] });
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: "选择hero" });
-    await changeControl(screen.getByLabelText("上传hero"), { target: { files: [new File(["synthetic"], "hero.png", { type: "image/png" })] } });
+    await screen.findByRole("button", { name: "添加参考素材" });
+    await changeControl(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [new File(["synthetic"], "hero.png", { type: "image/png" })] } });
     await waitFor(() => expect(finishUpload).toBeDefined());
     await user.click(screen.getByRole("button", { name: "选择detail" }));
     expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toHaveAttribute("aria-disabled", "true");
@@ -553,7 +592,7 @@ describe("MediaDraftEditor", () => {
       handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact, kind: "VIDEO", id: "video-reference", title: "原片段", resourceDefaultVersionId: "video-v1" }] })),
         http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/video-reference/versions`, () => HttpResponse.json({ items: [{ id: "video-v1", versionNo: 1, content: { assetId: "video-asset" } }] }))] });
     const user = userEvent.setup();
-    const slot = await screen.findByRole("button", { name: "选择参考视频" });
+    const slot = await screen.findByRole("button", { name: "添加参考素材" });
     expect(screen.getByRole("textbox", { name: "视频提示词" })).toHaveAttribute("aria-readonly", "true");
     expect(screen.queryByRole("button", { name: "选择视频输入模式" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "选择风格" })).not.toBeInTheDocument();
@@ -585,7 +624,8 @@ describe("MediaDraftEditor", () => {
         http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/source/versions`, () => HttpResponse.json({ items: [1, 2].map((versionNo) => ({ id: `source-v${versionNo}`, versionNo, content: { assetId: `source-asset-${versionNo}` } })) }))] });
     const user = userEvent.setup();
     async function choose(label: string, version: number) {
-      await user.click(await screen.findByRole("button", { name: `选择${label}` }));
+      await screen.findByRole("button", { name: "添加参考素材" });
+      await user.click(screen.queryByRole("button", { name: `选择${label}` }) ?? screen.getByRole("button", { name: "添加参考素材" }));
       await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
       await user.click(await screen.findByRole("button", { name: `选择 合成图片 · v${version}` }));
     }
@@ -1203,8 +1243,8 @@ describe("MediaDraftEditor", () => {
       await screen.findByLabelText("图片提示词");
       await user.hover(screen.getByRole("button", { name: "添加图片输入" }));
     }
-    if (dynamic) await user.click(await screen.findByRole("button", { name: "选择参考视频" }));
-    const input = await screen.findByLabelText(dynamic ? "上传参考视频" : "选择本地图片");
+    if (dynamic) await user.click(await screen.findByRole("button", { name: "添加参考素材" }));
+    const input = await screen.findByLabelText(dynamic ? "选择本地图片、视频或音频" : "选择本地图片");
     await changeControl(input, { target: { files: [new File(["synthetic media"], dynamic ? "clip.mp4" : "reference.png", { type: dynamic ? "video/mp4" : "image/png" })] } });
     expect(await screen.findByRole("alert")).toHaveTextContent("产物暂未创建");
     await user.click(screen.getByRole("button", { name: dynamic ? "重试上传" : "重试失败图片" }));
@@ -1215,6 +1255,53 @@ describe("MediaDraftEditor", () => {
     expect(writes[0]?.key).toBeTruthy();
     expect(writes[1]).toEqual(writes[0]);
     if (dynamic) expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ clip: "retry-version" });
+  });
+
+  it.each([false, true])("preserves inputs connected during a shared upload (all slots occupied: %s)", async (full) => {
+    let finishCreation: (() => void) | undefined;
+    let uploads = 0;
+    const interceptedFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === `/api/v1/projects/${PROJECT_ID}/assets`) {
+        uploads++; return HttpResponse.json({ id: "concurrent-upload-asset", mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const capability: MediaCapability = { ...imageCapability, id: "concurrent-upload", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "synthetic-concurrent", usePersonalQueue: false, addMetadata: false,
+      fields: ["first", "second"].map((key) => ({ key, label: key, type: "IMAGE", nodeId: key, fieldName: "image", required: false, advanced: false })),
+      outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+    } } };
+    let creations = 0;
+    const { client, saves } = setup({ draft: { ...initialDraft, capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }], defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
+      handlers: [http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, async () => {
+        creations++; if (creations === 1) await new Promise<void>((resolve) => { finishCreation = resolve; });
+        return HttpResponse.json({ ...artifact, id: "concurrent-upload-artifact", resourceDefaultVersionId: "concurrent-upload-version" });
+      })] });
+    await screen.findByRole("button", { name: "添加参考素材" });
+    await changeControl(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [new File(["synthetic"], "reference.png", { type: "image/png" })] } });
+    await waitFor(() => expect(finishCreation).toBeDefined());
+    const connected: MediaDraft = { ...initialDraft, capabilityId: capability.id, version: 1,
+      parameters: { dynamicValues: { first: "connected-version", ...(full ? { second: "connected-version" } : {}) } },
+      mediaInputs: [{ versionId: "connected-version", artifactId: "connected-image", role: "REFERENCE", order: 0, color: "#F15CAF",
+        sources: [{ id: "connected-source", type: "CONNECTION", connectionId: "synthetic-connection" }] }] };
+    act(() => client.setQueryData(["media-draft", PROJECT_ID, CANVAS_ITEM_ID], connected));
+    await screen.findByRole("button", { name: "选择first" });
+    finishCreation?.();
+    if (full) {
+      expect(await screen.findByRole("alert")).toHaveTextContent("没有可用的图片输入位置");
+      expect(saves).toHaveLength(0);
+      act(() => client.setQueryData(["media-draft", PROJECT_ID, CANVAS_ITEM_ID], {
+        ...connected, version: 2, parameters: { dynamicValues: { first: "connected-version" } },
+      }));
+      const retry = await screen.findByRole("button", { name: "重试上传" });
+      await waitFor(() => expect(retry).toBeEnabled());
+      await userEvent.setup().click(retry);
+    }
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ first: "connected-version", second: "concurrent-upload-version" }));
+    expect(saves.at(-1)?.mediaInputs.map((input) => input.versionId)).toEqual(["connected-version", "concurrent-upload-version"]);
+    expect(uploads).toBe(1);
   });
 
   it("retains a workflow upload for retry when a task locks the editor before slot assignment", async () => {
@@ -1241,8 +1328,8 @@ describe("MediaDraftEditor", () => {
         return HttpResponse.json({ ...artifact, id: "locked-upload-artifact", resourceDefaultVersionId: "locked-upload-version" });
       })] });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "选择参考图" }));
-    await changeControl(screen.getByLabelText("上传参考图"), { target: { files: [new File(["synthetic"], "reference.png", { type: "image/png" })] } });
+    await user.click(await screen.findByRole("button", { name: "添加参考素材" }));
+    await changeControl(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [new File(["synthetic"], "reference.png", { type: "image/png" })] } });
     await waitFor(() => expect(writes).toBe(1));
     act(() => client.setQueryData(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID], [task("RUNNING")]));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveAttribute("aria-readonly", "true"));

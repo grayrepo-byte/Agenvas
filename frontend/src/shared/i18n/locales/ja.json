@@ -1220,6 +1220,7 @@
   "media.workflow.projectResources": "プロジェクト素材",
   "media.workflow.canvasResources": "キャンバス素材",
   "media.workflow.noMatchingMedia": "一致する素材がありません",
+  "media.workflow.noEmptySlot": "{0}の空き入力枠がありません。既存の素材を削除してから再試行してください。",
   "media.workflow.unavailable": "バージョンを利用できません",
   "media.workflow.uploading": "アップロード中…",
   "media.workflow.parameter": "パラメーター",

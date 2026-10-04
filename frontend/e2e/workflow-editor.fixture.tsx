@@ -11,7 +11,9 @@ const runningHub = query.has("runninghub");
 const video = query.has("video");
 const projectId = "synthetic-project";
 const now = "2026-10-04T00:00:00Z";
-const imageFields = ["人物图", "细节图", "构图"].map((label, index) => ({ key: `reference_${index}`, label,
+const referenceLabels = ["人物图", "细节图", "构图"];
+const referenceCount = query.has("tenReferences") ? 10 : referenceLabels.length;
+const imageFields = Array.from({ length: referenceCount }, (_, index) => ({ key: `reference_${index}`, label: referenceLabels[index] ?? `参考图 ${index + 1}`,
   type: "IMAGE", nodeId: String(index + 1), fieldName: "image", required: true, advanced: false }));
 const fields = [
   { key: "prompt", label: "创作提示词", type: "STRING", source: "PROMPT", nodeId: "4", fieldName: "text", required: true, advanced: false },
@@ -24,7 +26,7 @@ const fields = [
 const capability = { id: "synthetic-workflow", name: openAi ? video ? "合成全能参考视频" : "OpenAI 图像" : runningHub ? "RunningHub 创作工作流" : "ComfyUI 创作工作流", enabled: true,
   adapterId: openAi ? video ? "ARK_SEEDANCE_2_I2V" : "OPENAI_GPT_IMAGE_2" : runningHub ? video ? "RUNNINGHUB_VIDEO" : "RUNNINGHUB_IMAGE" : video ? "COMFY_VIDEO_V1" : "COMFY_IMAGE_V1",
   kind: video ? "VIDEO_GENERATION" : "IMAGE_GENERATION", version: 0, capabilityVersion: 1, minimumSeconds: video ? 2 : 0, maximumSeconds: video ? 10 : 0,
-  maxReferenceImages: 3, maxReferenceAudios: 0, maxReferenceVideos: 0, supportedVideoInputModes: video ? ["TEXT", "START_END", "GENERAL_REFERENCE"] : [],
+  maxReferenceImages: referenceCount, maxReferenceAudios: 0, maxReferenceVideos: 0, supportedVideoInputModes: video ? ["TEXT", "START_END", "GENERAL_REFERENCE"] : [],
   defaultVideoInputMode: video ? "GENERAL_REFERENCE" : null, supportsEndFrame: video, supportedImageAspectRatios: ["AUTO", "16:9"],
   supportedImageResolutions: ["1K"], supportedImageQualities: [], supportsTransparentBackground: false,
   supportsImageMask: false, settings: openAi ? {} : runningHub ? { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP",

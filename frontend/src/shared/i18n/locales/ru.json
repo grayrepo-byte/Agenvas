@@ -1220,6 +1220,7 @@
   "media.workflow.projectResources": "Ресурсы проекта",
   "media.workflow.canvasResources": "Медиа на холсте",
   "media.workflow.noMatchingMedia": "Нет подходящих медиа",
+  "media.workflow.noEmptySlot": "Нет свободного входа для типа «{0}». Удалите один из материалов и повторите попытку.",
   "media.workflow.unavailable": "Версия недоступна",
   "media.workflow.uploading": "Загрузка…",
   "media.workflow.parameter": "Параметр",

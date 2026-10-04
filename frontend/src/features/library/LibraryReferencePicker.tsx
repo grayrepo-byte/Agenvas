@@ -5,17 +5,18 @@ import { Button } from "../../shared/ui/primitives/button";
 import { LibraryBrowser } from "./LibraryBrowser";
 import { TransferState,useLibraryTransfer } from "./useLibraryTransfer";
 
-type ReferencePlan = Pick<ReferenceLibraryRequest, "role" | "color"> & { videoInputMode: ReferenceLibraryRequest["draft"]["videoInputMode"] };
+type ReferencePlan = Pick<ReferenceLibraryRequest, "role" | "color" | "slotKey"> & { videoInputMode: ReferenceLibraryRequest["draft"]["videoInputMode"] };
 export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, onApplied, onBusy, slotKey }: {
   projectId: string; itemId: string; slotKey?: string; draft: ReferenceLibraryRequest["draft"]; kinds: Artifact["kind"][];
   plan: (entry: LibraryEntry) => ReferencePlan | null;
-  onApplied: (saved: MediaDraft, submitted: ReferenceLibraryRequest["draft"]) => void; onBusy?: (busy: boolean) => void;
+  onApplied: (saved: MediaDraft, submitted: ReferenceLibraryRequest["draft"], selectedSlotKey?: ReferenceLibraryRequest["slotKey"]) => void; onBusy?: (busy: boolean) => void;
 }) {
   useLocale();
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<LibraryEntry | null>(null);
   const [readFinished, setReadFinished] = useState(false);
   const submitted = useRef(draft);
+  const selectedSlot = useRef<ReferenceLibraryRequest["slotKey"]>(undefined);
   const applied = useRef<string | null>(null);
   const transfer = useLibraryTransfer<Omit<ReferenceLibraryRequest, "commandKey">>((request) => referenceLibraryEntry(projectId, itemId, request));
   const busy = transfer.working || transfer.data?.status === "SUCCEEDED" && !readFinished;
@@ -29,7 +30,7 @@ export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, 
         setError(t("library.referencePicker.conflict"));
         return;
       }
-      onApplied(saved, submitted.current);
+      onApplied(saved, submitted.current, selectedSlot.current);
     }).catch((failure: unknown) => {
       setError(failure instanceof Error ? failure.message : t("library.referencePicker.newDraftUnavailable"));
     }).finally(() => setReadFinished(true));
@@ -40,7 +41,8 @@ export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, 
     if (!confirmed && selected.videoInputMode && selected.videoInputMode !== draft.videoInputMode) { setConfirmation(entry); return; }
     setError(null); setConfirmation(null);
     submitted.current = { ...draft, ...(selected.videoInputMode ? { videoInputMode: selected.videoInputMode } : {}) };
-    transfer.start({ entryId: entry.id, expectedVersion: entry.version, draft: submitted.current, role: selected.role, color: selected.color, ...(slotKey ? { slotKey } : {}) });
+    selectedSlot.current = selected.slotKey ?? slotKey;
+    transfer.start({ entryId: entry.id, expectedVersion: entry.version, draft: submitted.current, role: selected.role, color: selected.color, ...(selectedSlot.current ? { slotKey: selectedSlot.current } : {}) });
   }
   return <div className="library-picker"><p>{t("library.referencePicker.referenceHint")}</p>
     {error ? <p role="alert">{error}</p> : null}

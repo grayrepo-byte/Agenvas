@@ -1,9 +1,8 @@
 .workflow-media-inputs { min-width: 0; }
 .workflow-media-list { flex-direction: row; }
-/* Empty standard lists include this padding in their min-height. Named empty tiles
-   occupy that content area, so avoid adding a second padding height before selection. */
+/* Empty lists match the standard shared add entry without an extra padding height. */
 .workflow-media-list-empty { padding-bottom: 0; }
-.workflow-media-slot { flex: none; width: auto; gap: 0; }
+.workflow-media-add, .workflow-media-slot { flex: none; width: auto; gap: 0; }
 .workflow-media-filled-trigger { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border-radius: inherit; }
 .workflow-media-tile[aria-invalid="true"] { border-color: var(--ui-warning); }
 .workflow-media-tile-wrap .media-draft-popover-anchor { width: 100%; height: 100%; }

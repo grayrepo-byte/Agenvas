@@ -49,7 +49,7 @@ import "./MediaDraftEditor.css";
 import { runningHubErrors,runningHubUsedVersions,runningHubFieldValue,type RunningHubValue } from "./RunningHubForm";
 import { WorkflowMediaInputs, WorkflowParametersDialog } from "./WorkflowDraftControls";
 import { MediaReferenceSourceMenu } from "./MediaReferenceSourceMenu";
-import { workflowDefinition, workflowDraftValues } from "./workflowDraft";
+import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
@@ -749,10 +749,18 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     : chosenCapability?.settings.quality ? t("media.editor.qualityLabel", { "0": QUALITY_LABELS[chosenCapability.settings.quality] }) : t("media.editor.defaultQuality");
   const historyError = imageHistories.find((history) => history.error)?.error;
   const normalizedAssetSearch = assetSearch.trim().toLocaleLowerCase();
-  const pickerField = workflow?.fields.find((field) => field.key === workflowPickerField?.key);
-  const pickerChoices = pickerField ? imageChoices.filter((choice) => choice.kind === pickerField.type) : imageChoices;
-  const pickerCanvasChoices = pickerField ? canvasChoices.filter((choice) => choice.kind === pickerField.type) : canvasChoices;
-  const mixedPicker = pickerField ? pickerField.type !== "IMAGE" : audioCapacity > 0 || videoCapacity > 0;
+  const workflowMediaFields = workflow ? activeWorkflowMediaFields(workflow, workflowValues, fields.prompt, duration) : [];
+  const pickerField = workflowMediaFields.find((field) => field.key === workflowPickerField?.key);
+  const emptyWorkflowFields = workflowMediaFields.filter((field) => {
+    const value = runningHubFieldValue(field, workflowValues, fields.prompt, duration);
+    return value === undefined || value === "";
+  });
+  const pickerKinds: Artifact["kind"][] = workflow
+    ? [...new Set((pickerField ? [pickerField] : emptyWorkflowFields).map((field) => field.type as Artifact["kind"]))]
+    : ["IMAGE", ...(audioCapacity > 0 ? ["AUDIO" as const] : []), ...(videoCapacity > 0 ? ["VIDEO" as const] : [])];
+  const pickerChoices = workflow ? imageChoices.filter((choice) => pickerKinds.includes(choice.kind)) : imageChoices;
+  const pickerCanvasChoices = workflow ? canvasChoices.filter((choice) => pickerKinds.includes(choice.kind)) : canvasChoices;
+  const mixedPicker = pickerKinds.some((kind) => kind !== "IMAGE");
   const filteredImageChoices = normalizedAssetSearch
     ? pickerChoices.filter((choice) => choice.label.toLocaleLowerCase().includes(normalizedAssetSearch))
     : pickerChoices;
@@ -762,6 +770,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       : commitAssetReferences.isPending ? t("media.editor.resourcesAdding")
       : save.isPending ? t("common.saving") : dirty ? error ? t("media.editor.saveFailed") : t("media.editor.unsaved") : t("common.saved");
   const currentFields = fields;
+
+  // The shared add entry assigns by media type; existing thumbnails target their named slot.
+  function workflowTargetField(kind: Artifact["kind"] | undefined) {
+    if (workflowPickerField) return pickerField?.type === kind ? pickerField : undefined;
+    return emptyWorkflowFields.find((field) => field.type === kind);
+  }
 
   function changeDynamicField(fieldKey: string, value: RunningHubValue | undefined) {
     if (!workflow || editorReadOnlyRef.current) return;
@@ -807,7 +821,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       title: uploadArtifactTitle(file), content: { sourceType: "UPLOAD", assetId: progress.assetId } }, progress.createKey);
   }
 
-  async function uploadDynamicSlot(field: RunningHubField, file: File) {
+  async function uploadDynamicSlot(field: RunningHubField, file: File, options?: { requireEmptySlot: boolean }) {
     if (runningHub && file.size > MAX_RUNNINGHUB_INPUT_BYTES) throw new Error(t("media.editor.runningHubSizeLimit"));
     const scope = chosenCapabilityRef.current;
     const uploadToken = crypto.randomUUID();
@@ -820,7 +834,23 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       const current = chosenCapabilityRef.current;
       if (!scope || current?.id !== scope.id || current.capabilityVersion !== scope.capabilityVersion
         || current.mappingSha256 !== scope.mappingSha256) throw new Error(t("media.editor.capabilityConflict"));
-      changeDynamicField(field.key, uploaded.resourceDefaultVersionId);
+      let targetField = field;
+      if (options?.requireEmptySlot) {
+        // A canvas connection can fill the original slot while the upload is archiving.
+        // Add to the next available slot instead of replacing that newer user input.
+        const latest = fieldsRef.current;
+        const definition = workflowDefinition(current);
+        const values = latest ? workflowDraftValues(current, latest) : {};
+        const active = latest && definition ? activeWorkflowMediaFields(definition, values, latest.prompt,
+          latest.durationSeconds ?? current.settings.defaultDurationSeconds) : [];
+        const empty = active.find((candidate) => {
+          const value = runningHubFieldValue(candidate, values, latest?.prompt ?? "", latest?.durationSeconds ?? current.settings.defaultDurationSeconds);
+          return candidate.type === field.type && (value === undefined || value === "");
+        });
+        if (!empty) throw new Error(t("media.workflow.noEmptySlot", { "0": field.type === "VIDEO" ? t("common.video") : field.type === "AUDIO" ? t("common.audio") : t("common.image") }));
+        targetField = empty;
+      }
+      changeDynamicField(targetField.key, uploaded.resourceDefaultVersionId);
       uploadProgress.current.delete(file);
     } finally {
       workflowUploads.current.delete(uploadToken);
@@ -894,8 +924,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function chooseWorkflowReference(versionId: string) {
-    if (!pickerField || editorReadOnlyRef.current || libraryBusy || referenceKind(versionId) !== pickerField.type) return;
-    changeDynamicField(pickerField.key, versionId);
+    const field = workflowTargetField(referenceKind(versionId));
+    if (!field || editorReadOnlyRef.current || libraryBusy) return;
+    changeDynamicField(field.key, versionId);
     setPopover(null);
     triggerRef.current?.focus();
   }
@@ -1134,13 +1165,14 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           <Button variant="ghost" type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>{t("media.editor.closePicker")}</Button>
           <LibraryReferencePicker key={pickerField?.key ?? "references"} projectId={artifact.projectId} itemId={canvasItemId}
             slotKey={pickerField?.key}
-            kinds={pickerField ? [pickerField.type as Artifact["kind"]] : ["IMAGE", ...(audioCapacity > 0 ? ["AUDIO" as const] : []), ...(videoCapacity > 0 ? ["VIDEO" as const] : [])]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
+            kinds={pickerKinds} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
             plan={(entry) => {
-              if (pickerField) {
-                if (entry.kind !== pickerField.type) return null;
+              if (workflow) {
+                const field = workflowTargetField(entry.kind);
+                if (!field) return null;
                 const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
                 return { role: entry.kind === "VIDEO" ? "VIDEO_REFERENCE" : entry.kind === "AUDIO" ? "AUDIO_REFERENCE" : "REFERENCE",
-                  color, videoInputMode: fields.videoInputMode };
+                  color, videoInputMode: fields.videoInputMode, slotKey: field.key };
               }
               if (!canAddReference(entry.kind, fields.mediaInputs)) return null;
               const audio = entry.kind === "AUDIO";
@@ -1149,17 +1181,17 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
               if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
               const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
               return { role, color, videoInputMode: mode };
-            }} onApplied={(saved, submitted) => {
+            }} onApplied={(saved, submitted, assignedSlotKey) => {
               const latest = fieldsRef.current;
               const changed = latest !== null && JSON.stringify(latest) !== JSON.stringify(Object.fromEntries(Object.entries(submitted).filter(([name]) => name !== "expectedVersion")));
               const savedFields = fieldsFromDraft(saved);
               const oldVersions = new Set(submitted.mediaInputs.map((input) => input.versionId));
               let next = savedFields;
               if (changed && latest) {
-                if (pickerField) {
+                if (assignedSlotKey) {
                   const values = workflowDraftValues(chosenCapability, latest);
-                  const savedValue = workflowDraftValues(chosenCapability, savedFields)[pickerField.key];
-                  if (savedValue === undefined) delete values[pickerField.key]; else values[pickerField.key] = savedValue;
+                  const savedValue = workflowDraftValues(chosenCapability, savedFields)[assignedSlotKey];
+                  if (savedValue === undefined) delete values[assignedSlotKey]; else values[assignedSlotKey] = savedValue;
                   next = { ...latest, videoInputMode: saved.videoInputMode,
                     parameters: { ...latest.parameters, dynamicValues: values }, mediaInputs: savedFields.mediaInputs };
                 } else next = { ...latest, videoInputMode: saved.videoInputMode,
@@ -1179,14 +1211,14 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             onChange={(event) => setAssetSearch(event.target.value)} />
           <div className="media-draft-reference-options" role="group" aria-label={mixedPicker ? t("media.editor.mediaVersions") : t("media.editor.imageVersions")}>
             {filteredImageChoices.map((choice) => {
-              const alreadyAdded = pickerField ? workflowValues[pickerField.key] === choice.id : fields.mediaInputs.some((input) => input.versionId === choice.id);
+              const alreadyAdded = workflow ? Boolean(pickerField && workflowValues[pickerField.key] === choice.id) : fields.mediaInputs.some((input) => input.versionId === choice.id);
               const selected = assetSelection.includes(choice.id);
-              const selectionFull = !pickerField && !selected && !canAddReference(referenceKind(choice.id), fieldsWithReferences(assetSelection).mediaInputs);
-              return <button key={choice.id} type="button" role={pickerField ? "button" : "checkbox"}
+              const selectionFull = !workflow && !selected && !canAddReference(referenceKind(choice.id), fieldsWithReferences(assetSelection).mediaInputs);
+              return <button key={choice.id} type="button" role={workflow ? "button" : "checkbox"}
               className="media-draft-reference-option" aria-label={t("media.editor.selectNamed", { "0": choice.label })}
-              {...(pickerField ? { "aria-pressed": alreadyAdded } : { "aria-checked": alreadyAdded || selected })}
-              disabled={editorReadOnly || !choice.available || (!pickerField && alreadyAdded) || selectionFull || commitAssetReferences.isPending}
-              onClick={() => pickerField ? chooseWorkflowReference(choice.id) : toggleAssetReference(choice.id)}>
+              {...(workflow ? { "aria-pressed": alreadyAdded } : { "aria-checked": alreadyAdded || selected })}
+              disabled={editorReadOnly || !choice.available || (!workflow && alreadyAdded) || selectionFull || commitAssetReferences.isPending}
+              onClick={() => workflow ? chooseWorkflowReference(choice.id) : toggleAssetReference(choice.id)}>
               {/* Video references use archived covers; images preserve their existing preview. */}
               {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
               <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? t("media.editor.selectedVersion") : t("media.editor.historicalVersions")}</small></span>
@@ -1204,11 +1236,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             }} type="button">{t("media.editor.retryImages")}</Button></div> : null}
           {assetSelectionError ? <div className="media-draft-reference-error" role="alert">
             {t("media.editor.batchSelectionFailed")}</div> : null}
-          {!pickerField ? <p>{t("media.editor.selectionOrderHint", { "0": Math.max(0,
+          {!workflow ? <p>{t("media.editor.selectionOrderHint", { "0": Math.max(0,
             remainingAssetCapacity - assetSelection.length) })}</p> : null}
           <div className="media-draft-reference-actions">
             <Button variant="ghost" type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("common.cancel")}</Button>
-            {!pickerField ? <Button variant="ghost" type="button" className="is-primary"
+            {!workflow ? <Button variant="ghost" type="button" className="is-primary"
               disabled={!assetSelection.length || save.isPending || commitAssetReferences.isPending}
               onClick={confirmAssetReferences}>
               {commitAssetReferences.isPending ? t("common.adding") : t("media.editor.addSelected", { "0": mixedPicker ? t("media.editor.assets") : t("common.image"), "1": assetSelection.length })}
@@ -1221,12 +1253,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           <div className="media-draft-reference-options">
             {pickerCanvasChoices.map((choice) => <Button variant="ghost" key={choice.canvasItemId} type="button"
               className="media-draft-reference-option" aria-label={t("media.editor.useCanvasMedia", { "0": choice.kind === "VIDEO" ? t("common.video") : choice.kind === "AUDIO" ? t("common.audio") : t("common.image"), "1": choice.title })}
-              aria-pressed={pickerField ? workflowValues[pickerField.key] === choice.versionId : fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
-              disabled={editorReadOnly || !pickerField && (fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(referenceKind(choice.versionId), fields.mediaInputs))}
-              onClick={() => pickerField ? chooseWorkflowReference(choice.versionId) : appendReferences([choice.versionId])}>
+              aria-pressed={workflow ? Boolean(pickerField && workflowValues[pickerField.key] === choice.versionId) : fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
+              disabled={editorReadOnly || !workflow && (fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(referenceKind(choice.versionId), fields.mediaInputs))}
+              onClick={() => workflow ? chooseWorkflowReference(choice.versionId) : appendReferences([choice.versionId])}>
               {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
               <span><strong>{choice.title}</strong><small>{t("media.editor.canvasSelectedVersion", { "0": choice.versionNo })}</small></span>
-              {(pickerField ? workflowValues[pickerField.key] === choice.versionId : fields.mediaInputs.some((input) => input.versionId === choice.versionId)) ? <Check size={15} /> : null}
+              {(workflow ? pickerField && workflowValues[pickerField.key] === choice.versionId : fields.mediaInputs.some((input) => input.versionId === choice.versionId)) ? <Check size={15} /> : null}
             </Button>)}
           </div>
           {canvas.isPending ? <CanvasLoadingState compact label={t("media.editor.canvasImagesLoading")} /> : null}

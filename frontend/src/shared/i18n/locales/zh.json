@@ -1220,6 +1220,7 @@
   "media.workflow.projectResources": "项目资源",
   "media.workflow.canvasResources": "画布素材",
   "media.workflow.noMatchingMedia": "暂无匹配的素材",
+  "media.workflow.noEmptySlot": "没有可用的{0}输入位置，请先移除已有素材后重试。",
   "media.workflow.unavailable": "版本不可用",
   "media.workflow.uploading": "上传中…",
   "media.workflow.parameter": "参数",

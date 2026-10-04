@@ -1220,6 +1220,7 @@
   "media.workflow.projectResources": "Project resources",
   "media.workflow.canvasResources": "Canvas media",
   "media.workflow.noMatchingMedia": "No matching media",
+  "media.workflow.noEmptySlot": "No empty {0} input is available. Remove an existing input before retrying.",
   "media.workflow.unavailable": "Version unavailable",
   "media.workflow.uploading": "Uploading…",
   "media.workflow.parameter": "Parameter",
