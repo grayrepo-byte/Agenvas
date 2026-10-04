@@ -1077,7 +1077,9 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByRole("button", { name: "播放视频" })).not.toBeInTheDocument();
     const preview = poster.parentElement!;
     fireEvent.mouseEnter(preview);
-    const video = screen.getByLabelText("湖边 的视频");
+    expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
+    expect(play).not.toHaveBeenCalled();
+    const video = await screen.findByLabelText("湖边 的视频", {}, { timeout: 2000 });
     expect(video).not.toHaveAttribute("controls");
     expect(video).toHaveProperty("muted", true);
     expect(play).toHaveBeenCalledOnce();

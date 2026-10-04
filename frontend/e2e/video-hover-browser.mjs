@@ -13,6 +13,8 @@ const chromePath = process.env.AGENVAS_E2E_CHROME
 const production = !process.argv.includes("--dev");
 const route = "/e2e/video-hover.html";
 const timeoutMs = 15_000;
+const hoverDelayMs = 1000;
+const timingToleranceMs = 10;
 const profile = await mkdtemp(join(tmpdir(), "agenvas-video-hover-browser-"));
 const outDir = join(profile, "build");
 const config = { root, configFile: join(root, "vite.config.ts") };
@@ -69,6 +71,26 @@ async function click(selector) {
   await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+}
+
+async function enter(selector) {
+  await moveTo(selector);
+  return page((target) => window.videoHoverEntries.findLast((entry) => entry.card === target.slice(1)).at, selector);
+}
+
+async function hoverFor(enteredAt, elapsedMs) {
+  await waitFor((at, elapsed) => performance.now() >= at + elapsed, enteredAt, elapsedMs);
+}
+
+async function playCalls(card = "valid-preview") {
+  return page((target) => window.nativePlaybackCalls.filter((call) => call.card === target), card);
+}
+
+function assertDelayedPlay(call, enteredAt) {
+  const elapsed = call.at - enteredAt;
+  assert.ok(elapsed >= hoverDelayMs - timingToleranceMs,
+    `Native play must wait for a complete hover delay (${elapsed.toFixed(1)}ms)`);
+  return elapsed;
 }
 
 async function fulfillMedia({ requestId, request }) {
@@ -141,9 +163,28 @@ try {
   await cdp("Fetch.enable", { patterns: [{ urlPattern: "*/e2e/video-hover-*.mp4", requestStage: "Request" }] });
   await cdp("Page.addScriptToEvaluateOnNewDocument", { source: `
     window.nativePlaybackRejections = [];
+    window.nativePlaybackCalls = [];
+    window.inlineVideoMounts = [];
+    window.videoHoverEntries = [];
+    new MutationObserver(() => {
+      document.querySelectorAll('.video-card-preview > video').forEach(video => {
+        if (!video.dataset.observedMount) {
+          video.dataset.observedMount = 'true';
+          window.inlineVideoMounts.push({ card: video.parentElement.parentElement.id, at: performance.now() });
+        }
+      });
+    }).observe(document, { childList: true, subtree: true });
+    document.addEventListener('mouseover', event => {
+      const card = event.target.closest?.('.video-card-preview');
+      if (card && !card.contains(event.relatedTarget)) {
+        window.videoHoverEntries.push({ card: card.parentElement.id, at: performance.now() });
+      }
+    }, true);
     const nativePlay = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function(...args) {
       // Observe actual native rejections without changing playback or permissions.
+      window.nativePlaybackCalls.push({ card: this.closest('.video-card-preview')?.parentElement.id ?? null,
+        at: performance.now() });
       return nativePlay.apply(this, args).catch(error => {
         window.nativePlaybackRejections.push({ name: error.name, mediaError: this.error?.code ?? null });
         throw error;
@@ -155,7 +196,18 @@ try {
   await waitFor(() => Boolean(document.querySelector("#valid-preview img")));
   assert.equal(await page(() => navigator.userActivation.hasBeenActive), false,
     "Initial hover must run before any genuine click in a fresh Chrome profile");
-  await moveTo("#valid-preview");
+  const shortHoverAt = await enter("#valid-preview");
+  await hoverFor(shortHoverAt, 450);
+  assert.equal(await page(() => Boolean(document.querySelector("#valid-preview video"))), false,
+    "A brief initial hover must not load or mount the video");
+  await moveTo(null);
+  await hoverFor(shortHoverAt, hoverDelayMs + 100);
+  assert.equal(await page(() => Boolean(document.querySelector("#valid-preview video"))), false,
+    "Leaving before the delay must cancel the pending activation");
+  assert.equal(attempts.get("/e2e/video-hover-valid.mp4") ?? 0, 0,
+    "A cancelled initial hover must not request video bytes");
+  assert.equal((await playCalls()).length, 0, "A cancelled initial hover must not call native play");
+  const initialHoverAt = await enter("#valid-preview");
   await waitFor(() => document.querySelector("#valid-preview video")?.currentTime > 0
     || document.querySelector("#valid-preview [role='alert']"));
   const initial = await page(() => ({
@@ -168,6 +220,10 @@ try {
   assert.equal(initial.alert, null, "Initial hover must not falsely report video playback failure");
   assert.equal(initial.muted, true, "Hover must start muted before the user allows sound");
   assert.equal(initial.userActivation, false, "Hover must not manufacture a playback gesture");
+  const mountedAt = await page(() => window.inlineVideoMounts.find((mount) => mount.card === "valid-preview").at);
+  assert.ok(mountedAt - initialHoverAt >= hoverDelayMs - timingToleranceMs,
+    "The video must not mount or begin loading before the full initial hover delay");
+  const initialDelay = assertDelayedPlay((await playCalls())[0], initialHoverAt);
   await click("#valid-preview button[aria-label='开启视频声音']");
   await waitFor(() => {
     const video = document.querySelector("#valid-preview video");
@@ -178,14 +234,46 @@ try {
   await moveTo(null);
   await waitFor(() => document.querySelector("#valid-preview video").paused);
   const pausedAt = await page(() => document.querySelector("#valid-preview video").currentTime);
-  await moveTo("#valid-preview");
+  const callsBeforeResume = (await playCalls()).length;
+  const shortResumeAt = await enter("#valid-preview");
+  await hoverFor(shortResumeAt, 450);
+  await click("#valid-preview video");
+  await moveTo(null);
+  assert.equal(await page(() => document.querySelector("#fixture").dataset.selections), "1",
+    "Clicking the picture during the hover delay must still select its canvas node");
+  await hoverFor(shortResumeAt, hoverDelayMs + 100);
+  assert.ok(await page((position) => {
+    const video = document.querySelector("#valid-preview video");
+    return video.paused && Math.abs(video.currentTime - position) < 0.01;
+  }, pausedAt), "A brief re-entry and picture click must keep the player paused at its previous position");
+  assert.equal((await playCalls()).length, callsBeforeResume, "A cancelled resume must not call native play");
+  const resumeHoverAt = await enter("#valid-preview");
+  await hoverFor(resumeHoverAt, 450);
+  assert.ok(await page((position) => {
+    const video = document.querySelector("#valid-preview video");
+    return video.paused && Math.abs(video.currentTime - position) < 0.01;
+  }, pausedAt), "Re-entry must keep the video paused until another full hover delay has elapsed");
   await waitFor((time) => {
     const video = document.querySelector("#valid-preview video");
     return !video.paused && !video.muted && video.currentTime > time + 0.1;
   }, pausedAt);
   assert.equal(await page(() => document.querySelector("#valid-preview [role='alert']")), null,
     "Hover after a real click must resume playback with the user's sound preference");
+  const resumeDelay = assertDelayedPlay((await playCalls())[callsBeforeResume], resumeHoverAt);
   await moveTo(null);
+  await waitFor(() => document.querySelector("#valid-preview video").paused);
+  const callsBeforeExpand = (await playCalls()).length;
+  const expandHoverAt = await enter("#valid-preview");
+  await hoverFor(expandHoverAt, 200);
+  await click("#valid-preview button[aria-label='放大视频']");
+  await waitFor(() => Boolean(document.querySelector(".media-preview-dialog")));
+  await hoverFor(expandHoverAt, hoverDelayMs + 100);
+  assert.equal((await playCalls()).length, callsBeforeExpand,
+    "Opening the full preview while waiting must cancel the inline hover playback timer");
+  assert.ok(await page(() => document.querySelector("#valid-preview .video-card-preview > video").paused),
+    "The inline video must remain paused while the full preview is open");
+  await click(".media-preview-dialog button[aria-label='关闭预览']");
+  await waitFor(() => !document.querySelector(".media-preview-dialog"));
   await click("#page-gesture");
   await moveTo("#retry-preview");
   await waitFor(() => Boolean(document.querySelector("#retry-preview [role='alert']")));
@@ -196,7 +284,8 @@ try {
   assert.equal(await page(() => document.querySelector("#retry-preview [role='alert']")), null,
     "Retry must recover a real damaged-media failure");
   assert.ok(attempts.get("/e2e/video-hover-retry.mp4") >= 2, "Retry must make a new media request");
-  console.log("Video hover browser checks passed (fresh-profile native autoplay, sound gesture, pause/resume, damaged media and retry).");
+  console.log(`Native hover delays: initial=${initialDelay.toFixed(1)}ms, resume=${resumeDelay.toFixed(1)}ms`);
+  console.log("Video hover browser checks passed (delayed activation/cancellation, fresh-profile native autoplay, sound gesture, pause/resume, picture selection, expansion cancellation, damaged media and retry).");
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {

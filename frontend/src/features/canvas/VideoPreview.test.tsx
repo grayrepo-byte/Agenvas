@@ -1,11 +1,14 @@
 import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
-import { beforeEach,describe,expect,it,vi } from "vitest";
+import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { VideoPreview } from "./VideoPreview";
 
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 });
+
+afterEach(() => vi.useRealTimers());
 
 function showPreview() {
   const onClick = vi.fn();
@@ -22,10 +25,59 @@ function showPreview() {
 
 function hover(preview: HTMLElement) {
   fireEvent.mouseEnter(preview);
+  act(() => vi.advanceTimersByTime(1000));
   return screen.getByLabelText("预览 的视频") as HTMLVideoElement;
 }
 
 describe("VideoPreview", () => {
+  it("keeps the poster and node-selection clicks until a continuous hover reaches one second", () => {
+    const { preview, onClick } = showPreview();
+    fireEvent.mouseEnter(preview);
+    act(() => vi.advanceTimersByTime(999));
+    fireEvent.click(screen.getByRole("img"));
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText("预览 的视频")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByLabelText("预览 的视频")).toHaveProperty("muted", true);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
+  });
+
+  it("cancels brief hovers and starts a fresh one-second wait on every entry", () => {
+    const { preview } = showPreview();
+    fireEvent.mouseEnter(preview);
+    act(() => vi.advanceTimersByTime(600));
+    fireEvent.mouseLeave(preview);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.queryByLabelText("预览 的视频")).not.toBeInTheDocument();
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    fireEvent.mouseEnter(preview);
+    act(() => vi.advanceTimersByTime(999));
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
+    const video = screen.getByLabelText("预览 的视频") as HTMLVideoElement;
+    video.currentTime = 3;
+    fireEvent.mouseLeave(preview);
+    fireEvent.mouseEnter(preview);
+    act(() => vi.advanceTimersByTime(999));
+    expect(video.currentTime).toBe(3);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(1));
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears pending hover activation when the node unmounts", () => {
+    const { preview, unmount } = showPreview();
+    fireEvent.mouseEnter(preview);
+    act(() => vi.advanceTimersByTime(600));
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+
   it("starts muted on hover without a user gesture, pauses on leave and resumes the same position", async () => {
     // Match the native autoplay policy: hover cannot authorize audible playback.
     vi.mocked(HTMLMediaElement.prototype.play).mockImplementation(function (this: HTMLMediaElement) {
@@ -34,7 +86,10 @@ describe("VideoPreview", () => {
     const { preview, onClick, unmount } = showPreview();
     expect(screen.queryByLabelText("预览 的视频")).not.toBeInTheDocument();
     expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
-    await act(async () => { fireEvent.mouseEnter(preview); });
+    await act(async () => {
+      fireEvent.mouseEnter(preview);
+      await vi.advanceTimersByTimeAsync(1000);
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     const video = screen.getByLabelText("预览 的视频") as HTMLVideoElement;
     expect(video.muted).toBe(true);
@@ -111,9 +166,10 @@ describe("VideoPreview", () => {
     fireEvent.mouseLeave(preview);
     vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new DOMException("Blocked", "NotAllowedError"));
     hover(preview);
-    expect(await screen.findByRole("alert")).toHaveTextContent("视频播放失败");
+    await act(async () => {});
+    expect(screen.getByRole("alert")).toHaveTextContent("视频播放失败");
     fireEvent.click(screen.getByRole("button", { name: "重试播放" }));
-    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(3));
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(3);
     expect(screen.getByLabelText("预览 的视频")).toHaveProperty("muted", false);
   });
 
@@ -128,12 +184,16 @@ describe("VideoPreview", () => {
   });
 
   it("opens an in-app video viewer without activating the hover player", async () => {
-    const { onClick, onMouseDown, onPointerDown, onKeyDown } = showPreview();
+    // The viewer has its own animation timers; exercise this path with real time.
+    vi.useRealTimers();
+    const { preview, onClick, onMouseDown, onPointerDown, onKeyDown } = showPreview();
+    fireEvent.mouseEnter(preview);
     const expand = screen.getByRole("button", { name: "放大视频" });
     expand.focus();
     fireEvent.pointerDown(expand);
     fireEvent.mouseDown(expand);
     fireEvent.click(expand);
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 1100)); });
     const dialog = await screen.findByRole("dialog", { name: "预览 的视频预览" });
     const player = dialog.querySelector("video")!;
     expect(player).toHaveAttribute("controls");
@@ -156,8 +216,10 @@ describe("VideoPreview", () => {
   });
 
   it("pauses the hover video during enlargement and retains its position after closing", async () => {
+    vi.useRealTimers();
     const { preview } = showPreview();
-    const cardVideo = hover(preview);
+    fireEvent.mouseEnter(preview);
+    const cardVideo = await screen.findByLabelText("预览 的视频", {}, { timeout: 2000 }) as HTMLVideoElement;
     cardVideo.currentTime = 4;
     vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "放大视频" }));
@@ -167,8 +229,9 @@ describe("VideoPreview", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "关闭预览" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
-    expect(hover(preview)).toBe(cardVideo);
+    fireEvent.mouseEnter(preview);
+    expect(screen.getByLabelText("预览 的视频")).toBe(cardVideo);
     expect(cardVideo.currentTime).toBe(4);
-    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2), { timeout: 2000 });
   });
 });
