@@ -5,7 +5,7 @@ import { FormattedModelResponse, type CallLogViewMode } from "./FormattedCallExc
 type StreamLog = NonNullable<CallDebug["llmStream"]>;
 
 /** Debug model contents with timing and actual usage metadata. */
-export function LlmStreamDetails({ log, mode, requestBody }: { log: StreamLog; mode: CallLogViewMode; requestBody: DebugBody | null }) {
+export function LlmStreamDetails({ log, mode, requestBody, displayedGenerationId }: { log: StreamLog; mode: CallLogViewMode; requestBody: DebugBody | null; displayedGenerationId?: string | null }) {
   useLocale();
   const { metrics, content } = log;
   const time = (value: number | null) => value === null ? t("common.notRecorded") : `${formatNumber(value)} ms`;
@@ -20,7 +20,7 @@ export function LlmStreamDetails({ log, mode, requestBody }: { log: StreamLog; m
       <Fact title={t("logs.stream.chunks")} value={count(metrics.chunkCount)} />
       <Fact title={t("logs.calls.result")} value={status} />
       <Fact title={t("common.model")} value={metrics.model ?? t("common.notRecorded")} />
-      <Fact title={t("logs.exchange.generationId")} value={metrics.responseId ?? t("common.notRecorded")} />
+      {metrics.responseId !== displayedGenerationId ? <Fact title={t("logs.exchange.generationId")} value={metrics.responseId ?? t("common.notRecorded")} /> : null}
       <Fact title={t("logs.exchange.finishReason")} value={metrics.finishReasons.join(", ") || t("common.notRecorded")} />
       <Fact title={t("logs.stream.error")} value={metrics.errorCode ?? t("common.notRecorded")} />
     </dl>
@@ -33,7 +33,7 @@ export function LlmStreamDetails({ log, mode, requestBody }: { log: StreamLog; m
     {content ? <>
       <p className="ui-muted">{t("logs.stream.contentHint")}</p>
       {metrics.status !== "COMPLETED" || content.truncated ? <p className="ui-muted">{t("logs.stream.partial")}</p> : null}
-      <FormattedModelResponse content={content} mode={mode} requestBody={requestBody} />
+      <FormattedModelResponse content={content} mode={mode} requestBody={requestBody} displayedGenerationId={metrics.responseId ?? displayedGenerationId} />
     </> : <p className="ui-muted">{t("logs.stream.noContent")}</p>}
   </div>;
 }

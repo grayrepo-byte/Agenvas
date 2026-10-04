@@ -79,6 +79,35 @@ describe("CallLogsPage", () => {
     expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 
+  it("shows a generation ID once and separates local and provider correlation IDs", async () => {
+    server.use(
+      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, kind: "LLM", operation: "CHAT", mock: false }]))),
+      http.get("/api/v1/call-logs/call-1/debug", () => HttpResponse.json({ id: "call-1", captured: true,
+        exchanges: [{ method: "POST", url: "https://provider.invalid/chat/completions", responseStatus: 200,
+          responseIdentifiers: { "x-trace-id": "synthetic-platform-trace", "x-request-id": "synthetic-platform-request" },
+          requestBody: null, responseBody: null }],
+        llmStream: { metrics: { schemaVersion: 2, firstChunkMs: 1, firstTextMs: 2, durationMs: 3, chunkCount: 1,
+          promptTokens: 1, completionTokens: 1, totalTokens: 2, model: LOG.model, responseId: LOG.providerRequestId,
+          finishReasons: ["STOP"], status: "COMPLETED", errorCode: null }, content: {
+            response: JSON.stringify({ id: LOG.providerRequestId, model: LOG.model,
+              choices: [{ message: { role: "assistant", content: "synthetic answer" }, finish_reason: "stop" }] }), truncated: false } },
+      })),
+    );
+    const user = userEvent.setup();
+    showPage();
+    await user.click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
+    await screen.findByRole("button", { name: "展开 Completion" });
+    expect(screen.getAllByText(LOG.providerRequestId!)).toHaveLength(1);
+    expect(screen.getAllByText("生成 ID")).toHaveLength(1);
+    expect(screen.getByText("本地 Trace ID")).toBeInTheDocument();
+    expect(screen.getByText("第三方关联 ID（x-trace-id）")).toBeInTheDocument();
+    expect(screen.getByText("synthetic-platform-trace")).toBeInTheDocument();
+    expect(screen.getByText("synthetic-platform-request")).toBeInTheDocument();
+    const copy = vi.spyOn(navigator.clipboard, "writeText");
+    await user.click(within(screen.getByText("synthetic-platform-trace").closest("dd")!).getByRole("button", { name: "复制" }));
+    expect(copy).toHaveBeenCalledWith("synthetic-platform-trace");
+  });
+
   it("sends applied filters and pagination to the server, resetting page when filters change", async () => {
     const requests: URLSearchParams[] = [];
     server.use(http.get("/api/v1/call-logs", ({ request }) => {

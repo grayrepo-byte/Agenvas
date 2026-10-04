@@ -15,32 +15,33 @@ export type CallLogViewMode = "formatted" | "raw";
 const MESSAGE_PREVIEW_CHARS = 160;
 const FIRST_MESSAGE = 0;
 
-export function FormattedCallExchange({ exchange, mode, llm, hideResponse = false }: { exchange: Exchange; mode: CallLogViewMode; llm: boolean; hideResponse?: boolean }) {
-  return <FormattedLogBodies requestBody={exchange.requestBody} responseBody={exchange.responseBody} mode={mode} llm={llm} hideResponse={hideResponse} />;
+export function FormattedCallExchange({ exchange, mode, llm, hideResponse = false, displayedGenerationId }: { exchange: Exchange; mode: CallLogViewMode; llm: boolean; hideResponse?: boolean; displayedGenerationId?: string | null }) {
+  return <FormattedLogBodies requestBody={exchange.requestBody} responseBody={exchange.responseBody} mode={mode} llm={llm} hideResponse={hideResponse} displayedGenerationId={displayedGenerationId} />;
 }
 
 /** Displays the single saved stream response without inventing an HTTP exchange. */
-export function FormattedModelResponse({ content, requestBody, mode }: {
+export function FormattedModelResponse({ content, requestBody, mode, displayedGenerationId }: {
   content: NonNullable<NonNullable<CallDebug["llmStream"]>["content"]>;
-  requestBody: DebugBody | null; mode: CallLogViewMode;
+  requestBody: DebugBody | null; mode: CallLogViewMode; displayedGenerationId?: string | null;
 }) {
   useLocale();
   const responseBody = useMemo<DebugBody>(() => ({ content: content.response, encoding: "UTF8", truncated: content.truncated }), [content]);
   return <FormattedLogBodies requestBody={requestBody} responseBody={responseBody} mode={mode} llm
-    responseTitle={t("logs.stream.response")} streaming />;
+    responseTitle={t("logs.stream.response")} streaming displayedGenerationId={displayedGenerationId} />;
 }
 
-function FormattedLogBodies({ requestBody, responseBody, mode, llm, responseTitle, streaming, hideResponse = false }: {
+function FormattedLogBodies({ requestBody, responseBody, mode, llm, responseTitle, streaming, hideResponse = false, displayedGenerationId }: {
   requestBody: DebugBody | null; responseBody: DebugBody | null; mode: CallLogViewMode; llm: boolean;
-  responseTitle?: string; streaming?: boolean; hideResponse?: boolean;
+  responseTitle?: string; streaming?: boolean; hideResponse?: boolean; displayedGenerationId?: string | null;
 }) {
   useLocale();
   const request = useMemo(() => parseDebugBody(requestBody), [requestBody]);
   const response = useMemo(() => parseDebugBody(responseBody), [responseBody]);
   const view = useMemo(() => {
     const parsed = llm && !hideResponse ? llmLogView(request, response) : null;
-    return parsed && streaming ? { ...parsed, streaming: true } : parsed;
-  }, [llm, request, response, streaming, hideResponse]);
+    return parsed ? { ...parsed, streaming: streaming ? true : parsed.streaming,
+      generationId: parsed.generationId === displayedGenerationId ? undefined : parsed.generationId } : null;
+  }, [llm, request, response, streaming, hideResponse, displayedGenerationId]);
   const responseLabel = responseTitle ?? t("logs.exchange.responseBody");
   return <>
     <BodyWarning body={requestBody} title={t("logs.exchange.requestBody")} />
@@ -61,7 +62,7 @@ function LlmExchange({ view, requestBody, responseBody, request, response, respo
   const usage = view.usage;
   return <div className="llm-log">
     <dl className="llm-log-facts">
-      <Fact title={t("common.model")} value={view.model} /><Fact title={t("logs.exchange.generationId")} value={view.generationId} />
+      <Fact title={t("common.model")} value={view.model} />{view.generationId ? <Fact title={t("logs.exchange.generationId")} value={view.generationId} /> : null}
       <Fact title={t("logs.exchange.finishReason")} value={view.finishReason} />
       <Fact title={t("logs.exchange.streaming")} value={view.streaming === undefined ? undefined : view.streaming ? t("logs.exchange.yes") : t("logs.exchange.no")} />
     </dl>
@@ -189,7 +190,7 @@ function RawContent({ content }: { content: string }) {
   const [limit, setLimit] = useState(RAW_PAGE_CHARS);
   return <><pre>{content.slice(0, limit)}</pre>{content.length > limit ? <Button variant="outline"  type="button" onClick={() => setLimit(limit + RAW_PAGE_CHARS)}>{t("logs.exchange.loadMoreBody", { "0": formatNumber(content.length - limit) })}</Button> : null}</>;
 }
-function CopyButton({ content }: { content: string }) {
+export function CopyButton({ content }: { content: string }) {
   const [status, setStatus] = useState<"idle" | "done" | "failed">("idle");
   const [pending, setPending] = useState(false);
   return <span className="llm-copy-control"><Button variant="ghost"  type="button" disabled={pending} onClick={async () => {

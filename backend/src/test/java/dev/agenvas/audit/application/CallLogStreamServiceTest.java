@@ -84,6 +84,39 @@ class CallLogStreamServiceTest {
         assertThat(exchange.requestBody().content()).isEqualTo("{}");
     }
 
+    @Test void preservesHttpCorrelationIdsWhenStreamBodyMovesIntoSingleSummary() throws Exception {
+        when(repository.isDebugEnabled()).thenReturn(true);
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/chat", http -> {
+            http.getRequestBody().readAllBytes();
+            http.getResponseHeaders().set("Content-Type", "text/event-stream");
+            http.getResponseHeaders().set("X-Trace-Id", "synthetic-platform-trace");
+            byte[] body = "data: {\"id\":\"synthetic-response\",\"choices\":[]}\n\ndata: [DONE]\n\n"
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            http.sendResponseHeaders(200, body.length);
+            http.getResponseBody().write(body);
+            http.close();
+        });
+        server.start();
+        try {
+            service.recordStream(descriptor(), (capture, listener) -> {
+                var client = new okhttp3.OkHttpClient.Builder().addInterceptor(DebugHttpCapture.interceptor()).build();
+                var request = new okhttp3.Request.Builder().url("http://127.0.0.1:" + server.getAddress().getPort() + "/chat")
+                        .post(okhttp3.RequestBody.create("{}", okhttp3.MediaType.get("application/json")));
+                DebugHttpCapture.requestHeaders().forEach(request::header);
+                try (var response = client.newCall(request.build()).execute()) { response.body().string(); }
+                catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                listener.accept(log("sdk answer"));
+                return "result";
+            }, ignored -> CallLogService.CallOutcome.succeeded("synthetic-response"));
+            ArgumentCaptor<List<DebugHttpCapture.Exchange>> exchanges = ArgumentCaptor.captor();
+            verify(writer).submit(any(), any(), any(), anyLong(), any(), exchanges.capture(), eq(true));
+            assertThat(exchanges.getValue().getFirst().responseBody()).isNull();
+            assertThat(exchanges.getValue().getFirst().responseIdentifiers())
+                    .containsEntry("x-trace-id", "synthetic-platform-trace");
+        } finally { server.stop(0); }
+    }
+
     @Test void originalFailureAndPartialLogSurviveWithoutModelRetry() {
         AtomicInteger calls = new AtomicInteger();
         RuntimeException failure = new IllegalStateException("synthetic private failure");

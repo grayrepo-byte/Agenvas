@@ -100,7 +100,7 @@ public class CallLogService {
                             useHttp ? http.truncated() : content.truncated() || http != null));
                     // Persist one response body. Exchanges retain request, address and HTTP status only.
                     savedExchanges = savedExchanges.stream().map(exchange -> new Exchange(exchange.method(), exchange.url(),
-                            exchange.requestBody(), exchange.responseStatus(), null)).toList();
+                            exchange.requestBody(), exchange.responseStatus(), null, exchange.responseIdentifiers())).toList();
                 } else if (log != null) log = new LlmStreamLog(log.metrics(), null);
                 streamWriter.submit(id, finished, respondedAt, durationMs, log, savedExchanges, captured);
             } catch (RuntimeException loggingFailure) {

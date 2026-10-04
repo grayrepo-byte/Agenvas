@@ -26,6 +26,28 @@ class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TIMEOUT_SECONDS = 5;
 
+    @Test void keepsProviderCorrelationIdsAcrossBodyCompletionWithoutOtherHeaders() throws Exception {
+        HttpServer server = bindingServer();
+        server.start();
+        try {
+            var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var scope = DebugHttpCapture.openLlm(saved::set)) {
+                executeBoundRequest(server, DebugHttpCapture.requestHeaders());
+            }
+            var json = MAPPER.valueToTree(saved.get().getFirst());
+            assertThat(json.at("/responseIdentifiers/x-request-id").asText()).isEqualTo("synthetic-request");
+            assertThat(json.at("/responseIdentifiers/x-trace-id").asText()).isEqualTo("synthetic-trace");
+            assertThat(json.toString()).doesNotContain("synthetic-cookie", "synthetic-authorization", "synthetic-unlisted");
+            assertThat(saved.get().getFirst().responseBody().content()).contains("ok");
+        } finally { server.stop(0); }
+    }
+
+    @Test void readsHistoricalExchangeWithoutInventingCorrelationIds() {
+        var exchange = MAPPER.readValue("{\"method\":\"POST\",\"url\":\"https://provider.invalid/chat\","
+                + "\"requestBody\":null,\"responseStatus\":200,\"responseBody\":null}", DebugHttpCapture.Exchange.class);
+        assertThat(exchange.responseIdentifiers()).isEmpty();
+    }
+
     @Test void llmStreamResponseJoinsTextReasoningAndToolsAndKeepsUsageAndUnknownFields() throws Exception {
         String events = """
                 data: {"id":"synthetic-response","object":"chat.completion.chunk","model":"synthetic-model","choices":[{"index":0,"delta":{"role":"assistant","content":"first ","reasoning_content":"think ","tool_calls":[{"index":0,"id":"synthetic-call","type":"function","function":{"name":"re","arguments":"{\\"id\\":"}}]}}],"ula_metrics":{"ttft_ms":120}}
@@ -242,6 +264,11 @@ class DebugHttpCaptureTest {
             assertThat(exchange.getRequestHeaders().getFirst(DebugHttpCapture.CAPTURE_HEADER)).isNull();
             exchange.getRequestBody().readAllBytes();
             exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.getResponseHeaders().set("X-Request-Id", "synthetic-request");
+            exchange.getResponseHeaders().set("X-Trace-Id", "synthetic-trace");
+            exchange.getResponseHeaders().set("Set-Cookie", "synthetic-cookie");
+            exchange.getResponseHeaders().set("Authorization", "synthetic-authorization");
+            exchange.getResponseHeaders().set("X-Unlisted", "synthetic-unlisted");
             byte[] response = "{\"output\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);

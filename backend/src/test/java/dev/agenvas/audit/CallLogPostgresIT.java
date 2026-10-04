@@ -323,6 +323,7 @@ class CallLogPostgresIT {
                     .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                     .andReturn().getResponse().getContentAsString();
             assertThat(payload).doesNotContain("firstOutputMs", "outputBatchCount", "outputChars", "\"output\":");
+            if (enabled) assertThat(payload).contains("\"responseIdentifiers\":{}");
             mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(UUID.randomUUID(), "foreign"), "ROLE_ADMIN"))))
                     .andExpect(status().isNotFound());
             // A queued writer must never recreate data after history cleanup has deleted its call.

@@ -14,7 +14,7 @@ const request = { model: "fixture-model", stream: false, messages: [
   { role: "tool", tool_call_id: "call-a", content: '{"result":"A quiet sea"}' },
 ] };
 const response = { id: "gen-123", model: "fixture-model", choices: [{ message: { role: "assistant", content: "The waves drift ashore." }, finish_reason: "stop" }], usage: { prompt_tokens: 28, completion_tokens: 9, total_tokens: 37, cost: "0.001" } };
-const exchange: CallDebug["exchanges"][number] = { method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200,
+const exchange: CallDebug["exchanges"][number] = { method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200, responseIdentifiers: {},
   requestBody: { content: JSON.stringify(request), encoding: "UTF8", truncated: false },
   responseBody: { content: JSON.stringify(response), encoding: "UTF8", truncated: false } };
 

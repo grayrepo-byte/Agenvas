@@ -187,12 +187,12 @@ function CallLogDetails({ log }: { log: CallLog }) {
       <Detail label={t("logs.calls.responseTime")} value={<LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} />} />
       <Detail label={t("logs.calls.duration")} value={log.durationMs === null ? null : `${log.durationMs.toLocaleString(getFormatLocale())} ms`} />
       <Detail label={t("logs.calls.operations")} value={OPERATION_LABELS[log.operation]} />
-      <Detail label="Trace ID" value={log.traceId} /><Detail label={t("logs.calls.providerRequestId")} value={log.providerRequestId} />
+      <Detail label={t("logs.calls.localTraceId")} value={log.traceId} /><Detail label={t(log.kind === "LLM" ? "logs.exchange.generationId" : "logs.calls.providerRequestId")} value={log.providerRequestId} />
       <Detail label="Provider" value={log.provider} /><Detail label={t("common.model")} value={log.model} />
       <Detail label={t("logs.calls.recordId")} value={log.id} /><Detail label="Run ID" value={log.runId} />
       <Detail label="Task ID" value={log.taskId} /><Detail label={t("logs.calls.errorCode")} value={log.errorCode} />
     </dl>
-    {!log.historical ? <CallDebugDetails id={log.id} kind={log.kind} /> : null}
+    {!log.historical ? <CallDebugDetails id={log.id} kind={log.kind} generationId={log.kind === "LLM" ? log.providerRequestId : undefined} /> : null}
     {log.taskId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
   </>;
 }

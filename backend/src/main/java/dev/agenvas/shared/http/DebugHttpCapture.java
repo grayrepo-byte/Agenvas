@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Invocation-local capture, installed once in transports; disabled calls never copy bodies.
- * Headers are never stored. LLM bodies retain content except structured image bytes;
+ * Only allowlisted response correlation IDs are stored separately; other headers are omitted. LLM bodies retain content except structured image bytes;
  * media bodies retain their credential/reasoning filtering policy.
  */
 public final class DebugHttpCapture implements AutoCloseable {
@@ -53,6 +53,10 @@ public final class DebugHttpCapture implements AutoCloseable {
             "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
     private static final Set<String> PUBLIC_HEADERS = Set.of("accept", "content-type", "content-length",
             "user-agent", "host", "connection", "accept-encoding");
+    private static final int MAX_IDENTIFIER_CHARS = 512;
+    private static final Set<String> RESPONSE_IDENTIFIER_HEADERS = Set.of("x-request-id", "request-id",
+            "x-trace-id", "trace-id", "traceparent", "x-amzn-requestid", "x-amzn-trace-id",
+            "x-b3-traceid", "x-log-id", "x-tt-logid");
     private final DebugHttpCapture previous;
     private final Consumer<List<Exchange>> checkpoint;
     private final List<Exchange> exchanges = new ArrayList<>();
@@ -64,7 +68,12 @@ public final class DebugHttpCapture implements AutoCloseable {
     public enum Encoding { UTF8, BASE64, MULTIPART_JSON, OMITTED }
     public record Body(String content, Encoding encoding, boolean truncated) {}
     public record Exchange(String method, String url, Body requestBody, Integer responseStatus,
-            Body responseBody) {}
+            Body responseBody, Map<String, String> responseIdentifiers) {
+        public Exchange {
+            // Older saved JSON did not contain correlation metadata.
+            responseIdentifiers = responseIdentifiers == null ? Map.of() : Map.copyOf(responseIdentifiers);
+        }
+    }
 
     private DebugHttpCapture(Consumer<List<Exchange>> checkpoint, boolean preserveModelContent) {
         this.preserveModelContent = preserveModelContent;
@@ -245,14 +254,27 @@ public final class DebugHttpCapture implements AutoCloseable {
         // The body has already been processed; never run text replacement over serialized LLM JSON.
         Body safeRequest = request == null || preserveModelContent ? request
                 : new Body(safeText(request.content()), request.encoding(), request.truncated());
-        exchanges.add(new Exchange(method, safeAddress, safeRequest, null, null));
+        exchanges.add(new Exchange(method, safeAddress, safeRequest, null, null, Map.of()));
         publish();
         return exchanges.size() - 1;
     }
     private void response(int index, int status, Body body) {
         Exchange old = exchanges.get(index);
-        exchanges.set(index, new Exchange(old.method(), old.url(), old.requestBody(), status, body));
+        exchanges.set(index, new Exchange(old.method(), old.url(), old.requestBody(), status, body, old.responseIdentifiers()));
         publish();
+    }
+    /** Save only fixed correlation fields, never an arbitrary response-header map. */
+    private void responseIdentifiers(int index, okhttp3.Headers headers) {
+        Map<String, String> identifiers = new java.util.TreeMap<>();
+        for (String name : RESPONSE_IDENTIFIER_HEADERS) {
+            String value = headers.get(name);
+            if (value == null || value.isBlank() || value.length() > MAX_IDENTIFIER_CHARS) continue;
+            if (!value.matches("[A-Za-z0-9._:/=;\\-]+") || secrets.stream().anyMatch(value::contains)) continue;
+            identifiers.put(name, value);
+        }
+        Exchange old = exchanges.get(index);
+        exchanges.set(index, new Exchange(old.method(), old.url(), old.requestBody(), old.responseStatus(),
+                old.responseBody(), identifiers));
     }
     private void publish() { checkpoint.accept(List.copyOf(exchanges)); }
 
@@ -294,7 +316,7 @@ public final class DebugHttpCapture implements AutoCloseable {
             int index;
             synchronized (capture) {
                 for (String name : request.headers().names()) {
-                    if (!capture.preserveModelContent && !PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+                    if (privateField(name) || !capture.preserveModelContent && !PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
                         for (String value : request.headers().values(name)) capture.remember(value);
                 }
                 Body requestBody;
@@ -306,9 +328,10 @@ public final class DebugHttpCapture implements AutoCloseable {
             var response = chain.proceed(request);
             synchronized (capture) {
                 for (String name : response.headers().names()) {
-                    if (!capture.preserveModelContent && privateField(name))
+                    if (privateField(name))
                         for (String value : response.headers().values(name)) capture.remember(value);
                 }
+                capture.responseIdentifiers(index, response.headers());
                 capture.response(index, response.code(), null);
             }
             ResponseBody original = response.body();

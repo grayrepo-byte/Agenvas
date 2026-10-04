@@ -1454,3 +1454,5 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 前端 AgentChatCard、AgentRunConversation、AgentModelRetryNotice、BlockedRunNotice、projectCache、taskErrorMessages 六个文件 100 项定向测试通过；TypeScript、12 个改动 TS/TSX 文件 ESLint、主题与四语言检查通过。新增版本 7 的合约与生成 TypeScript 同步，临时重新生成后字节一致；第二次合并仅增量复验类型、合约与语言，不重复已通过的组件测试。
 - [x] 差异空白与冲突标记检查通过；暂存文本凭据/私有路径检查的三处密钥形状命中已逐项确认是日志测试中的明确不可用合成字符串，无新增实际调用记录、截图或用户媒体。没有数据库迁移、jOOQ 生成源码或依赖变更。
 - [ ] 本轮未运行全量测试、生产构建、浏览器端到端或真实 Provider 调用，也未重新部署合并后的版本；前一节的本地部署记录仅对应合并前修复。
+
+2026-10-04 调用日志关联标识修正：LLM 响应正文 id 明确标为生成 ID，格式化详情去除顶部、流式指标与模型摘要中的相同 ID；本系统追踪字段标为本地 Trace ID。开启 debug 的新 HTTP 调用固定采集白名单响应关联 ID，在详情按来源展示并支持复制，流式正文合并保留该字段；旧调用不补录。同步 OpenAPI、生成 TS、四语文案、规格与 ADR 0020；沿用现有 debug JSON，无数据库迁移。实际检查：前端四组定向 Vitest 共 37 项通过，TypeScript、相关文件 ESLint、四语文案检查通过；后端 DebugHttpCaptureTest、CallLogServiceTest、CallLogStreamServiceTest、SpringAiStreamLogTest 共 37 项通过，CallLogPostgresIT 的流式日志/权限/清理专项 1 项通过（真实 PostgreSQL，合成 HTTP/模型）；git diff --check 与新增差异的凭据/本机路径定向扫描无命中。本轮未运行全量测试、浏览器现场验证及真实 Provider 调用，未确认特定中转平台返回的追踪字段。

@@ -76,6 +76,7 @@ it("formats a streamed LLM completion beside its captured prompt instead of leav
   show();
   const completion = await screen.findByRole("button", { name: "展开 Completion" });
   expect(completion).toBeEnabled();
+  expect(screen.getAllByText("synthetic-response")).toHaveLength(1);
   expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeEnabled();
   await userEvent.setup().click(completion);
   expect(screen.getByRole("dialog", { name: "Completion" })).toHaveTextContent("Synthetic public answer");
