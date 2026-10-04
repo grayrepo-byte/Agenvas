@@ -51,6 +51,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 2026-10-03 Agent 回答展示新增精确版本：[`react-markdown` 10.1.0](https://github.com/remarkjs/react-markdown)、[`remark-gfm` 4.0.1](https://github.com/remarkjs/remark-gfm)、[`remark-breaks` 4.0.0](https://github.com/remarkjs/remark-breaks)。使用同步 React 渲染、GFM 语法与普通换行插件；React peer 范围为 >=18，与当前 React 19 基线兼容。禁用原始 HTML，并使用应用自己的安全链接转换与不自动加载图片的组件。验证范围为 Markdown 与 Agent 对话/流式相关前端测试、TypeScript、lint 和 Vite 构建，不涉及后端或真实 Provider。
 
+2026-10-04 图片与视频查看器新增精确正式版本：[`yet-another-react-lightbox` 3.32.2](https://yet-another-react-lightbox.com/)（MIT）。使用包内 Zoom、Fullscreen、Video 插件，React/React DOM peer 范围为 `^16.8.0 || ^17 || ^18 || ^19`，与当前 React 19 基线兼容。图片支持缩放、平移和全屏；视频使用原生控件且默认不自动播放。验证范围为查看器与画布媒体入口的定向前端测试、TypeScript、相关 lint、四语言目录检查和 Vite 构建；实际检查结果记录在开发清单，不涉及后端或真实 Provider。
+
 ## 容器镜像
 
 | 用途 | 精确镜像 | 多架构 digest |

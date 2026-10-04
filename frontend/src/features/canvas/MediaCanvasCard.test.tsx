@@ -864,38 +864,33 @@ describe("MediaCanvasCard", () => {
       const expand = await screen.findByRole("button", { name: "放大图片" });
       expand.focus();
       await clickControl(expand);
-      const dialog = screen.getByRole("dialog", { name: "湖边 的原图预览" });
+      const dialog = await screen.findByRole("dialog", { name: "湖边 的图片预览" });
       expect(dialog).toHaveAttribute("aria-modal", "true");
       expect(screen.queryByRole("link", { name: "打开原图" })).not.toBeInTheDocument();
-      expect(within(dialog).getByRole("img", { name: "湖边 的原图" })).toHaveAttribute("src",
+      expect(within(dialog).getByRole("img")).toHaveAttribute("src",
         "/api/v1/projects/project-1/assets/image-asset/content");
-      const close = within(dialog).getByRole("button", { name: "关闭图片预览" });
-      expect(close).toHaveFocus();
-      fireEvent.keyDown(close, { key: "Tab" });
-      expect(close).toHaveFocus();
-      fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
-      expect(close).toHaveFocus();
+      const close = within(dialog).getByRole("button", { name: "关闭预览" });
+      await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+      expect(within(dialog).getByRole("button", { name: "放大" })).toBeInTheDocument();
       await clickControl(within(dialog).getByRole("img"));
       expect(dialog).toBeInTheDocument();
       if (method === "button") await clickControl(close);
       else if (method === "escape") fireEvent.keyDown(close, { key: "Escape" });
-      else await clickControl(dialog.parentElement!);
-      expect(screen.queryByRole("dialog", { name: "湖边 的原图预览" })).not.toBeInTheDocument();
-      expect(expand).toHaveFocus();
+      else await clickControl(dialog.querySelector<HTMLElement>(".yarl__slide")!);
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "湖边 的图片预览" })).not.toBeInTheDocument());
+      await waitFor(() => expect(expand).toHaveFocus());
       expect(onCardClick).not.toHaveBeenCalled();
     });
 
     it("handles image loading failure and retry without passing canvas shortcuts through", async () => {
       showImage();
       await clickControl(await screen.findByRole("button", { name: "放大图片" }));
-      const dialog = screen.getByRole("dialog", { name: "湖边 的原图预览" });
-      expect(within(dialog).getByRole("status", { name: "正在加载图片" })).toBeInTheDocument();
+      const dialog = await screen.findByRole("dialog", { name: "湖边 的图片预览" });
+      expect(within(dialog).getByRole("status", { name: "正在加载预览" })).toBeInTheDocument();
       fireEvent.error(within(dialog).getByRole("img"));
-      expect(within(dialog).getByRole("alert")).toHaveTextContent("图片加载失败");
-      const retry = within(dialog).getByRole("button", { name: "重试加载图片" });
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("媒体加载失败");
+      const retry = within(dialog).getByRole("button", { name: "重试加载" });
       retry.focus();
-      fireEvent.keyDown(retry, { key: "Tab" });
-      expect(within(dialog).getByRole("button", { name: "关闭图片预览" })).toHaveFocus();
       const canvasShortcut = vi.fn();
       document.addEventListener("keydown", canvasShortcut);
       try {
@@ -905,9 +900,10 @@ describe("MediaCanvasCard", () => {
         document.removeEventListener("keydown", canvasShortcut);
       }
       await clickControl(retry);
-      expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
-      fireEvent.load(within(dialog).getByRole("img"));
-      expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+      const retriedDialog = screen.getByRole("dialog", { name: "湖边 的图片预览" });
+      expect(within(retriedDialog).queryByRole("alert")).not.toBeInTheDocument();
+      fireEvent.load(within(retriedDialog).getByRole("img"));
+      await waitFor(() => expect(within(retriedDialog).queryByRole("status")).not.toBeInTheDocument());
     });
   });
 
@@ -1075,7 +1071,8 @@ describe("MediaCanvasCard", () => {
     expect(poster.getAttribute("src")).toContain("/thumbnail");
     expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
     expect(screen.getByText("演示视频")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "打开视频文件" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("button", { name: "放大视频" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "放大视频" })).not.toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: "播放视频" })).not.toBeInTheDocument();
     const preview = poster.parentElement!;

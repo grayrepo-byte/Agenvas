@@ -3,6 +3,7 @@ import { useEffect,useRef,useState,type SyntheticEvent } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
+import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import "./VideoPreview.css";
 
 const SEEK_STEP_SECONDS = 0.01;
@@ -17,8 +18,8 @@ function timeLabel(value: number) {
 function isolateControl(event: SyntheticEvent) { event.stopPropagation(); }
 
 /** Hover loads and plays the original; only the picture's clicks reach node selection. */
-export function VideoPreview({ src, posterSrc, title, demo }: {
-  src: string; posterSrc: string; title: string; demo: boolean;
+export function VideoPreview({ src, posterSrc, title, demo, width, height, contentType }: {
+  src: string; posterSrc: string; title: string; demo: boolean; width?: number; height?: number; contentType?: string;
 }) {
   useLocale();
   const video = useRef<HTMLVideoElement>(null);
@@ -31,12 +32,13 @@ export function VideoPreview({ src, posterSrc, title, demo }: {
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const element = video.current;
     if (!element) return;
     let active = true;
-    if (hovered) {
+    if (hovered && !expanded) {
       void element.play().catch((error: unknown) => {
         // Leaving or replacing the result can abort a pending play without a media failure.
         if (!active || (error instanceof DOMException && error.name === "AbortError")) return;
@@ -45,7 +47,7 @@ export function VideoPreview({ src, posterSrc, title, demo }: {
       });
     } else element.pause();
     return () => { active = false; element.pause(); };
-  }, [hovered, attempt, playbackFailed]);
+  }, [hovered, expanded, attempt, playbackFailed]);
 
   function retryPlayback() {
     setPlaybackFailed(false);
@@ -56,7 +58,7 @@ export function VideoPreview({ src, posterSrc, title, demo }: {
   }
 
   return <div className={`media-card-preview video-card-preview${hovered ? " is-hovered" : ""}`}
-    onMouseEnter={() => { if (!activated) setBuffering(true); setActivated(true); setHovered(true); }}
+    onMouseEnter={() => { if (expanded) return; if (!activated) setBuffering(true); setActivated(true); setHovered(true); }}
     onMouseLeave={() => setHovered(false)}>
     {activated && !playbackFailed ? <video key={attempt} ref={video} className="nowheel nopan"
       aria-label={t("media.card.videoLabel", { "0": title })} src={src} poster={posterSrc}
@@ -104,9 +106,14 @@ export function VideoPreview({ src, posterSrc, title, demo }: {
       <span className="video-preview-time">{timeLabel(position)} / {timeLabel(duration)}</span>
     </div> : null}
     {demo ? <span className="media-demo-badge">{t("media.card.mockVideo")}</span> : null}
-    <a className="media-expand-button nodrag nowheel nopan" href={src}
-      aria-label={t("media.card.openVideo")} title={t("media.card.openVideo")} rel="noopener noreferrer" target="_blank"
-      onPointerDown={isolateControl} onMouseDown={isolateControl} onClick={isolateControl}>
-      <ArrowsOutSimple size={19} /></a>
+    <Button variant="ghost" type="button" className="media-expand-button nodrag nowheel nopan"
+      aria-label={t("media.card.openVideo")} title={t("media.card.openVideo")}
+      onPointerDown={isolateControl} onMouseDown={isolateControl} onClick={(event) => {
+        event.stopPropagation();
+        setHovered(false);
+        setExpanded(true);
+      }}><ArrowsOutSimple size={19} /></Button>
+    {expanded ? <MediaPreviewDialog kind="video" title={title} sourceUrl={src} posterSrc={posterSrc}
+      width={width} height={height} contentType={contentType} onClose={() => setExpanded(false)} /> : null}
   </div>;
 }

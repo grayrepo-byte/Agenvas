@@ -37,7 +37,7 @@ import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { CropPanel } from "./CropPanel";
-import { ImagePreviewDialog } from "./ImagePreviewDialog";
+import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import { MediaCardUpload } from "./MediaCardUpload";
 import { assetMetadataQueryOptions,displayedMediaAssetId,isMediaDraftDisplayed,mediaDraftQueryOptions,mediaVersionsQueryOptions } from "./mediaDisplay";
 import { isMediaTaskRunning,latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
@@ -320,7 +320,9 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           if (selectedFile) setUploadFile(selectedFile);
         }} /> : null}
       {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
-        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected} />
+        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected}
+        width={metadata.data?.width ?? undefined} height={metadata.data?.height ?? undefined}
+        contentType={metadata.data?.contentType} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
           {metadata.data
             ? isImage ? t("media.card.imageDimensionsRefreshFailed") : t("media.card.videoDimensionsRefreshFailed")
@@ -487,8 +489,9 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
  * preview is kept for later list-style surfaces and is not used here. Videos load only their
  * cover frame until the pointer enters the preview.
  */
-function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected }: {
+function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected, width, height, contentType }: {
   artifact: Artifact; assetId: string; title: string; audioDescription: string; demo: boolean; selected: boolean;
+  width?: number; height?: number; contentType?: string;
 }) {
   useLocale();
   const [failed, setFailed] = useState(false);
@@ -497,7 +500,8 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
   if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title}
     description={audioDescription || title} selected={selected} demo={demo} />;
   if (artifact.kind === "VIDEO") return <VideoPreview key={assetId} title={title} demo={demo}
-    src={assetContentUrl(artifact.projectId, assetId)} posterSrc={assetThumbnailUrl(artifact.projectId, assetId)} />;
+    src={assetContentUrl(artifact.projectId, assetId)} posterSrc={assetThumbnailUrl(artifact.projectId, assetId)}
+    width={width} height={height} contentType={contentType} />;
   return <div className="media-card-preview">
     {!failed ? <img alt={t("media.card.mediaLabel", { "0": title, "1": t("media.card.preview") })}
         decoding="async" draggable={false} loading="lazy" onError={() => setFailed(true)}
@@ -505,9 +509,10 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
         : <div className="media-card-empty"><ImageIcon size={36} /><span>{t("media.card.previewUnavailable")}</span>
           <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("media.card.retryPreview")}</Button></div>}
     {demo ? <span className="media-demo-badge">{t("media.card.mockAsset")}</span> : null}
-    <Button variant="ghost" className="media-expand-button nodrag" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
+    <Button variant="ghost" className="media-expand-button nodrag nowheel nopan" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
+        onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>
-    {expanded ? <ImagePreviewDialog title={title}
+    {expanded ? <MediaPreviewDialog kind="image" title={title} width={width} height={height}
       sourceUrl={assetContentUrl(artifact.projectId, assetId)} onClose={() => setExpanded(false)} /> : null}
   </div>;
 }

@@ -1,4 +1,4 @@
-import { act,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { VideoPreview } from "./VideoPreview";
 
@@ -111,5 +111,50 @@ describe("VideoPreview", () => {
     fireEvent.mouseLeave(preview);
     await act(async () => rejectPlay(new DOMException("Interrupted", "AbortError")));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("opens an in-app video viewer without activating the hover player", async () => {
+    const { onClick, onMouseDown, onPointerDown, onKeyDown } = showPreview();
+    const expand = screen.getByRole("button", { name: "放大视频" });
+    expand.focus();
+    fireEvent.pointerDown(expand);
+    fireEvent.mouseDown(expand);
+    fireEvent.click(expand);
+    const dialog = await screen.findByRole("dialog", { name: "预览 的视频预览" });
+    const player = dialog.querySelector("video")!;
+    expect(player).toHaveAttribute("controls");
+    expect(player).not.toHaveAttribute("autoplay");
+    expect(player).toHaveAttribute("poster", "/synthetic-poster.png");
+    expect(player.querySelector("source")).toHaveAttribute("src", "/synthetic-video.mp4");
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    expect(document.querySelector(".video-card-preview > video")).toBeNull();
+    fireEvent.pointerDown(player);
+    fireEvent.mouseDown(player);
+    fireEvent.click(player);
+    fireEvent.keyDown(player, { key: "Delete" });
+    expect(onClick).not.toHaveBeenCalled();
+    expect(onMouseDown).not.toHaveBeenCalled();
+    expect(onPointerDown).not.toHaveBeenCalled();
+    expect(onKeyDown).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭预览" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(expand).toHaveFocus());
+  });
+
+  it("pauses the hover video during enlargement and retains its position after closing", async () => {
+    const { preview } = showPreview();
+    const cardVideo = hover(preview);
+    cardVideo.currentTime = 4;
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "放大视频" }));
+    const dialog = await screen.findByRole("dialog", { name: "预览 的视频预览" });
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭预览" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
+    expect(hover(preview)).toBe(cardVideo);
+    expect(cardVideo.currentTime).toBe(4);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2);
   });
 });
