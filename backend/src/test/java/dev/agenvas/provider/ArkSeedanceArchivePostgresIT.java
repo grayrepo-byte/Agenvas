@@ -54,8 +54,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Seedance result download, audio removal and archive with a fake Ark API. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, ArkSeedanceArchivePostgresIT.FakeClient.class},
-        properties = "agenvas.identity.bootstrap-secret=ark-archive-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, ArkSeedanceArchivePostgresIT.FakeClient.class})
 class ArkSeedanceArchivePostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -104,8 +103,7 @@ class ArkSeedanceArchivePostgresIT {
                 "ARK_SEEDANCE_2_I2V");
         catalog.setDefault(Task.Kind.VIDEO_GENERATION,
                 catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), capability.id());
-        AdminPrincipal owner = identities.setup("ark-archive-integration-secret",
-                "ark-admin", "ark-password-123");
+        AdminPrincipal owner = identities.setup("ark-admin", "ark-password-123");
 
         Fixture accepted = fixture(owner.userId(), "Archived Seedance");
         Task acceptedTask = approve(owner.userId(), accepted);

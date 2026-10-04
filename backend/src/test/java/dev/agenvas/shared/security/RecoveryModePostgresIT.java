@@ -42,7 +42,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=recovery-integration-bootstrap-secret",
         "agenvas.recovery-mode=true"})
 class RecoveryModePostgresIT {
 
@@ -93,8 +92,7 @@ class RecoveryModePostgresIT {
         assertThat(context.getBeansOfType(MediaExecutionScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(dev.agenvas.skill.application.SkillWorker.class)).isEmpty();
 
-        AdminPrincipal owner = identities.setup("recovery-integration-bootstrap-secret",
-                "recovery-admin", "recovery-password-123");
+        AdminPrincipal owner = identities.setup("recovery-admin", "recovery-password-123");
         Project project = projects.create(owner.userId(), "Restored project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var authentication = authentication(new UsernamePasswordAuthenticationToken(

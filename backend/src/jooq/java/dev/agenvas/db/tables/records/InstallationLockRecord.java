@@ -6,6 +6,8 @@ package dev.agenvas.db.tables.records;
 
 import dev.agenvas.db.tables.InstallationLock;
 
+import java.time.OffsetDateTime;
+
 import org.jooq.Record1;
 import org.jooq.impl.UpdatableRecordImpl;
 
@@ -32,6 +34,22 @@ public class InstallationLockRecord extends UpdatableRecordImpl<InstallationLock
         return (Short) get(0);
     }
 
+    /**
+     * Setter for <code>public.installation_lock.initialized_at</code>.
+     * 首次管理员初始化的完成时间；停用或删除管理员不会重新开放初始化
+     */
+    public void setInitializedAt(OffsetDateTime value) {
+        set(1, value);
+    }
+
+    /**
+     * Getter for <code>public.installation_lock.initialized_at</code>.
+     * 首次管理员初始化的完成时间；停用或删除管理员不会重新开放初始化
+     */
+    public OffsetDateTime getInitializedAt() {
+        return (OffsetDateTime) get(1);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -55,10 +73,11 @@ public class InstallationLockRecord extends UpdatableRecordImpl<InstallationLock
     /**
      * Create a detached, initialised InstallationLockRecord
      */
-    public InstallationLockRecord(Short id) {
+    public InstallationLockRecord(Short id, OffsetDateTime initializedAt) {
         super(InstallationLock.INSTALLATION_LOCK);
 
         setId(id);
+        setInitializedAt(initializedAt);
         resetChangedOnNotNull();
     }
 }

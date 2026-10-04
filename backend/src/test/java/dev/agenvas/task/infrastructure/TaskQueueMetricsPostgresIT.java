@@ -29,7 +29,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=task-queue-age-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class TaskQueueMetricsPostgresIT {
@@ -56,8 +55,7 @@ class TaskQueueMetricsPostgresIT {
 
     @Test
     void oldestDueReadyAgeExcludesFutureWorkAndHasNoIdentifierLabels() {
-        AdminPrincipal owner = identities.setup("task-queue-age-integration-secret",
-                "queue-admin", "queue-password-123");
+        AdminPrincipal owner = identities.setup("queue-admin", "queue-password-123");
         Project project = projects.create(owner.userId(), "Queue metrics",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());

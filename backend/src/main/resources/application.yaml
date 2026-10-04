@@ -83,8 +83,6 @@ agenvas:
     config-version: ${AGENVAS_LLM_CONFIG_VERSION:1}
     tool-calling-verified: ${AGENVAS_LLM_TOOL_CALLING_VERIFIED:false}
     scheduler-enabled: ${AGENVAS_LLM_SCHEDULER_ENABLED:true}
-  identity:
-    bootstrap-secret: ${AGENVAS_BOOTSTRAP_SECRET}
   task:
     # 租约必须同时覆盖两件事：整次同步 Provider 调用，以及客户端的超时上限
     # （OpenAiImage2Client / GoogleNanoBananaClient 均为 5 分钟）。短于调用耗时的租约会让

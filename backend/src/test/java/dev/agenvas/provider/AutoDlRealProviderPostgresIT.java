@@ -48,8 +48,7 @@ import tools.jackson.databind.ObjectMapper;
 @EnabledIfSystemProperty(named = "agenvas.autodl.real-test", matches = "true")
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=autodl-real-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class AutoDlRealProviderPostgresIT {
     private static final int REFERENCE_PIXELS = 512;
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(5);
@@ -77,7 +76,7 @@ class AutoDlRealProviderPostgresIT {
 
     @Test void actualWorkerSubmitsBase64PollsOriginalTaskAndArchivesVideoWithAudio() throws Exception {
         Path credential = Path.of(System.getProperty("agenvas.autodl.credential-file"));
-        UUID owner = identities.setup("autodl-real-integration-secret", "autodl-real-admin", "autodl-real-password-123").userId();
+        UUID owner = identities.setup("autodl-real-admin", "autodl-real-password-123").userId();
         var connection = catalog.createConnection("autodl-real-create", "AutoDL real temporary", "AUTODL", null,
                 Files.readString(credential).trim());
         var capability = catalog.publishCapability(connection.id(), "H3 real 1 second", AutoDlWorkflows.ADAPTER_ID,

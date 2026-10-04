@@ -51,7 +51,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=skill-archive-test-secret",
         "agenvas.library.worker-enabled=false", "agenvas.skill.worker-enabled=false", "agenvas.tasks.scheduler-enabled=false"})
 class SkillAssetArchivePostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -77,7 +76,7 @@ class SkillAssetArchivePostgresIT {
 
     @BeforeEach void setup() {
         if (owner == null)
-            owner = identities.setup("skill-archive-test-secret", "skill-archive-admin", "skill-password-123");
+            owner = identities.setup("skill-archive-admin", "skill-password-123");
     }
 
     @Test void fixedSkillBytesSurvivePermanentSourceDeletionAndInstallWithoutCanvasSideEffects() throws Exception {

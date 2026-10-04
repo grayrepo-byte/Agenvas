@@ -40,7 +40,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=shutdown-gate-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class ShutdownGatePostgresIT {
@@ -67,8 +66,7 @@ class ShutdownGatePostgresIT {
 
     @Test
     void closeSignalRejectsNewRunAndClaimsButLeavesReadyWorkDurable() throws Exception {
-        AdminPrincipal owner = identities.setup("shutdown-gate-integration-secret",
-                "shutdown-admin", "shutdown-password-123");
+        AdminPrincipal owner = identities.setup("shutdown-admin", "shutdown-password-123");
         Project project = projects.create(owner.userId(), "Shutdown gate",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());

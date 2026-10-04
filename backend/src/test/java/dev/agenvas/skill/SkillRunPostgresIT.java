@@ -87,13 +87,11 @@ import tools.jackson.databind.node.ObjectNode;
 /** Agent-only public flow with real PostgreSQL and a deterministic fake model. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, SkillRunPostgresIT.FakeConfig.class}, properties = {
-        "agenvas.identity.bootstrap-secret=" + SkillRunPostgresIT.BOOTSTRAP_SECRET, "agenvas.llm.scheduler-enabled=false",
+@SpringBootTest(classes = {AgenvasApplication.class, SkillRunPostgresIT.FakeConfig.class}, properties = { "agenvas.llm.scheduler-enabled=false",
         "agenvas.library.worker-enabled=false", "agenvas.skill.worker-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false", "agenvas.tasks.scheduler-enabled=false",
         "agenvas.provider.mock.scheduler-enabled=false", "agenvas.provider.mock.video-scheduler-enabled=false"})
 class SkillRunPostgresIT {
-    static final String BOOTSTRAP_SECRET = "synthetic-skill-run-bootstrap-secret";
     private static final String WORKER = "skill-run-test-model";
     private static final Path STORAGE_ROOT = temporaryRoot();
     private static AdminPrincipal owner;
@@ -136,7 +134,7 @@ class SkillRunPostgresIT {
     private RequestPostProcessor auth;
 
     @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup(BOOTSTRAP_SECRET, "skill-run-admin", "skill-password-123");
+        if (owner == null) owner = identities.setup("skill-run-admin", "skill-password-123");
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
     }

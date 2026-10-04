@@ -44,8 +44,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=task-integration-bootstrap-secret")
+        classes = AgenvasApplication.class)
 class TaskLeasePostgresIT {
 
     private static final Duration TEST_LEASE_DURATION = Duration.ofMinutes(1);
@@ -90,8 +89,7 @@ class TaskLeasePostgresIT {
 
     @Test
     void claimsAreExclusiveExpiredEpochIsFencedAndWorkRunsWithoutTransaction() throws Exception {
-        AdminPrincipal owner = identityService.setup(
-                "task-integration-bootstrap-secret", "task-admin", "task-password-123");
+        AdminPrincipal owner = identityService.setup("task-admin", "task-password-123");
         Project project = projectService.create(
                 owner.userId(), "Task project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agentService.create(

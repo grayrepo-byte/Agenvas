@@ -43,7 +43,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=configured-media-synthetic-bootstrap",
         "agenvas.provider.mode=configured",
         "agenvas.llm.mode=configured",
         "agenvas.llm.scheduler-enabled=false",
@@ -86,7 +85,7 @@ class ConfiguredMediaPostgresIT {
         assertThatThrownBy(() -> catalog.defaultFor(Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(ApiProblemException.class);
 
-        var admin = identities.setup("configured-media-synthetic-bootstrap", "configured-media-admin",
+        var admin = identities.setup("configured-media-admin",
                 "synthetic-media-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null,
                 List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));

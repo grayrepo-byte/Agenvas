@@ -33,7 +33,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=comfy-origin-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -70,7 +69,7 @@ class ComfyUiOriginPreflightPostgresIT {
                 mapper.readTree("{\"checkpoint\":\"test-model.safetensors\"}")).id();
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability);
-        var owner = identities.setup("comfy-origin-integration-secret", "origin-admin",
+        var owner = identities.setup("origin-admin",
                 "origin-password-123");
         Project project = projects.create(owner.userId(), "Pinned origin",
                 Project.AspectRatio.LANDSCAPE_16_9);

@@ -55,8 +55,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL and fake AutoDL HTTP, including immutable inputs, recovery and retained audio. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AutoDlVideoPostgresIT.FakeClient.class},
-        properties = "agenvas.identity.bootstrap-secret=autodl-integration-test-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, AutoDlVideoPostgresIT.FakeClient.class})
 class AutoDlVideoPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final HttpServer SERVER = startServer();
@@ -94,7 +93,7 @@ class AutoDlVideoPostgresIT {
     @Autowired ObjectMapper mapper;
 
     @Test void base64InputsStayPinnedWhilePollingArchiveRetriesCancellationAndUnknownAreSafe() throws Exception {
-        UUID owner = identities.setup("autodl-integration-test-secret", "autodl-admin", "autodl-password-123").userId();
+        UUID owner = identities.setup("autodl-admin", "autodl-password-123").userId();
         videoBytes = video();
         var connection = catalog.createConnection("autodl-test-create", "AutoDL fake", "AUTODL", null, "fake-autodl-original-key");
         var settings = mapper.createObjectNode().put("workflowId", "minimax_h3_z0903").put("videoResolution", "480p").put("seed", 123);

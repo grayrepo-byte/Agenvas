@@ -3,16 +3,11 @@ set -euo pipefail
 
 # Rebuild the local Compose images before replacing any running containers.
 deploy_repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-deploy_env_file="$deploy_repo/.env"
-deploy_compose_file="$deploy_repo/deploy/compose.yaml"
+deploy_compose_file="$deploy_repo/docker-compose.local.yml"
 deploy_health_wait_seconds=300
 
 if [[ $# -ne 0 ]]; then
   printf 'Usage: %s\n' "$0" >&2
-  exit 2
-fi
-if [[ ! -r $deploy_env_file ]]; then
-  printf 'Missing readable %s. Copy .env.example to .env and set the required secrets.\n' "$deploy_env_file" >&2
   exit 2
 fi
 if ! command -v docker >/dev/null 2>&1; then
@@ -24,7 +19,7 @@ if ! docker compose version >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; th
   exit 2
 fi
 
-deploy_compose=(docker compose --env-file "$deploy_env_file" -f "$deploy_compose_file")
+deploy_compose=(docker compose -f "$deploy_compose_file")
 "${deploy_compose[@]}" config --quiet
 
 printf 'Building local Compose images...\n'

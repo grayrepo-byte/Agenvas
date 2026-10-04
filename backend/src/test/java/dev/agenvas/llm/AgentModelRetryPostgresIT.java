@@ -58,8 +58,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentModelRetryPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=model-retry-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, AgentModelRetryPostgresIT.FakeConfig.class})
 class AgentModelRetryPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -87,7 +86,7 @@ class AgentModelRetryPostgresIT {
     private Project project;
     private AgentRun run;
     @BeforeAll void setupOwner() {
-        owner = identities.setup("model-retry-integration-secret", "retry-admin", "retry-password-123");
+        owner = identities.setup("retry-admin", "retry-password-123");
     }
     @BeforeEach void setupRun() {
         clock.ticking = false;

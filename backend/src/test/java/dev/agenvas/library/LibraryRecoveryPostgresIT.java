@@ -48,8 +48,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Crash fixtures manipulate local files/leases; all behaviour assertions use authenticated HTTP. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=library-recovery-test-secret", "agenvas.library.worker-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.library.worker-enabled=false"})
 class LibraryRecoveryPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     static final Path ROOT = temporaryRoot();
@@ -75,7 +74,7 @@ class LibraryRecoveryPostgresIT {
     RequestPostProcessor auth;
     MockMvc mvc;
     @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("library-recovery-test-secret", "recovery-admin", "library-password-123");
+        if (owner == null) owner = identities.setup("recovery-admin", "library-password-123");
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
     }

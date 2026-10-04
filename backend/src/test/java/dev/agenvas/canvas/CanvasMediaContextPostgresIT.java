@@ -38,8 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL proof that media work belongs to one CanvasItem, not its Artifact. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=canvas-media-context-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class CanvasMediaContextPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -60,7 +59,7 @@ class CanvasMediaContextPostgresIT {
 
     @Test
     void twoCardsKeepIndependentDraftsAndDisplayedVersions() throws Exception {
-        AdminPrincipal owner = identities.setup("canvas-media-context-secret", "branch-admin",
+        AdminPrincipal owner = identities.setup("branch-admin",
                 "branch-password-123");
         Project project = projects.create(owner.userId(), "Branches",
                 Project.AspectRatio.LANDSCAPE_16_9);

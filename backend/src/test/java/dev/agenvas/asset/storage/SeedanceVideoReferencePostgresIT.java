@@ -53,8 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL/FFmpeg and explicitly fake HTTP providers, using only synthetic media and credentials. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = { AgenvasApplication.class, SeedanceVideoReferencePostgresIT.Transport.class }, properties = {
-        "agenvas.identity.bootstrap-secret=seedance-relay-test-bootstrap", "agenvas.tasks.scheduler-enabled=false",
+@SpringBootTest(classes = { AgenvasApplication.class, SeedanceVideoReferencePostgresIT.Transport.class }, properties = { "agenvas.tasks.scheduler-enabled=false",
         "agenvas.library.worker-enabled=false" })
 class SeedanceVideoReferencePostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -113,7 +112,7 @@ class SeedanceVideoReferencePostgresIT {
         }
     }
     @Test void localRelayAndCloudDirectSigningUseFrozenVersionsWithoutLeakingOrResubmitting() throws Exception {
-        var owner = identities.setup("seedance-relay-test-bootstrap", "relay-admin", "strong-test-password");
+        var owner = identities.setup("relay-admin", "strong-test-password");
         UUID project = projects.create(owner.userId(), "Synthetic video reference", Project.AspectRatio.LANDSCAPE_16_9).id();
         var connection = capabilities.createConnection("ark-relay-test", "Ark test", "ARK", null, "fake-ark-key");
         var capability = capabilities.publishCapability(connection.id(), "Seedance test", "ARK_SEEDANCE_2_I2V");

@@ -33,7 +33,7 @@
 
 本地 Testcontainers PostgreSQL 仅用于测试且不启用 TLS；Maven Surefire/Failsafe 的测试进程固定 JDBC `sslmode=disable`，避免驱动在 Docker Desktop 端口代理上进行不必要的 SSL 协商。此设置不进入 Spring Boot 生产运行配置，也不改变部署数据库的 TLS 策略。
 
-jOOQ 生成源码（141 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
+jOOQ 生成源码（145 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
 Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置；独立 JVM 的默认 Mock 与开发 Compose 的显式 Mock 加载应用自有确定性 `ChatGateway` 和 `GenerationGateway`。默认部署 Compose 使用 `configured`，管理员配置数据库模型或部署者配置候选聊天适配器的端点、模型与 Key 后才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 
@@ -59,11 +59,11 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 | 后端构建 | `maven:3.9.12-eclipse-temurin-21-noble` | `sha256:c3c9d3ac4ce8431a3995c0318b8d390f448e693dd4fabc16e9b68d2e1f3d7b46` |
 | 后端运行 | `eclipse-temurin:21.0.9_10-jre-noble` | `sha256:d3eb69add1874bc785382d6282db53a67841f602a1139dee6c4a1221d8c56567` |
 | Web/Nginx | `nginx:1.28.0-alpine` | `sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284` |
-| 数据库基础镜像 | `postgres:17.11-alpine` | `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` |
+| 数据库运行镜像 | 官方 `postgres:17.11-alpine` | 按用户决定直接使用固定版本标签，不构建派生镜像 |
 
-所有运行容器使用非 root 用户；server 和 web 使用只读根文件系统及受限 tmpfs。默认宿主端口只绑定 `127.0.0.1`。
+server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；PostgreSQL 在各 Compose 内联入口中首次生成持久密钥后，交由官方入口初始化数据库并以 postgres 用户运行。server 从只读 credentials-data 文件读取数据库密码与凭证主密钥，目录为 0700、文件为 0600，UID 100/GID 101。默认宿主端口只绑定 `127.0.0.1`。部署定向测试使用 Python 3 标准库和隔离官方 PostgreSQL，运行服务不需要 Python；8 项通过，详见 T02。
 
-Web 与数据库运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。数据库镜像额外用 Alpine `su-exec` 替换官方入口脚本所调用的 `gosu`；本机已验证初始化和 `pg_isready`。Trivy 0.74.0 仍会读到底层镜像中已被替换的旧 `gosu`，CI 仅对 PostgreSQL 镜像的 `usr/local/bin/gosu` 路径做精确排除，其余路径不排除；此例外的负责人、证据和到期日见 `docs/security-exceptions.md`。
+Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。2026-10-04 按用户决定，PostgreSQL 直接使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，移除自建 Dockerfile、su-exec 替换和 gosu 路径扫描排除；CI 直接拉取并扫描官方镜像。旧派生镜像扫描和初始化结果是历史记录，不代表当前官方镜像的安全验收。
 
 ## 初始基线验证（历史记录）
 
@@ -115,3 +115,11 @@ RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务�
 ## 2026-10-03 Seedance 视频参考与签名验证范围
 
 不新增依赖；使用现有 OkHttp 4.12.0、JDK HMAC-SHA256 和固定 FFmpeg/ffprobe。S3/COS 查询签名采用 AWS SigV4，OSS 使用 OSS V4；AWS 官方公开签名向量及独立 Python 计算的 OSS 合成向量通过定向单元测试。真实 PostgreSQL、FFmpeg 和假 HTTP 覆盖独立中继设置、本地上传、云对象免上传、签名脱敏、失败与清理；真实云桶及 Seedance 调用未验证。
+
+## 2026-10-04 Docker Hub 发布工具与验证范围
+
+不调整 Java、Node、pnpm、PostgreSQL、Trivy 或构建基础镜像版本。GitHub 镜像发布新增官方 Docker Actions，均固定到当次核对的稳定主版本 commit：`docker/login-action` v4（`dbcb813823bdd20940b903addbd779551569679f`）、`docker/setup-buildx-action` v4（`f87e5991a6d7451dcb8d9637bfbc97413f497069`）、`docker/metadata-action` v6（`dc802804100637a589fabce1cb79ff13a1411302`）。原生构建与扫描使用 `ubuntu-24.04` 和 `ubuntu-24.04-arm`；只构建和发布 server/web，PostgreSQL 直接拉取官方固定版本镜像并扫描。发布复用已扫描应用镜像，不二次构建；main 发布 latest，版本标签不覆盖 latest。
+
+本机使用 Docker Compose 2.21.0 执行四种入口的定向配置检查，并验证默认镜像 Compose 单文件复制后可独立解析，使用 actionlint 1.7.12 检查工作流、Bash 语法检查修改的部署脚本与工作流 run 步骤。未在本机执行全量测试、应用镜像构建或官方 PostgreSQL 启动/安全扫描，未运行 GitHub 托管流水线、Docker Hub 登录/推送或远程镜像启动；双架构实际构建、官方镜像漏洞扫描与发布仍须由 CI 验证。此前配置的 Docker Hub Actions Secrets 已核对存在；该元数据核对不代表真实供应商登录或镜像发布验收。
+
+2026-10-04 初始化简化：新增 V9 永久完成标记，取消 bootstrap 配置；jOOQ 从独立空 PostgreSQL 重新生成，145 个生成文件中只改变 InstallationLock 表与记录两个文件。服务仍为 Java 21，未增加依赖。

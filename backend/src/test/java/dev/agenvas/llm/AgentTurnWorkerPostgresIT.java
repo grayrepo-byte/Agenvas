@@ -41,8 +41,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Fake-model, real-PostgreSQL proof of a full durable tool-to-next-turn lifecycle. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentTurnWorkerPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=agent-worker-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, AgentTurnWorkerPostgresIT.FakeConfig.class})
 class AgentTurnWorkerPostgresIT {
 
     @Container
@@ -66,8 +65,7 @@ class AgentTurnWorkerPostgresIT {
 
     @Test
     void modelToolResultSchedulesASecondDurableTurnThenReleasesTheRunSlot() {
-        AdminPrincipal owner = identities.setup("agent-worker-integration-secret",
-                "worker-admin", "worker-password-123");
+        AdminPrincipal owner = identities.setup("worker-admin", "worker-password-123");
         Project project = projects.create(owner.userId(), "Worker project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",

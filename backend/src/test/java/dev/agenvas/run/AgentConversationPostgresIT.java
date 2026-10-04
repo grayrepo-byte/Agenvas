@@ -46,10 +46,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=conversation-integration-secret",
         "agenvas.llm.mode=mock"})
 class AgentConversationPostgresIT {
-    private static final String BOOTSTRAP_SECRET = "conversation-integration-secret";
+
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
@@ -71,7 +70,7 @@ class AgentConversationPostgresIT {
 
     @Test
     void sessionsKeepIndependentHistoryWhileMessagesShareOneProjectSlot() throws Exception {
-        AdminPrincipal owner = identities.setup(BOOTSTRAP_SECRET, "conversation-admin", "conversation-password-123");
+        AdminPrincipal owner = identities.setup("conversation-admin", "conversation-password-123");
         Project project = projects.create(owner.userId(), "Conversations", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片", List.of());
         var empty = conversations.list(owner.userId(), project.id(), agent.id(), null, null);

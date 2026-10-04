@@ -34,8 +34,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL and synthetic PNGs: node results remain independent of library defaults. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=media-input-integration-secret", "agenvas.llm.mode=mock",
+@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.mode=mock",
         "agenvas.llm.scheduler-enabled=false", "agenvas.tasks.scheduler-enabled=false"})
 class AgentRunMediaInputsPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -56,7 +55,7 @@ class AgentRunMediaInputsPostgresIT {
     @Autowired ObjectMapper mapper;
 
     @Test void boundNodeResultAndSelectedEmptyMediaDoNotRequireLibraryDefaults() {
-        var owner = identities.setup("media-input-integration-secret", "media-input-admin", "synthetic-password-123");
+        var owner = identities.setup("media-input-admin", "synthetic-password-123");
         var project = projects.create(owner.userId(), "Media input regression", Project.AspectRatio.SQUARE_1_1);
         var media = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Node image", null);
         UUID imageNode = UUID.randomUUID();

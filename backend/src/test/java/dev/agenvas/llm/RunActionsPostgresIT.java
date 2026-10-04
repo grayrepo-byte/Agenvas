@@ -58,7 +58,6 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, RunActionsPostgresIT.FakeConfig.class},
         properties = {
-                "agenvas.identity.bootstrap-secret=run-actions-integration-secret",
                 "agenvas.llm.scheduler-enabled=false"})
 class RunActionsPostgresIT {
 
@@ -86,8 +85,7 @@ class RunActionsPostgresIT {
 
     @Test
     void onlyCommittedPublicBusinessResultsAreListedWithinTheOwnedRun() throws Exception {
-        AdminPrincipal owner = identities.setup("run-actions-integration-secret",
-                "actions-admin", "actions-password-123");
+        AdminPrincipal owner = identities.setup("actions-admin", "actions-password-123");
         Project project = projects.create(owner.userId(), "Actions project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",

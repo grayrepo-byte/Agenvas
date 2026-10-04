@@ -53,7 +53,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=comfy-image-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -111,8 +110,7 @@ class ComfyUiImagePostgresIT {
                 mapper.readTree("{\"checkpoint\":\"test-model.safetensors\"}")).id();
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability);
-        AdminPrincipal owner = identities.setup("comfy-image-integration-secret",
-                "comfy-admin", "comfy-password-123");
+        AdminPrincipal owner = identities.setup("comfy-admin", "comfy-password-123");
         Project project = projects.create(owner.userId(), "Comfy fake",
                 Project.AspectRatio.LANDSCAPE_16_9);
         UUID referenceAsset = ImageAssetFixture.archive(assets, owner.userId(), project.id());

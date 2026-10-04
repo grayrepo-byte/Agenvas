@@ -8,6 +8,7 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.records.InstallationLockRecord;
 
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -57,6 +58,12 @@ public class InstallationLock extends TableImpl<InstallationLockRecord> {
      * The column <code>public.installation_lock.id</code>. 记录身份
      */
     public final TableField<InstallationLockRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "记录身份");
+
+    /**
+     * The column <code>public.installation_lock.initialized_at</code>.
+     * 首次管理员初始化的完成时间；停用或删除管理员不会重新开放初始化
+     */
+    public final TableField<InstallationLockRecord, OffsetDateTime> INITIALIZED_AT = createField(DSL.name("initialized_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "首次管理员初始化的完成时间；停用或删除管理员不会重新开放初始化");
 
     private InstallationLock(Name alias, Table<InstallationLockRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

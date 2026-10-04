@@ -43,8 +43,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Public HTTP acceptance tests; fixtures use existing application boundaries. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=library-integration-test-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class LibraryPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();
@@ -64,7 +63,7 @@ class LibraryPostgresIT {
     @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     @Test void savesTheDisplayedImageAsAnIndependentClassifiedAsset() throws Exception {
-        AdminPrincipal owner = identities.setup("library-integration-test-secret", "library-admin", "library-password-123");
+        AdminPrincipal owner = identities.setup("library-admin", "library-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         Project source = projects.create(owner.userId(), "Source", Project.AspectRatio.LANDSCAPE_16_9);

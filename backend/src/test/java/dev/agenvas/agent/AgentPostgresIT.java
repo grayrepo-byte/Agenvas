@@ -33,8 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=agent-integration-bootstrap-secret")
+        classes = AgenvasApplication.class)
 class AgentPostgresIT {
 
     @Container
@@ -71,8 +70,7 @@ class AgentPostgresIT {
 
     @Test
     void explicitBindingsAreVersionPinnedScopedAndVisibleOnTheCanvas() {
-        AdminPrincipal owner = identityService.setup(
-                "agent-integration-bootstrap-secret", "agent-admin", "agent-password-123");
+        AdminPrincipal owner = identityService.setup("agent-admin", "agent-password-123");
         Project project = projectService.create(
                 owner.userId(), "Agent project", Project.AspectRatio.LANDSCAPE_16_9);
         Project otherProject = projectService.create(

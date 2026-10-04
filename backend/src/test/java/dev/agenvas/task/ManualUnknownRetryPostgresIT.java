@@ -52,7 +52,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  */
 @Testcontainers
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=manual-retry-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=mock",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -81,7 +80,7 @@ class ManualUnknownRetryPostgresIT {
 
     @Test
     void explicitRiskCreatesOneNewReservationWithoutReusingTheOriginal() throws Exception {
-        AdminPrincipal owner = identities.setup("manual-retry-integration-secret", "retry-admin",
+        AdminPrincipal owner = identities.setup("retry-admin",
                 "retry-password-123");
         Project project = projects.create(owner.userId(), "Retry fixture",
                 Project.AspectRatio.LANDSCAPE_16_9);

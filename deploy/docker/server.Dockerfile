@@ -68,6 +68,9 @@ COPY --from=build --chown=agenvas:agenvas /workspace/depth-model/LICENSE \
 COPY --from=build --chown=agenvas:agenvas /workspace/onnxruntime-native/ \
     /opt/agenvas/lib/onnxruntime/
 
+COPY --chmod=755 deploy/docker/server-entrypoint.sh /usr/local/bin/agenvas-entrypoint
+
 USER agenvas
 EXPOSE 8080
-ENTRYPOINT ["java", "-Djava.io.tmpdir=/opt/agenvas/tmp", "-Donnxruntime.native.path=/opt/agenvas/lib/onnxruntime", "-jar", "/opt/agenvas/app.jar"]
+ENTRYPOINT ["/usr/local/bin/agenvas-entrypoint"]
+CMD ["java", "-Djava.io.tmpdir=/opt/agenvas/tmp", "-Donnxruntime.native.path=/opt/agenvas/lib/onnxruntime", "-jar", "/opt/agenvas/app.jar"]

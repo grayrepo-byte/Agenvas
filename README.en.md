@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/src/assets/brand/agenvas-square.png" alt="Agenvas Logo" width="120" />
+  <img src="frontend/src/assets/brand/agenvas-favicon.png" alt="Agenvas Logo" width="120" />
 </p>
 
 <h1 align="center">Agenvas</h1>
@@ -31,31 +31,34 @@ The interface supports Chinese, English, Russian, and Japanese. Media adapters i
 
 ## Quick start
 
-### 1. Configure the environment
+### 1. Start
 
-Install Docker Engine / Docker Desktop and Docker Compose. From the repository root:
-
-```sh
-cp .env.example .env
-```
-
-Edit `.env` (never commit real credentials):
-
-| Setting | Purpose |
-| --- | --- |
-| `AGENVAS_DB_PASSWORD` | Required: a unique random database password |
-| `AGENVAS_BOOTSTRAP_SECRET` | Required: a one-time administrator setup secret of at least 24 characters |
-| `AGENVAS_CREDENTIAL_MASTER_KEY` | A Base64-encoded random 32-byte key; required before saving model or storage credentials, or full ComfyUI addresses |
-
-### 2. Start and sign in
+Install Docker Engine / Docker Desktop and Docker Compose. Put `docker-compose.yml` in a directory and run:
 
 ```sh
-./deploy/update-local.sh
+docker compose up -d --wait
 ```
 
-The script builds images and starts the services, retaining database and media volumes. Starting and signing in require neither a GPU nor a model key.
+No `.env` file or manual secret generation is required. The first start generates a database password and credential encryption key, then stores them in the persistent `credentials-data` volume. Restarts, updates, and ordinary `down` retain the same values.
 
-Open <http://127.0.0.1:8088/setup>, enter the setup secret, create an administrator, and sign in.
+The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image without local compilation. The publishing workflow produces amd64 / arm64 application images; first publish a `latest` image containing the automatic secret entrypoint. Before that publication, use [container source builds](#container-source-builds). Starting and signing in require neither a GPU nor a model key.
+
+Each Compose file contains all environment settings, ports, volumes, health checks, and resource limits. Edit the chosen file directly. To pin an application version, replace `latest` with a published version, commit tag, or digest. PostgreSQL uses an [official fixed-version image](https://hub.docker.com/_/postgres) and is never built or published by this project.
+
+### 2. Create an administrator
+
+Open <http://127.0.0.1:8088/setup>, choose an administrator username and password, and sign in after account creation. No setup secret is required.
+
+The database permanently records successful initialization: only one concurrent request succeeds; later requests return `409 SETUP_ALREADY_COMPLETED`. Restarts, disabling, or deleting the account never reopen setup. Failed initialization rolls back and can be retried. Complete setup locally before exposing a public reverse proxy.
+
+The database password and credential encryption key are configured automatically. Their files are under `/run/agenvas/credentials/installation/` in the server container; ordinary use requires neither reading nor filling them in:
+
+| Variable | Generated value | File |
+| --- | --- | --- |
+| `AGENVAS_DB_PASSWORD` | 32 random bytes encoded as a 64-character hexadecimal password | `database-password` |
+| `AGENVAS_CREDENTIAL_MASTER_KEY` | 32 random bytes encoded as Base64 | `credential-master-key` |
+
+Values are never written into Compose, Git, or startup logs. Encrypt and escrow `credentials-data` separately when backing up. Avoid `down -v`, which deletes data and secrets. Existing databases must restore this volume or import the original database password and encryption key through a private Compose configuration outside the repository. See [backup and restore](docs/operations/backup-restore.md).
 
 ### 3. Configure models and create
 
@@ -70,15 +73,17 @@ Seedance video references need a publicly accessible media relay. See the [relay
 
 ### Update and stop
 
-After updating the code, run `./deploy/update-local.sh` again. To stop services and retain data volumes:
+Run `docker compose up -d --wait` to pull and apply the current `latest` application images. If you edited the image tags or digests directly in Compose, it uses those versions instead. To stop services and retain data volumes:
 
 ```sh
-docker compose --env-file .env -f deploy/compose.yaml down
+docker compose down
 ```
 
-Default ports are Web `8088`, API `8080`, and PostgreSQL `5432`, all bound to loopback. Override them in `.env` with `AGENVAS_WEB_PORT`, `AGENVAS_API_PORT`, and `AGENVAS_DB_PORT`.
+For source builds, update the checkout and run `./deploy/update-local.sh`; stop with `docker compose -f docker-compose.local.yml down`.
 
-Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES=true`. Back up databases, media, configuration, and encryption keys before upgrading. For old V1–V77 development database migration limits, see [backup and recovery](docs/operations/backup-restore.md).
+Default ports are Web `8088`, API `8080`, and PostgreSQL `5432`, all bound to loopback. Edit `ports` directly in the chosen Compose file.
+
+Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES: "true"` in Compose. Back up databases, media, configuration, and encryption keys before upgrading. For old V1–V77 development database migration limits, see [backup and recovery](docs/operations/backup-restore.md).
 
 ## Local development
 
@@ -90,15 +95,27 @@ Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES=t
 
 Toolchain: JDK 21, Node 24 LTS (24.12+), and pnpm 12.5.1. Exact versions are in the [dependency baseline](docs/dependency-baseline.md).
 
-### Mock environment
+### Container source builds
 
-Fill the database password and setup secret in `.env`, then start without external model accounts:
+From the repository root, compile server and web from the current checkout and start all three services; PostgreSQL uses the official fixed-version image:
 
 ```sh
-docker compose --env-file .env -f deploy/compose.dev.yaml up -d --build
+docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-Text and media use Mock. Images, video, and audio are synthetic demo materials, not real model output. Use the same setup URL and process as above; stop with `down` using the same Compose file.
+Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
+
+Image deployment and source builds both default to the `agenvas` project and retain the same database, media, and credential volumes. Back up data and check version compatibility before switching. To run independent environments simultaneously, use distinct project names with `-p` and override the ports.
+
+### Mock environment
+
+Start directly; the database password and encryption key are generated automatically, with no external model accounts:
+
+```sh
+docker compose -f deploy/compose.dev.yaml up -d --build --wait
+```
+
+Text and media use Mock. Images, video, and audio are synthetic demo materials, not real model output. Use the same setup URL to create your account directly. Stop with `down` using the same Compose file.
 
 Default deployment and Mock use separate data volumes but share default ports. Set distinct ports to run both simultaneously.
 
@@ -121,11 +138,32 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-Provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, `AGENVAS_DB_PASSWORD`, and `AGENVAS_BOOTSTRAP_SECRET` to the backend; it does not automatically load the root `.env`. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe; see [local image processing](docs/local-image-processing.md) for depth extraction.
+For a standalone JVM, provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, and `AGENVAS_DB_PASSWORD`; `.env.example` lists these variables but is not automatically loaded. Automatic installation secrets apply to container entrypoints. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe; see [local image processing](docs/local-image-processing.md) for depth extraction.
 
 Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
 
 </details>
+
+## Automatic Docker Hub publication
+
+Configure these under **Settings → Secrets and variables → Actions** in the GitHub repository:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| Secret | `DOCKERHUB_USERNAME` | A Docker Hub user authorized to push the images |
+| Secret | `DOCKERHUB_TOKEN` | A Docker Hub access token with read/write permissions for the target repositories |
+
+Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository and scanned only.
+
+`.github/workflows/ci.yml` runs on pushes to `main`, `v*.*.*` version tags, and manual dispatches. After frontend/backend tests, Compose checks, source scanning, and application/official PostgreSQL image scans on both architectures succeed, it publishes multi-platform manifests from the exact scanned application images:
+
+- Every publication: `sha-<full 40-character commit SHA>`.
+- `main` branch: also updates `latest` for the default Compose file; manual runs on main do the same.
+- `v0.1.0` version tag: also publishes `0.1.0`; prereleases retain their suffix, and version-tag runs do not overwrite main's `latest`.
+
+PRs run checks without Docker Hub credentials or pushes. Manual runs on other branches do not publish. Each service and architecture retains SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
+
+The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
 
 ## Documentation and contributing
 

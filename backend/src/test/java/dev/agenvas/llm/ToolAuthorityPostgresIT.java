@@ -44,8 +44,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Model text cannot promote identity, approval, budget or run limits into trusted tool authority. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=tool-authority-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class ToolAuthorityPostgresIT {
 
     @Container
@@ -72,8 +71,7 @@ class ToolAuthorityPostgresIT {
 
     @Test
     void forgedToolFieldsAndApprovalNameCannotCreateWork() {
-        AdminPrincipal owner = identities.setup("tool-authority-integration-secret",
-                "tool-authority-admin", "tool-password-123");
+        AdminPrincipal owner = identities.setup("tool-authority-admin", "tool-password-123");
         Project project = projects.create(owner.userId(), "Tool authority project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView brief = createBrief(owner.userId(), project.id());

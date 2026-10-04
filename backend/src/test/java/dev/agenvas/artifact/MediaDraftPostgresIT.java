@@ -38,8 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 /** The project API keeps an empty media Artifact and its editable draft across reads. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=media-draft-bootstrap-secret-2026")
+@SpringBootTest(classes = AgenvasApplication.class)
 class MediaDraftPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -61,7 +60,7 @@ class MediaDraftPostgresIT {
 
     @Test
     void emptyImageCardKeepsDraftAndRejectsStaleSave() throws Exception {
-        AdminPrincipal owner = identities.setup("media-draft-bootstrap-secret-2026", "draft-admin",
+        AdminPrincipal owner = identities.setup("draft-admin",
                 "draft-password-123");
         Project project = projects.create(owner.userId(), "Draft workspace",
                 Project.AspectRatio.LANDSCAPE_16_9);

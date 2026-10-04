@@ -57,7 +57,6 @@ import tools.jackson.databind.ObjectMapper;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=skill-catalogue-test-secret",
         "agenvas.skill.worker-enabled=false", "agenvas.library.worker-enabled=false"})
 class SkillPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -83,7 +82,7 @@ class SkillPostgresIT {
     private MockMvc mvc;
     private RequestPostProcessor auth;
     @BeforeAll void setup() {
-        owner = identities.setup("skill-catalogue-test-secret", "skill-catalogue-admin", "synthetic-password-123");
+        owner = identities.setup("skill-catalogue-admin", "synthetic-password-123");
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
     }

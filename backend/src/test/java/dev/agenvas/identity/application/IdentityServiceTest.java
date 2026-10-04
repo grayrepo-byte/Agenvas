@@ -21,20 +21,20 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 class IdentityServiceTest {
 
-    private static final String BOOTSTRAP_SECRET = "test-bootstrap-secret-123456";
     private static final Clock CLOCK =
             Clock.fixed(Instant.parse("2026-09-23T00:00:00Z"), ZoneOffset.UTC);
 
     private final AdminAccountRepository accounts = mock(AdminAccountRepository.class);
     private final PasswordEncoder passwords = PasswordEncoderFactories.createDelegatingPasswordEncoder();
     private final IdentityService service = new IdentityService(
-            accounts, passwords, new IdentityProperties(BOOTSTRAP_SECRET), CLOCK);
+            accounts, passwords, CLOCK);
 
     @Test
     void createsOnlyAHashedNormalizedAdministrator() {
-        when(accounts.hasAdminAccount()).thenReturn(false);
+        when(accounts.isSetupCompleted()).thenReturn(false);
+        when(accounts.completeSetup(CLOCK.instant())).thenReturn(true);
 
-        AdminPrincipal principal = service.setup(BOOTSTRAP_SECRET, " Admin ", "a-secure-password");
+        AdminPrincipal principal = service.setup(" Admin ", "a-secure-password");
 
         assertThat(principal.loginName()).isEqualTo("admin");
         verify(accounts).createAdmin(
@@ -42,16 +42,37 @@ class IdentityServiceTest {
                 org.mockito.ArgumentMatchers.eq("admin"),
                 org.mockito.ArgumentMatchers.argThat(hash -> passwords.matches("a-secure-password", hash)),
                 org.mockito.ArgumentMatchers.eq(CLOCK.instant()));
+        verify(accounts).completeSetup(CLOCK.instant());
     }
 
     @Test
-    void rejectsAnInvalidBootstrapSecretBeforeWriting() {
-        assertThatThrownBy(() -> service.setup("wrong-secret", "admin", "a-secure-password"))
+    void rejectsAnAlreadyCompletedInstallationBeforeWriting() {
+        when(accounts.isSetupCompleted()).thenReturn(true);
+        assertThatThrownBy(() -> service.setup("admin", "a-secure-password"))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
-                .isEqualTo("BOOTSTRAP_SECRET_INVALID");
+                .isEqualTo("SETUP_ALREADY_COMPLETED");
 
         verify(accounts, never()).createAdmin(any(), anyString(), anyString(), any());
+        verify(accounts, never()).completeSetup(any());
+    }
+
+    @Test
+    void doesNotReportSuccessIfCompletionCannotBeRecorded() {
+        when(accounts.completeSetup(CLOCK.instant())).thenReturn(false);
+        assertThatThrownBy(() -> service.setup("admin", "a-secure-password"))
+                .isInstanceOf(ApiProblemException.class)
+                .extracting(error -> ((ApiProblemException) error).code())
+                .isEqualTo("SETUP_ALREADY_COMPLETED");
+    }
+
+    @Test
+    void invalidAccountInputDoesNotCompleteSetup() {
+        assertThatThrownBy(() -> service.setup("admin", "short"))
+                .isInstanceOf(ApiProblemException.class)
+                .extracting(error -> ((ApiProblemException) error).code())
+                .isEqualTo("VALIDATION_ERROR");
+        verify(accounts, never()).completeSetup(any());
     }
 
     @Test

@@ -47,7 +47,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=comfy-crash-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -90,8 +89,7 @@ class ComfyUiAcceptedCrashPostgresIT {
 
     @Test
     void acceptedPromptSurvivesSubmitterProcessKillWithoutSecondSubmission() throws Exception {
-        AdminPrincipal owner = identities.setup("comfy-crash-integration-secret",
-                "crash-admin", "crash-password-123");
+        AdminPrincipal owner = identities.setup("crash-admin", "crash-password-123");
         Project project = projects.create(owner.userId(), "Accepted crash",
                 Project.AspectRatio.LANDSCAPE_16_9);
         UUID connection = catalog.createConnection("Accepted crash fake ComfyUI",
@@ -180,7 +178,6 @@ class ComfyUiAcceptedCrashPostgresIT {
         builder.environment().put("AGENVAS_DB_URL", POSTGRES.getJdbcUrl());
         builder.environment().put("AGENVAS_DB_USER", POSTGRES.getUsername());
         builder.environment().put("AGENVAS_DB_PASSWORD", POSTGRES.getPassword());
-        builder.environment().put("AGENVAS_BOOTSTRAP_SECRET", "comfy-crash-integration-secret");
         return builder.start();
     }
 

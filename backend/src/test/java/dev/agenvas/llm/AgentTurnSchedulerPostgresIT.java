@@ -45,7 +45,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, AgentTurnSchedulerPostgresIT.FakeConfig.class},
-        properties = {"agenvas.identity.bootstrap-secret=agent-scheduler-integration-secret",
+        properties = {
                 "agenvas.llm.scheduler-enabled=true"})
 class AgentTurnSchedulerPostgresIT {
 
@@ -131,8 +131,7 @@ class AgentTurnSchedulerPostgresIT {
         return jdbc.sql("select id from app_user where login_name = 'scheduler-admin'")
                 .query(UUID.class).optional()
                 .map(id -> new AdminPrincipal(id, "scheduler-admin"))
-                .orElseGet(() -> identities.setup("agent-scheduler-integration-secret",
-                        "scheduler-admin", "scheduler-password-123"));
+                .orElseGet(() -> identities.setup("scheduler-admin", "scheduler-password-123"));
     }
 
     @TestConfiguration

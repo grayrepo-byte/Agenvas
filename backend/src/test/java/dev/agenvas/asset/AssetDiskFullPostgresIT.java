@@ -56,7 +56,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Import(AssetDiskFullPostgresIT.FaultConfiguration.class)
 @SpringBootTest(classes = AgenvasApplication.class,
-        properties = {"agenvas.identity.bootstrap-secret=disk-full-integration-test-secret",
+        properties = {
                 "agenvas.export.scheduler-enabled=false"})
 class AssetDiskFullPostgresIT {
 
@@ -92,8 +92,7 @@ class AssetDiskFullPostgresIT {
     /** A failed archive cannot claim success and its original Provider ID remains retryable. */
     @Test
     void partialWriteFailureDoesNotPublishReadyOrCompleteTask() throws Exception {
-        AdminPrincipal owner = identities.setup("disk-full-integration-test-secret",
-                "disk-admin", "disk-password-123");
+        AdminPrincipal owner = identities.setup("disk-admin", "disk-password-123");
         Project project = projects.create(owner.userId(), "Disk failure",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());

@@ -258,15 +258,13 @@ export async function getSetupStatus(): Promise<SetupStatus> {
   return readJson<SetupStatus>("/api/v1/auth/setup-status", t("api.errors.setupStatusUnavailable"));
 }
 
-/** Creates the sole administrator. The bootstrap secret is sent once and never persisted. */
+/** Creates the sole administrator; the server permanently closes setup after success. */
 export async function setupAdministrator(
-  input: SetupRequest & { bootstrapSecret: string },
+  input: SetupRequest,
 ): Promise<CurrentUser> {
-  const { bootstrapSecret, ...body } = input;
   return writeJson<CurrentUser>("/api/v1/auth/setup", {
     method: "POST",
-    headers: { "X-Agenvas-Bootstrap-Secret": bootstrapSecret },
-    body: JSON.stringify(body),
+    body: JSON.stringify(input),
   });
 }
 

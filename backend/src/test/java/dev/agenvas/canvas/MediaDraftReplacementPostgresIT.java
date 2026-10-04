@@ -46,8 +46,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Replacements preserve atomicity and share project-before-draft lock ordering with ordinary saves. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=synthetic-template-replacement-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class MediaDraftReplacementPostgresIT {
     private static final UUID PHOTOGRAPHIC_STYLE_ID = UUID.fromString("00000000-0000-4000-8000-000000000301");
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -209,7 +208,7 @@ class MediaDraftReplacementPostgresIT {
     }
     private AdminPrincipal owner() {
         // Either independent test may initialize the deployment's single synthetic owner.
-        if (sharedOwner == null) sharedOwner = identities.setup("synthetic-template-replacement-secret", "template-test-admin",
+        if (sharedOwner == null) sharedOwner = identities.setup("template-test-admin",
                 "synthetic-password-123");
         return sharedOwner;
     }

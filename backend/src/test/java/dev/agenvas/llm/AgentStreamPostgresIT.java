@@ -36,7 +36,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=synthetic-stream-bootstrap",
         "agenvas.llm.scheduler-enabled=false"})
 class AgentStreamPostgresIT {
     private static final String WORKER = "stream-test-worker";
@@ -60,7 +59,7 @@ class AgentStreamPostgresIT {
     private static UUID owner;
 
     @BeforeEach void administrator() {
-        if (owner == null) owner = identities.setup("synthetic-stream-bootstrap", "stream-test-admin", "synthetic-password-123").userId();
+        if (owner == null) owner = identities.setup("stream-test-admin", "synthetic-password-123").userId();
     }
 
     @Test void publicTextAndProjectEventCommitTogetherAndSnapshotRestoresTheWholePrefix() {

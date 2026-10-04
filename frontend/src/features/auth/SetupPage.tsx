@@ -2,7 +2,7 @@ import { ArrowClockwise } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { type FormEvent,useState } from "react";
 import { Link,useNavigate } from "react-router";
-import { getSetupStatus,setupAdministrator } from "../../shared/api/client";
+import { ApiError,getSetupStatus,setupAdministrator } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice } from "../../shared/ui/PagePrimitives";
@@ -10,7 +10,6 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { AuthField,AuthLayout,FormError } from "./AuthLayout";
 
-const BOOTSTRAP_SECRET_MIN_LENGTH = 24;
 const LOGIN_NAME_MIN_LENGTH = 3;
 const LOGIN_NAME_MAX_LENGTH = 64;
 const PASSWORD_MIN_LENGTH = 12;
@@ -21,7 +20,6 @@ export function SetupPage() {
   useLocale();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [bootstrapSecret, setBootstrapSecret] = useState("");
   const [loginName, setLoginName] = useState("admin");
   const [password, setPassword] = useState("");
   const setupStatus = useQuery({ queryKey: ["auth", "setup-status"], queryFn: getSetupStatus, retry: false });
@@ -31,12 +29,18 @@ export function SetupPage() {
       await queryClient.invalidateQueries({ queryKey: ["auth", "setup-status"] });
       navigate("/login", { replace: true });
     },
+    onError: async (error) => {
+      // Another browser can win initialization while this form is still open.
+      if (error instanceof ApiError && error.code === "SETUP_ALREADY_COMPLETED") {
+        await queryClient.invalidateQueries({ queryKey: ["auth", "setup-status"] });
+      }
+    },
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (setup.isPending || !setupStatus.data?.setupRequired) return;
-    setup.mutate({ bootstrapSecret, loginName, password });
+    setup.mutate({ loginName, password });
   }
 
   return (
@@ -55,9 +59,6 @@ export function SetupPage() {
         </div>
       ) : (
         <form className="ui-form" onSubmit={submit} aria-busy={setup.isPending}>
-          <AuthField label={t("auth.setup.secret")} hint={t("auth.setup.secretHint")}>
-            <Input autoComplete="off" disabled={setup.isPending} minLength={BOOTSTRAP_SECRET_MIN_LENGTH} required type="password" value={bootstrapSecret} onChange={(event) => setBootstrapSecret(event.target.value)} />
-          </AuthField>
           <AuthField label={t("auth.setup.username")}>
             <Input autoComplete="username" disabled={setup.isPending} maxLength={LOGIN_NAME_MAX_LENGTH} minLength={LOGIN_NAME_MIN_LENGTH} pattern="[A-Za-z0-9._-]+" required value={loginName} onChange={(event) => setLoginName(event.target.value)} />
           </AuthField>

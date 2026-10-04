@@ -66,8 +66,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL and HTTP proof for private byte storage and bounded image validation. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=asset-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class AssetPostgresIT {
 
     @Container
@@ -97,8 +96,7 @@ class AssetPostgresIT {
     @Test
     void uploadValidatesBytesAndPrivateRangeReadsStayInsideProject() throws Exception {
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        AdminPrincipal owner = identities.setup("asset-integration-secret",
-                "asset-admin", "asset-password-123");
+        AdminPrincipal owner = identities.setup("asset-admin", "asset-password-123");
         Project project = projects.create(owner.userId(), "Asset project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         byte[] png = tinyPng();

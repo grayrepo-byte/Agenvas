@@ -50,7 +50,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=synthetic-video-tool-bootstrap",
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class VideoOperationPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -83,7 +82,7 @@ class VideoOperationPostgresIT {
     private static AdminPrincipal owner;
 
     @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("synthetic-video-tool-bootstrap", "video-tools-test", "synthetic-video-password-123");
+        if (owner == null) owner = identities.setup("video-tools-test", "synthetic-video-password-123");
     }
 
     @Test void extractsActualAudioToIndependentArtifactAndKeepsSourceUnchanged() throws Exception {

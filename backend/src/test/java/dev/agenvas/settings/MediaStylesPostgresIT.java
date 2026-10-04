@@ -56,7 +56,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=synthetic-media-style-bootstrap",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class MediaStylesPostgresIT {
@@ -90,7 +89,7 @@ class MediaStylesPostgresIT {
     RequestPostProcessor user;
 
     @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("synthetic-media-style-bootstrap", "synthetic-style-admin", "synthetic-style-password-123");
+        if (owner == null) owner = identities.setup("synthetic-style-admin", "synthetic-style-password-123");
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
         admin = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         user = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));

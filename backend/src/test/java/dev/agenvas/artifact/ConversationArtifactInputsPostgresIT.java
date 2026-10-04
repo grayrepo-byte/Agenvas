@@ -49,8 +49,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Same-conversation output inheritance preserves exact versions, owner scope and manual-edit CAS. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=conversation-artifact-secret", "agenvas.llm.mode=mock",
+@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.mode=mock",
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class ConversationArtifactInputsPostgresIT {
     private static final int INPUT_LIMIT = 40;
@@ -88,7 +87,7 @@ class ConversationArtifactInputsPostgresIT {
         return jdbc.sql("select id from app_user where login_name = 'conversation-artifact-admin'")
                 .query(UUID.class).optional()
                 .map(id -> new AdminPrincipal(id, "conversation-artifact-admin"))
-                .orElseGet(() -> identities.setup("conversation-artifact-secret", "conversation-artifact-admin",
+                .orElseGet(() -> identities.setup("conversation-artifact-admin",
                         "conversation-artifact-password"));
     }
 

@@ -32,7 +32,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=shutdown-signal-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
 class ShutdownSignalPostgresIT {
@@ -57,8 +56,7 @@ class ShutdownSignalPostgresIT {
 
     @Test
     void sigtermClosesChildGateWithoutRewritingQueuedWork() throws Exception {
-        AdminPrincipal owner = identities.setup("shutdown-signal-integration-secret",
-                "signal-admin", "signal-password-123");
+        AdminPrincipal owner = identities.setup("signal-admin", "signal-password-123");
         Project project = projects.create(owner.userId(), "Signal smoke",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
@@ -115,7 +113,6 @@ class ShutdownSignalPostgresIT {
         builder.environment().put("AGENVAS_DB_URL", POSTGRES.getJdbcUrl());
         builder.environment().put("AGENVAS_DB_USER", POSTGRES.getUsername());
         builder.environment().put("AGENVAS_DB_PASSWORD", POSTGRES.getPassword());
-        builder.environment().put("AGENVAS_BOOTSTRAP_SECRET", "shutdown-signal-integration-secret");
         return builder.start();
     }
 }

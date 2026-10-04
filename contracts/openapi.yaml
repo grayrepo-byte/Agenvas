@@ -943,13 +943,9 @@ paths:
     post:
       operationId: setupAdministrator
       summary: 一次性创建管理员
+      description: 仅提交登录名与密码；数据库永久记录初始化完成，并发只有一次成功，后续调用返回 409 SETUP_ALREADY_COMPLETED。
       tags: [Identity]
       security: []
-      parameters:
-        - name: X-Agenvas-Bootstrap-Secret
-          in: header
-          required: true
-          schema: {type: string, minLength: 24, maxLength: 512}
       requestBody:
         required: true
         content:

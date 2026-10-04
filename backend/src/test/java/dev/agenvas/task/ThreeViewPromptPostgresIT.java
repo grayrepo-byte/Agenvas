@@ -69,7 +69,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=synthetic-three-view-bootstrap",
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class ThreeViewPromptPostgresIT {
     private static final String SETTINGS_PATH = "/api/v1/settings/prompts";
@@ -106,8 +105,7 @@ class ThreeViewPromptPostgresIT {
 
     @BeforeEach
     void setup() {
-        if (owner == null) owner = identities.setup("synthetic-three-view-bootstrap",
-                "synthetic-three-view-admin", "synthetic-three-view-password");
+        if (owner == null) owner = identities.setup("synthetic-three-view-admin", "synthetic-three-view-password");
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
         REQUESTS.clear();

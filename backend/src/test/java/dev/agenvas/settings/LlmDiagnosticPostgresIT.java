@@ -45,7 +45,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=diagnostic-integration-secret",
         "agenvas.llm.mode=configured",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.settings.llm.allow-loopback-http=true"})
@@ -84,8 +83,7 @@ class LlmDiagnosticPostgresIT {
     void requiresAdminCsrfCostConsentAndExactTwoRoundProtocol() throws Exception {
         String endpoint = "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1";
         configs.replace(0, endpoint, "diagnostic-model", "diagnostic-secret-1234");
-        AdminPrincipal admin = identities.setup("diagnostic-integration-secret",
-                "diagnostic-admin", "diagnostic-password-123");
+        AdminPrincipal admin = identities.setup("diagnostic-admin", "diagnostic-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null, List.of()));
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/settings/llm/diagnose";

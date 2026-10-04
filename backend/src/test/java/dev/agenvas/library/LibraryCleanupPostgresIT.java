@@ -24,7 +24,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=cleanup-clock-test-secret",
         "agenvas.tasks.scheduler-enabled=false", "agenvas.library.worker-enabled=false"})
 class LibraryCleanupPostgresIT {
     private static final Instant APPLICATION_NOW = Instant.parse("2020-01-01T00:00:00Z");
@@ -46,7 +45,7 @@ class LibraryCleanupPostgresIT {
 
     @Test
     void cleanupUsesTheApplicationClockAndPreservesDeferredRetries() {
-        var owner = identities.setup("cleanup-clock-test-secret", "cleanup-admin", "cleanup-password-123");
+        var owner = identities.setup("cleanup-admin", "cleanup-password-123");
         var command = new LibraryCommand(UUID.randomUUID(), owner.userId(), "cleanup-clock", "0".repeat(64),
                 LibraryCommand.Kind.SAVE, mapper.createObjectNode().put("pin", "cleanup-fixture.png"),
                 LibraryCommand.Status.SUCCEEDED, 0, null, null, null, null, APPLICATION_NOW, APPLICATION_NOW);

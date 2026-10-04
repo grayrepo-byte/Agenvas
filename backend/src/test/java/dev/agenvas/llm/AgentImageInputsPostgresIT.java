@@ -58,8 +58,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Synthetic image and fake model; actual PostgreSQL, storage, read tools and continuation. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentImageInputsPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=synthetic-image-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, AgentImageInputsPostgresIT.FakeConfig.class})
 class AgentImageInputsPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -88,7 +87,7 @@ class AgentImageInputsPostgresIT {
 
     @Test
     void sendsOnlyRequestedImagesAfterCommittedReadsAndRetainsThemWithoutDuplicateAttachments() throws Exception {
-        var owner = identities.setup("synthetic-image-integration-secret", "image-admin", "synthetic-password-123");
+        var owner = identities.setup("image-admin", "synthetic-password-123");
         var project = projects.create(owner.userId(), "Synthetic image project", Project.AspectRatio.LANDSCAPE_16_9);
         ByteArrayOutputStream png = new ByteArrayOutputStream();
         ImageIO.write(new BufferedImage(3, 2, BufferedImage.TYPE_INT_RGB), "png", png);

@@ -13,11 +13,13 @@ function showPage() {
 }
 
 describe("SetupPage", () => {
-  it("shows server-backed initialization without inventing provider status", async () => {
+  it("shows one-time setup with only account fields", async () => {
     showPage();
     expect(screen.getByText("自托管模式 · Provider 状态登录后可查看")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("不会调用外部模型");
     expect(await screen.findByRole("button", { name: "创建管理员" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/初始化密钥/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/管理员密码/)).toBeInTheDocument();
   });
 
   it("retries unavailable setup status and presents login when already initialized", async () => {
@@ -30,26 +32,56 @@ describe("SetupPage", () => {
     expect(screen.queryByRole("button", { name: "创建管理员" })).not.toBeInTheDocument();
   });
 
-  it("keeps fields on rejection and disables duplicate setup submissions", async () => {
+  it("keeps account fields on rejection and disables duplicate submissions", async () => {
     const submitted: unknown[] = []; let finish: (() => void) | undefined;
     const pending = new Promise<void>((resolve) => { finish = resolve; });
     server.use(
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf" })),
       http.post("/api/v1/auth/setup", async ({ request }) => {
-        submitted.push(await request.json()); expect(request.headers.get("X-Agenvas-Bootstrap-Secret")).toBe("initialization-secret-123456");
+        submitted.push(await request.json()); expect(request.headers.get("X-Agenvas-Bootstrap-Secret")).toBeNull();
         await pending;
-        return HttpResponse.json({ code: "INVALID_BOOTSTRAP", title: "初始化失败", detail: "初始化密钥无效", retryable: false }, { status: 403, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json({ code: "VALIDATION_ERROR", title: "初始化失败", detail: "账号信息无效", retryable: false }, { status: 400, headers: { "Content-Type": "application/problem+json" } });
       }),
     );
     showPage(); const user = userEvent.setup();
     await screen.findByRole("button", { name: "创建管理员" });
-    const secret = screen.getByLabelText(/初始化密钥/); const password = screen.getByLabelText(/管理员密码/);
-    await user.type(secret, "initialization-secret-123456"); await user.type(password, "valid-password-123");
+    const username = screen.getByLabelText(/管理员登录名/); const password = screen.getByLabelText(/管理员密码/);
+    await user.type(password, "synthetic-password-123");
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
-    expect(screen.getByRole("button", { name: "正在创建…" })).toBeDisabled(); expect(secret).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在创建…" })).toBeDisabled(); expect(username).toBeDisabled();
     finish?.();
-    expect(await screen.findByRole("alert")).toHaveTextContent("初始化密钥无效");
-    expect(secret).toHaveValue("initialization-secret-123456"); expect(password).toHaveValue("valid-password-123");
-    expect(submitted).toEqual([{ loginName: "admin", password: "valid-password-123" }]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("账号信息无效");
+    expect(username).toHaveValue("admin"); expect(password).toHaveValue("synthetic-password-123");
+    expect(submitted).toEqual([{ loginName: "admin", password: "synthetic-password-123" }]);
+  });
+
+  it("refreshes setup status when another browser already completed it", async () => {
+    let initialized = false;
+    server.use(
+      http.get("/api/v1/auth/setup-status", () => HttpResponse.json({ setupRequired: !initialized })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf" })),
+      http.post("/api/v1/auth/setup", () => {
+        initialized = true;
+        return HttpResponse.json({ code: "SETUP_ALREADY_COMPLETED", title: "系统已初始化", detail: "初始化已完成", retryable: false }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+      }),
+    );
+    showPage(); const user = userEvent.setup();
+    await screen.findByRole("button", { name: "创建管理员" });
+    await user.type(screen.getByLabelText(/管理员密码/), "synthetic-password-123");
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    expect(await screen.findByRole("link", { name: "前往登录" })).toHaveAttribute("href", "/login");
+    expect(screen.queryByRole("button", { name: "创建管理员" })).not.toBeInTheDocument();
+  });
+
+  it("navigates to login after successful account-only initialization", async () => {
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf" })),
+      http.post("/api/v1/auth/setup", () => HttpResponse.json({ id: "synthetic-admin", loginName: "admin", role: "ADMIN" }, { status: 201 })),
+    );
+    showPage(); const user = userEvent.setup();
+    await screen.findByRole("button", { name: "创建管理员" });
+    await user.type(screen.getByLabelText(/管理员密码/), "synthetic-password-123");
+    await user.click(screen.getByRole("button", { name: "创建管理员" }));
+    expect(await screen.findByText("登录页")).toBeInTheDocument();
   });
 });

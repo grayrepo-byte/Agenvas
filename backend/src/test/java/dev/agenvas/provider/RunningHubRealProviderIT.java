@@ -52,8 +52,7 @@ import tools.jackson.databind.node.ObjectNode;
 @EnabledIfEnvironmentVariable(named = "AGENVAS_RUNNINGHUB_REAL_CALLS", matches = "true")
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=runninghub-real-isolated-test", "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubRealProviderIT {
     private static final String ORIGIN = "https://www.runninghub.ai";
     private enum RealTarget {
@@ -106,7 +105,7 @@ class RunningHubRealProviderIT {
         assertThat(Files.exists(receipt)).as("An existing receipt must be reconciled; this test must not submit it again").isFalse();
         Files.createDirectories(privateRoot().resolve("results"));
         writeReceipts(); // Guard is installed before any upload or paid request.
-        owner = identities.setup("runninghub-real-isolated-test", "real-rh-admin", "isolated-rh-password-123").userId();
+        owner = identities.setup("real-rh-admin", "isolated-rh-password-123").userId();
         String key = readPrivate("api-key");
         var connection = catalog.createConnection(UUID.randomUUID().toString(), "RunningHub real verification", "RUNNINGHUB", ORIGIN, key);
         // Reviewed target-specific inputs; AI app discovery can fall back to public page metadata.

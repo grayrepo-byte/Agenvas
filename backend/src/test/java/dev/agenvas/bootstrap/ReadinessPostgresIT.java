@@ -23,7 +23,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @SpringBootTest(classes = AgenvasApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "agenvas.identity.bootstrap-secret=readiness-integration-secret",
                 "spring.datasource.hikari.connection-timeout=2000"
         })
 class ReadinessPostgresIT {

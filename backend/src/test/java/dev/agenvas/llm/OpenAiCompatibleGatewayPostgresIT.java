@@ -37,7 +37,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=compatible-llm-integration-secret",
         "agenvas.llm.mode=configured",
         "agenvas.llm.tool-calling-verified=true",
         "agenvas.llm.scheduler-enabled=false",

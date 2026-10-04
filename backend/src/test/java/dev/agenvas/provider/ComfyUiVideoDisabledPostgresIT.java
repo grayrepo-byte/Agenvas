@@ -49,7 +49,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=disabled-video-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -96,8 +95,7 @@ class ComfyUiVideoDisabledPostgresIT {
 
     @Test
     void disabledSubmissionStillArchivesOnlyTheSavedVideoId() throws Exception {
-        var owner = identities.setup("disabled-video-integration-secret",
-                "disabled-video-admin", "disabled-video-password-123");
+        var owner = identities.setup("disabled-video-admin", "disabled-video-password-123");
         Project project = projects.create(owner.userId(), "Historical video",
                 Project.AspectRatio.LANDSCAPE_16_9);
         UUID imageAssetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());

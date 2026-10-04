@@ -99,7 +99,7 @@ services:
 
   server:
     build:
-      context: ..
+      context: .
       dockerfile: deploy/docker/server.Dockerfile
     image: agenvas-server:local
     pull_policy: build
@@ -150,7 +150,7 @@ services:
 
   web:
     build:
-      context: ..
+      context: .
       dockerfile: deploy/docker/frontend.Dockerfile
     image: agenvas-web:local
     pull_policy: build

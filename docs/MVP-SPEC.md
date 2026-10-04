@@ -214,7 +214,7 @@ Spring MVC 支持异步响应和 SSE，本项目不因为需要流式进度就�
 
 ### 4.3 基础设施
 
-默认部署只有三个服务：`web`、`server`、`postgres`。`deploy/compose.yaml` 默认文字与媒体均为 `configured`，不启用 Mock；`deploy/compose.dev.yaml` 显式使用 Mock。媒体服务是外接推理能力，Mock 模式不需要它。
+默认部署只有三个服务：`web`、`server`、`postgres`。根目录 `docker-compose.yml` 从 Docker Hub 拉取发布镜像；`docker-compose.local.yml` 和 `deploy/compose.yaml` 从当前源码构建。三者默认文字与媒体均为 `configured`，不启用 Mock；`deploy/compose.dev.yaml` 显式使用 Mock。四份 Compose 文件各自完整展示环境变量、端口、卷、健康检查和资源限制，不通过 extends/include 隐藏设置；部署者直接修改所选文件。PostgreSQL 均使用官方固定版本 `postgres:17.11-alpine`，只有应用需要源码构建。媒体服务是外接推理能力，Mock 模式不需要它。
 
 - web：Vite 静态构建文件 + Nginx 反向代理；没有 Node 生产运行时。
 - server：一个 Spring Boot 应用，内部包含受限的 Agent、任务和媒体处理执行器。
@@ -1169,7 +1169,7 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 | 方法与路径 | 语义 |
 |---|---|
 | GET `/auth/setup-status` | 是否需要初始化，不泄露系统配置 |
-| POST `/auth/setup` | 一次性管理员初始化；受 bootstrap secret 保护 |
+| POST `/auth/setup` | 一次性管理员初始化；仅提交账号密码，完成后永久关闭 |
 | POST `/auth/login` | 创建会话 |
 | POST `/auth/logout` | 失效会话 |
 | GET `/auth/me` | 当前用户 |
@@ -1327,7 +1327,7 @@ FFmpeg 的许可证取决于启用的组件；包含某些 GPL 组件会改变�
 
 ### 17.1 鉴权与初始化
 
-P0 只支持单管理员。首次初始化使用部署时注入的 bootstrap secret，数据库唯一约束保证只能初始化一次；不能让公网第一个访问者直接成为管理员。
+P0 只支持单管理员。2026-10-04 用户决定取消初始化密钥，首次 `/setup` 仅填写登录名和密码。数据库安装行锁串行化请求，管理员插入和 `installation_lock.initialized_at` 完成标记在同一事务提交；唯一约束及 CAS 保证并发只成功一次。后续有效请求返回 `409 SETUP_ALREADY_COMPLETED`；重启、停用或删除管理员都不重新开放，失败事务同时回滚账户与标记。V9 根据已有任意状态账号的最早创建时间回填标记，升级不要求重复初始化。默认端口只绑定本机，部署者先在本机完成初始化，再开放公网反代；一次性保护不验证未初始化安装的首位访问者身份。CSRF 仍必需。
 
 使用 Spring Security 的受支持密码编码器和会话管理；密码不明文存储。Cookie 生产配置为 HttpOnly、Secure、SameSite=Lax，并配套 CSRF 防护与来源校验。登录和改密接口限流，认证失败不泄露账号状态。
 
@@ -1688,17 +1688,19 @@ UNKNOWN 任务新出现、数据库连接池饱和、事件明显积压、磁盘
 
 ### 25.1 仓库与运行方式
 
-本地开发：前端 Vite（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；独立 JVM 保留 Mock 默认。容器开发使用 `deploy/compose.dev.yaml`，通过 `extends` 复用部署版服务并显式启用文字/媒体 Mock。
+本地开发：前端 Vite（仅开发期把 `/api` 代理到本机 Spring Boot）、后端 JVM、Docker PostgreSQL；独立 JVM 保留 Mock 默认。容器开发使用完整独立的 `deploy/compose.dev.yaml`，显式启用文字/媒体 Mock。
 
-自托管：`deploy/compose.yaml` 为默认部署版，Docker Compose 三服务；文字和媒体使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。保存云凭证或完整 ComfyUI 地址还须设置服务端 `AGENVAS_CREDENTIAL_MASTER_KEY`。部署和开发版均要求数据库密码与 bootstrap secret；默认项目名分别为 `agenvas`、`agenvas-dev`，卷按项目名隔离，两版默认端口相同，并行运行须显式配置不同端口。`deploy/update-local.sh` 继续更新默认部署版；配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
+自托管：根目录 `docker-compose.yml` 为默认镜像部署入口，直接写明 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 与官方 `postgres:17.11-alpine`。应用设置 `pull_policy: always` 获取最新 latest，PostgreSQL 使用固定版本；不要求镜像地址、namespace 或 tag 环境变量。部署者需要固定应用版本或更换镜像地址时直接编辑 Compose 的 image。`docker-compose.local.yml` 与原 `deploy/compose.yaml` 只从源码构建 server/web，PostgreSQL 直接拉取官方镜像；`deploy/update-local.sh` 使用根目录源码入口，先构建再更新容器。四份文件均完整列出所有运行参数，不依赖其他 Compose 文件或共享 runtime 文件，部署者直接选择和修改参数。
 
-Nginx 统一域名处理前端与 `/api`，避免生产跨域鉴权复杂度。SSE 反代禁缓冲。所有镜像锁版本与 digest，不使用 latest。
+镜像部署和源码构建均使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。容器首次启动从系统随机源生成数据库密码（32 字节转 64 字符十六进制）和 32 字节 Base64 凭证主密钥，原子保存到 `credentials-data` 持久卷；不要求 `.env` 或手工填写。PostgreSQL 仍为官方镜像，生成逻辑完整列在所选 Compose 的入口中；server 非 root 入口从只读挂载文件读取数据库密码与主密钥，不将值写入 Compose 或日志。密钥目录为 UID 100/GID 101 的 0700，文件 0600，重启/更新复用原值；旧数据库缺少密钥卷时须恢复或显式导入原值，不能自动换密码/主密钥。初始化页面仅输入账号和密码，密钥卷单独加密备份。部署两种入口默认项目名均为 `agenvas`，复用原数据库、素材和密钥卷，Mock 开发版为 `agenvas-dev`，卷按项目名隔离。默认端口相同，并行运行须显式配置不同项目名和端口；切换启动方式须备份并确保版本兼容。配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
+
+Nginx 统一域名处理前端与 `/api`，避免生产跨域鉴权复杂度。SSE 反代禁缓冲。构建基础镜像锁版本与 digest；2026-10-04 用户明确决定默认应用部署使用 latest，PostgreSQL 使用官方固定版本。部署者可以直接在 Compose 中改为指定版本、提交标签或 digest；此前禁止应用镜像 latest 的部署规则由该决定覆盖。
 
 `configured` 媒体模式对新生成排除 Mock，保留已受理任务的精确历史配置。设置响应把保留的 Mock 默认能力投影为 `capabilityId: null`，管理员设置真实默认值后恢复具体 ID；诊断响应的 `mediaMode` 可为 `CONFIGURED`，就绪状态读取已启用的发布目录。客户端升级须重新生成 OpenAPI 类型并处理空默认值，无需数据库迁移。
 
 ### 25.2 容器要求
 
-非 root 用户；应用文件系统只读，数据与临时目录单独挂载；配置资源上限、健康检查与日志轮转；不挂 Docker Socket，不使用 privileged。
+server/web 使用非 root 用户，PostgreSQL 使用官方入口初始化卷后以 postgres 用户运行数据库；应用文件系统只读，数据与临时目录单独挂载；配置资源上限、健康检查与日志轮转；不挂 Docker Socket，不使用 privileged。
 
 FFmpeg 子进程仅在指定工作目录运行。P0 的可信自托管边界必须在 README 写清，不能把它当作允许陌生人执行任意工作流的沙箱。
 
@@ -1790,6 +1792,8 @@ agent-canvas/
 跨栈：OpenAPI 破坏性变更检查 → 生成代码无未提交差异 → Mock 黄金路径 → 幂等与故障测试。
 
 安全：密钥扫描、依赖漏洞扫描、容器扫描、许可证清单/SBOM。对可达的高风险漏洞设发布阻断；误报或暂缓必须有负责人、理由和到期日期。
+
+镜像发布：GitHub CI 在 main 推送、`v*.*.*` 标签推送或手动触发时运行；只有 main 或版本标签可发布。前后端测试、Compose 定向配置检查、源码扫描通过后，在 amd64 / arm64 原生 Runner 上构建和扫描 server/web，并直接拉取和扫描官方 `postgres:17.11-alpine`，保留各架构 SBOM 与许可证清单。PostgreSQL 不自建、不推送，不沿用已退役派生镜像的 gosu 扫描排除。应用扫描后的同一镜像以当前运行中间标签推送，所有服务与架构通过后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、main 分支的 latest、版本标签去除前导 v 后的版本。版本标签触发不覆盖 main 的 latest；PR 不读取 Docker Hub 凭据且不推送。发布地址直接固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败，不宣称发布成功。新增 Docker Actions 固定到 commit。
 
 真实模型冒烟是显式手动或受控触发，不在来自 fork 的 PR 中注入真实密钥，也不无限消耗真实 API 费用。
 

@@ -47,8 +47,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=event-integration-bootstrap-secret")
+        classes = AgenvasApplication.class)
 class ProjectEventPostgresIT {
 
     private static final int CONCURRENT_EVENTS = 12;
@@ -94,8 +93,7 @@ class ProjectEventPostgresIT {
     @Test
     void eventFailureRollsBackBusinessConcurrentSequencesHaveNoGapAndSnapshotIsConsistent()
             throws Exception {
-        AdminPrincipal owner = identityService.setup(
-                "event-integration-bootstrap-secret", "event-admin", "event-password-123");
+        AdminPrincipal owner = identityService.setup("event-admin", "event-password-123");
         Project project = projectService.create(
                 owner.userId(), "Event project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agentService.create(

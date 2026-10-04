@@ -29,8 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=canvas-integration-bootstrap-secret")
+        classes = AgenvasApplication.class)
 class CanvasPostgresIT {
 
     @Container
@@ -61,8 +60,7 @@ class CanvasPostgresIT {
 
     @Test
     void layoutPersistsFailedBatchRollsBackAndRemovingCardKeepsArtifact() {
-        AdminPrincipal owner = identityService.setup(
-                "canvas-integration-bootstrap-secret", "canvas-admin", "canvas-password-123");
+        AdminPrincipal owner = identityService.setup("canvas-admin", "canvas-password-123");
         Project project = projectService.create(
                 owner.userId(), "Canvas project", Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView firstArtifact = createText(owner.userId(), project.id(), "One");

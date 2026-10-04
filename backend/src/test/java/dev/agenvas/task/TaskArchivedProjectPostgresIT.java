@@ -49,8 +49,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Proves archived projects retain accepted Provider results without resuming composition. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=archived-project-test-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class TaskArchivedProjectPostgresIT {
 
     @Container
@@ -88,8 +87,7 @@ class TaskArchivedProjectPostgresIT {
     /** A late accepted image stays auditable, but never creates an active canvas output. */
     @Test
     void acceptedImageAfterArchiveIsHistoricalAndDoesNotReactivateProject() throws Exception {
-        AdminPrincipal owner = identities.setup("archived-project-test-secret",
-                "archive-admin", "archive-password-123");
+        AdminPrincipal owner = identities.setup("archive-admin", "archive-password-123");
         Project project = projects.create(owner.userId(), "Archive while generating",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());

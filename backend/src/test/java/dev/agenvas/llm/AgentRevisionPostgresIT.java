@@ -52,8 +52,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Fake-model, real-PostgreSQL proof of scoped immutable Agent revisions. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentRevisionPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=agent-revision-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, AgentRevisionPostgresIT.FakeConfig.class})
 class AgentRevisionPostgresIT {
 
     @Container
@@ -81,8 +80,7 @@ class AgentRevisionPostgresIT {
 
     @Test
     void revisesRunOutputButCannotReviseUnboundProjectArtifactOrBypassCas() {
-        AdminPrincipal owner = identities.setup("agent-revision-integration-secret",
-                "revision-admin", "revision-password-123");
+        AdminPrincipal owner = identities.setup("revision-admin", "revision-password-123");
         Project project = projects.create(owner.userId(), "Revision project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ObjectNode privateContent = mapper.createObjectNode();

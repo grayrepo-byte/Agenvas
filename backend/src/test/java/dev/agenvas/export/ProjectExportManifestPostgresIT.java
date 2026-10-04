@@ -56,7 +56,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=manifest-integration-secret",
         "agenvas.library.worker-enabled=false",
         "agenvas.skill.worker-enabled=false",
         "agenvas.settings.llm.allow-loopback-http=true"})
@@ -94,8 +93,7 @@ class ProjectExportManifestPostgresIT {
     @Test
     void ownerDownloadsAllVersionsAndMediaMetadataWithoutConfigurationOrSignedLinks()
             throws Exception {
-        AdminPrincipal owner = identities.setup("manifest-integration-secret",
-                "manifest-admin", "manifest-password-123");
+        AdminPrincipal owner = identities.setup("manifest-admin", "manifest-password-123");
         String actualKey = "manifest-private-provider-key-123";
         llmConfigs.replace(0, "http://127.0.0.1:18080/v1",
                 "manifest-private-model", actualKey);

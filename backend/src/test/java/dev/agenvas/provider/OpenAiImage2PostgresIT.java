@@ -50,8 +50,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Real Task/Asset path against a loopback fake OpenAI API; no paid call is made. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=openai-image-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class OpenAiImage2PostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -96,8 +95,7 @@ class OpenAiImage2PostgresIT {
                 "OPENAI_GPT_IMAGE_2", mapper.readTree("{\"quality\":\"medium\"}"));
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
-        AdminPrincipal owner = identities.setup("openai-image-integration-secret",
-                "openai-admin", "openai-password-123");
+        AdminPrincipal owner = identities.setup("openai-admin", "openai-password-123");
         Fixture edited = fixture(owner.userId(), "Reference edit", 2);
         Task editTask = approve(owner.userId(), edited);
         assertThat(editTask.input().path("mediaInput").path("images").size()).isEqualTo(2);
