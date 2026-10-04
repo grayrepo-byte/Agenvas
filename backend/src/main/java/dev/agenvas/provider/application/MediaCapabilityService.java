@@ -262,6 +262,7 @@ public class MediaCapabilityService {
     public Capability updateCapability(UUID connectionId, UUID capabilityId,
             long expectedVersion, String name, boolean enabled, String adapterId,
             JsonNode settings) {
+        repository.lockCapability(capabilityId);
         Snapshot current = capabilitySnapshot(capabilityId);
         requireAvailablePlatform(current.connection().platform());
         if (!current.connection().id().equals(connectionId)) {
@@ -275,7 +276,10 @@ public class MediaCapabilityService {
         if (current.connection().platform() != replacement.platform()) {
             throw invalid(ApiMessage.of("api.media-capability-service.adapter-does-not-match-platform-connection"));
         }
-        if (registry.declaration(current.adapterId()).kind() != replacement.kind()) {
+        Task.Kind previousKind = registry.declaration(current.adapterId()).kind();
+        boolean changedKind = previousKind != replacement.kind();
+        if (changedKind && !(MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(current.adapterId())
+                && MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId))) {
             throw invalid(ApiMessage.of("api.media-capability-service.ability-s-output-type-is-immutable-please-publish-new-capabilities"));
         }
         JsonNode oldSettings = settings == null && current.adapterId().equals(adapterId)
@@ -299,6 +303,7 @@ public class MediaCapabilityService {
             repository.insertCapabilityVersion(capabilityId, nextVersion, adapterId,
                     Sha256.hex(adapterId + ":v1:" + spec), spec, now);
         }
+        if (changedKind) repository.clearDefaultForCapability(previousKind.name(), capabilityId);
         return repository.capability(capabilityId).orElseThrow();
     }
 
@@ -453,6 +458,7 @@ public class MediaCapabilityService {
 
     public UUID defaultCapabilityId(Task.Kind kind) {
         UUID capabilityId = repository.defaultCapabilityId(requireMediaKind(kind).name());
+        if (capabilityId == null) return null;
         if (mode.mode() != ProviderModeProperties.Mode.CONFIGURED) return capabilityId;
         return availablePlatform(capabilitySnapshot(capabilityId).connection().platform())
                 ? capabilityId : null;
@@ -503,6 +509,7 @@ public class MediaCapabilityService {
     public MediaCapabilityBinding setDefault(Task.Kind kind, long expectedVersion,
             UUID capabilityId) {
         Task.Kind mediaKind = requireMediaKind(kind);
+        repository.lockCapability(capabilityId);
         Snapshot snapshot = enabledSnapshot(capabilityId);
         if (MediaAdapterRegistry.localProcessor(snapshot.adapterId())) {
             throw invalid(ApiMessage.of("api.media-capability-service.local-image-processing-capabilities-cannot-be-set-as-the-default"));
